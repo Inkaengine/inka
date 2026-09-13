@@ -33,6 +33,24 @@ test.describe('Slash Menu', () => {
     await expect(menuItems.first()).toBeVisible({ timeout: 3000 });
   });
 
+  test('typing / in a slate that is EMPTY from the start shows slash menu', async ({ page }) => {
+    // Every other case here clears a text block first (selectAll → type),
+    // so the '/' always replaces a real selection. An author starting on a
+    // brand-new, already-empty block must get the menu too — that is the
+    // common case. The showcase page ships a genuinely empty slate for this.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/showcase-page');
+
+    const editor = await helper.enterEditMode('empty-slate');
+    // No selectAll: type straight into the empty slate.
+    await editor.pressSequentially('/', { delay: 10 });
+
+    const slashMenu = page.locator('.power-user-menu');
+    await expect(slashMenu).toBeVisible({ timeout: 5000 });
+    await expect(slashMenu.locator('.ui.menu .item').first()).toBeVisible({ timeout: 3000 });
+  });
+
   test('typing /her filters to show Hero block', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();

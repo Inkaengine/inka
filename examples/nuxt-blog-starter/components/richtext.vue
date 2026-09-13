@@ -21,6 +21,7 @@
     :data-linkable-id="anchorName"
     :style="node.textAlign ? { textAlign: node.textAlign } : undefined"
     >{{ node.text }}<RichText v-for="child in subs" :key="child.nodeId" :node="child"
+    /><br v-if="isEmpty"
   /></component>
 </template>
 
@@ -37,6 +38,20 @@ export default {
     subs() {
       const { children } = this.node;
       return (children && children) || [];
+    },
+    // An element node with no text anywhere (a brand-new empty paragraph)
+    // renders as <p data-node-id="0"><br></p>. The <br> gives the block a line
+    // box — so it stays clickable/selectable when empty — and keeps the caret
+    // INSIDE the node-id'd element, so typing (e.g. "/" for the slash menu) is
+    // read by the bridge instead of landing outside it. Without it an empty
+    // <p> collapses and typing is lost.
+    isEmpty() {
+      const hasText = (n) =>
+        n == null
+          ? false
+          : (typeof n.text === 'string' && n.text.length > 0) ||
+            (n.children || []).some(hasText);
+      return !hasText(this.node);
     },
     // This frontend tags every heading as a deep-link anchor (a frontend
     // choice). Explicit node.data.anchorId wins; otherwise a heading's id/label
