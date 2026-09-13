@@ -161,6 +161,152 @@ jobs:
           retention-days: 7
 
   # ── Admin integration tests (mock frontend) ─────────────────────────────
+  # One contract suite, three CMSes, run at the same time.
+  #
+  # These assert that an adapter answers the canonical intents correctly against
+  # a REAL backend for its CMS — the suite is identical per target, so a failure
+  # names which CMS diverged rather than which test is flaky. Nothing here
+  # touches the admin: it is the adapter contract alone.
+  #
+  # fail-fast is off because "WordPress broke" and "Drupal broke" are separate
+  # findings, and cancelling the others hides the second one.
+  test-adapter-contract:
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [plone, wordpress, drupal]
+    name: test-contract (${{ matrix.target }})
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup pnpm
+        run: |
+          npm install -g corepack
+          corepack cache clean
+          corepack enable
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - name: Install dependencies
+        run: |
+          pnpm dlx mrs-developer missdev --no-config --fetch-https
+          pnpm install --frozen-lockfile
+      # WordPress is PHP-WASM fetched at boot, so it needs its own download and
+      # is the slow one; the mock-backed targets skip this entirely.
+      - name: Warm the WordPress Playground package
+        if: matrix.target == 'wordpress'
+        run: pnpm dlx @wp-playground/cli@3.1.51 --version || true
+      - name: Run the contract suite
+        run: TARGET=${{ matrix.target }} pnpm test:contract 2>&1 | tee /tmp/contract-${{ matrix.target }}.log
+      - name: Upload the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-${{ matrix.target }}
+          path: /tmp/contract-${{ matrix.target }}.log
+          if-no-files-found: ignore
+
+  # The same editorial journey, walked in a browser against each CMS.
+  #
+  # Where the contract suite proves an adapter answers correctly, these prove the
+  # ADMIN works over it: create a page, link to another, move it, upload an
+  # image, change its state. Playwright's own config starts the right backend per
+  # project (Drupal's mock, WordPress Playground), so the job only has to supply
+  # a built Volto.
+  #
+  # WordPress is serialised inside its own project — PHP-WASM answers about one
+  # request a second, and nine specs in parallel starve each other — but the
+  # three CMSes still run as separate jobs at the same time here.
+  test-adapter-journey:
+    needs: build
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [journey-plone-seeded, journey-drupal, journey-wordpress]
+    name: test-journey (${{ matrix.project }})
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup pnpm
+        run: |
+          npm install -g corepack
+          corepack cache clean
+          corepack enable
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - name: Install dependencies
+        run: |
+          pnpm dlx mrs-developer missdev --no-config --fetch-https
+          pnpm install --frozen-lockfile
+      - name: Build workspace deps (@plone/registry, @plone/components)
+        run: pnpm build:deps
+      - name: Download Volto build
+        uses: actions/download-artifact@v4
+        with:
+          name: volto-build
+          path: build
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Playwright deps only
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+      # WordPress needs its storage state minted before the journey runs; the
+      # other targets have theirs committed.
+      - name: Authenticate WordPress
+        if: matrix.project == 'journey-wordpress'
+        run: pnpm exec playwright test --project=journey-wordpress-setup --reporter=list
+        env:
+          CI: true
+          USE_PREBUILT: true
+      - name: Run the journey
+        run: pnpm exec playwright test --project=${{ matrix.project }} --reporter=github,list,html
+        env:
+          CI: true
+          USE_PREBUILT: true
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.project }}
+          path: playwright-report/
+          if-no-files-found: ignore
+
   test-admin-mock:
     needs: build
     runs-on: 'ubuntu-latest'
