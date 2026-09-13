@@ -5667,9 +5667,27 @@ export class Bridge {
 
     // Handle ELEMENT nodes - cursor can land on wrapper DIV when clicking at edge of block
     if (node.nodeType === Node.ELEMENT_NODE) {
-      // If this element has a valid data-node-id, cursor position is valid
+      // A caret on an element with a valid data-node-id is normally fine — EXCEPT
+      // when that element is empty (no text node to hold the caret), e.g. an
+      // empty <p data-node-id="0"></p> materialised from a slate default before
+      // any ZWS was inserted. There is no insertion target inside it, so a native
+      // keystroke leaks out to the wrapper. Flag it as needing correction so
+      // correctInvalidWhitespaceSelection → getValidPositionForWhitespace parks a
+      // ZWS inside the element and moves the caret onto it. hydra owns inserting
+      // the ZWS even when the node-id is already present; the default itself
+      // carries neither the node-id nor the ZWS.
       if (node.hasAttribute?.('data-node-id') && isValidNodeId(node.getAttribute('data-node-id'))) {
-        return false;
+        // "Empty" means no text node with ANY character — not merely no text
+        // node. A Vue-rendered empty <p> can hold several zero-length text nodes
+        // ({{ '' }} interpolations, v-for placeholders); none is a caret target.
+        // A ZWS text node (length 1) DOES count as a target, so a corrected block
+        // is not re-flagged.
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        let t;
+        while ((t = walker.nextNode())) {
+          if (t.textContent && t.textContent.length > 0) return false;
+        }
+        return true;
       }
 
       // If this element is an editable field itself, check if it has data-node-id children
@@ -5740,10 +5758,20 @@ export class Bridge {
     // Walk up from node to find if there's a data-node-id ancestor (including editableField itself)
     current = node.parentNode;
     while (current) {
-      // If we hit an element with a valid data-node-id, cursor is valid
+      // If we hit an element with a valid data-node-id, the caret is valid —
+      // UNLESS that element is empty (only zero-length text nodes, e.g. Vue's
+      // {{ '' }} artifacts around an empty <p>). Then there is no character to
+      // insert beside and a native keystroke leaks out, so flag it and let the
+      // correction park a ZWS inside. A ZWS text node (length 1) counts as a
+      // target, so a corrected element is not re-flagged.
       if (current.nodeType === Node.ELEMENT_NODE && current.hasAttribute?.('data-node-id')
           && isValidNodeId(current.getAttribute('data-node-id'))) {
-        return false;
+        const walker = document.createTreeWalker(current, NodeFilter.SHOW_TEXT);
+        let t;
+        while ((t = walker.nextNode())) {
+          if (t.textContent && t.textContent.length > 0) return false;
+        }
+        return true;
       }
       // Stop at editable field boundary
       if (current === editableField) {
@@ -5815,11 +5843,21 @@ export class Bridge {
     // Otherwise, determine based on DOM position of the whitespace
     let returnEndPosition = isRangeEnd;
     if (!isRangeEnd) {
-      // Determine if whitespace is before first or after last by comparing DOM positions
-      const position = node.compareDocumentPosition(firstNodeIdEl);
-      const isBeforeFirst = position & Node.DOCUMENT_POSITION_FOLLOWING;
-      returnEndPosition = !isBeforeFirst; // After content = return end position
-      log('getValidPositionForWhitespace: isBeforeFirst=', isBeforeFirst, 'firstNodeIdEl=', firstNodeIdEl.tagName, 'nodeId=', firstNodeIdEl.getAttribute('data-node-id'));
+      if (firstNodeIdEl.contains(node)) {
+        // The whitespace node is INSIDE the node-id element itself — an empty
+        // element's own empty text node (e.g. Vue's {{ '' }} inside an empty
+        // <p data-node-id>). compareDocumentPosition would call that "after
+        // content" and route to the end branch, skipping ZWS creation. Treat it
+        // as the start so the start branch parks/prepends a ZWS in the element.
+        returnEndPosition = false;
+        log('getValidPositionForWhitespace: node is inside firstNodeIdEl, using start position');
+      } else {
+        // Determine if whitespace is before first or after last by comparing DOM positions
+        const position = node.compareDocumentPosition(firstNodeIdEl);
+        const isBeforeFirst = position & Node.DOCUMENT_POSITION_FOLLOWING;
+        returnEndPosition = !isBeforeFirst; // After content = return end position
+        log('getValidPositionForWhitespace: isBeforeFirst=', isBeforeFirst, 'firstNodeIdEl=', firstNodeIdEl.tagName, 'nodeId=', firstNodeIdEl.getAttribute('data-node-id'));
+      }
     }
 
     if (!returnEndPosition) {
