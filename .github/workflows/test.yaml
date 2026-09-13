@@ -287,14 +287,11 @@ jobs:
       - name: Install Playwright deps only
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
-      # WordPress needs its storage state minted before the journey runs; the
-      # other targets have theirs committed.
-      - name: Authenticate WordPress
-        if: matrix.project == 'journey-wordpress'
-        run: pnpm exec playwright test --project=journey-wordpress-setup --reporter=list
-        env:
-          CI: true
-          USE_PREBUILT: true
+      # No separate auth step for WordPress: journey-wordpress declares
+      # `dependencies: ['journey-wordpress-setup']`, so Playwright mints the
+      # credential itself with the servers this project needs already up.
+      # Running the setup project on its own first made it fail three times over
+      # before the real run started.
       - name: Run the journey
         run: pnpm exec playwright test --project=${{ matrix.project }} --reporter=github,list,html
         env:
