@@ -232,7 +232,11 @@ jobs:
   # request a second, and nine specs in parallel starve each other — but the
   # three CMSes still run as separate jobs at the same time here.
   test-adapter-journey:
-    needs: build
+    # Deliberately NOT `needs: build`. Depending on the shared build job means
+    # the whole matrix skips whenever that job is red for reasons of its own —
+    # which is what happened first time out, so adapter journeys were gated
+    # behind breakage they have nothing to do with. Building Volto here costs a
+    # few minutes per leg and buys a signal that is actually independent.
     runs-on: 'ubuntu-latest'
     timeout-minutes: 45
     strategy:
@@ -269,11 +273,8 @@ jobs:
           pnpm install --frozen-lockfile
       - name: Build workspace deps (@plone/registry, @plone/components)
         run: pnpm build:deps
-      - name: Download Volto build
-        uses: actions/download-artifact@v4
-        with:
-          name: volto-build
-          path: build
+      - name: Build Volto for production
+        run: VOLTOCONFIG=${{ github.workspace }}/volto.config.js pnpm build
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@v4
