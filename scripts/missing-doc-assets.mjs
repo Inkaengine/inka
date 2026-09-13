@@ -75,7 +75,11 @@ function producerFor(rel) {
   if (name.startsWith('mobile-')) {
     return {
       label: 'mobile screenshots',
-      cmd: 'CAPTURE_MOBILE_SCREENSHOTS=1 pnpm exec playwright test tests-playwright/integration/mobile-tablet-admin-layout.spec.ts -g "screenshot:"',
+      // Scope to admin-nuxt: the mobile admin-chrome screenshots use the Nuxt
+      // frontend (the one record-doc-assets builds), same as every other doc
+      // capture. Unscoped, this also runs on admin-f7 / admin-nextjs whose
+      // frontends that job doesn't start, so they'd fail on an empty iframe.
+      cmd: 'CAPTURE_MOBILE_SCREENSHOTS=1 pnpm exec playwright test --project=admin-nuxt tests-playwright/integration/mobile-tablet-admin-layout.spec.ts -g "screenshot:"',
       spec: 'tests-playwright/integration/mobile-tablet-admin-layout.spec.ts',
       deps: APPEARANCE_DEPS,
     };
