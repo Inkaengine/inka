@@ -414,6 +414,13 @@
           '@type': 'slate',
           value: [{ type: 'p', children: [{ text: 'Simple text field' }] }],
         },
+        // A slate that is EMPTY from the start — no ZWS, no text — for the
+        // empty-slate typing test. Typing must land inside <p data-node-id>,
+        // not leak to the contenteditable wrapper (empty-slate-typing.spec.ts).
+        'mock-empty-slate': {
+          '@type': 'slate',
+          value: [{ type: 'p', children: [{ text: '' }] }],
+        },
         'mock-multi-field-block': {
           '@type': 'hero',
           heading: 'Block Title',
@@ -541,7 +548,7 @@
       blocks_layout: {
         // mock-hero-block is intentionally last — block-navigation.spec.ts:180
         // ("ArrowDown at end of last block stays in same block") relies on it.
-        items: ['mock-block-1', 'mock-text-block', 'mock-multi-field-block', 'mock-textarea-block', 'mock-image-block', 'mock-columns', 'mock-table', 'mock-code-block', 'mock-form-block', 'mock-hero-block'],
+        items: ['mock-block-1', 'mock-text-block', 'mock-empty-slate', 'mock-multi-field-block', 'mock-textarea-block', 'mock-image-block', 'mock-columns', 'mock-table', 'mock-code-block', 'mock-form-block', 'mock-hero-block'],
       },
     };
 
