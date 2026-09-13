@@ -112,8 +112,10 @@ test.describe('Editor Guide screenshots', () => {
     // Snap an image block before a file is picked — the state an author sees
     // the moment they insert one. NOT stored in the fixture: `url` is required,
     // and stored content with an empty required field contradicts its schema.
+    // addBlockOnCanvas already leaves the newly inserted image block selected.
+    // Don't click it again: an empty image renders a full-bleed upload-prompt
+    // overlay over the block, and a second click races/​is intercepted by it.
     const uid = await helper.addBlockOnCanvas('empty-slate', 'image');
-    await helper.clickBlockInIframe(uid);
     await helper.waitForBlockSelectedInAdmin(uid);
 
     await snap(page, 'media-empty-placeholder');
@@ -302,9 +304,18 @@ test.describe('Editor Guide screenshots', () => {
     await helper.waitForSidebarOpen();
     await helper.escapeToParent();
 
-    // Unlock → template edit mode. Outside blocks lock; the bar toggle flips to 🔓.
+    // Unlock → template edit mode; the bar toggle flips to 🔓. Unlocking warns
+    // first (editing a template changes it everywhere) — confirm the modal,
+    // exactly as helper.unlockTemplate does, or the unlock never completes.
+    // v2: unlocking a template does NOT lock the rest of the page — the blocks
+    // outside it stay editable (see template-edit-mode.spec "blocks outside
+    // template stay editable in edit mode"). aria-pressed=true is the signal
+    // that edit mode is on.
     await page.locator('.edit-template-toggle').click();
-    await helper.waitForBlockReadonly('standalone-block-1');
+    const unlockConfirm = page.locator('.template-unlock-modal .template-confirm');
+    await expect(unlockConfirm).toBeVisible({ timeout: 5000 });
+    await unlockConfirm.click();
+    await expect(page.locator('.template-unlock-modal')).toHaveCount(0, { timeout: 5000 });
     await expect(page.locator('.edit-template-toggle')).toHaveAttribute('aria-pressed', 'true', { timeout: 5000 });
 
     // Re-select the instance so its (now enabled) Template Settings are shown.
