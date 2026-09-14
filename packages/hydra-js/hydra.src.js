@@ -4797,6 +4797,14 @@ export class Bridge {
           selectorElement.hasAttribute('data-linkable-allow') &&
           linkableTokens.some((t) => /^[+-]\d+$/.test(t));
         if (isSelfNavigatingPager) {
+          // Skip handleBlockSelector (its carousel stepping fights the pager's own
+          // navigation) — but STILL do the data-linkable-allow in-page-nav marking
+          // the block below (see the `allowedElement` branch) would have done. This
+          // selector branch always returns before reaching it, and without the mark
+          // the pager's navigation is classified inPage:false, so hydra resets the
+          // iframe to the form-data state and throws away the page the pager just
+          // navigated to — the revealed off-page child then vanishes.
+          this.markInPageNavigation();
           return;
         }
         // tryMakeBlockVisible reveals a hidden block by SYNTHESISING a click on
@@ -4881,24 +4889,7 @@ export class Bridge {
       // Must be checked before blockElement since paging links may be outside block elements
       const allowedElement = event.target.closest('[data-linkable-allow]');
       if (allowedElement) {
-        this._allowLinkNavigation = true;
-        // Reset flag after short delay if navigation didn't happen
-        setTimeout(() => { this._allowLinkNavigation = false; }, 100);
-        // Store timestamp for in-page navigation - checked on reload to skip PATH_CHANGE
-        sessionStorage.setItem('hydra_in_page_nav_time', String(Date.now()));
-        // ...and WHAT was selected. Applying a search facet reloads the page by
-        // design, and the author's selection should survive it. Relying on the
-        // admin to remember is a race: the navigation can beat the
-        // BLOCK_SELECTED it was told about, so it restores what it had before.
-        if (this.selectedBlockUid) {
-          // Carries its OWN timestamp: hydra_in_page_nav_time is consumed by the
-          // PATH_CHANGE branch earlier in the load, so borrowing it made this
-          // always look stale.
-          sessionStorage.setItem(
-            'hydra_in_page_nav_block',
-            `${Date.now()}|${this.selectedBlockUid}`,
-          );
-        }
+        this.markInPageNavigation();
       }
 
       const blockElement = event.target.closest('[data-block-uid]');
@@ -8948,6 +8939,35 @@ export class Bridge {
    * @param {MouseEvent} event - The click event
    * @param {string} selector - The data-block-selector value
    */
+  /**
+   * Flag an imminent IN-PAGE navigation (a paging link, a facet, a self-navigating
+   * pager) so the PATH_CHANGE it triggers is classified inPage:true — hydra then
+   * leaves the iframe's rendered state alone instead of resetting it to the
+   * form-data (which would throw away the page just navigated to). Also carries the
+   * currently selected block across the navigation so the author's selection
+   * survives a reload the navigation may cause. Called from blockClickHandler for
+   * both a plain data-linkable-allow element and a self-navigating pager (whose
+   * data-block-selector branch returns before the plain path is reached).
+   */
+  markInPageNavigation() {
+    this._allowLinkNavigation = true;
+    // Reset the flag shortly if the navigation didn't actually happen.
+    setTimeout(() => {
+      this._allowLinkNavigation = false;
+    }, 100);
+    // Consumed on the next load's PATH_CHANGE branch to skip the reset.
+    sessionStorage.setItem('hydra_in_page_nav_time', String(Date.now()));
+    // Carries its OWN timestamp (the nav-time one is consumed by the PATH_CHANGE
+    // branch, so borrowing it made this always look stale): the selected block must
+    // survive a navigation the admin can't be relied on to remember in time.
+    if (this.selectedBlockUid) {
+      sessionStorage.setItem(
+        'hydra_in_page_nav_block',
+        `${Date.now()}|${this.selectedBlockUid}`,
+      );
+    }
+  }
+
   noteEditableFromSelectorClick(event, selector) {
     // '+1'/'-1' navigate to a SIBLING, so a field under the trigger belongs to
     // a different block than the one about to be selected — nothing to promote.
