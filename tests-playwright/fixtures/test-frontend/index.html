@@ -137,7 +137,11 @@
     <script src="/renderer.js"></script>
     <script type="module">
         import { initBridge, getAccessToken } from '/hydra.js';
-        import { expandListingBlocks, ploneFetchItems, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
+        import { expandListingBlocks, staticBlocks, ploneFetchItems, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
+        // Expose staticBlocks so the renderer's expandItems can window static
+        // (non-listing) container children with combined paging, hand-in-hand with
+        // expandListingBlocks — the two abstract object_list/blocks_layout and paging.
+        window._staticBlocks = staticBlocks;
         import { sharedBlocksConfig } from '/shared-block-schemas.js';
 
         // Parse page numbers from URL query params (format: ?pg_{blockId}={pageNumber})
@@ -240,7 +244,10 @@
                 const fi = contextOverride
                     ? ploneFetchItems({ apiUrl: window._apiOrigin, contextPath: contextOverride, extraCriteria })
                     : fetchItems;
-                return await expandListingBlocks(layout, { blocks, fetchItems: { listing: fi, ...exampleFetchers }, paging, itemTypeField: 'variation' });
+                // Forward `seen` so a listing run continues the SAME page window
+                // that a preceding staticBlocks run started — combined paging over a
+                // mixed container (static cards + a listing) is one window, not two.
+                return await expandListingBlocks(layout, { blocks, fetchItems: { listing: fi, ...exampleFetchers }, paging, itemTypeField: 'variation', seen: paging?.seen });
             };
 
             // Convert layout IDs to block objects with @uid

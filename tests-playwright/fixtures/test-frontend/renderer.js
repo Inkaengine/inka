@@ -40,17 +40,44 @@ function tfLog(...args) {
 // listing-variant blocks). Each has a fetcher registered in index.html.
 const LISTING_BLOCK_TYPES = ['listing', 'relatedItemsListing', 'searchShortcuts', 'rssFeed'];
 
+// Expand a container's children (blocks_layout OR object_list) into renderable
+// items WITH paging — the same way for every container. staticBlocks and
+// expandListingBlocks compose: staticBlocks windows the static (non-listing)
+// children, expandListingBlocks fetches + windows the listing children, and each
+// call's `seen` count is PASSED into the next (threaded, not shared state) so a
+// mixed container pages as ONE combined window. Paging is NOT conditional on a
+// listing being present: a plain grid of slate cards pages exactly like a grid
+// with a listing. Returning all items with paging:null (as the old no-listing
+// shortcut did) meant a manual grid silently lost paging and its pager, so a
+// paged-out child (which the reveal needs) had no page-step control to reach it.
 async function expandItems(blocks, layout, containerId, paging) {
-    const hasListings = layout.some((id) => {
+    const isListing = (id) => {
         const t = blocks[id]?.['@type'];
         if (t === 'listing') return !!blocks[id]?.querystring?.query;
         return LISTING_BLOCK_TYPES.includes(t);
-    });
-    if (hasListings && window._expandListingBlocks) {
-        return await window._expandListingBlocks(blocks, layout, containerId, paging);
+    };
+    const out = [];
+    let seen = paging?.seen || 0;
+    let outPaging = null;
+    let i = 0;
+    while (i < layout.length) {
+        if (isListing(layout[i]) && window._expandListingBlocks) {
+            const res = await window._expandListingBlocks(blocks, [layout[i]], containerId, { ...paging, seen });
+            out.push(...(res.items || []));
+            outPaging = res.paging || outPaging;
+            seen = res.paging?.seen ?? (seen + (res.items?.length || 0));
+            i++;
+        } else {
+            // A run of consecutive static children — window them together.
+            const run = [];
+            while (i < layout.length && !isListing(layout[i])) { run.push(layout[i]); i++; }
+            const res = window._staticBlocks(run, { blocks, paging, seen });
+            out.push(...res.items);
+            outPaging = res.paging;
+            seen = res.paging.seen;
+        }
     }
-    // No listings — convert to items format directly (sync, no fetch)
-    return { items: layout.map(id => ({ ...blocks[id], '@uid': id })), paging: null };
+    return { items: out, paging: outPaging };
 }
 
 // Slider state: track slide count to detect new slides { [blockId]: slideCount }
