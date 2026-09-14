@@ -318,6 +318,13 @@
         if (!window._pagerHandlerAdded) {
             window._pagerHandlerAdded = true;
             document.addEventListener('click', (e) => {
+                // Only intercept in EDIT mode. In VIEW mode there is no FORM_DATA
+                // (so window._currentFormData is never set) and nothing to re-render
+                // from — the page just navigates, which is the correct, tested
+                // view-mode behaviour. Client-side paging exists for the EDIT-mode
+                // reveal (hydra synthesises a Next/Prev click to page a hidden child
+                // into view without a reload that would tear down the editor).
+                if (!window._isEditMode) return;
                 const pager = e.target.closest('.paging-prev, .paging-next, .paging-page');
                 if (!pager || !pager.getAttribute('href')) return;
                 e.preventDefault();
