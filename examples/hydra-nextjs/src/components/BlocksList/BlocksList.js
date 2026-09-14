@@ -90,8 +90,22 @@ function imageProps(block, backendBaseUrl) {
     image_url = `${image_url}/@@images/preview_image`;
     return { url: image_url };
   } else if ("@id" in block) {
-    // Image reference without scales
+    // Image reference with only a base path — a relation field ships
+    // [{ "@id": "/images/penguin1.jpg" }] with no scales and no @type. The @id is
+    // the Image object; its bytes live at @@images/image (the bare path 404s), so
+    // add the scale suffix now, mirroring the hasPreviewImage branch above. The
+    // final @type-driven suffix below can't help here — there is no @type.
     image_url = block["@id"];
+    image_url = image_url.startsWith("/") ? `${backendBaseUrl}${image_url}` : image_url;
+    if (
+      !image_url.includes("@@images") &&
+      !image_url.includes("@@download") &&
+      !image_url.includes("@@display-file") &&
+      !image_url.startsWith("data:")
+    ) {
+      image_url = `${image_url}/@@images/image`;
+    }
+    return { url: image_url };
   } else if (block?.download) {
     image_url = block.download;
   } else if (block?.url && block["@type"] === "image") {
@@ -143,13 +157,15 @@ function imageProps(block, backendBaseUrl) {
   } else if (block?.url && block?.image_field) {
     image_url = `${image_url}/@@images/${block.image_field}`;
   } else if (
-    block["@type"] === "image" &&
+    (block["@type"] === "image" || block["@type"] === "Image") &&
     !image_url.includes("@@images") &&
     !image_url.includes("@@download") &&
     !image_url.includes("@@display-file") &&
     !image_url.startsWith("data:")
   ) {
-    // Image block without scale info - add default image scale
+    // Image block / Plone Image reference without scale info — add the default
+    // image scale. Accept both the block @type "image" and the content @type
+    // "Image" (capital), as nuxt's imageProps does.
     image_url = `${image_url}/@@images/image`;
   }
 
@@ -456,6 +472,39 @@ function AccordionBlock({ id, block, data, apiUrl, contextPath }) {
         );
       })}
     </div>
+  );
+}
+
+// ─── Callout Block (note / tip / warning / important admonition) ─────────────
+// A callout is a container: its body is a region of child blocks (blocks_layout),
+// each rendered through <Block>. Without this the callout — and its child slate —
+// never rendered on nextjs, so the block-sanity reveal of the child timed out.
+const CALLOUT_LEVELS = {
+  note: { label: "Note", color: "#2563eb", bg: "#eff6ff" },
+  tip: { label: "Tip", color: "#059669", bg: "#ecfdf5" },
+  warning: { label: "Warning", color: "#d97706", bg: "#fffbeb" },
+  important: { label: "Important", color: "#dc2626", bg: "#fef2f2" },
+};
+
+function CalloutBlock({ id, block, data, apiUrl, contextPath }) {
+  const expand = useExpand();
+  const level = CALLOUT_LEVELS[block.variation] || CALLOUT_LEVELS.note;
+  const children = expand(block.blocks_layout?.items || [], block.blocks || {});
+  return (
+    <aside
+      data-block-uid={id}
+      className={`callout callout--${block.variation || "note"}`}
+      style={{ borderLeft: `4px solid ${level.color}`, background: level.bg, padding: "12px 16px", borderRadius: 4, margin: "1em 0" }}
+    >
+      <div style={{ fontWeight: 700, color: level.color, textTransform: "uppercase", fontSize: "0.8em", letterSpacing: "0.05em", marginBottom: 4 }}>
+        {level.label}
+      </div>
+      <div>
+        {children.map((item) => (
+          <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -1305,6 +1354,9 @@ function Block({ block, id, data, apiUrl, contextPath }) {
     case "accordion":
       return <AccordionBlock id={id} block={block} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
 
+    case "callout":
+      return <CalloutBlock id={id} block={block} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
+
     // ── Slider ──
     case "slider": {
       const slides = expand(block.slides || [], null, "@id");
@@ -1493,7 +1545,13 @@ function Block({ block, id, data, apiUrl, contextPath }) {
 
     // ── Video ──
     case "video": {
-      const videoUrl = block.url || "";
+      // A doc video ships a relative Plone download path
+      // (/docs/static/hydra-demo.mp4/@@download/file). Left relative it resolves
+      // to the nextjs origin (:3007) and 404s — the backend serves it, so prepend
+      // the API base for a root-relative URL, exactly as imageProps does. An
+      // absolute URL (a YouTube link) is left untouched.
+      const rawVideoUrl = block.url || "";
+      const videoUrl = rawVideoUrl.startsWith("/") ? `${apiUrl}${rawVideoUrl}` : rawVideoUrl;
       const ytId = getYouTubeId(videoUrl);
       return (
         <div data-block-uid={id} className="video-block">
