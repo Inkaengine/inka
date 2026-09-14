@@ -379,18 +379,24 @@ export async function revealBlock(iframe: FrameLocator, blockUid: string): Promi
   // target. That is what the editor does on select, so the harness asks the
   // bridge instead of re-deriving carousel navigation here — a second
   // implementation would drift from the one users actually get.
-  const dbg = await iframe.locator('body').evaluate((_el, uid) => {
-    const b = (window as any).__hydraBridge;
-    return { hasBridge: !!b, fn: typeof b?.tryMakeBlockVisible, inMap: !!b?.blockPathMap?.[uid], parent: b?.blockPathMap?.[uid]?.parentId ?? null };
-  }, blockUid).catch((e) => ({ err: String(e) }));
-  console.log('[revealBlock DEBUG]', blockUid, JSON.stringify(dbg));
-  const clicked = await iframe
-    .locator('body')
-    .evaluate(
-      (_el, uid) => (window as any).__hydraBridge?.tryMakeBlockVisible?.(uid) ?? false,
-      blockUid,
-    )
-    .catch(() => false);
+  // tryMakeBlockVisible can return false on the FIRST try for a paged container
+  // child: the container's page-step control ([data-block-paging]) renders
+  // ASYNCHRONOUSLY — the mock grid awaits expandItems, a Nuxt grid resolves a
+  // Suspense boundary — so under load it isn't in the DOM the instant we ask and
+  // the bridge reports "no page-step control on its container". Retry with a short
+  // wait so an async pager gets a chance to appear before we give up. A genuinely
+  // unrevealable block returns false every attempt — bounded, so it can't spin.
+  let clicked = false;
+  for (let attempt = 0; attempt < 6 && !clicked; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
+    clicked = await iframe
+      .locator('body')
+      .evaluate(
+        (_el, uid) => (window as any).__hydraBridge?.tryMakeBlockVisible?.(uid) ?? false,
+        blockUid,
+      )
+      .catch(() => false);
+  }
   if (!clicked) return;
 
   // A click reveal repaints in a frame; a QUERY reveal navigates (the form
