@@ -53,6 +53,11 @@ export default defineConfig({
       // rather than inferring it from a green e2e run. `.test.` only: the
       // playwright specs themselves are `.spec.ts` and must not be collected.
       'tests-playwright/helpers/**/*.test.{js,ts}',
+      // The coverage REPORTER (tests-playwright/coverage-reporter.ts) lives at
+      // the suite root, next to playwright.config's reference to it. Its unit
+      // test proves onEnd actually fails the run on a gap. `.test.` only, so
+      // the `.spec.ts` playwright specs at this level are never collected.
+      'tests-playwright/*.test.{js,ts}',
     ],
     // hydra-js has its own jest harness; covered by `cd packages/hydra-js && pnpm test` in CI.
     exclude: ['**/node_modules/**', 'packages/hydra-js/**'],

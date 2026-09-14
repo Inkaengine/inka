@@ -16,12 +16,12 @@
 // anywhere" is a finding.
 //
 // The aggregation crosses WORKERS. Playwright gives each worker its own process,
-// so module state alone makes the result depend on which worker happened to run
-// the final assertion — it passed on one run and reported "0 styles measured" on
-// the next, from identical content. A check whose answer depends on scheduling
-// is worse than no check, so each worker appends what it saw to a file and the
-// aggregate merges them. field-coverage.ts documents the same hazard and leans
-// on `fullyParallel: false`; this does not need that promise to be kept.
+// so module state alone makes the result depend on which worker ran the final
+// assertion. Rather than a check whose answer depends on scheduling, each test
+// records what it saw and the spec attaches it (testInfo.attach); the coverage
+// reporter — main process, sees every worker's attachments — merges them and
+// runs the aggregates ONCE in onEnd. The framework does the cross-worker
+// combining; this file just produces and folds records.
 
 /** What a style looks like once rendered. Compared for difference, never for a value. */
 export type StyleSignature = string;
@@ -29,20 +29,21 @@ export type StyleSignature = string;
 /** A style's appearance plus WHICH element produced it, so identity is checkable. */
 export type Measured = { sig: StyleSignature; node: number };
 
-import * as fs from 'fs';
-import * as path from 'path';
-
 type Seen = { blockType: string; text: string; pagePath: string };
 
-// Shared by every worker of one run. A fixed path under cwd (which all workers
-// share) rather than an env var, which globalSetup cannot reliably push into
-// worker processes.
-const COVERAGE_DIR = path.resolve(process.cwd(), '.text-style-coverage');
+// One record per (style, example): whether the style's text RENDERED there, and
+// whether it rendered indistinguishably from body text. This module stays free
+// of any Playwright dependency (the unit tests import it) — it just accumulates
+// THIS test's records; the spec attaches them and the coverage reporter merges
+// every worker's and aggregates once.
+export interface StyleRecord extends Seen {
+  style: string;
+  rendered: boolean;
+  flat: boolean;
+}
 
-const seen = new Map<string, Seen>();                    // style -> where first found
-const signatures = new Map<string, StyleSignature>();    // style -> how it rendered
-const flat = new Set<string>();                          // styles that matched body text
-                                                          // on a DIFFERENT element
+// This test's records, drained (and cleared) by the spec's afterEach.
+const pending: StyleRecord[] = [];
 
 /** Every element `type` in a slate value, at any depth, with its text. */
 export function slateStyles(value: unknown): Map<string, string> {
@@ -88,10 +89,11 @@ function plainText(node: any): string {
 }
 
 /**
- * Record one example's styles and the signature each one rendered with.
+ * Record one example's styles: for each, whether its text RENDERED (a signature
+ * was measured) and whether it rendered indistinguishably from body text.
  *
- * @param signaturesByStyle - style -> signature, or null when the style's text
- *   was not found in the rendered output at all
+ * @param measured - style -> signature, or null when the style's text was not
+ *   found in the rendered output at all
  * @param baseline - signature of ordinary body text on that page, if found
  */
 export function recordTextStyles(
@@ -102,105 +104,82 @@ export function recordTextStyles(
   baseline?: Measured | null,
 ): void {
   for (const [style, text] of slateStyles(value)) {
-    if (!seen.has(style)) seen.set(style, { blockType, text, pagePath });
     const m = measured[style];
-    if (!m) continue;
-    // First rendering example wins: a later example where the style is absent
-    // or empty must not undo coverage already earned.
-    if (!signatures.has(style)) signatures.set(style, m.sig);
-    // "Looks like body text" is only meaningful when the two are DIFFERENT
-    // elements. A paragraph that is entirely bold is one element wearing both
-    // hats, and says nothing about whether bold is visible.
-    if (baseline && m.sig === baseline.sig && m.node !== baseline.node) {
-      flat.add(style);
+    pending.push({
+      style,
+      blockType,
+      text,
+      pagePath,
+      rendered: !!m,
+      // "Looks like body text" is only meaningful when the two are DIFFERENT
+      // elements: a paragraph that is entirely bold is one element wearing both
+      // hats, and says nothing about whether bold is visible.
+      flat: !!(m && baseline && m.sig === baseline.sig && m.node !== baseline.node),
+    });
+  }
+}
+
+/** Return this test's records and clear them, for the spec to attach. */
+export function drainStyleCoverage(): StyleRecord[] {
+  const out = pending.slice();
+  pending.length = 0;
+  return out;
+}
+
+// First-seen metadata for a style, so a finding names WHERE it was seen. The
+// first record wins so the message is stable regardless of worker scheduling.
+function firstSeen(records: StyleRecord[]): Map<string, Seen> {
+  const seen = new Map<string, Seen>();
+  for (const r of records) {
+    if (!seen.has(r.style)) {
+      seen.set(r.style, { blockType: r.blockType, text: r.text, pagePath: r.pagePath });
     }
   }
-  share();
+  return seen;
 }
 
-/** Persist this worker's view so the aggregate can merge every worker's. */
-function share(): void {
-  try {
-    fs.mkdirSync(COVERAGE_DIR, { recursive: true });
-    fs.writeFileSync(
-      path.join(COVERAGE_DIR, `${process.pid}.json`),
-      JSON.stringify({
-        seen: [...seen],
-        signatures: [...signatures],
-        flat: [...flat],
-      }),
-    );
-  } catch {
-    // A read-only cwd costs only cross-worker merging; the in-memory view still
-    // works and the fail-closed check still fails closed.
-  }
-}
-
-/** Merge every worker's file into this process's view. Idempotent. */
-function mergeWorkers(): void {
-  let files: string[] = [];
-  try {
-    files = fs.readdirSync(COVERAGE_DIR).filter((f) => f.endsWith('.json'));
-  } catch {
-    return;
-  }
-  for (const f of files) {
-    try {
-      const d = JSON.parse(fs.readFileSync(path.join(COVERAGE_DIR, f), 'utf-8'));
-      for (const [style, s] of d.seen || []) if (!seen.has(style)) seen.set(style, s);
-      for (const [style, sig] of d.signatures || []) if (!signatures.has(style)) signatures.set(style, sig);
-      for (const f of d.flat || []) flat.add(f);
-    } catch {
-      // A half-written file from a worker still running: skip rather than fail
-      // the aggregate on a partial read.
-    }
-  }
-}
-
-/** Drop coverage left by a previous run. Call once, from globalSetup. */
-export function resetSharedTextStyleCoverage(): void {
-  try {
-    fs.rmSync(COVERAGE_DIR, { recursive: true, force: true });
-  } catch {
-    /* nothing to clear */
-  }
-}
-
-/** Styles present in content that never rendered anywhere. */
-export function stylesNeverRendered(): Array<{ style: string } & Seen> {
-  mergeWorkers();
-  return [...seen.entries()]
-    .filter(([style]) => !signatures.has(style))
+/**
+ * Styles present in content that never rendered in ANY example. Pure over the
+ * merged records: the reporter folds every worker's, the unit tests pass their
+ * own.
+ */
+export function stylesNeverRendered(
+  records: StyleRecord[] = pending,
+): Array<{ style: string } & Seen> {
+  const rendered = new Set(records.filter((r) => r.rendered).map((r) => r.style));
+  return [...firstSeen(records).entries()]
+    .filter(([style]) => !rendered.has(style))
     .map(([style, s]) => ({ style, ...s }));
 }
 
 /**
- * Styles that rendered, but indistinguishably from plain body text.
+ * Styles that rendered, but indistinguishably from plain body text in EVERY
+ * example that rendered them. A style distinct in even one example is fine.
  *
- * The default block type is exempt: it IS body text. So is any style whose
- * signature we never got a baseline to compare against.
+ * The default block type is exempt: it IS body text.
  */
 export function stylesRenderingAsPlainText(
   defaultBlockType = 'p',
+  records: StyleRecord[] = pending,
 ): Array<{ style: string } & Seen> {
-  mergeWorkers();
+  const distinct = new Set(
+    records.filter((r) => r.rendered && !r.flat).map((r) => r.style),
+  );
+  const flat = new Set(records.filter((r) => r.flat).map((r) => r.style));
+  const seen = firstSeen(records);
   return [...flat]
-    .filter((style) => style !== defaultBlockType && seen.has(style))
+    .filter((style) => style !== defaultBlockType && !distinct.has(style) && seen.has(style))
     .map((style) => ({ style, ...(seen.get(style) as Seen) }));
 }
 
 /** Every style seen in the discovered content — used to fail closed. */
-export function stylesSeenInContent(): string[] {
-  mergeWorkers();
-  return [...seen.keys()].sort();
+export function stylesSeenInContent(records: StyleRecord[] = pending): string[] {
+  return [...new Set(records.map((r) => r.style))].sort();
 }
 
-/** Test-only: reset module state AND the shared files, so cases stay isolated. */
+/** Test-only: clear this module's pending records so cases stay isolated. */
 export function resetTextStyleCoverage(): void {
-  seen.clear();
-  signatures.clear();
-  flat.clear();
-  resetSharedTextStyleCoverage();
+  pending.length = 0;
 }
 
 /**

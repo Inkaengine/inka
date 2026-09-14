@@ -9,13 +9,12 @@ import {
   measureStylesInPage,
   slateStyles,
   recordTextStyles,
+  drainStyleCoverage,
   stylesNeverRendered,
   stylesRenderingAsPlainText,
   stylesSeenInContent,
   resetTextStyleCoverage,
 } from './text-style-coverage.ts';
-import * as fs from 'fs';
-import * as path from 'path';
 
 const el = (type, ...kids) => ({
   type,
@@ -129,38 +128,40 @@ describe('merging across workers', () => {
   // Playwright runs each worker in its OWN process, so module state alone makes
   // the answer depend on which worker happens to run the aggregate — the check
   // passed on one run and reported "0 styles measured" on the next from
-  // identical content. Every worker shares what it saw; the aggregate merges.
-  const dir = path.resolve(process.cwd(), '.text-style-coverage');
-
-  const asAnotherWorker = (payload) => {
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'other-worker.json'), JSON.stringify(payload));
-  };
+  // identical content. Each test DRAINS its records and the spec attaches them;
+  // the coverage reporter concatenates every worker's and runs the aggregate on
+  // the combined list. The aggregates take that list as an argument, so combining
+  // is just array concatenation — no shared files, no ordering assumptions.
 
   test("another worker's coverage counts", () => {
     // This worker saw h2 but never rendered it; another worker did.
     recordTextStyles('slate', '/a', [el('h2', 'Heading')], { h2: null }, { sig: 'P|400|16px', node: 0 });
-    expect(stylesNeverRendered().map((s) => s.style)).toEqual(['h2']);
+    const mine = drainStyleCoverage();
+    expect(stylesNeverRendered(mine).map((s) => s.style)).toEqual(['h2']);
 
-    asAnotherWorker({ seen: [], signatures: [['h2', 'H2|700|24px']], baselines: [] });
-    expect(stylesNeverRendered()).toEqual([]);
+    // The other worker rendered h2 with a real signature.
+    recordTextStyles('slate', '/c', [el('h2', 'Heading')], { h2: { sig: 'H2|700|24px', node: 1 } }, { sig: 'P|400|16px', node: 0 });
+    const other = drainStyleCoverage();
+    expect(stylesNeverRendered([...mine, ...other])).toEqual([]);
   });
 
   test("another worker's styles are visible to the fail-closed check", () => {
-    asAnotherWorker({
-      seen: [['h3', { blockType: 'slate', text: 'x', pagePath: '/b' }]],
-      signatures: [],
-      baselines: [],
-    });
-    expect(stylesSeenInContent()).toEqual(['h3']);
+    recordTextStyles('slate', '/b', [el('h3', 'x')], {});
+    const other = drainStyleCoverage();
+    // This worker saw nothing; the combined list still reports h3.
+    expect(stylesSeenInContent([...drainStyleCoverage(), ...other])).toEqual(['h3']);
   });
 
-  test('a half-written file from a live worker is skipped, not fatal', () => {
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'partial.json'), '{"seen": [["h4",');
-    recordTextStyles('slate', '/a', [el('p', 'x')], { p: { sig: 'P|400|16px', node: 1 } }, { sig: 'P|400|16px', node: 0 });
-    expect(() => stylesSeenInContent()).not.toThrow();
-    expect(stylesSeenInContent()).toEqual(['p']);
+  test('a style flat in one worker but distinct in another is not a finding', () => {
+    // The reason the aggregate must see EVERY worker's records: proof the
+    // frontend CAN render a style distinctly can arrive from a different worker.
+    recordTextStyles('slate', '/a', [el('h4', 'flat here')], { h4: { sig: 'P|400|16px', node: 1 } }, { sig: 'P|400|16px', node: 0 });
+    const mine = drainStyleCoverage();
+    expect(stylesRenderingAsPlainText('p', mine).map((s) => s.style)).toEqual(['h4']);
+
+    recordTextStyles('slate', '/z', [el('h4', 'distinct here')], { h4: { sig: 'H4|700|20px', node: 1 } }, { sig: 'P|400|16px', node: 0 });
+    const other = drainStyleCoverage();
+    expect(stylesRenderingAsPlainText('p', [...mine, ...other])).toEqual([]);
   });
 });
 

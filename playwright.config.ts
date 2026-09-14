@@ -46,7 +46,13 @@ export default defineConfig({
   workers: process.env.CI ? undefined : undefined,
 
   /* Reporter to use */
-  reporter: [['html', { open: 'never' }]],
+  reporter: [
+    ['html', { open: 'never' }],
+    // Aggregates block-sanity field/text-style coverage across all parallel
+    // workers and fails the run in onEnd if any block type has a field or style
+    // with no working example anywhere. See tests-playwright/coverage-reporter.ts.
+    ['./tests-playwright/coverage-reporter.ts'],
+  ],
 
   /* Shared settings for all the projects below */
   use: {

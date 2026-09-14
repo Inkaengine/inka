@@ -9,7 +9,6 @@ import { createRequire } from 'module';
 import { chromium } from '@playwright/test';
 import { PORTS, URLS } from './ports';
 import { FRONTEND_URLS, SANITY_PROJECTS } from './bridge/fixtures';
-import { resetFieldCoverage } from './helpers/field-coverage';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const { discoverBlocks, buildEmptyRegionCases } = require('./helpers/discover-blocks.cjs');
@@ -162,11 +161,6 @@ async function warmFrontend(url: string): Promise<void> {
 async function globalSetup() {
   // Before anything else: the storageStates have to name the ports THIS run uses.
   writeStorageStates();
-
-  // Fresh field-coverage records for this run. Test workers APPEND per-worker
-  // files here (fully-parallel safe); the aggregate reads all of them, so clear
-  // the dir now or a prior run's records would leak in.
-  resetFieldCoverage();
 
   // Run block discovery if configured (before health checks — SKIP_VOLTO_CHECK
   // causes early return but discovery still needs to run for bridge tests)
