@@ -299,6 +299,7 @@ function Paging({ paging, buildUrl, onNavigate }) {
               href={buildUrl(paging.prev)}
               className="paging-prev"
               data-linkable-allow
+              data-block-paging={`-${paging.size || 1}`}
               onClick={(e) => handleClick(e, paging.prev)}
               style={{ padding: "0.25rem 0.75rem", border: "1px solid #d1d5db", borderRadius: "4px 0 0 4px", color: "#6b7280", backgroundColor: "#fff" }}
             >
@@ -330,6 +331,7 @@ function Paging({ paging, buildUrl, onNavigate }) {
               href={buildUrl(paging.next)}
               className="paging-next"
               data-linkable-allow
+              data-block-paging={`+${paging.size || 1}`}
               onClick={(e) => handleClick(e, paging.next)}
               style={{ padding: "0.25rem 0.75rem", border: "1px solid #d1d5db", borderRadius: "0 4px 4px 0", color: "#6b7280", backgroundColor: "#fff" }}
             >
@@ -402,6 +404,60 @@ function ListingBlock({ id, block, data, apiUrl, contextPath }) {
       ))}
       <Paging paging={paging} buildUrl={buildPagingUrl} onNavigate={handleNavigate} />
     </>
+  );
+}
+
+// ─── Grid Block ──────────────────────────────────────────────────────────────
+// A grid pages its children the SAME way whether or not one of them is a listing:
+// staticBlocks windows the static children (threading `seen`), and a listing child
+// pages through ListingBlock. Paging is not conditional on a listing — a plain
+// grid of cards renders a pager and pages just like a grid with a listing, so a
+// child on a later page has a data-block-paging control the bridge can reveal it
+// through.
+function GridBlock({ id, block, data, apiUrl, contextPath }) {
+  const [currentPage, setCurrentPage] = useState(0);
+  useEffect(() => {
+    if (typeof window !== "undefined") setCurrentPage(pageFromPath(window.location.pathname, id));
+  }, [id]);
+
+  const layout = block.blocks_layout?.items || [];
+  const blocks = block.blocks || {};
+  const start = currentPage * DEFAULT_PAGE_SIZE;
+  let seen = 0;
+  let paging = null;
+  const entries = [];
+  for (const childId of layout) {
+    const child = blocks[childId];
+    if (!child) continue;
+    if (child["@type"] === "listing") {
+      entries.push({ key: childId, block: child, isListing: true });
+    } else {
+      const res = staticBlocks([childId], { blocks, paging: { start, size: DEFAULT_PAGE_SIZE }, seen });
+      seen = res.paging.seen;
+      paging = res.paging;
+      entries.push({ key: childId, items: res.items, isListing: false });
+    }
+  }
+
+  const buildPagingUrl = (page) => (page === 0 ? (contextPath || "/") : `${contextPath || "/"}/@pg_${id}_${page}`);
+  const handleNavigate = (page) => {
+    setCurrentPage(page);
+    if (typeof window !== "undefined") window.history.pushState({}, "", buildPagingUrl(page));
+  };
+
+  return (
+    <div data-block-uid={id} data-block-container="{}" className="grid-block" style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(layout.length, 4)}, 1fr)`, gap: "1rem" }}>
+      {entries.map((entry) =>
+        entry.isListing ? (
+          <ListingBlock key={entry.key} id={entry.key} block={entry.block} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+        ) : (
+          entry.items.map((item) => (
+            <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+          ))
+        )
+      )}
+      <Paging paging={paging} buildUrl={buildPagingUrl} onNavigate={handleNavigate} />
+    </div>
   );
 }
 
@@ -1281,31 +1337,8 @@ function Block({ block, id, data, apiUrl, contextPath }) {
     }
 
     // ── Grid Block ──
-    case "gridBlock": {
-      const gridLayout = block.blocks_layout?.items || [];
-      const gridChildren = gridLayout.map((childId) => {
-        const childBlock = block.blocks?.[childId];
-        if (!childBlock) return null;
-        if (childBlock["@type"] === "listing") {
-          return { id: childId, block: childBlock, isListing: true };
-        }
-        const items = expand([childId], block.blocks || {});
-        return { id: childId, items, isListing: false };
-      }).filter(Boolean);
-      return (
-        <div data-block-uid={id} data-block-container="{}" className="grid-block" style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(gridLayout.length, 4)}, 1fr)`, gap: "1rem" }}>
-          {gridChildren.map((entry) =>
-            entry.isListing ? (
-              <ListingBlock key={entry.id} id={entry.id} block={entry.block} data={data} apiUrl={apiUrl} contextPath={contextPath} />
-            ) : (
-              entry.items.map((item) => (
-                <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
-              ))
-            )
-          )}
-        </div>
-      );
-    }
+    case "gridBlock":
+      return <GridBlock id={id} block={block} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
 
     // ── Section — a plain container: a wrapper and the blocks it holds ──
     case "section": {
