@@ -414,7 +414,7 @@ Frontend freedom makes it easy to create beautiful and fast experiences
 
 <block type="gridBlock">
 
-<block type="slate" data-json='{"value":[{"children":[{"text":""},{"children":[{"text":""}],"type":"strong"},{"text":"You can use this site to test Inka Edit.\n"}],"type":"p"}]}' />
+<block type="slate" data-json='{"value":[{"children":[{"text":""},{"children":[{"text":""}],"type":"strong"},{"text":"You can use this site to test Inka Edit."}],"type":"p"}]}' />
 
 **Disclaimer**: This instance is reset every night, so all changes will be lost afterwards.
 
