@@ -307,6 +307,26 @@
             }
         }
 
+        // Client-side paging (grid/listing). The pager links carry an href
+        // (?pg_{blockId}=N) so they stay real, linkable links — but a full
+        // navigation would reload the whole page just to move one block's window.
+        // Intercept the click, update the URL in place (history.pushState, so the
+        // back button and getPagesFromUrl still work), and re-render from the
+        // current data. hydra reveals a paged-out child by synthesising a click on
+        // the Next/Prev [data-block-paging] control, which lands here too — so the
+        // reveal pages client-side, no reload, matching nuxt's Paging.vue.
+        if (!window._pagerHandlerAdded) {
+            window._pagerHandlerAdded = true;
+            document.addEventListener('click', (e) => {
+                const pager = e.target.closest('.paging-prev, .paging-next, .paging-page');
+                if (!pager || !pager.getAttribute('href')) return;
+                e.preventDefault();
+                const target = new URL(pager.getAttribute('href'), window.location.href);
+                history.pushState({}, '', target.pathname + target.search);
+                if (window._currentFormData) renderContentWithListings(window._currentFormData);
+            });
+        }
+
         // Track page loads to detect double-loading issues (persisted in sessionStorage)
         const SESSION_KEY = 'hydra_page_load_count';
 

@@ -634,11 +634,20 @@ function renderChildren(children) {
         // the class on; a plain leaf still renders as bare text.
         const leafStyles = child.text !== undefined ? styleClassAttr(child) : '';
         if (leafStyles) {
-            let content = child.text || '';
+            // Escape: a slate text leaf is TEXT, not markup. A real frontend
+            // interpolates it ({{ node.text }}) and the framework escapes; this
+            // fixture builds an innerHTML string, so it must escape itself. Without
+            // it, a code example whose text is literal HTML/JSX — e.g. a slate
+            // `code` leaf `<div data-block-uid={uid}>` — is parsed as real
+            // elements: the stray <div> auto-closes the enclosing
+            // <p data-edit-text="value">, stranding everything after it (a link)
+            // outside the editable region, and a bare data-block-uid is read as a
+            // block that never round-trips.
+            let content = escapeHtml(child.text || '');
             return `<span${leafStyles}>${content}</span>`;
         }
         if (child.text !== undefined) {
-            let content = child.text || '';
+            let content = escapeHtml(child.text || '');
 
             // Also handle old format (marks) for backward compatibility
             if (child.bold) content = `<span style="font-weight: bold">${content}</span>`;
@@ -1899,10 +1908,15 @@ function renderPaging(paging, blockId) {
         return url.pathname + url.search;
     };
 
+    // Step size for the reveal: data-block-paging="+N"/"-N" tells hydra how many
+    // items one page-step moves, so tryMakeBlockVisible can synthesise clicks on
+    // Next/Prev to page a hidden child into view — client-side, no reload (see the
+    // delegated pager handler in index.html). Mirrors nuxt's Paging.vue.
+    const step = paging.size || 6;
     let html = '<nav class="grid-paging" aria-label="Page Navigation" style="margin-top: 15px; text-align: center;">';
 
     if (paging.prev !== null) {
-        html += `<a href="${buildUrl(paging.prev)}" data-linkable-allow class="paging-prev" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">← Prev</a>`;
+        html += `<a href="${buildUrl(paging.prev)}" data-linkable-allow data-block-paging="-${step}" class="paging-prev" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">← Prev</a>`;
     }
 
     paging.pages.forEach(p => {
@@ -1915,7 +1929,7 @@ function renderPaging(paging, blockId) {
     });
 
     if (paging.next !== null) {
-        html += `<a href="${buildUrl(paging.next)}" data-linkable-allow class="paging-next" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">Next →</a>`;
+        html += `<a href="${buildUrl(paging.next)}" data-linkable-allow data-block-paging="+${step}" class="paging-next" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">Next →</a>`;
     }
 
     html += '</nav>';
@@ -2719,17 +2733,23 @@ function renderSlateTableBlock(block) {
             const tag = cell.type === 'header' ? 'th' : 'td';
             const style = 'border: 1px solid #ccc; padding: 8px;';
 
-            // Render cell content from slate value
+            // Render cell content from slate value. data-edit-text="value" belongs
+            // on the CELL, not on each node: a cell's value is ONE field that may
+            // hold several top-level nodes (a heading AND a paragraph). Tagging each
+            // node made every node its own "value" region, so the round-trip reader
+            // saw only the first node and the cell never matched its own value. One
+            // region per cell, each node rendered with its real element tag.
             let cellContent = '';
             const value = cell.value || [];
             value.forEach((node) => {
                 const nodeIdAttr = node.nodeId !== undefined ? ` data-node-id="${node.nodeId}"` : '';
                 const text = renderChildren(node.children || []);
-                cellContent += `<p data-edit-text="value"${nodeIdAttr}>${text}</p>`;
+                const el = /^h[1-6]$/.test(node.type || '') ? node.type : 'p';
+                cellContent += `<${el}${nodeIdAttr}>${text}</${el}>`;
             });
 
             // Cells add to the right (new column)
-            html += `<${tag} data-block-uid="${cell.key}" data-block-add="right" style="${style}">${cellContent}</${tag}>`;
+            html += `<${tag} data-block-uid="${cell.key}" data-block-add="right" data-edit-text="value" style="${style}">${cellContent}</${tag}>`;
         });
         html += '</tr>';
     });
