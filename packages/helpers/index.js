@@ -3393,6 +3393,15 @@ export function expandTemplatesSync(inputItems, options = {}) {
 
   // Track previous templateId before allowedLayouts may override it
   const previousTemplateId = templateId;
+  // ...and the instance it belonged to. A forced SWITCH clears
+  // `existingInstanceId` so the incoming layout mints a fresh instance, but the
+  // outgoing instance id is the ONLY handle on the content the author wrote:
+  // once a layout is applied, that content lives nested inside the layout block,
+  // and `collectContentFromTree` harvests it by instance id. Without this the
+  // switch dropped every block on the page (the outgoing layout wrapper is
+  // `fixed` + `readOnly`, so the flat scan below skips it and its whole subtree).
+  const outgoingInstanceId = existingInstanceId;
+  let switchedLayout = false;
 
   if (allowedLayouts?.length > 0) {
     // Determine if this is a layout (all blocks belong to the template) or an
@@ -3424,6 +3433,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
       templateId = allowedLayouts[0];
       if (!filterInstanceId) {
         existingInstanceId = null;
+        switchedLayout = true;
       }
     } else if (!templateId) {
       // No template found — apply the forced layout
@@ -3540,12 +3550,20 @@ export function expandTemplatesSync(inputItems, options = {}) {
     };
     templateState.instances[instanceId] = ctx;
 
-    // Initialize content collection for this instance
-    if (existingInstanceId) {
+    // Initialize content collection for this instance.
+    // On a layout SWITCH the incoming instance is new (`existingInstanceId` was
+    // cleared so it mints its own id) but the content to re-home still belongs
+    // to the OUTGOING one, so that is what the harvest reads from.
+    const sourceInstanceId = existingInstanceId
+      ? existingInstanceId
+      : switchedLayout
+        ? outgoingInstanceId
+        : null;
+    if (sourceInstanceId) {
       const allStandaloneBlocks = [];
       collectContentFromTree(
         { blocks, blocks_layout: { items: layout } },
-        existingInstanceId,
+        sourceInstanceId,
         ctx.pendingContent,
         allStandaloneBlocks,
         ctx.existingFixedBlockIds,
@@ -3555,7 +3573,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
       let lastTemplateBlockIndex = -1;
       for (let i = 0; i < layout.length; i++) {
         const block = blocks[layout[i]];
-        if (block?.templateInstanceId === existingInstanceId) {
+        if (block?.templateInstanceId === sourceInstanceId) {
           if (!foundFirstTemplateBlock) foundFirstTemplateBlock = true;
           lastTemplateBlockIndex = i;
         }
@@ -3573,7 +3591,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
                 layout.find((id, idx) => {
                   const b = blocks[id];
                   return (
-                    b?.templateInstanceId === existingInstanceId &&
+                    b?.templateInstanceId === sourceInstanceId &&
                     idx <= lastTemplateBlockIndex
                   );
                 }),
