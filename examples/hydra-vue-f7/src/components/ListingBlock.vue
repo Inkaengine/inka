@@ -78,7 +78,9 @@ export default {
     function buildPagingUrl(page) {
       const ctxPath = props.contextPath;
       if (page === 0) return ctxPath;
-      return `${ctxPath}/@pg_${props.id}_${page}`;
+      // Strip a trailing slash so a root context gives "/@pg_…" not "//@pg_…"
+      // (protocol-relative — window.location would read it as an external host).
+      return `${ctxPath.replace(/\/+$/, '')}/@pg_${props.id}_${page}`;
     }
 
     function navigatePage(url) {

@@ -348,6 +348,16 @@ function Paging({ paging, buildUrl, onNavigate }) {
 
 const DEFAULT_PAGE_SIZE = 6;
 
+// Build a paging path. STRIP any trailing slash from the context first: a root
+// context ("/") would otherwise give "/" + "/@pg_…" = "//@pg_…", a
+// protocol-relative URL the browser reads as a host (the "@" splits userinfo),
+// so history.pushState throws SecurityError. Latent until the bridge could
+// actually click the pager to reveal an off-page child; now it can.
+const buildPagingPath = (contextPath, id, page) =>
+  page === 0
+    ? contextPath || "/"
+    : `${(contextPath || "/").replace(/\/+$/, "")}/@pg_${id}_${page}`;
+
 function ListingBlock({ id, block, data, apiUrl, contextPath }) {
   const [items, setItems] = useState([]);
   const [paging, setPaging] = useState(null);
@@ -376,18 +386,13 @@ function ListingBlock({ id, block, data, apiUrl, contextPath }) {
     });
   }, [id, block, apiUrl, contextPath, currentPage]);
 
-  const buildPagingUrl = useCallback((page) => {
-    const cp = contextPath || "/";
-    if (page === 0) return cp;
-    return `${cp}/@pg_${id}_${page}`;
-  }, [id, contextPath]);
+  const buildPagingUrl = useCallback((page) => buildPagingPath(contextPath, id, page), [id, contextPath]);
 
   const handleNavigate = useCallback((page) => {
     setCurrentPage(page);
     // Update URL without full page reload
     if (typeof window !== "undefined") {
-      const url = page === 0 ? (contextPath || "/") : `${contextPath || "/"}/@pg_${id}_${page}`;
-      window.history.pushState({}, "", url);
+      window.history.pushState({}, "", buildPagingPath(contextPath, id, page));
     }
   }, [id, contextPath]);
 
@@ -462,7 +467,7 @@ function GridBlock({ id, block, data, apiUrl, contextPath }) {
     paging = res.paging;
   }
 
-  const buildPagingUrl = (page) => (page === 0 ? (contextPath || "/") : `${contextPath || "/"}/@pg_${id}_${page}`);
+  const buildPagingUrl = (page) => buildPagingPath(contextPath, id, page);
   const handleNavigate = (page) => {
     setCurrentPage(page);
     if (typeof window !== "undefined") window.history.pushState({}, "", buildPagingUrl(page));

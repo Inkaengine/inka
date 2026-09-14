@@ -94,6 +94,7 @@ watch(
 let contextPath = props.contextPath;
 const buildPagingUrl = (page) => {
   if (page === 0) return contextPath;
-  return `${contextPath}/@pg_${props.id}_${page}`;
+  // Strip a trailing slash so a root context gives "/@pg_…" not "//@pg_…".
+  return `${contextPath.replace(/\/+$/, '')}/@pg_${props.id}_${page}`;
 };
 </script>

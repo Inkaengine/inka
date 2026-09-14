@@ -1116,7 +1116,9 @@ const gridPaging = reactive({ start: 0, size: GRID_PAGE_SIZE });
 
 const gridBuildPagingUrl = (page) => {
   if (page === 0) return effectiveContextPath.value;
-  return `${effectiveContextPath.value}/@pg_${block_uid.value}_${page}`;
+  // Strip a trailing slash so a root context ("/") gives "/@pg_…" not "//@pg_…"
+  // (the latter is protocol-relative — navigateTo would read it as an external host).
+  return `${effectiveContextPath.value.replace(/\/+$/, '')}/@pg_${block_uid.value}_${page}`;
 };
 
 // Process grid children: listings marked for Suspense, static blocks filtered by paging window
