@@ -429,6 +429,27 @@ export const sharedBlocksConfig = {
             required: [],
         },
     },
+    // codeExample tab — used inside codeExample's typed `tabs` object_list, the
+    // same way `slide` sits inside `slider`. Registered so content carrying
+    // @type "tab" isn't flagged "used but not registered" (renders as its parent
+    // codeExample's tab strip, not standalone).
+    tab: {
+        id: 'tab',
+        title: 'Tab',
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><rect x="3" y="3" width="7" height="4" rx="1"/></svg>',
+        group: 'common',
+        restricted: true, // Only used inside codeExample's typed object_list
+        blockSchema: {
+            title: 'Tab',
+            fieldsets: [{ id: 'default', title: 'Default', fields: ['label', 'language', 'code'] }],
+            properties: {
+                label: { title: 'Label', type: 'string' },
+                language: { title: 'Language', type: 'string' },
+                code: { title: 'Code', type: 'string', widget: 'textarea' },
+            },
+            required: [],
+        },
+    },
     // Accordion block — panels as object_list items, each with title + content blocks
     accordion: {
         id: 'accordion',
