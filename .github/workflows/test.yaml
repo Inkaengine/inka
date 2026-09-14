@@ -165,12 +165,13 @@ jobs:
         # prefix key picks up the most recent recording from any prior run.
         uses: actions/cache/restore@v4
         with:
-          # Only the git-ignored screenshots are cached. The demo video is a
-          # committed asset needing the F7 frontend (this pipeline builds only
-          # Nuxt); caching it would restore an old mtime and mark it stale,
-          # forcing a regen no job here can run. Left at its checkout mtime.
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
           path: |
             docs/images
+            docs/static/hydra-demo.mp4
           key: docs-assets-${{ github.sha }}
           restore-keys: docs-assets-
       - name: Install and build Nuxt
@@ -179,22 +180,28 @@ jobs:
         # /docs/examples/* is a 404 (the new content isn't on prod), so the
         # screenshots can't render. Same step the test-nuxt-* jobs use.
         run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace && pnpm run build:test
+      - name: Install F7 mobile frontend
+        # The demo video records a switch to the F7 mobile frontend, so its Vite
+        # dev server (3008) must be up when the demo is regenerated.
+        run: cd examples/hydra-vue-f7 && pnpm install --ignore-workspace
       - name: Start servers
         # The screenshot specs drive the Volto admin (3001) with the Nuxt iframe
         # (3003); mock-parent is served by the vite frontend (8889); content by
-        # the mock API (8888).
+        # the mock API (8888). The demo video also switches to the F7 frontend
+        # (3008), so the iframe list is labelled (the demo picks "F7 Mobile").
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
+          cd "$GITHUB_WORKSPACE/examples/hydra-vue-f7" && pnpm run dev:test &
           cd "$GITHUB_WORKSPACE" && PORT=3001 RAZZLE_API_PATH=http://localhost:8888 \
-            RAZZLE_DEFAULT_IFRAME_URL=http://localhost:8889,http://localhost:3003 \
+            RAZZLE_DEFAULT_IFRAME_URL="Test frontend|http://localhost:8889,Nuxt blog|http://localhost:3003,F7 Mobile|http://localhost:3008/#!" \
             VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
             pnpm start:prod &
           sleep 3
       - name: Wait for servers
         run: |
-          for port in 8888 8889 3001 3003; do
+          for port in 8888 8889 3001 3003 3008; do
             echo "Waiting for port $port..."
             for i in {1..30}; do curl -s http://localhost:$port > /dev/null && break; sleep 2; done
           done
@@ -217,6 +224,7 @@ jobs:
         with:
           path: |
             docs/images
+            docs/static/hydra-demo.mp4
           key: docs-assets-${{ github.sha }}
       - name: Upload doc assets (debugging)
         if: failure()
@@ -297,12 +305,13 @@ jobs:
         # broken-image check (sanity, after generation) sees the doc images.
         uses: actions/cache/restore@v4
         with:
-          # Only the git-ignored screenshots are cached. The demo video is a
-          # committed asset needing the F7 frontend (this pipeline builds only
-          # Nuxt); caching it would restore an old mtime and mark it stale,
-          # forcing a regen no job here can run. Left at its checkout mtime.
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
           path: |
             docs/images
+            docs/static/hydra-demo.mp4
           key: docs-assets-${{ github.sha }}
           restore-keys: docs-assets-
       - name: Start servers
@@ -525,12 +534,13 @@ jobs:
         # broken-image check (sanity, after generation) sees the doc images.
         uses: actions/cache/restore@v4
         with:
-          # Only the git-ignored screenshots are cached. The demo video is a
-          # committed asset needing the F7 frontend (this pipeline builds only
-          # Nuxt); caching it would restore an old mtime and mark it stale,
-          # forcing a regen no job here can run. Left at its checkout mtime.
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
           path: |
             docs/images
+            docs/static/hydra-demo.mp4
           key: docs-assets-${{ github.sha }}
           restore-keys: docs-assets-
       - name: Start servers
@@ -754,12 +764,13 @@ jobs:
         # broken-image check (sanity, after generation) sees the doc images.
         uses: actions/cache/restore@v4
         with:
-          # Only the git-ignored screenshots are cached. The demo video is a
-          # committed asset needing the F7 frontend (this pipeline builds only
-          # Nuxt); caching it would restore an old mtime and mark it stale,
-          # forcing a regen no job here can run. Left at its checkout mtime.
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
           path: |
             docs/images
+            docs/static/hydra-demo.mp4
           key: docs-assets-${{ github.sha }}
           restore-keys: docs-assets-
       - name: Start servers
