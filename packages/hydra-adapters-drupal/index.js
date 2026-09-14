@@ -576,6 +576,9 @@ export class DrupalAdapter extends BaseAdapter {
         return { items };
       }
 
+      case 'auth.logout':
+        return this.logout();
+
       case 'auth.whoami': {
         const payload = await this.fetchJson('/jsonapi/user/user');
         const flat = (flattenPayload(payload) ?? [])[0];

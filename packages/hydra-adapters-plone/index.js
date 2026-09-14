@@ -480,6 +480,9 @@ export class PloneAdapter extends BaseAdapter {
         await this.fetchJson(args.path, { method: 'DELETE' });
         return null;
 
+      case 'auth.logout':
+        return this.logout();
+
       case 'auth.whoami': {
         const sub = this.subjectFromToken();
         if (!sub) {

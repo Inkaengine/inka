@@ -61,6 +61,15 @@ export type Intent =
   | 'asset.imageUrl'
   | 'auth.whoami'
   /**
+   * End the session. The credential lives in the adapter, so signing out is
+   * the adapter's job — and it has to mean the same thing on every CMS: reads
+   * fail as UNAUTHORIZED afterwards rather than succeeding or coming back
+   * empty. Cached reads go too: they were fetched as somebody.
+   *
+   * Idempotent. A second click must not raise something different.
+   */
+  | 'auth.logout'
+  /**
    * Turn a stable document id into something renderable, and back. Links
    * between documents MUST be stored by id, never by path: a path changes when
    * the target is renamed or moved and every link to it dies silently. Plone

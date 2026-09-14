@@ -805,6 +805,9 @@ export class WordPressAdapter extends BaseAdapter {
         return null;
       }
 
+      case 'auth.logout':
+        return this.logout();
+
       case 'auth.whoami': {
         const me = await this.fetchJson('/wp/v2/users/me', {
           params: { context: 'edit' },

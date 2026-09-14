@@ -267,6 +267,27 @@ export class BaseAdapter {
     }
   }
 
+  /**
+   * Forget the credential. Signing out, for every CMS.
+   *
+   * Implemented once here because it is the same act everywhere: the session
+   * lives in the adapter, so ending it is dropping what the adapter holds. A
+   * CMS with a server-side session to tear down overrides this and calls
+   * super.logout() when it is done.
+   *
+   * Reads are discarded too. They were fetched as somebody — leaving them in
+   * place means the next caller is served that person's content from cache
+   * after they signed out, which is the whole thing logging out is supposed to
+   * prevent.
+   */
+  async logout() {
+    this.authToken = null;
+    this.getAuthToken = null;
+    this.credentials = null;
+    this.csrfToken = null;
+    this.invalidateReads();
+  }
+
   async dispatch(intent) {
     throw new AdapterError(`${this.name} does not implement '${intent}'`, {
       code: 'NOT_IMPLEMENTED',
