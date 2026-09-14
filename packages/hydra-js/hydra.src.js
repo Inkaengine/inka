@@ -1262,6 +1262,63 @@ export class Bridge {
    * @param {HTMLElement} blockElement - The block element
    * @returns {string} 'right', 'bottom', or 'hidden'
    */
+  /**
+   * How this block's siblings are ACTUALLY laid out: 'right' when they sit in a
+   * row, 'bottom' when they stack. Returns null when there is nothing to
+   * measure — one child tells you nothing about the axis, so the caller falls
+   * back to the guess.
+   *
+   * Reading it off the page beats declaring it: a container's layout is a CSS
+   * decision (a footer's columns flow in a row, its links stack inside them),
+   * and the frontend already made it by the time we look.
+   */
+  _measureAddDirection(blockElement) {
+    const uid = blockElement.getAttribute('data-block-uid');
+    const info = this.blockPathMap?.[uid];
+    if (!info) return null;
+    // SAME REGION only. A container can have several (a footer holds its menu
+    // columns, its secondary links and its social icons), and they are laid out
+    // on different axes — measuring a column against a link says the columns
+    // stack, which is exactly the wrong answer.
+    const siblings = this._getSiblingsByDomOrder(null, info.parentId)
+      .filter((id) => id !== uid && this.blockPathMap?.[id]?.region === info.region);
+    if (siblings.length === 0) return null; // one child: no axis to read
+
+    const mine = blockElement.getBoundingClientRect();
+    if (!mine.width || !mine.height) return null;
+    for (const sibId of siblings) {
+      const el = this.queryBlockElement(sibId);
+      if (!el) continue;
+      const other = el.getBoundingClientRect();
+      if (!other.width || !other.height) continue;
+      // Side by side: they overlap vertically and are apart horizontally.
+      // Stacked: the reverse. Compare OVERLAP on each axis rather than centres,
+      // so unequal heights (a tall column beside a short one) still read as a
+      // row.
+      const overlapY = Math.min(mine.bottom, other.bottom) - Math.max(mine.top, other.top);
+      const overlapX = Math.min(mine.right, other.right) - Math.max(mine.left, other.left);
+      if (overlapY > 0 && overlapX <= 0) return 'right';
+      if (overlapX > 0 && overlapY <= 0) return 'bottom';
+      // Ambiguous (overlapping both ways, or neither): try the next sibling.
+    }
+    return null;
+  }
+
+  /**
+   * The old default, kept for when there is nothing to measure: nesting-depth
+   * parity. It is a guess — page level stacks, one level in is a row — and it is
+   * wrong for any container that stacks its children at an odd depth.
+   */
+  _guessAddDirectionByDepth(blockElement) {
+    let depth = 0;
+    let parent = blockElement.parentElement;
+    while (parent) {
+      if (parent.hasAttribute('data-block-uid')) depth++;
+      parent = parent.parentElement;
+    }
+    return depth % 2 === 0 ? 'bottom' : 'right';
+  }
+
   getAddDirection(blockElement) {
     const blockUid = blockElement.getAttribute('data-block-uid');
 
@@ -1285,17 +1342,12 @@ export class Bridge {
 
     let addDirection = blockElement.getAttribute('data-block-add');
     if (!addDirection) {
-      // Count ancestor blocks to determine nesting depth
-      let depth = 0;
-      let parent = blockElement.parentElement;
-      while (parent) {
-        if (parent.hasAttribute('data-block-uid')) {
-          depth++;
-        }
-        parent = parent.parentElement;
-      }
-      // Page-level blocks (depth 0) → bottom, nested (depth 1) → right, etc.
-      addDirection = depth % 2 === 0 ? 'bottom' : 'right';
+      // MEASURE the siblings before guessing. The direction decides where the +
+      // sits, which edges a drag inserts at, and which axis the drop indicator
+      // is drawn on — so getting it wrong makes a container's inner edges hard
+      // to hit, and a drop lands beside the parent instead of inside it.
+      addDirection = this._measureAddDirection(blockElement) ??
+        this._guessAddDirectionByDepth(blockElement);
     }
     return addDirection;
   }

@@ -908,16 +908,22 @@ test.describe('Admin layout — mobile (≤767px)', () => {
   test("a nested block's '+' pulled inside for lack of room stays at the block's TOP, not bottom", async ({
     page,
   }) => {
-    // A nested block adds its next sibling to the RIGHT ('right' add direction).
-    // On a narrow phone a full-width nested block has no room to the right, so the
-    // '+' is pulled INSIDE the block (isConstrained). Only the horizontal axis was
-    // constrained, so the button must keep its vertical position at the block's
-    // TOP-right — it was just "moved in a bit". Dropping it to the BOTTOM-right
-    // changes an axis that wasn't constrained and reads as the button teleporting
-    // to the wrong corner. (On admin-mock the grid renders as narrow columns so
-    // the '+' fits in the gutter unconstrained — still top — so this asserts the
-    // same invariant on both frontends; the constrained path is exercised on
-    // admin-nuxt, where the grid stacks full-width.)
+    // A block laid out in a ROW adds its next sibling to the RIGHT. The rightmost
+    // one has no room to its right on a phone, so the '+' is pulled INSIDE the
+    // block (isConstrained). Only the horizontal axis was constrained, so the
+    // button must keep its vertical position at the block's TOP-right — it was
+    // just "moved in a bit". Dropping it to the BOTTOM-right changes an axis that
+    // never overflowed and reads as the button teleporting to the wrong corner.
+    //
+    // `col-2` (the right column of `columns-1`), NOT a grid cell. This used to
+    // drive `grid-cell-1`, on the premise that a nested block always adds to the
+    // right — nesting depth said so. It no longer does: the direction is measured
+    // from where the siblings actually sit, and on a 375px phone the nuxt grid
+    // stacks its cells full-width, so `bottom` is the correct answer there and
+    // the '+' belongs under the block, unconstrained. Asserting 'top' for that
+    // case would be asserting the old guess. The columns block still lays its
+    // children out side by side at this width, so the constrained path — the
+    // thing this test is actually about — lives there now.
     await page.setViewportSize({ width: 375, height: 812 });
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -925,9 +931,10 @@ test.describe('Admin layout — mobile (≤767px)', () => {
     await helper.getStableBlockCount();
 
     const iframe = helper.getIframe();
-    await helper.clickBlockInIframe('grid-cell-1');
+    // A container is not selectable by clicking its body — click its title.
+    await helper.clickContainerBlockInIframe('col-2');
 
-    const block = iframe.locator('[data-block-uid="grid-cell-1"]').first();
+    const block = iframe.locator('[data-block-uid="col-2"]').first();
     const addBtn = page.locator('.volto-hydra-add-button');
     await expect(addBtn).toBeVisible({ timeout: 10000 });
 
