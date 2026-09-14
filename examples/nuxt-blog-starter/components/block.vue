@@ -1124,16 +1124,30 @@ const gridChildren = computed(() => {
   const start = gridPageFromUrl.value * GRID_PAGE_SIZE;
   gridPaging.start = start;
   let seen = 0;
-  return layout.map(id => {
+  let staticPaging = null;
+  let hasListing = false;
+  const children = layout.map(id => {
     const child = blocks[id];
     if (!child) return null;
     if (LISTING_TYPES.includes(child['@type'])) {
+      hasListing = true;
       return { id, block: child, isListing: true, seen };
     }
     const result = staticBlocks([id], { blocks, paging: { start, size: GRID_PAGE_SIZE }, seen });
     seen = result.paging.seen;
+    staticPaging = result.paging;
     return { id, block: child, isListing: false, items: result.items };
   }).filter(Boolean);
+  // A manual-only grid has no ListingBlock to publish combined paging, so the
+  // static chain's final paging (from staticBlocks, which already computes
+  // totalPages/prev/next) IS the grid's paging — apply it so the pager renders
+  // and hydra can page to reveal an off-page child via its +N control. A grid
+  // WITH a listing lets the trailing ListingBlock publish the combined total
+  // (it receives `seen`), so we don't overwrite that here.
+  if (!hasListing && staticPaging) {
+    Object.assign(gridPaging, staticPaging);
+  }
+  return children;
 });
 
 // Slider: expand templates and detect listing blocks among slides

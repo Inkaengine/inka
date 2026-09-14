@@ -910,7 +910,9 @@ export class Bridge {
   }
 
   static uidFromSelectorToken(token) {
-    if (!token || token === '+1' || token === '-1' || token.includes(':')) {
+    // `+N`/`-N` are page-step controls (a paginated container's next/prev), not
+    // uids — `+1`/`-1` for a carousel, `+6` for a grid that pages six at a time.
+    if (!token || /^[+-]\d+$/.test(token) || token.includes(':')) {
       return undefined;
     }
     const uid = token.split('#')[0];
@@ -12236,79 +12238,121 @@ export class Bridge {
 
       const targetElement = this.queryBlockElement(targetUid);
       if (!targetElement) {
-        log(`tryMakeBlockVisible: target element not in DOM`);
-        return false;
-      }
-
-      const containerBlock = targetElement.parentElement?.closest('[data-block-uid]');
-      if (!containerBlock) {
-        log(`tryMakeBlockVisible: no container block found`);
-        return false;
-      }
-      const containerUid = containerBlock.getAttribute('data-block-uid');
-
-      const directParent = targetElement.parentElement;
-      if (!directParent) {
-        log(`tryMakeBlockVisible: no parent element`);
-        return false;
-      }
-
-      const siblings = Array.from(
-        directParent.querySelectorAll(':scope > [data-block-uid]'),
-      );
-      log(`tryMakeBlockVisible: found ${siblings.length} siblings in container ${containerUid}`);
-
-      const targetIndex = siblings.findIndex(
-        (el) => el.getAttribute('data-block-uid') === targetUid,
-      );
-      if (targetIndex === -1) {
-        log(`tryMakeBlockVisible: target not in siblings`);
-        return false;
-      }
-
-      const currentIndex = siblings.findIndex((el) => !this.isElementHidden(el));
-      const currentUid = currentIndex >= 0 ? siblings[currentIndex].getAttribute('data-block-uid') : null;
-      log(`tryMakeBlockVisible: currentIndex=${currentIndex} (${currentUid}), targetIndex=${targetIndex}`);
-
-      if (currentIndex === -1) {
-        log(`tryMakeBlockVisible: no visible sibling`);
-        return false;
-      }
-
-      const stepsNeeded = targetIndex - currentIndex;
-      if (stepsNeeded === 0) {
-        log(`tryMakeBlockVisible: already at target`);
-        return false;
-      }
-
-      const direction = stepsNeeded > 0 ? '+1' : '-1';
-
-      const explicitSelector = document.querySelector(
-        `[data-block-selector="${currentUid}:${direction}"]`,
-      );
-      if (explicitSelector) {
-        log(`tryMakeBlockVisible: found explicit selector ${currentUid}:${direction}`);
-        clickedSelector = explicitSelector;
-      } else {
-        const simpleSelector = containerBlock.querySelector(
-          `[data-block-selector="${direction}"]`,
-        );
-        if (simpleSelector) {
-          log(`tryMakeBlockVisible: found simple selector ${direction} inside container`);
-          clickedSelector = simpleSelector;
+        // The target isn't rendered at all — it may live on another PAGE of a
+        // paginated container (a grid/listing that renders only a window of its
+        // children). The +1/-1 sibling walk needs the target already in the DOM,
+        // so it can't help. But the CONTAINER is rendered, and if it publishes a
+        // page-step control (`data-block-selector="+N"/"-N"`, the step being the
+        // page size), we page toward the target and recurse once it renders.
+        // blockPathMap knows the target's parent even when the target isn't in
+        // the DOM. The page size is irrelevant to the search: we click the
+        // next/prev control and re-check, walking one page per pass until the
+        // target renders (bounded by depth), which also covers a dynamic
+        // container whose page a uid lands on isn't knowable ahead of time.
+        const parentId = this.blockPathMap?.[targetUid]?.parentId;
+        const containerEl = parentId ? this.queryBlockElement(parentId) : null;
+        const pageControls = containerEl
+          ? Array.from(containerEl.querySelectorAll('[data-block-selector]')).filter(
+              (el) => /^[+-]\d+$/.test((el.getAttribute('data-block-selector') || '').trim()),
+            )
+          : [];
+        if (!pageControls.length) {
+          log(`tryMakeBlockVisible: target ${targetUid} not in DOM and no page-step control on its container`);
+          return false;
         }
-      }
+        // Page FORWARD when the target sits after the rendered window (the common
+        // "later page" case), else back. Position is the container's authored
+        // order (blocks_layout); a container with no visible child yet also pages
+        // forward from the start.
+        const layout = this.getBlockById(parentId)?.blocks_layout?.items || [];
+        const targetIdx = layout.indexOf(targetUid);
+        const renderedIdxs = layout
+          .map((id, i) => (this.queryBlockElement(id) ? i : -1))
+          .filter((i) => i >= 0);
+        const maxRendered = renderedIdxs.length ? Math.max(...renderedIdxs) : -1;
+        const dir = targetIdx < 0 || targetIdx > maxRendered || maxRendered < 0 ? '+' : '-';
+        const control = pageControls.find(
+          (el) => (el.getAttribute('data-block-selector') || '').trim().startsWith(dir) && !this.isElementHidden(el),
+        );
+        if (!control) {
+          log(`tryMakeBlockVisible: no usable ${dir} page-step control in container ${parentId}`);
+          return false;
+        }
+        log(`tryMakeBlockVisible: ${targetUid} off-page; paging ${dir} in container ${parentId}`);
+        clickedSelector = control;
+        nextUid = targetUid; // poll for the target itself to render
+        usedAncestor = true; // count each page toward the depth bound so a target that never appears can't spin
+      } else {
+        const containerBlock = targetElement.parentElement?.closest('[data-block-uid]');
+        if (!containerBlock) {
+          log(`tryMakeBlockVisible: no container block found`);
+          return false;
+        }
+        const containerUid = containerBlock.getAttribute('data-block-uid');
 
-      if (!clickedSelector) {
-        log(`tryMakeBlockVisible: no ${direction} selector found`);
-        return false;
-      }
+        const directParent = targetElement.parentElement;
+        if (!directParent) {
+          log(`tryMakeBlockVisible: no parent element`);
+          return false;
+        }
 
-      // For +1/-1, the next visible block is one step from current
-      const nextIndex = currentIndex + (stepsNeeded > 0 ? 1 : -1);
-      const nextBlock = siblings[nextIndex];
-      nextUid = nextBlock?.getAttribute('data-block-uid');
-      log(`tryMakeBlockVisible: clicking ${direction}, expecting ${nextUid} to become visible`);
+        const siblings = Array.from(
+          directParent.querySelectorAll(':scope > [data-block-uid]'),
+        );
+        log(`tryMakeBlockVisible: found ${siblings.length} siblings in container ${containerUid}`);
+
+        const targetIndex = siblings.findIndex(
+          (el) => el.getAttribute('data-block-uid') === targetUid,
+        );
+        if (targetIndex === -1) {
+          log(`tryMakeBlockVisible: target not in siblings`);
+          return false;
+        }
+
+        const currentIndex = siblings.findIndex((el) => !this.isElementHidden(el));
+        const currentUid = currentIndex >= 0 ? siblings[currentIndex].getAttribute('data-block-uid') : null;
+        log(`tryMakeBlockVisible: currentIndex=${currentIndex} (${currentUid}), targetIndex=${targetIndex}`);
+
+        if (currentIndex === -1) {
+          log(`tryMakeBlockVisible: no visible sibling`);
+          return false;
+        }
+
+        const stepsNeeded = targetIndex - currentIndex;
+        if (stepsNeeded === 0) {
+          log(`tryMakeBlockVisible: already at target`);
+          return false;
+        }
+
+        const direction = stepsNeeded > 0 ? '+1' : '-1';
+
+        const explicitSelector = document.querySelector(
+          `[data-block-selector="${currentUid}:${direction}"]`,
+        );
+        if (explicitSelector) {
+          log(`tryMakeBlockVisible: found explicit selector ${currentUid}:${direction}`);
+          clickedSelector = explicitSelector;
+        } else {
+          const simpleSelector = containerBlock.querySelector(
+            `[data-block-selector="${direction}"]`,
+          );
+          if (simpleSelector) {
+            log(`tryMakeBlockVisible: found simple selector ${direction} inside container`);
+            clickedSelector = simpleSelector;
+          }
+        }
+
+        if (!clickedSelector) {
+          log(`tryMakeBlockVisible: no ${direction} selector found`);
+          return false;
+        }
+
+        // For +1/-1, the next visible block is one step from current
+        const nextIndex = currentIndex + (stepsNeeded > 0 ? 1 : -1);
+        const nextBlock = siblings[nextIndex];
+        nextUid = nextBlock?.getAttribute('data-block-uid');
+        log(`tryMakeBlockVisible: clicking ${direction}, expecting ${nextUid} to become visible`);
+      }
     }
 
     // Idempotency: clicking a toggle that's already in the "open" state
