@@ -118,6 +118,45 @@ const PAGE = {
   blocks_layout: { items: ['s1', 's2'] },
 };
 
+// The OTHER shape of layout, and the one the playwright suite already covers
+// (`allowed-layouts.spec.ts` → "multiple blocks in matching placeholder
+// preserved when switching layouts"): the template's blocks sit at the TOP
+// level, side by side with the author's, rather than inside one frame. Both
+// shapes go through the same switch, and a fix aimed at the nested one is very
+// easy to write so that it breaks this one — so it is pinned here too, where it
+// costs a second to find out instead of twenty minutes of CI.
+const FLAT_HEADER_FOOTER = '/templates/header-footer-layout';
+const FLAT_EDITABLE = '/templates/editable-fixed-layout';
+
+const flatTemplate = (id, headingText, readOnly) => ({
+  blocks: {
+    head: {
+      '@type': 'slate',
+      fixed: true,
+      ...(readOnly ? { readOnly: true } : {}),
+      templateId: id,
+      slotId: 'header',
+      value: [{ type: 'h1', children: [{ text: headingText }] }],
+      plaintext: headingText,
+    },
+    'default-slot': {
+      '@type': 'slate',
+      templateId: id,
+      slotId: 'default',
+      value: [{ type: 'p', children: [{ text: '' }] }],
+      plaintext: '',
+    },
+  },
+  blocks_layout: { items: ['head', 'default-slot'] },
+});
+
+templates[FLAT_HEADER_FOOTER] = flatTemplate(
+  FLAT_HEADER_FOOTER,
+  'Layout Header',
+  true,
+);
+templates[FLAT_EDITABLE] = flatTemplate(FLAT_EDITABLE, 'Editable Header', false);
+
 describe('mergeTemplatesIntoPage — switching layouts', () => {
   test('the page keeps its content when a layout replaces a layout', async () => {
     const left = await applyLayout(PAGE, LEFT);
@@ -143,5 +182,21 @@ describe('mergeTemplatesIntoPage — switching layouts', () => {
     const types = Object.values(wrapper.blocks).map((b) => b['@type']);
     expect(types).toContain('utilityList');
     expect(types).not.toContain('sideNav');
+  });
+
+  test('a flat layout switches to a flat layout without losing content', async () => {
+    const first = await applyLayout(PAGE, FLAT_HEADER_FOOTER);
+    expect(allText(first)).toContain('Layout Header');
+    expect(allText(first)).toContain('Ways of working');
+
+    const second = await applyLayout(first, FLAT_EDITABLE);
+    const text = allText(second);
+    // The author's blocks are still here...
+    expect(text).toContain('Ways of working');
+    expect(text).toContain('Content design starts with the problem.');
+    // ...the incoming layout's furniture arrived...
+    expect(text).toContain('Editable Header');
+    // ...and the outgoing layout's furniture went.
+    expect(text).not.toContain('Layout Header');
   });
 });
