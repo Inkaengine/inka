@@ -411,189 +411,149 @@ export async function checkEditAnnotations(
   block: Locator,
   blockData: Record<string, unknown> | undefined,
 ): Promise<void> {
-  // All content links must have data-edit-link or data-linkable-allow.
-  // Exclude links inside [data-edit-text] — those are inside rich text (slate) and
-  // are managed by the rich text editor, not by a separate link field picker.
-  const linksWithout = await block.locator('a[href]').evaluateAll(
-    (els: Element[]) => (els as HTMLAnchorElement[])
-      .filter(el => !el.getAttribute('href')!.startsWith('#'))
-      .filter(el => !el.closest('[data-edit-text]'))
-      .filter(el => !el.hasAttribute('data-edit-link') && !el.hasAttribute('data-linkable-allow'))
-      .map(el => el.getAttribute('href')),
-  );
-  expect(linksWithout, 'All content links should have data-edit-link or data-linkable-allow').toEqual([]);
-
-  // data-linkable-allow on a real navigation link (<a href>) means the
-  // click triggers a full page-navigation that tears down the editor —
-  // an editable annotation underneath would never get a chance to fire.
-  // On a non-navigation element (button with @click, tab toggle, etc.)
-  // the click runs an in-page handler; inline editing still works
-  // because contenteditable is set on block selection (not on click),
-  // so click positions the cursor in the field while the handler runs
-  // its action. Only the <a href> case is a genuine contradiction.
-  const trappedAnnotations = await block.locator('a[href][data-linkable-allow] [data-edit-text], a[href][data-linkable-allow] [data-edit-link], a[href][data-linkable-allow] [data-edit-media]').evaluateAll(
-    (els: Element[]) => els.map((el) => {
-      const which =
-        (el.hasAttribute('data-edit-text') && 'data-edit-text') ||
-        (el.hasAttribute('data-edit-link') && 'data-edit-link') ||
-        'data-edit-media';
-      const field = el.getAttribute(which) || '';
-      return `${which}="${field}" on <${el.tagName.toLowerCase()}>`;
-    }),
-  );
-  expect(
-    trappedAnnotations,
-    'Editable annotations (data-edit-text/link/media) cannot live inside <a href data-linkable-allow> — full-page navigation tears down the editor before editing can happen',
-  ).toEqual([]);
-
-  // Links must point to the same origin as the page, or be relative.
-  // Catches links that accidentally point to the API instead of the frontend.
-  const offSiteLinks = await block.locator('a[href]').evaluateAll(
-    (els: Element[]) => {
+  // One round-trip, not ~8. checkEditAnnotations runs per sub-block, and each
+  // Playwright locator/evaluate call is a CDP message across the Node↔browser
+  // boundary (~50ms of latency, whatever the DOM work costs). Reading everything
+  // in a single in-page pass turns ~8 round-trips per block into 1 — a container
+  // with 30 descendants goes from ~240 round-trips to ~30. The ASSERTIONS stay in
+  // Node (below) with their original messages; only the DOM READS moved in-page,
+  // so the checks mean exactly what they did before.
+  const blockUid = await block.getAttribute('data-block-uid');
+  const r = await block.evaluate(
+    async (el: Element, { blockData, uid }: { blockData: Record<string, unknown> | undefined; uid: string | null }) => {
+      const bridge = (window as any).__hydraBridge;
       const pageOrigin = window.location.origin;
-      return (els as HTMLAnchorElement[])
-        .map(el => el.getAttribute('href'))
-        .filter(h => {
+
+      // Content links must have data-edit-link or data-linkable-allow. Exclude
+      // links inside [data-edit-text] — those are slate-managed, not a link field.
+      const linksWithout = [...el.querySelectorAll('a[href]')]
+        .filter((a) => !a.getAttribute('href')!.startsWith('#'))
+        .filter((a) => !a.closest('[data-edit-text]'))
+        .filter((a) => !a.hasAttribute('data-edit-link') && !a.hasAttribute('data-linkable-allow'))
+        .map((a) => a.getAttribute('href'));
+
+      // Editable annotations cannot live inside <a href data-linkable-allow>:
+      // that click is a full navigation that tears down the editor first.
+      const trappedAnnotations = [
+        ...el.querySelectorAll(
+          'a[href][data-linkable-allow] [data-edit-text], a[href][data-linkable-allow] [data-edit-link], a[href][data-linkable-allow] [data-edit-media]',
+        ),
+      ].map((x) => {
+        const which =
+          (x.hasAttribute('data-edit-text') && 'data-edit-text') ||
+          (x.hasAttribute('data-edit-link') && 'data-edit-link') ||
+          'data-edit-media';
+        return `${which}="${x.getAttribute(which as string) || ''}" on <${x.tagName.toLowerCase()}>`;
+      });
+
+      // Links must be same-origin or relative — catches a link to the API host.
+      const offSiteLinks = [...el.querySelectorAll('a[href]')]
+        .map((a) => a.getAttribute('href'))
+        .filter((h) => {
           if (!h || h.startsWith('#') || h.startsWith('/')) return false;
           try {
-            const linkOrigin = new URL(h, pageOrigin).origin;
-            return linkOrigin !== pageOrigin && linkOrigin.includes('localhost');
-          } catch { return false; }
+            const o = new URL(h, pageOrigin).origin;
+            return o !== pageOrigin && o.includes('localhost');
+          } catch {
+            return false;
+          }
         });
-    },
-  );
-  expect(offSiteLinks, 'Links should not point to a different localhost service (e.g. the API)').toEqual([]);
 
-  // All images must have data-edit-media
-  // Decorative images (aria-hidden) are chrome, not editable content — e.g. a
-  // card's "→" arrow icon — so they don't carry data-edit-media.
-  const imagesWithout = await block.locator('img').evaluateAll(
-    (els: Element[]) => (els as HTMLImageElement[])
-      .filter(el => !el.hasAttribute('data-edit-media') && el.getAttribute('aria-hidden') !== 'true')
-      .map(el => el.getAttribute('src')),
-  );
-  expect(imagesWithout, 'All non-decorative images should have data-edit-media').toEqual([]);
+      // Non-decorative images (not aria-hidden) must carry data-edit-media.
+      const imagesWithout = [...el.querySelectorAll('img')]
+        .filter((i) => !i.hasAttribute('data-edit-media') && i.getAttribute('aria-hidden') !== 'true')
+        .map((i) => i.getAttribute('src'));
 
-  // All images must have a non-empty src and not be broken (naturalWidth > 0).
-  //
-  // Deliberately NOT a size judgement. A 1x1 is a perfectly valid image — a
-  // spacer, a tracking pixel, a placeholder — and renders exactly as the
-  // markup asks, so failing it here would conflate "this block renders
-  // correctly" with "this content is worth publishing". Placeholder blobs are
-  // a content problem and are detected where the content lives, in the
-  // validator's image check.
-  const brokenImages = await block.locator('img').evaluateAll(
-    (els: Element[]) => (els as HTMLImageElement[])
-      .filter(el => {
-        const src = el.getAttribute('src') || '';
-        if (!src) return true;  // empty src
-        if (el.complete && el.naturalWidth === 0) return true;  // loaded but broken
-        return false;
-      })
-      .map(el => el.getAttribute('src') || '(empty)'),
-  );
-  expect(brokenImages, 'All images should have valid src and load successfully').toEqual([]);
+      // Images must have a non-empty src and load (naturalWidth>0). NOT a size
+      // judgement — a 1×1 is valid; a placeholder blob is a content problem the
+      // validator catches. Only empty-src or loaded-but-broken fails here.
+      const brokenImages = [...el.querySelectorAll('img')]
+        .filter((i) => {
+          const src = i.getAttribute('src') || '';
+          if (!src) return true;
+          if ((i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth === 0) return true;
+          return false;
+        })
+        .map((i) => i.getAttribute('src') || '(empty)');
 
-  // Video/audio sources must actually exist.
-  //
-  // An <img> reports its own failure via naturalWidth, but a <video> whose src
-  // 404s just renders an empty player — nothing throws, nothing looks wrong in
-  // the DOM. Content-level link checking can't cover these either: a doc video
-  // lives in the frontend's public/ directory, so it has no @search entry and
-  // looks identical to a typo. Asking the browser to fetch it is the only check
-  // that sees the difference. Same-origin, so a plain fetch is enough.
-  const brokenMedia = await block.evaluate(async (el: Element) => {
-    const srcs = [
-      ...el.querySelectorAll('video[src], audio[src], video source[src], audio source[src]'),
-    ]
-      .map(n => n.getAttribute('src') || '')
-      .filter(s => s && !s.startsWith('data:') && !s.startsWith('blob:'));
-    const bad: string[] = [];
-    for (const src of [...new Set(srcs)]) {
-      try {
-        const resp = await fetch(src, { method: 'HEAD' });
-        if (!resp.ok) bad.push(`${src} (HTTP ${resp.status})`);
-      } catch (e) {
-        bad.push(`${src} (${(e as Error).message})`);
+      // Video/audio srcs must actually exist — an <img> reports its own failure
+      // via naturalWidth, but a 404 <video> just renders an empty player. Fetch
+      // is the only check that sees it (same-origin, HEAD is enough).
+      const srcs = [
+        ...el.querySelectorAll('video[src], audio[src], video source[src], audio source[src]'),
+      ]
+        .map((n) => n.getAttribute('src') || '')
+        .filter((s) => s && !s.startsWith('data:') && !s.startsWith('blob:'));
+      const brokenMedia: string[] = [];
+      for (const src of [...new Set(srcs)]) {
+        try {
+          const resp = await fetch(src, { method: 'HEAD' });
+          if (!resp.ok) brokenMedia.push(`${src} (HTTP ${resp.status})`);
+        } catch (e) {
+          brokenMedia.push(`${src} (${(e as Error).message})`);
+        }
       }
-    }
-    return bad;
-  });
-  expect(brokenMedia, 'All video/audio sources should exist').toEqual([]);
 
-  // Any inline-text field the renderer displays must sit inside [data-edit-text]
-  // so the editor can target it. Drive this off the block schema: only plain
-  // text widgets qualify. Choice/select/object_browser/icon/file/slate fields are
-  // NOT inline text and would false-positive on coincidental text — e.g. a
-  // Choice `colour: "white"`, or `type: "info"` matching the material-icon
-  // ligature "info" rendered for the alert. Without a schema we cannot tell
-  // which fields are editable text, so skip rather than guess.
-  if (blockData) {
-    const blockUid = await block.getAttribute('data-block-uid');
-    const schema = blockUid
-      ? await block.evaluate(
-          (_el, uid) => (window as any).__hydraBridge?.getBlockSchema?.(uid) || null,
-          blockUid,
-        )
-      : null;
-    const props = schema?.properties as Record<string, any> | undefined;
-    const isInlineTextField = (field: string): boolean => {
-      const p = props?.[field];
-      if (!p) return false; // not a schema field → not editable inline text
-      if (p.factory === 'Choice' || p.choices) return false; // dropdown, not text
-      const w = p.widget;
-      if (w && w !== 'text' && w !== 'textarea') return false; // select/icon/object_browser/file/slate/…
-      return p.type === undefined || p.type === 'string';
-    };
-    for (const [field, value] of Object.entries(blockData)) {
-      if (field.startsWith('@')) continue;
-      if (typeof value !== 'string' || !value) continue;
-      if (!isInlineTextField(field)) continue;
-      const hasEditText = await block.evaluate(
-        (el, v) => {
+      // Inline-text schema fields the renderer displays must sit inside
+      // [data-edit-text]. Schema-driven: only plain text widgets qualify, so a
+      // Choice `colour:"white"` or an icon ligature can't false-positive.
+      const textViolations: Array<{ field: string; value: string }> = [];
+      if (blockData && uid) {
+        const schema = bridge?.getBlockSchema?.(uid) || null;
+        const props = schema?.properties as Record<string, any> | undefined;
+        const isInlineTextField = (field: string): boolean => {
+          const p = props?.[field];
+          if (!p) return false;
+          if (p.factory === 'Choice' || p.choices) return false;
+          const w = p.widget;
+          if (w && w !== 'text' && w !== 'textarea') return false;
+          return p.type === undefined || p.type === 'string';
+        };
+        for (const [field, value] of Object.entries(blockData)) {
+          if (field.startsWith('@')) continue;
+          if (typeof value !== 'string' || !value) continue;
+          if (!isInlineTextField(field)) continue;
+          // Verdict is the FIRST text node containing the value (matching the
+          // original's early return). sr-only (1×1) and data-block-readonly
+          // subtrees are exempt; display:none content (no rects) stays required.
           const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
           let node: Node | null;
+          let ok = true;
           while ((node = walker.nextNode())) {
-            if (node.textContent?.includes(v)) {
+            if (node.textContent?.includes(value)) {
               const host = node.parentElement;
-              // Only text with a real box on screen has to be annotated. An
-              // `.sr-only` field is clipped to 1×1 so a screen reader still
-              // announces it while nothing is there to click — requiring
-              // `data-edit-text` on it would demand an inline editor that can
-              // never open, and the click check (which requires every annotated
-              // field to be editable) would then contradict this one. Such a
-              // field is authored from the sidebar instead.
-              //
-              // RENDERED-BUT-CLIPPED, not merely "no box". A collapsed
-              // accordion panel (`hidden="until-found"`) and an inactive tab
-              // (`panel.hidden = true`) are display:none, so they report zero
-              // rects too — and their fields MUST stay in scope, since that is
-              // exactly the content whose editing breaks. So: no client rects
-              // at all means "not rendered right now", which we cannot judge,
-              // and the field stays required.
-              if (!host) return true;
-              // `data-block-readonly` is the frontend saying this content is not
-              // authored here — a teaser mirroring its target, a listing showing
-              // query results, a site header whose text comes from site
-              // settings. The click check already skips those subtrees; without
-              // the same rule here the two contradict each other, demanding an
-              // annotation that the other check would then fail on.
-              if (host.closest('[data-block-readonly]')) return true;
+              if (!host) { ok = true; break; }
+              if (host.closest('[data-block-readonly]')) { ok = true; break; }
               const rendered = host.getClientRects().length > 0;
               const box = host.getBoundingClientRect();
-              if (rendered && box.width < 2 && box.height < 2) return true;
-              return !!host.closest('[data-edit-text]');
+              if (rendered && box.width < 2 && box.height < 2) { ok = true; break; }
+              ok = !!host.closest('[data-edit-text]');
+              break;
             }
           }
-          return true; // text not found in DOM — skip
-        },
-        value,
-      );
-      expect(
-        hasEditText,
-        `"${value}" (${field}) is visible on screen, so it should be inside [data-edit-text] — a visible schema text field has to be inline-editable`,
-      ).toBe(true);
-    }
+          if (!ok) textViolations.push({ field, value });
+        }
+      }
+
+      return { linksWithout, trappedAnnotations, offSiteLinks, imagesWithout, brokenImages, brokenMedia, textViolations };
+    },
+    { blockData, uid: blockUid },
+  );
+
+  expect(r.linksWithout, 'All content links should have data-edit-link or data-linkable-allow').toEqual([]);
+  expect(
+    r.trappedAnnotations,
+    'Editable annotations (data-edit-text/link/media) cannot live inside <a href data-linkable-allow> — full-page navigation tears down the editor before editing can happen',
+  ).toEqual([]);
+  expect(r.offSiteLinks, 'Links should not point to a different localhost service (e.g. the API)').toEqual([]);
+  expect(r.imagesWithout, 'All non-decorative images should have data-edit-media').toEqual([]);
+  expect(r.brokenImages, 'All images should have valid src and load successfully').toEqual([]);
+  expect(r.brokenMedia, 'All video/audio sources should exist').toEqual([]);
+  for (const { field, value } of r.textViolations) {
+    expect(
+      false,
+      `"${value}" (${field}) is visible on screen, so it should be inside [data-edit-text] — a visible schema text field has to be inline-editable`,
+    ).toBe(true);
   }
 }
 
