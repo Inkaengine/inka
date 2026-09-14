@@ -3,7 +3,7 @@
     <ul class="inline-flex -space-x-px text-sm">
       <li v-if="paging.prev !== null">
         <a :href="buildUrl(paging.prev)" data-linkable-allow
-          :data-block-selector="'-' + (paging.size || 1)"
+          :data-block-paging="'-' + (paging.size || 1)"
           class="paging-prev flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300 rounded-s-lg hover:bg-gray-100"
           @click.prevent="navigate(buildUrl(paging.prev))">
           Previous
@@ -19,7 +19,7 @@
       </li>
       <li v-if="paging.next !== null">
         <a :href="buildUrl(paging.next)" data-linkable-allow
-          :data-block-selector="'+' + (paging.size || 1)"
+          :data-block-paging="'+' + (paging.size || 1)"
           class="paging-next flex items-center justify-center px-3 h-8 leading-tight text-gray-500 bg-white border border-gray-300 rounded-e-lg hover:bg-gray-100"
           @click.prevent="navigate(buildUrl(paging.next))">
           Next

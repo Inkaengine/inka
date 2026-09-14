@@ -910,9 +910,7 @@ export class Bridge {
   }
 
   static uidFromSelectorToken(token) {
-    // `+N`/`-N` are page-step controls (a paginated container's next/prev), not
-    // uids — `+1`/`-1` for a carousel, `+6` for a grid that pages six at a time.
-    if (!token || /^[+-]\d+$/.test(token) || token.includes(':')) {
+    if (!token || token === '+1' || token === '-1' || token.includes(':')) {
       return undefined;
     }
     const uid = token.split('#')[0];
@@ -12251,9 +12249,15 @@ export class Bridge {
         // container whose page a uid lands on isn't knowable ahead of time.
         const parentId = this.blockPathMap?.[targetUid]?.parentId;
         const containerEl = parentId ? this.queryBlockElement(parentId) : null;
+        // A paged container marks its next/prev with data-block-PAGING="+N"/"-N"
+        // (the page step), NOT data-block-selector — the pager navigates ITSELF
+        // (its own click handler pages), so it must stay out of the
+        // data-block-selector path blockClickHandler drives, or a real user click
+        // would trigger carousel-style handling and fight the pager's navigation.
+        // We only need to CLICK it to page; its own handler does the rest.
         const pageControls = containerEl
-          ? Array.from(containerEl.querySelectorAll('[data-block-selector]')).filter(
-              (el) => /^[+-]\d+$/.test((el.getAttribute('data-block-selector') || '').trim()),
+          ? Array.from(containerEl.querySelectorAll('[data-block-paging]')).filter(
+              (el) => /^[+-]\d+$/.test((el.getAttribute('data-block-paging') || '').trim()),
             )
           : [];
         if (!pageControls.length) {
@@ -12272,7 +12276,7 @@ export class Bridge {
         const maxRendered = renderedIdxs.length ? Math.max(...renderedIdxs) : -1;
         const dir = targetIdx < 0 || targetIdx > maxRendered || maxRendered < 0 ? '+' : '-';
         const control = pageControls.find(
-          (el) => (el.getAttribute('data-block-selector') || '').trim().startsWith(dir) && !this.isElementHidden(el),
+          (el) => (el.getAttribute('data-block-paging') || '').trim().startsWith(dir) && !this.isElementHidden(el),
         );
         if (!control) {
           log(`tryMakeBlockVisible: no usable ${dir} page-step control in container ${parentId}`);
