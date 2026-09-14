@@ -28,8 +28,30 @@ test.describe('Empty slate typing', () => {
     // getSlateField resolves the editable whether data-edit-text is on the block
     // element itself (nuxt) or a child (mock).
     const field = helper.getSlateField(block);
-    // A beat for the correction to settle (a real author's reaction time covers it).
-    await page.waitForTimeout(300);
+    // Deterministically wait for the bridge's caret correction to finish before
+    // typing. A fixed timeout races the correction under CI load — if '/' lands
+    // before the ZWS caret target is parked it leaks to the contenteditable
+    // wrapper and the test flakes (fails, then passes on retry). Poll the
+    // observable post-condition instead: a ZWS (﻿) text node sitting under a
+    // [data-node-id] element, which is exactly what the correction creates and
+    // moves the caret onto.
+    await expect
+      .poll(
+        async () =>
+          field.evaluate((el) => {
+            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+            let t;
+            while ((t = walker.nextNode())) {
+              if (t.textContent?.includes('﻿') && t.parentElement?.closest('[data-node-id]')) return true;
+            }
+            return false;
+          }),
+        {
+          message: 'bridge should park a ZWS caret target inside the node-id element before typing',
+          timeout: 5000,
+        },
+      )
+      .toBe(true);
 
     await page.keyboard.type('/');
 

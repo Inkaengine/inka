@@ -548,7 +548,12 @@
       blocks_layout: {
         // mock-hero-block is intentionally last — block-navigation.spec.ts:180
         // ("ArrowDown at end of last block stays in same block") relies on it.
-        items: ['mock-block-1', 'mock-text-block', 'mock-empty-slate', 'mock-multi-field-block', 'mock-textarea-block', 'mock-image-block', 'mock-columns', 'mock-table', 'mock-code-block', 'mock-form-block', 'mock-hero-block'],
+        // mock-empty-slate sits between code and form deliberately: block-navigation
+        // asserts the contiguous chain block-1 → text-block → multi-field-block
+        // (ArrowUp/ArrowDown edge navigation), so the empty-slate block must NOT
+        // break those adjacencies. code-block/form-block have no navigation
+        // adjacency assertions, so it's a safe home that keeps it out of the way.
+        items: ['mock-block-1', 'mock-text-block', 'mock-multi-field-block', 'mock-textarea-block', 'mock-image-block', 'mock-columns', 'mock-table', 'mock-code-block', 'mock-empty-slate', 'mock-form-block', 'mock-hero-block'],
       },
     };
 
