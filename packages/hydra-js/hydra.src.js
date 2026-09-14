@@ -5895,14 +5895,32 @@ export class Bridge {
     // Otherwise, determine based on DOM position of the whitespace
     let returnEndPosition = isRangeEnd;
     if (!isRangeEnd) {
-      if (firstNodeIdEl.contains(node)) {
-        // The whitespace node is INSIDE the node-id element itself — an empty
-        // element's own empty text node (e.g. Vue's {{ '' }} inside an empty
-        // <p data-node-id>). compareDocumentPosition would call that "after
-        // content" and route to the end branch, skipping ZWS creation. Treat it
-        // as the start so the start branch parks/prepends a ZWS in the element.
+      // Is firstNodeIdEl empty of VISIBLE text? (ZWS/ZWSP don't count — an element
+      // holding only a parked ZWS is still "empty" and should position on it.)
+      let elHasVisibleText = false;
+      const vWalker = document.createTreeWalker(firstNodeIdEl, NodeFilter.SHOW_TEXT);
+      let vt;
+      while ((vt = vWalker.nextNode())) {
+        if (vt.textContent && vt.textContent.replace(/[﻿​]/g, '').length > 0) {
+          elHasVisibleText = true;
+          break;
+        }
+      }
+
+      if (firstNodeIdEl.contains(node) && !elHasVisibleText) {
+        // The node is INSIDE an EMPTY node-id element (e.g. its own empty text
+        // node, or Vue's {{ '' }} artifacts inside an empty <p data-node-id>).
+        // compareDocumentPosition would call a contained node "after content"
+        // and route to the end branch, which never creates a ZWS. Force the
+        // start branch so it parks/prepends the ﻿ caret target.
+        //
+        // Guarded on emptiness: when the element HAS visible text (e.g. a
+        // trailing-space text node inside "some text bold "), a contained
+        // whitespace node must still be positioned by real DOM order via
+        // compareDocumentPosition below — otherwise select-all/format on that
+        // content breaks.
         returnEndPosition = false;
-        log('getValidPositionForWhitespace: node is inside firstNodeIdEl, using start position');
+        log('getValidPositionForWhitespace: node inside EMPTY firstNodeIdEl, using start position');
       } else {
         // Determine if whitespace is before first or after last by comparing DOM positions
         const position = node.compareDocumentPosition(firstNodeIdEl);
