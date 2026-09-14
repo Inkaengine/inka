@@ -189,6 +189,24 @@ jobs:
         # The demo video records a switch to the F7 mobile frontend, so its Vite
         # dev server (3008) must be up when the demo is regenerated.
         run: cd examples/hydra-vue-f7 && pnpm install --ignore-workspace
+      - name: Install ffmpeg
+        # demo:encode (tests-playwright/demo-video/encode.sh) trims the captured
+        # .webm into the mp4 with ffmpeg. ubuntu-latest (24.04) no longer bundles
+        # it, so install it here. Same apt acquire-hardening + step timeout the
+        # Playwright deps step uses (a bare apt-get update once stalled 3h38m
+        # mid-fetch of the Ubuntu package indexes).
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
       - name: Start servers
         # The screenshot specs drive the Volto admin (3001) with the Nuxt iframe
         # (3003); mock-parent is served by the vite frontend (8889); content by
