@@ -2463,10 +2463,18 @@ app.post(/.*\/@sharing$/, (req, res) => {
 
 /**
  * GET /@users/:userid
- * Get user information
+ *
+ * Matched with the /++api++ prefix optional, because every OTHER handler here
+ * copes with it by stripping req.path and there is no middleware doing it
+ * globally. Declared as an exact path, this was the one endpoint that answered
+ * only WITHOUT the prefix — so an adapter, which prefixes every call, could
+ * never identify its user. Adapter registration calls whoami first, so it died
+ * there and took every test with it.
  */
-app.get('/@users/:userid', (req, res) => {
-  const { userid } = req.params;
+app.get(/^(?:\/\+\+api\+\+)?\/@users\/([^/]+)$/, (req, res) => {
+  // A regex, not a path pattern: `+` is a repeat modifier in Express's route
+  // syntax, so '/++api++/...' is not a valid pattern at all.
+  const userid = req.params[0];
   res.json({
     '@id': `http://localhost:${PORT}/@users/${userid}`,
     id: userid,

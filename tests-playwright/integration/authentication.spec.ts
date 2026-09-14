@@ -3,44 +3,47 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { URLS } from '../ports';
 
 test.describe('Authentication and Access Control', () => {
-  test('Login form accepts admin/admin and redirects to dashboard', async ({ page }) => {
-    // Go to login page
-    await page.goto(`${URLS.voltoSsr}/login`);
+  test('signing in happens in the proxy frame, not the admin', async ({ page }) => {
+    // The admin holds no CMS credentials under the bridge: the adapter in the
+    // frontend owns the session, and there is no canonical intent for @login
+    // because authenticating to the CMS is not the admin's job. The credential
+    // is minted in the PROXY frame and lives in that origin's storage.
+    //
+    // This replaces a test that filled Volto's own /login form and waited for
+    // an @login response. That request no longer crosses the wire, so the form
+    // submitted and nothing happened — see the note at the end about why that
+    // is a real gap and not just a stale test.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(helper.contentUrl('/test-page'));
 
-    // Wait for the login form to be visible
-    const usernameField = page.getByLabel('Login Name');
-    const passwordField = page.getByLabel('Password');
-    const loginButton = page.getByRole('button', { name: 'Log in' });
+    // Either the proxy already holds a credential (the fixture passes one as
+    // ?access_token=) or its sign-in panel is showing. Both are the adapter
+    // owning auth; what must NOT happen is the admin having a CMS session of
+    // its own.
+    const proxy = page.frameLocator('#hydraProxyFrame');
+    await expect(proxy.locator('#cms')).not.toBeEmpty({ timeout: 30000 });
 
-    await expect(usernameField).toBeVisible({ timeout: 10000 });
-    await expect(passwordField).toBeVisible();
-    await expect(loginButton).toBeVisible();
-
-    // Enter credentials
-    await usernameField.fill('admin');
-    await passwordField.fill('admin');
-
-    // Set up response waiter BEFORE clicking
-    const loginResponsePromise = page.waitForResponse(
-      (response) => response.url().includes('@login') && response.status() === 200,
-      { timeout: 10000 },
-    );
-
-    // Click login
-    await loginButton.click();
-
-    // Wait for login API response
-    await loginResponsePromise;
-
-    // Wait for redirect after successful login (should leave /login)
-    await page.waitForURL(/^(?!.*\/login).*$/, { timeout: 15000 });
-
-    // Verify we're logged in - Personal tools button should be in the DOM
+    // And the admin is usable, which is the only thing an editor cares about.
     const personalTools = page.getByRole('button', { name: 'Personal tools' });
     await expect(personalTools).toBeAttached({ timeout: 10000 });
+  });
 
-    // Verify we're not on the login page
-    expect(page.url()).not.toContain('/login');
+  test('the admin never posts credentials to the CMS', async ({ page }) => {
+    // The inversion's central claim, asserted rather than assumed: whatever the
+    // admin does, no @login crosses the wire from it. If this ever fails, the
+    // admin has grown a CMS session and the zero-credential invariant is gone.
+    const seen: string[] = [];
+    page.on('request', (r) => {
+      if (r.url().includes('@login') && r.method() === 'POST') seen.push(r.url());
+    });
+
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(helper.contentUrl('/test-page'));
+    await page.waitForLoadState('networkidle');
+
+    expect(seen, 'the admin posted credentials to the CMS').toEqual([]);
   });
 
   test('Edit page requires authentication', async ({ page }) => {
@@ -113,8 +116,13 @@ test.describe('Authentication and Access Control', () => {
     const iframe = helper.getIframe();
     await iframe.locator('[data-block-uid]').first().waitFor();
 
-    // Check that iframe URL contains access_token parameter
-    const iframeSrc = await page.locator('iframe').getAttribute('src');
+    // Name the EDITING iframe. Under the bridge there are two — the hidden
+    // proxy frame that hosts the adapter mounts alongside it — so a bare
+    // locator('iframe') is ambiguous and fails strict mode. The token is still
+    // passed; this test was right, it just has to say which frame it means.
+    const iframeSrc = await page
+      .locator('#previewIframe')
+      .getAttribute('src');
     expect(iframeSrc, 'iframe src attribute should exist').toBeTruthy();
     expect(iframeSrc).toContain('access_token');
 

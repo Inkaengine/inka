@@ -38,10 +38,10 @@ const needsJourney = projectArgs.some((p) => p.startsWith('journey'));
 // NOTE: the Volto webServer entries below use reuseExistingServer, so a server
 // already running WITHOUT this flag will be reused as-is. Run bridge-mock
 // against a freshly started server, or the transparency proof is vacuous.
-const useBridgeBackend =
-  projectArg?.includes('bridge') || projectArg?.includes('journey')
-    ? 'true'
-    : 'false';
+// Everything runs through an adapter now. The admin's direct-fetch path is the
+// legacy one, so leaving most projects on it meant the suite mostly exercised
+// what we are moving away from.
+const useBridgeBackend = 'true';
 
 /**
  * Playwright Test configuration for Volto Hydra tests.

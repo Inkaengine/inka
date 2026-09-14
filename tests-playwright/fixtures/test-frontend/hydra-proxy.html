@@ -42,7 +42,23 @@
 
     const params = new URLSearchParams(window.location.search);
     const which = params.get('adapter') || 'plone';
-    const cmsBaseUrl = params.get('cms') || window.location.origin;
+    // The frontend owns its adapter, so it has to know its own CMS. This used
+    // to fall back to window.location.origin, which is the FRONTEND's origin —
+    // meaningless as a CMS base, and it made registration ask Vite for
+    // /++api++/@users/admin and take a 404. Nothing passes ?cms=, so that
+    // fallback was the live path for every project that does not set one.
+    //
+    // The journeys survived it because they hand the admin an explicit API path
+    // and the adapter picks it up from the announcement — but registration runs
+    // BEFORE that, so whoami went out against the wrong origin regardless.
+    const cmsBaseUrl = params.get('cms') || __MOCK_API_ORIGIN__;
+    if (!cmsBaseUrl) {
+      throw new Error(
+        '[proxy] no CMS base URL: pass ?cms= or let Vite inject one. ' +
+          'Refusing to guess, because guessing means asking the frontend ' +
+          'for content and reading a 404 as "not found".',
+      );
+    }
     const token = params.get('access_token');
 
     // Scoped per adapter AND per CMS: one browser may edit several sites, and a

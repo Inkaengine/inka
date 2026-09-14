@@ -756,6 +756,15 @@ export class WordPressAdapter extends BaseAdapter {
               target: 'window',
             },
             {
+              // Your own account belongs to the CMS that holds it. Changing a
+              // password or an email is not something to reimplement here, and
+              // the admin has no credentials to do it with anyway.
+              id: 'preferences',
+              title: 'Your profile',
+              url: `${this.cmsBaseUrl}/wp-admin/profile.php`,
+              category: 'user',
+            },
+            {
               id: 'wp-settings',
               title: 'Site settings',
               url: `${this.cmsBaseUrl}/wp-admin/options-general.php`,

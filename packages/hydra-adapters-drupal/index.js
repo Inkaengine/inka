@@ -677,6 +677,19 @@ export class DrupalAdapter extends BaseAdapter {
           // Core Drupal has no per-node principal grants; that needs the
           // Group module. The sharing half of the panel hides on this.
           shareEntries: null,
+
+          actions: [
+            {
+              // Your own account belongs to the CMS that holds it. Changing a
+              // password or an email is not something to reimplement here, and
+              // the admin has no credentials to do it with anyway. /user
+              // resolves to whoever is signed in, so this needs no uid.
+              id: 'preferences',
+              title: 'Your profile',
+              url: `${this.cmsBaseUrl}/user`,
+              category: 'user',
+            },
+          ],
         };
       }
 

@@ -89,6 +89,36 @@ describe('advertised capabilities are real', () => {
  * for the user, and one that would only be discovered by clicking it.
  */
 describe('native actions', () => {
+  it('offer a way to manage your own profile', async () => {
+    // Declared actions currently ride on PermissionsAndState.
+    if (!target.adapter.capabilities.includes('state' as never)) return;
+
+    const pas: any = await target.adapter.dispatch('state.get', {
+      path: '/news/first-post',
+    });
+    const declared = pas.actions ?? [];
+
+    // An adapter on the http passthrough does not need to declare anything:
+    // Volto receives the CMS's OWN user actions verbatim, and Plone's include
+    // `preferences`. Everyone else has to say where a profile lives, because
+    // there is nothing for the admin to fall back on — and a profile is not
+    // something we reimplement. Changing your password or your email belongs to
+    // the CMS that owns the account.
+    if (target.adapter.capabilities.includes('http-passthrough' as never)) return;
+
+    const profile = declared.filter((a: any) => a.category === 'user');
+    expect(
+      profile.length,
+      'no user-category action, so an editor cannot reach their own profile',
+    ).toBeGreaterThan(0);
+
+    for (const action of profile) {
+      // It has to leave the admin for the CMS. A link back to our own origin is
+      // a dead end the user only finds by clicking it.
+      expect(action.url, `${action.id} needs a destination`).toMatch(/^https?:\/\//);
+    }
+  });
+
   it('point somewhere followable, on the CMS', async () => {
     // Declared actions currently ride on PermissionsAndState, so an adapter
     // without `state` has nowhere to put them and this asserts nothing about
