@@ -2628,6 +2628,51 @@ function allRegionIds(blocksLayout) {
 }
 
 /**
+ * The AUTHOR's blocks nested inside a block that is about to be dropped.
+ *
+ * Switching layouts drops the outgoing layout's furniture, and a layout whose
+ * frame is ONE container block (a `contentLayout` holding `main` + a sidebar,
+ * say) carries the author's content inside that frame. Dropping the frame on
+ * its `readOnly` flag therefore dropped the whole page with it — silently, on a
+ * menu choice.
+ *
+ * So look inside before letting it go. `fixed` marks the template's own
+ * furniture, which the incoming layout replaces; everything else is the
+ * author's and is pushed back into `pendingContent` under its own slot, exactly
+ * as the flat scan does for content that sits at the top level. Template
+ * markers are left ON the harvested blocks — the flat scan leaves them there
+ * too, and the apply re-stamps what it re-homes.
+ *
+ * @param {Object} block - The block being dropped
+ * @param {Map} pendingContent - Map of slotId -> [{blockId, block}]
+ * @param {Set} visited - Already visited blocks (prevent cycles)
+ */
+export function collectNestedAuthorContent(block, pendingContent, visited = new Set()) {
+  if (!block || typeof block !== 'object') return;
+  if (visited.has(block)) return;
+  visited.add(block);
+  const nested = block.blocks;
+  const layouts = block.blocks_layout;
+  if (!nested || !layouts) return;
+  for (const ids of Object.values(layouts)) {
+    if (!Array.isArray(ids)) continue;
+    for (const blockId of ids) {
+      const child = nested[blockId];
+      if (!child) continue;
+      if (child.fixed) {
+        // Furniture. It goes, but it may be a container holding content.
+        collectNestedAuthorContent(child, pendingContent, visited);
+        continue;
+      }
+      const slotId = child.slotId || 'default';
+      if (!pendingContent.has(slotId)) pendingContent.set(slotId, []);
+      pendingContent.get(slotId).push({ blockId, block: child });
+      collectNestedAuthorContent(child, pendingContent, visited);
+    }
+  }
+}
+
+/**
  * Recursively scan for blocks with matching templateInstanceId.
  * Handles arbitrary nesting - looks for blocks maps (values have @type)
  * and corresponding layout arrays.
@@ -3597,7 +3642,13 @@ export function expandTemplatesSync(inputItems, options = {}) {
           block.templateId &&
           block.templateId !== templateId
         ) {
-          if (block.readOnly) continue;
+          if (block.readOnly) {
+            // Dropped — but not what the author put INSIDE it. A layout whose
+            // frame is a single container block keeps the page's content in
+            // that frame, so letting it go whole loses the page.
+            collectNestedAuthorContent(block, ctx.pendingContent);
+            continue;
+          }
           if (block.slotId) {
             ctx.existingFixedBlockIds.set(block.slotId, { blockId, block });
           }
