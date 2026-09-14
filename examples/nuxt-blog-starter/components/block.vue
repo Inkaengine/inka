@@ -114,8 +114,9 @@
         </template>
       </template>
     </div>
-    <!-- Combined paging: reactive via gridPaging (updated by ListingBlock via Object.assign) -->
-    <Paging v-if="gridPaging.totalPages > 1" :paging="gridPaging" :build-url="gridBuildPagingUrl" />
+    <!-- Combined paging. effectiveGridPaging is pure: the static chain's paging for
+         a manual grid, or the ListingBlock-published gridPaging for a listing grid. -->
+    <Paging v-if="effectiveGridPaging.totalPages > 1" :paging="effectiveGridPaging" :build-url="gridBuildPagingUrl" />
   </div>
 
   <!-- Columns container block -->
@@ -956,7 +957,7 @@
 
 </template>
 <script setup>
-import { ref, reactive, watch, nextTick, computed, toRefs, inject, onMounted, unref } from 'vue';
+import { ref, reactive, watch, watchEffect, nextTick, computed, toRefs, inject, onMounted, unref } from 'vue';
 import { isEditMode } from '@hydra-js/hydra.js';
 import { staticBlocks, expandTemplatesSync } from '@hydra-js/helpers';
 import RichText from './richtext.vue';
@@ -1121,12 +1122,13 @@ const gridBuildPagingUrl = (page) => {
 // Process grid children: listings marked for Suspense, static blocks filtered by paging window
 // staticBlocks and expandListingBlocks return { items, paging } — chain paging.seen for position tracking
 const LISTING_TYPES = ['listing', 'relatedItemsListing', 'searchShortcuts', 'rssFeed'];
-const gridChildren = computed(() => {
+// PURE computed — no side effects. staticBlocks/expandListingBlocks return
+// { items, paging }; chain paging.seen for position tracking and surface the
+// final static paging for the manual-grid case below.
+const gridData = computed(() => {
   const layout = block.value.blocks_layout?.items || [];
   const blocks = block.value.blocks || {};
-  // Read page number (reactive dependency) and compute paging start
   const start = gridPageFromUrl.value * GRID_PAGE_SIZE;
-  gridPaging.start = start;
   let seen = 0;
   let staticPaging = null;
   let hasListing = false;
@@ -1142,17 +1144,26 @@ const gridChildren = computed(() => {
     staticPaging = result.paging;
     return { id, block: child, isListing: false, items: result.items };
   }).filter(Boolean);
-  // A manual-only grid has no ListingBlock to publish combined paging, so the
-  // static chain's final paging (from staticBlocks, which already computes
-  // totalPages/prev/next) IS the grid's paging — apply it so the pager renders
-  // and hydra can page to reveal an off-page child via its +N control. A grid
-  // WITH a listing lets the trailing ListingBlock publish the combined total
-  // (it receives `seen`), so we don't overwrite that here.
-  if (!hasListing && staticPaging) {
-    Object.assign(gridPaging, staticPaging);
-  }
-  return children;
+  return { children, staticPaging, hasListing };
 });
+const gridChildren = computed(() => gridData.value.children);
+// The grid's paging comes from ONE of two sources, kept SEPARATE so neither is a
+// side-effect of rendering the other (mutating gridPaging inside the children
+// computed left the pager reading a stale, totalPages-less object on first paint,
+// so it never rendered — and hydra had no +N control to reveal an off-page child):
+//  - a manual-only grid: the static chain's final paging (staticBlocks already
+//    computes totalPages/prev/next) IS the grid's paging, derived purely here;
+//  - a grid WITH a listing: the trailing ListingBlock publishes the combined
+//    total into the reactive `gridPaging` sink (it receives `seen`), so use that.
+const effectiveGridPaging = computed(() => {
+  if (gridData.value.hasListing) return gridPaging;
+  const p = gridData.value.staticPaging;
+  return p ? { ...p, size: GRID_PAGE_SIZE } : { start: gridPaging.start, size: GRID_PAGE_SIZE, totalPages: 0 };
+});
+// Keep the reactive sink's `start` current for the listing case (ListingBlock
+// reads it to window its query). A watchEffect is the right home for this write —
+// a computed must stay pure.
+watchEffect(() => { gridPaging.start = gridPageFromUrl.value * GRID_PAGE_SIZE; });
 
 // Slider: expand templates and detect listing blocks among slides
 const sliderChildren = computed(() => {
