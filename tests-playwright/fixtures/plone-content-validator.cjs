@@ -722,15 +722,45 @@ function imageDimensions(file) {
         for (const [bid, block] of Object.entries(container.blocks || {})) {
           if (!block || typeof block !== 'object') continue;
           const chrome = block.templateId && templateChrome.get(block.templateId);
-          if (chrome && block.slotId && chrome.has(block.slotId)) {
-            const shouldBeFixed = chrome.get(block.slotId);
-            if (shouldBeFixed && block.fixed !== true) {
+          if (chrome) {
+            // A block that fills THIS template must carry the coupled markers:
+            // slotId + fixed + readOnly. slotId is the render-critical one —
+            // forced-layout expansion (helpers/fillRegionEntries) matches a block
+            // to a slot by slotId and silently DROPS one that has none: the block
+            // is composed into the page (block-sanity discovers it) yet no frontend
+            // has a slot to render it, so its data-block-uid never appears and the
+            // only symptom is a reveal timeout. That is exactly how the slate page's
+            // `callout` slipped through — 2c-ter used to only look at blocks whose
+            // slotId already matched a slot. fixed and readOnly are the content-model
+            // half: a page slot-fill is editable page content (both false), stated
+            // so the coupling holds and the merge locks it right. Emit synthesises
+            // both for a slot-fill (markdown-mount normalizeInstanceTemplateFields),
+            // so a miss here means the emit path did not run — a real gap.
+            const missing = [];
+            if (!block.slotId) missing.push('slotId');
+            if (typeof block.fixed !== 'boolean') missing.push('fixed');
+            if (typeof block.readOnly !== 'boolean') missing.push('readOnly');
+            if (missing.length) {
               stats.instanceBlocksBroken = (stats.instanceBlocksBroken || 0) + 1;
               errors.push(
-                `  ${rel}: block ${bid} fills slot "${block.slotId}", which its template ` +
-                `marks fixed — the instance must say fixed: true too, or the heading is ` +
-                `read as an open slot and the page cannot be saved`,
+                `  ${rel}: block ${bid} (${block['@type']}) fills template ` +
+                `${block.templateId} but is missing ${missing.join(', ')} — a block ` +
+                `with no slotId is dropped by forced-layout expansion and never ` +
+                `renders; fixed and readOnly must be stated (both false for an ` +
+                `editable slot-fill)`,
               );
+            } else if (chrome.has(block.slotId)) {
+              const shouldBeFixed = chrome.get(block.slotId);
+              if (shouldBeFixed && block.fixed !== true) {
+                stats.instanceBlocksBroken = (stats.instanceBlocksBroken || 0) + 1;
+                errors.push(
+                  `  ${rel}: block ${bid} fills slot "${block.slotId}", which its template ` +
+                  `marks fixed — the instance must say fixed: true too, or the heading is ` +
+                  `read as an open slot and the page cannot be saved`,
+                );
+              } else {
+                stats.instanceBlocksOk = (stats.instanceBlocksOk || 0) + 1;
+              }
             } else {
               stats.instanceBlocksOk = (stats.instanceBlocksOk || 0) + 1;
             }

@@ -101,7 +101,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <block type="codeExample" slotId="json-data" source="slate" format="json" />
 
-<block type="callout" variation="note">
+<block type="callout" variation="note" slotId="rendering">
 
 The Astro examples below omit `data-block-uid` on the block's root element because `BlockRenderer.astro` wraps every block in `<div data-block-uid={uid}>`. See [Server-rendered frontends](../server-rendered-frontends.md) for why.
 
