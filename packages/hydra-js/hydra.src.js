@@ -910,7 +910,12 @@ export class Bridge {
   }
 
   static uidFromSelectorToken(token) {
-    if (!token || token === '+1' || token === '-1' || token.includes(':')) {
+    // `+N`/`-N` is a paging DIRECTION, not a uid. The sign is which way (next /
+    // previous), and N is how many uids the page in that direction brings into view
+    // — `+1`/`-1` is a carousel (one slide either way), `+6`/`-6` a grid/listing
+    // whose next/previous page shows six more. A token with `:` is a named
+    // direction. None name a block.
+    if (!token || /^[+-]\d+$/.test(token) || token.includes(':')) {
       return undefined;
     }
     const uid = token.split('#')[0];
@@ -4775,6 +4780,18 @@ export class Bridge {
       // Skip if tryMakeBlockVisible is currently navigating (to avoid interference)
       const selectorElement = event.target.closest('[data-block-selector]');
       if (selectorElement) {
+        // A SELF-NAVIGATING pager (a grid/listing Next/Prev with
+        // data-block-selector="+N|-N") pages ITSELF via its own click handler and
+        // marks that intent with data-linkable-allow. handleBlockSelector's carousel
+        // stepping would fight that navigation, so leave it to the pager: the bridge
+        // still reveals a hidden child by SYNTHESISING a click, which triggers the
+        // pager's own handler — it just doesn't drive the step here. A BRIDGE-driven
+        // control (carousel +1/-1, accordion header, tab) has no data-linkable-allow
+        // and still goes through handleBlockSelector below. This is why the pager
+        // reveal generalises data-block-selector rather than needing its own tag.
+        if (selectorElement.hasAttribute('data-linkable-allow')) {
+          return;
+        }
         // tryMakeBlockVisible reveals a hidden block by SYNTHESISING a click on
         // its selector (`clickedSelector.click()`); that must not re-enter this
         // handler. But a genuine user click arriving mid-navigation was being
@@ -12240,28 +12257,31 @@ export class Bridge {
         // paginated container (a grid/listing that renders only a window of its
         // children). The +1/-1 sibling walk needs the target already in the DOM,
         // so it can't help. But the CONTAINER is rendered, and if it publishes a
-        // page-step control (`data-block-selector="+N"/"-N"`, the step being the
-        // page size), we page toward the target and recurse once it renders.
-        // blockPathMap knows the target's parent even when the target isn't in
-        // the DOM. The page size is irrelevant to the search: we click the
-        // next/prev control and re-check, walking one page per pass until the
-        // target renders (bounded by depth), which also covers a dynamic
-        // container whose page a uid lands on isn't knowable ahead of time.
+        // paging control (`data-block-selector="+N"/"-N"`, N being how many uids the
+        // next/previous page shows), we page toward the target and recurse once it
+        // renders. blockPathMap knows the target's parent even when the target isn't
+        // in the DOM. The count is irrelevant to the search: we click the next/prev
+        // control and re-check, walking one page per pass until the target renders
+        // (bounded by depth), which also covers a dynamic container whose page a uid
+        // lands on isn't knowable ahead of time.
         const parentId = this.blockPathMap?.[targetUid]?.parentId;
         const containerEl = parentId ? this.queryBlockElement(parentId) : null;
-        // A paged container marks its next/prev with data-block-PAGING="+N"/"-N"
-        // (the page step), NOT data-block-selector — the pager navigates ITSELF
-        // (its own click handler pages), so it must stay out of the
-        // data-block-selector path blockClickHandler drives, or a real user click
-        // would trigger carousel-style handling and fight the pager's navigation.
-        // We only need to CLICK it to page; its own handler does the rest.
+        // A paged container marks its next/prev with the GENERALISED carousel form:
+        // data-block-selector="+N"/"-N". The pager navigates ITSELF and says so with
+        // data-linkable-allow, so blockClickHandler leaves it alone (see there) and
+        // it doesn't fight a real author click. Here we only need to CLICK it to
+        // page; its own handler does the rest. Find the directional token in the
+        // selector's word-list (it may sit alongside uids).
+        const dirTokenOf = (el) =>
+          (el.getAttribute('data-block-selector') || '')
+            .trim()
+            .split(/\s+/)
+            .find((t) => /^[+-]\d+$/.test(t));
         const pageControls = containerEl
-          ? Array.from(containerEl.querySelectorAll('[data-block-paging]')).filter(
-              (el) => /^[+-]\d+$/.test((el.getAttribute('data-block-paging') || '').trim()),
-            )
+          ? Array.from(containerEl.querySelectorAll('[data-block-selector]')).filter((el) => dirTokenOf(el))
           : [];
         if (!pageControls.length) {
-          log(`tryMakeBlockVisible: target ${targetUid} not in DOM and no page-step control on its container`);
+          log(`tryMakeBlockVisible: target ${targetUid} not in DOM and no paging control on its container`);
           return false;
         }
         // Page FORWARD when the target sits after the rendered window (the common
@@ -12276,10 +12296,10 @@ export class Bridge {
         const maxRendered = renderedIdxs.length ? Math.max(...renderedIdxs) : -1;
         const dir = targetIdx < 0 || targetIdx > maxRendered || maxRendered < 0 ? '+' : '-';
         const control = pageControls.find(
-          (el) => (el.getAttribute('data-block-paging') || '').trim().startsWith(dir) && !this.isElementHidden(el),
+          (el) => dirTokenOf(el)?.startsWith(dir) && !this.isElementHidden(el),
         );
         if (!control) {
-          log(`tryMakeBlockVisible: no usable ${dir} page-step control in container ${parentId}`);
+          log(`tryMakeBlockVisible: no usable ${dir} paging control in container ${parentId}`);
           return false;
         }
         log(`tryMakeBlockVisible: ${targetUid} off-page; paging ${dir} in container ${parentId}`);

@@ -299,7 +299,7 @@ function Paging({ paging, buildUrl, onNavigate }) {
               href={buildUrl(paging.prev)}
               className="paging-prev"
               data-linkable-allow
-              data-block-paging={`-${paging.size || 1}`}
+              data-block-selector={`-${paging.size || 1}`}
               onClick={(e) => handleClick(e, paging.prev)}
               style={{ padding: "0.25rem 0.75rem", border: "1px solid #d1d5db", borderRadius: "4px 0 0 4px", color: "#6b7280", backgroundColor: "#fff" }}
             >
@@ -331,7 +331,7 @@ function Paging({ paging, buildUrl, onNavigate }) {
               href={buildUrl(paging.next)}
               className="paging-next"
               data-linkable-allow
-              data-block-paging={`+${paging.size || 1}`}
+              data-block-selector={`+${paging.size || 1}`}
               onClick={(e) => handleClick(e, paging.next)}
               style={{ padding: "0.25rem 0.75rem", border: "1px solid #d1d5db", borderRadius: "0 4px 4px 0", color: "#6b7280", backgroundColor: "#fff" }}
             >
@@ -412,7 +412,7 @@ function ListingBlock({ id, block, data, apiUrl, contextPath }) {
 // staticBlocks windows the static children (threading `seen`), and a listing child
 // pages through ListingBlock. Paging is not conditional on a listing — a plain
 // grid of cards renders a pager and pages just like a grid with a listing, so a
-// child on a later page has a data-block-paging control the bridge can reveal it
+// child on a later page has a data-block-selector control the bridge can reveal it
 // through.
 function GridBlock({ id, block, data, apiUrl, contextPath }) {
   const [currentPage, setCurrentPage] = useState(0);

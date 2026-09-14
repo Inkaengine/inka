@@ -1935,7 +1935,7 @@ function renderPaging(paging, blockId) {
         return url.pathname + url.search;
     };
 
-    // Step size for the reveal: data-block-paging="+N"/"-N" tells hydra how many
+    // Step size for the reveal: data-block-selector="+N"/"-N" tells hydra how many
     // items one page-step moves, so tryMakeBlockVisible can synthesise clicks on
     // Next/Prev to page a hidden child into view — client-side, no reload (see the
     // delegated pager handler in index.html). Mirrors nuxt's Paging.vue.
@@ -1943,7 +1943,7 @@ function renderPaging(paging, blockId) {
     let html = '<nav class="grid-paging" aria-label="Page Navigation" style="margin-top: 15px; text-align: center;">';
 
     if (paging.prev !== null) {
-        html += `<a href="${buildUrl(paging.prev)}" data-linkable-allow data-block-paging="-${step}" class="paging-prev" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">← Prev</a>`;
+        html += `<a href="${buildUrl(paging.prev)}" data-linkable-allow data-block-selector="-${step}" class="paging-prev" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">← Prev</a>`;
     }
 
     paging.pages.forEach(p => {
@@ -1956,7 +1956,7 @@ function renderPaging(paging, blockId) {
     });
 
     if (paging.next !== null) {
-        html += `<a href="${buildUrl(paging.next)}" data-linkable-allow data-block-paging="+${step}" class="paging-next" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">Next →</a>`;
+        html += `<a href="${buildUrl(paging.next)}" data-linkable-allow data-block-selector="+${step}" class="paging-next" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">Next →</a>`;
     }
 
     html += '</nav>';

@@ -4,13 +4,14 @@ import { Bridge } from './hydra.src.js';
 /**
  * tryMakeBlockVisible reveals a child that is on ANOTHER PAGE of a paginated
  * container (a grid/listing that renders only a window of its children, so the
- * target isn't in the DOM at all). The container advertises its next/prev step
- * as `data-block-paging="+N"/"-N"`; the bridge clicks it, the container's own
- * handler renders the next page, and the bridge re-checks until the target
- * appears. This is the mechanism the nuxt env couldn't confirm — tested here in
- * isolation so a real logic bug can't hide behind a stale prebundle.
+ * target isn't in the DOM at all). The container advertises its next/prev page
+ * as `data-block-selector="+N"/"-N"` (the generalised carousel form, N = how many
+ * uids the next page shows) on a SELF-navigating pager (data-linkable-allow); the
+ * bridge clicks it, the container's own handler renders the next page, and the
+ * bridge re-checks until the target appears. Tested here in isolation so a real
+ * logic bug can't hide behind a stale prebundle.
  */
-describe('tryMakeBlockVisible — off-page child revealed via data-block-paging', () => {
+describe('tryMakeBlockVisible — off-page child revealed via data-block-selector +N', () => {
   const PAGE = 6;
   const ALL = Array.from({ length: 10 }, (_, i) => `slate-${i}`); // 10 children, 2 pages
   let prev;
@@ -19,7 +20,7 @@ describe('tryMakeBlockVisible — off-page child revealed via data-block-paging'
     const { window } = new JSDOM(`<!DOCTYPE html><body>
       <div data-block-uid="grid">
         <div class="cells"></div>
-        <a class="next" data-block-paging="+${PAGE}">Next</a>
+        <a class="next" data-block-selector="+${PAGE}" data-linkable-allow>Next</a>
       </div>
     </body>`);
     const { document } = window;

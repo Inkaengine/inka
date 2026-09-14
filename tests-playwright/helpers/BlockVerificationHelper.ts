@@ -82,8 +82,7 @@ export async function checkDataEditTextClicks(
         .filter(Boolean);
       const standIn =
         advertised.length === 1 &&
-        advertised[0] !== '+1' &&
-        advertised[0] !== '-1' &&
+        !/^[+-]\d+$/.test(advertised[0]) &&
         !advertised[0].includes(':')
           ? advertised[0]
           : null;
@@ -379,15 +378,17 @@ export async function revealBlock(iframe: FrameLocator, blockUid: string): Promi
   // target. That is what the editor does on select, so the harness asks the
   // bridge instead of re-deriving carousel navigation here — a second
   // implementation would drift from the one users actually get.
-  // tryMakeBlockVisible can return false on the FIRST try for a paged container
-  // child: the container's page-step control ([data-block-paging]) renders
-  // ASYNCHRONOUSLY — the mock grid awaits expandItems, a Nuxt grid resolves a
-  // Suspense boundary — so under load it isn't in the DOM the instant we ask and
-  // the bridge reports "no page-step control on its container". Retry with a short
-  // wait so an async pager gets a chance to appear before we give up. A genuinely
-  // unrevealable block returns false every attempt — bounded, so it can't spin.
+  // tryMakeBlockVisible can return false for a paged container child: the
+  // container's page-step control ([data-block-selector] +N) renders ASYNCHRONOUSLY.
+  // A Nuxt grid in the editor only mounts its pager after FORM_DATA arrives and a
+  // reactivity tick or two settles — measured at ~2-5s in CI — so an instant probe
+  // (and a short retry) reports "no page-step control on its container" while the
+  // pager is still on its way. Poll until the reveal takes hold, up to a generous
+  // deadline: a genuinely unrevealable block just returns false the whole time
+  // (bounded, no spin), while a slow pager gets the seconds it needs to appear.
   let clicked = false;
-  for (let attempt = 0; attempt < 6 && !clicked; attempt++) {
+  const revealDeadline = Date.now() + 12000;
+  for (let attempt = 0; !clicked && Date.now() < revealDeadline; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
     clicked = await iframe
       .locator('body')

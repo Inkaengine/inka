@@ -7,6 +7,7 @@
       <div style="display:inline-flex">
         <f7-button v-if="paging.prev !== null" small outline
                    :href="buildPagingUrl(paging.prev)" data-linkable-allow
+                   :data-block-selector="'-' + (paging.size || 1)"
                    @click.prevent="navigatePage(buildPagingUrl(paging.prev))"
                    style="border-radius:0.25rem 0 0 0.25rem">
           Previous
@@ -20,6 +21,7 @@
         </f7-button>
         <f7-button v-if="paging.next !== null" small outline
                    :href="buildPagingUrl(paging.next)" data-linkable-allow
+                   :data-block-selector="'+' + (paging.size || 1)"
                    @click.prevent="navigatePage(buildPagingUrl(paging.next))"
                    style="border-radius:0 0.25rem 0.25rem 0">
           Next

@@ -320,7 +320,7 @@
         // Intercept the click, update the URL in place (history.pushState, so the
         // back button and getPagesFromUrl still work), and re-render from the
         // current data. hydra reveals a paged-out child by synthesising a click on
-        // the Next/Prev [data-block-paging] control, which lands here too — so the
+        // the Next/Prev [data-block-selector] control, which lands here too — so the
         // reveal pages client-side, no reload, matching nuxt's Paging.vue.
         if (!window._pagerHandlerAdded) {
             window._pagerHandlerAdded = true;
