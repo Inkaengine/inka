@@ -36,6 +36,8 @@ order:
   - live-preview
   - custom-blocks
   - container-blocks
+  - blockmd
+  - testing-content
   - visual-editing
   - what-editors-will-experience
   - listings
