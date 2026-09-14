@@ -57,12 +57,20 @@ async function expandItems(blocks, layout, containerId, paging) {
         return LISTING_BLOCK_TYPES.includes(t);
     };
     const out = [];
+    // A container that DOESN'T page (an accordion panel, a column) calls this with
+    // no paging. staticBlocks tolerates that (its size defaults to 1000, so every
+    // static child renders), but expandListingBlocks does NOT: a truthy paging
+    // object with no start/size makes its window `undefined..NaN` and it returns
+    // ZERO items — a nested listing rendered empty. Normalize one window here so
+    // both helpers get real start/size numbers: the container's own window when it
+    // pages, else a full window (all items). seen still threads for combined paging.
+    const pagingWindow = { start: paging?.start ?? 0, size: paging?.size ?? 1000 };
     let seen = paging?.seen || 0;
     let outPaging = null;
     let i = 0;
     while (i < layout.length) {
         if (isListing(layout[i]) && window._expandListingBlocks) {
-            const res = await window._expandListingBlocks(blocks, [layout[i]], containerId, { ...paging, seen });
+            const res = await window._expandListingBlocks(blocks, [layout[i]], containerId, { ...pagingWindow, seen });
             out.push(...(res.items || []));
             outPaging = res.paging || outPaging;
             seen = res.paging?.seen ?? (seen + (res.items?.length || 0));
@@ -71,7 +79,7 @@ async function expandItems(blocks, layout, containerId, paging) {
             // A run of consecutive static children — window them together.
             const run = [];
             while (i < layout.length && !isListing(layout[i])) { run.push(layout[i]); i++; }
-            const res = window._staticBlocks(run, { blocks, paging, seen });
+            const res = window._staticBlocks(run, { blocks, paging: pagingWindow, seen });
             out.push(...res.items);
             outPaging = res.paging;
             seen = res.paging.seen;
