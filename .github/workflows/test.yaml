@@ -77,7 +77,12 @@ jobs:
         run: pnpm build
         env:
           RAZZLE_API_PATH: http://localhost:8888
-          RAZZLE_DEFAULT_IFRAME_URL: http://localhost:8889,http://localhost:3003,http://localhost:3004,http://localhost:3005,http://localhost:3006,http://localhost:3007,http://localhost:3008
+          # RAZZLE_ vars are inlined into the CLIENT bundle at build time (webpack
+          # DefinePlugin), so the frontend-switcher list the browser shows comes from
+          # HERE, not from a downstream job's runtime env. Label the entries the demo
+          # video narrates ("Nuxt blog", "F7 Mobile") and give F7 its hash-router
+          # suffix so the switch lands on a rendered page, not a blank one.
+          RAZZLE_DEFAULT_IFRAME_URL: "Test frontend|http://localhost:8889,Nuxt blog|http://localhost:3003,http://localhost:3004,http://localhost:3005,http://localhost:3006,http://localhost:3007,F7 Mobile|http://localhost:3008/#!"
           VOLTOCONFIG: ${{ github.workspace }}/volto.config.js
       - name: Upload Volto build
         uses: actions/upload-artifact@v4
