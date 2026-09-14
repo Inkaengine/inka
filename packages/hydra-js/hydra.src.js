@@ -4780,16 +4780,23 @@ export class Bridge {
       // Skip if tryMakeBlockVisible is currently navigating (to avoid interference)
       const selectorElement = event.target.closest('[data-block-selector]');
       if (selectorElement) {
-        // A SELF-NAVIGATING pager (a grid/listing Next/Prev with
-        // data-block-selector="+N|-N") pages ITSELF via its own click handler and
+        // A SELF-NAVIGATING pager (a grid/listing Next/Prev whose data-block-selector
+        // is a DIRECTIONAL +N|-N token) pages ITSELF via its own click handler and
         // marks that intent with data-linkable-allow. handleBlockSelector's carousel
         // stepping would fight that navigation, so leave it to the pager: the bridge
         // still reveals a hidden child by SYNTHESISING a click, which triggers the
-        // pager's own handler — it just doesn't drive the step here. A BRIDGE-driven
-        // control (carousel +1/-1, accordion header, tab) has no data-linkable-allow
-        // and still goes through handleBlockSelector below. This is why the pager
-        // reveal generalises data-block-selector rather than needing its own tag.
-        if (selectorElement.hasAttribute('data-linkable-allow')) {
+        // pager's own handler — it just doesn't drive the step here. The skip is
+        // scoped to that directional case ONLY: other data-linkable-allow handles
+        // carry UID tokens (a codeExample tab is `uid uid#code` + data-linkable-allow)
+        // and STILL need handleBlockSelector below to reveal/select the block — a
+        // blanket data-linkable-allow skip silently broke tab and similar reveals.
+        const linkableTokens = (selectorElement.getAttribute('data-block-selector') || '')
+          .trim()
+          .split(/\s+/);
+        const isSelfNavigatingPager =
+          selectorElement.hasAttribute('data-linkable-allow') &&
+          linkableTokens.some((t) => /^[+-]\d+$/.test(t));
+        if (isSelfNavigatingPager) {
           return;
         }
         // tryMakeBlockVisible reveals a hidden block by SYNTHESISING a click on
@@ -12288,7 +12295,7 @@ export class Bridge {
         // "later page" case), else back. Position is the container's authored
         // order (blocks_layout); a container with no visible child yet also pages
         // forward from the start.
-        const layout = this.getBlockById(parentId)?.blocks_layout?.items || [];
+        const layout = this.getBlockData(parentId)?.blocks_layout?.items || [];
         const targetIdx = layout.indexOf(targetUid);
         const renderedIdxs = layout
           .map((id, i) => (this.queryBlockElement(id) ? i : -1))

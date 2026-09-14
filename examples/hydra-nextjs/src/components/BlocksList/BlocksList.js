@@ -423,20 +423,43 @@ function GridBlock({ id, block, data, apiUrl, contextPath }) {
   const layout = block.blocks_layout?.items || [];
   const blocks = block.blocks || {};
   const start = currentPage * DEFAULT_PAGE_SIZE;
-  let seen = 0;
-  let paging = null;
-  const entries = [];
-  for (const childId of layout) {
-    const child = blocks[childId];
-    if (!child) continue;
-    if (child["@type"] === "listing") {
-      entries.push({ key: childId, block: child, isListing: true });
-    } else {
-      const res = staticBlocks([childId], { blocks, paging: { start, size: DEFAULT_PAGE_SIZE }, seen });
-      seen = res.paging.seen;
-      paging = res.paging;
-      entries.push({ key: childId, items: res.items, isListing: false });
-    }
+  const hasListing = layout.some((cid) => blocks[cid]?.["@type"] === "listing");
+
+  // A grid pages ALL its children as ONE combined window. When a listing is
+  // present its items must be FETCHED, so we window the whole layout through
+  // expandListingBlocks (async) — which walks the layout, fetches each listing
+  // and windows every manual child inline against the running position. A
+  // manual block AFTER a listing therefore lands on whatever page the listing's
+  // item count pushes it to, and the bridge reveals it by paging the grid. A
+  // pure-static grid needs no fetch, so it windows synchronously through
+  // staticBlocks — same paging, SSR-friendly, no hydration flash. Paging is not
+  // conditional on a listing; only whether the window is fetched async is.
+  const [asyncItems, setAsyncItems] = useState(null);
+  const [asyncPaging, setAsyncPaging] = useState(null);
+  useEffect(() => {
+    if (!hasListing) return;
+    const fetchItems = { listing: ploneFetchItems({ apiUrl: apiUrl || "", contextPath: contextPath || "/" }) };
+    expandListingBlocks(layout, {
+      blocks,
+      fetchItems,
+      itemTypeField: "variation",
+      paging: { start, size: DEFAULT_PAGE_SIZE },
+    }).then((res) => {
+      setAsyncItems(res.items || []);
+      setAsyncPaging(res.paging || null);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, block, apiUrl, contextPath, start, hasListing]);
+
+  let items;
+  let paging;
+  if (hasListing) {
+    items = asyncItems || [];
+    paging = asyncPaging;
+  } else {
+    const res = staticBlocks(layout, { blocks, paging: { start, size: DEFAULT_PAGE_SIZE } });
+    items = res.items;
+    paging = res.paging;
   }
 
   const buildPagingUrl = (page) => (page === 0 ? (contextPath || "/") : `${contextPath || "/"}/@pg_${id}_${page}`);
@@ -447,15 +470,9 @@ function GridBlock({ id, block, data, apiUrl, contextPath }) {
 
   return (
     <div data-block-uid={id} data-block-container="{}" className="grid-block" style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(layout.length, 4)}, 1fr)`, gap: "1rem" }}>
-      {entries.map((entry) =>
-        entry.isListing ? (
-          <ListingBlock key={entry.key} id={entry.key} block={entry.block} data={data} apiUrl={apiUrl} contextPath={contextPath} />
-        ) : (
-          entry.items.map((item) => (
-            <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
-          ))
-        )
-      )}
+      {items.map((item, index) => (
+        <Block key={item["@id"] ?? `${item["@uid"] ?? "cell"}-${index}`} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+      ))}
       <Paging paging={paging} buildUrl={buildPagingUrl} onNavigate={handleNavigate} />
     </div>
   );

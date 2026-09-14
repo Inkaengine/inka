@@ -66,7 +66,7 @@ describe('tryMakeBlockVisible — off-page child revealed via data-block-selecto
       blockPathMap,
       queryBlockElement: (uid) => document.querySelector(`[data-block-uid="${uid}"]`),
       isElementHidden: (el) => !el || el.getAttribute('data-hidden') === 'true',
-      getBlockById: (uid) => (uid === 'grid' ? { blocks_layout: { items: ALL } } : undefined),
+      getBlockData: (uid) => (uid === 'grid' ? { blocks_layout: { items: ALL } } : undefined),
       handlesFor: () => [],
       fillersFor: () => [],
       fillDeclaredInputs: () => [],
