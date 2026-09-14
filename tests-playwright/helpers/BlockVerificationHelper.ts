@@ -379,6 +379,11 @@ export async function revealBlock(iframe: FrameLocator, blockUid: string): Promi
   // target. That is what the editor does on select, so the harness asks the
   // bridge instead of re-deriving carousel navigation here — a second
   // implementation would drift from the one users actually get.
+  const dbg = await iframe.locator('body').evaluate((_el, uid) => {
+    const b = (window as any).__hydraBridge;
+    return { hasBridge: !!b, fn: typeof b?.tryMakeBlockVisible, inMap: !!b?.blockPathMap?.[uid], parent: b?.blockPathMap?.[uid]?.parentId ?? null };
+  }, blockUid).catch((e) => ({ err: String(e) }));
+  console.log('[revealBlock DEBUG]', blockUid, JSON.stringify(dbg));
   const clicked = await iframe
     .locator('body')
     .evaluate(
