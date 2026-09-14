@@ -581,8 +581,12 @@
           :is="(cell.type == 'header') ? 'th' : 'td'"
           :data-block-uid="cell['@uid']"
           data-block-add="right"
+          data-edit-text="value"
         >
-          <RichText v-for="(node, idx) in cell.value" :key="idx" :node="node" data-edit-text="value" />
+          <!-- data-edit-text on the CELL (one editable value field), like the
+               slate block's wrapper — not on each node, which exposed N fields
+               per cell and broke the DOM→slate round-trip. -->
+          <RichText v-for="(node, idx) in cell.value" :key="idx" :node="node" />
         </component>
       </tr>
     </table>
