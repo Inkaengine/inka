@@ -81,6 +81,13 @@ export default defineConfig({
       '/hydra.js': path.resolve(__dirname, '../../../packages/hydra-js/hydra.src.js'),
       '/helpers.js': path.resolve(__dirname, '../../../packages/helpers/index.js'),
       '/build-block-path-map.js': path.resolve(__dirname, '../../../packages/hydra-js/buildBlockPathMap.js'),
+      // The CMS adapters the fixture and the proxy frame import. The frontend
+      // owns the adapter under the inversion, so these are the fixture's own
+      // dependency — without them hydra-proxy.html fails to build and the admin
+      // gets no adapter at all.
+      '/plone-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-plone/index.js'),
+      '/wordpress-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-wordpress/index.js'),
+      '/drupal-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-drupal/index.js'),
       // The same merge the admin runs before it posts INITIAL_DATA (View.jsx),
       // so the mock parent hands the bridge a page with its forced layouts and
       // templates already stamped on — see mock-parent.html's INIT handler.

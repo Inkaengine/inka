@@ -134,29 +134,6 @@
         <div id="footer-content"></div>
     </footer>
 
-    <script>
-      // Set BEFORE the module below, which reads it while choosing an adapter.
-      // It used to sit further down the file and worked only because a module's
-      // body happened to run later; a guarded version of the same assignment
-      // broke that, the adapter got an undefined base URL, resolved every
-      // request against the FRONTEND's origin and 404'd on Vite.
-      //
-      // Vite injects the run's API port (see vite.config.js). No fallback: a
-      // missing injection must fail here rather than quietly send the whole
-      // suite at whatever holds the default port — which, with two branches
-      // running, is another branch's mock answering with its own behaviour.
-      //
-      // NOTE: this fixture renders Inka's own (Plone) content, so its own
-      // fetching stays on the Plone mock even during a Drupal or WordPress
-      // journey. Pointing it at the run's CMS breaks its bootstrap.
-      window._apiOrigin = __MOCK_API_ORIGIN__;
-      if (!window._apiOrigin) {
-        throw new Error(
-          '[fixture] __MOCK_API_ORIGIN__ was not injected; refusing to guess ' +
-            'an API origin. Check vite.config.js define.',
-        );
-      }
-    </script>
     <script src="/renderer.js"></script>
     <script type="module">
         import { initBridge, getAccessToken } from '/hydra.js';
