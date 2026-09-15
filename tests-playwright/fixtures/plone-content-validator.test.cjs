@@ -121,6 +121,59 @@ describe('plone-content-validator validate()', () => {
     assert.ok(r.errors.some((e) => e.includes('remote URL')), r.errors.join('\n'));
   });
 
+  // A File's blob is just as shippable as an Image's, and just as easy to leave
+  // behind: git can hold a data.json promising a 374KB video with nothing at the
+  // blob_path. That is how the homepage hero video came to be referenced by a
+  // tracked data.json while the mp4 itself was git-ignored — validation passed,
+  // and the deployed page served a 404.
+  it('reports File with blob_path pointing at a missing file', () => {
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a',
+        '@type': 'File',
+        id: 'page-a',
+        UID: 'pageauid1234567',
+        parent: { '@id': '/' },
+        file: {
+          blob_path: 'page-a/file/hero.mp4',
+          'content-type': 'video/mp4',
+          filename: 'hero.mp4',
+          size: 374638,
+        },
+      },
+    });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('blob_path file missing')),
+      `expected a missing-blob error, got: ${r.errors.join('\n') || '(none)'}`,
+    );
+  });
+
+  it('accepts a File whose blob_path exists', () => {
+    const { root, contentDir } = buildFixture({
+      blobFiles: ['page-a/file/hero.mp4'],
+      pageA: {
+        '@id': '/page-a',
+        '@type': 'File',
+        id: 'page-a',
+        UID: 'pageauid1234567',
+        parent: { '@id': '/' },
+        file: {
+          blob_path: 'page-a/file/hero.mp4',
+          'content-type': 'video/mp4',
+          filename: 'hero.mp4',
+          size: 4,
+        },
+      },
+    });
+    fs.mkdirSync(path.join(contentDir, 'page-a', 'file'), { recursive: true });
+    fs.writeFileSync(path.join(contentDir, 'page-a', 'file', 'hero.mp4'), 'data');
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.deepEqual(r.errors, []);
+  });
+
   it('reports child before parent in _data_files_ ordering', () => {
     const { root, contentDir } = buildFixture({
       dataFiles: [
@@ -365,6 +418,32 @@ describe('plone-content-validator checkIntegrity()', () => {
     cleanup(root);
     assert.ok(r.errors.some((e) => e.includes('broken resolveuid')), r.errors.join('\n'));
     assert.equal(r.stats.resolveuidBroken, 1);
+  });
+
+  it('FAILS on a multi-node slate value (must be a single top-level node)', () => {
+    // The editor makes one block per paragraph, and a paragraph boundary is a
+    // block boundary, so a slate value with >1 top-level node (a title + body
+    // packed into one block) has no bare-markdown spelling. lib/slate-normalize
+    // collapses it; a multi-block cell belongs in a `columns` block instead.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          s: {
+            '@type': 'slate',
+            value: [
+              { type: 'p', children: [{ type: 'strong', children: [{ text: 'Title' }] }] },
+              { type: 'p', children: [{ text: 'Body paragraph.' }] },
+            ],
+          },
+        },
+        blocks_layout: { items: ['s'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('top-level nodes')), r.errors.join('\n'));
   });
 
   it('FAILS on a template block with no templateId', () => {
@@ -615,6 +694,104 @@ describe('plone-content-validator checkIntegrity()', () => {
     const r = checkIntegrity(contentDir);
     cleanup(root);
     assert.equal(r.errors.filter((e) => /templateId|slotId/.test(e)).length, 0,
+      r.errors.join('\n'));
+  });
+
+  it('FAILS on an INSTANCE block that fills a template with no slotId', () => {
+    // The mirror of the template-side rule, on the page that instantiates one.
+    // A block inside a `<fields templateId=...>` region is matched to a template
+    // slot by its slotId. Carry the templateId but omit the slotId (or give one
+    // the template has no slot for) and forced-layout expansion matches it to
+    // nothing — the block is composed into the page data (block-sanity discovers
+    // it) yet no frontend has a slot to render it, so its data-block-uid never
+    // appears and the only symptom is a reveal timeout. That is exactly how
+    // /docs/examples/slate's `callout` (templateId set, slotId absent) slipped
+    // through: 2c-ter only checked blocks whose slotId already matched a slot.
+    const { root, contentDir } = buildFixture({
+      dataFiles: [
+        'plone_site_root/data.json',
+        'tpl/data.json',
+        'inst/data.json',
+      ],
+      localRoles: {
+        rootuid1234567: { local_roles: { admin: ['Owner'] } },
+        tpluid1234567890: { local_roles: { admin: ['Owner'] } },
+        instuid123456789: { local_roles: { admin: ['Owner'] } },
+      },
+    });
+    const write = (rel, obj) => {
+      fs.mkdirSync(path.join(contentDir, rel), { recursive: true });
+      fs.writeFileSync(path.join(contentDir, rel, 'data.json'), JSON.stringify(obj));
+    };
+    // The template declares two slots: schema and rendering.
+    write('tpl', {
+      '@id': '/ref', '@type': 'Document', id: 'ref',
+      UID: 'tpluid1234567890', parent: { '@id': '/' },
+      blocks: {
+        'tpl-schema': { '@type': 'codeExample', templateId: 'resolveuid/tpluid1234567890', slotId: 'schema', fixed: false },
+        'tpl-rendering': { '@type': 'codeExample', templateId: 'resolveuid/tpluid1234567890', slotId: 'rendering', fixed: false },
+      },
+      blocks_layout: { items: ['tpl-schema', 'tpl-rendering'] },
+    });
+    // The instance fills `rendering` correctly, but its callout carries the
+    // templateId with NO slotId — the callout-22 shape.
+    write('inst', {
+      '@id': '/page', '@type': 'Document', id: 'page',
+      UID: 'instuid123456789', parent: { '@id': '/' },
+      blocks: {
+        good: { '@type': 'codeExample', templateId: 'resolveuid/tpluid1234567890', templateInstanceId: 'ti', slotId: 'rendering', fixed: false, readOnly: false },
+        orphan: { '@type': 'callout', templateId: 'resolveuid/tpluid1234567890', templateInstanceId: 'ti' },
+      },
+      blocks_layout: { items: ['good', 'orphan'] },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('orphan') && /slot/i.test(e)),
+      r.errors.join('\n'));
+    // The fully-coupled block (slotId + fixed + readOnly) must NOT be flagged.
+    assert.ok(!r.errors.some((e) => e.includes('block good ')), r.errors.join('\n'));
+  });
+
+  it('FAILS on an INSTANCE slot-fill missing fixed/readOnly (emit did not run)', () => {
+    // A block that has a valid slotId but no fixed/readOnly means the emit
+    // synthesis (markdown-mount normalizeInstanceTemplateFields, which stamps both
+    // false on a page slot-fill) never ran for it — a real pipeline gap, not an
+    // authoring nit. The coupling must hold: all three or the block is flagged.
+    const { root, contentDir } = buildFixture({
+      dataFiles: [
+        'plone_site_root/data.json',
+        'tpl/data.json',
+        'inst/data.json',
+      ],
+      localRoles: {
+        rootuid1234567: { local_roles: { admin: ['Owner'] } },
+        tpluid1234567890: { local_roles: { admin: ['Owner'] } },
+        instuid123456789: { local_roles: { admin: ['Owner'] } },
+      },
+    });
+    const write = (rel, obj) => {
+      fs.mkdirSync(path.join(contentDir, rel), { recursive: true });
+      fs.writeFileSync(path.join(contentDir, rel, 'data.json'), JSON.stringify(obj));
+    };
+    write('tpl', {
+      '@id': '/ref', '@type': 'Document', id: 'ref',
+      UID: 'tpluid1234567890', parent: { '@id': '/' },
+      blocks: {
+        'tpl-schema': { '@type': 'codeExample', templateId: 'resolveuid/tpluid1234567890', slotId: 'schema', fixed: false },
+      },
+      blocks_layout: { items: ['tpl-schema'] },
+    });
+    write('inst', {
+      '@id': '/page', '@type': 'Document', id: 'page',
+      UID: 'instuid123456789', parent: { '@id': '/' },
+      blocks: {
+        halfway: { '@type': 'codeExample', templateId: 'resolveuid/tpluid1234567890', templateInstanceId: 'ti', slotId: 'schema' },
+      },
+      blocks_layout: { items: ['halfway'] },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('halfway') && e.includes('fixed') && e.includes('readOnly')),
       r.errors.join('\n'));
   });
 

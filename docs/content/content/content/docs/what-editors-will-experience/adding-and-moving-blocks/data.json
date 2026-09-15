@@ -8,7 +8,7 @@
   "creators": [
     "admin"
   ],
-  "description": "The block chooser, slash menu, and drag handles are part of Hydra and look the same everywhere. What you can pick from those choosers — the list of block types — comes from your site's design system. One site might offer \"Lead paragraph\", \"Pull quote\", \"Stat highlight\"; another might just have \"Text\" and \"Image\". Mechanic is identical.",
+  "description": "The block chooser, slash menu, and drag handles are part of Inka and look the same everywhere. What you can pick from those choosers — the list of block types — comes from your site's design system. One site might offer \"Lead paragraph\", \"Pull quote\", \"Stat highlight\"; another might just have \"Text\" and \"Image\". Mechanic is identical.",
   "effective": "2025-01-01T00:00:00",
   "exclude_from_nav": false,
   "expires": null,
@@ -28,7 +28,7 @@
     "@id": "/docs/what-editors-will-experience",
     "@type": "Document",
     "UID": "docs-what-editors-will-experience-001",
-    "description": "This guide is for content editors using a Hydra-powered site. It covers how to use the editor — how to select things, edit text, add and move blocks, work with containers and templates — without assuming you know how the site was built.",
+    "description": "This guide is for content editors using an Inka-powered site. It covers how to use the editor — how to select things, edit text, add and move blocks, work with containers and templates — without assuming you know how the site was built.",
     "title": "Editor Guide",
     "type_title": "Page"
   },
@@ -59,13 +59,13 @@
     },
     "p-1": {
       "@type": "slate",
-      "plaintext": "The block chooser, slash menu, and drag handles are part of Hydra and look the same everywhere. What you can pick from those choosers — the list of block types — comes from your site's design system. One site might offer \"Lead paragraph\", \"Pull quote\", \"Stat highlight\"; another might just have \"Text\" and \"Image\". Mechanic is identical.",
+      "plaintext": "The block chooser, slash menu, and drag handles are part of Inka and look the same everywhere. What you can pick from those choosers — the list of block types — comes from your site's design system. One site might offer \"Lead paragraph\", \"Pull quote\", \"Stat highlight\"; another might just have \"Text\" and \"Image\". Mechanic is identical.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "The block chooser, slash menu, and drag handles are part of Hydra and look the same everywhere. What you can pick from those choosers — the list of block types — comes from your site's design system. One site might offer \"Lead paragraph\", \"Pull quote\", \"Stat highlight\"; another might just have \"Text\" and \"Image\". Mechanic is identical."
+              "text": "The block chooser, slash menu, and drag handles are part of Inka and look the same everywhere. What you can pick from those choosers — the list of block types — comes from your site's design system. One site might offer \"Lead paragraph\", \"Pull quote\", \"Stat highlight\"; another might just have \"Text\" and \"Image\". Mechanic is identical."
             }
           ]
         }

@@ -86,6 +86,7 @@ export default defineConfig({
       // templates already stamped on — see mock-parent.html's INIT handler.
       '/merge-templates.js': path.resolve(__dirname, '../../../packages/volto-hydra/src/utils/mergeTemplates.mjs'),
       '/shared-block-schemas.js': path.resolve(__dirname, '../shared-block-schemas.js'),
+      '/core-block-schemas.js': path.resolve(__dirname, '../core-block-schemas.js'),
     },
   },
 });

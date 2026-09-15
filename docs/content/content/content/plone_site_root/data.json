@@ -61,13 +61,13 @@
     },
     "why-hydra-heading": {
       "@type": "slate",
-      "plaintext": "Why Hydra",
+      "plaintext": "Why Inka",
       "styles": {},
       "value": [
         {
           "children": [
             {
-              "text": "Why Hydra"
+              "text": "Why Inka"
             }
           ],
           "type": "h2"
@@ -76,13 +76,13 @@
     },
     "why-hydra-tagline": {
       "@type": "slate",
-      "plaintext": "Most CMS platforms force a trade-off: visual editing or frontend freedom. Hydra gives you both.",
+      "plaintext": "Compliance or engagement is a false choice. You decide where the dial sits for each site.",
       "styles": {},
       "value": [
         {
           "children": [
             {
-              "text": "Most CMS platforms force a trade-off: visual editing or frontend freedom. Hydra gives you both."
+              "text": "Compliance or engagement is a false choice. You decide where the dial sits for each site."
             }
           ],
           "type": "p"
@@ -119,14 +119,14 @@
         },
         "box-frontend": {
           "@type": "slate",
-          "plaintext": "Any Frontend",
+          "plaintext": "Multi frontend, multi backend. Use React, Vue, Nuxt, Next.js or any stack, and switch channels mid-edit.",
           "value": [
             {
               "children": [
                 {
                   "children": [
                     {
-                      "text": "Any Frontend"
+                      "text": "Multi frontend, multi backend"
                     }
                   ],
                   "type": "strong"
@@ -143,12 +143,7 @@
             {
               "children": [
                 {
-                  "children": [
-                    {
-                      "text": "Truly Decoupled"
-                    }
-                  ],
-                  "type": "strong"
+                  "text": "Use React, Vue, Nuxt, Next.js or any stack, and switch channels mid-edit."
                 }
               ],
               "type": "p"
@@ -247,12 +242,12 @@
     },
     "0d0c0506-f9bb-48d8-af0a-1352d81b45de": {
       "@type": "slate",
-      "plaintext": "Find out more about Hydra",
+      "plaintext": "Find out more about Inka",
       "value": [
         {
           "children": [
             {
-              "text": "Find out more about Hydra"
+              "text": "Find out more about Inka"
             }
           ],
           "type": "h2"
@@ -274,7 +269,7 @@
                 {
                   "children": [
                     {
-                      "text": "Hydra on GitHub — source code, issues, and documentation"
+                      "text": "Inka on GitHub — source code, issues, and documentation"
                     }
                   ],
                   "data": {
@@ -348,7 +343,7 @@
           "buttonText": "See all Content Types",
           "description": "You can log in and experience currently working features (Volto like but on any frontend)",
           "flagAlign": "left",
-          "head_title": "Welcome to Hydra",
+          "head_title": "Welcome to Inka",
           "href": [
             {
               "@id": "/docs/examples/content-types",
@@ -414,14 +409,14 @@
               "type_title": "Bild"
             }
           ],
-          "title": "You can use this site to test Hydra"
+          "title": "You can use this site to test Inka"
         },
         {
           "@id": "ef8ceecc-7c1d-4e0a-9b67-a56e7d03f6e3",
           "buttonText": "See all blocks",
           "description": "Frontend freedom makes it easy to create beautiful and fast experiences",
           "flagAlign": "right",
-          "head_title": "Welcome to Hydra's many frontends",
+          "head_title": "Welcome to Inka's many frontends",
           "hideButton": false,
           "href": [
             {
@@ -629,7 +624,7 @@
                   "type": "strong"
                 },
                 {
-                  "text": "You can use this site to test Hydra Edit."
+                  "text": "You can use this site to test Inka Edit.\n"
                 }
               ],
               "type": "p"
@@ -824,16 +819,6 @@
       },
       "styles": {}
     },
-    "video-hero-001": {
-      "@type": "video",
-      "url": "/docs/static/hydra-demo",
-      "align": "center",
-      "styles": {},
-      "autoplay": true,
-      "loop": true,
-      "muted": true,
-      "controls": false
-    },
     "hero-cta": {
       "@type": "slate",
       "plaintext": "Try the demo  ·  Source on GitHub",
@@ -875,13 +860,13 @@
     },
     "hero-headline": {
       "@type": "slate",
-      "plaintext": "Visual editing. Any frontend.",
+      "plaintext": "Design-system-first page building",
       "value": [
         {
           "type": "h1",
           "children": [
             {
-              "text": "Visual editing. Any frontend."
+              "text": "Design-system-first page building"
             }
           ]
         }
@@ -890,13 +875,13 @@
     },
     "hero-subhead": {
       "@type": "slate",
-      "plaintext": "A visual headless CMS using Plone — drag-and-drop blocks and inline text editing, with whichever frontend stack you choose.",
+      "plaintext": "Strike the right balance for your site. Make it easy for editors to create engagement — while staying compliant.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "A visual headless CMS using Plone — drag-and-drop blocks and inline text editing, with whichever frontend stack you choose."
+              "text": "Strike the right balance for your site. Make it easy for editors to create engagement — while staying compliant."
             }
           ]
         }
@@ -909,7 +894,6 @@
       "hero-headline",
       "hero-subhead",
       "hero-cta",
-      "video-hero-001",
       "why-hydra-heading",
       "why-hydra-tagline",
       "why-hydra-quadrant",
@@ -929,7 +913,7 @@
   "creators": [
     "admin"
   ],
-  "description": "A Visual Headless CMS — true visual editing with drag and drop blocks using any frontend stack",
+  "description": "Design-system-first page building. Strike the right balance for your site — make it easy for editors to create engagement while staying compliant.",
   "effective": null,
   "exclude_from_nav": false,
   "expires": null,
@@ -949,7 +933,7 @@
   "rights": "",
   "subjects": [],
   "table_of_contents": null,
-  "title": "Volto Hydra",
+  "title": "Inka",
   "type_title": "Plone Site",
   "workflow_history": {}
 }

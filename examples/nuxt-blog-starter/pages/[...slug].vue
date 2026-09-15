@@ -68,7 +68,11 @@ import { useRuntimeConfig } from "#imports"
 // old component's `data` ref, so admin's resent FORM_DATA lands in the
 // wrong instance and the new instance never gets populated).
 definePageMeta({
-  key: (route) => route.path.replace(/\/@pg_[^/]+_\d+/g, ''),
+  // `|| '/'` so a ROOT-page paging URL ("/@pg_<id>_<n>") strips to "/" — the same
+  // key as the un-paged root "/". Without it the strip yields "", a DIFFERENT key
+  // from "/", so Nuxt remounts and re-fetches an empty path (a blank page) the
+  // moment you page the root document's grid.
+  key: (route) => route.path.replace(/\/@pg_[^/]+_\d+/g, '') || '/',
 });
 
 const runtimeConfig = useRuntimeConfig();
@@ -296,7 +300,7 @@ onMounted(() => {
                     },
                 },
                 blocks: newBlocks,
-                pathToApiPath: (path) => path.replace(/\/@pg_[^/]+_\d+/, ''),
+                pathToApiPath: (path) => path.replace(/\/@pg_[^/]+_\d+/, '') || '/',
                 // Pass onEditChange before init() sends INIT to avoid race condition
                 onEditChange: (page) => {
                     if (!page) return;
@@ -373,7 +377,12 @@ const preloadTemplates = [
 
 var path = [];
 var pages = {};
-for (var part of route.params.slug) {
+// `|| []` because at the site root the catch-all param is empty, and whether
+// vue-router hands back [] or undefined varies by version — on the nuxt 3.21.2
+// the lockfile pins, it is undefined and this threw "route.params.slug is not
+// iterable", failing the SSG prerender of / with a bare [500]. The reactive
+// `pages` computed below already guarded the same value; this one was missed.
+for (var part of route.params.slug || []) {
     if (part.startsWith("@pg_")) {
         const [_,bid,page] = part.split("_");
         pages[bid] = Number(page);

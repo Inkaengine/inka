@@ -1,39 +1,39 @@
-// Aggregate slate-field editability across all discovered block examples.
+// Field-editability coverage for block-sanity — collected per test, combined by
+// the coverage reporter across all parallel workers.
 //
-// A slate field only needs its [data-edit-text="<field>"] edit container in ONE
-// example of a block type — not every one. Some fields are gated by an optional
-// synced element (e.g. a card's `description` is only editable when the grid's
-// `copy` element is on), so they legitimately render in some examples and not
-// others. Requiring the container per-instance false-fails the gated-off ones.
+// A field only needs its edit annotation ([data-edit-text] / [data-edit-media] /
+// [data-edit-link]) in ONE example of a block type, not every one: a field can be
+// gated by an optional synced element or simply empty in some examples (a teaser
+// with no target renders a placeholder with no link — legitimately not editable
+// there). So the per-example render check RECORDS coverage here rather than
+// throwing, and the aggregate fails a field only if it is editable in NO example.
 //
-// The per-example render check records coverage here instead of throwing; a
-// final aggregate test (via slateFieldsNeverEditable) fails only if a field is
-// never editable in ANY example of its block type.
-//
-// This relies on the per-example tests and the aggregate sharing module state,
-// i.e. running in one worker. block-sanity's config uses fullyParallel: false,
-// so this single spec file stays on one worker and the aggregation is exact.
-// Under a fully-parallel config the state splits per worker, but a field that
-// renders its container in every example (the norm) is still recorded in every
-// worker, so `missing` stays empty and the aggregate can't false-fail — only a
-// field editable in *some* examples and split across workers could, and that
-// gated pattern only occurs in this project's own (serial) content.
+// This module stays free of any Playwright dependency (the unit tests import it):
+// it just accumulates THIS test's records. The spec attaches them to the test via
+// testInfo.attach, and the coverage reporter — which runs in the main process and
+// receives every worker's attachments — merges them and runs `fieldsNeverEditable`
+// once. That is the framework-native way to combine parallel results; no shared
+// files, no worker/ordering assumptions.
 
-// Editability is the same aggregate contract for every field KIND — slate text
-// (`data-edit-text`), media (`data-edit-media`) and links (`data-edit-link`): a
-// field only needs its edit annotation in ONE example, since it can be gated by
-// an optional synced element or simply empty in some examples. Keyed by kind so a
-// `slate` and (hypothetical) `media` field of the same name never collide.
-type FieldKind = 'text' | 'media' | 'link';
-const keyOf = (kind: FieldKind, blockType: string) => `${kind} ${blockType}`;
+export type FieldKind = 'text' | 'media' | 'link';
 
-const seenByType = new Map<string, Set<string>>();
-const missingByType = new Map<string, Map<string, string>>();
+export interface FieldRecord {
+  kind: FieldKind;
+  blockType: string;
+  field: string;
+  editable: boolean;
+  example: string;
+}
+
+// This test's records. Drained (and cleared) by the spec's afterEach, which
+// attaches them; tests in a worker run one at a time, so this holds only the
+// current test's records between drains.
+const pending: FieldRecord[] = [];
 
 /**
  * Record whether a `kind` field of `blockType` was editable (its edit annotation
- * present) in this example. The aggregate (`fieldsNeverEditable`) fails a field
- * only if it was editable in NO example.
+ * present) in this example. The aggregate fails a field only if it was editable
+ * in NO example across ALL workers.
  */
 export function recordFieldEditable(
   kind: FieldKind,
@@ -42,17 +42,7 @@ export function recordFieldEditable(
   editable: boolean,
   example: string,
 ): void {
-  const key = keyOf(kind, blockType);
-  if (editable) {
-    let set = seenByType.get(key);
-    if (!set) seenByType.set(key, (set = new Set()));
-    set.add(field);
-  } else {
-    let miss = missingByType.get(key);
-    if (!miss) missingByType.set(key, (miss = new Map()));
-    // Keep the first example we saw a field missing in, for the diagnostic.
-    if (!miss.has(field)) miss.set(field, example);
-  }
+  pending.push({ kind, blockType, field, editable, example });
 }
 
 /** Slate-specific alias, preserved for existing call sites (slate → data-edit-text). */
@@ -65,6 +55,13 @@ export function recordSlateFieldContainer(
   recordFieldEditable('text', blockType, field, hasContainer, example);
 }
 
+/** Return this test's records and clear them, for the spec to attach. */
+export function drainFieldCoverage(): FieldRecord[] {
+  const out = pending.slice();
+  pending.length = 0;
+  return out;
+}
+
 export interface UneditableField {
   kind: FieldKind;
   blockType: string;
@@ -73,23 +70,41 @@ export interface UneditableField {
 }
 export type UneditableSlateField = UneditableField;
 
-// Fields that were missing their edit annotation in at least one example AND
-// never had it in any example of the same block type. Optionally scoped to a kind.
-export function fieldsNeverEditable(kind?: FieldKind): UneditableField[] {
+const keyOf = (kind: FieldKind, blockType: string) => `${kind} ${blockType}`;
+
+/**
+ * Fields that were missing their edit annotation in at least one example AND
+ * never had it in any example of the same block type — over the MERGED records
+ * from every worker. Optionally scoped to a kind. Pure: the reporter calls it
+ * with all attachments folded together; the unit tests call it directly.
+ */
+export function fieldsNeverEditable(
+  records: FieldRecord[],
+  kind?: FieldKind,
+): UneditableField[] {
+  const seen = new Map<string, Set<string>>();
+  const missing = new Map<string, Map<string, string>>();
+  for (const rec of records) {
+    const key = keyOf(rec.kind, rec.blockType);
+    if (rec.editable) {
+      let set = seen.get(key);
+      if (!set) seen.set(key, (set = new Set()));
+      set.add(rec.field);
+    } else {
+      let miss = missing.get(key);
+      if (!miss) missing.set(key, (miss = new Map()));
+      if (!miss.has(rec.field)) miss.set(rec.field, rec.example);
+    }
+  }
   const out: UneditableField[] = [];
-  for (const [key, fields] of missingByType) {
+  for (const [key, fields] of missing) {
     const [k, blockType] = key.split(' ') as [FieldKind, string];
     if (kind && k !== kind) continue;
     for (const [field, example] of fields) {
-      if (!seenByType.get(key)?.has(field)) {
+      if (!seen.get(key)?.has(field)) {
         out.push({ kind: k, blockType, field, example });
       }
     }
   }
   return out;
-}
-
-/** Slate-specific alias, preserved for existing call sites. */
-export function slateFieldsNeverEditable(): UneditableField[] {
-  return fieldsNeverEditable('text');
 }

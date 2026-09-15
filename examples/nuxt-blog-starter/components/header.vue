@@ -3,10 +3,10 @@
 <nav class="bg-white border-b border-gray-200 dark:bg-gray-900 relative">
     <div class="flex flex-wrap items-center justify-between max-w-screen-xl mx-auto p-4">
         <NuxtLink to="/" class="flex items-center space-x-3 rtl:space-x-reverse">
-            <span class="self-center text-2xl font-semibold whitespace-nowrap dark:text-white">Hydra</span>
+            <img src="/inka-mark.svg" alt="" aria-hidden="true" class="w-8 h-8" />
+            <span class="self-center text-2xl font-semibold whitespace-nowrap dark:text-white">Inka</span>
         </NuxtLink>
         <div class="flex items-center md:order-2 space-x-1 md:space-x-2 rtl:space-x-reverse">
-            <!-- Search icon + expandable input -->
             <div class="relative flex items-center">
                 <button v-if="!searchOpen" @click="openSearch" type="button"
                     class="p-2 text-gray-500 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600"
@@ -31,35 +31,50 @@
         </div>
         <div :class="{ hidden: !mobileMenuOpen }" class="items-center justify-between w-full md:flex md:w-auto md:order-1">
             <ul class="flex flex-col mt-4 font-medium md:flex-row md:mt-0 md:space-x-8 rtl:space-x-reverse">
-                <li v-for="item in nav" :key="getId(item)">
-                    <button
-                        type="button"
-                        class="block py-2 px-3 font-medium border-b border-gray-100 md:border-0 md:p-0 dark:border-gray-700 cursor-pointer"
+                <li v-for="item in nav" :key="getId(item)" class="flex items-center">
+                    <NuxtLink
+                        :to="getUrl(item)"
+                        class="block py-2 px-3 font-medium border-b border-gray-100 md:border-0 md:p-0 dark:border-gray-700"
                         :class="openPanel === getId(item)
                             ? 'text-blue-600 dark:text-blue-500'
                             : 'text-gray-900 hover:text-blue-600 dark:text-white md:dark:hover:text-blue-500'"
+                    >{{ item.title }}</NuxtLink>
+                    <button
+                        v-if="item.items && item.items.length"
+                        type="button"
+                        class="p-1 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-500 cursor-pointer"
+                        :aria-expanded="openPanel === getId(item)"
+                        :aria-label="`Show ${item.title} sections`"
                         @click="togglePanel(item)"
-                    >{{ item.title }}</button>
+                    >
+                        <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-180': openPanel === getId(item) }"
+                             fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
                 </li>
             </ul>
         </div>
     </div>
-
-    <!-- Full-width mega menu panel -->
-    <div v-if="openPanel && openPanelItem" class="absolute left-0 right-0 z-50 bg-gray-100 border-t border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-700">
+    <div
+        v-for="item in nav"
+        :key="`panel-${getId(item)}`"
+        :hidden="openPanel !== getId(item)"
+        class="absolute left-0 right-0 z-50 bg-gray-100 border-t border-gray-200 shadow-lg dark:bg-gray-800 dark:border-gray-700"
+    >
         <div class="max-w-screen-xl mx-auto px-4 py-6">
             <div class="flex items-center justify-between mb-6">
-                <NuxtLink :to="getUrl(openPanelItem)" class="text-xl font-semibold text-gray-900 dark:text-white hover:text-blue-600">
-                    {{ openPanelItem.title }}
+                <NuxtLink :to="getUrl(item)" class="text-xl font-semibold text-gray-900 dark:text-white hover:text-blue-600">
+                    {{ item.title }}
                 </NuxtLink>
-                <button @click="openPanel = null" class="text-gray-500 hover:text-gray-900 dark:hover:text-white">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <button @click="openPanel = null" class="text-gray-500 hover:text-gray-900 dark:hover:text-white" aria-label="Close menu">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                 </button>
             </div>
             <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <div v-for="child in openPanelItem.items" :key="getId(child)" class="border-l-2 border-gray-300 pl-4">
+                <div v-for="child in item.items" :key="getId(child)" class="border-l-2 border-gray-300 pl-4">
                     <NuxtLink :to="getUrl(child)" class="block font-bold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-500 mb-2">
                         {{ child.title }}
                     </NuxtLink>
@@ -89,7 +104,6 @@ const adminUrl = runtimeConfig.public.adminUrl;
 const nav = await useSiteNav();
 
 const openPanel = ref(null);
-const openPanelItem = ref(null);
 const mobileMenuOpen = ref(false);
 
 // Search state
@@ -121,23 +135,12 @@ function submitSearch() {
     }
 }
 
+// Purely a disclosure toggle now. It no longer navigates: the section title
+// beside it is a real link, and the button is only rendered when there are
+// children to disclose.
 function togglePanel(item) {
     const id = getId(item);
-    if (item.items && item.items.length) {
-        // Has children — toggle the mega panel
-        if (openPanel.value === id) {
-            openPanel.value = null;
-            openPanelItem.value = null;
-        } else {
-            openPanel.value = id;
-            openPanelItem.value = item;
-        }
-    } else {
-        // No children — navigate directly
-        openPanel.value = null;
-        openPanelItem.value = null;
-        navigateTo(getUrl(item));
-    }
+    openPanel.value = openPanel.value === id ? null : id;
 }
 
 function getUrl(item) {

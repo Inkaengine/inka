@@ -50,6 +50,13 @@ docs/examples/_images/
 *.mp4
 *.webm
 
+# blockmd prototype output — regenerate with `node proposals/blockmd/convert.mjs`
+# and `node proposals/blockmd/export-tree.mjs`
+proposals/blockmd/out/
+proposals/blockmd/tree/
 # Storage states are generated per-run from ports.ts (see global-setup)
 tests-playwright/.generated/
 .text-style-coverage/
+# Generated Sphinx/myst source — `pnpm gen:myst` emits it OUTSIDE docs/ (the
+# source tree stays loader-shaped <block> markdown); a throwaway build artifact.
+_myst-build/

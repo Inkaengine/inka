@@ -20,14 +20,17 @@ fi
 TRIM_S=$(awk -v ms="$(cat "$TRIM_FILE" 2>/dev/null || echo 0)" \
   'BEGIN { s = (ms - 500) / 1000.0; if (s < 0) s = 0; printf "%.2f", s }')
 
-OUT_PUBLIC="$REPO/docs/_static/hydra-demo.mp4"
-OUT_PLONE="$REPO/docs/content/content/content/docs/static/hydra-demo/file/hydra-demo.mp4"
+# The docs markdown is the single source; static/index.md declares this blob at
+# docs/static/hydra-demo.mp4 and the homepage video block references
+# /docs/static/hydra-demo.mp4. Write there. (The old docs/_static + JSON-tree
+# paths were pre-relocation; the JSON tree is a generated deploy artifact now.)
+OUT="$REPO/docs/static/hydra-demo.mp4"
+mkdir -p "$(dirname "$OUT")"
 
 echo "trimming first ${TRIM_S}s of $WEBM"
 ffmpeg -y -ss "$TRIM_S" -i "$WEBM" \
   -vf 'fps=24,scale=1280:-2:flags=lanczos' \
   -c:v libx264 -pix_fmt yuv420p -movflags +faststart -crf 22 \
-  "$OUT_PUBLIC"
+  "$OUT"
 
-cp "$OUT_PUBLIC" "$OUT_PLONE"
-echo "wrote $(du -h "$OUT_PUBLIC" | cut -f1) to docs/_static/hydra-demo.mp4 + Plone export tree"
+echo "wrote $(du -h "$OUT" | cut -f1) to docs/static/hydra-demo.mp4"

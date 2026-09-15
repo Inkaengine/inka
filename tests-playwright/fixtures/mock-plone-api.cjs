@@ -11,6 +11,8 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { execFileSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
@@ -37,9 +39,16 @@ const FIXTURE_ORIGIN = 'http://localhost:8888';
 function parseContentMounts() {
   const mountsEnv = process.env.CONTENT_MOUNTS;
   if (!mountsEnv) {
+    // Three mounts, most-specific first (mountFor resolves top-down; '/' owns
+    // everything so it must be last):
+    //   /docs        the docs, authored as <block> markdown in the repo docs/ dir
+    //                (one source of truth: readable md + website + Sphinx source)
+    //   /_test_data  block-coverage fixtures the integration tests drive
+    //   /            the test site root — home, search page, layout templates
     return [
-      { mountPath: '/', dirPath: path.join(__dirname, '../../docs/content/content/content') },
+      { mountPath: '/docs', dirPath: path.join(__dirname, '../../docs') },
       { mountPath: '/_test_data', dirPath: path.join(__dirname, 'content') },
+      { mountPath: '/', dirPath: path.join(__dirname, 'site-root') },
     ];
   }
 
@@ -155,6 +164,30 @@ function normaliseSources(raw) {
 
 // Map URL paths to source directories (for loading content from disk)
 const contentDirMap = {};
+
+// A mount may be a README-shaped markdown tree instead of a data.json tree.
+// Those are read once at startup into these maps; everything downstream --
+// enrichment, @components, search, @@images, resolveuid -- is unchanged,
+// because it all works on the raw content object.
+//
+// The markdown loader is ESM and this file is CommonJS, so it is pulled in with
+// a single dynamic import during startup. `ready` resolves when the trees are
+// loaded; the server awaits it before listening.
+const MARKDOWN_BLOB_MIME = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.svg': 'image/svg+xml', '.webp': 'image/webp', '.avif': 'image/avif',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+  '.pdf': 'application/pdf',
+};
+const markdownItems = new Map();   // url path -> raw content
+const markdownBlobs = new Map();   // url path -> absolute blob file
+let ready = Promise.resolve();
+// The ESM loaders (readTree, checkIntegrity) are imported once at startup and
+// held so a mount can be reloaded SYNCHRONOUSLY (on a watcher change or a cache
+// miss) without re-awaiting a dynamic import.
+let mdRuntime = null;
+// The prototype engine, imported once for the /@export endpoint's markdown mode.
+let engine = null; // { emitPage, parsePrototypes }
 
 // Map UIDs to URL paths (for resolveuid endpoint)
 const uidToPathMap = {};
@@ -490,6 +523,13 @@ function transformBlobPaths(content, fullUrl) {
       };
     }
   }
+  // A File's `file` field needs the same treatment. It was left out, so
+  // blob_path — an export-layout detail no client should see — was served
+  // raw, where real Plone returns a download URL.
+  if (result.file?.blob_path) {
+    const { blob_path, ...rest } = result.file;
+    result.file = { ...rest, download: `${fullUrl}/@@download/file` };
+  }
   return result;
 }
 
@@ -625,26 +665,33 @@ function formatSearchItem(content, baseUrl) {
  * @returns {Object|null} The raw content object or null if not found
  */
 function loadRawContentFromDisk(urlPath) {
-  // First check contentDirMap (for pre-scanned content)
-  const dirInfo = contentDirMap[urlPath];
-  if (dirInfo) {
-    const dataPath = path.join(dirInfo.dirPath, 'data.json');
-    if (fs.existsSync(dataPath)) {
-      return JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+  // Read from the loaded caches: a markdown item, or a JSON data.json on disk.
+  // Markdown is a whole-tree cache; JSON is read per-path here.
+  const readCached = () => {
+    if (markdownItems.has(urlPath)) return markdownItems.get(urlPath);
+    const dirInfo = contentDirMap[urlPath];
+    if (dirInfo && !dirInfo.markdown) {
+      const dataPath = path.join(dirInfo.dirPath, 'data.json');
+      if (fs.existsSync(dataPath)) return JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
     }
-  }
-
-  // Fallback: try to find content directly from disk for paths not in map
-  // This allows new content files added during tests to be found
-  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const relativePath = mountPath === '/' ? urlPath : urlPath.replace(mountPath, '');
-    const contentDir = path.join(dirPath, relativePath.replace(/^\//, ''));
-    const dataPath = path.join(contentDir, 'data.json');
-    if (fs.existsSync(dataPath)) {
-      return JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+    for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
+      const relativePath = mountPath === '/' ? urlPath : urlPath.replace(mountPath, '');
+      const dataPath = path.join(dirPath, relativePath.replace(/^\//, ''), 'data.json');
+      if (fs.existsSync(dataPath)) return JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
     }
-  }
+    return null;
+  };
 
+  const hit = readCached();
+  if (hit != null) return hit;
+  // Miss: reload the mount that owns this path (format-agnostic -- markdown
+  // re-reads its tree, JSON rescans) and retry once. Content added since startup
+  // is picked up here rather than needing a restart.
+  const mount = mountFor(urlPath);
+  if (mount) {
+    reloadMount(mount);
+    return readCached();
+  }
   return null;
 }
 
@@ -1331,6 +1378,41 @@ function enrichImageBrains(obj, baseUrl) {
 }
 
 /**
+ * Resolve an object-browser link (a block's `href`/`link`) that carries ONLY an
+ * `@id` -- the non-redundant form the markdown mount stores -- into a fresh
+ * summary of its target (title/description/hasPreviewImage), the way a listing
+ * resolves its items. A link that already carries an embedded summary (the
+ * distribution/JSON form, snapshotted at edit time) is left untouched, so this
+ * changes only markdown-mount content and cannot alter existing fixtures.
+ *
+ * This is a DELIBERATE divergence from Plone, which snapshots block links at edit
+ * time and never re-resolves them: the markdown owns the reference, the server
+ * resolves the label, so the stored title cannot go stale.
+ */
+const LINK_FIELDS = new Set(['href', 'link']);
+const isBareLink = (o) => o && typeof o === 'object' && !Array.isArray(o)
+  && typeof o['@id'] === 'string' && Object.keys(o).length === 1;
+
+function resolveHrefLinks(obj, baseUrl) {
+  if (Array.isArray(obj)) return obj.map((x) => resolveHrefLinks(x, baseUrl));
+  if (!obj || typeof obj !== 'object') return obj;
+  const out = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (LINK_FIELDS.has(key) && Array.isArray(value) && value.length && value.every(isBareLink)) {
+      out[key] = value.map((item) => {
+        const path = item['@id'].startsWith('http') ? new URL(item['@id']).pathname : item['@id'];
+        const raw = loadRawContentFromDisk(path);
+        if (!raw) return item; // external / unresolvable -> keep the bare @id
+        return { ...formatSearchItem(raw, baseUrl), '@id': `${baseUrl}${path}` };
+      });
+    } else {
+      out[key] = resolveHrefLinks(value, baseUrl);
+    }
+  }
+  return out;
+}
+
+/**
  * Get folder child items sorted by __metadata__.json ordering.
  * Like Plone's content serializer, returns summary representations of children.
  */
@@ -1467,7 +1549,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId) {
   // 4. Give every form block the validator catalogue its serializer injects
   return addFormValidationSettings(
     enrichImageBrains(
-      summarizeRelations(resolveUidUrls(enriched), baseUrl),
+      resolveHrefLinks(summarizeRelations(resolveUidUrls(enriched), baseUrl), baseUrl),
       baseUrl,
     ),
   );
@@ -1579,9 +1661,106 @@ function getSiteRoot() {
   };
 }
 
+/** A markdown tree is one with an index.md at its root; a distribution tree has
+ *  plone_site_root/data.json instead. */
+const isMarkdownMount = (mount) => fs.existsSync(path.join(mount.dirPath, 'index.md'));
+
+/** The mount that owns a url path (the ContentSource for it). '/' owns everything. */
+function mountFor(urlPath) {
+  return CONTENT_MOUNTS.find((m) => m.mountPath === '/'
+    || urlPath === m.mountPath || urlPath.startsWith(`${m.mountPath}/`));
+}
+
+/** (Re)load ONE markdown mount into the shared caches, then validate the tree.
+ *  Synchronous (uses the held mdRuntime), so a miss or a watcher change can drive
+ *  it. Additive, like the JSON rescan: it refreshes/adds items but a full restart
+ *  is what clears deletions. */
+function loadMarkdownMount(mount) {
+  if (!mdRuntime) return;
+  const { readTree, checkIntegrity } = mdRuntime;
+  const { mountPath, dirPath } = mount;
+  // Pass the mountPath as the link prefix so hand-authored .md cross-links resolve
+  // to the served @ids (a /docs mount serves its tree under /docs, not at root).
+  const { items, blobFiles } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor });
+  const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
+  for (const [p, item] of items) {
+    const urlPath = urlFor(p);
+    item['@id'] = urlPath;
+    markdownItems.set(urlPath, item);
+    contentDirMap[urlPath] = { dirPath, markdown: true };
+    if (item.UID) {
+      uidToPathMap[item.UID] = urlPath;
+      if (item.getObjPositionInParent !== undefined) uidPositionMap[item.UID] = item.getObjPositionInParent;
+    }
+  }
+  for (const [p, file] of blobFiles) markdownBlobs.set(urlFor(p), file);
+  console.log(`Registered ${items.size} markdown items from ${dirPath} at ${mountPath}`);
+}
+
+/** Validate the WHOLE markdown tree at once, via the SAME validator the JSON
+ *  mounts use (plone-content-validator) -- markdown and JSON decode to the same
+ *  content shape, so one validation path serves both. It runs after every
+ *  markdown mount is loaded (not per-mount): a /docs page's cross-link to the
+ *  site root '/' or '/images/*' is only resolvable once the '/' mount is in, so
+ *  a per-mount check would cry false positives on the mount that loads first.
+ *  Loud but non-fatal, so a --watch restart or reload surfaces a real problem
+ *  while developing rather than at test time. */
+function validateMarkdownContent() {
+  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
+  const source = [...markdownItems].map(([rel, data]) => ({ rel, data }));
+  const { errors } = mdRuntime.checkIntegrity(source);
+  if (errors.length) {
+    console.log(`[content-check] ${errors.length} problem(s) in markdown content:`);
+    for (const m of errors.slice(0, 30)) console.log(`  ${m}`);
+  }
+}
+
+/** Reload one mount, format-agnostically -- the ContentSource.reload() seam that
+ *  both the watcher and the cache-miss path call, so neither is JSON-specific. */
+function reloadMount(mount) {
+  if (isMarkdownMount(mount)) { loadMarkdownMount(mount); validateMarkdownContent(); return; }
+  if (mount.mountPath !== '/' && fs.existsSync(path.join(mount.dirPath, 'data.json'))) {
+    contentDirMap[mount.mountPath] = { dirPath: mount.dirPath, dirName: path.basename(mount.dirPath) };
+  }
+  scanContentDir(mount.dirPath, mount.mountPath);
+}
+
+/** Import the ESM loaders once, hold them, and load every markdown mount. */
+/** Import the prototype engine once (for /@export markdown), independent of
+ *  whether any markdown mounts are configured. */
+async function initEngine() {
+  const { emitPage, parsePrototypes } = await import('../../lib/prototype-mapping.mjs');
+  engine = { emitPage, parsePrototypes };
+}
+
+async function initMarkdownMounts() {
+  const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
+  if (!mounts.length) return;
+  const { readTree, schemaRegistryFromBlockDefinitions } = await import('../../lib/markdown-mount.mjs');
+  // One validator for both mounts: the JSON tree and the markdown tree decode to
+  // the same content shape, so markdown validates through plone-content-validator
+  // too (checkIntegrity accepts the in-memory [{rel, data}] form).
+  const { checkIntegrity } = require('./plone-content-validator.cjs');
+  // schemaFor lets a `<block type="codeExample" source= format="schema">` show the
+  // real block schema — from shared-block-schemas (the complete registry the
+  // frontends register from, every block type) — so a doc's schema view can't
+  // drift from what renders. ESM, so dynamic import from this CJS module.
+  const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
+  const schemaFor = schemaRegistryFromBlockDefinitions(sharedBlocksConfig);
+  mdRuntime = { readTree, checkIntegrity, schemaFor };
+  for (const mount of mounts) loadMarkdownMount(mount);
+  validateMarkdownContent();
+}
+
 // Scan content directories on startup (content loaded on-demand)
 function initContentDirMap() {
   CONTENT_MOUNTS.forEach(({ mountPath, dirPath }) => {
+    // A markdown mount is loaded from its index.md tree by initMarkdownMounts and
+    // must NOT be JSON-scanned: scanContentDir walks for data.json dirs and would
+    // pick up any nested distribution tree (e.g. docs/content/, the generated
+    // deploy artifact that lives inside the docs source dir), double-registering
+    // content the markdown `exclude:` manifest deliberately skips.
+    if (isMarkdownMount({ dirPath })) return;
     // Register the mount point itself if it has a root data.json (e.g., /_test_data folder page).
     // The '/' mount is handled via plone_site_root inside scanContentDir.
     if (mountPath !== '/') {
@@ -1598,6 +1777,10 @@ function initContentDirMap() {
 
 // Initialize on startup
 initContentDirMap();
+// Markdown mounts need a dynamic import, so loading them is async. Anything
+// that serves requests must await `ready` first, or the first request can
+// arrive before the tree is in memory.
+ready = Promise.all([initMarkdownMounts(), initEngine()]);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
@@ -1612,7 +1795,9 @@ function setupContentWatchers() {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      initContentDirMap();
+      // Reload every mount through the format-agnostic seam -- markdown trees
+      // reload and re-validate too, not just the JSON contentDirMap.
+      for (const mount of CONTENT_MOUNTS) reloadMount(mount);
     }, debounceMs);
   };
   for (const { dirPath } of CONTENT_MOUNTS) {
@@ -1912,6 +2097,224 @@ app.delete('/*', (req, res, next) => {
  * Create new content (e.g., Image upload)
  * Used by ImageWidget for file uploads
  */
+// The plone.exportimport siblings that ride alongside a content tree.
+const DISTRIBUTION_SIBLINGS = ['discussions.json', 'portlets.json', 'principals.json',
+                               'redirects.json', 'relations.json', 'translations.json'];
+// A blob rides in one of these two fields on Image/File content.
+const BLOB_FIELDS = ['image', 'file'];
+// Minimal, importer-valid siblings for a mount that ships none of its own.
+const SIBLING_DEFAULTS = {
+  'discussions.json': {}, 'portlets.json': [], 'principals.json': { groups: [], users: [] },
+  'redirects.json': {}, 'relations.json': [], 'translations.json': [],
+};
+
+/**
+ * Emit a plone.exportimport distribution at `dest/content` from IN-MEMORY items
+ * — the served content shape, not disk. This is the only correct source: a
+ * markdown mount has no exportimport tree on disk (it is decoded into memory at
+ * load), and a mount's on-disk folder layout is not the served layout. Each
+ * item's own data.json is written verbatim (its blob_path is already valid for
+ * its mount, be it UID-keyed from JSON or tree-relative from markdown — the
+ * format only requires blob_path to appear in _blob_files_ with its bytes
+ * present, which this keeps true either way); blob bytes are copied in from
+ * wherever they live via `blobSourceOf`.
+ *
+ * @param {string} dest                       staging dir (content/ is (re)created)
+ * @param {Array<{urlPath, data}>} items       served items, data = data.json shape
+ * @param {(uid:string)=>number|undefined} opts.positionOf  getObjPositionInParent, for ordering
+ * @param {(urlPath,field,blobPath)=>string} opts.blobSourceOf  abs source file for a blob's bytes
+ * @param {string[]} [opts.siblingsFrom]       dirs to copy the 6 siblings from (first that has each wins)
+ * @returns the written __metadata__
+ */
+function writeDistribution(dest, items, { positionOf = () => undefined, blobSourceOf, siblingsFrom = [] } = {}) {
+  const destContent = path.join(dest, 'content');
+  fs.rmSync(destContent, { recursive: true, force: true });
+  fs.mkdirSync(destContent, { recursive: true });
+
+  const dirKeyFor = (urlPath) => (urlPath === '/' ? 'plone_site_root' : urlPath.replace(/^\/+/, ''));
+  const dataFiles = [];
+  const blobFiles = new Set();
+  const localRoles = {};
+  const ordering = {};
+
+  for (const { urlPath, data } of items) {
+    const dirKey = dirKeyFor(urlPath);
+    const itemDir = path.join(destContent, dirKey);
+    fs.mkdirSync(itemDir, { recursive: true });
+
+    // Blobs are normalised to the canonical exportimport layout,
+    // `<item dir>/<field>/<filename>`. A mount's own blob_path can't be trusted
+    // to be safe here: a markdown standalone Image is served at, say,
+    // `/images/p.jpg` with blob_path `images/p.jpg`, so its data.json dir and its
+    // blob file would claim the very same path. Placing the blob under a field
+    // subfolder (as Plone does) removes that collision and unifies both mount
+    // kinds. `data` may be a shared cache object, so rewrite a shallow copy.
+    const out = { ...data };
+    for (const field of BLOB_FIELDS) {
+      const blobPath = data[field] && data[field].blob_path;
+      if (!blobPath) continue;
+      const src = blobSourceOf(urlPath, field, blobPath);
+      if (!src || !fs.existsSync(src)) {
+        throw new Error(`${urlPath}: no bytes for ${field}.blob_path "${blobPath}" (looked at ${src})`);
+      }
+      const filename = (data[field].filename) || path.basename(blobPath);
+      const canonical = `${dirKey}/${field}/${filename}`;
+      const destBlob = path.join(destContent, canonical);
+      fs.mkdirSync(path.dirname(destBlob), { recursive: true });
+      fs.copyFileSync(src, destBlob);
+      blobFiles.add(canonical);
+      out[field] = { ...data[field], blob_path: canonical };
+    }
+
+    fs.writeFileSync(path.join(itemDir, 'data.json'), JSON.stringify(out, null, 2) + '\n');
+    dataFiles.push(`${dirKey}/data.json`);
+    if (data.UID) {
+      // local_roles is constant in this content set; every item is Owner-admin.
+      localRoles[data.UID] = { local_roles: { admin: ['Owner'] } };
+      const pos = positionOf(data.UID);
+      if (pos !== undefined) ordering[data.UID] = pos;
+    }
+  }
+
+  // Parents before children (plone_site_root first) so the importer can attach
+  // each item to an already-created parent.
+  const depthOf = (rel) => (rel.startsWith('plone_site_root/') ? 0 : rel.split('/').length);
+  dataFiles.sort((a, b) => depthOf(a) - depthOf(b) || a.localeCompare(b));
+
+  for (const sib of DISTRIBUTION_SIBLINGS) {
+    const from = siblingsFrom.map((d) => path.join(d, sib)).find((p) => fs.existsSync(p));
+    if (from) fs.copyFileSync(from, path.join(dest, sib));
+    else fs.writeFileSync(path.join(dest, sib), JSON.stringify(SIBLING_DEFAULTS[sib], null, 2) + '\n');
+  }
+
+  const meta = {
+    __version__: '1.0.0',
+    _data_files_: dataFiles,
+    _blob_files_: [...blobFiles].sort(),
+    default_page: {},
+    local_roles: localRoles,
+    ordering,
+    relations: [],
+  };
+  fs.writeFileSync(path.join(destContent, '__metadata__.json'), JSON.stringify(meta, null, 2) + '\n');
+  return meta;
+}
+
+/**
+ * Gather every served content item from memory (JSON items read through their
+ * cache, markdown items straight from the decoded cache — `loadRawContentFromDisk`
+ * unifies both) and emit them as one distribution via `writeDistribution`. Blob
+ * bytes come from `markdownBlobs` for a markdown item, else from the owning JSON
+ * mount's dir (its blob_path is relative to that content root). Returns the
+ * written __metadata__, or null when there is no content to export.
+ */
+function buildDistributionFromMemory(dest) {
+  // Only genuine content-source mounts are exportable: a plone.exportimport tree
+  // (has __metadata__.json) or a markdown tree (has index.md). A loose fixture
+  // mount like /_test_data is neither — it holds intentionally-malformed test
+  // pages and must never end up in a deploy tar. Pick each path's MOST-SPECIFIC
+  // mount (longest matching mountPath), since '/' nominally owns everything.
+  const exportable = (m) => isMarkdownMount(m) || fs.existsSync(path.join(m.dirPath, '__metadata__.json'));
+  const ownerMount = (urlPath) => CONTENT_MOUNTS
+    .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(`${m.mountPath}/`))
+    .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
+
+  const items = [];
+  for (const urlPath of Object.keys(contentDirMap)) {
+    const owner = ownerMount(urlPath);
+    if (!owner || !exportable(owner)) continue;
+    const data = loadRawContentFromDisk(urlPath);
+    if (data) items.push({ urlPath, data });
+  }
+  if (!items.length) return null;
+
+  const blobSourceOf = (urlPath, _field, blobPath) => {
+    if (markdownBlobs.has(urlPath)) return markdownBlobs.get(urlPath);
+    const mount = mountFor(urlPath);
+    return mount ? path.join(mount.dirPath, blobPath) : null;
+  };
+  // Siblings come from any JSON mount that carries them (one level up from its
+  // content dir); a pure-markdown deploy falls back to the defaults.
+  const siblingsFrom = CONTENT_MOUNTS
+    .map((m) => path.join(m.dirPath, '..'))
+    .filter((d) => DISTRIBUTION_SIBLINGS.some((s) => fs.existsSync(path.join(d, s))));
+
+  return writeDistribution(dest, items, {
+    positionOf: (uid) => uidPositionMap[uid],
+    blobSourceOf,
+    siblingsFrom,
+  });
+}
+
+/**
+ * Export the whole content tree (mock-API extra feature). The real Plone
+ * @@export-content answers with a gzipped tar of the plone.exportimport tree
+ * (data.json + __metadata__.json + siblings + blob files), so `format: 'json'`
+ * responds the same way — a deployable distribution, byte-for-byte importable —
+ * emitted from the IN-MEMORY served content across every content-source mount
+ * (JSON or markdown alike, since markdown mounts have no exportimport tree on
+ * disk), and validated before it ships.
+ * `format: 'markdown'` runs each block-bearing item through the prototype engine
+ * and returns a { "/path": markdown } map; the CALLER supplies the prototypes in
+ * the body (`{ matched, tagged }` declaration text) so the mock API needs no
+ * format config of its own.
+ *   POST /@export  { format: 'json'|'markdown', prototypes?: { matched, tagged } }
+ *     json     -> application/gzip  (export.tar.gz: content/**, siblings)
+ *     markdown -> { "/path": markdown string, ... }
+ */
+app.post('/@export', async (req, res) => {
+  await ready;
+  const { format = 'json', prototypes = {} } = req.body || {};
+
+  if (format === 'markdown') {
+    const { emitPage, parsePrototypes } = engine;
+    const protos = [
+      ...parsePrototypes(prototypes.matched || ''),
+      ...parsePrototypes(prototypes.tagged || '', { explicit: true }),
+    ];
+    const out = {};
+    for (const p of Object.keys(contentDirMap)) {
+      const c = loadRawContentFromDisk(p);
+      if (!c || !c.blocks) continue; // only block-bearing content items get a body
+      out[p] = emitPage(protos, { blocks: c.blocks, blocks_layout: c.blocks_layout }).markdown;
+    }
+    return res.json(out);
+  }
+
+  if (format !== 'json') {
+    return res.status(400).json({ error: `unknown format "${format}" (use json|markdown)` });
+  }
+
+  // json: respond exactly like @@export-content — a gzipped tar of the
+  // distribution. Build it in a temp dir, validate, tar, stream, clean up.
+  const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'plone-export-'));
+  try {
+    const merged = buildDistributionFromMemory(staging);
+    if (!merged) {
+      return res.status(409).json({ error: 'no content to export' });
+    }
+    // Never ship a tree the importer would choke on.
+    const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+    const contentDir = path.join(staging, 'content');
+    const v = validate(contentDir);
+    const c = checkIntegrity(contentDir);
+    const errors = [...v.errors, ...c.errors];
+    if (errors.length) {
+      return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
+    }
+    const tarPath = path.join(staging, 'export.tar.gz');
+    // Tar the tree relative to `staging` so paths are content/... and siblings.
+    const members = ['content', ...DISTRIBUTION_SIBLINGS.filter((s) => fs.existsSync(path.join(staging, s)))];
+    execFileSync('tar', ['-czf', tarPath, '-C', staging, ...members]);
+    const buf = fs.readFileSync(tarPath);
+    res.set('Content-Type', 'application/gzip');
+    res.set('Content-Disposition', 'attachment; filename="export.tar.gz"');
+    return res.send(buf);
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
+});
+
 app.post('/*', (req, res, next) => {
   // Skip special endpoints (already handled above or below)
   if (req.path.startsWith('/@') || req.path.includes('/@')) {
@@ -4041,6 +4444,15 @@ app.get('*/@@images/*', (req, res) => {
     res.set('Content-Type', blob.mime);
     return res.send(blob.buffer);
   }
+  // A markdown mount keeps the blob as an ordinary file beside the markdown
+  // that references it, so there is nothing to resolve.
+  if (markdownBlobs.has(contentPath)) {
+    const file = markdownBlobs.get(contentPath);
+    res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
+      || 'application/octet-stream');
+    res.sendFile(file);
+    return;
+  }
 
   // Try to serve actual image file from content directory
   // Use contentDirMap to find actual directory for nested paths
@@ -4119,6 +4531,18 @@ app.get('*/@@download/*', (req, res) => {
   const pathMatch = req.path.match(/^(.+?)\/@@download\/(\w+)(?:\/.*)?$/);
   const contentPath = pathMatch ? pathMatch[1] : '';
   const fieldName = pathMatch ? pathMatch[2] : 'image';
+
+  // A markdown mount keeps the blob as an ordinary file beside its markdown, so
+  // serve it directly — same as the @@images handler. Image blocks store their
+  // src as `@@download/image/<file>`, so this path must resolve it too, not only
+  // the distribution `<dir>/image/<file>` layout handled below.
+  if (markdownBlobs.has(contentPath)) {
+    const file = markdownBlobs.get(contentPath);
+    res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
+      || 'application/octet-stream');
+    res.sendFile(file);
+    return;
+  }
 
   const dirInfo = contentDirMap[contentPath];
   const imageDir = dirInfo ? path.join(dirInfo.dirPath, fieldName) : null;
@@ -4443,4 +4867,4 @@ if (require.main === module) {
 }
 
 // Export for use by test frontend server or test harnesses
-module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, formSubmissions };
+module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution };

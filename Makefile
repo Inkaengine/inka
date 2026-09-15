@@ -173,3 +173,29 @@ docs-clean: ## Clean documentation build
 docs-live: ## Start live-reloading documentation server
 	@echo "$(GREEN)==> Starting live documentation server$(RESET)"
 	$(MAKE) -C docs livehtml
+
+##########################
+### HYDRA E2E / BRIDGE ###
+##########################
+
+# Test-infrastructure ports have NO defaults (see tests-playwright/ports.ts —
+# defaults let one checkout hijack another's servers). This target IS the
+# canonical block; keep it aligned with .github/workflows/test.yaml. Override on
+# the command line if a second checkout collides, e.g.
+#   make hydra-test HYDRA_MOCK_API_PORT=18888 ARGS="..."
+export HYDRA_MOCK_API_PORT ?= 8888
+export HYDRA_TEST_FRONTEND_PORT ?= 8889
+export HYDRA_MOCK_PARENT_PORT ?= 8891
+export HYDRA_VOLTO_SSR_PORT ?= 3001
+export HYDRA_VOLTO_WEBPACK_PORT ?= 3002
+export HYDRA_NUXT_PORT ?= 3003
+export HYDRA_REACT_DOC_PORT ?= 3004
+export HYDRA_VUE_DOC_PORT ?= 3005
+export HYDRA_SVELTE_DOC_PORT ?= 3006
+export HYDRA_NEXTJS_PORT ?= 3007
+export HYDRA_F7_PORT ?= 3008
+export HYDRA_ASTRO_DOC_PORT ?= 3009
+
+.PHONY: hydra-test
+hydra-test: ## Run bridge/e2e tests. Playwright's webServer starts the mock API, Volto, and each frontend with the CORRECT env (NEXT_PUBLIC_BACKEND_BASE_URL=mock, ports) — never start them by hand. ARGS="tests-playwright/bridge/block-sanity.spec.ts --project=nuxt -g gridBlock"
+	pnpm exec playwright test $(ARGS)

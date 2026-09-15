@@ -1,0 +1,54 @@
+{
+  "_comment": "Conversion-time only: how to LAY OUT a block as markdown. What comes out records the decision in its own attributes, so nothing needs this file to read it. References are positional -- ${N/part} is the Nth construct of the group, exactly as at page level.",
+  "heading": {
+    "construct": "heading",
+    "fields": {
+      "heading": "${text}",
+      "tag": "h${level}"
+    }
+  },
+  "image": {
+    "construct": "image",
+    "fields": {
+      "url": "${src}",
+      "alt": "${alt}"
+    }
+  },
+  "codeExample": {
+    "sections": {
+      "field": "tabs",
+      "at": "h3",
+      "item": {
+        "label": "${1/text}",
+        "language": "${2/lang}",
+        "code": "${2/code}"
+      }
+    }
+  },
+  "accordion": {
+    "sections": {
+      "field": "panels",
+      "at": "h2",
+      "item": {
+        "title": "${1/text}",
+        "blocks": "${2.../blocks_layout}"
+      }
+    }
+  },
+  "slider": {
+    "sections": {
+      "field": "slides",
+      "at": "h2",
+      "item": {
+        "head_title": "${1/text}",
+        "title": "${2/text}",
+        "description": "${3/text}"
+      }
+    }
+  },
+  "slateTable": {
+    "table": {
+      "field": "table"
+    }
+  }
+}

@@ -137,7 +137,11 @@
     <script src="/renderer.js"></script>
     <script type="module">
         import { initBridge, getAccessToken } from '/hydra.js';
-        import { expandListingBlocks, ploneFetchItems, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
+        import { expandListingBlocks, staticBlocks, ploneFetchItems, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
+        // Expose staticBlocks so the renderer's expandItems can window static
+        // (non-listing) container children with combined paging, hand-in-hand with
+        // expandListingBlocks — the two abstract object_list/blocks_layout and paging.
+        window._staticBlocks = staticBlocks;
         import { sharedBlocksConfig } from '/shared-block-schemas.js';
 
         // Parse page numbers from URL query params (format: ?pg_{blockId}={pageNumber})
@@ -240,7 +244,10 @@
                 const fi = contextOverride
                     ? ploneFetchItems({ apiUrl: window._apiOrigin, contextPath: contextOverride, extraCriteria })
                     : fetchItems;
-                return await expandListingBlocks(layout, { blocks, fetchItems: { listing: fi, ...exampleFetchers }, paging, itemTypeField: 'variation' });
+                // Forward `seen` so a listing run continues the SAME page window
+                // that a preceding staticBlocks run started — combined paging over a
+                // mixed container (static cards + a listing) is one window, not two.
+                return await expandListingBlocks(layout, { blocks, fetchItems: { listing: fi, ...exampleFetchers }, paging, itemTypeField: 'variation', seen: paging?.seen });
             };
 
             // Convert layout IDs to block objects with @uid
@@ -305,6 +312,33 @@
                 const footerContainer = document.getElementById('footer-content');
                 if (footerContainer) footerContainer.innerHTML = '';
             }
+        }
+
+        // Client-side paging (grid/listing). The pager links carry an href
+        // (?pg_{blockId}=N) so they stay real, linkable links — but a full
+        // navigation would reload the whole page just to move one block's window.
+        // Intercept the click, update the URL in place (history.pushState, so the
+        // back button and getPagesFromUrl still work), and re-render from the
+        // current data. hydra reveals a paged-out child by synthesising a click on
+        // the Next/Prev [data-block-selector] control, which lands here too — so the
+        // reveal pages client-side, no reload, matching nuxt's Paging.vue.
+        if (!window._pagerHandlerAdded) {
+            window._pagerHandlerAdded = true;
+            document.addEventListener('click', (e) => {
+                // Only intercept in EDIT mode. In VIEW mode there is no FORM_DATA
+                // (so window._currentFormData is never set) and nothing to re-render
+                // from — the page just navigates, which is the correct, tested
+                // view-mode behaviour. Client-side paging exists for the EDIT-mode
+                // reveal (hydra synthesises a Next/Prev click to page a hidden child
+                // into view without a reload that would tear down the editor).
+                if (!window._isEditMode) return;
+                const pager = e.target.closest('.paging-prev, .paging-next, .paging-page');
+                if (!pager || !pager.getAttribute('href')) return;
+                e.preventDefault();
+                const target = new URL(pager.getAttribute('href'), window.location.href);
+                history.pushState({}, '', target.pathname + target.search);
+                if (window._currentFormData) renderContentWithListings(window._currentFormData);
+            });
         }
 
         // Track page loads to detect double-loading issues (persisted in sessionStorage)

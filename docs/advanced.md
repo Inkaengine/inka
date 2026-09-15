@@ -1,19 +1,65 @@
+---
+"@type": Document
+UID: docs-advanced-001
+allow_discussion: false
+contributors: []
+creators:
+  - admin
+description: "Advanced topics for optimising your Inka integration: lazy loading
+  the bridge, authentication, and preventing reloads."
+effective: 2025-01-01T00:00:00
+exclude_from_nav: false
+expires: null
+id: advanced
+is_folderish: false
+language: "##DEFAULT##"
+layout: document_view
+preview_caption: null
+preview_image: null
+review_state: published
+rights: ""
+subjects:
+  - frontend
+title: Advanced
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="callout">
+    <region name="items" widget="blocks_layout">
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+    </region>
+  </block>
+  <block type="title" _="${h1}" />
+  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="codeExample">
+    <region name="tabs" widget="object_list">
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+---
+
 # Advanced
 
-Advanced topics for optimising your Hydra integration: lazy loading the bridge, authentication, and preventing reloads.
+Advanced topics for optimising your Inka integration: lazy loading the bridge, authentication, and preventing reloads.
 
----
+<block type="separator" />
+
+<block type="callout" variation="note">
+
+Volto is built as a monolith CMS framework, so ignore the parts of the documentation that apply to its presentation layer — Inka replaces that piece.
+
+</block>
 
 ## Lazy Load the Bridge
 
-Detect the admin iframe and load the bridge only when needed. `window.name` is set by Hydra to indicate mode:
+Detect the admin iframe and load the bridge only when needed. `window.name` is set by Inka to indicate mode:
 
-- **`hydra-edit:<origin>`** — edit mode (e.g., `hydra-edit:http://localhost:3001`)
-- **`hydra-view:<origin>`** — view mode (e.g., `hydra-view:http://localhost:3001`)
+- **\`hydra-edit:\<origin>\`** — edit mode (e.g., `hydra-edit:http://localhost:3001`)
+- **\`hydra-view:\<origin>\`** — view mode (e.g., `hydra-view:http://localhost:3001`)
 
 This persists across SPA navigation within the iframe, allowing your frontend to detect it's in the admin even after client-side route changes. In view mode, render from your API immediately but still load the bridge for navigation tracking. In edit mode, wait for `onEditChange` before rendering.
 
-<!-- codeExample: javascript -->
+### Javascript
+
 ```javascript
 function loadBridge(callback) {
     const existingScript = document.getElementById("hydraBridge");
@@ -53,7 +99,8 @@ As soon as the editor logs into the hydra editor, your frontend should use the s
 
 The `access_token` is passed as a URL parameter on initial load and automatically stored in `sessionStorage` by hydra.js. On SPA navigation, the URL param is gone but the token persists in `sessionStorage`. Use the `getAccessToken()` helper:
 
-<!-- codeExample: javascript -->
+### Javascript
+
 ```javascript
 import { getAccessToken } from '@hydra-js/hydra.js';
 
@@ -64,7 +111,8 @@ const token = getAccessToken();
 
 Example using Next.js 14 and ploneClient:
 
-<!-- codeExample: javascript -->
+### Javascript
+
 ```javascript
 import ploneClient from "@plone/client";
 import { useQuery } from "@tanstack/react-query";
@@ -98,17 +146,13 @@ If the auto-generated sidebar UI from your block or content schemas isn't suitab
 
 - [Volto Block Edit Component documentation](https://6.docs.plone.org/volto/blocks/editcomponent.html)
 
-```{note}
-Volto is built as a monolith CMS framework, so ignore the parts of the documentation that apply to its presentation layer — Hydra replaces that piece.
-```
-
 ## Custom Visual Editing (TODO)
 
-In some cases you might want to provide editors with more visual editing inside the preview than Hydra currently supports out of the box. For example, a newly created table block might display a form to set the initial number of columns and rows. The bridge exposes the following hooks to make this possible:
+In some cases you might want to provide editors with more visual editing inside the preview than Inka currently supports out of the box. For example, a newly created table block might display a form to set the initial number of columns and rows. The bridge exposes the following hooks to make this possible:
 
-- **`sendBlockUpdate`** — send an updated version of the block back to the admin after frontend-side changes (TODO).
-- **`sendBlockAction`** — perform actions like select, add, move, copy or remove blocks, or invoke custom actions on the Volto block edit component.
-- You can disable Hydra's default handling of selection, DnD, or other interactions if you want to replace some parts of Hydra and not others (TODO).
+- **\`sendBlockUpdate\`** — send an updated version of the block back to the admin after frontend-side changes (TODO).
+- **\`sendBlockAction\`** — perform actions like select, add, move, copy or remove blocks, or invoke custom actions on the Volto block edit component.
+- You can disable Inka's default handling of selection, DnD, or other interactions if you want to replace some parts of Inka and not others (TODO).
 
 ## Custom API Endpoints
 

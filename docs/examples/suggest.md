@@ -1,56 +1,66 @@
+---
+"@type": Document
+UID: docs-examples-suggest-001
+allow_discussion: false
+contributors: []
+creators:
+  - admin
+description: A question whose answer is completed from a vocabulary the author picked.
+effective: null
+exclude_from_nav: false
+expires: null
+id: suggest
+is_folderish: false
+language: "##DEFAULT##"
+layout: document_view
+review_state: published
+rights: ""
+subjects: []
+title: Suggest Block
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
+  <block type="codeExample">
+    <region name="tabs" widget="object_list">
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+---
+
 # Suggest Block
 
 A question whose answer is completed from a vocabulary the author picked.
 
-This is a **custom** block — register it via `initBridge`.
+## Try it
 
-**Demonstrates:** [Picking a vocabulary (`vocabularySelect`)](../custom-blocks.md#picking-a-vocabulary-vocabularyselect) — the author chooses *which* vocabulary in the sidebar; the frontend asks that vocabulary for matches as someone types.
+<block type="suggest" label="Topic" suggestFrom="plone.app.vocabularies.Keywords" value="" />
 
-Two halves, and they are different jobs:
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-suggest">
 
-- The **author** picks the vocabulary with the `vocabularySelect` widget. What is stored is a **name** (`plone.app.vocabularies.Keywords`), not a URL, so content carries no environment's origin. `vocabularyFilter` narrows the menu to the vocabularies that make sense for this question.
-- The **visitor** types, and the frontend asks that vocabulary: `@vocabularies/<name>?title=<typed>`. The filter is applied **server-side**, which is what makes this work for a vocabulary of thousands of suburbs as well as one of five tags.
+<block type="codeExample" slotId="schema" source="suggest" format="schema" />
 
-`@vocabularies` is readable anonymously (`zope2.View`), unlike `@sources` and `@querysources` (`plone.restapi.vocabularies`, Manager / Site Administrator) — so a **public** form may suggest from a vocabulary and may never suggest from a source.
+<block type="codeExample" slotId="json-data" source="suggest" format="json" />
 
-The input is an ordinary text box: suggestions are an enhancement, so with no JavaScript someone types the answer and it submits unchanged.
-
-## Schema
-
-```json
-{
-  "suggest": {
-    "blockSchema": {
-      "properties": {
-        "label": {
-          "title": "Question"
-        },
-        "suggestFrom": {
-          "title": "Suggest from",
-          "widget": "vocabularySelect",
-          "vocabularyFilter": "Keywords|Subject"
-        },
-        "value": {
-          "title": "Answer"
-        }
-      }
-    }
-  }
-}
-```
-
-
-## JSON Block Data
-
-## Rendering
+<block type="codeExample" slotId="rendering">
 
 ### React
 
-<!-- file: examples/react/SuggestBlock.jsx -->
+```jsx
 
-### Data Attributes
+```
 
-| Attribute | Purpose |
-|-----------|---------|
-| `data-block-uid` | Identifies the block for selection |
-| `data-edit-text="label"` | Makes the question inline-editable |
+### Vue
+
+```vue
+
+```
+
+### Svelte
+
+```svelte
+
+```
+
+</block>
+
+</fields>

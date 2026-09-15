@@ -32,6 +32,7 @@ import HeadingBlock from './HeadingBlock.astro';
 import SeparatorBlock from './SeparatorBlock.astro';
 import ButtonBlock from './ButtonBlock.astro';
 import HighlightBlock from './HighlightBlock.astro';
+import CalloutBlock from './CalloutBlock.astro';
 import VideoBlock from './VideoBlock.astro';
 import MapsBlock from './MapsBlock.astro';
 import TocBlock from './TocBlock.astro';
@@ -71,6 +72,7 @@ const KNOWN = new Set<string>([
   {type === 'separator' && <SeparatorBlock block={block} />}
   {type === 'button' && <ButtonBlock block={block} />}
   {type === 'highlight' && <HighlightBlock block={block} />}
+  {type === 'callout' && <CalloutBlock block={block} />}
   {type === 'video' && <VideoBlock block={block} />}
   {type === 'maps' && <MapsBlock block={block} />}
   {type === 'toc' && <TocBlock block={block} content={content} />}

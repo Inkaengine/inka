@@ -15,7 +15,7 @@
     "preinstall": "npx only-allow pnpm",
     "start": "VOLTOCONFIG=$(pwd)/volto.config.js razzle start",
     "start:test": "PORT=${HYDRA_VOLTO_SSR_PORT:?not set — run via the make target, or export the port} RAZZLE_API_PATH=http://localhost:${HYDRA_MOCK_API_PORT:?not set — run via the make target, or export the port} RAZZLE_DEFAULT_IFRAME_URL=\"Test frontend|http://localhost:${HYDRA_TEST_FRONTEND_PORT:?not set — run via the make target, or export the port},Nuxt blog|http://localhost:${HYDRA_NUXT_PORT:?not set — run via the make target, or export the port},F7 Mobile|http://localhost:${HYDRA_F7_PORT:?not set — run via the make target, or export the port}/#!,Next.js|http://localhost:${HYDRA_NEXTJS_PORT:?not set — run via the make target, or export the port}\" VOLTOCONFIG=$(pwd)/volto.config.js razzle start",
-    "start:mock-api": "PORT=${HYDRA_MOCK_API_PORT:?not set — run via the make target, or export the port} CONTENT_MOUNTS='/:docs/content/content/content,/_test_data:tests-playwright/fixtures/content' node --watch --watch-path=tests-playwright/fixtures --watch-path=packages/hydra-js --watch-path=docs/content tests-playwright/fixtures/mock-api-server.cjs",
+    "start:mock-api": "PORT=${HYDRA_MOCK_API_PORT:?not set — run via the make target, or export the port} CONTENT_MOUNTS='/docs:docs,/_test_data:tests-playwright/fixtures/content,/:tests-playwright/fixtures/site-root' node --watch --watch-path=tests-playwright/fixtures --watch-path=packages/hydra-js --watch-path=docs tests-playwright/fixtures/mock-api-server.cjs",
     "start:test-frontend": "npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js",
     "start:nuxt:test": "cd examples/nuxt-blog-starter && pnpm run dev:test",
     "start:react:test": "cd docs/examples/test-react && pnpm run dev:test",
@@ -32,8 +32,10 @@
     "test:e2e:debug": "playwright test --debug",
     "test:api": "node --test tests-playwright/fixtures/*.test.cjs",
     "check:docs": "node docs/examples/check-examples.mjs",
-    "sync:docs": "node docs/sync.mjs",
-    "sync:docs:check": "node docs/sync.mjs --check",
+    "gen:myst": "node docs/gen-myst.mjs docs _myst-build",
+    "docs:assets": "node scripts/regen-doc-assets.mjs",
+    "docs:assets:missing": "node scripts/missing-doc-assets.mjs",
+    "docs:assets:check": "node scripts/missing-doc-assets.mjs --check",
     "demo:capture": "playwright test --project=demo-video",
     "demo:encode": "bash tests-playwright/demo-video/encode.sh",
     "lint": "eslint --max-warnings=0 'packages/**/src/**/*.{js,jsx,ts,tsx}'",
@@ -49,10 +51,13 @@
     "storybook": "VOLTOCONFIG=$(pwd)/volto.config.js storybook dev -p 6006 -c $(pwd)/.storybook",
     "build-storybook": "VOLTOCONFIG=$(pwd)/volto.config.js storybook build -c $(pwd)/.storybook",
     "example:nextjs": "pnpm --filter hydra-nextjs run dev",
-    "example:nuxt": "pnpm --filter nuxt-blog-starter install && pnpm --filter nuxt-blog-starter run dev"
+    "example:nuxt": "pnpm --filter nuxt-blog-starter install && pnpm --filter nuxt-blog-starter run dev",
+    "check:content-md": "node proposals/blockmd/import-tree.mjs --diff",
+    "check:content-parity": "node proposals/blockmd/check-parity.mjs"
   },
   "dependencies": {
     "@plone/volto": "workspace:*",
+    "remark-definition-list": "^2.0.0",
     "send": "~0.19.0",
     "volto-hydra": "workspace:*"
   },

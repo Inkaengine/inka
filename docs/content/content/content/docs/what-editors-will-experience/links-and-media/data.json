@@ -8,7 +8,7 @@
   "creators": [
     "admin"
   ],
-  "description": "The link picker, image picker, and upload dialog are part of Hydra's chrome — they look the same on every site. What varies by design system is which links and images are click-to-edit in the preview: a site might wire up every link inline, or only a few \"primary\" links, with everything else editable from the sidebar. Same applies to images.",
+  "description": "The link picker, image picker, and upload dialog are part of Inka's chrome — they look the same on every site. What varies by design system is which links and images are click-to-edit in the preview: a site might wire up every link inline, or only a few \"primary\" links, with everything else editable from the sidebar. Same applies to images.",
   "effective": "2025-01-01T00:00:00",
   "exclude_from_nav": false,
   "expires": null,
@@ -28,7 +28,7 @@
     "@id": "/docs/what-editors-will-experience",
     "@type": "Document",
     "UID": "docs-what-editors-will-experience-001",
-    "description": "This guide is for content editors using a Hydra-powered site. It covers how to use the editor — how to select things, edit text, add and move blocks, work with containers and templates — without assuming you know how the site was built.",
+    "description": "This guide is for content editors using an Inka-powered site. It covers how to use the editor — how to select things, edit text, add and move blocks, work with containers and templates — without assuming you know how the site was built.",
     "title": "Editor Guide",
     "type_title": "Page"
   },
@@ -59,13 +59,13 @@
     },
     "p-1": {
       "@type": "slate",
-      "plaintext": "The link picker, image picker, and upload dialog are part of Hydra's chrome — they look the same on every site. What varies by design system is **which** links and images are click-to-edit in the preview: a site might wire up every link inline, or only a few \"primary\" links, with everything else editable from the sidebar. Same applies to images.",
+      "plaintext": "The link picker, image picker, and upload dialog are part of Inka's chrome — they look the same on every site. What varies by design system is **which** links and images are click-to-edit in the preview: a site might wire up every link inline, or only a few \"primary\" links, with everything else editable from the sidebar. Same applies to images.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "The link picker, image picker, and upload dialog are part of Hydra's chrome — they look the same on every site. What varies by design system is "
+              "text": "The link picker, image picker, and upload dialog are part of Inka's chrome — they look the same on every site. What varies by design system is "
             },
             {
               "type": "strong",

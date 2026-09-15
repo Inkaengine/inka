@@ -21,6 +21,7 @@ import HeadingBlock from './HeadingBlock.vue';
 import SeparatorBlock from './SeparatorBlock.vue';
 import ButtonBlock from './ButtonBlock.vue';
 import HighlightBlock from './HighlightBlock.vue';
+import CalloutBlock from './CalloutBlock.vue';
 import VideoBlock from './VideoBlock.vue';
 import MapsBlock from './MapsBlock.vue';
 import TocBlock from './TocBlock.vue';
@@ -62,6 +63,7 @@ const typeMap = {
   separator: SeparatorBlock,
   button: ButtonBlock,
   highlight: HighlightBlock,
+  callout: CalloutBlock,
   video: VideoBlock,
   maps: MapsBlock,
   toc: TocBlock,

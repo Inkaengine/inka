@@ -40,17 +40,52 @@ function tfLog(...args) {
 // listing-variant blocks). Each has a fetcher registered in index.html.
 const LISTING_BLOCK_TYPES = ['listing', 'relatedItemsListing', 'searchShortcuts', 'rssFeed'];
 
+// Expand a container's children (blocks_layout OR object_list) into renderable
+// items WITH paging — the same way for every container. staticBlocks and
+// expandListingBlocks compose: staticBlocks windows the static (non-listing)
+// children, expandListingBlocks fetches + windows the listing children, and each
+// call's `seen` count is PASSED into the next (threaded, not shared state) so a
+// mixed container pages as ONE combined window. Paging is NOT conditional on a
+// listing being present: a plain grid of slate cards pages exactly like a grid
+// with a listing. Returning all items with paging:null (as the old no-listing
+// shortcut did) meant a manual grid silently lost paging and its pager, so a
+// paged-out child (which the reveal needs) had no page-step control to reach it.
 async function expandItems(blocks, layout, containerId, paging) {
-    const hasListings = layout.some((id) => {
+    const isListing = (id) => {
         const t = blocks[id]?.['@type'];
         if (t === 'listing') return !!blocks[id]?.querystring?.query;
         return LISTING_BLOCK_TYPES.includes(t);
-    });
-    if (hasListings && window._expandListingBlocks) {
-        return await window._expandListingBlocks(blocks, layout, containerId, paging);
+    };
+    const out = [];
+    // A container that DOESN'T page (an accordion panel, a column) calls this with
+    // no paging. staticBlocks tolerates that (its size defaults to 1000, so every
+    // static child renders), but expandListingBlocks does NOT: a truthy paging
+    // object with no start/size makes its window `undefined..NaN` and it returns
+    // ZERO items — a nested listing rendered empty. Normalize one window here so
+    // both helpers get real start/size numbers: the container's own window when it
+    // pages, else a full window (all items). seen still threads for combined paging.
+    const pagingWindow = { start: paging?.start ?? 0, size: paging?.size ?? 1000 };
+    let seen = paging?.seen || 0;
+    let outPaging = null;
+    let i = 0;
+    while (i < layout.length) {
+        if (isListing(layout[i]) && window._expandListingBlocks) {
+            const res = await window._expandListingBlocks(blocks, [layout[i]], containerId, { ...pagingWindow, seen });
+            out.push(...(res.items || []));
+            outPaging = res.paging || outPaging;
+            seen = res.paging?.seen ?? (seen + (res.items?.length || 0));
+            i++;
+        } else {
+            // A run of consecutive static children — window them together.
+            const run = [];
+            while (i < layout.length && !isListing(layout[i])) { run.push(layout[i]); i++; }
+            const res = window._staticBlocks(run, { blocks, paging: pagingWindow, seen });
+            out.push(...res.items);
+            outPaging = res.paging;
+            seen = res.paging.seen;
+        }
     }
-    // No listings — convert to items format directly (sync, no fetch)
-    return { items: layout.map(id => ({ ...blocks[id], '@uid': id })), paging: null };
+    return { items: out, paging: outPaging };
 }
 
 // Slider state: track slide count to detect new slides { [blockId]: slideCount }
@@ -368,6 +403,9 @@ async function renderBlock(blockId, block) {
         case 'highlight':
             wrapper.innerHTML = renderHighlightBlock(block);
             break;
+        case 'callout':
+            wrapper.innerHTML = await renderCalloutBlock(block);
+            break;
         case 'toc':
             wrapper.innerHTML = renderTocBlock(block);
             break;
@@ -631,11 +669,20 @@ function renderChildren(children) {
         // the class on; a plain leaf still renders as bare text.
         const leafStyles = child.text !== undefined ? styleClassAttr(child) : '';
         if (leafStyles) {
-            let content = child.text || '';
+            // Escape: a slate text leaf is TEXT, not markup. A real frontend
+            // interpolates it ({{ node.text }}) and the framework escapes; this
+            // fixture builds an innerHTML string, so it must escape itself. Without
+            // it, a code example whose text is literal HTML/JSX — e.g. a slate
+            // `code` leaf `<div data-block-uid={uid}>` — is parsed as real
+            // elements: the stray <div> auto-closes the enclosing
+            // <p data-edit-text="value">, stranding everything after it (a link)
+            // outside the editable region, and a bare data-block-uid is read as a
+            // block that never round-trips.
+            let content = escapeHtml(child.text || '');
             return `<span${leafStyles}>${content}</span>`;
         }
         if (child.text !== undefined) {
-            let content = child.text || '';
+            let content = escapeHtml(child.text || '');
 
             // Also handle old format (marks) for backward compatibility
             if (child.bold) content = `<span style="font-weight: bold">${content}</span>`;
@@ -1178,6 +1225,35 @@ function renderHighlightBlock(block) {
             ${ctaHtml}
         </div>
     </section>`;
+}
+
+/**
+ * Render a callout block — a labelled admonition box (note/tip/warning/important).
+ * Level = block.variation (drives label + colour); body = a slate value.
+ * @param {Object} block - Callout block data
+ * @returns {string} HTML string
+ */
+async function renderCalloutBlock(block) {
+    const levels = {
+        note:      { label: 'Note',      color: '#2563eb', bg: '#eff6ff' },
+        tip:       { label: 'Tip',       color: '#059669', bg: '#ecfdf5' },
+        warning:   { label: 'Warning',   color: '#d97706', bg: '#fffbeb' },
+        important: { label: 'Important', color: '#dc2626', bg: '#fef2f2' },
+    };
+    const level = levels[block.variation] || levels.note;
+    // The body is a region of child blocks (blocks_layout.items) — render each
+    // through renderBlock, the shared container primitive.
+    const blocks = block.blocks || {};
+    const items = block.blocks_layout?.items || [];
+    let bodyHtml = '';
+    for (const id of items) {
+        const el = await renderBlock(id, { ...blocks[id], '@uid': id });
+        if (el) bodyHtml += el.outerHTML;
+    }
+    return `<aside class="callout callout--${block.variation || 'note'}" style="border-left:4px solid ${level.color};background:${level.bg};padding:12px 16px;border-radius:4px;margin:1em 0;">
+        <div class="callout__label" style="font-weight:700;color:${level.color};text-transform:uppercase;font-size:0.8em;letter-spacing:0.05em;margin-bottom:4px;">${level.label}</div>
+        <div class="callout__body">${bodyHtml}</div>
+    </aside>`;
 }
 
 /**
@@ -1867,10 +1943,15 @@ function renderPaging(paging, blockId) {
         return url.pathname + url.search;
     };
 
+    // Step size for the reveal: data-block-selector="+N"/"-N" tells hydra how many
+    // items one page-step moves, so tryMakeBlockVisible can synthesise clicks on
+    // Next/Prev to page a hidden child into view — client-side, no reload (see the
+    // delegated pager handler in index.html). Mirrors nuxt's Paging.vue.
+    const step = paging.size || 6;
     let html = '<nav class="grid-paging" aria-label="Page Navigation" style="margin-top: 15px; text-align: center;">';
 
     if (paging.prev !== null) {
-        html += `<a href="${buildUrl(paging.prev)}" data-linkable-allow class="paging-prev" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">← Prev</a>`;
+        html += `<a href="${buildUrl(paging.prev)}" data-linkable-allow data-block-selector="-${step}" class="paging-prev" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">← Prev</a>`;
     }
 
     paging.pages.forEach(p => {
@@ -1883,7 +1964,7 @@ function renderPaging(paging, blockId) {
     });
 
     if (paging.next !== null) {
-        html += `<a href="${buildUrl(paging.next)}" data-linkable-allow class="paging-next" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">Next →</a>`;
+        html += `<a href="${buildUrl(paging.next)}" data-linkable-allow data-block-selector="+${step}" class="paging-next" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">Next →</a>`;
     }
 
     html += '</nav>';
@@ -2687,17 +2768,23 @@ function renderSlateTableBlock(block) {
             const tag = cell.type === 'header' ? 'th' : 'td';
             const style = 'border: 1px solid #ccc; padding: 8px;';
 
-            // Render cell content from slate value
+            // Render cell content from slate value. data-edit-text="value" belongs
+            // on the CELL, not on each node: a cell's value is ONE field that may
+            // hold several top-level nodes (a heading AND a paragraph). Tagging each
+            // node made every node its own "value" region, so the round-trip reader
+            // saw only the first node and the cell never matched its own value. One
+            // region per cell, each node rendered with its real element tag.
             let cellContent = '';
             const value = cell.value || [];
             value.forEach((node) => {
                 const nodeIdAttr = node.nodeId !== undefined ? ` data-node-id="${node.nodeId}"` : '';
                 const text = renderChildren(node.children || []);
-                cellContent += `<p data-edit-text="value"${nodeIdAttr}>${text}</p>`;
+                const el = /^h[1-6]$/.test(node.type || '') ? node.type : 'p';
+                cellContent += `<${el}${nodeIdAttr}>${text}</${el}>`;
             });
 
             // Cells add to the right (new column)
-            html += `<${tag} data-block-uid="${cell.key}" data-block-add="right" style="${style}">${cellContent}</${tag}>`;
+            html += `<${tag} data-block-uid="${cell.key}" data-block-add="right" data-edit-text="value" style="${style}">${cellContent}</${tag}>`;
         });
         html += '</tr>';
     });

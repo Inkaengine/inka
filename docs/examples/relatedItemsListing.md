@@ -1,67 +1,55 @@
+---
+"@type": Document
+UID: docs-examples-relatedItemsListing-001
+allow_discussion: false
+contributors: []
+creators:
+  - admin
+description: Renders the current page's related items relation field (default
+  relatedItems) as a list, reusing the listing machinery — each related item is
+  rendered with a configurable item type (variation).
+effective: null
+exclude_from_nav: false
+expires: null
+id: relatedItemsListing
+is_folderish: false
+language: "##DEFAULT##"
+layout: document_view
+review_state: published
+rights: ""
+subjects:
+  - blocks
+  - listings
+title: Related Items Block
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
+  <block type="codeExample">
+    <region name="tabs" widget="object_list">
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+---
+
 # Related Items Block
 
-Renders the current page's *related items* relation field (default `relatedItems`). Its items are fetched at render time and shown with a configurable item type (variation).
+Renders the current page's related items relation field (default relatedItems). Its items are fetched at render time and shown with a configurable item type (variation).
 
-It's a custom block type whose items come from a fetcher; `expandListingBlocks` expands it in any region (see Rendering).
+## Live example
 
-## Schema
+<block type="relatedItemsListing" relationField="relatedItems" variation="summary" />
 
-```json
-{
-  "relatedItemsListing": {
-    "id": "relatedItemsListing",
-    "title": "Related Items",
-    "blockSchema": {
-      "fieldsets": [
-        {
-          "id": "default",
-          "title": "Default",
-          "fields": [
-            "relationField",
-            "variation",
-            "fieldMapping"
-          ]
-        }
-      ],
-      "properties": {
-        "relationField": {
-          "title": "Relation field",
-          "widget": "schemaFieldSelect",
-          "fieldType": "relation"
-        },
-        "variation": {
-          "title": "Item Type",
-          "widget": "blockTypeSelect",
-          "filterConvertibleFrom": "@default",
-          "default": "summary"
-        }
-      }
-    },
-    "schemaEnhancer": {
-      "inheritSchemaFrom": {
-        "typeField": "variation",
-        "mappingField": "fieldMapping",
-        "defaultsField": "itemDefaults"
-      }
-    }
-  }
-}
-```
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing">
 
+<block type="codeExample" slotId="schema" source="relatedItemsListing" format="schema" />
 
-## JSON Block Data
+<block type="codeExample" slotId="json-data" source="relatedItemsListing" format="json" />
 
-```json
-{
-  "@type": "relatedItemsListing",
-  "variation": "summary",
-  "relationField": "relatedItems"
-}
-```
+<fields slotId="rendering">
 
-## Fetcher
+This block has no bespoke renderer. Add its fetcher to your fetchItems map (keyed by @type) and expandListingBlocks expands it in any region you render — the same seam that powers [listings](../listings.md) and other collection blocks. See [Custom Blocks](../custom-blocks.md) to define the block type. Only the fetcher below is block-specific.
 
-The whole block is a **fetcher** — everything block-specific lives here. A fetcher is `async (block, { start, size }) => ({ items, total })`; `expandListingBlocks` calls it, keyed by the block's `@type`. This one reads the current page's relation field — Plone already serializes relations as summaries (`@id`/`title`/`description`/`image`), so there's no catalog query, just a read + page:
+### Fetcher
 
 ```javascript
 export function relatedItemsFetcher({ apiUrl, contextPath }) {
@@ -74,11 +62,9 @@ export function relatedItemsFetcher({ apiUrl, contextPath }) {
 }
 ```
 
-The optional field picker (`schemaFieldSelect`, `fieldType: 'relation'`) lists the content type's relation fields from `/@types`, so an editor can point the block at a different relation field.
+<block type="codeExample">
 
-## Rendering
-
-There's no bespoke renderer. Add this block's fetcher to your `fetchItems` map (keyed by `@type`) alongside any other fetch-based blocks, then expand each region with `expandListingBlocks` — it turns every block whose `@type` is in the map into ready-to-render item blocks. Only the fetcher above is block-specific.
+### Render
 
 ```javascript
 // One fetchItems map, keyed by @type, holds every fetch-based block you use.
@@ -94,4 +80,8 @@ const { items } = await expandListingBlocks(regionBlockIds, {
 items.forEach((item) => renderBlock(item)); // your normal per-block renderer
 ```
 
-See the [Listing block](./listing.md#rendering) for full per-stack (React / Vue / Svelte / Astro) render components, and [Listings](../listings.md) for the expand pattern.
+</block>
+
+</fields>
+
+</fields>

@@ -910,7 +910,12 @@ export class Bridge {
   }
 
   static uidFromSelectorToken(token) {
-    if (!token || token === '+1' || token === '-1' || token.includes(':')) {
+    // `+N`/`-N` is a paging DIRECTION, not a uid. The sign is which way (next /
+    // previous), and N is how many uids the page in that direction brings into view
+    // — `+1`/`-1` is a carousel (one slide either way), `+6`/`-6` a grid/listing
+    // whose next/previous page shows six more. A token with `:` is a named
+    // direction. None name a block.
+    if (!token || /^[+-]\d+$/.test(token) || token.includes(':')) {
       return undefined;
     }
     const uid = token.split('#')[0];
@@ -4827,6 +4832,64 @@ export class Bridge {
       // Skip if tryMakeBlockVisible is currently navigating (to avoid interference)
       const selectorElement = event.target.closest('[data-block-selector]');
       if (selectorElement) {
+        // A SELF-NAVIGATING pager (a grid/listing Next/Prev whose data-block-selector
+        // is a DIRECTIONAL +N|-N token) pages ITSELF via its own click handler and
+        // marks that intent with data-linkable-allow. handleBlockSelector's carousel
+        // stepping would fight that navigation, so leave it to the pager: the bridge
+        // still reveals a hidden child by SYNTHESISING a click, which triggers the
+        // pager's own handler — it just doesn't drive the step here. The skip is
+        // scoped to that directional case ONLY: other data-linkable-allow handles
+        // carry UID tokens (a codeExample tab is `uid uid#code` + data-linkable-allow)
+        // and STILL need handleBlockSelector below to reveal/select the block — a
+        // blanket data-linkable-allow skip silently broke tab and similar reveals.
+        const linkableTokens = (selectorElement.getAttribute('data-block-selector') || '')
+          .trim()
+          .split(/\s+/);
+        const isSelfNavigatingPager =
+          selectorElement.hasAttribute('data-linkable-allow') &&
+          linkableTokens.some((t) => /^[+-]\d+$/.test(t));
+        if (isSelfNavigatingPager) {
+          // The pager navigates ITSELF (its own click handler), so don't let
+          // handleBlockSelector's carousel stepping fight it — but a PATH-based
+          // pager (nuxt/nextjs `/@pg_<id>_<n>`) still needs its imminent
+          // navigation flagged IN-PAGE, or the PATH_CHANGE it triggers is
+          // classified inPage:false and hydra resets the iframe to the form-data
+          // state, throwing away the page just navigated to (a revealed off-page
+          // child then vanishes; edit-mode paging snaps back to page 1).
+          //
+          // Flag it ONLY when the pager's href actually changes the pathname —
+          // exactly the case detectNavigation will consume the flag on. A
+          // QUERY-based pager (the mock frontend's `?pg_<id>=<n>`) changes no
+          // pathname, fires no PATH_CHANGE, and needs no flag; marking it anyway
+          // left hydra_in_page_nav_time set with nothing to consume it, so a
+          // LATER unrelated PATH_CHANGE read it as in-page — the stale-state leak
+          // that destabilized block-sanity's off-page reveals.
+          const pagerHref = selectorElement.getAttribute('href');
+          let changesPath = false;
+          if (pagerHref) {
+            try {
+              changesPath =
+                new URL(pagerHref, window.location.href).pathname !==
+                window.location.pathname;
+            } catch {
+              // A non-URL href (e.g. "#"): treat as no pathname change.
+            }
+          }
+          if (changesPath) {
+            this._allowLinkNavigation = true;
+            setTimeout(() => {
+              this._allowLinkNavigation = false;
+            }, 100);
+            sessionStorage.setItem('hydra_in_page_nav_time', String(Date.now()));
+            if (this.selectedBlockUid) {
+              sessionStorage.setItem(
+                'hydra_in_page_nav_block',
+                `${Date.now()}|${this.selectedBlockUid}`,
+              );
+            }
+          }
+          return;
+        }
         // tryMakeBlockVisible reveals a hidden block by SYNTHESISING a click on
         // its selector (`clickedSelector.click()`); that must not re-enter this
         // handler. But a genuine user click arriving mid-navigation was being
@@ -12288,79 +12351,130 @@ export class Bridge {
 
       const targetElement = this.queryBlockElement(targetUid);
       if (!targetElement) {
-        log(`tryMakeBlockVisible: target element not in DOM`);
-        return false;
-      }
-
-      const containerBlock = targetElement.parentElement?.closest('[data-block-uid]');
-      if (!containerBlock) {
-        log(`tryMakeBlockVisible: no container block found`);
-        return false;
-      }
-      const containerUid = containerBlock.getAttribute('data-block-uid');
-
-      const directParent = targetElement.parentElement;
-      if (!directParent) {
-        log(`tryMakeBlockVisible: no parent element`);
-        return false;
-      }
-
-      const siblings = Array.from(
-        directParent.querySelectorAll(':scope > [data-block-uid]'),
-      );
-      log(`tryMakeBlockVisible: found ${siblings.length} siblings in container ${containerUid}`);
-
-      const targetIndex = siblings.findIndex(
-        (el) => el.getAttribute('data-block-uid') === targetUid,
-      );
-      if (targetIndex === -1) {
-        log(`tryMakeBlockVisible: target not in siblings`);
-        return false;
-      }
-
-      const currentIndex = siblings.findIndex((el) => !this.isElementHidden(el));
-      const currentUid = currentIndex >= 0 ? siblings[currentIndex].getAttribute('data-block-uid') : null;
-      log(`tryMakeBlockVisible: currentIndex=${currentIndex} (${currentUid}), targetIndex=${targetIndex}`);
-
-      if (currentIndex === -1) {
-        log(`tryMakeBlockVisible: no visible sibling`);
-        return false;
-      }
-
-      const stepsNeeded = targetIndex - currentIndex;
-      if (stepsNeeded === 0) {
-        log(`tryMakeBlockVisible: already at target`);
-        return false;
-      }
-
-      const direction = stepsNeeded > 0 ? '+1' : '-1';
-
-      const explicitSelector = document.querySelector(
-        `[data-block-selector="${currentUid}:${direction}"]`,
-      );
-      if (explicitSelector) {
-        log(`tryMakeBlockVisible: found explicit selector ${currentUid}:${direction}`);
-        clickedSelector = explicitSelector;
-      } else {
-        const simpleSelector = containerBlock.querySelector(
-          `[data-block-selector="${direction}"]`,
-        );
-        if (simpleSelector) {
-          log(`tryMakeBlockVisible: found simple selector ${direction} inside container`);
-          clickedSelector = simpleSelector;
+        // The target isn't rendered at all — it may live on another PAGE of a
+        // paginated container (a grid/listing that renders only a window of its
+        // children). The +1/-1 sibling walk needs the target already in the DOM,
+        // so it can't help. But the CONTAINER is rendered, and if it publishes a
+        // paging control (`data-block-selector="+N"/"-N"`, N being how many uids the
+        // next/previous page shows), we page toward the target and recurse once it
+        // renders. blockPathMap knows the target's parent even when the target isn't
+        // in the DOM. The count is irrelevant to the search: we click the next/prev
+        // control and re-check, walking one page per pass until the target renders
+        // (bounded by depth), which also covers a dynamic container whose page a uid
+        // lands on isn't knowable ahead of time.
+        const parentId = this.blockPathMap?.[targetUid]?.parentId;
+        const containerEl = parentId ? this.queryBlockElement(parentId) : null;
+        // A paged container marks its next/prev with the GENERALISED carousel form:
+        // data-block-selector="+N"/"-N". The pager navigates ITSELF and says so with
+        // data-linkable-allow, so blockClickHandler leaves it alone (see there) and
+        // it doesn't fight a real author click. Here we only need to CLICK it to
+        // page; its own handler does the rest. Find the directional token in the
+        // selector's word-list (it may sit alongside uids).
+        const dirTokenOf = (el) =>
+          (el.getAttribute('data-block-selector') || '')
+            .trim()
+            .split(/\s+/)
+            .find((t) => /^[+-]\d+$/.test(t));
+        const pageControls = containerEl
+          ? Array.from(containerEl.querySelectorAll('[data-block-selector]')).filter((el) => dirTokenOf(el))
+          : [];
+        if (!pageControls.length) {
+          log(`tryMakeBlockVisible: target ${targetUid} not in DOM and no paging control on its container`);
+          return false;
         }
-      }
+        // Page FORWARD when the target sits after the rendered window (the common
+        // "later page" case), else back. Position is the container's authored
+        // order (blocks_layout); a container with no visible child yet also pages
+        // forward from the start.
+        const layout = this.getBlockData(parentId)?.blocks_layout?.items || [];
+        const targetIdx = layout.indexOf(targetUid);
+        const renderedIdxs = layout
+          .map((id, i) => (this.queryBlockElement(id) ? i : -1))
+          .filter((i) => i >= 0);
+        const maxRendered = renderedIdxs.length ? Math.max(...renderedIdxs) : -1;
+        const dir = targetIdx < 0 || targetIdx > maxRendered || maxRendered < 0 ? '+' : '-';
+        const control = pageControls.find(
+          (el) => dirTokenOf(el)?.startsWith(dir) && !this.isElementHidden(el),
+        );
+        if (!control) {
+          log(`tryMakeBlockVisible: no usable ${dir} paging control in container ${parentId}`);
+          return false;
+        }
+        log(`tryMakeBlockVisible: ${targetUid} off-page; paging ${dir} in container ${parentId}`);
+        clickedSelector = control;
+        nextUid = targetUid; // poll for the target itself to render
+        usedAncestor = true; // count each page toward the depth bound so a target that never appears can't spin
+      } else {
+        const containerBlock = targetElement.parentElement?.closest('[data-block-uid]');
+        if (!containerBlock) {
+          log(`tryMakeBlockVisible: no container block found`);
+          return false;
+        }
+        const containerUid = containerBlock.getAttribute('data-block-uid');
 
-      if (!clickedSelector) {
-        log(`tryMakeBlockVisible: no ${direction} selector found`);
-        return false;
-      }
+        const directParent = targetElement.parentElement;
+        if (!directParent) {
+          log(`tryMakeBlockVisible: no parent element`);
+          return false;
+        }
 
-      // For +1/-1, the next visible block is one step from current
-      const nextIndex = currentIndex + (stepsNeeded > 0 ? 1 : -1);
-      const nextBlock = siblings[nextIndex];
-      nextUid = nextBlock?.getAttribute('data-block-uid');
-      log(`tryMakeBlockVisible: clicking ${direction}, expecting ${nextUid} to become visible`);
+        const siblings = Array.from(
+          directParent.querySelectorAll(':scope > [data-block-uid]'),
+        );
+        log(`tryMakeBlockVisible: found ${siblings.length} siblings in container ${containerUid}`);
+
+        const targetIndex = siblings.findIndex(
+          (el) => el.getAttribute('data-block-uid') === targetUid,
+        );
+        if (targetIndex === -1) {
+          log(`tryMakeBlockVisible: target not in siblings`);
+          return false;
+        }
+
+        const currentIndex = siblings.findIndex((el) => !this.isElementHidden(el));
+        const currentUid = currentIndex >= 0 ? siblings[currentIndex].getAttribute('data-block-uid') : null;
+        log(`tryMakeBlockVisible: currentIndex=${currentIndex} (${currentUid}), targetIndex=${targetIndex}`);
+
+        if (currentIndex === -1) {
+          log(`tryMakeBlockVisible: no visible sibling`);
+          return false;
+        }
+
+        const stepsNeeded = targetIndex - currentIndex;
+        if (stepsNeeded === 0) {
+          log(`tryMakeBlockVisible: already at target`);
+          return false;
+        }
+
+        const direction = stepsNeeded > 0 ? '+1' : '-1';
+
+        const explicitSelector = document.querySelector(
+          `[data-block-selector="${currentUid}:${direction}"]`,
+        );
+        if (explicitSelector) {
+          log(`tryMakeBlockVisible: found explicit selector ${currentUid}:${direction}`);
+          clickedSelector = explicitSelector;
+        } else {
+          const simpleSelector = containerBlock.querySelector(
+            `[data-block-selector="${direction}"]`,
+          );
+          if (simpleSelector) {
+            log(`tryMakeBlockVisible: found simple selector ${direction} inside container`);
+            clickedSelector = simpleSelector;
+          }
+        }
+
+        if (!clickedSelector) {
+          log(`tryMakeBlockVisible: no ${direction} selector found`);
+          return false;
+        }
+
+        // For +1/-1, the next visible block is one step from current
+        const nextIndex = currentIndex + (stepsNeeded > 0 ? 1 : -1);
+        const nextBlock = siblings[nextIndex];
+        nextUid = nextBlock?.getAttribute('data-block-uid');
+        log(`tryMakeBlockVisible: clicking ${direction}, expecting ${nextUid} to become visible`);
+      }
     }
 
     // Idempotency: clicking a toggle that's already in the "open" state
@@ -12517,6 +12631,15 @@ export class Bridge {
         Object.entries(props).forEach(([fieldName, fieldDef]) => {
           if (fieldDef.widget === 'object' && fieldDef.schema?.properties) {
             addToFields(obj[fieldName], fieldDef.schema.properties);
+            return;
+          }
+          // object_list holds an ARRAY of sub-objects (e.g. slateTable's
+          // table.rows and rows[].cells). A slate field nested inside one —
+          // slateTable's cell `value` — is a real editable field per the
+          // schema, so descend into every item or selecting it trips the
+          // "missing data-node-id" warning (#value on slateTable).
+          if (fieldDef.widget === 'object_list' && fieldDef.schema?.properties && Array.isArray(obj[fieldName])) {
+            obj[fieldName].forEach((item) => addToFields(item, fieldDef.schema.properties));
             return;
           }
           if (isSlateFieldType(getFieldTypeString(fieldDef)) && obj[fieldName]) {
@@ -14262,20 +14385,21 @@ export class Bridge {
         [data-edit-text][data-placeholder][data-empty]:focus::before {
           visibility: hidden;
         }
-        /* If the frontend renders its own empty-paragraph placeholder
-           inside the editable field (Slate's <p><br></p> convention, which
-           contributes one line of layout via the <br>), don't ALSO render
-           the bridge's ::before placeholder — it would stack on top of the
-           empty paragraph and the field would be 2 lines tall when empty but
-           1 line tall after the first keystroke.
-           Suppress ONLY when a <br> is present — that is the marker that
-           actually provides a line of layout. An earlier :has(*:not(:empty))
-           form also matched a paragraph whose only child is an EMPTY wrapper
-           element that provides no height (the Framework7 example renders an
-           empty text leaf as <p><span></span></p>): the placeholder was
-           suppressed, the field collapsed to 0px, and the block became
-           unclickable. A truly bare <p></p>, or a <p> wrapping only empty
-           elements, provides no layout, so ::before still fires for it. */
+        /* The placeholder gives an empty field its one line of height so it
+           stays clickable. Suppress it ONLY when the field already has a line
+           of height of its own — i.e. a rendered <br> (the browser's bogus
+           <br> in a focused-empty contenteditable, or a frontend that renders
+           one for an empty paragraph). Otherwise the two would stack and the
+           field would be 2 lines tall when empty but 1 after the first
+           keystroke.
+           A <br> is never CONTENT — a <br> node stored in a slate value fails
+           the sanity round-trip — so this keys off render output only, never
+           the fixture. Keep the placeholder for every other empty case, which
+           all render zero height: a bare <p></p>, or a <p> wrapping only empty
+           elements (a frontend that wraps the empty leaf, e.g. <p><span></span></p>).
+           An earlier :has(*:not(:empty)) form wrongly counted such an empty
+           wrapper as "provides layout", suppressed the placeholder, and the
+           field collapsed to 0px and became unclickable. */
         [data-edit-text][data-placeholder][data-empty]:has(br)::before {
           content: none;
         }

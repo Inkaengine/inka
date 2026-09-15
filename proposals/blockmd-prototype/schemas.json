@@ -1,0 +1,222 @@
+{
+ "slate": {
+  "value": {
+   "widget": "slate"
+  }
+ },
+ "button": {
+  "href": {
+   "widget": "object_browser"
+  },
+  "inneralign": {
+   "widget": "select"
+  }
+ },
+ "hero": {
+  "subheading": {
+   "widget": "textarea"
+  },
+  "buttonLink": {
+   "widget": "object_browser"
+  },
+  "image": {
+   "widget": "image"
+  },
+  "description": {
+   "widget": "slate"
+  }
+ },
+ "columns": {
+  "columns": {
+   "widget": "blocks_layout"
+  }
+ },
+ "column": {
+  "items": {
+   "widget": "blocks_layout"
+  }
+ },
+ "section": {
+  "items": {
+   "widget": "blocks_layout"
+  }
+ },
+ "contextNavigation": {
+  "items": {
+   "widget": "blocks_layout"
+  }
+ },
+ "navItem": {
+  "href": {
+   "widget": "object_browser"
+  }
+ },
+ "slider": {
+  "slides": {
+   "widget": "object_list"
+  },
+  "variation": {
+   "widget": "blockTypeSelect"
+  }
+ },
+ "slide": {
+  "description": {
+   "widget": "textarea"
+  },
+  "preview_image": {
+   "widget": "object_browser"
+  }
+ },
+ "accordion": {
+  "panels": {
+   "widget": "object_list",
+   "hasSchema": true
+  }
+ },
+ "objectBlocks": {
+  "content": {
+   "widget": "object",
+   "hasSchema": true
+  }
+ },
+ "slateTable": {
+  "table": {
+   "widget": "object",
+   "hasSchema": true
+  }
+ },
+ "codeExample": {
+  "tabs": {
+   "widget": "object_list",
+   "hasSchema": true
+  }
+ },
+ "listing": {
+  "variation": {
+   "widget": "blockTypeSelect"
+  }
+ },
+ "relatedItemsListing": {
+  "relationField": {
+   "widget": "schemaFieldSelect"
+  },
+  "variation": {
+   "widget": "blockTypeSelect"
+  }
+ },
+ "searchShortcuts": {
+  "index": {
+   "widget": "select_querystring_field"
+  },
+  "pageField": {
+   "widget": "schemaFieldSelect"
+  },
+  "searchUrl": {
+   "widget": "url"
+  },
+  "variation": {
+   "widget": "blockTypeSelect"
+  }
+ },
+ "rssFeed": {
+  "feedUrl": {
+   "widget": "url"
+  },
+  "variation": {
+   "widget": "blockTypeSelect"
+  }
+ },
+ "summary": {
+  "href": {
+   "widget": "url"
+  },
+  "description": {
+   "widget": "textarea"
+  },
+  "image": {
+   "widget": "url"
+  },
+  "date": {
+   "widget": "date"
+  }
+ },
+ "default": {
+  "href": {
+   "widget": "url"
+  },
+  "description": {
+   "widget": "textarea"
+  }
+ },
+ "gridBlock": {
+  "items": {
+   "widget": "blocks_layout"
+  },
+  "variation": {
+   "widget": "blockTypeSelect"
+  }
+ },
+ "form": {
+  "subblocks": {
+   "widget": "object_list"
+  },
+  "mail_header": {
+   "widget": "richtext"
+  },
+  "mail_footer": {
+   "widget": "richtext"
+  },
+  "send_message": {
+   "widget": "textarea"
+  }
+ },
+ "skiplogicTest": {
+  "mode": {
+   "widget": "select"
+  },
+  "columnLayout": {
+   "widget": "select"
+  }
+ },
+ "highlight": {
+  "description": {
+   "widget": "slate"
+  },
+  "image": {
+   "widget": "image"
+  },
+  "cta_link": {
+   "widget": "object_browser"
+  }
+ },
+ "introduction": {
+  "value": {
+   "widget": "slate"
+  }
+ },
+ "convGroupSrc": {
+  "items": {
+   "widget": "blocks_layout"
+  }
+ },
+ "convGroupDst": {
+  "items": {
+   "widget": "blocks_layout"
+  }
+ },
+ "convGroupBox": {
+  "items": {
+   "widget": "blocks_layout"
+  }
+ },
+ "convBox": {
+  "items": {
+   "widget": "blocks_layout"
+  }
+ },
+ "convBoxMulti": {
+  "items": {
+   "widget": "blocks_layout"
+  }
+ }
+}

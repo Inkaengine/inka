@@ -1,0 +1,129 @@
+{
+  "@id": "http://localhost:8888/demo-video-page",
+  "@type": "Document",
+  "UID": "demo-video-page-uid",
+  "id": "demo-video-page",
+  "title": "Design system",
+  "description": "Dedicated fixture for the homepage demo video capture. Used ONLY by tests-playwright/demo-video/capture.spec.ts so no other spec can change what the published video shows. Block ids are load-bearing: capture.spec.ts drives 'intro', 'columns-1' and 'after-columns' by name.",
+  "review_state": "published",
+  "exclude_from_nav": true,
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "intro": {
+      "@type": "slate",
+      "plaintext": "Every component declares what it allows, so editors compose freely inside those bounds.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Every component declares what it "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "allows"
+                }
+              ]
+            },
+            {
+              "text": ", so editors compose freely inside those bounds."
+            }
+          ]
+        }
+      ]
+    },
+    "columns-1": {
+      "@type": "columns",
+      "title": "Foundations",
+      "blocks": {
+        "col-1": {
+          "@type": "column",
+          "title": "Type scale",
+          "blocks": {
+            "left-text": {
+              "@type": "slate",
+              "plaintext": "Headings, body and captions all come from one scale.",
+              "value": [
+                {
+                  "type": "p",
+                  "children": [
+                    {
+                      "text": "Headings, body and captions all come from one scale."
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "blocks_layout": {
+            "items": [
+              "left-text"
+            ]
+          }
+        },
+        "col-2": {
+          "@type": "column",
+          "title": "Colour",
+          "blocks": {
+            "right-text": {
+              "@type": "slate",
+              "plaintext": "Tokens only — no arbitrary hex values.",
+              "value": [
+                {
+                  "type": "p",
+                  "children": [
+                    {
+                      "text": "Tokens only — no arbitrary hex values."
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "blocks_layout": {
+            "items": [
+              "right-text"
+            ]
+          }
+        }
+      },
+      "blocks_layout": {
+        "columns": [
+          "col-1",
+          "col-2"
+        ]
+      }
+    },
+    "after-columns": {
+      "@type": "slate",
+      "plaintext": "The same content renders through whichever frontend you preview.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The same content renders through whichever frontend you preview."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "intro",
+      "columns-1",
+      "after-columns"
+    ]
+  }
+}

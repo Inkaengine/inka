@@ -8,7 +8,7 @@
   "creators": [
     "admin"
   ],
-  "description": "Advanced topics for optimising your Hydra integration: lazy loading the bridge, authentication, and preventing reloads.",
+  "description": "Advanced topics for optimising your Inka integration: lazy loading the bridge, authentication, and preventing reloads.",
   "effective": "2025-01-01T00:00:00",
   "exclude_from_nav": false,
   "expires": null,
@@ -61,13 +61,13 @@
     },
     "p-1": {
       "@type": "slate",
-      "plaintext": "Advanced topics for optimising your Hydra integration: lazy loading the bridge, authentication, and preventing reloads.",
+      "plaintext": "Advanced topics for optimising your Inka integration: lazy loading the bridge, authentication, and preventing reloads.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "Advanced topics for optimising your Hydra integration: lazy loading the bridge, authentication, and preventing reloads."
+              "text": "Advanced topics for optimising your Inka integration: lazy loading the bridge, authentication, and preventing reloads."
             }
           ]
         }
@@ -92,7 +92,7 @@
     },
     "p-4": {
       "@type": "slate",
-      "plaintext": "Detect the admin iframe and load the bridge only when needed. `window.name` is set by Hydra to indicate mode:",
+      "plaintext": "Detect the admin iframe and load the bridge only when needed. `window.name` is set by Inka to indicate mode:",
       "value": [
         {
           "type": "p",
@@ -109,7 +109,7 @@
               ]
             },
             {
-              "text": " is set by Hydra to indicate mode:"
+              "text": " is set by Inka to indicate mode:"
             }
           ]
         }
@@ -448,13 +448,13 @@
     },
     "p-20": {
       "@type": "slate",
-      "plaintext": "In some cases you might want to provide editors with more visual editing inside the preview than Hydra currently supports out of the box. For example, a newly created table block might display a form to set the initial number of columns and rows. The bridge exposes the following hooks to make this possible:",
+      "plaintext": "In some cases you might want to provide editors with more visual editing inside the preview than Inka currently supports out of the box. For example, a newly created table block might display a form to set the initial number of columns and rows. The bridge exposes the following hooks to make this possible:",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "In some cases you might want to provide editors with more visual editing inside the preview than Hydra currently supports out of the box. For example, a newly created table block might display a form to set the initial number of columns and rows. The bridge exposes the following hooks to make this possible:"
+              "text": "In some cases you might want to provide editors with more visual editing inside the preview than Inka currently supports out of the box. For example, a newly created table block might display a form to set the initial number of columns and rows. The bridge exposes the following hooks to make this possible:"
             }
           ]
         }
@@ -462,7 +462,7 @@
     },
     "ul-21": {
       "@type": "slate",
-      "plaintext": "sendBlockUpdate — send an updated version of the block back to the admin after frontend-side changes (TODO). sendBlockAction — perform actions like select, add, move, copy or remove blocks, or invoke custom actions on the Volto block edit component. You can disable Hydra's default handling of selection, DnD, or other interactions if you want to replace some parts of Hydra and not others (TODO).",
+      "plaintext": "sendBlockUpdate — send an updated version of the block back to the admin after frontend-side changes (TODO). sendBlockAction — perform actions like select, add, move, copy or remove blocks, or invoke custom actions on the Volto block edit component. You can disable Inka's default handling of selection, DnD, or other interactions if you want to replace some parts of Inka and not others (TODO).",
       "value": [
         {
           "type": "ul",
@@ -503,7 +503,7 @@
               "type": "li",
               "children": [
                 {
-                  "text": "You can disable Hydra's default handling of selection, DnD, or other interactions if you want to replace some parts of Hydra and not others (TODO)."
+                  "text": "You can disable Inka's default handling of selection, DnD, or other interactions if you want to replace some parts of Inka and not others (TODO)."
                 }
               ]
             }

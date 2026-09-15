@@ -123,7 +123,8 @@
           "language": "javascript",
           "code": ""
         }
-      ]
+      ],
+      "fixed": false
     },
     "tpl-json-heading": {
       "@type": "slate",
@@ -186,7 +187,8 @@
           "language": "json",
           "code": ""
         }
-      ]
+      ],
+      "fixed": false
     },
     "tpl-rendering-heading": {
       "@type": "slate",
@@ -250,7 +252,8 @@
           "language": "svelte",
           "code": ""
         }
-      ]
+      ],
+      "fixed": false
     }
   },
   "blocks_layout": {

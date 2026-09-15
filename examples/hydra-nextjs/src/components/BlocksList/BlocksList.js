@@ -90,8 +90,22 @@ function imageProps(block, backendBaseUrl) {
     image_url = `${image_url}/@@images/preview_image`;
     return { url: image_url };
   } else if ("@id" in block) {
-    // Image reference without scales
+    // Image reference with only a base path — a relation field ships
+    // [{ "@id": "/images/penguin1.jpg" }] with no scales and no @type. The @id is
+    // the Image object; its bytes live at @@images/image (the bare path 404s), so
+    // add the scale suffix now, mirroring the hasPreviewImage branch above. The
+    // final @type-driven suffix below can't help here — there is no @type.
     image_url = block["@id"];
+    image_url = image_url.startsWith("/") ? `${backendBaseUrl}${image_url}` : image_url;
+    if (
+      !image_url.includes("@@images") &&
+      !image_url.includes("@@download") &&
+      !image_url.includes("@@display-file") &&
+      !image_url.startsWith("data:")
+    ) {
+      image_url = `${image_url}/@@images/image`;
+    }
+    return { url: image_url };
   } else if (block?.download) {
     image_url = block.download;
   } else if (block?.url && block["@type"] === "image") {
@@ -143,13 +157,15 @@ function imageProps(block, backendBaseUrl) {
   } else if (block?.url && block?.image_field) {
     image_url = `${image_url}/@@images/${block.image_field}`;
   } else if (
-    block["@type"] === "image" &&
+    (block["@type"] === "image" || block["@type"] === "Image") &&
     !image_url.includes("@@images") &&
     !image_url.includes("@@download") &&
     !image_url.includes("@@display-file") &&
     !image_url.startsWith("data:")
   ) {
-    // Image block without scale info - add default image scale
+    // Image block / Plone Image reference without scale info — add the default
+    // image scale. Accept both the block @type "image" and the content @type
+    // "Image" (capital), as nuxt's imageProps does.
     image_url = `${image_url}/@@images/image`;
   }
 
@@ -283,6 +299,7 @@ function Paging({ paging, buildUrl, onNavigate }) {
               href={buildUrl(paging.prev)}
               className="paging-prev"
               data-linkable-allow
+              data-block-selector={`-${paging.size || 1}`}
               onClick={(e) => handleClick(e, paging.prev)}
               style={{ padding: "0.25rem 0.75rem", border: "1px solid #d1d5db", borderRadius: "4px 0 0 4px", color: "#6b7280", backgroundColor: "#fff" }}
             >
@@ -314,6 +331,7 @@ function Paging({ paging, buildUrl, onNavigate }) {
               href={buildUrl(paging.next)}
               className="paging-next"
               data-linkable-allow
+              data-block-selector={`+${paging.size || 1}`}
               onClick={(e) => handleClick(e, paging.next)}
               style={{ padding: "0.25rem 0.75rem", border: "1px solid #d1d5db", borderRadius: "0 4px 4px 0", color: "#6b7280", backgroundColor: "#fff" }}
             >
@@ -329,6 +347,16 @@ function Paging({ paging, buildUrl, onNavigate }) {
 // ─── Listing Block (async fetcher with paging) ──────────────────────────────
 
 const DEFAULT_PAGE_SIZE = 6;
+
+// Build a paging path. STRIP any trailing slash from the context first: a root
+// context ("/") would otherwise give "/" + "/@pg_…" = "//@pg_…", a
+// protocol-relative URL the browser reads as a host (the "@" splits userinfo),
+// so history.pushState throws SecurityError. Latent until the bridge could
+// actually click the pager to reveal an off-page child; now it can.
+const buildPagingPath = (contextPath, id, page) =>
+  page === 0
+    ? contextPath || "/"
+    : `${(contextPath || "/").replace(/\/+$/, "")}/@pg_${id}_${page}`;
 
 function ListingBlock({ id, block, data, apiUrl, contextPath }) {
   const [items, setItems] = useState([]);
@@ -358,18 +386,13 @@ function ListingBlock({ id, block, data, apiUrl, contextPath }) {
     });
   }, [id, block, apiUrl, contextPath, currentPage]);
 
-  const buildPagingUrl = useCallback((page) => {
-    const cp = contextPath || "/";
-    if (page === 0) return cp;
-    return `${cp}/@pg_${id}_${page}`;
-  }, [id, contextPath]);
+  const buildPagingUrl = useCallback((page) => buildPagingPath(contextPath, id, page), [id, contextPath]);
 
   const handleNavigate = useCallback((page) => {
     setCurrentPage(page);
     // Update URL without full page reload
     if (typeof window !== "undefined") {
-      const url = page === 0 ? (contextPath || "/") : `${contextPath || "/"}/@pg_${id}_${page}`;
-      window.history.pushState({}, "", url);
+      window.history.pushState({}, "", buildPagingPath(contextPath, id, page));
     }
   }, [id, contextPath]);
 
@@ -386,6 +409,77 @@ function ListingBlock({ id, block, data, apiUrl, contextPath }) {
       ))}
       <Paging paging={paging} buildUrl={buildPagingUrl} onNavigate={handleNavigate} />
     </>
+  );
+}
+
+// ─── Grid Block ──────────────────────────────────────────────────────────────
+// A grid pages its children the SAME way whether or not one of them is a listing:
+// staticBlocks windows the static children (threading `seen`), and a listing child
+// pages through ListingBlock. Paging is not conditional on a listing — a plain
+// grid of cards renders a pager and pages just like a grid with a listing, so a
+// child on a later page has a data-block-selector control the bridge can reveal it
+// through.
+function GridBlock({ id, block, data, apiUrl, contextPath }) {
+  const [currentPage, setCurrentPage] = useState(0);
+  useEffect(() => {
+    if (typeof window !== "undefined") setCurrentPage(pageFromPath(window.location.pathname, id));
+  }, [id]);
+
+  const layout = block.blocks_layout?.items || [];
+  const blocks = block.blocks || {};
+  const start = currentPage * DEFAULT_PAGE_SIZE;
+  const hasListing = layout.some((cid) => blocks[cid]?.["@type"] === "listing");
+
+  // A grid pages ALL its children as ONE combined window. When a listing is
+  // present its items must be FETCHED, so we window the whole layout through
+  // expandListingBlocks (async) — which walks the layout, fetches each listing
+  // and windows every manual child inline against the running position. A
+  // manual block AFTER a listing therefore lands on whatever page the listing's
+  // item count pushes it to, and the bridge reveals it by paging the grid. A
+  // pure-static grid needs no fetch, so it windows synchronously through
+  // staticBlocks — same paging, SSR-friendly, no hydration flash. Paging is not
+  // conditional on a listing; only whether the window is fetched async is.
+  const [asyncItems, setAsyncItems] = useState(null);
+  const [asyncPaging, setAsyncPaging] = useState(null);
+  useEffect(() => {
+    if (!hasListing) return;
+    const fetchItems = { listing: ploneFetchItems({ apiUrl: apiUrl || "", contextPath: contextPath || "/" }) };
+    expandListingBlocks(layout, {
+      blocks,
+      fetchItems,
+      itemTypeField: "variation",
+      paging: { start, size: DEFAULT_PAGE_SIZE },
+    }).then((res) => {
+      setAsyncItems(res.items || []);
+      setAsyncPaging(res.paging || null);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, block, apiUrl, contextPath, start, hasListing]);
+
+  let items;
+  let paging;
+  if (hasListing) {
+    items = asyncItems || [];
+    paging = asyncPaging;
+  } else {
+    const res = staticBlocks(layout, { blocks, paging: { start, size: DEFAULT_PAGE_SIZE } });
+    items = res.items;
+    paging = res.paging;
+  }
+
+  const buildPagingUrl = (page) => buildPagingPath(contextPath, id, page);
+  const handleNavigate = (page) => {
+    setCurrentPage(page);
+    if (typeof window !== "undefined") window.history.pushState({}, "", buildPagingUrl(page));
+  };
+
+  return (
+    <div data-block-uid={id} data-block-container="{}" className="grid-block" style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(layout.length, 4)}, 1fr)`, gap: "1rem" }}>
+      {items.map((item, index) => (
+        <Block key={item["@id"] ?? `${item["@uid"] ?? "cell"}-${index}`} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+      ))}
+      <Paging paging={paging} buildUrl={buildPagingUrl} onNavigate={handleNavigate} />
+    </div>
   );
 }
 
@@ -456,6 +550,39 @@ function AccordionBlock({ id, block, data, apiUrl, contextPath }) {
         );
       })}
     </div>
+  );
+}
+
+// ─── Callout Block (note / tip / warning / important admonition) ─────────────
+// A callout is a container: its body is a region of child blocks (blocks_layout),
+// each rendered through <Block>. Without this the callout — and its child slate —
+// never rendered on nextjs, so the block-sanity reveal of the child timed out.
+const CALLOUT_LEVELS = {
+  note: { label: "Note", color: "#2563eb", bg: "#eff6ff" },
+  tip: { label: "Tip", color: "#059669", bg: "#ecfdf5" },
+  warning: { label: "Warning", color: "#d97706", bg: "#fffbeb" },
+  important: { label: "Important", color: "#dc2626", bg: "#fef2f2" },
+};
+
+function CalloutBlock({ id, block, data, apiUrl, contextPath }) {
+  const expand = useExpand();
+  const level = CALLOUT_LEVELS[block.variation] || CALLOUT_LEVELS.note;
+  const children = expand(block.blocks_layout?.items || [], block.blocks || {});
+  return (
+    <aside
+      data-block-uid={id}
+      className={`callout callout--${block.variation || "note"}`}
+      style={{ borderLeft: `4px solid ${level.color}`, background: level.bg, padding: "12px 16px", borderRadius: 4, margin: "1em 0" }}
+    >
+      <div style={{ fontWeight: 700, color: level.color, textTransform: "uppercase", fontSize: "0.8em", letterSpacing: "0.05em", marginBottom: 4 }}>
+        {level.label}
+      </div>
+      <div>
+        {children.map((item) => (
+          <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -1232,31 +1359,8 @@ function Block({ block, id, data, apiUrl, contextPath }) {
     }
 
     // ── Grid Block ──
-    case "gridBlock": {
-      const gridLayout = block.blocks_layout?.items || [];
-      const gridChildren = gridLayout.map((childId) => {
-        const childBlock = block.blocks?.[childId];
-        if (!childBlock) return null;
-        if (childBlock["@type"] === "listing") {
-          return { id: childId, block: childBlock, isListing: true };
-        }
-        const items = expand([childId], block.blocks || {});
-        return { id: childId, items, isListing: false };
-      }).filter(Boolean);
-      return (
-        <div data-block-uid={id} data-block-container="{}" className="grid-block" style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(gridLayout.length, 4)}, 1fr)`, gap: "1rem" }}>
-          {gridChildren.map((entry) =>
-            entry.isListing ? (
-              <ListingBlock key={entry.id} id={entry.id} block={entry.block} data={data} apiUrl={apiUrl} contextPath={contextPath} />
-            ) : (
-              entry.items.map((item) => (
-                <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
-              ))
-            )
-          )}
-        </div>
-      );
-    }
+    case "gridBlock":
+      return <GridBlock id={id} block={block} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
 
     // ── Section — a plain container: a wrapper and the blocks it holds ──
     case "section": {
@@ -1304,6 +1408,9 @@ function Block({ block, id, data, apiUrl, contextPath }) {
     // ── Accordion ──
     case "accordion":
       return <AccordionBlock id={id} block={block} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
+
+    case "callout":
+      return <CalloutBlock id={id} block={block} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
 
     // ── Slider ──
     case "slider": {
@@ -1493,7 +1600,13 @@ function Block({ block, id, data, apiUrl, contextPath }) {
 
     // ── Video ──
     case "video": {
-      const videoUrl = block.url || "";
+      // A doc video ships a relative Plone download path
+      // (/docs/static/hydra-demo.mp4/@@download/file). Left relative it resolves
+      // to the nextjs origin (:3007) and 404s — the backend serves it, so prepend
+      // the API base for a root-relative URL, exactly as imageProps does. An
+      // absolute URL (a YouTube link) is left untouched.
+      const rawVideoUrl = block.url || "";
+      const videoUrl = rawVideoUrl.startsWith("/") ? `${apiUrl}${rawVideoUrl}` : rawVideoUrl;
       const ytId = getYouTubeId(videoUrl);
       return (
         <div data-block-uid={id} className="video-block">

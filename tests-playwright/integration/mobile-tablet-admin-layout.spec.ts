@@ -26,19 +26,13 @@ import { URLS } from '../ports';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 // When CAPTURE_MOBILE_SCREENSHOTS=1, the four "snapshot" tests at the
-// bottom of this file each save a viewport screenshot into the editor
-// guide's _images dir. These tests intentionally re-use the
+// bottom of this file each save a viewport screenshot into docs/images/
+// (the served, git-ignored generated-assets bucket the guide pages embed as
+// /docs/images/mobile-*.png). These tests intentionally re-use the
 // already-proven admin-mock setup so the bridge handshake (which is
 // flaky with Nuxt in headless capture) is reliable.
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const SHOTS_OUT_DIR = path.join(
-  SCRIPT_DIR,
-  '..',
-  '..',
-  'docs',
-  'what-editors-will-experience',
-  '_images',
-);
+const SHOTS_OUT_DIR = path.join(SCRIPT_DIR, '..', '..', 'docs', 'images');
 const CAPTURE_SHOTS = process.env.CAPTURE_MOBILE_SCREENSHOTS === '1';
 
 test.describe('Admin layout — desktop control (≥1024px)', () => {

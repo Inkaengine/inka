@@ -7,6 +7,7 @@
       <div style="display:inline-flex">
         <f7-button v-if="paging.prev !== null" small outline
                    :href="buildPagingUrl(paging.prev)" data-linkable-allow
+                   :data-block-selector="'-' + (paging.size || 1)"
                    @click.prevent="navigatePage(buildPagingUrl(paging.prev))"
                    style="border-radius:0.25rem 0 0 0.25rem">
           Previous
@@ -20,6 +21,7 @@
         </f7-button>
         <f7-button v-if="paging.next !== null" small outline
                    :href="buildPagingUrl(paging.next)" data-linkable-allow
+                   :data-block-selector="'+' + (paging.size || 1)"
                    @click.prevent="navigatePage(buildPagingUrl(paging.next))"
                    style="border-radius:0 0.25rem 0.25rem 0">
           Next
@@ -76,7 +78,9 @@ export default {
     function buildPagingUrl(page) {
       const ctxPath = props.contextPath;
       if (page === 0) return ctxPath;
-      return `${ctxPath}/@pg_${props.id}_${page}`;
+      // Strip a trailing slash so a root context gives "/@pg_…" not "//@pg_…"
+      // (protocol-relative — window.location would read it as an external host).
+      return `${ctxPath.replace(/\/+$/, '')}/@pg_${props.id}_${page}`;
     }
 
     function navigatePage(url) {

@@ -1,140 +1,268 @@
-# Button Block
+---
+"@type": Document
+UID: 405582582e70493c96a6c549444a1eaa
+allow_discussion: false
+contributors: []
+creators:
+  - admin
+description: >-
+  
+  The button block shows a button for which a link (internal or external) can be
+  stored. The button can be displayed left, right or center and have a
+  background color.
+effective: 2023-07-06T18:35:00
+exclude_from_nav: false
+expires: null
+id: button
+is_folderish: true
+language: "##DEFAULT##"
+layout: document_view
+preview_caption: null
+preview_image: null
+review_state: published
+rights: ""
+subjects:
+  - blocks
+title: Button
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
+  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block type="codeExample">
+    <region name="tabs" widget="object_list">
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+blocks-tagged: |
+  <block type="button" title="${p/text}" href="${p/link}" />
+---
+
+# Button
 
 A call-to-action button with an editable label and link.
 
-This is a **custom** block — register it via `initBridge`.
+<block type="image">
 
-**Demonstrates:** [HTML Annotations for Visual Editing](../visual-editing.md#html-annotations-for-visual-editing) — `data-edit-text` and `data-edit-link` on one element.
+![The button example block being edited in Volto Hydra](/docs/images/button-edit.png)
 
-## Schema
+</block>
 
-```json
-{
-  "button": {
-    "blockSchema": {
-      "properties": {
-        "title": {
-          "title": "Label"
-        },
-        "href": {
-          "title": "Link",
-          "widget": "object_browser",
-          "mode": "link"
-        },
-        "inneralign": {
-          "title": "Alignment",
-          "widget": "select",
-          "choices": [
-            [
-              "left",
-              "Left"
-            ],
-            [
-              "center",
-              "Center"
-            ],
-            [
-              "right",
-              "Right"
-            ]
-          ],
-          "default": "left"
-        }
-      }
-    }
-  }
-}
-```
+---
 
+<block type="button">
 
-## JSON Block Data
+[Button](/)
 
-```json
-{
-  "@type": "button",
-  "title": "Learn More",
-  "href": [
-    {
-      "@id": "/about-us"
-    }
-  ]
-}
-```
+<fields inneralign="left" data-json='{"styles":{"buttonAlign":"wide"}}' />
 
-## Rendering
+</block>
+
+---
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="center" data-json='{"styles":{"buttonAlign":"wide"}}' />
+
+</block>
+
+---
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="right" data-json='{"styles":{"align":"full","buttonAlign":"wide"}}' />
+
+</block>
+
+---
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="left" />
+
+</block>
+
+---
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="center" />
+
+</block>
+
+---
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="right" />
+
+</block>
+
+<block type="heading" alignment="left" heading="Button Block" tag="h2" data-json='{"styles":{"backgroundColor":"grey"}}' />
+
+<block type="separator">
+
+---
+
+<fields data-json='{"styles":{"align":"full","backgroundColor":"grey"}}' />
+
+</block>
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="left" data-json='{"styles":{"backgroundColor":"grey","buttonAlign":"wide"}}' />
+
+</block>
+
+<block type="separator">
+
+---
+
+<fields data-json='{"styles":{"align":"full","backgroundColor":"grey"}}' />
+
+</block>
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="center" data-json='{"styles":{"backgroundColor":"grey","buttonAlign":"wide"}}' />
+
+</block>
+
+<block type="separator">
+
+---
+
+<fields data-json='{"styles":{"align":"full","backgroundColor":"grey"}}' />
+
+</block>
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="right" data-json='{"styles":{"backgroundColor":"grey","buttonAlign":"wide"}}' />
+
+</block>
+
+<block type="separator">
+
+---
+
+<fields data-json='{"styles":{"align":"full","backgroundColor":"grey"}}' />
+
+</block>
+
+<block type="slate">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<fields data-json='{"styles":{"backgroundColor":"grey"}}' />
+
+</block>
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="left" data-json='{"styles":{"backgroundColor":"grey","buttonAlign":"center"}}' />
+
+</block>
+
+<block type="separator">
+
+---
+
+<fields data-json='{"styles":{"align":"full","backgroundColor":"grey"}}' />
+
+</block>
+
+<block type="slate">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<fields data-json='{"styles":{"backgroundColor":"grey"}}' />
+
+</block>
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="center" data-json='{"styles":{"backgroundColor":"grey","buttonAlign":"center"}}' />
+
+</block>
+
+<block type="separator">
+
+---
+
+<fields data-json='{"styles":{"align":"full","backgroundColor":"grey"}}' />
+
+</block>
+
+<block type="slate">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<fields data-json='{"styles":{"backgroundColor":"grey"}}' />
+
+</block>
+
+<block type="button">
+
+[Button](/)
+
+<fields inneralign="right" data-json='{"styles":{"backgroundColor":"grey","buttonAlign":"center"}}' />
+
+</block>
+
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-button">
+
+<block type="codeExample" slotId="schema" source="button" format="schema" />
+
+<block type="codeExample" slotId="json-data" source="button" format="json" />
+
+<block type="codeExample" slotId="rendering">
 
 ### React
 
-<!-- file: examples/react/ButtonBlock.jsx -->
-```jsx
-function ButtonBlock({ block }) {
-  const title = block.title || 'Button';
-  const href = block.href?.[0]?.['@id'] || block.href || '#';
-
-  return (
-    <div data-block-uid={block['@uid']} className="button-block">
-      <a href={href} data-edit-text="title" data-edit-link="href" className="btn">
-        {title}
-      </a>
-    </div>
-  );
-}
+```{literalinclude} examples/react/ButtonBlock.jsx
+:language: jsx
 ```
 
 ### Vue
 
-<!-- file: examples/vue/ButtonBlock.vue -->
-```vue
-<template>
-  <div :data-block-uid="block['@uid']" class="button-block">
-    <a :href="href" data-edit-text="title" data-edit-link="href" class="btn">
-      {{ block.title || 'Button' }}
-    </a>
-  </div>
-</template>
-
-<script setup>
-import { computed } from 'vue';
-const props = defineProps({ block: Object });
-const href = computed(() => props.block.href?.[0]?.['@id'] || props.block.href || '#');
-</script>
+```{literalinclude} examples/vue/ButtonBlock.vue
+:language: vue
 ```
 
 ### Svelte
 
-<!-- file: examples/svelte/ButtonBlock.svelte -->
-```svelte
-<script>
-  export let block;
-  $: href = block.href?.[0]?.['@id'] || block.href || '#';
-</script>
-
-<div data-block-uid={block['@uid']} class="button-block">
-  <a {href} data-edit-text="title" data-edit-link="href" class="btn">
-    {block.title || 'Button'}
-  </a>
-</div>
+```{literalinclude} examples/svelte/ButtonBlock.svelte
+:language: svelte
 ```
 
-### Astro
+</block>
 
-<!-- file: examples/astro/ButtonBlock.astro -->
-```astro
----
-const { block } = Astro.props;
-const href = block.href?.[0]?.['@id'] || block.href || '#';
-const title = block.title || 'Button';
----
-<div class="button-block">
-  <a href={href} data-edit-text="title" data-edit-link="href" class="btn">
-    {title}
-  </a>
-</div>
-```
-
-### Data Attributes
-
-| Attribute | Purpose |
-|-----------|---------|
-| `data-edit-text="title"` | Makes the button label inline-editable |
-| `data-edit-link="href"` | Makes the link destination editable via the link widget |
+</fields>

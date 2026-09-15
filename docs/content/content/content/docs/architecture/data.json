@@ -8,7 +8,7 @@
   "creators": [
     "admin"
   ],
-  "description": "Instead of combining editing and rendering into one framework and codebase, these are separated and during editing a two way communication channel is opened across an iframe so that the editing UI is no longer part of the frontend code. Instead a small JS file called hydra.js is included in your frontend during editing that handles the iframe bridge communication to Hydra which is running in the same browser window.",
+  "description": "Instead of combining editing and rendering into one framework and codebase, these are separated and during editing a two way communication channel is opened across an iframe so that the editing UI is no longer part of the frontend code. Instead a small JS file called hydra.js is included in your frontend during editing that handles the iframe bridge communication to Inka which is running in the same browser window.",
   "effective": "2025-01-01T00:00:00",
   "exclude_from_nav": false,
   "expires": null,
@@ -40,7 +40,7 @@
     "frontend",
     "editing"
   ],
-  "title": "How Hydra Works",
+  "title": "How Inka Works",
   "type_title": "Page",
   "version": "current",
   "workflow_history": {
@@ -62,13 +62,13 @@
     },
     "p-1": {
       "@type": "slate",
-      "plaintext": "Instead of combining editing and rendering into one framework and codebase, these are separated and during editing a two way communication channel is opened across an iframe so that the editing UI is no longer part of the frontend code. Instead a small JS file called hydra.js is included in your frontend during editing that handles the iframe bridge communication to Hydra which is running in the same browser window.",
+      "plaintext": "Instead of combining editing and rendering into one framework and codebase, these are separated and during editing a two way communication channel is opened across an iframe so that the editing UI is no longer part of the frontend code. Instead a small JS file called hydra.js is included in your frontend during editing that handles the iframe bridge communication to Inka which is running in the same browser window.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "Instead of combining editing and rendering into one framework and codebase, these are separated and during editing a two way communication channel is opened across an iframe so that the editing UI is no longer part of the frontend code. Instead a small JS file called hydra.js is included in your frontend during editing that handles the iframe bridge communication to Hydra which is running in the same browser window."
+              "text": "Instead of combining editing and rendering into one framework and codebase, these are separated and during editing a two way communication channel is opened across an iframe so that the editing UI is no longer part of the frontend code. Instead a small JS file called hydra.js is included in your frontend during editing that handles the iframe bridge communication to Inka which is running in the same browser window."
             }
           ]
         }
@@ -112,7 +112,7 @@
           "@id": "ce-5-bash-56c4ae",
           "label": "Architecture",
           "language": "bash",
-          "code": "                  Browser            RestAPI             Server\n\n              ┌──────────────┐                       ┌─────────────┐\n Anon/Editing │    Volto     │◄─────────────────────►│    Plone    │\n              └──────────────┘                       └─────────────┘\n\n──────────────────────────────────────────────────────────────────────────\n\n          │   ┌──────────────┐                       ┌─────────────┐\n          │   │   Frontend   │◄──────────────────────┤    Plone    │\n          │   └──hydra.js────┘                       └─────────────┘\n          │          ▲                                  ▲\n Editing UI          │ iFrame Bridge                    │\n          │          ▼                                  │\n          │   ┌──────────────┐                          │\n          │   │    Hydra     │◄─────────────────────────┘\n          │   └──────────────┘\n\n              ┌──────────────┐                       ┌─────────────┐\n Anon         │   Frontend   │◄──────────────────────┤    Plone    │\n              └──────────────┘                       └─────────────┘"
+          "code": "                  Browser            RestAPI             Server\n\n              ┌──────────────┐                       ┌─────────────┐\n Anon/Editing │    Volto     │◄─────────────────────►│    Plone    │\n              └──────────────┘                       └─────────────┘\n\n──────────────────────────────────────────────────────────────────────────\n\n          │   ┌──────────────┐                       ┌─────────────┐\n          │   │   Frontend   │◄──────────────────────┤    Plone    │\n          │   └──hydra.js────┘                       └─────────────┘\n          │          ▲                                  ▲\n Editing UI          │ iFrame Bridge                    │\n          │          ▼                                  │\n          │   ┌──────────────┐                          │\n          │   │    Inka     │◄─────────────────────────┘\n          │   └──────────────┘\n\n              ┌──────────────┐                       ┌─────────────┐\n Anon         │   Frontend   │◄──────────────────────┤    Plone    │\n              └──────────────┘                       └─────────────┘"
         }
       ]
     },
@@ -132,13 +132,13 @@
     },
     "p-7": {
       "@type": "slate",
-      "plaintext": "During editing the frontend is loaded inside an iframe owned by Hydra's admin UI. The two communicate via `postMessage` over the iframe boundary:",
+      "plaintext": "During editing the frontend is loaded inside an iframe owned by Inka's admin UI. The two communicate via `postMessage` over the iframe boundary:",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "During editing the frontend is loaded inside an iframe owned by Hydra's admin UI. The two communicate via "
+              "text": "During editing the frontend is loaded inside an iframe owned by Inka's admin UI. The two communicate via "
             },
             {
               "type": "code",
@@ -1501,7 +1501,7 @@
     },
     "p-29": {
       "@type": "slate",
-      "plaintext": "Volto's stock URL helpers (`flattenToAppURL`, `isInternalURL`, `toPublicURL`) assume there's one \"public URL\" — usually the same origin the admin runs on, configured via `RAZZLE_PUBLIC_URL`. In Hydra the admin and the published frontend(s) live on different origins, and the editor switches between published frontends at will, so there is no single public URL.",
+      "plaintext": "Volto's stock URL helpers (`flattenToAppURL`, `isInternalURL`, `toPublicURL`) assume there's one \"public URL\" — usually the same origin the admin runs on, configured via `RAZZLE_PUBLIC_URL`. In Inka the admin and the published frontend(s) live on different origins, and the editor switches between published frontends at will, so there is no single public URL.",
       "value": [
         {
           "type": "p",
@@ -1551,7 +1551,7 @@
               ]
             },
             {
-              "text": ". In Hydra the admin and the published frontend(s) live on different origins, and the editor switches between published frontends at will, so there is no single public URL."
+              "text": ". In Inka the admin and the published frontend(s) live on different origins, and the editor switches between published frontends at will, so there is no single public URL."
             }
           ]
         }
@@ -1559,7 +1559,7 @@
     },
     "p-30": {
       "@type": "slate",
-      "plaintext": "**Do not set `RAZZLE_PUBLIC_URL`** in a Hydra deployment. Pinning `settings.publicURL` to one value would break flattening for every other frontend — pastes from them would be misrecognised as external and saved verbatim instead of as `/path` references.",
+      "plaintext": "**Do not set `RAZZLE_PUBLIC_URL`** in an Inka deployment. Pinning `settings.publicURL` to one value would break flattening for every other frontend — pastes from them would be misrecognised as external and saved verbatim instead of as `/path` references.",
       "value": [
         {
           "type": "p",
@@ -1573,7 +1573,7 @@
               ]
             },
             {
-              "text": " in a Hydra deployment. Pinning "
+              "text": " in an Inka deployment. Pinning "
             },
             {
               "type": "code",
@@ -1603,13 +1603,13 @@
     },
     "p-31": {
       "@type": "slate",
-      "plaintext": "Hydra makes `settings.publicURL` follow the currently active iframe frontend:",
+      "plaintext": "Inka makes `settings.publicURL` follow the currently active iframe frontend:",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "Hydra makes "
+              "text": "Inka makes "
             },
             {
               "type": "code",
@@ -1628,7 +1628,7 @@
     },
     "ul-32": {
       "@type": "slate",
-      "plaintext": "Boot — applyConfig reads the iframe_url_<port> cookie (set by View.jsx on previous visits), looks up the matching saved-frontends entry, and writes settings.publicURL = entry.publishUrl || entry.url. A returning editor sees the right value before they open the switcher. Switch — when the editor picks a different frontend in the toolbar switcher (FrontendSwitcherPanel), it dispatches setFrontendPreviewUrl(url). Hydra's publicUrlSync Redux middleware intercepts the action and updates settings.publicURL before the next render. Other frontends — flattenToAppURL and isInternalURL are shadowed to strip publicURL (the active frontend) plus every other saved frontend's edit / publish URL, so a paste from a frontend you're not currently viewing still flattens cleanly.",
+      "plaintext": "Boot — applyConfig reads the iframe_url_<port> cookie (set by View.jsx on previous visits), looks up the matching saved-frontends entry, and writes settings.publicURL = entry.publishUrl || entry.url. A returning editor sees the right value before they open the switcher. Switch — when the editor picks a different frontend in the toolbar switcher (FrontendSwitcherPanel), it dispatches setFrontendPreviewUrl(url). Inka's publicUrlSync Redux middleware intercepts the action and updates settings.publicURL before the next render. Other frontends — flattenToAppURL and isInternalURL are shadowed to strip publicURL (the active frontend) plus every other saved frontend's edit / publish URL, so a paste from a frontend you're not currently viewing still flattens cleanly.",
       "value": [
         {
           "type": "ul",
@@ -1727,7 +1727,7 @@
                   ]
                 },
                 {
-                  "text": ". Hydra's "
+                  "text": ". Inka's "
                 },
                 {
                   "type": "code",
@@ -1888,7 +1888,7 @@
     },
     "p-34": {
       "@type": "slate",
-      "plaintext": "What we deliberately did NOT shadow: `UniversalLink`'s fallback `href` when an item is empty, Volto's admin-side `Robots.txt` / `Sitemap.xml` generators, `ContentMetadataTags` / `AlternateHrefLangs` in the admin's `<head>`, and the `RegistryImageWidget` site-logo URL. All of these inherit the dynamic `publicURL` transparently, and in a Hydra deployment the authoritative `robots.txt` / `sitemap.xml` / SEO tags are served by the frontends, not the admin.",
+      "plaintext": "What we deliberately did NOT shadow: `UniversalLink`'s fallback `href` when an item is empty, Volto's admin-side `Robots.txt` / `Sitemap.xml` generators, `ContentMetadataTags` / `AlternateHrefLangs` in the admin's `<head>`, and the `RegistryImageWidget` site-logo URL. All of these inherit the dynamic `publicURL` transparently, and in an Inka deployment the authoritative `robots.txt` / `sitemap.xml` / SEO tags are served by the frontends, not the admin.",
       "value": [
         {
           "type": "p",
@@ -1993,7 +1993,7 @@
               ]
             },
             {
-              "text": " transparently, and in a Hydra deployment the authoritative "
+              "text": " transparently, and in an Inka deployment the authoritative "
             },
             {
               "type": "code",
@@ -2037,13 +2037,13 @@
     },
     "p-36": {
       "@type": "slate",
-      "plaintext": "The steps for creating a Hydra-compatible frontend are the same across frameworks: catch-all route → fetch page from Plone REST API → render blocks recursively → add `data-block-uid` and `data-edit-*` attributes on editable elements → load `hydra.js` only inside the admin iframe.",
+      "plaintext": "The steps for creating an Inka-compatible frontend are the same across frameworks: catch-all route → fetch page from Plone REST API → render blocks recursively → add `data-block-uid` and `data-edit-*` attributes on editable elements → load `hydra.js` only inside the admin iframe.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "The steps for creating a Hydra-compatible frontend are the same across frameworks: catch-all route → fetch page from Plone REST API → render blocks recursively → add "
+              "text": "The steps for creating an Inka-compatible frontend are the same across frameworks: catch-all route → fetch page from Plone REST API → render blocks recursively → add "
             },
             {
               "type": "code",
@@ -2168,13 +2168,13 @@
     },
     "p-39": {
       "@type": "slate",
-      "plaintext": "Hydra is **additive**: each layer below works on its own, and each next row enhances editing without breaking what came before. You can ship at any row, mix rows on the same site, and add the next layer when you're ready.",
+      "plaintext": "Inka is **additive**: each layer below works on its own, and each next row enhances editing without breaking what came before. You can ship at any row, mix rows on the same site, and add the next layer when you're ready.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "Hydra is "
+              "text": "Inka is "
             },
             {
               "type": "strong",
@@ -3065,7 +3065,7 @@
                     "type": "p",
                     "children": [
                       {
-                        "text": "Bespoke widgets, custom block edit forms, in-frontend interactions for blocks Hydra's defaults don't fit."
+                        "text": "Bespoke widgets, custom block edit forms, in-frontend interactions for blocks Inka's defaults don't fit."
                       }
                     ]
                   }

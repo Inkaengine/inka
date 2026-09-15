@@ -1,167 +1,116 @@
-# Image Block
+---
+"@type": Document
+UID: 40a436ad604f4f80aeafe0977806760a
+allow_discussion: false
+contributors: []
+creators:
+  - admin
+description: >-
+  
+  The image block allows images to be embedded in various display formats.
+  Images can be displayed in different sizes (100%, L, M, S) and aligned left,
+  right or center of the text flow.
+effective: 2023-07-06T18:35:00
+exclude_from_nav: false
+expires: null
+id: image-block
+is_folderish: true
+language: "##DEFAULT##"
+layout: document_view
+preview_caption: null
+preview_image:
+  blob_path: examples/image-block/preview_image/black-starry-night.jpg
+  content-type: image/jpeg
+  filename: black-starry-night.jpg
+  height: 1708
+  size: 693013
+  width: 2400
+review_state: published
+rights: ""
+subjects:
+  - blocks
+  - media
+title: Image
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
+  <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block type="codeExample">
+    <region name="tabs" widget="object_list">
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+---
+
+# Image
 
 Displays an image with optional alt text and link. Supports the image picker widget for selecting images from the Plone content tree or uploading new ones.
 
-This is a **built-in** block.
+<block type="image">
 
-**Demonstrates:** [HTML Annotations for Visual Editing](../visual-editing.md#html-annotations-for-visual-editing) — `data-edit-media`, which opens the picker on click; [`fieldRules`](../custom-blocks.md#schema-enhancers) — a full-width image is offered no size to choose.
+![The image-block example block being edited in Volto Hydra](/docs/images/image-block-edit.png)
 
-## Schema
+</block>
 
-```json
-{
-  "image": {
-    "fieldMappings": {
-      "@default": {
-        "image": "url",
-        "@id": "href",
-        "title": "alt"
-      }
-    },
-    "blockSchema": {
-      "properties": {
-        "url": {
-          "title": "Image",
-          "widget": "image"
-        },
-        "alt": {
-          "title": "Alt Text"
-        },
-        "href": {
-          "title": "Link",
-          "widget": "object_browser",
-          "mode": "link"
-        }
-      }
-    }
-  }
-}
-```
+## Bild-block (Standard Size)
 
+<block type="image" align="wide" size="l" title="Headline H2" url="/docs/examples/content-types/image-dark" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
 
-## JSON Block Data
+## Bild-Block (Full Width )
 
-```json
-{
-  "@type": "image",
-  "url": "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27600%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%2377aadd%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3ETest Image%3C/text%3E%3C/svg%3E",
-  "alt": "A description of the image",
-  "href": [
-    {
-      "@id": "/target-page"
-    }
-  ]
-}
-```
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
 
-The `url` field can be:
-- A Plone image path: `"/my-image/@@images/image"`
-- An external URL: `"https://example.com/photo.jpg"`
+<block type="image" align="full" size="l" title="Headline H2" url="/docs/examples/content-types/image-dark" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
 
-The `href` field (optional) wraps the image in a link. Format is an array with one object containing `@id`.
+## Bild-Block (Align: center)
 
-## Rendering
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+
+<block type="image" align="center" size="l" title="Headline H2" url="/docs/examples/content-types/image-dark" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit ata sanctus est Lorem ipsum dolor sit amet."}' />
+
+## Bild-Block (Align: Left)
+
+The Bild-Block can be aligned to the left with text floating around it on the right side.
+
+<block type="image" align="left" size="l" title="Headline H2" url="/docs/examples/content-types/image-dark" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. "}' />
+
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+
+## Bild-Block (Align Right)
+
+The Bild-Block can be aligned to the right with text floating around it on the left side.
+
+<block type="image" align="right" size="l" title="Headline H2" url="/docs/examples/content-types/image-dark" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
+
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua.
+
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-image">
+
+<block type="codeExample" slotId="schema" source="image" format="schema" />
+
+<block type="codeExample" slotId="json-data" source="image" format="json" />
+
+<block type="codeExample" slotId="rendering">
 
 ### React
 
-<!-- file: examples/react/ImageBlock.jsx -->
-```jsx
-import { getImageUrl } from './utils.js';
-
-function ImageBlock({ block }) {
-  const src = getImageUrl(block.url);
-  const alt = block.alt || '';
-  const href = block.href?.[0]?.['@id'] || block.href;
-
-  const img = src
-    ? <img data-edit-media="url" src={src} alt={alt} />
-    : <div data-edit-media="url" style={{height:100,background:'#e5e7eb',display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4,cursor:'pointer'}}>Click to add image</div>;
-
-  return (
-    <div data-block-uid={block['@uid']}>
-      {href ? (
-        <a href={href} data-edit-link="href">{img}</a>
-      ) : (
-        <>{img}</>
-      )}
-    </div>
-  );
-}
+```{literalinclude} examples/react/ImageBlock.jsx
+:language: jsx
 ```
 
 ### Vue
 
-<!-- file: examples/vue/ImageBlock.vue -->
-```vue
-<template>
-  <div :data-block-uid="block['@uid']">
-    <a v-if="href" :href="href" data-edit-link="href">
-      <img data-edit-media="url" :src="imgSrc" :alt="block.alt" />
-    </a>
-    <img v-else data-edit-media="url" :src="imgSrc" :alt="block.alt" />
-  </div>
-</template>
-
-<script setup>
-import { computed } from 'vue';
-import { getImageUrl } from './utils.js';
-const props = defineProps({ block: Object });
-const href = computed(() => props.block.href?.[0]?.['@id'] || props.block.href);
-const imgSrc = computed(() => getImageUrl(props.block.url));
-</script>
+```{literalinclude} examples/vue/ImageBlock.vue
+:language: vue
 ```
 
 ### Svelte
 
-<!-- file: examples/svelte/ImageBlock.svelte -->
-```svelte
-<script>
-  import { getImageUrl } from './utils.js';
-  export let block;
-  $: href = block.href?.[0]?.['@id'] || block.href;
-  $: imgSrc = getImageUrl(block.url);
-</script>
-
-<div data-block-uid={block['@uid']}>
-  {#if href}
-    <a {href} data-edit-link="href">
-      <img data-edit-media="url" src={imgSrc} alt={block.alt} />
-    </a>
-  {:else}
-    <img data-edit-media="url" src={imgSrc} alt={block.alt} />
-  {/if}
-</div>
+```{literalinclude} examples/svelte/ImageBlock.svelte
+:language: svelte
 ```
 
-### Astro
+</block>
 
-<!-- file: examples/astro/ImageBlock.astro -->
-```astro
----
-/**
- * Image block. If `href` is set the image is wrapped in a link (and
- * `data-edit-link="href"` lets the link editor work); otherwise it's a
- * bare <img>. `data-edit-media="url"` is the media editor hook.
- */
-import { getImageUrl } from './utils.js';
-const { block } = Astro.props;
-const href = block.href?.[0]?.['@id'] || block.href;
-const imgSrc = getImageUrl(block.url);
----
-<div>
-  {href ? (
-    <a href={href} data-edit-link="href">
-      <img data-edit-media="url" src={imgSrc} alt={block.alt} />
-    </a>
-  ) : (
-    <img data-edit-media="url" src={imgSrc} alt={block.alt} />
-  )}
-</div>
-```
-
-### Data Attributes
-
-| Attribute | Purpose |
-|-----------|---------|
-| `data-edit-media="url"` | Makes the image clickable to open the image picker |
-| `data-edit-link="href"` | Makes the link editable via the link widget |
+</fields>

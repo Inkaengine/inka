@@ -64,15 +64,10 @@ jobs:
         run: pnpm build:deps
       - name: Run volto-hydra addon unit tests (vitest)
         run: pnpm test
-      - name: Check docs are in sync with their sources
-        # The docs are ALSO served as Plone content (docs/content/...), and the
-        # examples pages embed real code files. Neither check ran in CI, which
-        # is how main ended up with a stale content JSON and a page-level link
-        # pointing at a 404. Editing a .md without re-running `node docs/sync.mjs`
-        # now fails here rather than shipping a doc page that doesn't match.
-        run: |
-          pnpm check:docs
-          pnpm sync:docs:check
+      - name: Check example renderers compile
+        # The examples pages embed real renderer files; check:docs parses each
+        # per framework so a broken example fails here rather than shipping.
+        run: pnpm check:docs
       - name: Run mock-api unit tests (node:test)
         # Plone 6.2 fidelity coverage (@aliases, SearchableText prefix
         # match, navigation, folder ordering). Was not previously wired
@@ -82,7 +77,12 @@ jobs:
         run: pnpm build
         env:
           RAZZLE_API_PATH: http://localhost:8888
-          RAZZLE_DEFAULT_IFRAME_URL: http://localhost:8889,http://localhost:3003,http://localhost:3004,http://localhost:3005,http://localhost:3006,http://localhost:3007,http://localhost:3008
+          # RAZZLE_ vars are inlined into the CLIENT bundle at build time (webpack
+          # DefinePlugin), so the frontend-switcher list the browser shows comes from
+          # HERE, not from a downstream job's runtime env. Label the entries the demo
+          # video narrates ("Nuxt blog", "F7 Mobile") and give F7 its hash-router
+          # suffix so the switch lands on a rendered page, not a blank one.
+          RAZZLE_DEFAULT_IFRAME_URL: "Test frontend|http://localhost:8889,Nuxt blog|http://localhost:3003,http://localhost:3004,http://localhost:3005,http://localhost:3006,http://localhost:3007,F7 Mobile|http://localhost:3008/#!"
           VOLTOCONFIG: ${{ github.workspace }}/volto.config.js
       - name: Upload Volto build
         uses: actions/upload-artifact@v4
@@ -91,8 +91,177 @@ jobs:
           path: build/
           retention-days: 1
 
+  # ── Record generated doc assets (screenshots + demo video) ───────────────
+  # The editor screenshots + demo video the docs embed are git-ignored and
+  # regenerated, not committed (see docs/.gitignore). This job is the ONLY one
+  # with the full editor stack (Volto admin + Nuxt iframe) needed to drive the
+  # live editor and record them. It restores the previous recording, so mtime
+  # staleness (scripts/missing-doc-assets.mjs) regenerates ONLY what a spec or an
+  # appearance dep changed since — fast when nothing did — then re-saves and runs
+  # the media gate. The bridge jobs below depend on it so page-integrity's
+  # broken-image check sees the images present. Sanity runs AFTER generation.
+  record-doc-assets:
+    needs: build
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup pnpm
+        run: |
+          npm install -g corepack
+          corepack cache clean
+          corepack enable
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - name: Install dependencies
+        run: |
+          pnpm dlx mrs-developer missdev --no-config --fetch-https
+          pnpm install --frozen-lockfile
+      - name: Build workspace deps (@plone/registry, @plone/components)
+        run: pnpm build:deps
+      - name: Download Volto build
+        uses: actions/download-artifact@v4
+        with:
+          name: volto-build
+          path: build/
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install --with-deps chromium firefox
+      - name: Install Playwright deps only
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install-deps chromium firefox
+      - name: Restore previous doc assets
+        # Restore-only: mtime staleness then regenerates just what changed. The
+        # prefix key picks up the most recent recording from any prior run.
+        uses: actions/cache/restore@v4
+        with:
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          key: docs-assets-${{ github.sha }}
+          restore-keys: docs-assets-
+      - name: Install and build Nuxt
+        # build:test bakes the LOCAL backend (localhost:8888) into the static
+        # .output; without it preview:test serves the prod-backed build and every
+        # /docs/examples/* is a 404 (the new content isn't on prod), so the
+        # screenshots can't render. Same step the test-nuxt-* jobs use.
+        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace && pnpm run build:test
+      - name: Install F7 mobile frontend
+        # The demo video records a switch to the F7 mobile frontend, so its Vite
+        # dev server (3008) must be up when the demo is regenerated.
+        run: cd examples/hydra-vue-f7 && pnpm install --ignore-workspace
+      - name: Install ffmpeg
+        # demo:encode (tests-playwright/demo-video/encode.sh) trims the captured
+        # .webm into the mp4 with ffmpeg. ubuntu-latest (24.04) no longer bundles
+        # it, so install it here. Same apt acquire-hardening + step timeout the
+        # Playwright deps step uses (a bare apt-get update once stalled 3h38m
+        # mid-fetch of the Ubuntu package indexes).
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
+      - name: Start servers
+        # The screenshot specs drive the Volto admin (3001) with the Nuxt iframe
+        # (3003); mock-parent is served by the vite frontend (8889); content by
+        # the mock API (8888). The demo video also switches to the F7 frontend
+        # (3008), so the iframe list is labelled (the demo picks "F7 Mobile").
+        run: |
+          node tests-playwright/fixtures/mock-api-server.cjs &
+          npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
+          cd examples/nuxt-blog-starter && pnpm run preview:test &
+          cd "$GITHUB_WORKSPACE/examples/hydra-vue-f7" && pnpm run dev:test &
+          cd "$GITHUB_WORKSPACE" && PORT=3001 RAZZLE_API_PATH=http://localhost:8888 \
+            RAZZLE_DEFAULT_IFRAME_URL="Test frontend|http://localhost:8889,Nuxt blog|http://localhost:3003,F7 Mobile|http://localhost:3008/#!" \
+            VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
+            pnpm start:prod &
+          sleep 3
+      - name: Wait for servers
+        run: |
+          for port in 8888 8889 3001 3003 3008; do
+            echo "Waiting for port $port..."
+            for i in {1..30}; do curl -s http://localhost:$port > /dev/null && break; sleep 2; done
+          done
+          echo "All servers ready"
+      - name: Regenerate stale/absent doc assets
+        run: pnpm docs:assets
+        env:
+          CI: true
+          NO_WEBSERVER: true
+          USE_PREBUILT: true
+          CAPTURE_MOBILE_SCREENSHOTS: 1
+      - name: Media gate — every referenced asset present
+        run: pnpm docs:assets:check
+      - name: Export test (images present)
+        # The deployable-tar test needs every blob's bytes, so it runs here after
+        # generation (it skips in the build job where the images are absent).
+        run: node --test tests-playwright/fixtures/export-markdown-mount.test.cjs
+      - name: Save doc assets
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          key: docs-assets-${{ github.sha }}
+      - name: Upload doc assets (debugging)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: doc-assets
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          retention-days: 3
+
   # ── Bridge + unit tests (no Volto needed) ────────────────────────────────
   test-bridge-unit:
+    needs: record-doc-assets
     runs-on: 'ubuntu-latest'
     timeout-minutes: 30
     steps:
@@ -154,6 +323,20 @@ jobs:
           Acquire::https::Timeout "30";
           APTCONF
           pnpm exec playwright install-deps chromium firefox
+      - name: Restore generated doc assets
+        # Recorded by record-doc-assets this run; present so page-integrity's
+        # broken-image check (sanity, after generation) sees the doc images.
+        uses: actions/cache/restore@v4
+        with:
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          key: docs-assets-${{ github.sha }}
+          restore-keys: docs-assets-
       - name: Start servers
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
@@ -305,6 +488,7 @@ jobs:
 
   # ── Nuxt bridge tests (no Volto needed) ─────────────────────────────────
   test-nuxt-bridge:
+    needs: record-doc-assets
     runs-on: 'ubuntu-latest'
     timeout-minutes: 45
     steps:
@@ -368,6 +552,20 @@ jobs:
           Acquire::https::Timeout "30";
           APTCONF
           pnpm exec playwright install-deps chromium firefox
+      - name: Restore generated doc assets
+        # Recorded by record-doc-assets this run; present so page-integrity's
+        # broken-image check (sanity, after generation) sees the doc images.
+        uses: actions/cache/restore@v4
+        with:
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          key: docs-assets-${{ github.sha }}
+          restore-keys: docs-assets-
       - name: Start servers
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
@@ -516,6 +714,7 @@ jobs:
 
   # ── Next.js + F7 bridge tests (no Volto needed) ─────────────────────────
   test-nextjs-f7:
+    needs: record-doc-assets
     runs-on: 'ubuntu-latest'
     timeout-minutes: 45
     steps:
@@ -583,6 +782,20 @@ jobs:
           Acquire::https::Timeout "30";
           APTCONF
           pnpm exec playwright install-deps chromium firefox
+      - name: Restore generated doc assets
+        # Recorded by record-doc-assets this run; present so page-integrity's
+        # broken-image check (sanity, after generation) sees the doc images.
+        uses: actions/cache/restore@v4
+        with:
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          key: docs-assets-${{ github.sha }}
+          restore-keys: docs-assets-
       - name: Start servers
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &

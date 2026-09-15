@@ -6,6 +6,38 @@
  */
 
 export const sharedBlocksConfig = {
+    // A labelled admonition box (note / tip / warning / important). The level is
+    // the block's `variation`; the body is a slate value. Mirrors the myst
+    // ```{note} / ```{warning} directives so docs authored as blocks keep their
+    // callouts (and a <block>->myst emitter maps variation back to the directive).
+    callout: {
+        id: 'callout',
+        title: 'Callout',
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 5a1.25 1.25 0 110 2.5A1.25 1.25 0 0112 7zm1.5 10h-3v-1.5h.75V12h-.75v-1.5h2.25V15.5h.75V17z"/></svg>',
+        group: 'text',
+        // The body is a region of child blocks (a blocks_layout field named
+        // `items`), so it holds real markdown — multiple paragraphs, lists, code —
+        // authored as blocks, not a single slate value or a data-json blob.
+        allowedBlocks: ['slate'],
+        variations: [
+            { id: 'note', title: 'Note', isDefault: true },
+            { id: 'tip', title: 'Tip' },
+            { id: 'warning', title: 'Warning' },
+            { id: 'important', title: 'Important' },
+        ],
+        blockSchema: {
+            fieldsets: [{ id: 'default', title: 'Default', fields: ['variation', 'items'] }],
+            properties: {
+                variation: {
+                    title: 'Level',
+                    choices: [['note', 'Note'], ['tip', 'Tip'], ['warning', 'Warning'], ['important', 'Important']],
+                    default: 'note',
+                },
+                items: { widget: 'blocks_layout', allowedBlocks: ['slate'] },
+            },
+            required: [],
+        },
+    },
     slate: {
         id: 'slate',
         title: 'Text',
@@ -397,6 +429,27 @@ export const sharedBlocksConfig = {
             required: [],
         },
     },
+    // codeExample tab — used inside codeExample's typed `tabs` object_list, the
+    // same way `slide` sits inside `slider`. Registered so content carrying
+    // @type "tab" isn't flagged "used but not registered" (renders as its parent
+    // codeExample's tab strip, not standalone).
+    tab: {
+        id: 'tab',
+        title: 'Tab',
+        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><rect x="3" y="3" width="7" height="4" rx="1"/></svg>',
+        group: 'common',
+        restricted: true, // Only used inside codeExample's typed object_list
+        blockSchema: {
+            title: 'Tab',
+            fieldsets: [{ id: 'default', title: 'Default', fields: ['label', 'language', 'code'] }],
+            properties: {
+                label: { title: 'Label', type: 'string' },
+                language: { title: 'Language', type: 'string' },
+                code: { title: 'Code', type: 'string', widget: 'textarea' },
+            },
+            required: [],
+        },
+    },
     // Accordion block — panels as object_list items, each with title + content blocks
     accordion: {
         id: 'accordion',
@@ -718,7 +771,16 @@ export const sharedBlocksConfig = {
                                     ['json', 'JSON'],
                                     ['html', 'HTML'],
                                     ['css', 'CSS'],
+                                    // Shell and Markdown are staples of technical docs — shell
+                                    // command snippets and, for a docs site about a Markdown
+                                    // format, the Markdown source itself. Both `sh`/`bash` and
+                                    // `md` aliases are accepted because that is how authors (and
+                                    // markdown code fences) actually spell them.
                                     ['bash', 'Bash'],
+                                    ['sh', 'Shell'],
+                                    ['shell', 'Shell'],
+                                    ['markdown', 'Markdown'],
+                                    ['md', 'Markdown'],
                                     ['xml', 'XML'],
                                     ['text', 'Text'],
                                 ],

@@ -9,13 +9,13 @@
     },
     "p-1": {
       "@type": "slate",
-      "plaintext": "A Visual Headless CMS using Plone as a server, providing true visual editing with drag-and-drop blocks and editable text — with any frontend stack you choose.",
+      "plaintext": "A design-system-first page-builder toolkit. Strike the right balance for your site — make it easy for editors to create engagement while staying compliant.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "A Visual Headless CMS using Plone as a server, providing true visual editing with drag-and-drop blocks and editable text — with any frontend stack you choose."
+              "text": "A design-system-first page-builder toolkit. Strike the right balance for your site — make it easy for editors to create engagement while staying compliant."
             }
           ]
         }
@@ -23,13 +23,13 @@
     },
     "h-2": {
       "@type": "slate",
-      "plaintext": "Why Hydra?",
+      "plaintext": "Why Inka?",
       "value": [
         {
           "type": "h2",
           "children": [
             {
-              "text": "Why Hydra?"
+              "text": "Why Inka?"
             }
           ]
         }
@@ -37,7 +37,7 @@
     },
     "ul-3": {
       "@type": "slate",
-      "plaintext": "Visual + True Headless + Open Source — a unique combination in the CMS space Framework agnostic — Next.js, Nuxt.js, Astro, plus server-only stacks (PHP, Django, Rails, Laravel) via the server-render pattern Quick visual editing — enable it with simple HTML data attributes, no React or Vue required in your frontend Omni-channel — switch between multiple frontends mid-edit Enterprise features — versioning, i18n, workflow, and automated content rules Customisable — both the admin interface and block definitions are fully configurable",
+      "plaintext": "Compliance and engagement, not a trade-off — you decide where the dial sits for each site, instead of choosing between locking editors down and letting the design system drift Design-system-first — components declare what they tolerate, so off-system output can't be produced Multi frontend, multi backend — Next.js, Nuxt.js, Astro, plus server-only stacks (PHP, Django, Rails, Laravel) via the server-render pattern; switch channels mid-edit AI under the same constraints — everyone's AI can build you a page; ours can't build one that breaks your design system Evidence, not just warnings — rules a machine can't decide go to the people who can, and the determination is recorded against that version of the content Quick to adopt — enable visual editing with simple HTML data attributes, no React or Vue required in your frontend A toolkit, not a CMS — good out of the box with zero configuration, extensible when you need more; open source and self-hostable Enterprise features — versioning, i18n, workflow, and automated content rules",
       "value": [
         {
           "type": "ul",
@@ -49,12 +49,12 @@
                   "type": "strong",
                   "children": [
                     {
-                      "text": "Visual + True Headless + Open Source"
+                      "text": "Compliance and engagement, not a trade-off"
                     }
                   ]
                 },
                 {
-                  "text": " — a unique combination in the CMS space"
+                  "text": " — you decide where the dial sits for each site, instead of choosing between locking editors down and letting the design system drift"
                 }
               ]
             },
@@ -65,7 +65,23 @@
                   "type": "strong",
                   "children": [
                     {
-                      "text": "Framework agnostic"
+                      "text": "Design-system-first"
+                    }
+                  ]
+                },
+                {
+                  "text": " — components declare what they tolerate, so off-system output can't be produced"
+                }
+              ]
+            },
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "Multi frontend, multi backend"
                     }
                   ]
                 },
@@ -82,6 +98,9 @@
                       "text": "server-render pattern"
                     }
                   ]
+                },
+                {
+                  "text": "; switch channels mid-edit"
                 }
               ]
             },
@@ -92,12 +111,12 @@
                   "type": "strong",
                   "children": [
                     {
-                      "text": "Quick visual editing"
+                      "text": "AI under the same constraints"
                     }
                   ]
                 },
                 {
-                  "text": " — enable it with simple HTML data attributes, no React or Vue required in your frontend"
+                  "text": " — everyone's AI can build you a page; ours can't build one that breaks your design system"
                 }
               ]
             },
@@ -108,12 +127,44 @@
                   "type": "strong",
                   "children": [
                     {
-                      "text": "Omni-channel"
+                      "text": "Evidence, not just warnings"
                     }
                   ]
                 },
                 {
-                  "text": " — switch between multiple frontends mid-edit"
+                  "text": " — rules a machine can't decide go to the people who can, and the determination is recorded against that version of the content"
+                }
+              ]
+            },
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "Quick to adopt"
+                    }
+                  ]
+                },
+                {
+                  "text": " — enable visual editing with simple HTML data attributes, no React or Vue required in your frontend"
+                }
+              ]
+            },
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "A toolkit, not a CMS"
+                    }
+                  ]
+                },
+                {
+                  "text": " — good out of the box with zero configuration, extensible when you need more; open source and self-hostable"
                 }
               ]
             },
@@ -130,22 +181,6 @@
                 },
                 {
                   "text": " — versioning, i18n, workflow, and automated content rules"
-                }
-              ]
-            },
-            {
-              "type": "li",
-              "children": [
-                {
-                  "type": "strong",
-                  "children": [
-                    {
-                      "text": "Customisable"
-                    }
-                  ]
-                },
-                {
-                  "text": " — both the admin interface and block definitions are fully configurable"
                 }
               ]
             }
@@ -169,13 +204,13 @@
     },
     "p-5": {
       "@type": "slate",
-      "plaintext": "The fastest way to feel what Hydra does is to log into the hosted demo and edit a real page against a real frontend.",
+      "plaintext": "The fastest way to feel what Inka does is to log into the hosted demo and edit a real page against a real frontend.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "The fastest way to feel what Hydra does is to log into the hosted demo and edit a real page against a real frontend."
+              "text": "The fastest way to feel what Inka does is to log into the hosted demo and edit a real page against a real frontend."
             }
           ]
         }
@@ -302,13 +337,13 @@
     },
     "p-9": {
       "@type": "slate",
-      "plaintext": "To run Hydra locally against your own frontend, see the **Run Locally** section of the [project README](https://github.com/collective/volto-hydra#run-locally).",
+      "plaintext": "To run Inka locally against your own frontend, see the **Run Locally** section of the [project README](https://github.com/collective/volto-hydra#run-locally).",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "To run Hydra locally against your own frontend, see the "
+              "text": "To run Inka locally against your own frontend, see the "
             },
             {
               "type": "strong",
@@ -372,7 +407,7 @@
   "creators": [
     "admin"
   ],
-  "description": "A Visual Headless CMS using Plone as a server, providing true visual editing with drag-and-drop blocks and editable text — with any frontend stack you choose.",
+  "description": "A design-system-first page-builder toolkit. Strike the right balance for your site — make it easy for editors to create engagement while staying compliant.",
   "effective": "2025-01-01T00:00:00",
   "exclude_from_nav": false,
   "expires": null,

@@ -481,6 +481,10 @@ const UNDECLARED_EXEMPT = new Set([
   'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'value',
   'styles', 'override', 'block',
   'fixed', 'slotId', 'templateId', 'templateInstanceId', 'readOnly',
+  // codeExample selector directives (single-source example pages): `source`
+  // names a block/@type on the page and `format` (json|schema) says what to
+  // show; resolved to `tabs` at load/build, not sidebar-authored schema fields.
+  'source', 'format',
   // Deep-link anchors hydra harvests + persists on the owning block (#273/#281).
   // Not sidebar-authored — a consumer (in-page nav) reads them; exempt like the
   // other serialisation/runtime fields above.

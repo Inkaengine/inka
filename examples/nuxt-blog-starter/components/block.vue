@@ -114,8 +114,9 @@
         </template>
       </template>
     </div>
-    <!-- Combined paging: reactive via gridPaging (updated by ListingBlock via Object.assign) -->
-    <Paging v-if="gridPaging.totalPages > 1" :paging="gridPaging" :build-url="gridBuildPagingUrl" />
+    <!-- Combined paging. effectiveGridPaging is pure: the static chain's paging for
+         a manual grid, or the ListingBlock-published gridPaging for a listing grid. -->
+    <Paging v-if="effectiveGridPaging.totalPages > 1" :paging="effectiveGridPaging" :build-url="gridBuildPagingUrl" />
   </div>
 
   <!-- Columns container block -->
@@ -148,6 +149,23 @@
        container UX feature tests (wrap, unwrap, edge-drag, convert).
        Inner .section-body wrapper matches the vanilla test-frontend so
        cross-renderer tests can use the same selector. -->
+  <!-- Callout: a labelled admonition (note/tip/warning/important); the body is
+       the `items` region of child blocks, rendered recursively like section. -->
+  <aside v-else-if="block['@type'] == 'callout'" :data-block-uid="block_uid"
+         :class="`callout callout--${block.variation || 'note'}`"
+         style="border-left: 4px solid #2563eb; background: #eff6ff; padding: 12px 16px; border-radius: 4px; margin: 1em 0;">
+    <div class="callout__label" style="font-weight: 700; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.05em; margin-bottom: 4px;">
+      {{ block.variation || 'note' }}
+    </div>
+    <Block v-for="childId in (block.blocks_layout?.items || [])"
+           :key="childId"
+           :block_uid="childId"
+           :block="block.blocks?.[childId]"
+           :data="data"
+           :contained="true"
+           class="my-1" />
+  </aside>
+
   <div v-else-if="block['@type'] == 'section'" :data-block-uid="block_uid">
     <div class="section-body p-3 border border-dashed border-gray-500 rounded">
       <Block v-for="childId in (block.blocks_layout?.items || [])"
@@ -564,8 +582,12 @@
           :is="(cell.type == 'header') ? 'th' : 'td'"
           :data-block-uid="cell['@uid']"
           data-block-add="right"
+          data-edit-text="value"
         >
-          <RichText v-for="(node, idx) in cell.value" :key="idx" :node="node" data-edit-text="value" />
+          <!-- data-edit-text on the CELL (one editable value field), like the
+               slate block's wrapper — not on each node, which exposed N fields
+               per cell and broke the DOM→slate round-trip. -->
+          <RichText v-for="(node, idx) in cell.value" :key="idx" :node="node" />
         </component>
       </tr>
     </table>
@@ -935,7 +957,7 @@
 
 </template>
 <script setup>
-import { ref, reactive, watch, nextTick, computed, toRefs, inject, onMounted, unref } from 'vue';
+import { ref, reactive, watch, watchEffect, nextTick, computed, toRefs, inject, onMounted, unref } from 'vue';
 import { isEditMode } from '@hydra-js/hydra.js';
 import { staticBlocks, expandTemplatesSync } from '@hydra-js/helpers';
 import RichText from './richtext.vue';
@@ -1094,30 +1116,56 @@ const gridPaging = reactive({ start: 0, size: GRID_PAGE_SIZE });
 
 const gridBuildPagingUrl = (page) => {
   if (page === 0) return effectiveContextPath.value;
-  return `${effectiveContextPath.value}/@pg_${block_uid.value}_${page}`;
+  // Strip a trailing slash so a root context ("/") gives "/@pg_…" not "//@pg_…"
+  // (the latter is protocol-relative — navigateTo would read it as an external host).
+  return `${effectiveContextPath.value.replace(/\/+$/, '')}/@pg_${block_uid.value}_${page}`;
 };
 
 // Process grid children: listings marked for Suspense, static blocks filtered by paging window
 // staticBlocks and expandListingBlocks return { items, paging } — chain paging.seen for position tracking
 const LISTING_TYPES = ['listing', 'relatedItemsListing', 'searchShortcuts', 'rssFeed'];
-const gridChildren = computed(() => {
+// PURE computed — no side effects. staticBlocks/expandListingBlocks return
+// { items, paging }; chain paging.seen for position tracking and surface the
+// final static paging for the manual-grid case below.
+const gridData = computed(() => {
   const layout = block.value.blocks_layout?.items || [];
   const blocks = block.value.blocks || {};
-  // Read page number (reactive dependency) and compute paging start
   const start = gridPageFromUrl.value * GRID_PAGE_SIZE;
-  gridPaging.start = start;
   let seen = 0;
-  return layout.map(id => {
+  let staticPaging = null;
+  let hasListing = false;
+  const children = layout.map(id => {
     const child = blocks[id];
     if (!child) return null;
     if (LISTING_TYPES.includes(child['@type'])) {
+      hasListing = true;
       return { id, block: child, isListing: true, seen };
     }
     const result = staticBlocks([id], { blocks, paging: { start, size: GRID_PAGE_SIZE }, seen });
     seen = result.paging.seen;
+    staticPaging = result.paging;
     return { id, block: child, isListing: false, items: result.items };
   }).filter(Boolean);
+  return { children, staticPaging, hasListing };
 });
+const gridChildren = computed(() => gridData.value.children);
+// The grid's paging comes from ONE of two sources, kept SEPARATE so neither is a
+// side-effect of rendering the other (mutating gridPaging inside the children
+// computed left the pager reading a stale, totalPages-less object on first paint,
+// so it never rendered — and hydra had no +N control to reveal an off-page child):
+//  - a manual-only grid: the static chain's final paging (staticBlocks already
+//    computes totalPages/prev/next) IS the grid's paging, derived purely here;
+//  - a grid WITH a listing: the trailing ListingBlock publishes the combined
+//    total into the reactive `gridPaging` sink (it receives `seen`), so use that.
+const effectiveGridPaging = computed(() => {
+  if (gridData.value.hasListing) return gridPaging;
+  const p = gridData.value.staticPaging;
+  return p ? { ...p, size: GRID_PAGE_SIZE } : { start: gridPaging.start, size: GRID_PAGE_SIZE, totalPages: 0 };
+});
+// Keep the reactive sink's `start` current for the listing case (ListingBlock
+// reads it to window its query). A watchEffect is the right home for this write —
+// a computed must stay pure.
+watchEffect(() => { gridPaging.start = gridPageFromUrl.value * GRID_PAGE_SIZE; });
 
 // Slider: expand templates and detect listing blocks among slides
 const sliderChildren = computed(() => {

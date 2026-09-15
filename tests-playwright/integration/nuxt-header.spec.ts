@@ -1,5 +1,5 @@
 /**
- * Tests for the Nuxt header: site name "Hydra" and global search.
+ * Tests for the Nuxt header: site name "Inka" and global search.
  *
  * The header search icon expands into an input field. Submitting a query
  * navigates to /search?SearchableText=<query> where a search block renders
@@ -14,7 +14,7 @@ test.use({
 
 test.describe('Nuxt header', () => {
 
-  test('header displays "Hydra" site name', async ({ page }) => {
+  test('header displays "Inka" site name', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     const iframe = helper.getIframe();
 
@@ -23,10 +23,10 @@ test.describe('Nuxt header', () => {
 
     const header = iframe.locator('header');
     await expect(header).toBeVisible({ timeout: 15000 });
-    // Match the site-name span exactly — `text=Hydra` is a substring
-    // selector and would also match navigation links like "Volto Hydra
+    // Match the site-name span exactly — `text=Inka` is a substring
+    // selector and would also match navigation links like "Inka
     // Documentation" added when docs got linked into the nav.
-    await expect(header.getByText('Hydra', { exact: true })).toBeVisible();
+    await expect(header.getByText('Inka', { exact: true })).toBeVisible();
   });
 
   test('search icon expands into input field', async ({ page }) => {

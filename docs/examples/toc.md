@@ -1,251 +1,129 @@
-# Table of Contents Block
+---
+"@type": Document
+UID: 3906609d0456404ca7146f6aa1f12f32
+allow_discussion: false
+contributors: []
+creators:
+  - admin
+description: The table of contents block automatically generates a table of
+  contents with links to the corresponding positions on the page from the
+  headings used.
+effective: 2023-07-06T18:35:00
+exclude_from_nav: false
+expires: null
+id: toc
+is_folderish: true
+language: "##DEFAULT##"
+layout: document_view
+preview_caption: null
+preview_image:
+  blob_path: examples/toc/preview_image/black-starry-night.jpg
+  content-type: image/jpeg
+  filename: black-starry-night.jpg
+  height: 1708
+  size: 693013
+  width: 2400
+review_state: published
+rights: ""
+subjects:
+  - blocks
+  - navigation
+title: Table of Contents
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
+  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block type="codeExample">
+    <region name="tabs" widget="object_list">
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+---
+
+# Table of Contents
 
 Renders a table of contents generated from heading blocks on the current page. It scans sibling blocks for headings and builds a navigation list.
 
-This is a **built-in** block.
+<block type="image">
 
-## Schema
+![The toc example block being edited in Volto Hydra](/docs/images/toc-edit.png)
 
-```json
-{
-  "toc": {
-    "blockSchema": {
-      "properties": {
-        "title": {
-          "title": "Title"
-        },
-        "hide_title": {
-          "title": "Hide title",
-          "type": "boolean"
-        },
-        "ordered": {
-          "title": "Ordered",
-          "type": "boolean"
-        },
-        "levels": {
-          "title": "Entries",
-          "isMulti": true,
-          "choices": [
-            [
-              "h1",
-              "h1"
-            ],
-            [
-              "h2",
-              "h2"
-            ],
-            [
-              "h3",
-              "h3"
-            ],
-            [
-              "h4",
-              "h4"
-            ],
-            [
-              "h5",
-              "h5"
-            ],
-            [
-              "h6",
-              "h6"
-            ]
-          ]
-        }
-      }
-    }
-  }
-}
-```
+</block>
 
+<block type="toc" title="Inhaltsverzeichnis" variation="default" />
 
-## JSON Block Data
+---
 
-```json
-{
-  "@type": "toc",
-  "title": "On this page",
-  "hide_title": false,
-  "ordered": false,
-  "levels": [
-    "h2",
-    "h3"
-  ]
-}
-```
+<block type="image" align="wide" copyright_and_sources="Copyright: unsplash.com" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="/docs/examples/content-types/image-dark" data-json='{"styles":{"size:noprefix":"large"}}' />
 
-The block scans the page's `blocks` for heading entries:
-- `heading` type blocks (uses `block.heading` text and `block.tag` level)
-- `slate` type blocks whose first node is `h1`–`h6` (uses `plaintext`)
+<block type="introduction" data-json='{"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. "}],"type":"p"}]}' />
 
-## Rendering
+---
+
+## Text Heading H2&#x20;
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+### Text Heading H3
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+## Lists
+
+1. Ordered List Bullett Point One&#x20;
+2. Ordered List Bullett Point Two&#x20;
+3. Ordered List Bullett Point Three
+4. Ordered List Bullett Point Four
+
+- Ordered List Bullett Point One&#x20;
+- Ordered List Bullett Point Two&#x20;
+- Ordered List Bullett Point Three
+- Ordered List Bullett Point Four
+
+### Inline Styles
+
+Text can be **bold** or *italic*.
+
+[Link internal](./heading.md)
+
+[Link external](https://www.google.com/)
+
+<block type="separator">
+
+---
+
+<fields data-json='{"styles":{"align":"left"}}' />
+
+</block>
+
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-toc">
+
+<block type="codeExample" slotId="schema" source="toc" format="schema" />
+
+<block type="codeExample" slotId="json-data" source="toc" format="json" />
+
+<block type="codeExample" slotId="rendering">
 
 ### React
 
-<!-- file: examples/react/TocBlock.jsx -->
-```jsx
-function TocBlock({ block, content }) {
-  const entries = [];
-  if (content?.blocks && content?.blocks_layout?.items) {
-    for (const id of content.blocks_layout.items) {
-      const b = content.blocks[id];
-      if (!b) continue;
-      if (b['@type'] === 'heading' && b.heading) {
-        entries.push({ id, level: parseInt((b.tag || 'h2').slice(1)), text: b.heading });
-      } else if (b['@type'] === 'slate' && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
-        const level = parseInt(b.value[0].type.slice(1));
-        const text = b.plaintext || b.value[0].children?.map(c => c.text).join('') || '';
-        if (text.trim()) entries.push({ id, level, text });
-      }
-    }
-  }
-
-  return (
-    <nav data-block-uid={block['@uid']} className="toc-block">
-      {entries.length > 0 ? (
-        <ul>
-          {entries.map(e => (
-            <li key={e.id} style={{ marginLeft: `${(e.level - 2) * 1.5}em` }}>
-              <a href={`#${e.id}`}>{e.text}</a>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>Table of Contents</p>
-      )}
-    </nav>
-  );
-}
+```{literalinclude} examples/react/TocBlock.jsx
+:language: jsx
 ```
 
 ### Vue
 
-<!-- file: examples/vue/TocBlock.vue -->
-```vue
-<template>
-  <nav :data-block-uid="block['@uid']" class="toc-block">
-    <ul v-if="entries.length">
-      <li v-for="e in entries" :key="e.id" :style="{ marginLeft: (e.level - 2) * 1.5 + 'em' }">
-        <a :href="`#${e.id}`">{{ e.text }}</a>
-      </li>
-    </ul>
-    <p v-else>Table of Contents</p>
-  </nav>
-</template>
-
-<script setup>
-import { computed } from 'vue';
-
-const props = defineProps({ block: Object, content: Object });
-
-const entries = computed(() => {
-  const result = [];
-  const c = props.content;
-  if (!c?.blocks || !c?.blocks_layout?.items) return result;
-  for (const id of c.blocks_layout.items) {
-    const b = c.blocks[id];
-    if (!b) continue;
-    if (b['@type'] === 'heading' && b.heading) {
-      result.push({ id, level: parseInt((b.tag || 'h2').slice(1)), text: b.heading });
-    } else if (b['@type'] === 'slate' && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
-      const level = parseInt(b.value[0].type.slice(1));
-      const text = b.plaintext || b.value[0].children?.map(c => c.text).join('') || '';
-      if (text.trim()) result.push({ id, level, text });
-    }
-  }
-  return result;
-});
-</script>
+```{literalinclude} examples/vue/TocBlock.vue
+:language: vue
 ```
 
 ### Svelte
 
-<!-- file: examples/svelte/TocBlock.svelte -->
-```svelte
-<script>
-  export let block;
-  export let content = {};
-
-  $: entries = (() => {
-    const result = [];
-    if (!content?.blocks || !content?.blocks_layout?.items) return result;
-    for (const id of content.blocks_layout.items) {
-      const b = content.blocks[id];
-      if (!b) continue;
-      if (b['@type'] === 'heading' && b.heading) {
-        result.push({ id, level: parseInt((b.tag || 'h2').slice(1)), text: b.heading });
-      } else if (b['@type'] === 'slate' && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
-        const level = parseInt(b.value[0].type.slice(1));
-        const text = b.plaintext || b.value[0].children?.map(c => c.text).join('') || '';
-        if (text.trim()) result.push({ id, level, text });
-      }
-    }
-    return result;
-  })();
-</script>
-
-<nav data-block-uid={block['@uid']} class="toc-block">
-  {#if entries.length > 0}
-    <ul>
-      {#each entries as e (e.id)}
-        <li style="margin-left: {(e.level - 2) * 1.5}em">
-          <a href="#{e.id}">{e.text}</a>
-        </li>
-      {/each}
-    </ul>
-  {:else}
-    <p>Table of Contents</p>
-  {/if}
-</nav>
+```{literalinclude} examples/svelte/TocBlock.svelte
+:language: svelte
 ```
 
-### Astro
+</block>
 
-<!-- file: examples/astro/TocBlock.astro -->
-```astro
----
-/**
- * Table of Contents block. Walks the page's top-level blocks and emits a
- * list of headings + slate blocks whose first node is an h1..h6. The TOC
- * receives `content` (the whole page formData) as a second prop so it can
- * see the rest of the document.
- *
- * Note: this only scans top-level blocks (same as the svelte version) —
- * nested headings inside container blocks aren't surfaced.
- */
-const { block, content } = Astro.props;
-
-function buildEntries(formData: any) {
-  const result: { id: string; level: number; text: string }[] = [];
-  if (!formData?.blocks || !formData?.blocks_layout?.items) return result;
-  for (const id of formData.blocks_layout.items) {
-    const b = formData.blocks[id];
-    if (!b) continue;
-    if (b['@type'] === 'heading' && b.heading) {
-      result.push({ id, level: parseInt((b.tag || 'h2').slice(1)), text: b.heading });
-    } else if (b['@type'] === 'slate' && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
-      const level = parseInt(b.value[0].type.slice(1));
-      const text =
-        b.plaintext || b.value[0].children?.map((c: any) => c.text).join('') || '';
-      if (text.trim()) result.push({ id, level, text });
-    }
-  }
-  return result;
-}
-
-const entries = buildEntries(content);
----
-<nav class="toc-block">
-  {entries.length > 0 ? (
-    <ul>
-      {entries.map((e) => (
-        <li style={`margin-left: ${(e.level - 2) * 1.5}em`}>
-          <a href={`#${e.id}`}>{e.text}</a>
-        </li>
-      ))}
-    </ul>
-  ) : (
-    <p>Table of Contents</p>
-  )}
-</nav>
-```
+</fields>

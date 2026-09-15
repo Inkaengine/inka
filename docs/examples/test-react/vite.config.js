@@ -29,6 +29,7 @@ const COMPONENT_IMPORTS = {
   SeparatorBlock:    './SeparatorBlock.jsx',
   ButtonBlock:       './ButtonBlock.jsx',
   HighlightBlock:    './HighlightBlock.jsx',
+  CalloutBlock:      './CalloutBlock.jsx',
   VideoBlock:        './VideoBlock.jsx',
   MapsBlock:           './MapsBlock.jsx',
   TocBlock:            './TocBlock.jsx',

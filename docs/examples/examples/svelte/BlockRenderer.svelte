@@ -17,6 +17,7 @@
   import SeparatorBlock from './SeparatorBlock.svelte';
   import ButtonBlock from './ButtonBlock.svelte';
   import HighlightBlock from './HighlightBlock.svelte';
+  import CalloutBlock from './CalloutBlock.svelte';
   import VideoBlock from './VideoBlock.svelte';
   import MapsBlock from './MapsBlock.svelte';
   import TocBlock from './TocBlock.svelte';
@@ -61,6 +62,8 @@
   <ButtonBlock {block} />
 {:else if block['@type'] === 'highlight'}
   <HighlightBlock {block} />
+{:else if block['@type'] === 'callout'}
+  <CalloutBlock {block} />
 {:else if block['@type'] === 'video'}
   <VideoBlock {block} />
 {:else if block['@type'] === 'maps'}

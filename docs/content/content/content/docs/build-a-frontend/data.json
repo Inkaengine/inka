@@ -162,13 +162,13 @@
     },
     "p-5": {
       "@type": "slate",
-      "plaintext": "To make a site editable with Hydra you break a page into:",
+      "plaintext": "To make a site editable with Inka you break a page into:",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "To make a site editable with Hydra you break a page into:"
+              "text": "To make a site editable with Inka you break a page into:"
             }
           ]
         }
@@ -321,13 +321,13 @@
     },
     "p-8": {
       "@type": "slate",
-      "plaintext": "When the page loads inside Hydra's edit iframe, you initialise the bridge and declare your blocks; otherwise you render normally from the API:",
+      "plaintext": "When the page loads inside Inka's edit iframe, you initialise the bridge and declare your blocks; otherwise you render normally from the API:",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "When the page loads inside Hydra's edit iframe, you initialise the bridge and declare your blocks; otherwise you render normally from the API:"
+              "text": "When the page loads inside Inka's edit iframe, you initialise the bridge and declare your blocks; otherwise you render normally from the API:"
             }
           ]
         }
@@ -393,7 +393,7 @@
     },
     "p-12": {
       "@type": "slate",
-      "plaintext": "Then you augment the rendered HTML with `data-` attributes (or `<!-- hydra ... -->` comments) so Hydra can find your blocks and editable fields:",
+      "plaintext": "Then you augment the rendered HTML with `data-` attributes (or `<!-- hydra ... -->` comments) so Inka can find your blocks and editable fields:",
       "value": [
         {
           "type": "p",
@@ -421,7 +421,7 @@
               ]
             },
             {
-              "text": " comments) so Hydra can find your blocks and editable fields:"
+              "text": " comments) so Inka can find your blocks and editable fields:"
             }
           ]
         }
@@ -638,13 +638,13 @@
     },
     "p-21": {
       "@type": "slate",
-      "plaintext": "Hydra harvests these per block on render as `{ id, name, level }` and stores them in the block's data, so the object browser offers them as `path#pricing` link targets — as a nested list reflecting the page's structure. Both attributes must survive into your **published** render for the anchor to resolve at runtime — Hydra only reads them in edit mode.",
+      "plaintext": "Inka harvests these per block on render as `{ id, name, level }` and stores them in the block's data, so the object browser offers them as `path#pricing` link targets — as a nested list reflecting the page's structure. Both attributes must survive into your **published** render for the anchor to resolve at runtime — Inka only reads them in edit mode.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "Hydra harvests these per block on render as "
+              "text": "Inka harvests these per block on render as "
             },
             {
               "type": "code",
@@ -677,7 +677,7 @@
               ]
             },
             {
-              "text": " render for the anchor to resolve at runtime — Hydra only reads them in edit mode."
+              "text": " render for the anchor to resolve at runtime — Inka only reads them in edit mode."
             }
           ]
         }
@@ -685,7 +685,7 @@
     },
     "p-22": {
       "@type": "slate",
-      "plaintext": "**Level is optional / automatic.** If you use plain `data-linkable-id` on an element that is *itself* an `h1`–`h6`, Hydra infers the level from the tag — so tagging every heading with `data-linkable-id` still yields a hierarchy for free. Precedence is: explicit `data-linkable-h{n}` > the element's heading tag > none (a level-less leaf). Given the flat, document-ordered anchor list, `buildAnchorTree` (in `@volto-hydra/hydra-js`) turns the levels into a nested contents tree; no levels means a flat list.",
+      "plaintext": "**Level is optional / automatic.** If you use plain `data-linkable-id` on an element that is *itself* an `h1`–`h6`, Inka infers the level from the tag — so tagging every heading with `data-linkable-id` still yields a hierarchy for free. Precedence is: explicit `data-linkable-h{n}` > the element's heading tag > none (a level-less leaf). Given the flat, document-ordered anchor list, `buildAnchorTree` (in `@volto-hydra/hydra-js`) turns the levels into a nested contents tree; no levels means a flat list.",
       "value": [
         {
           "type": "p",
@@ -743,7 +743,7 @@
               ]
             },
             {
-              "text": ", Hydra infers the level from the tag — so tagging every heading with "
+              "text": ", Inka infers the level from the tag — so tagging every heading with "
             },
             {
               "type": "code",
@@ -795,7 +795,7 @@
     },
     "p-23": {
       "@type": "slate",
-      "plaintext": "It's your choice which elements are linkable — a common pattern is to tag every heading, deriving its `id` from a slug of the heading text. If you want a heading to be linkable *while it's being edited* (before save), keep its `id`/`data-linkable-id` current as the text changes — e.g. a small `input` listener that re-slugifies the heading. Hydra harvests anchors both on render **and** when inline edits flush, merging them into the edit form's `block._linkableAnchors` so a freshly-typed heading becomes linkable on the page being edited without saving first; other pages use their last saved anchors.",
+      "plaintext": "It's your choice which elements are linkable — a common pattern is to tag every heading, deriving its `id` from a slug of the heading text. If you want a heading to be linkable *while it's being edited* (before save), keep its `id`/`data-linkable-id` current as the text changes — e.g. a small `input` listener that re-slugifies the heading. Inka harvests anchors both on render **and** when inline edits flush, merging them into the edit form's `block._linkableAnchors` so a freshly-typed heading becomes linkable on the page being edited without saving first; other pages use their last saved anchors.",
       "value": [
         {
           "type": "p",
@@ -856,7 +856,7 @@
               ]
             },
             {
-              "text": " listener that re-slugifies the heading. Hydra harvests anchors both on render "
+              "text": " listener that re-slugifies the heading. Inka harvests anchors both on render "
             },
             {
               "type": "strong",
@@ -1967,13 +1967,13 @@
     },
     "p-63": {
       "@type": "slate",
-      "plaintext": "Hydra separates your production frontend from the editing experience, which gives you choice in how each is deployed.",
+      "plaintext": "Inka separates your production frontend from the editing experience, which gives you choice in how each is deployed.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "Hydra separates your production frontend from the editing experience, which gives you choice in how each is deployed."
+              "text": "Inka separates your production frontend from the editing experience, which gives you choice in how each is deployed."
             }
           ]
         }
@@ -2009,7 +2009,7 @@
     },
     "ol-66": {
       "@type": "slate",
-      "plaintext": "Deploy your frontend as SPA or Hybrid (SSR + client-side hydration). Deploy Hydra and the Plone API server. Log in to Hydra, go to user preferences, set your frontend URL.",
+      "plaintext": "Deploy your frontend as SPA or Hybrid (SSR + client-side hydration). Deploy Inka and the Plone API server. Log in to Inka, go to user preferences, set your frontend URL.",
       "value": [
         {
           "type": "ol",
@@ -2026,7 +2026,7 @@
               "type": "li",
               "children": [
                 {
-                  "text": "Deploy Hydra and the Plone API server."
+                  "text": "Deploy Inka and the Plone API server."
                 }
               ]
             },
@@ -2034,7 +2034,7 @@
               "type": "li",
               "children": [
                 {
-                  "text": "Log in to Hydra, go to user preferences, set your frontend URL."
+                  "text": "Log in to Inka, go to user preferences, set your frontend URL."
                 }
               ]
             }
@@ -2086,7 +2086,7 @@
     },
     "ol-70": {
       "@type": "slate",
-      "plaintext": "Production — deploy your frontend in SSG or SSR mode (fast, cacheable). Editing — deploy the same frontend in SPA mode to a separate URL (used only inside Hydra). Hydra + Plone — only needs to run during editing, so scale-to-zero / serverless works. SSG rebuild — for SSG, configure collective.webhook to trigger a rebuild on edit. SSR doesn't need this.",
+      "plaintext": "Production — deploy your frontend in SSG or SSR mode (fast, cacheable). Editing — deploy the same frontend in SPA mode to a separate URL (used only inside Inka). Inka + Plone — only needs to run during editing, so scale-to-zero / serverless works. SSG rebuild — for SSG, configure collective.webhook to trigger a rebuild on edit. SSR doesn't need this.",
       "value": [
         {
           "type": "ol",
@@ -2119,7 +2119,7 @@
                   ]
                 },
                 {
-                  "text": " — deploy the same frontend in SPA mode to a separate URL (used only inside Hydra)."
+                  "text": " — deploy the same frontend in SPA mode to a separate URL (used only inside Inka)."
                 }
               ]
             },
@@ -2130,7 +2130,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "text": "Hydra + Plone"
+                      "text": "Inka + Plone"
                     }
                   ]
                 },
@@ -2189,13 +2189,13 @@
     },
     "p-72": {
       "@type": "slate",
-      "plaintext": "The default Hydra demo uses exactly the SSG / SSR pattern above:",
+      "plaintext": "The default Inka demo uses exactly the SSG / SSR pattern above:",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "The default Hydra demo uses exactly the SSG / SSR pattern above:"
+              "text": "The default Inka demo uses exactly the SSG / SSR pattern above:"
             }
           ]
         }
@@ -2203,7 +2203,7 @@
     },
     "ul-73": {
       "@type": "slate",
-      "plaintext": "Production — SSG on Netlify. All pages statically generated, images optimized, fast globally. Editing — same Nuxt codebase deployed as SPA to a different Netlify URL. Only loaded inside Hydra's iframe. Hydra + Plone — deployed to fly.io with scale-to-zero. Cost is free or minimal since it only runs during editing.",
+      "plaintext": "Production — SSG on Netlify. All pages statically generated, images optimized, fast globally. Editing — same Nuxt codebase deployed as SPA to a different Netlify URL. Only loaded inside Inka's iframe. Inka + Plone — deployed to fly.io with scale-to-zero. Cost is free or minimal since it only runs during editing.",
       "value": [
         {
           "type": "ul",
@@ -2250,7 +2250,7 @@
                   ]
                 },
                 {
-                  "text": " — same Nuxt codebase deployed as SPA to a different Netlify URL. Only loaded inside Hydra's iframe."
+                  "text": " — same Nuxt codebase deployed as SPA to a different Netlify URL. Only loaded inside Inka's iframe."
                 }
               ]
             },
@@ -2261,7 +2261,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "text": "Hydra + Plone"
+                      "text": "Inka + Plone"
                     }
                   ]
                 },

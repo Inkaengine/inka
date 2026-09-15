@@ -46,7 +46,13 @@ export default defineConfig({
   workers: process.env.CI ? undefined : undefined,
 
   /* Reporter to use */
-  reporter: [['html', { open: 'never' }]],
+  reporter: [
+    ['html', { open: 'never' }],
+    // Aggregates block-sanity field/text-style coverage across all parallel
+    // workers and fails the run in onEnd if any block type has a field or style
+    // with no working example anywhere. See tests-playwright/coverage-reporter.ts.
+    ['./tests-playwright/coverage-reporter.ts'],
+  ],
 
   /* Shared settings for all the projects below */
   use: {
@@ -341,7 +347,7 @@ export default defineConfig({
       stderr: 'pipe' as const,
       env: {
         PORT: String(PORTS.mockApi),
-        CONTENT_MOUNTS: '/:docs/content/content/content,/_test_data:tests-playwright/fixtures/content',
+        CONTENT_MOUNTS: '/docs:docs,/_test_data:tests-playwright/fixtures/content,/:tests-playwright/fixtures/site-root',
       },
     },
     {
