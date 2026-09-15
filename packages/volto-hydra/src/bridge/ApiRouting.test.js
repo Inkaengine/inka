@@ -66,14 +66,28 @@ describe('Api transport selection', () => {
     expect(() => new Api().get('/news')).toThrow(/cannot reach a CMS by itself/);
   });
 
-  it('leaves stock behaviour alone when the flag is off', () => {
+  it('leaves stock behaviour alone when the flag is off', async () => {
     config.settings.useBridgeBackend = false;
     const api = new Api();
     for (const method of ['get', 'post', 'put', 'patch', 'del']) {
       expect(typeof api[method]).toBe('function');
     }
+
     // No bridge consulted, no throw: this is stock superagent.
-    expect(() => api.get('/news')).not.toThrow();
+    //
+    // Which means it really does open a socket to the default apiPath, and in a
+    // unit run nothing is listening there. The refusal must be AWAITED rather
+    // than left to float: an unhandled rejection is reported by vitest as an
+    // error even when every test passes, which exits non-zero and took the
+    // whole build job — and with it the admin suite gated behind it — down.
+    //
+    // Rejecting with a connection error is the proof wanted here: the call went
+    // out over the network instead of over the bridge.
+    let pending;
+    expect(() => {
+      pending = api.get('/news');
+    }).not.toThrow();
+    await expect(pending).rejects.toThrow();
   });
 
   /**
