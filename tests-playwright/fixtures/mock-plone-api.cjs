@@ -1167,26 +1167,40 @@ function buildTypesComponent() {
  * expand-aware caller (enrichContent) decides which entries are included
  * vs left as @id stubs.
  */
+// One builder per @components entry, so a caller can build exactly the entries
+// it was asked for. Plone's serializer only runs the expanders named in
+// ?expand=; building the whole set and discarding the rest made asking for one
+// cheap component cost the same as asking for all of them — measured on this
+// mock at 111ms plain vs 223ms for ?expand=breadcrumbs alone, against 17ms for
+// fetching all four as separate endpoints.
+const COMPONENT_BUILDERS = {
+  // @actions has no session here on purpose: the adapter reads @actions
+  // directly, and that route IS session-aware, so a working copy still
+  // reports iterate_checkin.
+  actions: (cleanPath, baseUrl) => buildActionsComponent(cleanPath, baseUrl),
+  breadcrumbs: (cleanPath, baseUrl) => buildBreadcrumbsComponent(cleanPath, baseUrl),
+  // navigation DOES need it. A frontend reads the menu from `?expand=
+  // navigation` on the page it is rendering, not from the /@navigation
+  // route — so leaving the session out here means the menu is the one on
+  // disk no matter what the editing session has done to it. The route was
+  // made session-aware and this path was not, which is the same bug one
+  // layer up: the two paths this file exists to keep identical drifted
+  // again, and only the one nothing reads was fixed.
+  navigation: (cleanPath, baseUrl, sessionId) =>
+    buildNavigationComponent(cleanPath, baseUrl, sessionId),
+  navroot: (cleanPath, baseUrl) => buildNavrootComponent(cleanPath, baseUrl),
+  types: () => buildTypesComponent(),
+  workflow: (cleanPath, baseUrl) => buildWorkflowComponent(cleanPath, baseUrl),
+};
+
 function generateComponents(urlPath, baseUrl, sessionId) {
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
-  return {
-    // @actions has no session here on purpose: the adapter reads @actions
-    // directly, and that route IS session-aware, so a working copy still
-    // reports iterate_checkin.
-    actions: buildActionsComponent(cleanPath, baseUrl),
-    breadcrumbs: buildBreadcrumbsComponent(cleanPath, baseUrl),
-    // navigation DOES need it. A frontend reads the menu from `?expand=
-    // navigation` on the page it is rendering, not from the /@navigation
-    // route — so leaving the session out here means the menu is the one on
-    // disk no matter what the editing session has done to it. The route was
-    // made session-aware and this path was not, which is the same bug one
-    // layer up: the two paths this file exists to keep identical drifted
-    // again, and only the one nothing reads was fixed.
-    navigation: buildNavigationComponent(cleanPath, baseUrl, sessionId),
-    navroot: buildNavrootComponent(cleanPath, baseUrl),
-    types: buildTypesComponent(),
-    workflow: buildWorkflowComponent(cleanPath, baseUrl),
-  };
+  return Object.fromEntries(
+    Object.entries(COMPONENT_BUILDERS).map(([name, build]) => [
+      name,
+      build(cleanPath, baseUrl, sessionId),
+    ]),
+  );
 }
 
 /**
@@ -1481,10 +1495,13 @@ function stubComponents(fullUrl) {
  */
 function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId) {
   if (!expandList || expandList.length === 0) return stubs;
-  const expanded = generateComponents(urlPath, baseUrl, sessionId);
+  const cleanPath = urlPath.replace(/\/$/, '') || '/';
   const out = { ...stubs };
   for (const name of expandList) {
-    if (expanded[name] !== undefined) out[name] = expanded[name];
+    // Only the named entries are built. An unknown name leaves its stub, which
+    // is what Plone does with an expander it has no registration for.
+    const build = COMPONENT_BUILDERS[name];
+    if (build) out[name] = build(cleanPath, baseUrl, sessionId);
   }
   return out;
 }
