@@ -747,7 +747,7 @@
     },
     "ol-31": {
       "@type": "slate",
-      "plaintext": "The new layout's structure replaces the old one. Your existing content is redistributed into the new layout's slots based on slotId:Content tagged with a slot name is placed into the matching slot in the new layout.Content with no slot tag falls into the \"default\" slot if the new layout has one; otherwise into the bottom or top slot, or is dropped.Fixed blocks with the same slotId get their editable content carried over (text, media); their structural settings come from the new layout.",
+      "plaintext": "The new layout's structure replaces the old one. Your existing content is redistributed into the new layout's slots based on slotId:",
       "value": [
         {
           "type": "ol",
@@ -787,57 +787,6 @@
                 },
                 {
                   "text": ":"
-                },
-                {
-                  "type": "ul",
-                  "children": [
-                    {
-                      "type": "li",
-                      "children": [
-                        {
-                          "text": "Content tagged with a slot name is placed into the matching slot in the new layout."
-                        }
-                      ]
-                    },
-                    {
-                      "type": "li",
-                      "children": [
-                        {
-                          "text": "Content with no slot tag falls into the "
-                        },
-                        {
-                          "type": "code",
-                          "children": [
-                            {
-                              "text": "\"default\""
-                            }
-                          ]
-                        },
-                        {
-                          "text": " slot if the new layout has one; otherwise into the bottom or top slot, or is dropped."
-                        }
-                      ]
-                    },
-                    {
-                      "type": "li",
-                      "children": [
-                        {
-                          "text": "Fixed blocks with the same "
-                        },
-                        {
-                          "type": "code",
-                          "children": [
-                            {
-                              "text": "slotId"
-                            }
-                          ]
-                        },
-                        {
-                          "text": " get their editable content carried over (text, media); their structural settings come from the new layout."
-                        }
-                      ]
-                    }
-                  ]
                 }
               ]
             }
@@ -846,6 +795,42 @@
       ]
     },
     "p-32": {
+      "@type": "slate",
+      "plaintext": "- Content tagged with a slot name is placed into the matching slot in the new layout.    - Content with no slot tag falls into the `\"default\"` slot if the new layout has one; otherwise into the bottom or top slot, or is dropped.    - Fixed blocks with the same `slotId` get their editable content carried over (text, media); their structural settings come from the new layout.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "- Content tagged with a slot name is placed into the matching slot in the new layout.    - Content with no slot tag falls into the "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "\"default\""
+                }
+              ]
+            },
+            {
+              "text": " slot if the new layout has one; otherwise into the bottom or top slot, or is dropped.    - Fixed blocks with the same "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "slotId"
+                }
+              ]
+            },
+            {
+              "text": " get their editable content carried over (text, media); their structural settings come from the new layout."
+            }
+          ]
+        }
+      ]
+    },
+    "p-33": {
       "@type": "slate",
       "plaintext": "The point of `slotId` is that two layouts can share the same set of region names — switch between them and your content lands in the right places automatically.",
       "value": [
@@ -870,7 +855,7 @@
         }
       ]
     },
-    "h-33": {
+    "h-34": {
       "@type": "slate",
       "plaintext": "Editing content inside a template",
       "value": [
@@ -884,7 +869,7 @@
         }
       ]
     },
-    "p-34": {
+    "p-35": {
       "@type": "slate",
       "plaintext": "A template's own (fixed) blocks are **locked** by default — you can edit *this page's* content, but not the template. To change the template itself, **unlock** it: select one of its blocks and click the 🔒 on its **sidebar bar** (\"Template: *name*\"), on the block's **Quanta toolbar**, or **Edit template** in the bar's `⋯` menu. The 🔒 becomes 🔓, and the template's blocks — plus its Name / Save Location — become editable.",
       "value": [
@@ -986,7 +971,7 @@
         }
       ]
     },
-    "p-35": {
+    "p-36": {
       "@type": "slate",
       "plaintext": "Unlocking one template unlocks only *that* template. The rest of the page stays editable as normal, and you can **unlock several templates at once** and edit them together.",
       "value": [
@@ -1022,7 +1007,7 @@
         }
       ]
     },
-    "p-36": {
+    "p-37": {
       "@type": "slate",
       "plaintext": "**Locking is where your template edits commit.** When you lock a template you choose:",
       "value": [
@@ -1044,7 +1029,7 @@
         }
       ]
     },
-    "ul-37": {
+    "ul-38": {
       "@type": "slate",
       "plaintext": "Change on all pages — save your edits to the template; every page using it picks them up. Reset changes — discard the edits and revert the template to its saved version. Only the template reverts; any page content you edited while it was unlocked stays. Cancel — keep editing (stay unlocked).",
       "value": [
@@ -1103,7 +1088,7 @@
         }
       ]
     },
-    "p-38": {
+    "p-39": {
       "@type": "slate",
       "plaintext": "Templates are saved when you **lock** them, not when you save the page. If you save the page while a template is still unlocked, you're prompted to lock it first.",
       "value": [
@@ -1128,14 +1113,14 @@
         }
       ]
     },
-    "img-39": {
+    "img-40": {
       "@type": "image",
       "url": "/docs/images/template-edit-locked",
       "alt": "A template's sidebar bar, locked (🔒) — the Template Settings show as read-only text. Clicking the lock unlocks it (🔓) and makes the template editable.",
       "align": "center",
       "size": "l"
     },
-    "h-40": {
+    "h-41": {
       "@type": "slate",
       "plaintext": "Template instances in the sidebar",
       "value": [
@@ -1149,7 +1134,7 @@
         }
       ]
     },
-    "p-41": {
+    "p-42": {
       "@type": "slate",
       "plaintext": "When a template is applied, the template's blocks are grouped under a single virtual entry in the sidebar block list — you'll see \"Template: Article Layout\" rather than each fixed/readonly block as a separate row. Expand it to see the structure inside.",
       "value": [
@@ -1163,7 +1148,7 @@
         }
       ]
     },
-    "h-42": {
+    "h-43": {
       "@type": "slate",
       "plaintext": "Inserting a template as a block",
       "value": [
@@ -1177,7 +1162,7 @@
         }
       ]
     },
-    "p-43": {
+    "p-44": {
       "@type": "slate",
       "plaintext": "When `allowedTemplates` is configured on a field, the BlockChooser's Templates group shows the list. Pick one and the template's content is inserted at the current position as a block (just like adding any other block). Editor-side this is the simpler case — once inserted, the template's blocks behave the same as if a layout had placed them (lock icons, fixed-but-editable, slots).",
       "value": [
@@ -1238,17 +1223,18 @@
       "p-30",
       "ol-31",
       "p-32",
-      "h-33",
-      "p-34",
+      "p-33",
+      "h-34",
       "p-35",
       "p-36",
-      "ul-37",
-      "p-38",
-      "img-39",
-      "h-40",
-      "p-41",
-      "h-42",
-      "p-43"
+      "p-37",
+      "ul-38",
+      "p-39",
+      "img-40",
+      "h-41",
+      "p-42",
+      "h-43",
+      "p-44"
     ]
   }
 }

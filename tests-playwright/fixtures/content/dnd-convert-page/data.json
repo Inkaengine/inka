@@ -1,50 +1,156 @@
 {
-  "@id": "http://localhost:8888/dnd-convert-page",
-  "@type": "Document",
-  "UID": "dnd-convert-page-uid",
-  "id": "dnd-convert-page",
-  "title": "DnD Convert Page",
-  "blocks": {
-    "title-block": { "@type": "title" },
-    "src-1": { "@type": "convSource", "title": "Draggable source 1" },
-    "src-2": { "@type": "convSource", "title": "Draggable source 2" },
-    "alien-1": { "@type": "convAlien", "title": "Alien block" },
-    "box-1": {
-      "@type": "convBox",
-      "blocks": {
-        "a-1": { "@type": "convTargetA", "title": "Existing A1" },
-        "a-2": { "@type": "convTargetA", "title": "Existing A2" }
-      },
-      "blocks_layout": { "items": ["a-1", "a-2"] }
+    "@id": "http://localhost:8888/dnd-convert-page",
+    "@type": "Document",
+    "UID": "dnd-convert-page-uid",
+    "id": "dnd-convert-page",
+    "title": "DnD Convert Page",
+    "blocks": {
+        "title-block": {
+            "@type": "title"
+        },
+        "src-1": {
+            "@type": "convSource",
+            "title": "Draggable source 1"
+        },
+        "src-2": {
+            "@type": "convSource",
+            "title": "Draggable source 2"
+        },
+        "alien-1": {
+            "@type": "convAlien",
+            "title": "Alien block"
+        },
+        "box-1": {
+            "@type": "convBox",
+            "blocks": {
+                "a-1": {
+                    "@type": "convTargetA",
+                    "title": "Existing A1"
+                },
+                "a-2": {
+                    "@type": "convTargetA",
+                    "title": "Existing A2"
+                }
+            },
+            "blocks_layout": {
+                "items": [
+                    "a-1",
+                    "a-2"
+                ]
+            }
+        },
+        "boxm-1": {
+            "@type": "convBoxMulti",
+            "blocks": {
+                "b-1": {
+                    "@type": "convTargetA",
+                    "title": "Multi B1"
+                },
+                "b-2": {
+                    "@type": "convTargetA",
+                    "title": "Multi B2"
+                }
+            },
+            "blocks_layout": {
+                "items": [
+                    "b-1",
+                    "b-2"
+                ]
+            }
+        },
+        "boxe-1": {
+            "@type": "convBoxMulti",
+            "blocks": {
+                "eseed-1": {
+                    "@type": "empty"
+                }
+            },
+            "blocks_layout": {
+                "items": [
+                    "eseed-1"
+                ]
+            }
+        },
+        "grp-src-1": {
+            "@type": "convGroupSrc",
+            "blocks": {
+                "gc-1": {
+                    "@type": "convTargetA",
+                    "title": "Grouped child"
+                }
+            },
+            "blocks_layout": {
+                "items": [
+                    "gc-1"
+                ]
+            }
+        },
+        "grp-box-1": {
+            "@type": "convGroupBox",
+            "blocks": {
+                "gd-1": {
+                    "@type": "convGroupDst",
+                    "blocks": {
+                        "gdc-1": {
+                            "@type": "convTargetA",
+                            "title": "gd-1 child"
+                        }
+                    },
+                    "blocks_layout": {
+                        "items": [
+                            "gdc-1"
+                        ]
+                    }
+                },
+                "gd-2": {
+                    "@type": "convGroupDst",
+                    "blocks": {
+                        "gdc-2": {
+                            "@type": "convTargetA",
+                            "title": "gd-2 child"
+                        }
+                    },
+                    "blocks_layout": {
+                        "items": [
+                            "gdc-2"
+                        ]
+                    }
+                }
+            },
+            "blocks_layout": {
+                "items": [
+                    "gd-1",
+                    "gd-2"
+                ]
+            }
+        },
+        "boxb-1": {
+            "@type": "convBoxMulti",
+            "blocks": {
+                "b3-1": {
+                    "@type": "convTargetB",
+                    "title": "Existing B1"
+                }
+            },
+            "blocks_layout": {
+                "items": [
+                    "b3-1"
+                ]
+            }
+        }
     },
-    "boxm-1": {
-      "@type": "convBoxMulti",
-      "blocks": {
-        "b-1": { "@type": "convTargetA", "title": "Multi B1" },
-        "b-2": { "@type": "convTargetA", "title": "Multi B2" }
-      },
-      "blocks_layout": { "items": ["b-1", "b-2"] }
-    },
-    "boxe-1": {
-      "@type": "convBoxMulti",
-      "blocks": { "eseed-1": { "@type": "empty" } },
-      "blocks_layout": { "items": ["eseed-1"] }
-    },
-    "grp-src-1": {
-      "@type": "convGroupSrc",
-      "blocks": { "gc-1": { "@type": "convTargetA", "title": "Grouped child" } },
-      "blocks_layout": { "items": ["gc-1"] }
-    },
-    "grp-box-1": {
-      "@type": "convGroupBox",
-      "blocks": {
-        "gd-1": { "@type": "convGroupDst", "blocks": { "gdc-1": { "@type": "convTargetA", "title": "gd-1 child" } }, "blocks_layout": { "items": ["gdc-1"] } },
-        "gd-2": { "@type": "convGroupDst", "blocks": { "gdc-2": { "@type": "convTargetA", "title": "gd-2 child" } }, "blocks_layout": { "items": ["gdc-2"] } }
-      },
-      "blocks_layout": { "items": ["gd-1", "gd-2"] }
+    "blocks_layout": {
+        "items": [
+            "title-block",
+            "src-1",
+            "src-2",
+            "alien-1",
+            "box-1",
+            "boxm-1",
+            "boxe-1",
+            "boxb-1",
+            "grp-src-1",
+            "grp-box-1"
+        ]
     }
-  },
-  "blocks_layout": {
-    "items": ["title-block", "src-1", "src-2", "alien-1", "box-1", "boxm-1", "boxe-1", "grp-src-1", "grp-box-1"]
-  }
 }

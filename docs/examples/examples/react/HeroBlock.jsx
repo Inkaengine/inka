@@ -6,7 +6,7 @@ function HeroBlock({ block }) {
   const imageSrc = getImageUrl(block.image);
 
   // Data-driven: render a field only when it has data. No data ⇒ no element, so
-  // view markup stays clean. Inka reveals an empty optional field for editing by
+  // view markup stays clean. Hydra reveals an empty optional field for editing by
   // seeding it, which makes these same checks true — no edit-mode branch needed.
   return (
     <div data-block-uid={block['@uid']} className="hero-block">

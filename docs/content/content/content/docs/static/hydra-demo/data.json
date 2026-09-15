@@ -1,0 +1,47 @@
+{
+  "@id": "/docs/static/hydra-demo",
+  "@type": "File",
+  "UID": "docs-static-hydra-demo-001",
+  "allow_discussion": false,
+  "contributors": [],
+  "created": "2025-01-01T00:00:00+00:00",
+  "creators": [
+    "admin"
+  ],
+  "description": "Homepage hero loop showing live editing, formatting, drag-and-drop, container selection, and the frontend switcher.",
+  "effective": null,
+  "exclude_from_nav": true,
+  "expires": null,
+  "exportimport.constrains": {},
+  "exportimport.conversation": [],
+  "exportimport.versions": {},
+  "file": {
+    "blob_path": "docs/static/hydra-demo/file/hydra-demo.mp4",
+    "content-type": "video/mp4",
+    "filename": "hydra-demo.mp4",
+    "size": 2217
+  },
+  "id": "hydra-demo",
+  "is_folderish": false,
+  "language": "##DEFAULT##",
+  "layout": "file_view",
+  "lock": {},
+  "modified": "2025-01-01T00:00:00+00:00",
+  "parent": {
+    "@id": "/docs/static",
+    "@type": "Document",
+    "UID": "docs-static-folder-001",
+    "description": "Static assets used by the docs landing page (homepage hero video, etc.).",
+    "title": "Static",
+    "type_title": "Page"
+  },
+  "review_state": null,
+  "rights": "",
+  "subjects": [],
+  "title": "Hydra demo (homepage hero)",
+  "type_title": "File",
+  "version": "current",
+  "workflow_history": {},
+  "working_copy": null,
+  "working_copy_of": null
+}

@@ -27,9 +27,9 @@ test.describe('Example listing blocks', () => {
     await helper.login();
     await helper.navigateToEdit('/example-listings-page');
     const iframe = helper.getIframe();
-    // ss-page (this page's subjects: news, plone) + ss-site (Keywords: news,
-    // plone, events) = 5 facet links total.
-    await expect(iframe.locator('a[href^="/search?facet.Subject="]')).toHaveCount(5);
+    // ss-page (this page's subjects: news, plone) + ss-site (every keyword the
+    // index knows: news, newsletter, newsroom, plone, events) = 7 facet links.
+    await expect(iframe.locator('a[href^="/search?facet.Subject="]')).toHaveCount(7);
     // `events` exists only in the index vocabulary → proves site-wide mode.
     await expect(iframe.locator('a[href="/search?facet.Subject=events"]')).toHaveCount(1);
     // `news` comes from BOTH blocks → proves this-page mode also rendered.

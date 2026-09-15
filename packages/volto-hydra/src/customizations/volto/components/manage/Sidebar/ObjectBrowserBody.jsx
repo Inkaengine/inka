@@ -260,6 +260,23 @@ class ObjectBrowserBody extends Component {
         `${this.props.block}-${mode}`,
       );
     }
+    // Back reads `parentFolder`, which was otherwise only ever written BY a
+    // navigation — so until the author navigated somewhere it was '', and
+    // navigateTo('') is navigateTo('/'). The browser opens on the level of the
+    // page being edited, usually a leaf with no children, which makes Back the
+    // first control an author reaches for: it left the folder the page lives in
+    // and landed on the site root. Not one level too far — a different tree, so
+    // every folder opened from there is a same-named folder somewhere else.
+    //
+    // Seed both from the level actually opened, which is the one just searched.
+    const level =
+      currentSelected && isInternalURL(currentSelected)
+        ? getParentURL(currentSelected)
+        : this.state.currentFolder;
+    this.setState({
+      currentFolder: level || '/',
+      parentFolder: getParentURL(level || '/'),
+    });
   };
 
   navigateTo = (id) => {
@@ -273,9 +290,8 @@ class ObjectBrowserBody extends Component {
       },
       `${this.props.block}-${this.props.mode}`,
     );
-    const parent = `${join(id.split('/').slice(0, -1), '/')}` || '/';
     this.setState(() => ({
-      parentFolder: parent,
+      parentFolder: getParentURL(id),
       currentFolder: id || '/',
       // A new level starts on its items; if it turns out to have none,
       // componentDidUpdate flips it to fragments once they've loaded.
@@ -852,6 +868,19 @@ class ObjectBrowserBody extends Component {
                       {this.props.intl.formatMessage(messages.noFragments)}
                     </div>
                   )}
+                </Segment>
+              ) : this.props.searchSubrequests[
+                  `${this.props.block}-${this.props.mode}`
+                ]?.loading ? (
+                // Say that a level is being fetched. Without this an empty
+                // listing and a listing still on its way look identical: the
+                // browser opens on a leaf page, shows nothing, and the author
+                // cannot tell whether the folder is empty or the request is
+                // still out — so they wait, or click Back on a level that was
+                // about to fill. The flag is already in props; it was just
+                // never rendered.
+                <Segment className="ob-listing-loading">
+                  <FormattedMessage id="Loading" defaultMessage="Loading" />
                 </Segment>
               ) : (
               <ObjectBrowserNav

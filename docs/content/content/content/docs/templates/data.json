@@ -481,7 +481,7 @@
     },
     "ol-13": {
       "@type": "slate",
-      "plaintext": "On a page using the template, toggle template edit mode (the editTemplate control on the block). Edit the fixed / fixed+readOnly blocks — in template edit mode these become editable; normally they're locked. Save. The edits are written back into the template document, so every page that uses that template shows the change on its next render.",
+      "plaintext": "On a page using the template, toggle template edit mode (the editTemplate",
       "value": [
         {
           "type": "ol",
@@ -510,12 +510,34 @@
                       "text": "editTemplate"
                     }
                   ]
-                },
-                {
-                  "text": " control on the block)."
                 }
               ]
-            },
+            }
+          ]
+        }
+      ]
+    },
+    "p-14": {
+      "@type": "slate",
+      "plaintext": "control on the block).",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "control on the block)."
+            }
+          ]
+        }
+      ]
+    },
+    "ol-15": {
+      "@type": "slate",
+      "plaintext": "Edit the fixed / fixed+readOnly blocks — in template edit mode these become",
+      "value": [
+        {
+          "type": "ol",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -542,10 +564,35 @@
                   ]
                 },
                 {
-                  "text": " blocks — in template edit mode these become editable; normally they're locked."
+                  "text": " blocks — in template edit mode these become"
                 }
               ]
-            },
+            }
+          ]
+        }
+      ]
+    },
+    "p-16": {
+      "@type": "slate",
+      "plaintext": "editable; normally they're locked.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "editable; normally they're locked."
+            }
+          ]
+        }
+      ]
+    },
+    "ol-17": {
+      "@type": "slate",
+      "plaintext": "Save. The edits are written back into the template document, so every page that",
+      "value": [
+        {
+          "type": "ol",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -561,7 +608,7 @@
                   ]
                 },
                 {
-                  "text": ", so every page that uses that template shows the change on its next render."
+                  "text": ", so every page that"
                 }
               ]
             }
@@ -569,7 +616,21 @@
         }
       ]
     },
-    "p-14": {
+    "p-18": {
+      "@type": "slate",
+      "plaintext": "uses that template shows the change on its next render.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "uses that template shows the change on its next render."
+            }
+          ]
+        }
+      ]
+    },
+    "p-19": {
       "@type": "slate",
       "plaintext": "What propagates and what doesn't:",
       "value": [
@@ -583,9 +644,9 @@
         }
       ]
     },
-    "ul-15": {
+    "ul-20": {
       "@type": "slate",
-      "plaintext": "fixed / fixed+readOnly blocks edited in template edit mode → propagate to all pages using the template (template-controlled). Slot content (blocks editors add into a slot) is per-page — it lives on the page and is never written back to the template. Editing a fixed block's content in normal mode overrides it for that page only; the template's version stays the default for other pages.",
+      "plaintext": "fixed / fixed+readOnly blocks edited in template edit mode → propagate to all",
       "value": [
         {
           "type": "ul",
@@ -597,34 +658,40 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "fixed"
-                        }
-                      ]
-                    },
-                    {
-                      "text": " / "
-                    },
-                    {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "fixed+readOnly"
-                        }
-                      ]
-                    },
-                    {
-                      "text": " blocks edited in template edit mode"
+                      "text": "`fixed` / `fixed+readOnly` blocks edited in template edit mode"
                     }
                   ]
                 },
                 {
-                  "text": " → propagate to all pages using the template (template-controlled)."
+                  "text": " → propagate to all"
                 }
               ]
-            },
+            }
+          ]
+        }
+      ]
+    },
+    "p-21": {
+      "@type": "slate",
+      "plaintext": "pages using the template (template-controlled).",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "pages using the template (template-controlled)."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-22": {
+      "@type": "slate",
+      "plaintext": "Slot content (blocks editors add into a slot) is per-page — it lives on the page",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -648,10 +715,35 @@
                   ]
                 },
                 {
-                  "text": " — it lives on the page and is never written back to the template."
+                  "text": " — it lives on the page"
                 }
               ]
-            },
+            }
+          ]
+        }
+      ]
+    },
+    "p-23": {
+      "@type": "slate",
+      "plaintext": "and is never written back to the template.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "and is never written back to the template."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-24": {
+      "@type": "slate",
+      "plaintext": "Editing a fixed block's content in normal mode overrides it for that page only;",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -689,7 +781,7 @@
                   ]
                 },
                 {
-                  "text": "; the template's version stays the default for other pages."
+                  "text": ";"
                 }
               ]
             }
@@ -697,7 +789,21 @@
         }
       ]
     },
-    "p-16": {
+    "p-25": {
+      "@type": "slate",
+      "plaintext": "the template's version stays the default for other pages.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "the template's version stays the default for other pages."
+            }
+          ]
+        }
+      ]
+    },
+    "p-26": {
       "@type": "slate",
       "plaintext": "**Reusing a template multiple times:** a page may apply the same template more than once (e.g. two of the same layout or snippet). Each use is a distinct *instance*; the merge gives every instance its own block ids, so they never collide.",
       "value": [
@@ -730,7 +836,7 @@
         }
       ]
     },
-    "h-17": {
+    "h-27": {
       "@type": "slate",
       "plaintext": "Which mechanism for which use case?",
       "value": [
@@ -744,7 +850,7 @@
         }
       ]
     },
-    "p-18": {
+    "p-28": {
       "@type": "slate",
       "plaintext": "The two configurations below look similar but solve different problems. Pick by **who controls the structure** and **whether it repeats**:",
       "value": [
@@ -780,7 +886,7 @@
         }
       ]
     },
-    "tbl-19": {
+    "tbl-29": {
       "@type": "slateTable",
       "table": {
         "fixed": true,
@@ -791,10 +897,10 @@
         "striped": false,
         "rows": [
           {
-            "key": "tbl-19-r0",
+            "key": "tbl-29-r0",
             "cells": [
               {
-                "key": "tbl-19-r0c0",
+                "key": "tbl-29-r0c0",
                 "type": "header",
                 "value": [
                   {
@@ -808,7 +914,7 @@
                 ]
               },
               {
-                "key": "tbl-19-r0c1",
+                "key": "tbl-29-r0c1",
                 "type": "header",
                 "value": [
                   {
@@ -822,7 +928,7 @@
                 ]
               },
               {
-                "key": "tbl-19-r0c2",
+                "key": "tbl-29-r0c2",
                 "type": "header",
                 "value": [
                   {
@@ -838,10 +944,10 @@
             ]
           },
           {
-            "key": "tbl-19-r1",
+            "key": "tbl-29-r1",
             "cells": [
               {
-                "key": "tbl-19-r1c0",
+                "key": "tbl-29-r1c0",
                 "type": "data",
                 "value": [
                   {
@@ -866,7 +972,7 @@
                 ]
               },
               {
-                "key": "tbl-19-r1c1",
+                "key": "tbl-29-r1c1",
                 "type": "data",
                 "value": [
                   {
@@ -876,12 +982,7 @@
                         "type": "strong",
                         "children": [
                           {
-                            "type": "code",
-                            "children": [
-                              {
-                                "text": "allowedTemplates"
-                              }
-                            ]
+                            "text": "`allowedTemplates`"
                           }
                         ]
                       }
@@ -890,7 +991,7 @@
                 ]
               },
               {
-                "key": "tbl-19-r1c2",
+                "key": "tbl-29-r1c2",
                 "type": "data",
                 "value": [
                   {
@@ -928,10 +1029,10 @@
             ]
           },
           {
-            "key": "tbl-19-r2",
+            "key": "tbl-29-r2",
             "cells": [
               {
-                "key": "tbl-19-r2c0",
+                "key": "tbl-29-r2c0",
                 "type": "data",
                 "value": [
                   {
@@ -956,7 +1057,7 @@
                 ]
               },
               {
-                "key": "tbl-19-r2c1",
+                "key": "tbl-29-r2c1",
                 "type": "data",
                 "value": [
                   {
@@ -966,12 +1067,7 @@
                         "type": "strong",
                         "children": [
                           {
-                            "type": "code",
-                            "children": [
-                              {
-                                "text": "allowedLayouts"
-                              }
-                            ]
+                            "text": "`allowedLayouts`"
                           }
                         ]
                       }
@@ -980,7 +1076,7 @@
                 ]
               },
               {
-                "key": "tbl-19-r2c2",
+                "key": "tbl-29-r2c2",
                 "type": "data",
                 "value": [
                   {
@@ -996,10 +1092,10 @@
             ]
           },
           {
-            "key": "tbl-19-r3",
+            "key": "tbl-29-r3",
             "cells": [
               {
-                "key": "tbl-19-r3c0",
+                "key": "tbl-29-r3c0",
                 "type": "data",
                 "value": [
                   {
@@ -1024,7 +1120,7 @@
                 ]
               },
               {
-                "key": "tbl-19-r3c1",
+                "key": "tbl-29-r3c1",
                 "type": "data",
                 "value": [
                   {
@@ -1034,12 +1130,7 @@
                         "type": "strong",
                         "children": [
                           {
-                            "type": "code",
-                            "children": [
-                              {
-                                "text": "allowedLayouts"
-                              }
-                            ]
+                            "text": "`allowedLayouts`"
                           }
                         ]
                       },
@@ -1062,7 +1153,7 @@
                 ]
               },
               {
-                "key": "tbl-19-r3c2",
+                "key": "tbl-29-r3c2",
                 "type": "data",
                 "value": [
                   {
@@ -1091,7 +1182,7 @@
         ]
       }
     },
-    "p-20": {
+    "p-30": {
       "@type": "slate",
       "plaintext": "A **branded header/footer is the canonical `allowedLayouts` case**, *not* `allowedTemplates`: don't make the footer a `templateId` block the editor inserts — force a layout across the footer field. Within that layout, each block declares how locked it is:",
       "value": [
@@ -1105,18 +1196,7 @@
               "type": "strong",
               "children": [
                 {
-                  "text": "branded header/footer is the canonical "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "allowedLayouts"
-                    }
-                  ]
-                },
-                {
-                  "text": " case"
+                  "text": "branded header/footer is the canonical `allowedLayouts` case"
                 }
               ]
             },
@@ -1160,7 +1240,7 @@
         }
       ]
     },
-    "ul-21": {
+    "ul-31": {
       "@type": "slate",
       "plaintext": "fixed: true, readOnly: true — can't be edited or moved (logo, branded chrome). fixed: true — content-editable but not movable (a required section). slot (fixed unset, with slotId) — a region where editors add their own blocks; the \"default\" slot receives leftover content.",
       "value": [
@@ -1174,12 +1254,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "fixed: true, readOnly: true"
-                        }
-                      ]
+                      "text": "`fixed: true, readOnly: true`"
                     }
                   ]
                 },
@@ -1195,12 +1270,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "fixed: true"
-                        }
-                      ]
+                      "text": "`fixed: true`"
                     }
                   ]
                 },
@@ -1262,7 +1332,7 @@
         }
       ]
     },
-    "p-22": {
+    "p-32": {
       "@type": "slate",
       "plaintext": "For a fully-fixed branded footer, leave the blocks **field empty** (`{items: []}`) and let the layout content item supply everything — then editing the layout updates every page.",
       "value": [
@@ -1298,7 +1368,7 @@
         }
       ]
     },
-    "h-23": {
+    "h-33": {
       "@type": "slate",
       "plaintext": "Block structure inside a template (read this before debugging an empty merge)",
       "value": [
@@ -1312,7 +1382,7 @@
         }
       ]
     },
-    "p-24": {
+    "p-34": {
       "@type": "slate",
       "plaintext": "**Nested containers are fully supported** (e.g. a branded footer built as a `columns` block). The merge recurses into any field whose `.items` array lists the block's nested block IDs — a `blocks_layout`-widget field of **any name** (a `columns` block's `columns` field counts). Two rules for nested content:",
       "value": [
@@ -1400,7 +1470,7 @@
         }
       ]
     },
-    "ul-25": {
+    "ul-35": {
       "@type": "slate",
       "plaintext": "Pair every nested blocks map with such a sibling layout field (or the merge throws \"no sibling field whose .items array lists those block IDs\"). Give every block a slotId — the container, each column, and each block inside each column. A unique id per block (e.g. the block's own uid) works.",
       "value": [
@@ -1471,7 +1541,7 @@
         }
       ]
     },
-    "p-26": {
+    "p-36": {
       "@type": "slate",
       "plaintext": "So a branded footer is, end to end: a `columns` block (`slotId`, `fixed`, `readOnly`) → each `column` (`slotId`, `fixed`, `readOnly`) → each leaf block (`slotId`, `fixed`, `readOnly`).",
       "value": [
@@ -1606,7 +1676,7 @@
         }
       ]
     },
-    "h-27": {
+    "h-37": {
       "@type": "slate",
       "plaintext": "object_list containers (sliders, tables)",
       "value": [
@@ -1620,7 +1690,7 @@
         }
       ]
     },
-    "p-28": {
+    "p-38": {
       "@type": "slate",
       "plaintext": "A container lays out its children one of two ways, and the merge treats **both the same** — as an ordered region of child blocks:",
       "value": [
@@ -1645,9 +1715,9 @@
         }
       ]
     },
-    "ul-29": {
+    "ul-39": {
       "@type": "slate",
-      "plaintext": "blocks_layout (columns, grid): children live in the block's shared blocks map, ordered by a blocks_layout region (as above). object_list (a slider's slides, a table's rows): children are an inline array of block objects, each identified by an id field (@id by default).",
+      "plaintext": "blocks_layout (columns, grid): children live in the block's shared blocks map,",
       "value": [
         {
           "type": "ul",
@@ -1659,12 +1729,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "blocks_layout"
-                        }
-                      ]
+                      "text": "`blocks_layout`"
                     }
                   ]
                 },
@@ -1680,21 +1745,46 @@
                   ]
                 },
                 {
-                  "text": " map, ordered by a "
-                },
+                  "text": " map,"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-40": {
+      "@type": "slate",
+      "plaintext": "ordered by a `blocks_layout` region (as above).",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "ordered by a "
+            },
+            {
+              "type": "code",
+              "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "blocks_layout"
-                    }
-                  ]
-                },
-                {
-                  "text": " region (as above)."
+                  "text": "blocks_layout"
                 }
               ]
             },
+            {
+              "text": " region (as above)."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-41": {
+      "@type": "slate",
+      "plaintext": "object_list (a slider's slides, a table's rows): children are an inline array",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -1702,12 +1792,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "object_list"
-                        }
-                      ]
+                      "text": "`object_list`"
                     }
                   ]
                 },
@@ -1721,31 +1806,6 @@
                       "text": "inline array"
                     }
                   ]
-                },
-                {
-                  "text": " of block objects, each identified by an "
-                },
-                {
-                  "type": "strong",
-                  "children": [
-                    {
-                      "text": "id field"
-                    }
-                  ]
-                },
-                {
-                  "text": " ("
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "@id"
-                    }
-                  ]
-                },
-                {
-                  "text": " by default)."
                 }
               ]
             }
@@ -1753,7 +1813,43 @@
         }
       ]
     },
-    "p-30": {
+    "p-42": {
+      "@type": "slate",
+      "plaintext": "of block objects, each identified by an **id field** (`@id` by default).",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "of block objects, each identified by an "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "id field"
+                }
+              ]
+            },
+            {
+              "text": " ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "@id"
+                }
+              ]
+            },
+            {
+              "text": " by default)."
+            }
+          ]
+        }
+      ]
+    },
+    "p-43": {
       "@type": "slate",
       "plaintext": "Everything else is identical: every object_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.",
       "value": [
@@ -1822,7 +1918,7 @@
         }
       ]
     },
-    "p-31": {
+    "p-44": {
       "@type": "slate",
       "plaintext": "The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. A frontend has no schema, so whenever you expand a template or layout that contains an object_list container you MUST tell the merge each field's id field via an **`idFieldMap`** (`{ blockType: { field: idField } }`). Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.",
       "value": [
@@ -1913,12 +2009,7 @@
               "type": "strong",
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "idFieldMap"
-                    }
-                  ]
+                  "text": "`idFieldMap`"
                 }
               ]
             },
@@ -1962,18 +2053,18 @@
         }
       ]
     },
-    "ce-32": {
+    "ce-45": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-32-javascript-403dc6",
+          "@id": "ce-45-javascript-f2cdf9",
           "label": "Javascript",
           "language": "javascript",
           "code": "const items = expandTemplatesSync(layout, {\n    blocks, templateState, templates,\n    idFieldMap: {\n        form: { subblocks: 'field_id' }, // a form's fields key on field_id, not @id\n        slider: { slides: '@id' },\n    },\n});"
         }
       ]
     },
-    "p-33": {
+    "p-46": {
       "@type": "slate",
       "plaintext": "(On the admin this map is derived from the block schema automatically. When you re-enter to expand a **single** object_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)",
       "value": [
@@ -2020,7 +2111,7 @@
         }
       ]
     },
-    "h-34": {
+    "h-47": {
       "@type": "slate",
       "plaintext": "allowedTemplates vs allowedLayouts",
       "value": [
@@ -2034,7 +2125,7 @@
         }
       ]
     },
-    "p-35": {
+    "p-48": {
       "@type": "slate",
       "plaintext": "Configure templates in `page.schema.properties` on the blocks field:",
       "value": [
@@ -2059,18 +2150,18 @@
         }
       ]
     },
-    "ce-36": {
+    "ce-49": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-36-javascript-336b9b",
+          "@id": "ce-49-javascript-801e51",
           "label": "Javascript",
           "language": "javascript",
           "code": "initBridge({\n    page: {\n        schema: {\n            properties: {\n                blocks_layout: {\n                    allowedTemplates: ['/templates/form-snippet'],\n                    allowedLayouts: ['/templates/article-layout'],\n                },\n            },\n        },\n    },\n});"
         }
       ]
     },
-    "ul-37": {
+    "ul-50": {
       "@type": "slate",
       "plaintext": "allowedTemplates — Templates shown in the BlockChooser's \"Templates\" group, inserted as blocks. allowedLayouts — Templates shown in the Layout dropdown. They replace/merge the entire container content. A value of null allows for a no-template option. If none of those templates are already set as the layout then during editing, the first is applied automatically.",
       "value": [
@@ -2084,12 +2175,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "allowedTemplates"
-                        }
-                      ]
+                      "text": "`allowedTemplates`"
                     }
                   ]
                 },
@@ -2105,12 +2191,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "allowedLayouts"
-                        }
-                      ]
+                      "text": "`allowedLayouts`"
                     }
                   ]
                 },
@@ -2134,7 +2215,7 @@
         }
       ]
     },
-    "h-38": {
+    "h-51": {
       "@type": "slate",
       "plaintext": "Applying Merge Rules",
       "value": [
@@ -2148,7 +2229,7 @@
         }
       ]
     },
-    "p-39": {
+    "p-52": {
       "@type": "slate",
       "plaintext": "Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched templates) to merge template content during rendering.",
       "value": [
@@ -2184,7 +2265,7 @@
         }
       ]
     },
-    "ul-40": {
+    "ul-53": {
       "@type": "slate",
       "plaintext": "Edit Mode: These functions auto-detect edit mode via isEditMode() and pass blocks through unchanged (just adding @uid). The admin handles template merging and adds nodeId attributes for inline editing. SSR: On SSR (no window), isEditMode() returns false so templates are expanded — this is correct since edit mode only exists in the browser iframe.",
       "value": [
@@ -2271,7 +2352,7 @@
         }
       ]
     },
-    "p-41": {
+    "p-54": {
       "@type": "slate",
       "plaintext": "**Sync vs Async**:",
       "value": [
@@ -2293,7 +2374,7 @@
         }
       ]
     },
-    "ul-42": {
+    "ul-55": {
       "@type": "slate",
       "plaintext": "expandTemplatesSync — Use when templates are pre-fetched at page load. Better for Vue computed properties since it's synchronous. expandTemplates — Use when you need to lazy-load templates on demand. Handles on-demand loading of forced layouts not in page data.",
       "value": [
@@ -2307,12 +2388,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "expandTemplatesSync"
-                        }
-                      ]
+                      "text": "`expandTemplatesSync`"
                     }
                   ]
                 },
@@ -2328,12 +2404,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "expandTemplates"
-                        }
-                      ]
+                      "text": "`expandTemplates`"
                     }
                   ]
                 },
@@ -2346,7 +2417,7 @@
         }
       ]
     },
-    "h-43": {
+    "h-56": {
       "@type": "slate",
       "plaintext": "Pre-loading with loadTemplates",
       "value": [
@@ -2360,7 +2431,7 @@
         }
       ]
     },
-    "p-44": {
+    "p-57": {
       "@type": "slate",
       "plaintext": "**`loadTemplates(data, loadTemplate)`** scans page data for `templateId` references and loads them all in parallel. It follows nested references (templates referencing other templates) and has a 5s per-template timeout. It only loads templates actually in the page data — `allowedLayouts` options are loaded on demand when a forced layout is applied.",
       "value": [
@@ -2371,12 +2442,7 @@
               "type": "strong",
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "loadTemplates(data, loadTemplate)"
-                    }
-                  ]
+                  "text": "`loadTemplates(data, loadTemplate)`"
                 }
               ]
             },
@@ -2409,18 +2475,18 @@
         }
       ]
     },
-    "ce-45": {
+    "ce-58": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-45-javascript-f2cdf9",
+          "@id": "ce-58-javascript-6f7634",
           "label": "Javascript",
           "language": "javascript",
           "code": "import { loadTemplates, expandTemplatesSync, expandTemplates }\n    from '@hydra-js/hydra.js';\n\nconst loadTemplate = async (id) =>\n    fetch(`${apiBase}${id}`).then(r => r.json());\n\n// Create the shared state ONCE per page render. Every expand call (top-level AND\n// every nested container / object_list re-entry) must reuse this SAME object.\n// Never reset or recreate it mid-render.\nconst templateState = {};\n\n// Sync approach: pre-fetch templates, use in computed properties\nconst templates = await loadTemplates(pageData, loadTemplate);\nconst items = expandTemplatesSync(layout, {\n    blocks, templateState, templates,\n});\n\n// Async approach: load templates on demand — reuse the SAME templateState\nconst items = await expandTemplates(layout, {\n    blocks,\n    templateState,\n    loadTemplate: async (id) => fetch(id).then(r => r.json()),\n});\n\n// Render items - each has @uid for the block ID\nfor (const item of items) {\n    renderBlock(item['@uid'], item);\n}"
         }
       ]
     },
-    "p-46": {
+    "p-59": {
       "@type": "slate",
       "plaintext": "Options:",
       "value": [
@@ -2434,7 +2500,7 @@
         }
       ]
     },
-    "ul-47": {
+    "ul-60": {
       "@type": "slate",
       "plaintext": "blocks: Map of blockId -> block data templateState: Create a fresh {} once per page render and share it across every expandTemplatesSync/expandTemplates call — top-level and every nested container / object_list re-entry. It records the template instances minted this render so a re-entry is recognized as already-expanded content and passed through. Never reset or recreate it mid-render (e.g. don't templateState = {} again before rendering, and don't pass a fresh {} per call): wiping it drops the minted instances, so re-entries re-apply the template instead of passing through — infinite recursion / blank page. Recognition is data-derived (by templateInstanceId), so it is safe to hand blocks back as a Vue reactive value, a clone, or a postMessage copy — no toRaw needed. (In Vue/React, provide it once at the page root via provide/inject or context; see examples/nuxt-blog-starter and examples/hydra-nextjs.) templates: (sync only) Pre-fetched map of templateId -> template data loadTemplate(id): (async only) Function to fetch template content allowedLayouts: Force a layout when container has no template applied",
       "value": [
@@ -2448,12 +2514,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "blocks"
-                        }
-                      ]
+                      "text": "`blocks`"
                     }
                   ]
                 },
@@ -2469,12 +2530,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "templateState"
-                        }
-                      ]
+                      "text": "`templateState`"
                     }
                   ]
                 },
@@ -2644,12 +2700,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "templates"
-                        }
-                      ]
+                      "text": "`templates`"
                     }
                   ]
                 },
@@ -2665,12 +2716,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "loadTemplate(id)"
-                        }
-                      ]
+                      "text": "`loadTemplate(id)`"
                     }
                   ]
                 },
@@ -2686,12 +2732,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "allowedLayouts"
-                        }
-                      ]
+                      "text": "`allowedLayouts`"
                     }
                   ]
                 },
@@ -2704,7 +2745,7 @@
         }
       ]
     },
-    "h-48": {
+    "h-61": {
       "@type": "slate",
       "plaintext": "How the Merge Works",
       "value": [
@@ -2718,7 +2759,7 @@
         }
       ]
     },
-    "p-49": {
+    "p-62": {
       "@type": "slate",
       "plaintext": "The merge algorithm follows these rules:",
       "value": [
@@ -2732,7 +2773,7 @@
         }
       ]
     },
-    "ol-50": {
+    "ol-63": {
       "@type": "slate",
       "plaintext": "Remove the blocks with the templateId to replace, storing any that aren't fixed and readOnly by slotId. Insert in their place the template content: if fixed and readOnly, just insert it; if fixed, copy block content (not including block fields) from a page block with the same slotId; if a slot block, don't insert it, but insert the previous blocks with the same slotId. Recursively replace any block fields using the same rules. Any slot blocks left over are inserted at the end of a special slot called \"default\" if it exists, otherwise are dropped.",
       "value": [
@@ -2830,7 +2871,7 @@
         }
       ]
     },
-    "p-51": {
+    "p-64": {
       "@type": "slate",
       "plaintext": "When a layout is applied, the rules are the same but applied across a whole blocks field. Content without a `slotId` ends up:",
       "value": [
@@ -2855,7 +2896,7 @@
         }
       ]
     },
-    "ul-52": {
+    "ul-65": {
       "@type": "slate",
       "plaintext": "In the \"default\" slot if it exists In the bottom slot outside the last fixed template block In the top slot outside the first fixed template block Otherwise it is dropped",
       "value": [
@@ -2909,18 +2950,18 @@
         }
       ]
     },
-    "ce-53": {
+    "ce-66": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-53-bash-8d3958",
+          "@id": "ce-66-bash-6e903d",
           "label": "Diagram",
           "language": "bash",
           "code": "Before:  [User Block A] [User Block B]\nLayout:  [Fixed Header] [default] [Fixed Footer] [post_footer]\nAfter:   [Fixed Header] [User Block A] [User Block B] [Fixed Footer]"
         }
       ]
     },
-    "h-54": {
+    "h-67": {
       "@type": "slate",
       "plaintext": "Forcing Layouts",
       "value": [
@@ -2934,7 +2975,7 @@
         }
       ]
     },
-    "p-55": {
+    "p-68": {
       "@type": "slate",
       "plaintext": "A **forced layout** (`allowedLayouts`) is applied **automatically across a whole blocks field** — unlike a **snippet** (`allowedTemplates`), which the *editor* inserts as a block where they choose (see the decision table above). Forcing is **your frontend's** call: you pass `allowedLayouts`, so you decide **which** layout to force and **when**.",
       "value": [
@@ -3058,7 +3099,7 @@
         }
       ]
     },
-    "p-56": {
+    "p-69": {
       "@type": "slate",
       "plaintext": "Pass a static layout to always force one (e.g. a footer):",
       "value": [
@@ -3072,18 +3113,18 @@
         }
       ]
     },
-    "ce-57": {
+    "ce-70": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-57-javascript-4b24e8",
+          "@id": "ce-70-javascript-401b70",
           "label": "Javascript",
           "language": "javascript",
           "code": "// Sync (with pre-fetched templates)\nconst items = expandTemplatesSync(layout, {\n    blocks, templateState, templates,\n    allowedLayouts: ['/templates/footer-layout'],\n});\n\n// Async — reuse the SAME shared templateState, never a fresh {}\nconst items = await expandTemplates(layout, {\n    blocks, templateState, loadTemplate,\n    allowedLayouts: ['/templates/footer-layout'],\n});"
         }
       ]
     },
-    "h-58": {
+    "h-71": {
       "@type": "slate",
       "plaintext": "Choosing the layout with your own rules",
       "value": [
@@ -3097,7 +3138,7 @@
         }
       ]
     },
-    "p-59": {
+    "p-72": {
       "@type": "slate",
       "plaintext": "`allowedLayouts` is just a value you compute, so apply whatever rule you like — content type, metadata, route, A/B bucket — then pass the result. Pass `undefined` (or omit it) to force nothing; pass **several** to let the editor pick from the Layout dropdown (include `null` for a \"no layout\" option).",
       "value": [
@@ -3152,18 +3193,18 @@
         }
       ]
     },
-    "ce-60": {
+    "ce-73": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-60-javascript-0dbe99",
+          "@id": "ce-73-javascript-b37117",
           "label": "Javascript",
           "language": "javascript",
           "code": "// Decide the forced layout from your own rules; force nothing when none match.\nconst forced =\n    pageData['@type'] === 'News Item' ? '/templates/news-layout' :\n    pageData.section === 'marketing' ? '/templates/campaign-layout' :\n    null;\n\n// Async loads the chosen layout on demand (the sync path needs it pre-loaded — see\n// \"Pre-loading with loadTemplates\" above).\nconst items = await expandTemplates(layout, {\n    blocks, templateState, loadTemplate,\n    allowedLayouts: forced ? [forced] : undefined,\n});"
         }
       ]
     },
-    "p-61": {
+    "p-74": {
       "@type": "slate",
       "plaintext": "Note: during editing the admin side will load the templates so in order to apply the same rules of forcing a layout you will need to set `allowedLayouts` in `page.schema.properties` to ensure the page loads with the right template.",
       "value": [
@@ -3217,53 +3258,66 @@
       "p-12",
       "ol-13",
       "p-14",
-      "ul-15",
+      "ol-15",
       "p-16",
-      "h-17",
+      "ol-17",
       "p-18",
-      "tbl-19",
-      "p-20",
-      "ul-21",
-      "p-22",
-      "h-23",
-      "p-24",
-      "ul-25",
+      "p-19",
+      "ul-20",
+      "p-21",
+      "ul-22",
+      "p-23",
+      "ul-24",
+      "p-25",
       "p-26",
       "h-27",
       "p-28",
-      "ul-29",
+      "tbl-29",
       "p-30",
-      "p-31",
-      "ce-32",
-      "p-33",
-      "h-34",
-      "p-35",
-      "ce-36",
-      "ul-37",
-      "h-38",
-      "p-39",
-      "ul-40",
-      "p-41",
-      "ul-42",
-      "h-43",
+      "ul-31",
+      "p-32",
+      "h-33",
+      "p-34",
+      "ul-35",
+      "p-36",
+      "h-37",
+      "p-38",
+      "ul-39",
+      "p-40",
+      "ul-41",
+      "p-42",
+      "p-43",
       "p-44",
       "ce-45",
       "p-46",
-      "ul-47",
-      "h-48",
-      "p-49",
-      "ol-50",
-      "p-51",
-      "ul-52",
-      "ce-53",
-      "h-54",
-      "p-55",
-      "p-56",
-      "ce-57",
-      "h-58",
+      "h-47",
+      "p-48",
+      "ce-49",
+      "ul-50",
+      "h-51",
+      "p-52",
+      "ul-53",
+      "p-54",
+      "ul-55",
+      "h-56",
+      "p-57",
+      "ce-58",
       "p-59",
-      "ce-60",
-      "p-61"
+      "ul-60",
+      "h-61",
+      "p-62",
+      "ol-63",
+      "p-64",
+      "ul-65",
+      "ce-66",
+      "h-67",
+      "p-68",
+      "p-69",
+      "ce-70",
+      "h-71",
+      "p-72",
+      "ce-73",
+      "p-74"
     ]
   }
 }

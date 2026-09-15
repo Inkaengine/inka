@@ -13,17 +13,6 @@ import { randomUUID } from 'node:crypto';
 // mock-api session — the mock keys session content by the Bearer token.
 export const TEST_AUTH_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6NDEwMjQ0NDgwMH0.fake-signature';
 
-/**
- * How long to wait for a NAMED object-browser row.
- *
- * Every wait here is for a specific row the caller is about to act on, never
- * for "the listing changed" — the previous folder's rows stay in the DOM until
- * the new response replaces them, so waiting on mere presence can be satisfied
- * by stale content. Matching on the row you want lets Playwright retry through
- * that window. 10s is what the existing object-browser specs use.
- */
-const OB_LISTING_TIMEOUT = 10_000;
-
 export class AdminUIHelper {
   // Per-test auth token. The mock API keys its session content store by
   // the Bearer token (getSessionId), so a shared token collapses every
@@ -83,6 +72,157 @@ export class AdminUIHelper {
         }
       }
     });
+
+    // Global opt-in demo pacing: `DEMO_PACING=1200` enables paced, cursor-visible
+    // gestures across every recorded-demo spec without per-spec wiring. A spec
+    // may still override by assigning `helper.demoPacingMs` directly. Default 0
+    // → functional tests (and hydra's own suite) are completely unaffected.
+    if (process.env.DEMO_PACING) {
+      this.demoPacingMs = Number(process.env.DEMO_PACING) || 0;
+    }
+  }
+
+  /**
+   * Demo pacing step: when demoPacingMs>0 (recorded demos), move the (visible)
+   * cursor to `target` and pause so the action reads on video. No-op in
+   * functional runs (demoPacingMs===0), so nothing else is affected.
+   */
+  private async demoStep(target?: Locator): Promise<void> {
+    if (!this.demoPacingMs) return;
+    if (target) {
+      // Best-effort cursor move — hover auto-scrolls the target into view and is
+      // BOUNDED (timeout + catch). A bare scrollIntoViewIfNeeded is NOT bounded
+      // and hangs forever on a just-opened/animating container (e.g. the card
+      // grid's "Card Defaults" accordion), so it must not be used here.
+      await target.hover({ timeout: 1500 }).catch(() => {});
+    }
+    await this.page.waitForTimeout(this.demoPacingMs);
+  }
+
+  /**
+   * Set a react-select Choice field by CLICK — open the control, then click the
+   * option by its visible label — rather than keyboard filter+Enter. Click-based
+   * so it reads clearly on video AND avoids the `fill`+Enter races (e.g. a
+   * mid-word "Methodpproach"). `field` is the schema field id; defaults to the
+   * sidebar properties form.
+   */
+  async setChoiceField(
+    field: string,
+    optionLabel: string,
+    options: { container?: string; multi?: boolean } = {}
+  ): Promise<void> {
+    const base = options.container ?? '#sidebar-properties';
+    // Close any stray-open react-select menu first — some Choice fields auto-open
+    // their menu on focus (the card grid's colour field does), and its floating
+    // options would intercept the click on THIS field. Blur closes it (NOT
+    // Escape — hydra treats that as step-up/deselect).
+    await this.page.evaluate(() =>
+      (document.activeElement as HTMLElement | null)?.blur?.()
+    );
+    // Some blocks (the card grid) render their fieldset TWICE, so a plain
+    // .first() can grab a HIDDEN copy whose control never becomes clickable
+    // (a 240s hang). Scope everything to the VISIBLE field-wrapper.
+    const fieldWrap = this.page
+      .locator(`${base} .field-wrapper-${field}:visible`)
+      .first();
+    const control = fieldWrap.locator('.react-select__control');
+    // demoStep hovers (bounded); control.click() auto-scrolls into view.
+    await this.demoStep(control);
+    await control.click();
+    // The open menu is a singleton (only one react-select is open at a time) and
+    // is NOT always a DOM descendant of its field-wrapper, so find it at page
+    // level.
+    const menu = this.page.locator('.react-select__menu');
+    // control.click() TOGGLES the menu. If the field started already-open (a
+    // prior focus can leave a react-select open), our click just closed it — so
+    // wait briefly, and if it didn't open, click again to (re)open.
+    try {
+      await menu.waitFor({ state: 'visible', timeout: 1500 });
+    } catch {
+      await control.click();
+      await menu.waitFor({ state: 'visible', timeout: 5000 });
+    }
+    // react-select renders each option as a `.react-select__option` div (no
+    // role="option"). Match the exact label with an anchored regex so e.g.
+    // "Off white" doesn't also match "Off white highlight". Scope to this menu.
+    // Match the option tolerantly: exact first (case-insensitive — some Choice
+    // options render their raw value like "none" not the label "None"), then a
+    // prefix fallback so a short caller label matches a verbose option (e.g.
+    // "Box" → "Box (rounded, bordered)").
+    const escaped = optionLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const opts = menu.locator('.react-select__option');
+    let option = opts
+      .filter({ hasText: new RegExp(`^\\s*${escaped}\\s*$`, 'i') })
+      .first();
+    if ((await option.count()) === 0) {
+      option = opts
+        .filter({ hasText: new RegExp(`^\\s*${escaped}\\b`, 'i') })
+        .first();
+    }
+    // Fail loudly with what the open menu actually offers, instead of a mystery
+    // timeout, if the label still isn't present.
+    if ((await option.count()) === 0) {
+      const offered = await opts.allInnerTexts();
+      throw new Error(
+        `setChoiceField('${field}', '${optionLabel}'): not offered by the open menu. Offered: [${offered.join(' | ')}]`
+      );
+    }
+    // Wait for it in the DOM, then let click() auto-scroll it into the menu's
+    // viewport (a long option list can keep an option attached-but-not-visible).
+    await option.waitFor({ state: 'attached', timeout: 5000 });
+    await option.scrollIntoViewIfNeeded().catch(() => {});
+    await this.demoStep(option);
+    await option.click();
+    // A multi-select keeps its menu OPEN after a pick (so you can add more), so
+    // blur to close it (NOT Escape — hydra reads that as step-up/deselect). A
+    // single-select closes on pick.
+    if (options.multi) {
+      await this.page.evaluate(() =>
+        (document.activeElement as HTMLElement | null)?.blur?.()
+      );
+    }
+    await expect(menu).toHaveCount(0, { timeout: 5000 });
+  }
+
+  /**
+   * Set a ButtonsWidget field (size/align/layout, …) by CLICK, matching the
+   * hidden radio's `value`. Paced for demos.
+   */
+  async setButtonsField(
+    field: string,
+    value: string,
+    options: { container?: string } = {}
+  ): Promise<void> {
+    const base = options.container ?? '#sidebar-properties';
+    const btn = this.page
+      .locator(
+        `${base} .field-wrapper-${field} .buttons-widget-option:has(input[value="${value}"])`
+      )
+      .first();
+    await btn.scrollIntoViewIfNeeded();
+    await this.demoStep(btn);
+    await btn.click();
+  }
+
+  /**
+   * Type into an inline-editable canvas field (a [data-edit-text] element or a
+   * contenteditable). Click to place the caret; when `replace`, triple-click to
+   * select the existing text VISIBLY (not Ctrl-A) so the overwrite reads on
+   * video. Typing is slowed in demo mode.
+   */
+  async typeInlineText(
+    target: Locator,
+    text: string,
+    options: { replace?: boolean } = {}
+  ): Promise<void> {
+    await target.scrollIntoViewIfNeeded();
+    await this.demoStep(target);
+    await target.click();
+    if (options.replace) {
+      await target.click({ clickCount: 3 });
+      await this.page.waitForTimeout(this.demoPacingMs ? 200 : 30);
+    }
+    await this.page.keyboard.type(text, { delay: this.demoPacingMs ? 55 : 20 });
   }
 
   /**
@@ -564,6 +704,7 @@ export class AdminUIHelper {
     // Wait for click target to be visible
     await clickTarget.waitFor({ state: 'visible', timeout: 5000 });
 
+    await this.demoStep(clickTarget);
     await clickTarget.click();
 
     if (waitForToolbar) {
@@ -956,6 +1097,37 @@ export class AdminUIHelper {
   }
 
   /**
+   * Press Cmd+A once and wait for THAT escalation to land, identified by a label
+   * the new level carries in the sidebar's block path.
+   *
+   * Pressing and then polling the path rows for a few seconds measures the last
+   * link of a chain — admin dispatches, the bridge re-measures rects in the
+   * iframe, BLOCK_SELECTED comes back, React re-renders the rows — and gives the
+   * whole chain a fixed budget. On a loaded machine (a 2-core CI runner) the
+   * chain simply takes longer, so the budget expires while nothing is wrong.
+   * Worse, the press was fire-and-forget: with no wait between presses, the next
+   * Cmd+A can be handled against a stale selection, so the escalation lands on a
+   * different level than the test assumes — which is why these failed
+   * DETERMINISTICALLY under load rather than intermittently.
+   *
+   * Waiting on the label (not a duration, and not a bare count — two levels can
+   * share a count) means each press is synchronised with its own result.
+   *
+   * @param label - text the new level's path rows must contain
+   * @returns the number of path rows at the new level
+   */
+  async escalateSelection(label: string): Promise<number> {
+    const rows = this.page.locator('.selected-block-path');
+    await this.page.keyboard.press('ControlOrMeta+a');
+    await expect
+      .poll(async () => (await rows.allTextContents()).some((t) => t.includes(label)), {
+        message: `Cmd+A never escalated to a level containing "${label}"`,
+      })
+      .toBe(true);
+    return rows.count();
+  }
+
+  /**
    * Press Escape twice to navigate from text editing to parent block (or deselect).
    * First Escape: text mode → block mode. Second Escape: block mode → parent.
    * If already in block mode (not editing), only one Escape is needed.
@@ -1253,9 +1425,22 @@ export class AdminUIHelper {
 
   /**
    * Get the type of block currently being edited in the sidebar.
+   *
+   * Reads the block-editor's own type class FIRST (`block-editor-<type>`, which
+   * Volto renders for every block), so this answers for any type. The
+   * hand-listed slate/image checks below only ever covered those two, and
+   * returned null for everything else — indistinguishable from "the sidebar is
+   * showing nothing", which is the state a caller usually wants to rule out.
    */
   async getSidebarBlockType(): Promise<string | null> {
     const sidebar = this.page.locator('#sidebar-properties');
+
+    const typed = sidebar.locator('[class*="block-editor-"]').first();
+    if (await typed.isVisible().catch(() => false)) {
+      const cls = (await typed.getAttribute('class')) || '';
+      const match = cls.match(/block-editor-([\w-]+)/);
+      if (match) return match[1];
+    }
 
     // Check for common block type indicators
     const selectors = [
@@ -2759,25 +2944,43 @@ export class AdminUIHelper {
    * @param position - The character offset position to move to (0-based)
    */
   async moveCursorToPosition(editor: any, position: number): Promise<void> {
-    await editor.evaluate(
-      (el: any, pos: number) => {
-        const doc = el.ownerDocument;
-        const selection = doc.defaultView.getSelection();
+    // selection.modify() steps the caret one grapheme at a time from the
+    // element start. On the slow CI static build a single pass can land short
+    // (e.g. the editable isn't focused yet, or a text-node boundary eats a
+    // step), leaving the caret at pos-1 — so typing "Beautiful " lands after
+    // "Hello" instead of "Hello ", yielding "HelloBeautiful  World". Measure the
+    // caret's absolute offset after stepping and re-step until it genuinely
+    // reaches `position`; don't trust the loop to arrive on the first pass.
+    await expect(async () => {
+      const offset = await editor.evaluate(
+        (el: any, pos: number) => {
+          const doc = el.ownerDocument;
+          const selection = doc.defaultView.getSelection();
 
-        // First, move cursor to start of element
-        const range = doc.createRange();
-        range.selectNodeContents(el);
-        range.collapse(true); // Collapse to start
-        selection.removeAllRanges();
-        selection.addRange(range);
+          // Collapse the caret to the start of the element.
+          const range = doc.createRange();
+          range.selectNodeContents(el);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
 
-        // Then move forward by visible characters using Selection.modify()
-        for (let i = 0; i < pos; i++) {
-          selection.modify('move', 'forward', 'character');
-        }
-      },
-      position,
-    );
+          // Step forward by visible characters.
+          for (let i = 0; i < pos; i++) {
+            selection.modify('move', 'forward', 'character');
+          }
+
+          // Report the caret's absolute character offset from the element start
+          // so the caller can confirm it actually reached `pos`.
+          const caret = selection.getRangeAt(0);
+          const measure = doc.createRange();
+          measure.selectNodeContents(el);
+          measure.setEnd(caret.startContainer, caret.startOffset);
+          return measure.toString().length;
+        },
+        position,
+      );
+      expect(offset).toBe(position);
+    }).toPass({ timeout: 5000 });
   }
 
   /**
@@ -2856,6 +3059,40 @@ export class AdminUIHelper {
    * @param fieldName - Optional field name to target (e.g., 'value', 'title'). If not provided, uses first editable field.
    * @returns The editor element, ready for text input
    */
+  /**
+   * The uid of a block you located by CONTENT or POSITION.
+   *
+   * Every block-level helper here takes a `blockId`, so a spec that wants "the
+   * card I just added" or "the empty block in this grid" has to produce one —
+   * and 105 places currently do it by hand, reading the attribute inline. That
+   * couples specs to a value which is generated, changes, and means nothing to
+   * the person reading the test. Locate the block the way a reader would and
+   * resolve the uid here, in the one place that has to know the attribute
+   * exists.
+   *
+   *   const empty = iframe.locator('.nsw-card:has([data-edit-text][data-empty])').first();
+   *   await helper.enterEditMode(await helper.getBlockUid(empty), 'title');
+   *
+   * Resolves from the element itself or the nearest ancestor carrying the
+   * attribute, because a component may put `data-block-uid` on a wrapper rather
+   * than on the element that matched the content selector.
+   */
+  async getBlockUid(target: Locator): Promise<string> {
+    await target.waitFor({ state: 'attached', timeout: 10000 });
+    const uid = await target.evaluate((el) => {
+      const owner = (el as Element).closest('[data-block-uid]');
+      return owner?.getAttribute('data-block-uid') || '';
+    });
+    if (!uid) {
+      throw new Error(
+        'getBlockUid: the located element carries no data-block-uid and neither ' +
+          'does any ancestor. A block that was just added may not be registered ' +
+          'with the bridge yet — wait for it to render before resolving.',
+      );
+    }
+    return uid;
+  }
+
   async enterEditMode(blockId: string, fieldName?: string): Promise<any> {
     const iframe = this.getIframe();
 
@@ -3236,22 +3473,83 @@ export class AdminUIHelper {
    * Set the value of a text field in the sidebar.
    * Matches Cypress pattern: #sidebar-properties #field-{fieldname}
    */
-  async setSidebarFieldValue(fieldName: string, value: string, options: { container?: string } = {}): Promise<void> {
+  async setSidebarFieldValue(
+    fieldName: string,
+    value: string | boolean,
+    options: { container?: string } = {},
+  ): Promise<void> {
     const container = options.container || '#sidebar-properties';
     const fieldWrapper = this.page.locator(`${container} .field-wrapper-${fieldName}`);
 
+    // A field can be revealed by another field's value (schemaEnhancer
+    // fieldRules: a form question's "Condition" appears only once the question
+    // it depends on has been named). That reveal is a round trip through the
+    // iframe, so wait for a control to exist before judging the field missing —
+    // the alternative is a race that fails whenever the sidebar is a beat
+    // behind.
+    await fieldWrapper
+      .locator('input, textarea, [contenteditable="true"], .react-select__control')
+      .first()
+      .waitFor({ state: 'visible', timeout: 10000 })
+      .catch(() => {
+        // Genuinely absent fields fall through to the explicit throw below,
+        // which says which field and where to look.
+      });
+
+    // A react-select is checked FIRST, and its own branch is below. Its search
+    // box is an `input[type="text"]`, so the text branch below matches it — and
+    // typing into a search box then blurring selects NOTHING. The field keeps
+    // its placeholder, the helper returns as if it had worked, and the value is
+    // silently never set. That is what made a picker look like it stored
+    // nothing.
+    const asSelect = fieldWrapper.locator('.react-select__control');
+    const isSelect = await asSelect.isVisible().catch(() => false);
+
+    // A BOOLEAN field is a checkbox, which fill() cannot drive — it needs
+    // check/uncheck. Callers already pass booleans (the columns clip sets
+    // `gap`), and before this they fell through every branch below and returned
+    // silently, so the field simply never changed.
+    if (typeof value === 'boolean') {
+      const checkbox = fieldWrapper.locator('input[type="checkbox"]').first();
+      await checkbox.waitFor({ state: 'attached', timeout: 5000 });
+      // Click the LABEL, which is what a user clicks: Volto styles the checkbox
+      // by covering the real input, so check()/uncheck() report the input as
+      // visible and then time out because the label intercepts the pointer.
+      // Only click when the state actually needs to change — clicking a checkbox
+      // already in the wanted state would toggle it away.
+      if ((await checkbox.isChecked()) !== value) {
+        const label = fieldWrapper.locator('label').first();
+        if (await label.count()) {
+          await label.click();
+        } else {
+          await checkbox.click({ force: true });
+        }
+      }
+      await expect(checkbox).toBeChecked({ checked: value, timeout: 5000 });
+      return;
+    }
+
+    // A native <select> is not a react-select and not a text input, so it
+    // used to fall through every branch to the throw below.
+    const nativeSelect = fieldWrapper.locator('select').first();
+    if (await nativeSelect.count()) {
+      await nativeSelect.selectOption(value);
+      return;
+    }
+
     // Try text input
     const input = fieldWrapper.locator('input[type="text"], input[type="url"], textarea');
-    if (await input.isVisible()) {
+    if (!isSelect && (await input.isVisible())) {
       await input.fill(value);
       await input.blur(); // Trigger blur to commit the value
       return;
     }
 
-    // Try contenteditable (Slate editors)
+    // Try contenteditable (Slate editors)  — also not a select
+
     // Note: fill() doesn't reliably clear Slate editors, use select-all + type
     const contentEditable = fieldWrapper.locator('[contenteditable="true"]');
-    if (await contentEditable.isVisible()) {
+    if (!isSelect && (await contentEditable.isVisible())) {
       // Get current text to verify selection
       const currentText = await contentEditable.textContent() || '';
 
@@ -3275,6 +3573,123 @@ export class AdminUIHelper {
       await contentEditable.blur(); // Trigger blur to commit the value
       return;
     }
+
+    // A Choice / vocabulary / block picker renders react-select, which has no
+    // fillable input until it is opened. Click the control, type to filter,
+    // then take the option once it is actually listed — waiting on the option
+    // rather than on a timer, so a slow menu fails as a missing option instead
+    // of quietly picking whatever was highlighted.
+    const control = asSelect;
+    if (isSelect) {
+      // No Escape to dismiss another field's open menu: in the admin, Escape
+      // leaves block mode and DESELECTS the block, so the sidebar reverts to
+      // the page form and the field being set disappears. Clicking this
+      // control is enough — react-select closes any other menu on the
+      // outside mousedown that precedes the click.
+      await control.scrollIntoViewIfNeeded();
+      // Clicking a control TOGGLES its menu, so clicking one that is already
+      // open closes it and the wait below never resolves. Open it only if it
+      // is shut.
+      const own = fieldWrapper.locator('.react-select__menu');
+      if (!(await own.isVisible().catch(() => false))) {
+        await control.click();
+      }
+      // Wait for the MENU before reaching for an option: react-select renders it
+      // in a portal, so an option located before the menu exists resolves to
+      // nothing and the click lands on the page. Same sequence as
+      // block-sync.spec.ts, which is the one gesture in this repo known to
+      // commit.
+      // Scoped to THIS field's wrapper, and only after anything already open
+      // has gone. A page-wide `.react-select__menu` can be another field's menu
+      // — still up, or on its way out — and taking an option from it writes the
+      // value to the wrong field while this one keeps its placeholder.
+      const menu = fieldWrapper.locator('.react-select__menu');
+      await menu.waitFor({ state: 'visible', timeout: 10000 });
+      // Match the option case-insensitively, and say what IS on the menu when
+      // nothing matches. `hasText` waits, so an unmatched value used to sit in
+      // `click()` until the test's own timeout — four minutes of a demo
+      // recording spent on a menu that was never going to contain the word.
+      // The caller passes what the AUTHOR sees, since a Choice renders its
+      // title ("Content block"), not its token ("listItem").
+      const wanted = new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      const option = menu.locator('.react-select__option').filter({ hasText: wanted });
+      if ((await option.count()) === 0) {
+        const offered = await menu
+          .locator('.react-select__option')
+          .allTextContents();
+        throw new Error(
+          `setSidebarFieldValue("${fieldName}"): the menu has no option matching ` +
+            `"${value}". Offered: [${offered.join(', ')}]`,
+        );
+      }
+      await option.first().click();
+      // Deliberately NO blur afterwards. Blurring the control once the value is
+      // chosen loses it — the field reads back empty a second later, which is
+      // what made a dropdown look impossible to set from a test.
+      // It took, or this throws. A dropdown that silently keeps its old value
+      // is the thing that makes a spec assert against a sidebar it never
+      // changed.
+      // The value CONTAINER, not the value nodes: a multi-select has one node
+      // per chosen entry, and a locator that matches several trips strict mode
+      // — reporting "the menu closed without taking it" for a field that took
+      // it twice over.
+      // Case-INSENSITIVELY: callers pass the stored token (`collapsed`) and the
+      // control shows the choice's title (`Collapsed`). Comparing them as-is
+      // failed on nothing more than the capital, and only quietly worked where
+      // a title happened to contain its own token verbatim ("Always open").
+      await expect(
+        fieldWrapper.locator('.react-select__value-container'),
+        `setSidebarFieldValue("${fieldName}"): the menu closed without taking "${value}"`,
+      ).toContainText(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), {
+        timeout: 5000,
+      });
+      return;
+    }
+
+    // Nothing matched. Saying so is the whole point: this used to return
+    // silently, so a spec that set a dropdown asserted against a sidebar that
+    // had never been touched, and a demo clip recorded a video of nothing
+    // happening.
+    const available = await this.page
+      .locator(`${container} [class*="field-wrapper-"]`)
+      .evaluateAll((els) =>
+        els
+          .map((e) => (e.className.match(/field-wrapper-([\w-]+)/) || [])[1])
+          .filter(Boolean),
+      );
+    throw new Error(
+      `setSidebarFieldValue("${fieldName}"): no text input, slate editor, ` +
+        `checkbox, select or react-select inside ${container} ` +
+        `.field-wrapper-${fieldName}. Fields present: ` +
+        `[${available.join(', ') || 'none'}]. An empty list means the sidebar ` +
+        `is not showing a block form at all — open it, or select the block first.`,
+    );
+  }
+
+  /**
+   * Add a block on the canvas next to `anchorUid` and return the new block's uid.
+   *
+   * Selecting an anchor, pressing add, choosing a type, then diffing the block
+   * order to learn the new uid is the canvas add sequence — it was written out
+   * by hand in each spec that needed it. The uid is the part callers actually
+   * want and the part that is easy to get subtly wrong (a container add can
+   * introduce more than one block), so it is asserted here once.
+   *
+   * For adding INTO a container field from the sidebar, use addBlockViaSidebar.
+   *
+   * @param anchorUid - uid of the block to select before adding
+   * @param blockType - the @type to choose in the block chooser
+   * @returns the uid of the newly added block
+   */
+  async addBlockOnCanvas(anchorUid: string, blockType: string): Promise<string> {
+    const before = await this.getBlockOrder();
+    await this.clickBlockInIframe(anchorUid);
+    await this.clickAddBlockButton();
+    await this.selectBlockType(blockType);
+    await this.waitForBlockCountToBe(before.length + 1);
+    const added = (await this.getBlockOrder()).filter((id) => !before.includes(id));
+    expect(added, `exactly one new block after adding a ${blockType}`).toHaveLength(1);
+    return added[0];
   }
 
   /**
@@ -3290,6 +3705,7 @@ export class AdminUIHelper {
 
     // Scroll add button into view - it may be outside viewport if block is at edge
     await addButton.scrollIntoViewIfNeeded();
+    await this.demoStep(addButton);
     await addButton.click({ timeout: 10000 });
   }
 
@@ -3413,6 +3829,7 @@ export class AdminUIHelper {
       await chooser.locator('.accordion > .title').nth(sectionIndex).click();
     }
     await expect(button).toBeVisible({ timeout: 5000 });
+    await this.demoStep(button);
     await button.click();
 
     // After click, wait until no visible chooser remains. Using a fresh
@@ -3939,8 +4356,12 @@ export class AdminUIHelper {
   /**
    * Wait for an element's position to stabilize (stop moving).
    * Returns when the element has a valid bounding box and position hasn't changed for 2 checks.
+   *
+   * Public: revealing a block starts an animation too — a carousel slides, a
+   * panel opens — and anything that clicks or measures afterwards needs the
+   * same guarantee the drag auto-scroll needs.
    */
-  private async waitForPositionStable(element: Locator): Promise<void> {
+  async waitForPositionStable(element: Locator): Promise<void> {
     let lastY: number | null = null;
     await expect(async () => {
       const rect = await element.boundingBox();
@@ -4369,6 +4790,112 @@ export class AdminUIHelper {
    * @param targetBlock - The block to drop near
    * @param insertAfter - If true, insert after target. If false, insert before.
    */
+  /**
+   * Reorder a row in the Contents view, by keyboard.
+   *
+   * Volto's Contents table is a dnd-kit sortable with no explicit sensors, so
+   * it uses the defaults — PointerSensor AND KeyboardSensor. Driving it with
+   * mouse.down/move/up does not work: dnd-kit's PointerSensor wants real
+   * pointer events with the coalesced properties Playwright's mouse API does
+   * not produce, so the drag never starts and NO @order request is sent. A demo
+   * clip did exactly that for months: the rows appeared to drag, nothing was
+   * reordered, and the failure surfaced three beats later somewhere else.
+   *
+   * The keyboard path is dnd-kit's own accessibility affordance and is exact:
+   * focus the handle, Space to lift, Arrow to step, Space to drop. One step is
+   * one position, so this says what it means.
+   *
+   * @param rowName - accessible name of the row to move (its path)
+   * @param steps - positions to move; negative moves up
+   */
+  async reorderContentsRow(rowName: string, steps: number): Promise<void> {
+    const row = this.page.getByRole('row', { name: rowName, exact: true });
+    await expect(row).toBeVisible({ timeout: 10000 });
+    await this.reorderContentsRowLocator(row, steps);
+  }
+
+  /** Move the folder's FIRST row, for a test that only needs "something moved". */
+  async reorderFirstContentsRow(steps: number): Promise<void> {
+    await expect
+      .poll(() => this.page.locator('tbody tr').count(), { timeout: 30000 })
+      .toBeGreaterThan(1);
+    await this.reorderContentsRowLocator(this.page.locator('tbody tr').first(), steps);
+  }
+
+  /**
+   * Reorder a row you already have a locator for. Prefer this when the row was
+   * found by content — a row's ACCESSIBLE NAME is not its textContent (the
+   * cells run together, "Document  TitlePublishedNoneNone"), so round-tripping
+   * through getByRole({ name }) does not find it again.
+   */
+  async reorderContentsRowByLocator(row: Locator, steps: number): Promise<void> {
+    await this.reorderContentsRowLocator(row, steps);
+  }
+
+  private async reorderContentsRowLocator(row: Locator, steps: number): Promise<void> {
+    // The handle is the row's FIRST cell — it carries dnd-kit's listeners and
+    // attributes, and is the only thing that starts a drag.
+    const handle = row.locator('td').first().locator('button');
+    await expect(handle).toBeVisible({ timeout: 5000 });
+
+    const rows = this.page.locator('tbody tr');
+    const label = ((await row.textContent()) || '').trim();
+    const positionOf = async () =>
+      (await rows.allTextContents()).map((t) => t.trim()).indexOf(label);
+    const from = await positionOf();
+    const target = rows.nth(Math.max(0, from + steps));
+    await handle.scrollIntoViewIfNeeded();
+    await target.scrollIntoViewIfNeeded();
+
+    const handleBox = await handle.boundingBox();
+    const targetBox = await target.boundingBox();
+    expect(handleBox && targetBox, 'the row and its target must be measurable').toBeTruthy();
+
+    // Volto debounces the order request (Contents' `orderTimeout`), so the drop
+    // returning does not mean the backend has heard it. Watch for the request
+    // itself: a reorder the backend never heard about is not a reorder. It is a
+    // PATCH on the CONTAINER carrying `ordering` — what Volto sends and what
+    // plone.restapi accepts. Nothing in this flow calls an @order endpoint.
+    const ordered = this.page.waitForResponse(
+      (response) => {
+        if (response.request().method() !== 'PATCH') return false;
+        try {
+          return Boolean(JSON.parse(response.request().postData() || '{}').ordering);
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 15000 },
+    );
+
+    await this.page.mouse.move(
+      handleBox!.x + handleBox!.width / 2,
+      handleBox!.y + handleBox!.height / 2,
+    );
+    await this.page.mouse.down();
+    // A small move FIRST, to activate the drag. This is the part that decides
+    // whether any of it works: a pointer sensor starts on movement, and going
+    // straight from `down` to a long move never activates one — the rows appear
+    // to drag, nothing reorders, and no request is sent. Same shape the sidebar
+    // child-block reorder uses.
+    await this.page.mouse.move(
+      handleBox!.x + handleBox!.width / 2,
+      handleBox!.y + handleBox!.height / 2 + 5,
+      { steps: 5 },
+    );
+    // The LIFT has to have happened before the real move means anything. dnd-kit
+    // marks the row it is dragging (ContentsItem: `dragging-row`).
+    await expect(row).toHaveClass(/dragging-row/, { timeout: 5000 });
+    await this.page.mouse.move(
+      targetBox!.x + targetBox!.width / 2,
+      targetBox!.y + targetBox!.height / 2 + (steps > 0 ? 10 : -10),
+      { steps: 10 },
+    );
+    await this.page.mouse.up();
+    await expect(row).not.toHaveClass(/dragging-row/, { timeout: 5000 });
+    await ordered;
+  }
+
   async dragBlockWithMouse(
     _dragHandle: Locator,
     targetBlock: Locator,
@@ -4612,23 +5139,36 @@ export class AdminUIHelper {
   }
 
   /**
-   * Wait for block count to stabilize and return it.
-   * Use this when the page may still be rendering (e.g., Nuxt async components).
-   * Returns after getting the same count on consecutive checks.
+   * Wait for the block count to stop changing, and return it.
    *
-   * @param timeout - Maximum time to wait in milliseconds (default 5000)
+   * QUIESCENCE, NOT A CONDITION — and that distinction is the whole caveat.
+   * "Same count twice" cannot tell FINISHED from HASN'T STARTED: sample before
+   * an add lands and 1,1 reads as settled, so the caller proceeds too early.
+   * Whenever the expected end state is known, don't call this — assert it:
+   * `await expect(blocks).toHaveCount(n)` waits for the thing you actually mean
+   * and says what went wrong when it doesn't happen. This is for the case where
+   * no target exists (a frontend still hydrating async components).
+   *
+   * Fails rather than guesses: on timeout it throws with the counts it saw.
+   * (It used to sleep 100ms per turn and, on timeout, RETURN the last count —
+   * so a never-settling page silently handed the caller a number.)
+   *
+   * TWO PHASES, because "no measurement yet" and "the count keeps changing" are
+   * different faults. One budget for both let a single slow round trip fail the
+   * whole thing: on a saturated machine `getBlockOrder()` outlasted the entire
+   * 5s, so the poll never completed one sample and reported "the page kept
+   * re-rendering" having seen NOTHING (`counts seen: []`) — sending the reader
+   * after a re-render that never happened. Phase 1 waits for a count to come
+   * back at all; phase 2 judges stability with its own budget.
+   *
+   * @param timeout - Budget for EACH phase in milliseconds (default 5000)
    * @returns The stable block count
    */
   async getStableBlockCount(timeout: number = 5000): Promise<number> {
-    const startTime = Date.now();
-    let lastCount = -1;
-    let stableChecks = 0;
-    const requiredStableChecks = 2;
-
-    // Caller often triggers a navigation (e.g. search form submit) then
-    // immediately polls. evaluateAll throws "Execution context was
-    // destroyed" if the iframe navigates mid-call. Treat that as
-    // "iframe is still settling" and keep polling instead of failing.
+    // A caller often triggers a navigation (e.g. a search form submit) and then
+    // polls immediately; evaluateAll throws "Execution context was destroyed"
+    // if the iframe navigates mid-call. Treat that as "still settling" rather
+    // than an error, and keep polling.
     const safeCount = async (): Promise<number> => {
       try {
         return await this.getBlockCount();
@@ -4639,24 +5179,51 @@ export class AdminUIHelper {
       }
     };
 
-    while (Date.now() - startTime < timeout) {
-      const currentCount = await safeCount();
+    const seen: number[] = [];
 
-      if (currentCount !== -1 && currentCount === lastCount) {
-        stableChecks++;
-        if (stableChecks >= requiredStableChecks) {
-          return currentCount;
-        }
-      } else {
-        lastCount = currentCount;
-        stableChecks = 1;
-      }
+    // PHASE 1 — a measurement, any measurement. Until one arrives there is
+    // nothing to call stable or unstable.
+    await expect
+      .poll(async () => safeCount(), {
+        timeout,
+        message:
+          `The iframe never returned a block count within ${timeout}ms — ` +
+          `navigation had not finished, or the machine was too loaded for the ` +
+          `round trip to complete. This is NOT a re-rendering page.`,
+      })
+      .toBeGreaterThanOrEqual(0);
 
-      await this.page.waitForTimeout(100);
-    }
+    let lastCount = -1;
+    let stableChecks = 0;
 
-    // Return the last count if timeout reached
-    return await safeCount();
+    // expect.poll owns the interval and the failure — no sleep of our own, and
+    // a page that never settles fails loudly instead of returning a number.
+    await expect
+      .poll(
+        async () => {
+          const currentCount = await safeCount();
+          seen.push(currentCount);
+          if (currentCount !== -1 && currentCount === lastCount) {
+            stableChecks += 1;
+          } else {
+            lastCount = currentCount;
+            stableChecks = 1;
+          }
+          return stableChecks;
+        },
+        {
+          timeout,
+          message:
+            `Block count never settled within ${timeout}ms — counts seen: ` +
+            `[${seen.join(', ')}] (-1 = iframe was navigating). The page kept ` +
+            `re-rendering; if you know the count you expect, assert it with ` +
+            `toHaveCount instead of waiting for quiescence. (A count DID come ` +
+            `back — phase 1 passed — so this is genuinely instability.)`,
+        },
+      )
+      .toBeGreaterThanOrEqual(2);
+
+    return lastCount;
   }
 
   /**
@@ -5303,12 +5870,8 @@ export class AdminUIHelper {
     await homeBreadcrumb.waitFor({ state: 'visible', timeout: 2000 });
     await homeBreadcrumb.click();
 
-    // Wait for a REAL row, not the loading placeholder, and allow for a slow
-    // CMS: WordPress answers in about a second per request, so 5s covered the
-    // mock servers but not a real backend.
-    await expect(
-      objectBrowser.locator('.object-listing li:not(.ob-loading-indicator)').first(),
-    ).toBeVisible({ timeout: OB_LISTING_TIMEOUT });
+    // Wait for the listing to update by checking for list items
+    await expect(objectBrowser.locator('li[role="listitem"]').first()).toBeVisible({ timeout: 5000 });
   }
 
   /**
@@ -5318,43 +5881,79 @@ export class AdminUIHelper {
    * @param _objectBrowser - The object browser locator (unused, searches globally)
    * @param folderName - The name of the folder to navigate into (e.g., "Images" or /images/i)
    */
-  async objectBrowserNavigateToFolder(_objectBrowser: Locator, folderName: string | RegExp): Promise<void> {
-    const folderItem = this.page.locator('.object-listing li:not(.ob-loading-indicator)').filter({ hasText: folderName });
+  /**
+   * Wait for the object browser to finish fetching a level.
+   *
+   * The listing area shows `.ob-listing-loading` WHILE fetching and
+   * `.object-listing` once the level is in, so a helper that waits for the
+   * listing alone waits for something that is not there yet — and a helper that
+   * waits a fixed beat races it. Wait for the browser's own signal.
+   */
+  async waitForObjectBrowserLevel(timeout = 10000): Promise<void> {
+    const loading = this.page.locator('.ob-listing-loading');
+    await loading
+      .first()
+      .waitFor({ state: 'hidden', timeout })
+      .catch(() => {});
+    await this.page
+      .locator('.object-listing')
+      .first()
+      .waitFor({ state: 'attached', timeout })
+      .catch(() => {});
+  }
 
-    // Give the listing time to arrive before deciding the folder is absent.
-    // At 500ms a slow CMS reliably "lost" a folder that was simply still
-    // loading, which sent the walk-up fallback below off to another level.
-    const found = await folderItem.first().waitFor({ state: 'visible', timeout: OB_LISTING_TIMEOUT })
+  async objectBrowserNavigateToFolder(_objectBrowser: Locator, folderName: string | RegExp): Promise<void> {
+    // The browser queries its level when it opens; deciding anything before that
+    // lands — including whether to climb — reads an empty listing as "this level
+    // has nothing" and walks off in the wrong direction. The browser says when it
+    // is fetching, so wait for that to clear rather than guessing at a beat.
+    await this.waitForObjectBrowserLevel();
+    const folderItem = this.page.locator('.object-listing li').filter({ hasText: folderName });
+
+    const found = await folderItem.first().waitFor({ state: 'visible', timeout: 500 })
       .then(() => true)
       .catch(() => false);
 
     if (!found) {
-      // Navigate up one level via breadcrumbs
+      // Climb until the folder shows up. The browser opens in the CURRENT page's
+      // folder, which is often a leaf with no children at all — a doc page, say —
+      // so the target usually lives one or more levels UP rather than in view.
+      //
+      // Two affordances, because the browser has had both: the Back button in
+      // its header (what it renders today) and breadcrumb sections. Try Back
+      // first and fall back, rather than assuming either.
+      const back = this.page.locator(
+        '.object-browser button[aria-label="Back"], button[aria-label="Back"]',
+      );
       const breadcrumbSections = this.page.locator('.object-browser .breadcrumbs .section');
-      const count = await breadcrumbSections.count();
-      if (count >= 2) {
-        await breadcrumbSections.nth(count - 2).click();
-        await this.page.waitForTimeout(1000);
+      for (let level = 0; level < 5; level += 1) {
+        if (await folderItem.first().isVisible().catch(() => false)) break;
+        if (await back.first().isVisible().catch(() => false)) {
+          await back.first().click();
+        } else {
+          const count = await breadcrumbSections.count();
+          if (count < 2) break;
+          await breadcrumbSections.nth(count - 2).click();
+        }
+        // The listing re-queries on each level; wait for the browser to say it
+        // has finished rather than for a fixed beat.
+        await this.waitForObjectBrowserLevel(5000);
       }
     }
 
     // Try to find and click the folder; if still not found, we're already inside it
-    const nowFound = await folderItem.first().waitFor({ state: 'visible', timeout: OB_LISTING_TIMEOUT })
+    const nowFound = await folderItem.first().waitFor({ state: 'visible', timeout: 5000 })
       .then(() => true)
       .catch(() => false);
 
     if (nowFound) {
-      // Click the TITLE, not the row's centre. The row navigates on click, but
-      // its leading radio calls stopPropagation and SELECTS instead, so a
-      // centred click that lands on that control silently selects the folder
-      // and stays put — no request is issued and the listing never changes.
-      const row = folderItem.first();
-      const title = row.locator('span[title]').first();
-      const target = (await title.count()) > 0 ? title : row;
-      await target.click({ timeout: 2000 });
-      await expect(
-        this.page.locator('.object-listing li:not(.ob-loading-indicator)').first(),
-      ).toBeVisible({ timeout: OB_LISTING_TIMEOUT });
+      // With the shadowed OB, clicking a folder row always navigates (all modes)
+      await folderItem.first().click({ timeout: 2000 });
+      // Wait for the level the click asked for, not for items in it. The browser
+      // swaps the listing out for its loading state while fetching, so requiring
+      // an item here waits for something that is not on screen yet — and a folder
+      // with no children is a legitimate level, not a failure.
+      await this.waitForObjectBrowserLevel();
     }
   }
 
@@ -5366,23 +5965,10 @@ export class AdminUIHelper {
    * @param itemName - The name of the item to select (e.g., "Test Image 1" or /test-image-1/i)
    */
   async objectBrowserSelectItem(_objectBrowser: Locator, itemName: string | RegExp): Promise<void> {
-    const item = this.page.locator('.object-listing li:not(.ob-loading-indicator)').filter({ hasText: itemName });
+    const item = this.page.locator('.object-listing li').filter({ hasText: itemName });
 
-    // Wait the FULL budget for the row before concluding it is not here.
-    //
-    // The walk-up below navigates away and closes the browser, so running it
-    // early throws away the folder the caller just navigated to. A 1.5s probe
-    // did exactly that on WordPress: the listing was still in flight, the
-    // fallback clicked a breadcrumb, the browser unmounted, and the response
-    // arrived into a dead component — which read as "the CMS never returned
-    // the target".
-    //
-    // Waiting on the loading indicator instead does NOT work: it only renders
-    // when the listing has no items at all, and during a navigation the
-    // previous folder's rows are still there.
-    const itemQuickFound = await item
-      .first()
-      .waitFor({ state: 'visible', timeout: OB_LISTING_TIMEOUT })
+    // Give the initial @search (componentDidMount) time to populate the listing.
+    const itemQuickFound = await item.first().waitFor({ state: 'visible', timeout: 1500 })
       .then(() => true)
       .catch(() => false);
 

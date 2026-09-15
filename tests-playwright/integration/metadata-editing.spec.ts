@@ -59,9 +59,64 @@ test.describe('Page Metadata Editing', () => {
     // Verify the page title was updated in the iframe
     await expect(pageTitle).toHaveText('Updated Page Title');
 
-    // Verify the sidebar title field also shows the updated value
-    const sidebarTitleField = page.locator('.field-wrapper-title input, .field-wrapper-title textarea');
+    // Verify the sidebar title field also shows the updated value. Scoped to
+    // the PAGE metadata form: blurring selects the block clicked, and a block
+    // whose schema has its own `title` (image, here) renders a second
+    // `.field-wrapper-title` — Volto's InlineForm gives both the same
+    // `field-title` id — in `#sidebar-properties` right beside it.
+    const sidebarTitleField = page.locator(
+      '#sidebar-metadata .field-wrapper-title input, #sidebar-metadata .field-wrapper-title textarea',
+    );
     await expect(sidebarTitleField).toHaveValue('Updated Page Title', { timeout: 5000 });
+  });
+
+  test('an inline title survives Save, with nothing clicked in between', async ({ page }, testInfo) => {
+    // The tests around this one commit the edit by clicking ANOTHER BLOCK first,
+    // and check the rendered text and the sidebar field. Nothing checked that the
+    // edit reaches the SAVE — and an author does not click elsewhere before
+    // saving, they type the title and hit Save.
+    //
+    // What that gap hid: when the content type schema arrived after INIT, `_page`
+    // was registered without the content type's own fields, so the bridge could
+    // not resolve `title` to a text-editable type and never made it editable.
+    // Clicking the title still selected it — the toolbar appears, selection does
+    // not go through the schema — so it LOOKED fine, while everything typed was
+    // discarded and the save carried no title at all.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+
+    const isNuxt = testInfo.project.name.includes('nuxt');
+    const testPath = isNuxt ? '/carousel-test-page' : '/test-page';
+    const expectedInitialTitle = isNuxt ? 'Carousel Test Page' : 'Test Page';
+    const renamed = 'Renamed Before Saving';
+
+    await helper.navigateToEdit(testPath);
+    const iframe = helper.getIframe();
+
+    const titleSelector = isNuxt ? '[data-edit-text="/title"]' : '#page-title';
+    const pageTitle = iframe.locator(titleSelector);
+    await expect(pageTitle).toBeVisible({ timeout: 10000 });
+    await expect(pageTitle).toHaveText(expectedInitialTitle);
+
+    await pageTitle.click();
+    await expect(pageTitle).toHaveAttribute('contenteditable', 'true', { timeout: 5000 });
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type(renamed, { delay: 40 });
+    await expect(pageTitle).toHaveText(renamed);
+
+    // Straight to Save. No click on another block, no blur of our own — Save is
+    // a button in the ADMIN, outside the iframe, so this is also the case where
+    // the contenteditable never receives a same-document blur.
+    await helper.saveContent();
+
+    // Saved, not merely displayed: come back to the page and read the title the
+    // server gives back. Asserting on the still-loaded document would pass on
+    // state the save never persisted.
+    await helper.navigateToEdit(testPath);
+    await expect(
+      helper.getIframe().locator(titleSelector),
+      'the title typed before Save is the title the page now has',
+    ).toHaveText(renamed, { timeout: 15000 });
   });
 
   test('page title edit persists when selecting another block', async ({ page }, testInfo) => {

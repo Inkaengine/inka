@@ -343,7 +343,7 @@
             {
               "type": "link",
               "data": {
-                "url": "./server-rendered-frontends.md"
+                "url": "/docs/server-rendered-frontends"
               },
               "children": [
                 {
@@ -459,7 +459,7 @@
             {
               "type": "link",
               "data": {
-                "url": "visual-editing.md#renderer-node-id-rules"
+                "url": "/docs/visual-editing#renderer-node-id-rules"
               },
               "children": [
                 {
@@ -567,7 +567,7 @@
             {
               "type": "link",
               "data": {
-                "url": "templates.md#how-the-merge-works"
+                "url": "/docs/templates#how-the-merge-works"
               },
               "children": [
                 {
@@ -1174,7 +1174,7 @@
     },
     "ol-26": {
       "@type": "slate",
-      "plaintext": "Strip the source membership — but only when the destination should re-derive it. A moved/pasted non-fixed block has its templateId / templateInstanceId / slotId / readOnly deleted before the recompute, so applyBlockDefaultsWithContext can only refill them from the destination. This runs in normal mode, and in template edit mode only when the block lands outside the template (a same-instance block no longer sits both before and after the landing gap) — that's the drag-out exit. For an in-template move while editing, the strip is skipped, so the recompute's prefer-existing-slotId keeps the authored slot. Fixed blocks are never stripped. Exclude the block from its own neighbour scan. On a move the block already sits in the layout at its new index, so a naïve getNeighborData(position) returns the block itself — it would offer its own stale slot back to itself. The recompute filters the moved block out and treats position as the insertion gap between its real prev/next neighbours (also the basis of the \"inside the template?\" test above). Write back against the original. The update guard compares the recompute result to the originally stored block, not the stripped copy — otherwise a block whose stripped recompute is a structural no-op is never written back and the stale membership survives. templateEditModeRef for the mode check. The handler reads the current set of unlocked template instances from a ref (not the effect-closure value), so the gate sees the live edit-mode state.",
+      "plaintext": "Strip the source membership — but only when the destination should re-derive it. A moved/pasted non-fixed block has its templateId / templateInstanceId / slotId / readOnly deleted before the recompute, so applyBlockDefaultsWithContext can only refill them from the destination. This runs in normal mode, and in *template edit mode only when the block lands outside the template (a same-instance block no longer sits both before and after the landing gap) — that's the drag-out exit. For an in-template move while editing, the strip is skipped, so the recompute's prefer-existing-slotId* keeps the authored slot. Fixed blocks are never stripped. Exclude the block from its own neighbour scan. On a move the block already sits in the layout at its new index, so a naïve getNeighborData(position) returns the block itself — it would offer its own stale slot back to itself. The recompute filters the moved block out and treats position as the insertion gap between its real prev/next neighbours (also the basis of the \"inside the template?\" test above). Write back against the original. The update guard compares the recompute result to the originally stored block, not the stripped copy — otherwise a block whose stripped recompute is a structural no-op is never written back and the stale membership survives. templateEditModeRef for the mode check. The handler reads the current set of unlocked template instances from a ref (not the effect-closure value), so the gate sees the live edit-mode state.",
       "value": [
         {
           "type": "ol",
@@ -1268,32 +1268,37 @@
                   ]
                 },
                 {
-                  "text": ", and in "
+                  "text": ", and in *"
                 },
                 {
-                  "type": "strong",
+                  "type": "em",
                   "children": [
                     {
                       "text": "template edit mode only when the block lands "
-                    },
-                    {
-                      "type": "em",
-                      "children": [
-                        {
-                          "text": "outside"
-                        }
-                      ]
-                    },
+                    }
+                  ]
+                },
+                {
+                  "text": "outside"
+                },
+                {
+                  "type": "em",
+                  "children": [
                     {
                       "text": " the template"
                     }
                   ]
                 },
                 {
-                  "text": " (a same-instance block no longer sits both before and after the landing gap) — that's the drag-out exit. For an "
+                  "type": "em",
+                  "children": [
+                    {
+                      "text": " (a same-instance block no longer sits both before and after the landing gap) — that's the drag-out exit. For an "
+                    }
+                  ]
                 },
                 {
-                  "type": "strong",
+                  "type": "em",
                   "children": [
                     {
                       "text": "in-template move while editing"
@@ -1301,29 +1306,34 @@
                   ]
                 },
                 {
-                  "text": ", the strip is skipped, so the recompute's "
+                  "type": "em",
+                  "children": [
+                    {
+                      "text": ", the strip is skipped, so the recompute's "
+                    }
+                  ]
+                },
+                {
+                  "text": "prefer-existing-"
+                },
+                {
+                  "type": "code",
+                  "children": [
+                    {
+                      "text": "slotId"
+                    }
+                  ]
                 },
                 {
                   "type": "em",
                   "children": [
                     {
-                      "text": "prefer-existing-"
-                    },
-                    {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "slotId"
-                        }
-                      ]
+                      "text": " keeps the authored slot. "
                     }
                   ]
                 },
                 {
-                  "text": " keeps the authored slot. "
-                },
-                {
-                  "type": "strong",
+                  "type": "em",
                   "children": [
                     {
                       "text": "Fixed"
@@ -1331,7 +1341,7 @@
                   ]
                 },
                 {
-                  "text": " blocks are never stripped."
+                  "text": "* blocks are never stripped."
                 }
               ]
             },
@@ -1407,15 +1417,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "templateEditModeRef"
-                        }
-                      ]
-                    },
-                    {
-                      "text": " for the mode check."
+                      "text": "`templateEditModeRef` for the mode check."
                     }
                   ]
                 },
@@ -1566,15 +1568,7 @@
               "type": "strong",
               "children": [
                 {
-                  "text": "Do not set "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "RAZZLE_PUBLIC_URL"
-                    }
-                  ]
+                  "text": "Do not set `RAZZLE_PUBLIC_URL`"
                 }
               ]
             },
@@ -2101,7 +2095,7 @@
             {
               "type": "link",
               "data": {
-                "url": "build-a-frontend.md"
+                "url": "/docs/build-a-frontend"
               },
               "children": [
                 {
@@ -2374,7 +2368,7 @@
                       {
                         "type": "link",
                         "data": {
-                          "url": "live-preview.md#setting-up-the-bridge"
+                          "url": "/docs/live-preview#setting-up-the-bridge"
                         },
                         "children": [
                           {
@@ -2402,7 +2396,7 @@
                       {
                         "type": "link",
                         "data": {
-                          "url": "advanced.md#authentication"
+                          "url": "/docs/advanced#authentication"
                         },
                         "children": [
                           {
@@ -2476,22 +2470,11 @@
                       {
                         "type": "link",
                         "data": {
-                          "url": "custom-blocks.md#initbridge-reference"
+                          "url": "/docs/custom-blocks#initbridge-reference"
                         },
                         "children": [
                           {
-                            "text": "Custom Blocks › "
-                          },
-                          {
-                            "type": "code",
-                            "children": [
-                              {
-                                "text": "initBridge()"
-                              }
-                            ]
-                          },
-                          {
-                            "text": " Reference"
+                            "text": "Custom Blocks › `initBridge()` Reference"
                           }
                         ]
                       },
@@ -2515,7 +2498,7 @@
                       {
                         "type": "link",
                         "data": {
-                          "url": "custom-blocks.md#block-conversion--fieldmappings"
+                          "url": "/docs/custom-blocks#block-conversion--fieldmappings"
                         },
                         "children": [
                           {
@@ -2578,7 +2561,7 @@
                       {
                         "type": "link",
                         "data": {
-                          "url": "visual-editing.md#html-annotations-for-visual-editing"
+                          "url": "/docs/visual-editing#html-annotations-for-visual-editing"
                         },
                         "children": [
                           {
@@ -2680,7 +2663,7 @@
                       {
                         "type": "link",
                         "data": {
-                          "url": "what-editors-will-experience/index.md"
+                          "url": "/docs/what-editors-will-experience"
                         },
                         "children": [
                           {
@@ -2872,7 +2855,7 @@
                       {
                         "type": "link",
                         "data": {
-                          "url": "templates.md"
+                          "url": "/docs/templates"
                         },
                         "children": [
                           {
@@ -2960,7 +2943,7 @@
                       {
                         "type": "link",
                         "data": {
-                          "url": "listings.md"
+                          "url": "/docs/listings"
                         },
                         "children": [
                           {
@@ -3059,7 +3042,7 @@
                       {
                         "type": "link",
                         "data": {
-                          "url": "advanced.md#custom-sidebar-and-cms-ui"
+                          "url": "/docs/advanced#custom-sidebar-and-cms-ui"
                         },
                         "children": [
                           {

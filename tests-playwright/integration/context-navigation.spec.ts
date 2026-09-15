@@ -359,6 +359,80 @@ test('listing-derived level + hierarchical sort: depth=2 listing renders mixed l
     await expect(childLink).toBeVisible();
   });
 
+  test('inline edit: clicking the summary heading (a data-block-selector element) starts text editing', async ({ page }) => {
+    // The <summary> is BOTH the reveal trigger (data-block-selector, so
+    // selecting a hidden child opens the disclosure) and the block's editable
+    // heading ([data-edit-text="ariaLabel"] inside it). The renderer promises
+    // authors can inline-edit it: "clicking the span fires <details>'s native
+    // toggle as a side-effect, but the summary stays visible whether open or
+    // closed, so editing continues without losing the cursor."
+    //
+    // That is the shape of every component whose reveal trigger doubles as its
+    // heading — accordion panel titles, tab labels — and it must survive the
+    // reveal: click, then the caret is in the heading.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/context-navigation-test-page');
+
+    const iframe = helper.getIframe();
+    const nav = iframe.locator('[data-block-uid="nav-1"]');
+    await expect(nav).toBeVisible({ timeout: 10_000 });
+
+    // Sanity: this really is the both-attributes case the test is about.
+    // Without it a fixture change could quietly turn this into a plain
+    // inline-editing test that passes for the wrong reason.
+    const summary = nav.locator('summary.context-navigation-summary');
+    await expect(summary).toHaveAttribute('data-block-selector', /nav-1/);
+    const heading = summary.locator('[data-edit-text="ariaLabel"]');
+    await expect(heading).toBeVisible();
+
+    // Start from BLOCK mode. A plain click recomputes the mode from "does this
+    // block own text" — but the data-block-selector branch returns before that,
+    // so it only ever worked when text mode leaked in from a previous
+    // selection. Escape from the auto-selected first block is the shortest way
+    // to the state an author reaches by pressing Escape, using the ⬆ button, or
+    // selecting a container (a block with no text of its own) first.
+    await helper.escapeFromEditing();
+
+    // Click between "Section" and "navigation" — NOT at either end, so a caret
+    // that defaulted to the start or the end of the field is distinguishable
+    // from one placed at the click point.
+    const caretAt = 'Section '.length;
+    const clickPoint = await helper.getClickPositionForCharacter(heading, caretAt);
+    expect(clickPoint, 'measured a click point inside the heading text').not.toBeNull();
+    await heading.click({ position: clickPoint! });
+
+    // The bridge writes contenteditable explicitly as "true"/"false" — a
+    // missing attribute and contenteditable="" both read as "" from
+    // Playwright, so only "true" proves the bridge promoted the field.
+    await expect(heading).toHaveAttribute('contenteditable', 'true', { timeout: 5000 });
+
+    // The admin has to agree that we're in TEXT mode, which it reads purely
+    // from focusedFieldName (subtle outline vs the block-mode border). Without
+    // this the bridge can look right locally while the admin still shows a
+    // block-mode toolbar — and any block with more than one editable field
+    // would put the caret in the first one rather than the one clicked.
+    await expect(page.locator('.volto-hydra-block-outline[data-outline-style="subtle"]')).toBeVisible({
+      timeout: 5000,
+    });
+
+    // Editable is not enough: the caret has to be IN it, or the author's first
+    // keystroke goes to the body and gets buffered instead of typed.
+    await expect
+      .poll(
+        async () =>
+          heading.evaluate((el) => el === document.activeElement || el.contains(document.activeElement)),
+        { timeout: 5000, message: 'caret should be inside the heading after clicking it' },
+      )
+      .toBe(true);
+
+    // And typing lands on the canvas AT THE CLICK POINT. The reveal path has to
+    // carry the click coordinates through too, or the author clicks mid-word and
+    // types at the start of the field.
+    await page.keyboard.type('X');
+    await expect(heading).toHaveText('Section Xnavigation', { timeout: 5000 });
+  });
+
   test('listing child with depth=1 returns direct children only', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();

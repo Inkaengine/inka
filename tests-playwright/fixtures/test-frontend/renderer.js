@@ -40,17 +40,52 @@ function tfLog(...args) {
 // listing-variant blocks). Each has a fetcher registered in index.html.
 const LISTING_BLOCK_TYPES = ['listing', 'relatedItemsListing', 'searchShortcuts', 'rssFeed'];
 
+// Expand a container's children (blocks_layout OR object_list) into renderable
+// items WITH paging — the same way for every container. staticBlocks and
+// expandListingBlocks compose: staticBlocks windows the static (non-listing)
+// children, expandListingBlocks fetches + windows the listing children, and each
+// call's `seen` count is PASSED into the next (threaded, not shared state) so a
+// mixed container pages as ONE combined window. Paging is NOT conditional on a
+// listing being present: a plain grid of slate cards pages exactly like a grid
+// with a listing. Returning all items with paging:null (as the old no-listing
+// shortcut did) meant a manual grid silently lost paging and its pager, so a
+// paged-out child (which the reveal needs) had no page-step control to reach it.
 async function expandItems(blocks, layout, containerId, paging) {
-    const hasListings = layout.some((id) => {
+    const isListing = (id) => {
         const t = blocks[id]?.['@type'];
         if (t === 'listing') return !!blocks[id]?.querystring?.query;
         return LISTING_BLOCK_TYPES.includes(t);
-    });
-    if (hasListings && window._expandListingBlocks) {
-        return await window._expandListingBlocks(blocks, layout, containerId, paging);
+    };
+    const out = [];
+    // A container that DOESN'T page (an accordion panel, a column) calls this with
+    // no paging. staticBlocks tolerates that (its size defaults to 1000, so every
+    // static child renders), but expandListingBlocks does NOT: a truthy paging
+    // object with no start/size makes its window `undefined..NaN` and it returns
+    // ZERO items — a nested listing rendered empty. Normalize one window here so
+    // both helpers get real start/size numbers: the container's own window when it
+    // pages, else a full window (all items). seen still threads for combined paging.
+    const pagingWindow = { start: paging?.start ?? 0, size: paging?.size ?? 1000 };
+    let seen = paging?.seen || 0;
+    let outPaging = null;
+    let i = 0;
+    while (i < layout.length) {
+        if (isListing(layout[i]) && window._expandListingBlocks) {
+            const res = await window._expandListingBlocks(blocks, [layout[i]], containerId, { ...pagingWindow, seen });
+            out.push(...(res.items || []));
+            outPaging = res.paging || outPaging;
+            seen = res.paging?.seen ?? (seen + (res.items?.length || 0));
+            i++;
+        } else {
+            // A run of consecutive static children — window them together.
+            const run = [];
+            while (i < layout.length && !isListing(layout[i])) { run.push(layout[i]); i++; }
+            const res = window._staticBlocks(run, { blocks, paging: pagingWindow, seen });
+            out.push(...res.items);
+            outPaging = res.paging;
+            seen = res.paging.seen;
+        }
     }
-    // No listings — convert to items format directly (sync, no fetch)
-    return { items: layout.map(id => ({ ...blocks[id], '@uid': id })), paging: null };
+    return { items: out, paging: outPaging };
 }
 
 // Slider state: track slide count to detect new slides { [blockId]: slideCount }
@@ -91,10 +126,15 @@ function getImageUrl(value) {
         const field = value.image_field;
         const scales = value.image_scales[field];
         if (scales?.[0]?.download) {
-            // Brain @id is often an absolute URL (matches apiOrigin); strip to
-            // relative so we don't double-prepend. External absolutes are kept.
-            const baseUrl = stripApiOrigin(value['@id'] || '');
-            return `${apiOrigin}${baseUrl}/${scales[0].download}`;
+            // A brain's @id comes back absolute from the API, so use it as the
+            // base as-is. Stripping it to a path and re-prefixing with apiOrigin
+            // silently produced an ORIGIN-LESS src whenever window._apiOrigin
+            // was unset — the browser then resolved it against the frontend,
+            // which 404s: "All images should have valid src and load
+            // successfully" for a listing thumbnail that is fine on the API.
+            const rawId = value['@id'] || '';
+            const baseUrl = /^https?:\/\//.test(rawId) ? rawId : `${apiOrigin}${rawId}`;
+            return `${baseUrl}/${scales[0].download}`;
         }
     }
 
@@ -311,6 +351,9 @@ async function renderBlock(blockId, block) {
             wrapper.innerHTML = await renderAccordionBlock(block, blockId);
             break;
         // accordionPanel is rendered inline by renderAccordionBlock (object_list items)
+        case 'socialLinks':
+            wrapper.innerHTML = renderSocialLinksBlock(block);
+            break;
         case 'slateTable':
             wrapper.innerHTML = renderSlateTableBlock(block);
             break;
@@ -348,6 +391,9 @@ async function renderBlock(blockId, block) {
         case 'heading':
             wrapper.innerHTML = renderHeadingBlock(block);
             break;
+        case 'suggest':
+            wrapper.innerHTML = renderSuggestBlock(block, blockId);
+            break;
         case 'separator':
             wrapper.innerHTML = renderSeparatorBlock(block);
             break;
@@ -357,6 +403,9 @@ async function renderBlock(blockId, block) {
         case 'highlight':
             wrapper.innerHTML = renderHighlightBlock(block);
             break;
+        case 'callout':
+            wrapper.innerHTML = await renderCalloutBlock(block);
+            break;
         case 'toc':
             wrapper.innerHTML = renderTocBlock(block);
             break;
@@ -364,14 +413,17 @@ async function renderBlock(blockId, block) {
             wrapper.innerHTML = renderFormBlock(block);
             attachFormValidation(wrapper.querySelector('form'), block);
             break;
-        case 'skiplogicTest':
-            wrapper.innerHTML = renderSkiplogicTestBlock(block);
-            break;
         case 'empty':
             wrapper.innerHTML = renderEmptyBlock(block);
             break;
         case 'codeExample':
             wrapper.innerHTML = renderCodeExampleBlock(block, blockId);
+            break;
+        case 'cookieConsent':
+            // The bar is the block's element; the banner and the preferences
+            // dialog it words are built OUTSIDE it (see renderCookieConsentBar).
+            wrapper.innerHTML = renderCookieConsentBar(block, blockId);
+            mountCookieConsentChrome(block, blockId);
             break;
         case 'title':
             // Title block is just rendered by page title, empty here
@@ -437,13 +489,44 @@ if (typeof document !== 'undefined') {
     );
 }
 
+/**
+ * The class attribute a design-system style produces.
+ *
+ * Volto's style menu stores its two kinds differently, and a frontend has to
+ * render BOTH or half the menu silently does nothing:
+ *   block  -> `styleName` on the element (space separated, several can apply)
+ *   inline -> a leaf MARK `style-<cssClass>` (StyleMenu/utils.js, Editor.addMark)
+ * This example frontend renders them so the contract is demonstrated, not just
+ * described.
+ */
+function styleClassAttr(node) {
+    const classes = [];
+    if (typeof node.styleName === 'string') classes.push(node.styleName);
+    for (const key of Object.keys(node)) {
+        const m = node[key] && /^style-(.+)$/.exec(key);
+        if (m) classes.push(m[1]);
+    }
+    return classes.length ? ` class="${classes.join(' ').trim()}"` : '';
+}
+
 function renderSlateBlock(block) {
-    const value = block.value || [];
+    // An EMPTY slate block (no `value` at all — the state a just-added block is
+    // in) still has to render one node, or there is nothing carrying
+    // data-node-id for the bridge to sync a cursor to: clicking it raises
+    // "Selection sync failed - missing data-node-id" and the author cannot
+    // type. A real frontend gets this from the schema default
+    // ([{type:'p',children:[{text:''}]}]); this fixture has no defaults layer,
+    // so it seeds the same empty paragraph here, nodeId '0' like the first node
+    // of any slate value.
+    const value = (block.value && block.value.length)
+        ? block.value
+        : [{ type: 'p', nodeId: '0', children: [{ text: '' }] }];
     let html = '';
     value.forEach((node) => {
         // nodeId is required for edit mode (hydra.js adds it), but optional for view mode
         // If missing in edit mode, hydra.js should add it - but we don't throw here to allow view mode
-        const nodeIdAttr = node.nodeId !== undefined ? ` data-node-id="${node.nodeId}"` : '';
+        const nodeIdAttr = (node.nodeId !== undefined ? ` data-node-id="${node.nodeId}"` : '')
+            + styleClassAttr(node);
 
         // Deep-link anchor. This frontend CHOOSES to make every heading linkable:
         // a real id (the #fragment) + data-linkable-id (the picker label), which
@@ -588,8 +671,24 @@ function renderChildren(children) {
         //    (characterData mutation). The MutationObserver must handle both.
         // 3. Select-all + type replaces the entire <span> content, which is a
         //    childList change that characterData-only observers miss entirely.
+        // A leaf carrying an inline design-system style needs an element to put
+        // the class on; a plain leaf still renders as bare text.
+        const leafStyles = child.text !== undefined ? styleClassAttr(child) : '';
+        if (leafStyles) {
+            // Escape: a slate text leaf is TEXT, not markup. A real frontend
+            // interpolates it ({{ node.text }}) and the framework escapes; this
+            // fixture builds an innerHTML string, so it must escape itself. Without
+            // it, a code example whose text is literal HTML/JSX — e.g. a slate
+            // `code` leaf `<div data-block-uid={uid}>` — is parsed as real
+            // elements: the stray <div> auto-closes the enclosing
+            // <p data-edit-text="value">, stranding everything after it (a link)
+            // outside the editable region, and a bare data-block-uid is read as a
+            // block that never round-trips.
+            let content = escapeHtml(child.text || '');
+            return `<span${leafStyles}>${content}</span>`;
+        }
         if (child.text !== undefined) {
-            let content = child.text || '';
+            let content = escapeHtml(child.text || '');
 
             // Also handle old format (marks) for backward compatibility
             if (child.bold) content = `<span style="font-weight: bold">${content}</span>`;
@@ -745,7 +844,11 @@ function renderHeroBlockClean(block) {
     // Render subheading as textarea (preserve newlines)
     const subheadingHtml = subheading.replace(/\n/g, '<br>');
 
-    // Render description - still needs node IDs for slate editing
+    // Render description - still needs node IDs for slate editing.
+    // Data-driven, in edit mode too (issue #296): no data ⇒ no element. Reveal
+    // is the bridge's job — TOGGLE_OPTIONAL_FIELDS seeds a sentinel value so
+    // this very `description.length` rule fires — and it only works while the
+    // renderer keeps telling the truth about what the block holds.
     let descriptionHtml = '';
     description.forEach((node) => {
         const nodeIdAttr = node.nodeId !== undefined ? ` data-node-id="${node.nodeId}"` : '';
@@ -764,7 +867,13 @@ function renderHeroBlockClean(block) {
     });
 
     // Image - uses class instead of data-edit-media. Data-driven (issue #296):
-    // no image ⇒ no element, so the comment selector simply matches nothing.
+    // no image ⇒ no element, so the comment selector matches nothing.
+    //
+    // NOT a placeholder in edit mode. An empty field is easier to set with
+    // something to click, but "can clear image using X button overlay" asserts
+    // that clearing an image leaves NO annotated element behind — and a
+    // placeholder IS the leftover it looks for. Revealing an empty media field
+    // is the toolbar's job (issue #296), not the renderer's.
     const imageHtml = imageSrc
         ? `<img class="hero-image" src="${imageSrc}" alt="Hero image" style="max-width: 100%; height: auto; margin-bottom: 10px;" />`
         : '';
@@ -897,7 +1006,11 @@ function renderSummaryItemBlock(block, blockUid) {
     const description = block.description || hrefObj?.description || '';
     const blockUidAttr = blockUid ? `data-block-uid="${blockUid}"` : '';
 
-    const imageSrc = block.image ? window._contentPath(getImageUrl(block.image)) : '';
+    // NOT _contentPath: that strips the API origin so a LINK stays same-origin
+    // for navigation (see href above). An image src must keep it — the bytes are
+    // served by the API, and stripping it made the browser resolve
+    // "/…/@@images/preview_image-800-….svg" against the FRONTEND, which 404s.
+    const imageSrc = block.image ? getImageUrl(block.image) : '';
 
     const imageHtml = imageSrc
         ? `<img data-edit-media="image" src="${imageSrc}" alt="" style="width: 80px; height: 60px; object-fit: cover; margin-right: 15px; border-radius: 4px;" />`
@@ -946,8 +1059,47 @@ function renderImageBlock(block) {
 }
 
 /**
- * Render a video block.
- * @param {Object} block - Video block data with url
+ * A map embed that builds its iframe inside a SHADOW ROOT.
+ *
+ * This is how embed components are really written — `<pdfjs-viewer-element>`,
+ * `<lite-youtube>`, the map wrappers that gate a third-party frame behind
+ * cookie consent — so the vendor iframe and its styles stay isolated from the
+ * page. It is a plain custom element: no library, no network, nothing to
+ * install.
+ *
+ * Hydra has to cope with the shape, which is why the test frontend renders maps
+ * this way rather than as a bare iframe (the video block already covers that).
+ * The shadow boundary hides the embed from ordinary traversal: querySelector()
+ * from the block will not find the iframe, the iframe's closest() cannot reach
+ * back out to the block, and document.activeElement reports the HOST element
+ * when focus moves inside. Detecting an embed therefore has to pierce shadow
+ * roots, and the host is the only way back to the block.
+ * @returns {void}
+ */
+function defineMapEmbedElement() {
+    if (customElements.get('map-embed')) return;
+    customElements.define(
+        'map-embed',
+        class extends HTMLElement {
+            connectedCallback() {
+                if (this.shadowRoot) return;
+                const root = this.attachShadow({ mode: 'open' });
+                const frame = document.createElement('iframe');
+                frame.src = this.getAttribute('src') || '';
+                frame.title = this.getAttribute('frame-title') || 'Map';
+                frame.loading = 'lazy';
+                frame.setAttribute('allowfullscreen', '');
+                frame.style.cssText = 'width:100%;height:450px;border:none;display:block';
+                root.appendChild(frame);
+            }
+        },
+    );
+}
+defineMapEmbedElement();
+
+/**
+ * Render a maps block.
+ * @param {Object} block - Maps block data with url
  * @returns {string} HTML string
  */
 function renderMapsBlock(block) {
@@ -955,8 +1107,7 @@ function renderMapsBlock(block) {
     const title = block.title || 'Map';
     if (url) {
         return `<div class="maps-block">
-            <iframe src="${url}" title="${title}" allowfullscreen loading="lazy"
-                style="width:100%;height:450px;border:none"></iframe>
+            <map-embed src="${url}" frame-title="${title}"></map-embed>
         </div>`;
     }
     return `<div class="maps-block"><p>No map URL set</p></div>`;
@@ -994,6 +1145,21 @@ function renderIntroductionBlock(block) {
  * @param {Object} block - Heading block data
  * @returns {string} HTML string
  */
+/**
+ * Render a suggest block: a labelled text box whose answer a vocabulary
+ * completes (the live fetch is the docs example's job — the fixture renders
+ * the resting markup: label, input, empty suggestion list).
+ */
+function renderSuggestBlock(block, blockId) {
+    const label = block.label || '';
+    const value = block.value || '';
+    return `<div class="suggest">` +
+        `<label for="${blockId}-input" data-edit-text="label">${label}</label>` +
+        `<input id="${blockId}-input" name="answer" type="text" value="${value}" aria-autocomplete="list" autocomplete="off">` +
+        `<ul class="suggest__list" hidden></ul>` +
+        `</div>`;
+}
+
 function renderHeadingBlock(block) {
     const tag = block.tag || 'h2';
     const text = block.heading || '';
@@ -1053,13 +1219,47 @@ function renderHighlightBlock(block) {
         ? `<a href="${ctaLink || '#'}" data-edit-text="cta_title" data-edit-link="cta_link" style="display:inline-block;padding:10px 20px;background:#007eb1;color:white;text-decoration:none;border-radius:4px;">${ctaText}</a>`
         : '';
 
+    // The image is drawn as a CSS background, so nothing carried
+    // data-edit-media and highlight.image was uneditable everywhere it appeared.
+    // The bridge only needs an element with dimensions, not an <img> — the
+    // overlay covers the section, so annotate it. (Same fix as the nuxt
+    // example's highlight.)
     return `<section class="highlight-block" style="${bgStyle}padding:40px 20px;color:white;border-radius:8px;">
-        <div class="highlight-overlay" style="background:rgba(0,0,0,0.4);padding:30px;border-radius:8px;">
+        <div class="highlight-overlay" data-edit-media="image" style="background:rgba(0,0,0,0.4);padding:30px;border-radius:8px;">
             <h2 data-edit-text="title">${title}</h2>
             <div class="highlight-body">${descHtml}</div>
             ${ctaHtml}
         </div>
     </section>`;
+}
+
+/**
+ * Render a callout block — a labelled admonition box (note/tip/warning/important).
+ * Level = block.variation (drives label + colour); body = a slate value.
+ * @param {Object} block - Callout block data
+ * @returns {string} HTML string
+ */
+async function renderCalloutBlock(block) {
+    const levels = {
+        note:      { label: 'Note',      color: '#2563eb', bg: '#eff6ff' },
+        tip:       { label: 'Tip',       color: '#059669', bg: '#ecfdf5' },
+        warning:   { label: 'Warning',   color: '#d97706', bg: '#fffbeb' },
+        important: { label: 'Important', color: '#dc2626', bg: '#fef2f2' },
+    };
+    const level = levels[block.variation] || levels.note;
+    // The body is a region of child blocks (blocks_layout.items) — render each
+    // through renderBlock, the shared container primitive.
+    const blocks = block.blocks || {};
+    const items = block.blocks_layout?.items || [];
+    let bodyHtml = '';
+    for (const id of items) {
+        const el = await renderBlock(id, { ...blocks[id], '@uid': id });
+        if (el) bodyHtml += el.outerHTML;
+    }
+    return `<aside class="callout callout--${block.variation || 'note'}" style="border-left:4px solid ${level.color};background:${level.bg};padding:12px 16px;border-radius:4px;margin:1em 0;">
+        <div class="callout__label" style="font-weight:700;color:${level.color};text-transform:uppercase;font-size:0.8em;letter-spacing:0.05em;margin-bottom:4px;">${level.label}</div>
+        <div class="callout__body">${bodyHtml}</div>
+    </aside>`;
 }
 
 /**
@@ -1122,7 +1322,12 @@ function renderFormBlock(block) {
         if (fieldType === 'empty') {
             // A typed object_list item seeded as 'empty' (type in field_type, no @type).
             // Render a selectable placeholder; the admin supplies the '+' to pick its type.
-            html += `<span data-edit-text="placeholder" style="color:#999;">Empty field — pick a type</span>`;
+            // No data-edit-text: "Empty field — pick a type" is a hint the
+            // frontend writes, not content the author owns. No schema declares
+            // a `placeholder` field, so annotating it promised an edit that
+            // hydra correctly refuses — the same lie as a "Read More" label on
+            // a block with no button.
+            html += `<span style="color:#999;">Empty field — pick a type</span>`;
         } else if (fieldType === 'textarea') {
             html += `<textarea name="${fieldId}" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" rows="3"></textarea>`;
         } else if (fieldType === 'select') {
@@ -1744,10 +1949,15 @@ function renderPaging(paging, blockId) {
         return url.pathname + url.search;
     };
 
+    // Step size for the reveal: data-block-selector="+N"/"-N" tells hydra how many
+    // items one page-step moves, so tryMakeBlockVisible can synthesise clicks on
+    // Next/Prev to page a hidden child into view — client-side, no reload (see the
+    // delegated pager handler in index.html). Mirrors nuxt's Paging.vue.
+    const step = paging.size || 6;
     let html = '<nav class="grid-paging" aria-label="Page Navigation" style="margin-top: 15px; text-align: center;">';
 
     if (paging.prev !== null) {
-        html += `<a href="${buildUrl(paging.prev)}" data-linkable-allow class="paging-prev" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">← Prev</a>`;
+        html += `<a href="${buildUrl(paging.prev)}" data-linkable-allow data-block-selector="-${step}" class="paging-prev" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">← Prev</a>`;
     }
 
     paging.pages.forEach(p => {
@@ -1760,7 +1970,7 @@ function renderPaging(paging, blockId) {
     });
 
     if (paging.next !== null) {
-        html += `<a href="${buildUrl(paging.next)}" data-linkable-allow class="paging-next" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">Next →</a>`;
+        html += `<a href="${buildUrl(paging.next)}" data-linkable-allow data-block-selector="+${step}" class="paging-next" style="margin: 0 5px; padding: 5px 10px; border: 1px solid #ccc; text-decoration: none;">Next →</a>`;
     }
 
     html += '</nav>';
@@ -2049,6 +2259,96 @@ async function renderSliderBlock(block, blockId) {
 }
 
 /**
+ * Cookie consent: one block drawn in three places, two of them hidden.
+ *
+ * The bar is the block's own element (it carries data-block-uid, and is always
+ * on screen). The wording an author writes is read somewhere else entirely: the
+ * `message` in a banner and the `analyticsPurpose` beside a tick box in a
+ * preferences dialog, both built into <body> — which is where a design system's
+ * own JavaScript puts them — and both hidden until their trigger is pressed.
+ *
+ * So "is the block visible?" answers nothing here, and one handle cannot serve
+ * two halves: each trigger names the FIELD its half holds, and the bridge opens
+ * the half whose field the author reached for in the sidebar.
+ *
+ * @param {Object} block - Cookie consent block data
+ * @param {string} blockId - Block ID
+ * @returns {string} HTML string
+ */
+function renderCookieConsentBar(block, blockId) {
+    return (
+        '<div class="cookie-consent-bar" style="display: flex; gap: 12px; align-items: center; padding: 8px 12px; background: #f4f4f6; border: 1px solid #ddd;">' +
+        '<strong>Cookie consent</strong>' +
+        `<button type="button" data-block-selector="${blockId}#message" data-linkable-allow data-cookie-open="banner">Show the banner</button>` +
+        `<button type="button" data-block-selector="${blockId}#analyticsPurpose" data-linkable-allow data-cookie-open="dialog">Show cookie preferences</button>` +
+        '</div>'
+    );
+}
+
+/**
+ * Build (or rebuild) the two halves outside the block's element, and wire the
+ * bar's triggers to them. Kept idempotent per uid: renderBlock runs again on
+ * every change, and a second banner would mean a second data-edit-text="message".
+ * @param {Object} block - Cookie consent block data
+ * @param {string} blockId - Block ID
+ */
+function mountCookieConsentChrome(block, blockId) {
+    document
+        .querySelectorAll(`[data-cookie-chrome="${blockId}"]`)
+        .forEach((el) => el.remove());
+
+    let messageHtml = '';
+    (block.message || []).forEach((node) => {
+        const nodeIdAttr = node.nodeId !== undefined ? ` data-node-id="${node.nodeId}"` : '';
+        messageHtml += `<p data-edit-text="message"${nodeIdAttr}>${renderChildren(node.children)}</p>`;
+    });
+
+    const banner = document.createElement('div');
+    banner.setAttribute('data-cookie-chrome', blockId);
+    // The half advertises the field it holds, as well as the bar's trigger doing
+    // so. Without that the wording inside it belongs to no block at all — it is
+    // outside the block's element, so `data-edit-text` there resolves to nothing
+    // and the text is not editable. The bar's trigger is what the bridge clicks
+    // (this one is hidden until it opens), and both name the same field.
+    banner.setAttribute('data-block-selector', `${blockId}#message`);
+    banner.className = 'cookie-banner';
+    banner.hidden = true;
+    banner.innerHTML = messageHtml + '<button type="button" data-cookie-close>Accept all</button>';
+
+    const dialog = document.createElement('div');
+    dialog.setAttribute('data-cookie-chrome', blockId);
+    dialog.setAttribute('data-block-selector', `${blockId}#analyticsPurpose`);
+    dialog.className = 'cookie-dialog';
+    dialog.hidden = true;
+    dialog.innerHTML =
+        '<h2>Manage cookie preferences</h2>' +
+        '<label><input type="checkbox" name="analytics"> Analytics</label>' +
+        `<p data-edit-text="analyticsPurpose">${escapeHtml(block.analyticsPurpose || '')}</p>` +
+        '<button type="button" data-cookie-close>Save</button>';
+
+    // Rendered as SIBLINGS of the bar, not on <body>: the two halves are still
+    // outside the block's element, which is the whole point, but they stay
+    // inside the page the bridge walks. (A design system's own JavaScript does
+    // put them on <body>; that shape is drawn the same way and is what the
+    // frontends in docs/examples/cookie-consent.md show.)
+    document.body.appendChild(banner);
+    document.body.appendChild(dialog);
+
+    document.addEventListener('click', (e) => {
+        const opener = e.target.closest(`[data-block-uid="${blockId}"] [data-cookie-open]`);
+        if (opener) {
+            const half = opener.getAttribute('data-cookie-open') === 'banner' ? banner : dialog;
+            half.hidden = false;
+            return;
+        }
+        const closer = e.target.closest('[data-cookie-close]');
+        if (closer && closer.parentElement.getAttribute('data-cookie-chrome') === blockId) {
+            closer.parentElement.hidden = true;
+        }
+    });
+}
+
+/**
  * Render a codeExample block with tabs as child blocks.
  * Each tab has its own data-block-uid and the code is shown in a <pre> element.
  * @param {Object} block - Code example block data
@@ -2064,7 +2364,16 @@ function renderCodeExampleBlock(block, blockId) {
         html += '<div data-tab-bar style="display: flex; background: #16213e; border-bottom: 1px solid #334;">';
         tabs.forEach((tab) => {
             const tabId = tab['@id'];
-            html += `<button data-block-uid="${tabId}" data-linkable-allow style="padding: 8px 16px; color: #aaa; background: transparent; border: none; cursor: pointer; font-size: 13px;"><span data-edit-text="label">${tab.label || tab.language || 'Tab'}</span></button>`;
+            // The BUTTON represents the tab; the PANEL below is the tab. Carrying
+            // data-block-uid here too would tell the bridge the block is on screen
+            // whenever the bar is, so selecting an inactive tab would never reveal
+            // the code it holds. data-block-selector says "I represent this uid" —
+            // the label still edits the tab, and clicking switches to it.
+            // Two tokens: the bare uid reveals the tab (any field), and
+            // `uid#code` says WHERE the code field is edited — the panel this
+            // button opens. The label needs no handle: it is on this button,
+            // already on screen, so a focus in it has nothing to reveal.
+            html += `<button data-block-selector="${tabId} ${tabId}#code" data-linkable-allow style="padding: 8px 16px; color: #aaa; background: transparent; border: none; cursor: pointer; font-size: 13px;"><span data-edit-text="label">${tab.label || tab.language || 'Tab'}</span></button>`;
         });
         html += '</div>';
     }
@@ -2110,7 +2419,39 @@ function renderSlideBlock(block) {
     }
     html += `<h4 data-edit-text="title" style="margin: 0 0 8px 0;">${title}</h4>`;
     html += `<p data-edit-text="description" style="margin: 0; color: #666;">${description}</p>`;
+    // The slide's own link. Its `href` is a field of the SLIDE, so it needs an
+    // annotation on the slide's own markup: a teaser nested inside a slide has
+    // an `href` of its own, and borrowing that one would put an author's edit
+    // in the wrong block.
+    if (!block.hideButton) {
+        const slideHref = getLinkUrl(block.href);
+        // The label is annotated inside the link, and the link carries NO
+        // `data-linkable-allow`: with it, a click navigates and tears the editor
+        // down before an edit can happen, which is why an annotation inside such
+        // an anchor is refused. Without it the click is the editor's.
+        html += `<a href="${slideHref || '#'}" data-edit-link="href" style="display: inline-block; margin-top: 8px; color: #007eb1;"><span data-edit-text="buttonText">${escapeHtml(block.buttonText || 'Read more')}</span></a>`;
+    }
 
+    return html;
+}
+
+/**
+ * Social links: one <a> per entry in `links`.
+ *
+ * Each link carries its OWN data-block-uid (the item's @id) so it can be
+ * selected, moved and edited as a sub-item — the same shape the Nuxt and
+ * Next.js examples render. The mock had no socialLinks case at all, so the
+ * links appeared nowhere and sub-item selection had nothing to attach to.
+ */
+function renderSocialLinksBlock(block) {
+    const links = block.links || [];
+    let html = '<span>Follow us:</span>';
+    for (const link of links) {
+        const uid = link['@id'];
+        html += `<a data-block-uid="${uid}" data-block-add="right" data-edit-link="url" ` +
+            `href="${escapeAttr(link.url || '')}" target="_blank" rel="noopener noreferrer">` +
+            `${escapeHtml(link.url || '')}</a>`;
+    }
     return html;
 }
 
@@ -2164,24 +2505,32 @@ async function renderAccordionPanelBlock(block, blockId) {
     for (const childBlock of expandedItems) {
         if (!childBlock) continue;
         const uid = childBlock['@uid'];
-        html += `<div data-block-uid="${uid}" data-block-add="bottom">`;
+        let inner;
         switch (childBlock['@type']) {
             case 'slate':
-                html += renderNestedSlateBlock(childBlock);
+                inner = renderNestedSlateBlock(childBlock);
                 break;
             case 'image':
-                html += renderImageBlock(childBlock);
+                inner = renderImageBlock(childBlock);
                 break;
             case 'teaser':
-                html += renderTeaserBlock(childBlock, null);
+                inner = renderTeaserBlock(childBlock, null);
                 break;
             case 'summary':
-                html += renderSummaryItemBlock(childBlock, null);
+                inner = renderSummaryItemBlock(childBlock, null);
                 break;
-            default:
-                html += renderNestedSlateBlock(childBlock);
+            default: {
+                // Anything else — including CONTAINERS — goes through the normal
+                // renderer so nested blocks render as they do anywhere else. The
+                // old default treated an unknown type as a slate, so a grid in a
+                // panel produced no children at all and its blocks existed
+                // nowhere in the DOM.
+                const el = await renderBlock(uid, childBlock);
+                if (el) html += el.outerHTML;
+                continue;
+            }
         }
-        html += '</div>';
+        html += `<div data-block-uid="${uid}" data-block-add="bottom">${inner}</div>`;
     }
 
     html += '</div>';
@@ -2230,7 +2579,7 @@ function renderFacetWidget(facet) {
         optionsHtml += options.map(opt =>
             `<option value="${opt.value}">${opt.title}</option>`
         ).join('');
-        return `<select class="facet-widget facet-select" data-field="${field}" style="width: 100%; padding: 4px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px;">
+        return `<select class="facet-widget facet-select" data-linkable-allow data-field="${field}" style="width: 100%; padding: 4px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px;">
             ${optionsHtml}
         </select>`;
     } else if (facetType === 'checkboxFacet') {
@@ -2242,7 +2591,7 @@ function renderFacetWidget(facet) {
         const checkboxesHtml = options.map(opt => {
             const isChecked = currentValues.includes(opt.value) ? 'checked' : '';
             return `<label style="display: block; margin-top: 4px;">
-                <input type="checkbox" class="facet-checkbox" data-field="${field}" value="${opt.value}" ${isChecked} />
+                <input type="checkbox" class="facet-checkbox" data-linkable-allow data-field="${field}" value="${opt.value}" ${isChecked} />
                 ${opt.title}
             </label>`;
         }).join('');
@@ -2292,20 +2641,46 @@ async function renderSearchBlock(block, blockId) {
         html += `<h2 data-edit-text="headline" style="margin-bottom: 15px;">${headline}</h2>`;
     }
 
+    // A block that exists ONLY once a query has been asked — the quick-answer
+    // region. Declared here so the form below can say how to reveal it: the
+    // input carries the sample question, the submit button carries the uid.
+    const quickAnswerLayout = block.blocks_layout?.quickAnswer || [];
+    const quickAnswerUid = quickAnswerLayout[0] || '';
+    const sampleQuestion = block.quickAnswerSample || '';
+
     // Search input
     if (showSearchInput) {
         // Get current search text from URL criteria (if available)
         const currentSearchText = window._searchCriteria?.SearchableText || '';
+        // The input says WHAT to type, the button says WHICH block that reveals.
+        // An element declaring a value is a field to fill; one that does not is
+        // the thing to activate — which is how two handles can share a form.
+        const revealInput = quickAnswerUid && sampleQuestion
+            ? ` data-block-selector="${escapeAttr(quickAnswerUid)}" data-block-selector-input="${escapeAttr(sampleQuestion)}"`
+            : '';
+        const revealButton = quickAnswerUid ? ` data-block-selector="${escapeAttr(quickAnswerUid)}"` : '';
         html += `<div class="search-input" style="margin-bottom: 15px;">
             <form class="search-form" data-search-block="${blockId}" style="display: flex; gap: 10px;">
                 <input type="text" name="SearchableText" placeholder="Search..." value="${currentSearchText}"
-                    class="search-input-field"
+                    class="search-input-field"${revealInput}
                     style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" />
-                <button type="submit" class="search-submit-button" style="padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px;">
+                <button type="submit" class="search-submit-button"${revealButton} style="padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px;">
                     Search
                 </button>
             </form>
         </div>`;
+    }
+
+    // Rendered only when a question has actually been asked. With no query there
+    // is no element at all — not hidden, absent — which is the case a click-only
+    // reveal cannot reach.
+    if (quickAnswerUid && window._searchCriteria?.SearchableText) {
+        const child = blocks[quickAnswerUid];
+        if (child) {
+            html += `<div class="quick-answer" data-block-uid="${escapeAttr(quickAnswerUid)}" style="margin: 15px 0; padding: 12px; background: #eef3fb; border-radius: 6px;">
+                <div data-edit-text="answer">${escapeHtml(child.answer || '')}</div>
+            </div>`;
+        }
     }
 
     // Sort options
@@ -2414,42 +2789,29 @@ function renderSlateTableBlock(block) {
             const tag = cell.type === 'header' ? 'th' : 'td';
             const style = 'border: 1px solid #ccc; padding: 8px;';
 
-            // Render cell content from slate value
+            // Render cell content from slate value. data-edit-text="value" belongs
+            // on the CELL, not on each node: a cell's value is ONE field that may
+            // hold several top-level nodes (a heading AND a paragraph). Tagging each
+            // node made every node its own "value" region, so the round-trip reader
+            // saw only the first node and the cell never matched its own value. One
+            // region per cell, each node rendered with its real element tag.
             let cellContent = '';
             const value = cell.value || [];
             value.forEach((node) => {
                 const nodeIdAttr = node.nodeId !== undefined ? ` data-node-id="${node.nodeId}"` : '';
                 const text = renderChildren(node.children || []);
-                cellContent += `<p data-edit-text="value"${nodeIdAttr}>${text}</p>`;
+                const el = /^h[1-6]$/.test(node.type || '') ? node.type : 'p';
+                cellContent += `<${el}${nodeIdAttr}>${text}</${el}>`;
             });
 
             // Cells add to the right (new column)
-            html += `<${tag} data-block-uid="${cell.key}" data-block-add="right" style="${style}">${cellContent}</${tag}>`;
+            html += `<${tag} data-block-uid="${cell.key}" data-block-add="right" data-edit-text="value" style="${style}">${cellContent}</${tag}>`;
         });
         html += '</tr>';
     });
 
     html += '</table>';
     return html;
-}
-
-/**
- * Render a Skiplogic Test block.
- * @param {Object} block - Skiplogic test block data
- * @returns {string} HTML string
- */
-function renderSkiplogicTestBlock(block) {
-    const mode = block.mode || 'not set';
-    const columns = block.columns || 1;
-    const title = block.basicTitle || 'Untitled';
-    return `
-        <div class="skiplogic-test-block" style="padding: 16px; border: 1px solid #ccc; background: #f9f9f9;">
-            <h4>Skiplogic Test Block</h4>
-            <p data-skiplogic-mode="${mode}">Mode</p>
-            <p data-skiplogic-columns="${columns}">Columns</p>
-            <p data-edit-text="basicTitle">${title}</p>
-        </div>
-    `;
 }
 
 /**
@@ -2697,3 +3059,23 @@ if (document.readyState === 'loading') {
 if (typeof window !== 'undefined' && window.matchMedia) {
     window.matchMedia('(min-width: 768px)').addEventListener('change', syncCnavOpenState);
 }
+
+// Tab bars switch on click. The buttons were inert, so a tab other than the
+// first could never be shown — including when the bridge clicks the handle to
+// reveal a tab an author selected in the sidebar.
+document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-tab-bar] button[data-block-selector]');
+    if (!button) return;
+    // The FIRST token, not the whole attribute: a handle may name its block
+    // twice — plainly and by field (`tab-py tab-py#code`) — and comparing the
+    // raw attribute to a uid then matches no panel at all.
+    const uid = (button.getAttribute('data-block-selector') || '')
+        .trim()
+        .split(/\s+/)[0];
+    const bar = button.closest('[data-tab-bar]');
+    const container = bar?.parentElement;
+    if (!container) return;
+    for (const panel of container.querySelectorAll(':scope > [data-block-uid]')) {
+        panel.style.display = panel.getAttribute('data-block-uid') === uid ? 'block' : 'none';
+    }
+});

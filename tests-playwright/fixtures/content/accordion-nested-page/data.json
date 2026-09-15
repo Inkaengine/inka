@@ -1,0 +1,159 @@
+{
+  "@id": "http://localhost:8888/_test_data/accordion-nested-page",
+  "@type": "Document",
+  "UID": "accordion-nested-page-uid",
+  "id": "accordion-nested-page",
+  "title": "Accordion with a nested container",
+  "description": "A grid inside a collapsed accordion panel: its blocks sit two levels below the panel's reveal handle, which lists direct children only.",
+  "review_state": "published",
+  "blocks": {
+    "title-1": {
+      "@type": "title"
+    },
+    "acc-1": {
+      "@type": "accordion",
+      "collapsed": false,
+      "filtering": false,
+      "non_exclusive": false,
+      "right_arrows": true,
+      "panels": [
+        {
+          "@id": "acc-panel-open",
+          "title": "Open by default",
+          "blocks": {
+            "panel-1-slate": {
+              "@type": "slate",
+              "value": [
+                {
+                  "type": "p",
+                  "children": [
+                    {
+                      "text": "Visible without opening anything."
+                    }
+                  ]
+                }
+              ],
+              "plaintext": "Visible without opening anything."
+            }
+          },
+          "blocks_layout": {
+            "items": [
+              "panel-1-slate"
+            ]
+          }
+        },
+        {
+          "@id": "acc-panel-closed",
+          "title": "Closed, holds a grid",
+          "blocks": {
+            "panel-2-grid": {
+              "@type": "gridBlock",
+              "blocks": {
+                "grid-inner-slate": {
+                  "@type": "slate",
+                  "value": [
+                    {
+                      "type": "p",
+                      "children": [
+                        {
+                          "text": "Two levels under the panel handle."
+                        }
+                      ]
+                    }
+                  ],
+                  "plaintext": "Two levels under the panel handle."
+                }
+              },
+              "blocks_layout": {
+                "items": [
+                  "grid-inner-slate"
+                ]
+              }
+            }
+          },
+          "blocks_layout": {
+            "items": [
+              "panel-2-grid"
+            ]
+          }
+        },
+        {
+          "@id": "acc-panel-outer",
+          "title": "Closed, holds another accordion",
+          "blocks": {
+            "inner-acc": {
+              "@type": "accordion",
+              "collapsed": false,
+              "filtering": false,
+              "non_exclusive": false,
+              "right_arrows": true,
+              "panels": [
+                {
+                  "@id": "inner-panel-open",
+                  "title": "Inner, open",
+                  "blocks": {
+                    "inner-slate-open": {
+                      "@type": "slate",
+                      "value": [
+                        {
+                          "type": "p",
+                          "children": [
+                            {
+                              "text": "Inner panel that starts open."
+                            }
+                          ]
+                        }
+                      ],
+                      "plaintext": "Inner panel that starts open."
+                    }
+                  },
+                  "blocks_layout": {
+                    "items": [
+                      "inner-slate-open"
+                    ]
+                  }
+                },
+                {
+                  "@id": "inner-panel-closed",
+                  "title": "Inner, closed",
+                  "blocks": {
+                    "deep-slate": {
+                      "@type": "slate",
+                      "value": [
+                        {
+                          "type": "p",
+                          "children": [
+                            {
+                              "text": "Two closed containers deep."
+                            }
+                          ]
+                        }
+                      ],
+                      "plaintext": "Two closed containers deep."
+                    }
+                  },
+                  "blocks_layout": {
+                    "items": [
+                      "deep-slate"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "blocks_layout": {
+            "items": [
+              "inner-acc"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-1",
+      "acc-1"
+    ]
+  }
+}

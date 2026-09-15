@@ -32,10 +32,12 @@ import HeadingBlock from './HeadingBlock.astro';
 import SeparatorBlock from './SeparatorBlock.astro';
 import ButtonBlock from './ButtonBlock.astro';
 import HighlightBlock from './HighlightBlock.astro';
+import CalloutBlock from './CalloutBlock.astro';
 import VideoBlock from './VideoBlock.astro';
 import MapsBlock from './MapsBlock.astro';
 import TocBlock from './TocBlock.astro';
 import CodeExampleBlock from './CodeExampleBlock.astro';
+import CookieConsentBlock from './CookieConsentBlock.astro';
 import SummaryItemBlock from './SummaryItemBlock.astro';
 import ContextNavigationBlock from './ContextNavigationBlock.astro';
 
@@ -48,7 +50,7 @@ const KNOWN = new Set<string>([
   'slate', 'introduction', 'image', 'hero', 'teaser', 'slateTable',
   'columns', 'gridBlock', 'accordion', 'slider', 'listing', 'search',
   'form', 'heading', 'separator', 'button', 'highlight', 'video',
-  'maps', 'toc', 'codeExample', 'summary', 'default',
+  'maps', 'toc', 'codeExample', 'cookieConsent', 'summary', 'default',
   'contextNavigation',
 ]);
 ---
@@ -70,10 +72,12 @@ const KNOWN = new Set<string>([
   {type === 'separator' && <SeparatorBlock block={block} />}
   {type === 'button' && <ButtonBlock block={block} />}
   {type === 'highlight' && <HighlightBlock block={block} />}
+  {type === 'callout' && <CalloutBlock block={block} />}
   {type === 'video' && <VideoBlock block={block} />}
   {type === 'maps' && <MapsBlock block={block} />}
   {type === 'toc' && <TocBlock block={block} content={content} />}
   {type === 'codeExample' && <CodeExampleBlock block={block} />}
+  {type === 'cookieConsent' && <CookieConsentBlock block={block} />}
   {type === 'contextNavigation' && <ContextNavigationBlock block={block} blocks={block?.blocks || blocks} />}
   {(type === 'summary' || type === 'default') && <SummaryItemBlock block={block} />}
   {!KNOWN.has(type) && (

@@ -1,0 +1,14 @@
+{
+  "@id": "/warned-value-page",
+  "@type": "Document",
+  "title": "A block holding a value its own rule warns about",
+  "UID": "warned-value-page-uid",
+  "blocks": {
+    "intro-1": {
+      "@type": "slate",
+      "value": [{ "type": "p", "children": [{ "text": "The feed below asks for more items than is wise. That is advice, not a refusal: the page should still save." }] }]
+    },
+    "rss-warned": { "@type": "rssFeed", "feedUrl": "http://localhost:8888/rss-stub", "count": 500, "variation": "summary" }
+  },
+  "blocks_layout": { "items": ["intro-1", "rss-warned"] }
+}

@@ -37,8 +37,10 @@
  * inject `blockId` into the args at every Volto call site, the `hydraContext`
  * branch can be removed — until then, both branches are load-bearing.
  */
-import { getInjectedBlocksConfig } from './injectedVoltoConfig.js';
-import { getBlockTypeSchema, getBlockById, updateBlockById, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue } from './blockPath.js';
+import { getInjectedBlocksConfig, getSlateStyleGlobals, getSlateVocabulary } from './injectedVoltoConfig.js';
+import { normalizeSlateFields, undefinedSlateTypes } from '../../../hydra-js/slateStyles.js';
+import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
+  deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue } from './blockPath.js';
 import { addableSiblingTypes, buildBlockPathMap } from '../../../hydra-js/buildBlockPathMap.js';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
@@ -52,6 +54,9 @@ import {
   getBlockType,
   isSlateFieldType,
   slateNodesText,
+  isBlockReadonly,
+  isBlockPositionLocked,
+  getBlockAddability,
 } from '@volto-hydra/helpers';
 import { getHydraSchemaContext, setHydraSchemaContext, getLiveBlockData } from '../context/index.js';
 // Pure validation/default-application logic lives in schemaValidation.js
@@ -67,6 +72,22 @@ import {
   applySchemaDefaultsToBlock,
   applySchemaDefaultsToBlockWithContext,
 } from './schemaValidation.mjs';
+
+// Conversion-graph logic lives in conversionValidation.mjs so it stays free of
+// the React context barrel (a Playwright gate imports it directly).
+// Re-exported here for backward compat; conversionValidation.mjs is the SSOT.
+export {
+  DEFAULT_TYPE_FIELDS,
+  hasValidDefault,
+  shapeSignature,
+  getConvertibleTypes,
+  validateConversionRegistry,
+} from './conversionValidation.mjs';
+import {
+  DEFAULT_TYPE_FIELDS,
+  getConvertibleTypes,
+  hasValidDefault,
+} from './conversionValidation.mjs';
 
 // Re-export getBlockTypeSchema from blockPath for convenience
 export { getBlockTypeSchema };
@@ -429,13 +450,26 @@ function getTemplateInfoFromNeighbors(context) {
 
   const slotOffer = (neighbor, fixedSlotField) => {
     if (!neighbor?.templateId) return null;
+    // An 'empty' placeholder offers its OWN slot, fixed or not. A fixed block is
+    // otherwise chrome — its slotId is its identity, not an invitation, which is
+    // why fixed blocks only reach a neighbouring slot through next/prevSlotId.
+    // A placeholder is the opposite: it exists to be filled, and its slot is the
+    // slot being filled. Without this a forced region's seeded empty offered
+    // nothing, so a block added or dropped beside it joined no template and the
+    // author had nothing to lock.
+    const isPlaceholder = neighbor['@type'] === 'empty';
     const slotId =
-      !neighbor.fixed && neighbor.slotId
+      (isPlaceholder || !neighbor.fixed) && neighbor.slotId
         ? neighbor.slotId
         : neighbor.fixed && neighbor[fixedSlotField]
           ? neighbor[fixedSlotField]
           : null;
-    if (!slotId) return null;
+    // A placeholder in a FORCED region has no slot of its own — the region IS
+    // the template, so there is nothing to name. Offer the instance anyway and
+    // let the caller mint a slot (it already prefers an existing slotId, then a
+    // neighbour's, then a fresh one). Requiring a slot here is what left a block
+    // dropped into an emptied announcement belonging to nothing.
+    if (!slotId && !isPlaceholder) return null;
     return {
       templateId: neighbor.templateId,
       templateInstanceId: neighbor.templateInstanceId,
@@ -1068,6 +1102,12 @@ export const QUERY_RESULT_FIELDS = {
   effective: { title: 'Published', type: 'date' },
   Creator: { title: 'Author', type: 'string' },
   review_state: { title: 'State', type: 'string' },
+  // The keyword index behind tags/topics — a LIST, so `array`: the `string`
+  // conversion joins ['a','b'] into "a, b", and a renderer that draws one pill
+  // per category then draws none. Without this entry the widget offered no way
+  // to map categories at all, so a block whose recipe declared the mapping had
+  // one nobody could change, and every other block had none.
+  Subject: { title: 'Categories', type: 'array' },
 };
 
 /**
@@ -1154,6 +1194,11 @@ export function resolveChildOwnFields(childBlockConfig) {
   return getDefaultMappingTargets(childBlockConfig);
 }
 
+// Target types whose value must be CONVERTED, not copied: a mapping onto one of
+// these keeps its `{ field, type }` form so expandListingBlocks converts. Plain
+// strings and numbers are copied as they are, and stay in the short form.
+const CONVERTED_TARGET_TYPES = new Set(['link', 'image', 'image_link', 'array']);
+
 /**
  * Single source of truth for the parent/child split.
  *
@@ -1209,12 +1254,20 @@ export function computeSmartDefaults(sourceFields, targetSchema, declaredMapping
       const targetField = typeof mapping === 'string' ? mapping : mapping?.field;
       if (targetField && targetSchema.properties[targetField]) {
         const fieldType = getFieldType(targetSchema.properties[targetField]);
-        // Use object format for special types, plain string for simple string fields
-        if (fieldType === 'link' || fieldType === 'image') {
-          validMappings[sourceField] = { field: targetField, type: fieldType };
-        } else {
-          validMappings[sourceField] = targetField;
-        }
+        const declaredType =
+          typeof mapping === 'object' ? mapping?.type : undefined;
+        // Keep the object format wherever the value needs CONVERTING on its way
+        // to the target: a link array, an image object, or a LIST. `array`
+        // belongs here — a keyword index that returns a single value has to be
+        // carried as a one-item list, or a renderer drawing one pill per entry
+        // draws none. A declared type is never discarded: a recipe that asked
+        // for a conversion meant it.
+        const type =
+          declaredType ||
+          (CONVERTED_TARGET_TYPES.has(fieldType) ? fieldType : undefined);
+        validMappings[sourceField] = type
+          ? { field: targetField, type }
+          : targetField;
       }
     }
     return validMappings;
@@ -1401,6 +1454,54 @@ export function resolveEffectiveBlockSchema(blockId, formData, blockPathMap, blo
   return schema;
 }
 
+/**
+ * Every slate node the page's regions disallow, and what it would become (#295).
+ *
+ * The same walk `applySchemaDefaultsToFormData` does, but reporting instead of
+ * writing — so the migration normalize-on-load performs is visible rather than
+ * arriving as a surprise diff on someone's next save. Called from the editor to
+ * warn, and available to an offline gate (this module loads in bare Node via
+ * the injected config accessors).
+ *
+ * @param {Object} formData
+ * @param {Object} blockPathMap
+ * @param {Object} blocksConfig
+ * @param {Object} intl
+ * @returns {Array<{blockId, field, path, from, to, kind, configError?}>} empty when clean
+ */
+export function reportDisallowedSlateNodes(formData, blockPathMap, blocksConfig, intl) {
+  const report = [];
+  if (!blockPathMap) return report;
+  const globals = getSlateStyleGlobals();
+  const vocabulary = getSlateVocabulary();
+  for (const blockId of Object.keys(blockPathMap)) {
+    const rules = blockPathMap[blockId]?.slateRules;
+    if (!rules) continue;
+    const blockData = getBlockById(formData, blockPathMap, blockId);
+    if (!blockData) continue;
+    const schema = resolveEffectiveBlockSchema(
+      blockId,
+      formData,
+      blockPathMap,
+      blocksConfig,
+      intl,
+    );
+    if (!schema) continue;
+    const { changes } = normalizeSlateFields(blockData, schema, rules, globals);
+    for (const change of changes) report.push({ blockId, ...change });
+
+    // Types nothing renders. Judged against the LIVE registry when the addon has
+    // injected it — inside the editor it always has.
+    for (const [field, def] of Object.entries(schema.properties || {})) {
+      if (def?.widget !== 'slate' && def?.widget !== 'slate_richtext') continue;
+      for (const u of undefinedSlateTypes(blockData[field], rules, vocabulary)) {
+        report.push({ blockId, field, path: u.path, from: u.type, to: null, kind: 'undefined-type' });
+      }
+    }
+  }
+  return report;
+}
+
 export function applySchemaDefaultsToFormData(formData, blockPathMap, blocksConfig, intl) {
   if (!blockPathMap) return formData;
 
@@ -1424,6 +1525,24 @@ export function applySchemaDefaultsToFormData(formData, blockPathMap, blocksConf
     const updatedBlock = applySchemaDefaultsToBlock(blockData, schema);
     if (updatedBlock !== blockData) {
       result = updateBlockById(result, blockPathMap, blockId, updatedBlock);
+    }
+
+    // Downgrade slate nodes the block's REGION disallows (#295). Done here, in
+    // the pass every mutation already runs, so each INITIAL_DATA / FORM_DATA
+    // path gets it without its own call — and existing content migrates by
+    // being opened rather than by a separate script.
+    const slateRules = blockPathMap[blockId]?.slateRules;
+    if (slateRules) {
+      const current = getBlockById(result, blockPathMap, blockId);
+      const { block: normalized } = normalizeSlateFields(
+        current,
+        schema,
+        slateRules,
+        getSlateStyleGlobals(),
+      );
+      if (normalized !== current) {
+        result = updateBlockById(result, blockPathMap, blockId, normalized);
+      }
     }
 
     // `@type` RULE — a position-driven type. When a typed object_list item carries
@@ -1933,6 +2052,30 @@ function createFieldRulesEnhancer(rulesConfig) {
  * Returns: false (hide), object (field definition), or undefined (no change).
  * @private
  */
+/**
+ * What a MATCHED rule yields: its `set` definition, carrying any `error` or
+ * `warning` it also declares.
+ *
+ * An ERROR is refused — a registered validator turns `hydraRuleError` into a
+ * form error, so the save does not go through. A WARNING is said, not refused:
+ * it is deliberately NOT a validator, because advice ("this SVG is not drawn to
+ * the 48×48 grid") must not block a save over artwork that may be a little off
+ * and still be the right artwork. The sidebar renders it; nothing blocks.
+ *
+ * Shared by both rule forms — a single `{ when, … }` and an entry in a switch —
+ * so `error` and `warning` mean the same thing wherever they are written.
+ * @private
+ */
+function matchedRuleResult(rule) {
+  const set = 'set' in rule ? rule.set : undefined;
+  if (!('error' in rule || 'warning' in rule) || set === false) return set;
+  return {
+    ...(set && typeof set === 'object' ? set : {}),
+    ...('error' in rule ? { hydraRuleError: rule.error } : {}),
+    ...('warning' in rule ? { hydraRuleWarning: rule.warning } : {}),
+  };
+}
+
 function evaluateFieldRule(rule, formData, args) {
   // false → always hide
   if (rule === false) return false;
@@ -1943,18 +2086,27 @@ function evaluateFieldRule(rule, formData, args) {
       // Bare false acts as a catch-all "hide" (matches with no condition)
       if (r === false) return false;
       if (!r.when || evaluateWhenCondition(r.when, formData, args)) {
-        if ('set' in r) return r.set;
-        return undefined; // matched but no set → keep current
+        if ('set' in r || 'error' in r || 'warning' in r) {
+          return matchedRuleResult(r);
+        }
+        return undefined; // matched but says nothing → keep current
       }
     }
     return undefined; // no match → keep current
   }
 
-  // Object with 'when' or 'set' → single rule
-  if (rule && typeof rule === 'object' && ('when' in rule || 'set' in rule)) {
+  // Object with 'when', 'set', 'error' or 'warning' → single rule
+  if (
+    rule &&
+    typeof rule === 'object' &&
+    ('when' in rule || 'set' in rule || 'error' in rule || 'warning' in rule)
+  ) {
     if (!rule.when || evaluateWhenCondition(rule.when, formData, args)) {
       // Condition met (or no condition)
-      return 'set' in rule ? rule.set : undefined;
+      // Keyed on the field, which is why a rule spanning two fields is written
+      // on the field that should show the message rather than needing a
+      // block-level address of its own.
+      return matchedRuleResult(rule);
     }
     // Condition not met → use else (default: undefined = keep current)
     return 'else' in rule ? rule.else : undefined;
@@ -2001,7 +2153,7 @@ function resolveWhenField(fieldPath, formData, args) {
   const blockPathMap = args?.blockPathMap || hydraContext?.blockPathMap;
   const curBlockId =
     args?.blockId ?? hydraContext?.currentBlockId ?? PAGE_BLOCK_UID;
-  const { blockId: targetBlockId, fieldName } = resolveBlockFieldPath(
+  let { blockId: targetBlockId, fieldName } = resolveBlockFieldPath(
     fieldPath,
     curBlockId,
     blockPathMap,
@@ -2051,6 +2203,11 @@ function resolveWhenField(fieldPath, formData, args) {
     });
   }
 
+  // `a.b.0.c` addresses field `a` and then walks into its value. A field's own
+  // name never contains a dot, so the split is unambiguous.
+  const [headField, ...valuePath] = fieldName.split('.');
+  if (valuePath.length > 0) fieldName = headField;
+
   const def = schema ? getFieldDef(schema, fieldName) : undefined;
 
   // REGION → array of child block TYPES. object_list via widget, blocks_layout via
@@ -2070,6 +2227,43 @@ function resolveWhenField(fieldPath, formData, args) {
   }
 
   const raw = block ? getFieldValue(block, fieldName) : undefined;
+
+  // A path INTO the field's value, e.g. `image_scales.image.0.content-type`.
+  //
+  // Some of what a rule needs to ask about is not a field at all. Volto stores
+  // an image's mime type and dimensions ALONGSIDE the reference, in
+  // `image_scales`, so "is this an SVG" and "is it square" are answerable from
+  // data the block already carries — but only if a path can reach inside a
+  // value instead of stopping at the field.
+  //
+  // The surface comes from the VALUE here, not from a schema: there is no field
+  // definition for `image_scales.image.0.width`, so nothing else can say
+  // whether it is a number. That is the one place this rule engine sniffs a
+  // value, and it is because a declared type does not exist to consult.
+  if (valuePath.length > 0) {
+    let value = raw;
+    for (const step of valuePath) {
+      if (value == null) break;
+      value = Array.isArray(value) ? value[Number(step)] : value[step];
+    }
+    // Nothing there. A declared field would still know its type from the
+    // schema; a sub-path has nothing to ask, so it gets its own surface rather
+    // than being guessed at as a string — which would make a numeric operator
+    // throw on content that simply has no image yet.
+    if (value === undefined || value === null) {
+      return { kind: 'unset', value: undefined, fieldPath };
+    }
+    const kind =
+      typeof value === 'number'
+        ? 'number'
+        : typeof value === 'boolean'
+          ? 'boolean'
+          : Array.isArray(value)
+            ? 'array'
+            : 'string';
+    return { kind, value, fieldPath };
+  }
+
   const typeStr = def ? getFieldTypeString(def) : undefined;
   const type = def?.type;
 
@@ -2104,9 +2298,60 @@ function evaluateWhenCondition(when, formData, args) {
       expected && typeof expected === 'object' && !Array.isArray(expected)
         ? expected
         : { is: expected };
-    if (!evaluateOperators(surface, operators)) return false;
+    const resolved = resolveOperands(operators, formData, args);
+    // A reference to a field that holds nothing cannot be compared against, and
+    // must not read as "no constraint" — that would silently make the condition
+    // TRUE and fire the rule on every form where the other field is not filled
+    // in yet.
+    if (resolved === UNCOMPARABLE) return false;
+    if (!evaluateOperators(surface, resolved)) return false;
   }
   return true;
+}
+
+/**
+ * Resolve `{ field: <path> }` operands to the value that field holds.
+ *
+ * Every operand was a literal, so a rule could only ever compare a field to a
+ * constant — `{ endDate: { lt: '2026-01-01' } }`. Comparing one field to
+ * ANOTHER is the ordinary case for a cross-field check (an end date before its
+ * start date, a maximum below its minimum), and there was no way to say it.
+ *
+ * The reference goes through the same path grammar as a `when` key, so `../`
+ * steps and value sub-paths work in an operand exactly as they do in a key. A
+ * reference to a field holding NOTHING returns UNCOMPARABLE and the whole
+ * condition is false — there is nothing to compare against, and treating that
+ * as "no constraint" would fire the rule on every form where the other field is
+ * not filled in yet.
+ * @private
+ */
+const UNCOMPARABLE = Symbol('uncomparable');
+
+function resolveOperands(operators, formData, args) {
+  let resolved;
+  for (const [op, operand] of Object.entries(operators)) {
+    if (
+      operand &&
+      typeof operand === 'object' &&
+      !Array.isArray(operand) &&
+      typeof operand.field === 'string'
+    ) {
+      let value = resolveWhenField(operand.field, formData, args).value;
+      if (value === undefined || value === null) return UNCOMPARABLE;
+      // Basic arithmetic on the reference, so a comparison can carry a
+      // tolerance: "square, within a tenth" is `width` against
+      // `{ field: 'height', times: 1.1 }`. Without it a cross-field comparison
+      // can only ever be exact, which no real measurement is.
+      if (typeof operand.times === 'number' || typeof operand.plus === 'number') {
+        if (typeof value !== 'number') return UNCOMPARABLE;
+        if (typeof operand.times === 'number') value *= operand.times;
+        if (typeof operand.plus === 'number') value += operand.plus;
+      }
+      resolved = resolved || { ...operators };
+      resolved[op] = value;
+    }
+  }
+  return resolved || operators;
 }
 
 /** Throw when an operator is used on a field surface it can't act on. @private */
@@ -2183,6 +2428,15 @@ function toRegExp(op, operand) {
  */
 function evaluateOperators(surface, operators) {
   const { kind, value } = surface;
+
+  // An unset sub-path answers only the presence questions. Every comparison is
+  // false: there is nothing to compare, and a rule must not fire on a block
+  // whose image simply has not been chosen yet.
+  if (kind === 'unset') {
+    if ('isNotSet' in operators) return operators.isNotSet === true;
+    if ('isSet' in operators) return operators.isSet === false;
+    return false;
+  }
   const {
     is,
     isNot,
@@ -2204,6 +2458,10 @@ function evaluateOperators(surface, operators) {
     notRegex,
   } = operators;
 
+  // Presence (isSet/isNotSet) goes through `isPresent`, which treats an empty
+  // array as unset — the array widgets (multiselect, object_browser) leave `[]`
+  // behind when the last entry is removed rather than dropping the key, so a
+  // field the author has just cleared must not still read as answered.
   if (isSet !== undefined && (isSet ? !isPresent(surface) : isPresent(surface)))
     return false;
   if (
@@ -2418,31 +2676,6 @@ export function getBlockTypeChoices(options, blocksConfig, blockPathMap, blockId
 // pulls any of these onto its own fields (copy-from-target). The set stays an
 // allowlist so genuine mistakes — this block's own field names / fieldRules keys
 // (label, field, required, hidden, …) put in @default — still warn.
-const DEFAULT_TYPE_FIELDS = new Set([
-  '@id',
-  'title',
-  'description',
-  'image',
-  'hasPreviewImage',
-  'Subject',
-  'created',
-  'modified',
-  'effective',
-  'expires',
-  'start',
-  'end',
-]);
-
-/**
- * Check if a block config has a valid @default mapping.
- * Valid means all keys are from the canonical @default field set.
- */
-function hasValidDefault(blockConfig) {
-  const defaultMapping = blockConfig?.fieldMappings?.['@default'];
-  if (!defaultMapping) return false;
-  return Object.keys(defaultMapping).every(key => DEFAULT_TYPE_FIELDS.has(key));
-}
-
 /**
  * Validate fieldMappings on a block config. Logs warnings for invalid entries.
  * Call during INIT to catch configuration errors early.
@@ -2468,71 +2701,6 @@ export function validateFieldMappings(blockType, blockConfig) {
   }
 }
 
-/**
- * Get block types that the given source type can be converted to.
- *
- * Scans all blocks to find ones reachable from the source type through
- * fieldMappings. Types without fieldMappings never appear in results.
- *
- * Edge rules:
- * - Explicit fieldMappings[currentType] always creates an edge.
- * - @default only creates an edge if BOTH types have valid @default mappings
- *   (keys from the canonical set: @id, title, description, image).
- *   Types with invalid @default keys (e.g., form fields, facets) are ignored.
- *
- * @param {string} sourceType - The current block's @type
- * @param {Object} blocksConfig - Block configuration registry
- * @returns {Array} - Array of { type, title } objects for convertible types
- */
-export function getConvertibleTypes(sourceType, blocksConfig, allowedTypes = null) {
-  if (!sourceType || !blocksConfig) return [];
-
-  // Source block must have fieldMappings defined to be convertible
-  const sourceConfig = blocksConfig[sourceType];
-  if (!sourceConfig?.fieldMappings) return [];
-
-  // BFS to find all reachable types through the conversion graph
-  const reachable = new Set();
-  const queue = [sourceType];
-  const visited = new Set([sourceType]);
-
-  while (queue.length > 0) {
-    const currentType = queue.shift();
-
-    for (const [blockType, blockConfig] of Object.entries(blocksConfig)) {
-      if (visited.has(blockType)) continue;
-      if (!blockConfig.fieldMappings) continue;
-
-      // Explicit mapping from currentType → blockType
-      if (blockConfig.fieldMappings[currentType]) {
-        reachable.add(blockType);
-        visited.add(blockType);
-        queue.push(blockType);
-        continue;
-      }
-
-      // @default: only if BOTH types have valid @default (canonical keys)
-      if (blockConfig.fieldMappings['@default'] &&
-          hasValidDefault(blockConfig) &&
-          hasValidDefault(blocksConfig[currentType])) {
-        reachable.add(blockType);
-        visited.add(blockType);
-        queue.push(blockType);
-      }
-    }
-  }
-
-  // Filter by container's allowedTypes if provided
-  const allowedSet = allowedTypes ? new Set(allowedTypes) : null;
-
-  // Convert to array of { type, title }
-  return Array.from(reachable)
-    .filter(blockType => !allowedSet || allowedSet.has(blockType))
-    .map(blockType => ({
-      type: blockType,
-      title: blocksConfig[blockType]?.title || blockType,
-    }));
-}
 
 /**
  * Static map { sourceType: [reachableTypes] } over the fieldMappings conversion
@@ -3087,4 +3255,278 @@ export function syncChildBlockTypes(formData, blockPathMap, blockId, oldBlockDat
   }
 
   return result;
+}
+
+/**
+ * Re-derive a moved block's template membership from where it LANDED.
+ *
+ * One implementation, because there were two moves and only one of them did
+ * this. MOVE_BLOCKS (drag and drop) recomputed membership from the block's new
+ * neighbours; the chooser's ask-first drop (convert + move in one update) moved
+ * the block and never recomputed, so a block dropped into a template region
+ * through that path kept its source membership — or none — and the region it
+ * landed in did not own it.
+ *
+ * Membership on a move is GATED ON EDIT MODE (architecture.md » "Template
+ * membership"):
+ *  - normal mode → the block takes on the membership of wherever it lands, so
+ *    its source membership is stripped and re-derived from the destination (a
+ *    slot, a template-instance container, or NOTHING → plain page content);
+ *  - template edit mode → the author's slotId is EXPLICIT (you rename slots, you
+ *    don't change them by dragging), so a move that stays INSIDE the template
+ *    keeps its slotId. A move OUT still strips — drag out exits, even while
+ *    editing.
+ *
+ * Fixed template blocks always keep their identity: their slot/fixed IS the
+ * template. "Inside the template" means a same-instance block sits both before
+ * AND after the landing gap.
+ *
+ * @param {Object} formData
+ * @param {Object} blockPathMap - map for `formData`
+ * @param {string} blockId - the block that just moved
+ * @param {Object} options
+ * @param {Object} options.blocksConfig
+ * @param {Object} options.intl
+ * @param {Array|null} [options.templateEditMode] - unlocked instance ids
+ * @param {boolean} [options.insertAfter]
+ * @returns {Object} formData (unchanged object identity when nothing changed)
+ */
+export function applyMembershipAfterMove(formData, blockPathMap, blockId, options) {
+  const {
+    blocksConfig,
+    intl,
+    templateEditMode = null,
+    insertAfter,
+  } = options;
+  const originalBlockData = getBlockById(formData, blockPathMap, blockId);
+  if (!originalBlockData) return formData;
+  const targetContainerConfig = getContainerFieldConfig(
+    blockId,
+    blockPathMap,
+    formData,
+    blocksConfig,
+    intl,
+  );
+  if (!targetContainerConfig) return formData;
+
+  const { parentId: containerId, region: containerRegion } = targetContainerConfig;
+  const containerPath =
+    containerId === PAGE_BLOCK_UID ? [] : blockPathMap[containerId]?.path;
+  const container = containerPath
+    ? getBlockByPath(formData, containerPath)
+    : formData;
+  const fullLayout = container?.blocks_layout?.[containerRegion || 'items'] || [];
+  // The block itself is EXCLUDED from the neighbours: it already sits in the
+  // layout at this index, so a naive getNeighborData(position) returns the block
+  // itself and it offers its own (stale, source) slot back to itself — keeping
+  // membership it should have shed. Excluding it makes `position` the insertion
+  // gap between its real prev/next neighbours.
+  const position = fullLayout.indexOf(blockId);
+  const layoutItems = fullLayout.filter((id) => id !== blockId);
+
+  const instId = originalBlockData.templateInstanceId;
+  const editingThisTemplate =
+    !!instId && (templateEditMode || []).includes(instId);
+  const inSameInstance = (id) =>
+    id && formData.blocks?.[id]?.templateInstanceId === instId;
+  const insideTemplate =
+    editingThisTemplate &&
+    layoutItems.slice(0, position).some(inSameInstance) &&
+    layoutItems.slice(position).some(inSameInstance);
+
+  let blockData = originalBlockData;
+  if (!originalBlockData.fixed && !insideTemplate) {
+    blockData = { ...blockData };
+    delete blockData.templateId;
+    delete blockData.templateInstanceId;
+    delete blockData.slotId;
+    delete blockData.readOnly;
+  }
+  const updatedBlockData = applyBlockDefaultsWithContext(blockData, {
+    containerId,
+    field: containerRegion,
+    position,
+    insertAfter,
+    layoutItems,
+    allBlocks: formData.blocks,
+    blockPathMap,
+    blocksConfig,
+    intl,
+  });
+  // Compare against originalBlockData, not the (possibly membership-stripped)
+  // copy — otherwise a stripped block whose recompute is a no-op is never
+  // written back, and the stored block keeps its stale source membership.
+  if (updatedBlockData === originalBlockData) return formData;
+  return updateBlockById(formData, blockPathMap, blockId, updatedBlockData);
+}
+
+/**
+ * Restore the invariants every structural edit owes, in the order they owe them.
+ *
+ * Adding, deleting, moving and dropping are different edits, but afterwards they
+ * all owe the same three things — and the ORDER is the part that kept being got
+ * wrong, in a different way by each caller:
+ *
+ *   1. a block that LANDED somewhere new takes that region's membership;
+ *   2. THEN a placeholder it was dropped onto is removed — after (1), because in
+ *      a forced region the placeholder is the only neighbour carrying the
+ *      template, so removing it first leaves nothing to derive from;
+ *   3. a region a block was taken OUT of is re-seeded if that emptied it, so a
+ *      forced region always keeps a placeholder to select and add into.
+ *
+ * Each caller had implemented the subset it happened to need: delete re-seeded
+ * but only in one of its two paths; the drag re-derived membership, the chooser's
+ * drop didn't; both removed placeholders, in different places relative to (1).
+ * Every one of those was a bug, and every one of them was the same bug.
+ *
+ * @param {Object} formData
+ * @param {Object} blockPathMap - map for `formData`
+ * @param {Object} what - what the edit did
+ * @param {string[]} [what.landed] - blocks that arrived somewhere new
+ * @param {string[]} [what.replacedPlaceholders] - 'empty' blocks that were dropped onto
+ * @param {Object[]} [what.emptiedContainers] - containerConfigs a block came out of
+ * @param {Object} options - blocksConfig, intl, uuidGenerator, templateEditMode,
+ *   metadata, and insertAfterById for the membership recompute
+ * @returns {{formData: Object, blockPathMap: Object}}
+ */
+export function settleBlockStructure(formData, blockPathMap, what, options) {
+  const { landed = [], replacedPlaceholders = [], emptiedContainers = [] } = what;
+  const {
+    blocksConfig,
+    intl,
+    uuidGenerator,
+    templateEditMode = null,
+    metadata,
+    insertAfterById = {},
+  } = options;
+  let out = formData;
+  let map = blockPathMap;
+  const remap = () => {
+    map = buildBlockPathMap(out, blocksConfig, intl);
+  };
+
+  for (const blockId of landed) {
+    const next = applyMembershipAfterMove(out, map, blockId, {
+      blocksConfig,
+      intl,
+      templateEditMode,
+      insertAfter: insertAfterById[blockId],
+    });
+    if (next !== out) {
+      out = next;
+      remap();
+    }
+  }
+
+  for (const placeholderId of replacedPlaceholders) {
+    const next = removeReplacedPlaceholder(out, map, placeholderId, {
+      blocksConfig,
+      intl,
+    });
+    if (next !== out) {
+      out = next;
+      remap();
+    }
+  }
+
+  for (const containerConfig of emptiedContainers) {
+    if (!containerConfig) continue;
+    const next = ensureEmptyBlockIfEmpty(
+      out,
+      containerConfig,
+      map,
+      uuidGenerator,
+      blocksConfig,
+      { intl, metadata, properties: out },
+    );
+    if (next !== out) {
+      out = next;
+      remap();
+    }
+  }
+
+  return { formData: out, blockPathMap: map };
+}
+
+/**
+ * Delete blocks and settle the structure afterwards.
+ *
+ * ONE delete, because there were two: View.jsx's single (DELETE_BLOCK, the
+ * toolbar's Remove) deleted and re-seeded; its multi (DELETE_BLOCKS,
+ * multi-select) looped and never re-seeded, so whether a forced region survived
+ * being emptied depended on how many blocks you had selected. The lock backstop
+ * had drifted the other way — the multi path had it, the single one didn't.
+ *
+ * @returns {{formData, blockPathMap, deleted: string[]}}
+ */
+export function deleteBlocks(formData, blockPathMap, blockIds, options = {}) {
+  const { blocksConfig, intl, templateEditMode = null } = options;
+  let out = formData;
+  let map = blockPathMap;
+  const deleted = [];
+  const emptiedContainers = [];
+  for (const blockId of blockIds) {
+    const blockData = getBlockById(out, map, blockId);
+    // Missing, or locked and not being edited: leave it alone. A backstop — the
+    // iframe filters first (hydra._filterMutableBlockUids).
+    if (!canMutateBlock(blockData, templateEditMode)) continue;
+    const containerConfig = getContainerFieldConfig(
+      blockId,
+      map,
+      out,
+      blocksConfig,
+      intl,
+    );
+    out = deleteBlockFromContainer(out, map, blockId, containerConfig);
+    map = buildBlockPathMap(out, blocksConfig, intl);
+    emptiedContainers.push(containerConfig);
+    deleted.push(blockId);
+  }
+  const settled = settleBlockStructure(out, map, { emptiedContainers }, options);
+  return { ...settled, deleted };
+}
+
+/**
+ * May a block be mutated in place — moved, deleted, retyped?
+ *
+ * The backstop behind the iframe-side filter (hydra._filterMutableBlockUids). A
+ * block that is read-only, or whose position is locked, belongs to a template
+ * nobody has unlocked.
+ */
+export function canMutateBlock(blockData, templateEditMode) {
+  if (!blockData) return false;
+  return (
+    !isBlockReadonly(blockData, templateEditMode) &&
+    !isBlockPositionLocked(blockData, templateEditMode)
+  );
+}
+
+/**
+ * May something be inserted next to this block?
+ *
+ * A different question from canMutateBlock — "put something beside it" is not
+ * "change it" — but the same backstop, and paste had neither. Delete and move
+ * guarded themselves and paste didn't, so pasting after locked template chrome
+ * injected content into a template nobody had unlocked.
+ *
+ * getBlockAddability is hydra's own answer, used by the toolbar to decide
+ * whether to draw a '+'. Asking it here means the mutation agrees with the UI
+ * rather than re-deciding.
+ */
+export function canInsertBesideBlock(
+  blockId,
+  blockPathMap,
+  blockData,
+  templateEditMode,
+) {
+  // No target block (a paste into an empty page-level region) is for the region
+  // to allow or refuse, not this guard.
+  if (!blockData) return true;
+  const addability = getBlockAddability(
+    blockId,
+    blockPathMap,
+    blockData,
+    templateEditMode,
+  );
+  return !!(addability.canInsertAfter || addability.canReplace);
 }

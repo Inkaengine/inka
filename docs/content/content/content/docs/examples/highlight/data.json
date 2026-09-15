@@ -40,7 +40,7 @@
           "@id": "/docs/examples/content-types/page"
         }
       ],
-      "image": "/docs/examples/content-types/image-light/@@images/image"
+      "image": "/docs/examples/content-types/example-image.jpg/@@images/image"
     },
     "417e7343-af04-4da4-96bf-29321a3e0fc6": {
       "@type": "highlight",
@@ -78,7 +78,7 @@
           "@id": "/docs/examples/content-types/page"
         }
       ],
-      "image": "/docs/examples/content-types/image-light/@@images/image"
+      "image": "/docs/examples/content-types/example-image.jpg/@@images/image"
     },
     "67a6a73a-5ae7-4e14-a11b-bd0139e56513": {
       "@type": "highlight",
@@ -116,7 +116,7 @@
           "@id": "/docs/examples/content-types/page"
         }
       ],
-      "image": "/docs/examples/content-types/image-light/@@images/image"
+      "image": "/docs/examples/content-types/example-image.jpg/@@images/image"
     },
     "8d932379-1247-4281-bd30-dfecd5b3c378": {
       "@type": "highlight",
@@ -154,7 +154,7 @@
           "@id": "/docs/examples/content-types/page"
         }
       ],
-      "image": "/docs/examples/content-types/image-light/@@images/image"
+      "image": "/docs/examples/content-types/example-image.jpg/@@images/image"
     },
     "94655cc3-817d-48ba-bc20-6e9f7796dc46": {
       "@type": "highlight",
@@ -192,7 +192,7 @@
           "@id": "/docs/examples/content-types/page"
         }
       ],
-      "image": "/docs/examples/content-types/image-light/@@images/image"
+      "image": "/docs/examples/content-types/example-image.jpg/@@images/image"
     },
     "af3c704a-1f80-48c8-843b-dc29368d43d9": {
       "@type": "title"
@@ -207,7 +207,7 @@
           "@id": "ref-highlight-schema-javascript-80590c",
           "label": "Schema",
           "language": "javascript",
-          "code": "{\n  \"highlight\": {\n    \"blockSchema\": {\n      \"properties\": {\n        \"title\": {\n          \"title\": \"Title\"\n        },\n        \"description\": {\n          \"title\": \"Description\",\n          \"widget\": \"slate\"\n        },\n        \"image\": {\n          \"title\": \"Background Image\",\n          \"widget\": \"image\"\n        },\n        \"cta_title\": {\n          \"title\": \"CTA Text\"\n        },\n        \"cta_link\": {\n          \"title\": \"CTA Link\",\n          \"widget\": \"object_browser\",\n          \"mode\": \"link\"\n        }\n      }\n    }\n  }\n}"
+          "code": "{\n  \"highlight\": {\n    \"blockSchema\": {\n      \"properties\": {\n        \"title\": {\n          \"title\": \"Title\"\n        },\n        \"description\": {\n          \"title\": \"Description\",\n          \"widget\": \"slate\",\n          \"type\": \"array\"\n        },\n        \"image\": {\n          \"title\": \"Background Image\",\n          \"widget\": \"image\"\n        },\n        \"cta_title\": {\n          \"title\": \"CTA Text\"\n        },\n        \"cta_link\": {\n          \"title\": \"CTA Link\",\n          \"widget\": \"object_browser\",\n          \"mode\": \"link\"\n        }\n      }\n    }\n  }\n}"
         }
       ]
     },
@@ -248,12 +248,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  import SlateNode from './SlateNode.svelte';\n  export let block;\n  $: ctaLink = block.cta_link?.[0]?.['@id'] || '';\n\n  const gradients = {\n    'highlight-custom-color-1': 'linear-gradient(135deg, #1e3a5f, #2563eb)',\n    'highlight-custom-color-2': 'linear-gradient(135deg, #064e3b, #059669)',\n    'highlight-custom-color-3': 'linear-gradient(135deg, #581c87, #9333ea)',\n    'highlight-custom-color-4': 'linear-gradient(135deg, #78350f, #d97706)',\n    'highlight-custom-color-5': 'linear-gradient(135deg, #881337, #e11d48)',\n  };\n  $: gradient = gradients[block.styles?.descriptionColor] || 'linear-gradient(135deg, #334, #556)';\n  $: bgStyle = block.image\n    ? `background-image:url(${block.image});background-size:cover;background-position:center`\n    : `background:${gradient}`;\n</script>\n\n<section\n  data-block-uid={block['@uid']}\n  class=\"highlight-block\"\n  style=\"{bgStyle};padding:40px 20px;color:white;border-radius:8px\"\n>\n  <div class=\"highlight-overlay\" style=\"background:rgba(0,0,0,0.4);padding:30px;border-radius:8px\">\n    <h2 data-edit-text=\"title\">{block.title}</h2>\n    <div class=\"highlight-body\" data-edit-text=\"description\">\n      {#each block.description || [] as node, i (i)}\n        <SlateNode {node} />\n      {/each}\n    </div>\n    {#if block.cta_title}\n      <a href={ctaLink} data-edit-text=\"cta_title\" data-edit-link=\"cta_link\" class=\"highlight-cta\"\n        style=\"display:inline-block;padding:10px 20px;background:#007eb1;color:white;text-decoration:none;border-radius:4px;margin-top:16px\">\n        {block.cta_title}\n      </a>\n    {/if}\n  </div>\n</section>"
-        },
-        {
-          "@id": "ref-highlight-rendering-astro-5277f3",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\n/**\n * Highlight block. Background is either an image or a gradient chosen\n * from a small palette by the editor's color picker. Description is a\n * slate value, and there's an optional CTA link.\n */\nimport SlateNode from './SlateNode.astro';\nconst { block } = Astro.props;\nconst ctaLink = block.cta_link?.[0]?.['@id'] || '';\nconst gradients: Record<string, string> = {\n  'highlight-custom-color-1': 'linear-gradient(135deg, #1e3a5f, #2563eb)',\n  'highlight-custom-color-2': 'linear-gradient(135deg, #064e3b, #059669)',\n  'highlight-custom-color-3': 'linear-gradient(135deg, #581c87, #9333ea)',\n  'highlight-custom-color-4': 'linear-gradient(135deg, #78350f, #d97706)',\n  'highlight-custom-color-5': 'linear-gradient(135deg, #881337, #e11d48)',\n};\nconst gradient = gradients[block.styles?.descriptionColor] || 'linear-gradient(135deg, #334, #556)';\nconst bgStyle = block.image\n  ? `background-image:url(${block.image});background-size:cover;background-position:center`\n  : `background:${gradient}`;\nconst description = block.description || [];\n---\n<section\n  class=\"highlight-block\"\n  style={`${bgStyle};padding:40px 20px;color:white;border-radius:8px`}\n>\n  <div class=\"highlight-overlay\" style=\"background:rgba(0,0,0,0.4);padding:30px;border-radius:8px\">\n    <h2 data-edit-text=\"title\">{block.title}</h2>\n    <div class=\"highlight-body\" data-edit-text=\"description\">\n      {description.map((node: any) => <SlateNode node={node} />)}\n    </div>\n    {block.cta_title && (\n      <a href={ctaLink} data-edit-text=\"cta_title\" data-edit-link=\"cta_link\" class=\"highlight-cta\"\n        style=\"display:inline-block;padding:10px 20px;background:#007eb1;color:white;text-decoration:none;border-radius:4px;margin-top:16px\">\n        {block.cta_title}\n      </a>\n    )}\n  </div>\n</section>"
         }
       ]
     },

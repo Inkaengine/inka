@@ -72,7 +72,7 @@
           "@id": "ref-introduction-schema-javascript-e14a03",
           "label": "Schema",
           "language": "javascript",
-          "code": "{\n  \"introduction\": {\n    \"blockSchema\": {\n      \"properties\": {\n        \"value\": {\n          \"title\": \"Text\",\n          \"widget\": \"slate\"\n        }\n      }\n    }\n  }\n}"
+          "code": "{\n  \"introduction\": {\n    \"blockSchema\": {\n      \"properties\": {\n        \"value\": {\n          \"title\": \"Text\",\n          \"widget\": \"slate\",\n          \"type\": \"array\"\n        }\n      }\n    }\n  }\n}"
         }
       ]
     },
@@ -113,12 +113,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  import SlateNode from './SlateNode.svelte';\n  export let block;\n</script>\n\n<div data-block-uid={block['@uid']} class=\"introduction-block\">\n  <div class=\"introduction-body\" data-edit-text=\"value\">\n    {#each block.value || [] as node, i (i)}\n      <SlateNode {node} />\n    {/each}\n  </div>\n</div>"
-        },
-        {
-          "@id": "ref-introduction-rendering-astro-6e9a3b",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\n/**\n * Introduction block: a slate-style value tree rendered into a labeled\n * container. Edits attach via `data-edit-text=\"value\"` — the bridge syncs\n * the rendered text back to the block's `value` field.\n *\n * No outer `data-block-uid` — BlockRenderer wraps every block.\n */\nimport SlateNode from './SlateNode.astro';\nconst { block } = Astro.props;\nconst value = block?.value || [];\n---\n<div class=\"introduction-block\">\n  <div class=\"introduction-body\" data-edit-text=\"value\">\n    {value.map((node: any) => <SlateNode node={node} />)}\n  </div>\n</div>"
         }
       ]
     },

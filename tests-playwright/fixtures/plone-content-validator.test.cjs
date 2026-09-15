@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas } = require('./plone-content-validator.cjs');
 
 /**
  * Build a minimal plone.exportimport content tree under a temp dir.
@@ -197,6 +197,109 @@ describe('plone-content-validator validate()', () => {
     );
   });
 
+  // The two tests above use path-shaped directories (section/child/data.json).
+  // Real distributions are UID-keyed and FLAT — every data.json sits in its own
+  // <uid>/ dir and the hierarchy lives ONLY in the `@id` field. Deriving the
+  // parent from the directory path silently no-ops on that layout, which is how
+  // 90 of 150 objects got dropped at import with nothing going red.
+  it('reports child before parent in a UID-keyed (flat) layout', () => {
+    const { root, contentDir } = buildFixture({
+      dataFiles: [
+        'plone_site_root/data.json',
+        'childuid12345678/data.json',   // /components/card — child first
+        'parentuid1234567/data.json',   // /components      — parent second
+      ],
+    });
+    const flat = {
+      childuid12345678: { '@id': '/components/card', id: 'card' },
+      parentuid1234567: { '@id': '/components', id: 'components' },
+    };
+    for (const [uid, item] of Object.entries(flat)) {
+      fs.mkdirSync(path.join(contentDir, uid), { recursive: true });
+      fs.writeFileSync(
+        path.join(contentDir, uid, 'data.json'),
+        JSON.stringify({ ...item, '@type': 'Document', UID: uid }),
+      );
+    }
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('appears before its parent')),
+      r.errors.join('\n'),
+    );
+  });
+
+  it('reports a missing parent container in a UID-keyed (flat) layout', () => {
+    const { root, contentDir } = buildFixture({
+      dataFiles: ['plone_site_root/data.json', 'orphanuid1234567/data.json'],
+    });
+    fs.mkdirSync(path.join(contentDir, 'orphanuid1234567'), { recursive: true });
+    fs.writeFileSync(
+      path.join(contentDir, 'orphanuid1234567', 'data.json'),
+      JSON.stringify({
+        '@id': '/editing/pages', '@type': 'Document', id: 'pages', UID: 'orphanuid1234567',
+      }),
+    );
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('parent container missing')),
+      r.errors.join('\n'),
+    );
+  });
+
+  it('accepts a correctly ordered UID-keyed (flat) layout', () => {
+    const { root, contentDir } = buildFixture({
+      dataFiles: [
+        'plone_site_root/data.json',
+        'parentuid1234567/data.json',   // parent first
+        'childuid12345678/data.json',   // child second
+      ],
+    });
+    const flat = {
+      parentuid1234567: { '@id': '/components', id: 'components' },
+      childuid12345678: { '@id': '/components/card', id: 'card' },
+    };
+    for (const [uid, item] of Object.entries(flat)) {
+      fs.mkdirSync(path.join(contentDir, uid), { recursive: true });
+      fs.writeFileSync(
+        path.join(contentDir, uid, 'data.json'),
+        JSON.stringify({ ...item, '@type': 'Document', UID: uid }),
+      );
+    }
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(
+      !r.errors.some((e) => e.includes('appears before its parent') || e.includes('parent container missing')),
+      r.errors.join('\n'),
+    );
+  });
+
+  // A child whose id shadows an attribute the FTI machinery reads makes its
+  // CONTAINER un-serializable: BTreeFolder2Base.__getattr__ resolves the name
+  // out of _tree, so getViewMethod's `getattr(aq_base(context), "layout")`
+  // returns the child object, calls it unwrapped, and plone.restapi 500s with
+  // `AttributeError: REQUEST`. /components died this way in production.
+  it('reports a content id that shadows the layout attribute', () => {
+    const { root, contentDir } = buildFixture({
+      dataFiles: ['plone_site_root/data.json', 'shadowuid1234567/data.json'],
+    });
+    fs.mkdirSync(path.join(contentDir, 'shadowuid1234567'), { recursive: true });
+    fs.writeFileSync(
+      path.join(contentDir, 'shadowuid1234567', 'data.json'),
+      JSON.stringify({
+        '@id': '/page-a/layout', '@type': 'Document', id: 'layout',
+        UID: 'shadowuid1234567',
+      }),
+    );
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('reserved')),
+      r.errors.join('\n'),
+    );
+  });
+
   it('reports id starting with underscore', () => {
     const { root, contentDir } = buildFixture({
       dataFiles: ['plone_site_root/data.json', '_underscore/data.json'],
@@ -315,6 +418,471 @@ describe('plone-content-validator checkIntegrity()', () => {
     cleanup(root);
     assert.ok(r.errors.some((e) => e.includes('broken resolveuid')), r.errors.join('\n'));
     assert.equal(r.stats.resolveuidBroken, 1);
+  });
+
+  it('FAILS on a multi-node slate value (must be a single top-level node)', () => {
+    // The editor makes one block per paragraph, and a paragraph boundary is a
+    // block boundary, so a slate value with >1 top-level node (a title + body
+    // packed into one block) has no bare-markdown spelling. lib/slate-normalize
+    // collapses it; a multi-block cell belongs in a `columns` block instead.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          s: {
+            '@type': 'slate',
+            value: [
+              { type: 'p', children: [{ type: 'strong', children: [{ text: 'Title' }] }] },
+              { type: 'p', children: [{ text: 'Body paragraph.' }] },
+            ],
+          },
+        },
+        blocks_layout: { items: ['s'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('top-level nodes')), r.errors.join('\n'));
+  });
+
+  it('FAILS on a template block with no templateId', () => {
+    // A forced-layout template's blocks are matched to a page's region by
+    // templateId + slotId. A block carrying only slotId is silently skipped by
+    // the expansion: no error anywhere, the block simply never renders. That
+    // cost an hour of "why is my footer button missing" — the validator, the
+    // schema gate and block-sanity were all green while it was broken.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/templates/thing', '@type': 'Document', id: 'thing',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          good: { '@type': 'slate', templateId: 'resolveuid/pageauid1234567', slotId: 'good' },
+          orphan: { '@type': 'slate', slotId: 'orphan' },
+        },
+        blocks_layout: { items: ['good', 'orphan'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('orphan') && e.includes('templateId')),
+      r.errors.join('\n'));
+  });
+
+  it('FAILS on a NESTED template block with no templateId', () => {
+    // The drop is not a top-level rule. fillRegionEntries runs for EVERY region
+    // at every depth and opens with
+    //     if (!child || !child.templateId) continue; // orphan / missing → drop
+    // so a block two levels down goes the same way — and takes its own children
+    // with it, because they are only reachable through it.
+    //
+    // Measured, not assumed: dropping `templateId` from ONE widget nested inside
+    // a footer column took that widget and its three address/phone slates out of
+    // the merged footer (4 widgets/8 leaves -> 3/5). Dropping `slotId` from the
+    // same widget changed nothing. That is the shape a real footer shipped in,
+    // and every gate was green while the content was gone.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/templates/thing', '@type': 'Document', id: 'thing',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          row: {
+            '@type': 'columns', templateId: 'resolveuid/pageauid1234567', slotId: 'row', fixed: true,
+            blocks: {
+              col: {
+                '@type': 'column', templateId: 'resolveuid/pageauid1234567', slotId: 'col', fixed: true,
+                blocks: {
+                  buried: { '@type': 'slate', slotId: 'buried', fixed: true },
+                },
+                blocks_layout: { items: ['buried'] },
+              },
+            },
+            blocks_layout: { columns: ['col'] },
+          },
+        },
+        blocks_layout: { items: ['row'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('buried') && e.includes('templateId')),
+      r.errors.join('\n'));
+  });
+
+  it('FAILS on a nested SLOT with no slotId', () => {
+    // A non-fixed child is a placeholder the page fills, matched by slotId
+    // (`else if (child.slotId)`). Without one it matches neither branch of
+    // fillRegionEntries and is dropped just as silently.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/templates/thing', '@type': 'Document', id: 'thing',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          row: {
+            '@type': 'columns', templateId: 'resolveuid/pageauid1234567', slotId: 'row', fixed: true,
+            blocks: {
+              nameless: { '@type': 'slate', templateId: 'resolveuid/pageauid1234567', fixed: false },
+            },
+            blocks_layout: { columns: ['nameless'] },
+          },
+        },
+        blocks_layout: { items: ['row'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('nameless') && e.includes('slotId')),
+      r.errors.join('\n'));
+  });
+
+  it('PASSES an untagged block inside a non-fixed SLOT', () => {
+    // A slot's children are the PAGE's content, not the template's: the merge
+    // fills the slot from the page and carries its nesting through untouched,
+    // so those blocks need no templateId/slotId of their own. /templates/
+    // contact-cta ships exactly this shape — a `fixed: false` section whose
+    // `cta-btn` carries nothing — and the button comes through the merge intact.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/templates/thing', '@type': 'Document', id: 'thing',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          slot: {
+            '@type': 'section', templateId: 'resolveuid/pageauid1234567', slotId: 'slot', fixed: false,
+            blocks: { btn: { '@type': 'button' } },
+            blocks_layout: { items: ['btn'] },
+          },
+        },
+        blocks_layout: { items: ['slot'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(!r.errors.some((e) => e.includes('btn')), r.errors.join('\n'));
+  });
+
+  it('PASSES a fully-tagged nested template', () => {
+    const tag = (extra) => ({ templateId: 'resolveuid/pageauid1234567', fixed: true, ...extra });
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/templates/thing', '@type': 'Document', id: 'thing',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          row: {
+            ...tag({ '@type': 'columns', slotId: 'row' }),
+            blocks: {
+              col: {
+                ...tag({ '@type': 'column', slotId: 'col' }),
+                blocks: { leaf: tag({ '@type': 'slate', slotId: 'leaf' }) },
+                blocks_layout: { items: ['leaf'] },
+              },
+            },
+            blocks_layout: { columns: ['col'] },
+          },
+        },
+        blocks_layout: { items: ['row'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(!r.errors.some((e) => e.includes('template block')), r.errors.join('\n'));
+  });
+
+  it('FAILS on a template block with no slotId', () => {
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/templates/thing', '@type': 'Document', id: 'thing',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          good: { '@type': 'slate', templateId: 'resolveuid/pageauid1234567', slotId: 'good' },
+          noslot: { '@type': 'slate', templateId: 'resolveuid/pageauid1234567' },
+        },
+        blocks_layout: { items: ['good', 'noslot'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('noslot') && e.includes('slotId')),
+      r.errors.join('\n'));
+  });
+
+  it('FAILS on a template block that does not say whether it is fixed', () => {
+    // The third thing a template block must declare is how locked it is.
+    // Omitting `fixed` does not mean "not fixed" — it makes the block a SLOT,
+    // a region for the page to fill. An empty page region then renders an
+    // empty slot, so the block silently disappears. That is the bug that cost
+    // an hour: templateId and slotId were both present and correct.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/templates/thing', '@type': 'Document', id: 'thing',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          decided: { '@type': 'slate', templateId: '/templates/thing', slotId: 'decided', fixed: true },
+          vague: { '@type': 'slate', templateId: '/templates/thing', slotId: 'vague' },
+        },
+        blocks_layout: { items: ['decided', 'vague'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('vague') && e.includes('fixed')), r.errors.join('\n'));
+    assert.ok(!r.errors.some((e) => e.includes('decided')), r.errors.join('\n'));
+  });
+
+  it('accepts fixed: false — an explicit slot', () => {
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/templates/thing', '@type': 'Document', id: 'thing',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          slot: { '@type': 'slate', templateId: '/templates/thing', slotId: 'slot', fixed: false },
+        },
+        blocks_layout: { items: ['slot'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.equal(r.errors.filter((e) => /fixed/.test(e)).length, 0, r.errors.join('\n'));
+  });
+
+  it('FAILS on a non-boolean fixed', () => {
+    // "false" is truthy. A string here would read as a slot to the validator
+    // and as fixed to anything doing a plain truthiness check.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/templates/thing', '@type': 'Document', id: 'thing',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          stringy: { '@type': 'slate', templateId: '/templates/thing', slotId: 'stringy', fixed: 'false' },
+        },
+        blocks_layout: { items: ['stringy'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('stringy') && e.includes('fixed')), r.errors.join('\n'));
+  });
+
+  it('accepts a template whose blocks all carry both', () => {
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/templates/thing', '@type': 'Document', id: 'thing',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          a: { '@type': 'slate', templateId: 'resolveuid/pageauid1234567', slotId: 'a' },
+          b: { '@type': 'slate', templateId: '/templates/thing', slotId: 'b' },
+        },
+        blocks_layout: { items: ['a', 'b'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.equal(r.errors.filter((e) => /templateId|slotId/.test(e)).length, 0,
+      r.errors.join('\n'));
+  });
+
+  it('leaves ordinary pages alone', () => {
+    // Only pages that ARE templates are checked. A normal page's blocks have
+    // no templateId and must not be nagged about one.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: { plain: { '@type': 'slate' } },
+        blocks_layout: { items: ['plain'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.equal(r.errors.filter((e) => /templateId|slotId/.test(e)).length, 0,
+      r.errors.join('\n'));
+  });
+
+  it('FAILS on an INSTANCE block that fills a template with no slotId', () => {
+    // The mirror of the template-side rule, on the page that instantiates one.
+    // A block inside a `<fields templateId=...>` region is matched to a template
+    // slot by its slotId. Carry the templateId but omit the slotId (or give one
+    // the template has no slot for) and forced-layout expansion matches it to
+    // nothing — the block is composed into the page data (block-sanity discovers
+    // it) yet no frontend has a slot to render it, so its data-block-uid never
+    // appears and the only symptom is a reveal timeout. That is exactly how
+    // /docs/examples/slate's `callout` (templateId set, slotId absent) slipped
+    // through: 2c-ter only checked blocks whose slotId already matched a slot.
+    const { root, contentDir } = buildFixture({
+      dataFiles: [
+        'plone_site_root/data.json',
+        'tpl/data.json',
+        'inst/data.json',
+      ],
+      localRoles: {
+        rootuid1234567: { local_roles: { admin: ['Owner'] } },
+        tpluid1234567890: { local_roles: { admin: ['Owner'] } },
+        instuid123456789: { local_roles: { admin: ['Owner'] } },
+      },
+    });
+    const write = (rel, obj) => {
+      fs.mkdirSync(path.join(contentDir, rel), { recursive: true });
+      fs.writeFileSync(path.join(contentDir, rel, 'data.json'), JSON.stringify(obj));
+    };
+    // The template declares two slots: schema and rendering.
+    write('tpl', {
+      '@id': '/ref', '@type': 'Document', id: 'ref',
+      UID: 'tpluid1234567890', parent: { '@id': '/' },
+      blocks: {
+        'tpl-schema': { '@type': 'codeExample', templateId: 'resolveuid/tpluid1234567890', slotId: 'schema', fixed: false },
+        'tpl-rendering': { '@type': 'codeExample', templateId: 'resolveuid/tpluid1234567890', slotId: 'rendering', fixed: false },
+      },
+      blocks_layout: { items: ['tpl-schema', 'tpl-rendering'] },
+    });
+    // The instance fills `rendering` correctly, but its callout carries the
+    // templateId with NO slotId — the callout-22 shape.
+    write('inst', {
+      '@id': '/page', '@type': 'Document', id: 'page',
+      UID: 'instuid123456789', parent: { '@id': '/' },
+      blocks: {
+        good: { '@type': 'codeExample', templateId: 'resolveuid/tpluid1234567890', templateInstanceId: 'ti', slotId: 'rendering', fixed: false, readOnly: false },
+        orphan: { '@type': 'callout', templateId: 'resolveuid/tpluid1234567890', templateInstanceId: 'ti' },
+      },
+      blocks_layout: { items: ['good', 'orphan'] },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('orphan') && /slot/i.test(e)),
+      r.errors.join('\n'));
+    // The fully-coupled block (slotId + fixed + readOnly) must NOT be flagged.
+    assert.ok(!r.errors.some((e) => e.includes('block good ')), r.errors.join('\n'));
+  });
+
+  it('FAILS on an INSTANCE slot-fill missing fixed/readOnly (emit did not run)', () => {
+    // A block that has a valid slotId but no fixed/readOnly means the emit
+    // synthesis (markdown-mount normalizeInstanceTemplateFields, which stamps both
+    // false on a page slot-fill) never ran for it — a real pipeline gap, not an
+    // authoring nit. The coupling must hold: all three or the block is flagged.
+    const { root, contentDir } = buildFixture({
+      dataFiles: [
+        'plone_site_root/data.json',
+        'tpl/data.json',
+        'inst/data.json',
+      ],
+      localRoles: {
+        rootuid1234567: { local_roles: { admin: ['Owner'] } },
+        tpluid1234567890: { local_roles: { admin: ['Owner'] } },
+        instuid123456789: { local_roles: { admin: ['Owner'] } },
+      },
+    });
+    const write = (rel, obj) => {
+      fs.mkdirSync(path.join(contentDir, rel), { recursive: true });
+      fs.writeFileSync(path.join(contentDir, rel, 'data.json'), JSON.stringify(obj));
+    };
+    write('tpl', {
+      '@id': '/ref', '@type': 'Document', id: 'ref',
+      UID: 'tpluid1234567890', parent: { '@id': '/' },
+      blocks: {
+        'tpl-schema': { '@type': 'codeExample', templateId: 'resolveuid/tpluid1234567890', slotId: 'schema', fixed: false },
+      },
+      blocks_layout: { items: ['tpl-schema'] },
+    });
+    write('inst', {
+      '@id': '/page', '@type': 'Document', id: 'page',
+      UID: 'instuid123456789', parent: { '@id': '/' },
+      blocks: {
+        halfway: { '@type': 'codeExample', templateId: 'resolveuid/tpluid1234567890', templateInstanceId: 'ti', slotId: 'schema' },
+      },
+      blocks_layout: { items: ['halfway'] },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('halfway') && e.includes('fixed') && e.includes('readOnly')),
+      r.errors.join('\n'));
+  });
+
+  it('FAILS on a broken path inside a SLATE link node', () => {
+    // Slate links live at value[].data.url, not in a block field, so pass 2c's
+    // LINK_FIELDS scan never saw them. Only resolveuid refs were caught (by a
+    // raw-text regex over the whole file) — a plain-path slate link pointing
+    // nowhere was not checked at all, and the gate still said "0 broken".
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          'slate-1': {
+            '@type': 'slate',
+            value: [{
+              type: 'p',
+              children: [
+                { text: 'See ' },
+                { type: 'link', data: { url: '/nope' }, children: [{ text: 'this' }] },
+              ],
+            }],
+          },
+        },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('/nope')), r.errors.join('\n'));
+    assert.equal(r.stats.linksBroken, 1);
+  });
+
+  it('accepts a slate link to a real page', () => {
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          'slate-1': {
+            '@type': 'slate',
+            value: [{
+              type: 'p',
+              children: [{ type: 'link', data: { url: '/page-a' }, children: [{ text: 'self' }] }],
+            }],
+          },
+        },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.equal(r.stats.linksBroken, 0, r.errors.join('\n'));
+  });
+
+  it('accepts a path carrying a #fragment, and still checks the path', () => {
+    // Deep-linking to a heading is legitimate content — RichText emits slugged
+    // ids for headings precisely so `page#section` resolves. The path branch
+    // did not strip the fragment, so a perfectly good link read as
+    // "path not in content: /page-a#section".
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          'good': {
+            '@type': 'teaser',
+            href: [{ '@id': '/page-a#a-heading' }],
+          },
+        },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.equal(r.stats.linksBroken, 0, r.errors.join('\n'));
+  });
+
+  it('still FAILS when the page before the #fragment does not exist', () => {
+    // Stripping the fragment must not become a way to smuggle a dead path past
+    // the gate.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          'bad': { '@type': 'teaser', href: [{ '@id': '/ghost#a-heading' }] },
+        },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('/ghost')), r.errors.join('\n'));
+    assert.equal(r.stats.linksBroken, 1);
   });
 
   it('FAILS on a broken internal href in a block teaser', () => {
@@ -494,6 +1062,30 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.equal(r.stats.layoutBroken, 0);
   });
 
+  it('reports a block id listed TWICE in one blocks_layout', () => {
+    // A duplicate is not dangling — both entries resolve — so the dangling
+    // check waves it through, and the page renders that block twice while
+    // whichever block the second entry was MEANT to be renders not at all.
+    // Real case: a template gained a new slot, the id generator restarted its
+    // counter and minted an id an earlier run had already given to another
+    // slot, and six case studies shipped their date stamp twice and their lead
+    // row never.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a', UID: 'pageauid1234567',
+        parent: { '@id': '/' },
+        blocks: { a: { '@type': 'slate' }, b: { '@type': 'slate' } },
+        blocks_layout: { items: ['a', 'b', 'a'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('lists block a twice')),
+      r.errors.join('\n'),
+    );
+  });
+
   it('resolves valid resolveuid refs', () => {
     // UID must be hex ≥ 10 chars to match the /resolveuid/[a-f0-9]{10,}/ regex
     const uid = 'abcdef1234567890';
@@ -511,5 +1103,125 @@ describe('plone-content-validator checkIntegrity()', () => {
     cleanup(root);
     assert.equal(r.stats.resolveuidBroken, 0);
     assert.equal(r.stats.resolveuidOk, 1);
+  });
+});
+
+describe('checkIntegrity over in-memory items (API-fed)', () => {
+  it('catches broken resolveuid, dangling layout refs and duplicate UIDs with no disk tree', () => {
+    const uid = 'abcdef1234567890';
+    const r = checkIntegrity([
+      {
+        rel: 'page-a',
+        data: {
+          '@id': '/page-a',
+          '@type': 'Document',
+          id: 'page-a',
+          UID: uid,
+          blocks: {
+            good: { '@type': 'slate', value: [{ type: 'p', children: [{ text: `see resolveuid/${uid}` }] }] },
+            bad: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'see resolveuid/feedfeedfeedfeed' }] }] },
+          },
+          blocks_layout: { items: ['good', 'bad', 'ghost'] },
+        },
+      },
+      {
+        rel: 'page-b',
+        data: { '@id': '/page-b', '@type': 'Document', id: 'page-b', UID: uid, blocks: {}, blocks_layout: { items: [] } },
+      },
+    ]);
+    assert.equal(r.stats.resolveuidOk, 1);
+    assert.equal(r.stats.resolveuidBroken, 1);
+    assert.equal(r.stats.layoutBroken, 1);
+    assert.ok(r.errors.some((e) => e.includes('duplicate UID')));
+    assert.ok(r.errors.some((e) => e.includes('missing block ghost')));
+    // Disk-only passes must not have run (nothing to stat).
+    assert.equal(r.stats.imagesBroken, 0);
+  });
+
+  it('a clean in-memory set reports nothing', () => {
+    const r = checkIntegrity([
+      {
+        rel: 'page-a',
+        data: { '@id': '/page-a', '@type': 'Document', id: 'page-a', UID: 'aaaabbbbcccc', blocks: {}, blocks_layout: { items: [] } },
+      },
+    ]);
+    assert.deepEqual(r.errors, []);
+  });
+});
+
+describe('checkBlockSchemas()', () => {
+  const FIELDS = {
+    contentBlock: ['title', 'description', 'linkUrl'],
+    slateish: ['value'],
+  };
+  const page = (blocks) => [{ rel: 'content/x', data: { blocks } }];
+
+  it('reports a field the block schema does not declare', () => {
+    // The shape that went unnoticed for months: the right value under a key the
+    // schema has never heard of, so the field is uneditable and unrendered.
+    const r = checkBlockSchemas(
+      page({ b1: { '@type': 'contentBlock', title: 'T', url: '/somewhere' } }),
+      FIELDS,
+    );
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /contentBlock\.url/);
+    assert.equal(r.stats.undeclared, 1);
+  });
+
+  it('says nothing about a block whose fields are all declared', () => {
+    const r = checkBlockSchemas(
+      page({ b1: { '@type': 'contentBlock', title: 'T', linkUrl: '/somewhere' } }),
+      FIELDS,
+    );
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports each stray field once, however many pages repeat it', () => {
+    // A converter bug repeats on every page it touched; one report per
+    // (blockType, field) keeps the output about the bug, not its blast radius.
+    const items = ['a', 'b', 'c'].map((rel) => ({
+      rel: `content/${rel}`,
+      data: { blocks: { b1: { '@type': 'contentBlock', url: '/x' } } },
+    }));
+    const r = checkBlockSchemas(items, FIELDS);
+    assert.equal(r.errors.length, 1);
+    assert.equal(r.stats.items, 3);
+  });
+
+  it('finds blocks nested inside other blocks', () => {
+    const r = checkBlockSchemas(
+      page({
+        g: {
+          '@type': 'slateish',
+          value: [],
+          columns: [{ '@type': 'contentBlock', url: '/x' }],
+        },
+      }),
+      FIELDS,
+    );
+    assert.match(r.errors[0], /contentBlock\.url/);
+  });
+
+  it('warns about a block type missing from the field map', () => {
+    const r = checkBlockSchemas(page({ b1: { '@type': 'mystery' } }), FIELDS);
+    assert.equal(r.errors.length, 0);
+    assert.equal(r.stats.unknownTypes, 1);
+    assert.match(r.warnings[0], /mystery/);
+  });
+
+  it('ignores identity keys and a container\'s child storage', () => {
+    const r = checkBlockSchemas(
+      page({
+        b1: {
+          '@type': 'contentBlock',
+          '@id': 'x',
+          title: 'T',
+          blocks: { inner: { '@type': 'contentBlock', linkUrl: '/y' } },
+          blocks_layout: { items: ['inner'] },
+        },
+      }),
+      FIELDS,
+    );
+    assert.deepEqual(r.errors, []);
   });
 });

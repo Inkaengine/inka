@@ -124,11 +124,22 @@ class AddLinkForm extends Component {
   componentDidMount() {
     // HYDRA FIX: Guard against null ref. In volto-hydra's synced toolbar,
     // the Slate component may remount during the 50ms delay, making this.input null.
-    setTimeout(() => {
-      if (this.input) {
-        this.input.focus();
-      }
-    }, 50);
+    //
+    // autoFocus=false for form renders the AUTHOR DID NOT ASK FOR. As a toolbar
+    // popup this form is the thing just opened, so taking focus is right. As a
+    // widget in the sidebar it mounts merely because a block got selected — and
+    // an empty image field renders the picker on every selection. Focusing then
+    // yanks the caret out of the iframe ~50ms after the author clicked a field
+    // in the preview: the field stays contenteditable, the caret is gone, and
+    // typing goes to this input instead. A second click appears to "fix" it
+    // only because the form is already mounted and doesn't re-fire.
+    if (this.props.autoFocus !== false) {
+      setTimeout(() => {
+        if (this.input) {
+          this.input.focus();
+        }
+      }, 50);
+    }
     document.addEventListener('mousedown', this.handleClickOutside, false);
   }
 

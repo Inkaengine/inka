@@ -9,13 +9,13 @@
     "btn-linked": {
       "@type": "button",
       "title": "Stale label",
-      "href": [{ "@id": "/news/big", "title": "Target Title" }],
+      "href": [{ "@id": "/_test_data/news/big", "title": "Target Title" }],
       "inneralign": "left"
     },
     "btn-custom": {
       "@type": "button",
       "title": "My own label",
-      "href": [{ "@id": "/news/big", "title": "Target Title" }],
+      "href": [{ "@id": "/_test_data/news/big", "title": "Target Title" }],
       "_customFields": ["title"],
       "inneralign": "left"
     },
@@ -32,7 +32,7 @@
       "buttonText": "Go",
       "buttonLink": [
         {
-          "@id": "/news/big",
+          "@id": "/_test_data/news/big",
           "image_field": "preview_image",
           "image_scales": {
             "preview_image": [
@@ -68,7 +68,7 @@
         "nested-btn": {
           "@type": "button",
           "title": "Stale nested",
-          "href": [{ "@id": "/news/big", "title": "Target Title" }],
+          "href": [{ "@id": "/_test_data/news/big", "title": "Target Title" }],
           "inneralign": "left"
         }
       },

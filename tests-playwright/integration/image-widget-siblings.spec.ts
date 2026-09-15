@@ -32,6 +32,7 @@
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { URLS } from '../ports';
 
 // navigateToEdit prepends helper.contentPrefix ("/_test_data"), so the
 // path passed in must NOT already include it.
@@ -60,7 +61,10 @@ test.describe('ImageWidget sibling preservation', () => {
     const contentPatches: Array<{ url: string; body: any }> = [];
     page.on('request', (req) => {
       if (req.method() !== 'PATCH') return;
-      if (!req.url().startsWith('http://localhost:8888')) return;
+      // Filter on the API this run is actually using. A literal 8888 here
+      // matched nothing once the port was overridden, so the filter dropped
+      // every request and the test kept passing while measuring nothing.
+      if (!req.url().startsWith(URLS.mockApi)) return;
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
       if (!body) return;

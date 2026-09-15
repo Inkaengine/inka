@@ -79,12 +79,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  import BlockRenderer from './BlockRenderer.svelte';\n  export let block;\n  $: blocks = block.blocks || {};\n  $: items = block.blocks_layout?.items || [];\n</script>\n\n<div data-block-uid={block['@uid']} class=\"grid-block\">\n  <div style=\"display: grid; grid-template-columns: repeat({items.length}, 1fr); gap: 1rem\">\n    {#each items as id (id)}\n      <div class=\"grid-cell\">\n        <BlockRenderer block={{ ...blocks[id], '@uid': id }} />\n      </div>\n    {/each}\n  </div>\n</div>"
-        },
-        {
-          "@id": "ref-grid-rendering-astro-f8f4db",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\n/**\n * Grid container. Children are arbitrary blocks (each rendered by\n * BlockRenderer); columns count is derived from the number of items.\n */\nimport BlockRenderer from './BlockRenderer.astro';\nconst { block } = Astro.props;\nconst subBlocks = block.blocks || {};\nconst items = block.blocks_layout?.items || [];\n---\n<div class=\"grid-block\">\n  <div style={`display: grid; grid-template-columns: repeat(${items.length}, 1fr); gap: 1rem`}>\n    {items.map((id: string) => (\n      <div class=\"grid-cell\">\n        <BlockRenderer block={{ ...subBlocks[id], '@uid': id }} />\n      </div>\n    ))}\n  </div>\n</div>"
         }
       ]
     },

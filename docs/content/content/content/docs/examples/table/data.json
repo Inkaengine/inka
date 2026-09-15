@@ -4213,7 +4213,7 @@
           "@id": "ref-table-schema-javascript-237d52",
           "label": "Schema",
           "language": "javascript",
-          "code": "{\n  \"slateTable\": {\n    \"addMode\": \"table\",\n    \"blockSchema\": {\n      \"properties\": {\n        \"table\": {\n          \"title\": \"Table\",\n          \"widget\": \"object\",\n          \"schema\": {\n            \"properties\": {\n              \"rows\": {\n                \"widget\": \"object_list\",\n                \"idField\": \"key\",\n                \"addMode\": \"table\",\n                \"schema\": {\n                  \"properties\": {\n                    \"cells\": {\n                      \"widget\": \"object_list\",\n                      \"idField\": \"key\",\n                      \"schema\": {\n                        \"properties\": {\n                          \"value\": {\n                            \"widget\": \"slate\"\n                          }\n                        }\n                      }\n                    }\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}"
+          "code": "{\n  \"slateTable\": {\n    \"addMode\": \"table\",\n    \"blockSchema\": {\n      \"properties\": {\n        \"table\": {\n          \"title\": \"Table\",\n          \"widget\": \"object\",\n          \"schema\": {\n            \"properties\": {\n              \"rows\": {\n                \"widget\": \"object_list\",\n                \"idField\": \"key\",\n                \"addMode\": \"table\",\n                \"schema\": {\n                  \"properties\": {\n                    \"cells\": {\n                      \"widget\": \"object_list\",\n                      \"idField\": \"key\",\n                      \"schema\": {\n                        \"properties\": {\n                          \"value\": {\n                            \"widget\": \"slate\",\n                            \"type\": \"array\"\n                          }\n                        }\n                      }\n                    }\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}"
         }
       ]
     },
@@ -4254,12 +4254,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  import SlateNode from './SlateNode.svelte';\n  export let block;\n</script>\n\n<div data-block-uid={block['@uid']}>\n  <table>\n    <tbody>\n      {#each block.table?.rows || [] as row (row.key)}\n        <tr data-block-uid={row.key}>\n          {#each row.cells as cell (cell.key)}\n            <td data-block-uid={cell.key} data-edit-text=\"value\">\n              {#each cell.value || [] as node, i (i)}\n                <SlateNode {node} />\n              {/each}\n            </td>\n          {/each}\n        </tr>\n      {/each}\n    </tbody>\n  </table>\n</div>"
-        },
-        {
-          "@id": "ref-table-rendering-astro-a34e40",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\n/**\n * Slate-table block. Each row/cell carries its own data-block-uid so the\n * bridge can target individual cells for selection sync. Cell text uses\n * the same slate-value render path as SlateBlock.\n */\nimport SlateNode from './SlateNode.astro';\nconst { block } = Astro.props;\nconst rows = block?.table?.rows || [];\n---\n<div><table><tbody>{rows.map((row: any) => (\n  <tr data-block-uid={row.key}>{(row.cells || []).map((cell: any) => (\n    <td data-block-uid={cell.key} data-edit-text=\"value\"\n    >{(cell.value || []).map((node: any) => <SlateNode node={node} />)}</td>\n  ))}</tr>\n))}</tbody></table></div>"
         }
       ]
     },

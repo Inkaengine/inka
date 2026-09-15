@@ -188,17 +188,43 @@ export function buildQuerystringSearchBody(
 
   // Merge extraCriteria into query
   if (extraCriteria.SearchableText) {
+    // queryType (plone6): "search" = Advanced (word/phrase) → the ZCTextIndex
+    // `string.search` operation; anything else = Standard substring
+    // (`string.contains`, the default). Only "search" switches it.
     query.push({
       i: 'SearchableText',
-      o: 'plone.app.querystring.operation.string.contains',
+      o:
+        extraCriteria.queryType === 'search'
+          ? 'plone.app.querystring.operation.string.search'
+          : 'plone.app.querystring.operation.string.contains',
       v: extraCriteria.SearchableText,
     });
   }
 
-  // Add facet filters from extraCriteria (keys starting with 'facet.')
+  // Add facet filters from extraCriteria (keys starting with 'facet.').
+  //
+  // A DATE-RANGE facet is a `facet.<field>.after` / `facet.<field>.before` key —
+  // a "from" and a "to" are TWO separate facets on the SAME index (so they don't
+  // collide on one `facet.<field>`), each carrying its direction in the key. They
+  // map to the Plone date operations `largerThan` / `lessThan` (a single scalar
+  // date value), which the catalog ANDs together into a range. Every other
+  // `facet.<field>` is a discrete-value facet → `selection.any` (an array).
+  const DATE_OPS = {
+    after: 'plone.app.querystring.operation.date.largerThan',
+    before: 'plone.app.querystring.operation.date.lessThan',
+  };
   for (const [key, value] of Object.entries(extraCriteria)) {
-    if (key.startsWith('facet.')) {
-      const field = key.replace('facet.', '');
+    if (!key.startsWith('facet.')) continue;
+    const field = key.replace('facet.', '');
+    const dateMatch = field.match(/^(.+)\.(after|before)$/);
+    if (dateMatch) {
+      // Date-range facet: `<index>.<after|before>` → a scalar date operation.
+      const [, index, direction] = dateMatch;
+      const v = Array.isArray(value) ? value[0] : value;
+      if (v) {
+        query.push({ i: index, o: DATE_OPS[direction], v });
+      }
+    } else {
       query.push({
         i: field,
         o: 'plone.app.querystring.operation.selection.any',
@@ -221,12 +247,21 @@ export function buildQuerystringSearchBody(
     metadata_fields: '_all',
   };
 
-  // Add depth if specified — Plone catalog supports a top-level depth
-  // field that limits results to N levels under each path criterion.
-  // Used by contextNavigation's listing config so a path+depth combo
-  // returns only the right tree slice.
+  // Depth belongs ON the path criterion, encoded in its VALUE as `path::depth`
+  // (`.::1`, `/docs::2`); a bare path is a recursive query. A top-level `depth`
+  // field on the request body is NOT honoured by @querystring-search — it is
+  // accepted and silently ignored, and inside the criterion as an object it
+  // errors with "index 'UID': option 'depth' is not valid".
+  //
+  // This used to set `body.depth` and so did nothing: a listing configured with
+  // depth 1 still matched the whole subtree, which put every nested Image into
+  // the /components index (`.` → 107 items, `.::1` → 33).
   if (queryConfig?.depth !== undefined) {
-    body.depth = queryConfig.depth;
+    for (const criterion of body.query) {
+      if (criterion.i !== 'path') continue;
+      if (typeof criterion.v !== 'string' || criterion.v.includes('::')) continue;
+      criterion.v = `${criterion.v}::${queryConfig.depth}`;
+    }
   }
 
   // Add limit if specified (0 or undefined means no limit)
@@ -831,6 +866,38 @@ export async function expandListingBlocks(inputItems, options = {}) {
 // ploneFetchItems (+ hierarchicalSortByPosition helper)
 ////////////////////////////////////////////////////////////////////////////////
 
+// A page can ask the SAME question many times: a doc page showing eleven filter
+// arrangements over one query, a layout repeating a list. Each caller is its own
+// block with its own ids, so nothing upstream can tell they match — only the
+// request can, and here it is built.
+//
+// Identical requests IN FLIGHT AT THE SAME MOMENT share one response. In flight
+// only: the next render asks again, so an edited query, a new page or fresh
+// content is never served from a stale entry.
+//
+// The key includes the Authorization header, not just the body. Today the token
+// is read from the browser's session (getAccessToken), so a server process is
+// always anonymous and every caller there would get the same rows anyway — this
+// is defence for the day that changes: two identical queries carrying different
+// credentials can legitimately return different rows, and sharing them would
+// hand one person another's results. It is not covered by a test, because the
+// test environment's storage is inert and the token cannot be driven from one.
+const inFlightSearches = new Map();
+
+async function fetchQuerystringSearch(url, headers, payload) {
+  const key = `${url}\n${headers.Authorization || ''}\n${payload}`;
+  const running = inFlightSearches.get(key);
+  if (running) return running;
+  const started = (async () => {
+    const res = await fetch(url, { method: 'POST', headers, body: payload });
+    return res.json();
+  })().finally(() => {
+    inFlightSearches.delete(key);
+  });
+  inFlightSearches.set(key, started);
+  return started;
+}
+
 /**
  * Create a fetchItems callback for Plone's @querystring-search endpoint.
  *
@@ -863,12 +930,9 @@ export function ploneFetchItems({
     headers['Content-Type'] = 'application/json';
 
     const path = `${contextPath}/++api++/@querystring-search`;
-    const res = await fetch(`${apiUrl}${path}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-    const response = await res.json();
+    const url = `${apiUrl}${path}`;
+    const payload = JSON.stringify(body);
+    const response = await fetchQuerystringSearch(url, headers, payload);
 
     const rawItems = response.items || [];
     // Normalize: package image_field + image_scales into a self-contained image
@@ -1088,7 +1152,24 @@ export function getFieldTypeString(field) {
   const type = field.type;
   const widget = field.widget;
   if (type && widget) return `${type}:${widget}`;
-  if (widget) return `:${widget}`;
+  // A field with a widget and no declared `type` is a STRING — which is exactly
+  // what the no-widget path below has always assumed. Emitting `:widget` made a
+  // widget quietly mean "no type at all", and the predicates key off the type
+  // half: `isPlainStringFieldType` wants `string` or `string:…`, so such a field
+  // stopped being inline-editable.
+  //
+  // Which is not hypothetical. `copy-from-target` swaps a mapped destination
+  // field's widget to `copyFromTargetField`, so a card's `title` — declared as
+  // just `{ title: 'Headline' }`, as most schemas declare an obvious string —
+  // went from `string` to `:copyFromTargetField` the moment the block gained the
+  // ability to fill itself from a link. Typing into a card title silently
+  // stopped working, and a front-page demo video filmed someone doing it to a
+  // card that stayed empty.
+  //
+  // Widgets that imply a different EDITOR are unaffected: the predicates match
+  // on `:slate` / `:textarea` anywhere in the string, so `string:textarea` still
+  // reads as a textarea.
+  if (widget) return `string:${widget}`;
   if (type) return type;
   return 'string';
 }
@@ -1531,12 +1612,16 @@ function _isEditMode() {
  * Simple UUID generator for block IDs.
  * @returns {string} UUID v4 format string
  */
-function generateUUID() {
+function uuidFromRand(rand) {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-    const r = (Math.random() * 16) | 0;
+    const r = (rand() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+function generateUUID() {
+  return uuidFromRand(Math.random);
 }
 
 /**
@@ -1561,11 +1646,7 @@ function deterministicUUID(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-    const r = (rand() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+  return uuidFromRand(rand);
 }
 
 /**
@@ -2564,6 +2645,51 @@ function allRegionIds(blocksLayout) {
 }
 
 /**
+ * The AUTHOR's blocks nested inside a block that is about to be dropped.
+ *
+ * Switching layouts drops the outgoing layout's furniture, and a layout whose
+ * frame is ONE container block (a `contentLayout` holding `main` + a sidebar,
+ * say) carries the author's content inside that frame. Dropping the frame on
+ * its `readOnly` flag therefore dropped the whole page with it — silently, on a
+ * menu choice.
+ *
+ * So look inside before letting it go. `fixed` marks the template's own
+ * furniture, which the incoming layout replaces; everything else is the
+ * author's and is pushed back into `pendingContent` under its own slot, exactly
+ * as the flat scan does for content that sits at the top level. Template
+ * markers are left ON the harvested blocks — the flat scan leaves them there
+ * too, and the apply re-stamps what it re-homes.
+ *
+ * @param {Object} block - The block being dropped
+ * @param {Map} pendingContent - Map of slotId -> [{blockId, block}]
+ * @param {Set} visited - Already visited blocks (prevent cycles)
+ */
+export function collectNestedAuthorContent(block, pendingContent, visited = new Set()) {
+  if (!block || typeof block !== 'object') return;
+  if (visited.has(block)) return;
+  visited.add(block);
+  const nested = block.blocks;
+  const layouts = block.blocks_layout;
+  if (!nested || !layouts) return;
+  for (const ids of Object.values(layouts)) {
+    if (!Array.isArray(ids)) continue;
+    for (const blockId of ids) {
+      const child = nested[blockId];
+      if (!child) continue;
+      if (child.fixed) {
+        // Furniture. It goes, but it may be a container holding content.
+        collectNestedAuthorContent(child, pendingContent, visited);
+        continue;
+      }
+      const slotId = child.slotId || 'default';
+      if (!pendingContent.has(slotId)) pendingContent.set(slotId, []);
+      pendingContent.get(slotId).push({ blockId, block: child });
+      collectNestedAuthorContent(child, pendingContent, visited);
+    }
+  }
+}
+
+/**
  * Recursively scan for blocks with matching templateInstanceId.
  * Handles arbitrary nesting - looks for blocks maps (values have @type)
  * and corresponding layout arrays.
@@ -2652,6 +2778,58 @@ export function collectContentFromTree(
  * the shared ctx (consumed so it isn't reused), and recurses into nested containers.
  * Returns filled [{ id, block }] in order.
  */
+/**
+ * THE single policy for a template child's block id. Deterministic by default
+ * (`${instanceId}::${tplChildId}` — stable across a server render and the
+ * client hydration, and instance-scoped so two instances of one template
+ * never collide); a caller-provided generator wins only where the caller
+ * genuinely needs one-off ids (e.g. snippet insertion into a page).
+ */
+function mintChildBlockId(instanceId, tplChildId, uuidGenerator) {
+  return uuidGenerator ? uuidGenerator() : `${instanceId}::${tplChildId}`;
+}
+
+/**
+ * The fields an EDITABLE block carries back from the page.
+ *
+ * A fixed block that is not readOnly belongs to the page: the author can change
+ * ANY field on it, and it is saved into the page as they left it. The merge
+ * therefore keeps the page's fields wholesale — it does not pick out the ones it
+ * imagines are content. Taking only `value` (which is what it used to do) meant
+ * `plaintext` reverted to the template's, so a page rendered the author's words
+ * out of `value` while the text Plone indexes into SearchableText said something
+ * else; and every other edited field — a colour, an alignment, a link — was
+ * silently reverted with it.
+ *
+ * What the TEMPLATE keeps is identity, ownership and structure:
+ *   - templateId / slotId / templateInstanceId: how the next merge finds this
+ *     block again. A page cannot rename its own slot.
+ *   - fixed / readOnly: the template's declaration of who owns the block. A lock
+ *     added to the template later has to take hold on pages already using it.
+ *   - blocks / blocks_layout: a container's children are re-derived per region
+ *     by fillContainerInto, region by region.
+ *   - nextSlotId / fieldPlaceholders: hints recomputed on every apply.
+ */
+const TEMPLATE_OWNED_FIELDS = new Set([
+  'templateId',
+  'slotId',
+  'templateInstanceId',
+  'fixed',
+  'readOnly',
+  'blocks',
+  'blocks_layout',
+  'nextSlotId',
+  'fieldPlaceholders',
+]);
+
+function editedFieldsOf(block) {
+  const out = {};
+  for (const [field, value] of Object.entries(block || {})) {
+    if (!TEMPLATE_OWNED_FIELDS.has(field)) out[field] = value;
+  }
+  return out;
+}
+
 function fillRegionEntries(entries, templateState, options) {
   const { instanceId, templateId } = templateState;
   const ctx = templateState.instances?.[instanceId];
@@ -2686,7 +2864,7 @@ function fillRegionEntries(entries, templateState, options) {
       const stamped = {
         ...child,
         templateInstanceId: instanceId,
-        ...(existingFixed?.block ? { value: existingFixed.block.value } : {}),
+        ...(existingFixed?.block ? editedFieldsOf(existingFixed.block) : {}),
         ...(nextSlotId && { nextSlotId }),
       };
       if (firstInsert && editable) {
@@ -2720,9 +2898,7 @@ function fillRegionEntries(entries, templateState, options) {
         // (a slot's contents are per-page user content, never template content; a fixed
         // block placed inside a slot is malformed and must not ride along). Field
         // placeholders only matter on first insert.
-        const nid = uuidGenerator
-          ? uuidGenerator()
-          : `${instanceId}::${tplChildId}`;
+        const nid = mintChildBlockId(instanceId, tplChildId, uuidGenerator);
         const {
           blocks: _slotBlocks,
           blocks_layout: _slotLayout,
@@ -2837,7 +3013,16 @@ export async function loadTemplates(
 
     // Load in parallel with a per-template timeout so a hanging request
     // doesn't block INITIAL_DATA indefinitely.
-    const TEMPLATE_LOAD_TIMEOUT = 5000;
+    //
+    // The bound is settable, because this race wraps the CALLER's loadTemplate:
+    // a frontend that retries a transient failure (ours retries three times,
+    // for a backend busy enough to time out a fetch) never gets to finish, the
+    // race cancels it at 5s and the page fails with "not found in pre-loaded
+    // templates". Environments where the backend is legitimately slow to warm
+    // — a mock serving a whole distribution from disk on its first request —
+    // raise it; the default is unchanged and a hang is still bounded.
+    const TEMPLATE_LOAD_TIMEOUT =
+      Number(globalThis.process?.env?.HYDRA_TEMPLATE_LOAD_TIMEOUT) || 5000;
     const results = await Promise.all(
       toLoad.map(async (id) => {
         try {
@@ -3284,8 +3469,18 @@ export function expandTemplatesSync(inputItems, options = {}) {
 
     // Use path-normalised comparison: block templateId may be a full URL
     // (e.g. from Plone's resolveuid) while allowedLayouts may be paths.
+    // Only a genuine forced SWITCH re-homes a page. A page-level blocks field
+    // always carries its allowedLayouts — that is the layout MENU, not an
+    // instruction — so re-homing on every render meant a page laid out with a
+    // template the current menu doesn't list (a content-type layout offered only
+    // on that type) was moved to allowedLayouts[0]: `null` by the menu's own
+    // convention, i.e. its layout REMOVED on load, fixed blocks and all, and
+    // persisted by the next save. The same distinction the multi-instance split
+    // already makes above: exactly one allowedLayout is a switch, a list is a
+    // re-render.
     if (
       isLayout &&
+      forcedSingleLayout &&
       !allowedLayouts.some((l) => templateIdsMatch(l, templateId))
     ) {
       templateId = allowedLayouts[0];
@@ -3346,9 +3541,29 @@ export function expandTemplatesSync(inputItems, options = {}) {
       // Derive the id deterministically from the region's first block id so the
       // server render and the client hydration mint the SAME instance id (and so
       // the same `${instanceId}::tplChildId` block uids) — a random id differs
-      // between the two passes and causes a hydration mismatch. Fall back to a
-      // random id only when there's no stable seed (an empty forced layout).
-      instanceId = idemKey ? deterministicUUID(idemKey) : generateUUID();
+      // between the two passes and causes a hydration mismatch. An EMPTY forced
+      // layout has no first block id, but the forced template id itself is a
+      // stable seed (one region, one forced template): without it, every block
+      // of a forced chrome template changed uid on hydration, and the editor's
+      // pathmap/selectors (e.g. `uid#field` reveal handles) pointed at the
+      // server pass's dead uids. Random only when there is truly no seed.
+      // Distinctness: TWO forced layouts of the same template in one pass
+      // (same templateState) must not share an instance — count per template,
+      // so the Nth forced application seeds `${templateId}#${N}`. Region
+      // render order is the same on the server and the client, so the counter
+      // yields the same ids both passes.
+      let forcedSeed = null;
+      if (!idemKey && allowedLayouts?.length === 1) {
+        if (!templateState.forcedSeedCounts) templateState.forcedSeedCounts = {};
+        const nth = templateState.forcedSeedCounts[allowedLayouts[0]] || 0;
+        templateState.forcedSeedCounts[allowedLayouts[0]] = nth + 1;
+        forcedSeed = `${allowedLayouts[0]}#${nth}`;
+      }
+      instanceId = idemKey
+        ? deterministicUUID(idemKey)
+        : forcedSeed
+          ? deterministicUUID(forcedSeed)
+          : generateUUID();
       if (idemKey) {
         if (!templateState.generatedInstanceIds)
           templateState.generatedInstanceIds = {};
@@ -3444,7 +3659,13 @@ export function expandTemplatesSync(inputItems, options = {}) {
           block.templateId &&
           block.templateId !== templateId
         ) {
-          if (block.readOnly) continue;
+          if (block.readOnly) {
+            // Dropped — but not what the author put INSIDE it. A layout whose
+            // frame is a single container block keeps the page's content in
+            // that frame, so letting it go whole loses the page.
+            collectNestedAuthorContent(block, ctx.pendingContent);
+            continue;
+          }
           if (block.slotId) {
             ctx.existingFixedBlockIds.set(block.slotId, { blockId, block });
           }
@@ -3539,15 +3760,12 @@ export function expandTemplatesSync(inputItems, options = {}) {
     if (tplBlock.fixed) {
       const slotId = tplBlock.slotId;
       const existing = slotId && existingFixedBlockIds?.get(slotId);
-      const blockId = existing?.blockId
-        ? existing.blockId
-        : uuidGenerator
-          ? uuidGenerator()
-          : `${instanceId}::${tplBlockId}`;
+      const blockId =
+        existing?.blockId || mintChildBlockId(instanceId, tplBlockId, uuidGenerator);
 
       let blockContent = tplBlock;
       if (!tplBlock.readOnly && existing?.block) {
-        blockContent = { ...tplBlock, value: existing.block.value };
+        blockContent = { ...tplBlock, ...editedFieldsOf(existing.block) };
       }
 
       // Look ahead in template layout for the next non-fixed slot at this level.

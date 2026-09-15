@@ -1,83 +1,55 @@
+---
+"@type": Document
+UID: docs-examples-searchShortcuts-001
+allow_discussion: false
+contributors: []
+creators:
+  - admin
+description: Renders a set of values as links into a faceted search — a "tag
+  cloud" of shortcuts. Each value links to a search page with
+  ?facet.<index>=<value> pre-set, which a Search block reads from the URL.
+effective: null
+exclude_from_nav: false
+expires: null
+id: searchShortcuts
+is_folderish: false
+language: "##DEFAULT##"
+layout: document_view
+review_state: published
+rights: ""
+subjects:
+  - blocks
+  - listings
+title: Search Shortcuts Block
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
+  <block type="codeExample">
+    <region name="tabs" widget="object_list">
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+---
+
 # Search Shortcuts Block
 
-Renders a set of values as links into a faceted search — a "tag cloud" of shortcuts. Each value links to a search page with `?facet.<index>=<value>` pre-set, which a [Search block](./search.md) reads from the URL.
+Renders a set of values as links into a faceted search — a "tag cloud" of shortcuts. Each value links to a search page with ?facet.\<index>=\<value> pre-set, which a Search block reads from the URL.
 
-It's a custom block type whose items come from a fetcher; `expandListingBlocks` expands it in any region (see Rendering).
+## Live example
 
-## Schema
+<block type="searchShortcuts" index="Subject" searchUrl="/search" variation="default" />
 
-```json
-{
-  "searchShortcuts": {
-    "id": "searchShortcuts",
-    "title": "Search Shortcuts",
-    "blockSchema": {
-      "fieldsets": [
-        {
-          "id": "default",
-          "title": "Default",
-          "fields": [
-            "index",
-            "pageField",
-            "searchUrl",
-            "variation",
-            "fieldMapping"
-          ]
-        }
-      ],
-      "properties": {
-        "index": {
-          "title": "Index",
-          "widget": "select_querystring_field",
-          "vocabulary": {
-            "@id": "plone.app.contenttypes.metadatafields"
-          },
-          "default": "Subject"
-        },
-        "pageField": {
-          "title": "This page field (optional)",
-          "widget": "schemaFieldSelect",
-          "fieldType": "keyword"
-        },
-        "searchUrl": {
-          "title": "Search page URL",
-          "widget": "url"
-        },
-        "variation": {
-          "title": "Item Type",
-          "widget": "blockTypeSelect",
-          "filterConvertibleFrom": "@default",
-          "default": "default"
-        }
-      }
-    },
-    "schemaEnhancer": {
-      "inheritSchemaFrom": {
-        "typeField": "variation",
-        "mappingField": "fieldMapping",
-        "defaultsField": "itemDefaults"
-      }
-    }
-  }
-}
-```
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts">
 
+<block type="codeExample" slotId="schema" source="searchShortcuts" format="schema" />
 
-## JSON Block Data
+<block type="codeExample" slotId="json-data" source="searchShortcuts" format="json" />
 
-```json
-{
-  "@type": "searchShortcuts",
-  "index": "Subject",
-  "pageField": "subjects",
-  "searchUrl": "/search",
-  "variation": "default"
-}
-```
+<fields slotId="rendering">
 
-## Fetcher
+This block has no bespoke renderer. Add its fetcher to your fetchItems map (keyed by @type) and expandListingBlocks expands it in any region you render — the same seam that powers [listings](../listings.md) and other collection blocks. See [Custom Blocks](../custom-blocks.md) to define the block type. Only the fetcher below is block-specific.
 
-The whole block is a **fetcher** — everything block-specific lives here. A fetcher is `async (block, { start, size }) => ({ items, total })`; `expandListingBlocks` calls it, keyed by the block's `@type`. Return raw result objects: set each item's `@id` to the facet-search URL, and the default `@id → href` mapping renders it as a link — no bespoke renderer.
+### Fetcher
 
 ```javascript
 export function searchShortcutsFetcher({ apiUrl, contextPath }) {
@@ -104,11 +76,9 @@ export function searchShortcutsFetcher({ apiUrl, contextPath }) {
 }
 ```
 
-Pick the `index` with the existing `select_querystring_field` widget (e.g. `Subject`); the optional `pageField` uses `schemaFieldSelect` with `fieldType: 'keyword'`.
+<block type="codeExample">
 
-## Rendering
-
-There's no bespoke renderer. Add this block's fetcher to your `fetchItems` map (keyed by `@type`) alongside any other fetch-based blocks, then expand each region with `expandListingBlocks` — it turns every block whose `@type` is in the map into ready-to-render item blocks. Only the fetcher above is block-specific.
+### Render
 
 ```javascript
 // One fetchItems map, keyed by @type, holds every fetch-based block you use.
@@ -124,4 +94,8 @@ const { items } = await expandListingBlocks(regionBlockIds, {
 items.forEach((item) => renderBlock(item)); // your normal per-block renderer
 ```
 
-See the [Listing block](./listing.md#rendering) for full per-stack (React / Vue / Svelte / Astro) render components, and [Listings](../listings.md) for the expand pattern.
+</block>
+
+</fields>
+
+</fields>

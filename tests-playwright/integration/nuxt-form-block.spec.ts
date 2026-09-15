@@ -11,13 +11,17 @@
  *
  * Validation and submission tests run after saving (view mode) so the hydra bridge
  * doesn't intercept form button clicks.
+ *
+ * The page carries a SECOND form block (`form-block-2`), so every locator here
+ * is scoped to `form-block-1`. Page-wide `locator('form')` / `input[name=…]`
+ * matched both and died on strict mode the moment that fixture arrived.
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 // Nuxt-specific: uses Nuxt iframe which has full form block implementation
 test.use({
-  storageState: 'tests-playwright/fixtures/storage-nuxt.json',
+  storageState: 'tests-playwright/.generated/storage-nuxt.json',
 });
 
 test.describe('Form Block', () => {
@@ -37,50 +41,52 @@ test.describe('Form Block', () => {
     // Save to switch to view mode — form interactions work without bridge interference
     await helper.saveContent();
 
-    // Re-locate form in view mode iframe
-    await expect(iframe.locator('form')).toBeVisible({ timeout: 10000 });
+    // Re-locate the SAME block in view mode (the template binds
+    // data-block-uid outside edit mode too, so the scope survives the save).
+    const block = iframe.locator('[data-block-uid="form-block-1"]');
+    await expect(block.locator('form')).toBeVisible({ timeout: 10000 });
 
     // Verify fields rendered
-    await expect(iframe.locator('input[name="field-name"]')).toBeVisible();
-    await expect(iframe.locator('input[name="field-email"]')).toBeVisible();
-    await expect(iframe.locator('select[name="field-subject"]')).toBeVisible();
-    await expect(iframe.locator('textarea[name="field-message"]')).toBeVisible();
-    await expect(iframe.locator('input[type="checkbox"][name="field-agree"]')).toBeVisible();
+    await expect(block.locator('input[name="field-name"]')).toBeVisible();
+    await expect(block.locator('input[name="field-email"]')).toBeVisible();
+    await expect(block.locator('select[name="field-subject"]')).toBeVisible();
+    await expect(block.locator('textarea[name="field-message"]')).toBeVisible();
+    await expect(block.locator('input[type="checkbox"][name="field-agree"]')).toBeVisible();
 
     // Verify required indicators (*)
-    const nameLabel = iframe.locator('.form-field:has(input[name="field-name"]) label');
+    const nameLabel = block.locator('.form-field:has(input[name="field-name"]) label');
     await expect(nameLabel).toContainText('*');
 
     // Submit empty form — should show validation errors on required fields
-    const submitButton = iframe.locator('.form-submit');
+    const submitButton = block.locator('.form-submit');
     await submitButton.click();
 
     // Errors should appear for all required fields
-    const nameError = iframe.locator('.form-field:has(input[name="field-name"]) .form-error');
+    const nameError = block.locator('.form-field:has(input[name="field-name"]) .form-error');
     await expect(nameError).toBeVisible({ timeout: 5000 });
     await expect(nameError).toContainText('required');
 
-    const emailError = iframe.locator('.form-field:has(input[name="field-email"]) .form-error');
+    const emailError = block.locator('.form-field:has(input[name="field-email"]) .form-error');
     await expect(emailError).toBeVisible();
 
-    const subjectError = iframe.locator('.form-field:has(select[name="field-subject"]) .form-error');
+    const subjectError = block.locator('.form-field:has(select[name="field-subject"]) .form-error');
     await expect(subjectError).toBeVisible();
 
-    const agreeError = iframe.locator('.form-field:has(input[name="field-agree"]) .form-error');
+    const agreeError = block.locator('.form-field:has(input[name="field-agree"]) .form-error');
     await expect(agreeError).toBeVisible();
 
     // No success message
-    await expect(iframe.locator('.form-success')).toHaveCount(0);
+    await expect(block.locator('.form-success')).toHaveCount(0);
 
     // Fill required fields and submit
-    await iframe.locator('input[name="field-name"]').fill('Test User');
-    await iframe.locator('input[name="field-email"]').fill('test@example.com');
-    await iframe.locator('select[name="field-subject"]').selectOption('Bug Report');
-    await iframe.locator('input[name="field-agree"]').check();
+    await block.locator('input[name="field-name"]').fill('Test User');
+    await block.locator('input[name="field-email"]').fill('test@example.com');
+    await block.locator('select[name="field-subject"]').selectOption('Bug Report');
+    await block.locator('input[name="field-agree"]').check();
     await submitButton.click();
 
     // Should show success message
-    await expect(iframe.locator('.form-success')).toBeVisible({ timeout: 5000 });
+    await expect(block.locator('.form-success')).toBeVisible({ timeout: 5000 });
   });
 
   test('validates email format on from field', async ({ page }) => {
@@ -96,26 +102,27 @@ test.describe('Form Block', () => {
 
     // Save to switch to view mode
     await helper.saveContent();
-    await expect(iframe.locator('form')).toBeVisible({ timeout: 10000 });
+    const block = iframe.locator('[data-block-uid="form-block-1"]');
+    await expect(block.locator('form')).toBeVisible({ timeout: 10000 });
 
     // Fill all required fields but use invalid email
-    await iframe.locator('input[name="field-name"]').fill('Test User');
-    await iframe.locator('input[name="field-email"]').fill('not-an-email');
-    await iframe.locator('select[name="field-subject"]').selectOption('General Inquiry');
-    await iframe.locator('input[name="field-agree"]').check();
+    await block.locator('input[name="field-name"]').fill('Test User');
+    await block.locator('input[name="field-email"]').fill('not-an-email');
+    await block.locator('select[name="field-subject"]').selectOption('General Inquiry');
+    await block.locator('input[name="field-agree"]').check();
 
-    await iframe.locator('.form-submit').click();
+    await block.locator('.form-submit').click();
 
     // Email error should appear
-    const emailError = iframe.locator('.form-field:has(input[name="field-email"]) .form-error');
+    const emailError = block.locator('.form-field:has(input[name="field-email"]) .form-error');
     await expect(emailError).toBeVisible({ timeout: 5000 });
     await expect(emailError).toContainText('valid email');
 
     // Fix the email and resubmit
-    await iframe.locator('input[name="field-email"]').fill('test@example.com');
-    await iframe.locator('.form-submit').click();
+    await block.locator('input[name="field-email"]').fill('test@example.com');
+    await block.locator('.form-submit').click();
 
-    await expect(iframe.locator('.form-success')).toBeVisible({ timeout: 5000 });
+    await expect(block.locator('.form-success')).toBeVisible({ timeout: 5000 });
   });
 
   test('can add a new field to the form via block chooser', async ({ page }) => {
@@ -126,11 +133,16 @@ test.describe('Form Block', () => {
     await helper.navigateToEdit('/form-test-page');
     await helper.waitForIframeReady();
 
-    // Wait for form fields to render
-    const formFields = iframe.locator('.form-field[data-block-uid]');
+    // Wait for form fields to render (this form's — the page has two)
+    const formFields = iframe.locator(
+      '[data-block-uid="form-block-1"] .form-field[data-block-uid]',
+    );
     await expect(formFields.first()).toBeVisible({ timeout: 10000 });
+    // How many fields the fixture ships is incidental — this test is about the
+    // chooser adding ONE. Hardcoding the count made the page un-extendable:
+    // giving the form's unused field types a content example broke it.
     const initialCount = await formFields.count();
-    expect(initialCount).toBe(6);
+    expect(initialCount).toBeGreaterThan(0);
 
     await helper.getStableBlockCount();
 
@@ -141,7 +153,11 @@ test.describe('Form Block', () => {
     // Drill down to the form block in the sidebar
     const pageChildBlocks = page.locator('#sidebar-order .child-blocks-widget');
     await expect(pageChildBlocks).toBeVisible({ timeout: 5000 });
-    const formItem = pageChildBlocks.locator('.child-block-item', { hasText: 'Form' });
+    // By its TITLE, not by 'Form': hasText is a case-insensitive substring, so
+    // the second block ("A second form on the same page") matched too.
+    const formItem = pageChildBlocks.locator('.child-block-item', {
+      hasText: 'Contact Form',
+    });
     await expect(formItem).toBeVisible({ timeout: 5000 });
     await formItem.click();
 
@@ -164,12 +180,15 @@ test.describe('Form Block', () => {
     const blockChooser = page.locator('.blocks-chooser');
     await expect(blockChooser).toBeVisible({ timeout: 5000 });
 
-    // Select the Date field type
-    const commonSection = blockChooser.locator('text=Common');
-    if (await commonSection.isVisible()) {
-      await commonSection.click();
+    // Select the Date field type. Expand "Common" only when the button is NOT
+    // already on offer: the section header is a TOGGLE, so clicking it while
+    // the section is open collapses it — Playwright then watched the button it
+    // had just resolved slide out of view and retried the click for 45s.
+    const dateButton = blockChooser.getByRole('button', { name: /Date/i });
+    if (!(await dateButton.isVisible().catch(() => false))) {
+      await blockChooser.locator('text=Common').first().click();
     }
-    await blockChooser.getByRole('button', { name: /Date/i }).click();
+    await dateButton.click();
     await blockChooser.waitFor({ state: 'hidden', timeout: 5000 });
 
     // Wait for the new field to appear (count goes from 6 to 7)

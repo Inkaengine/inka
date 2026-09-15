@@ -5,7 +5,7 @@
       <!-- Tab bar (only when 2+ tabs) -->
       <div v-if="tabs.length > 1" data-tab-bar class="flex bg-gray-800 border-b border-gray-700">
         <button v-for="(tab, i) in tabs" :key="tab['@id']"
-          :data-block-uid="tab['@id']"
+          :data-block-selector="`${tab['@id']} ${tab['@id']}#code`"
           data-linkable-allow
           @click="activeTab = i"
           :class="['px-4 py-2 text-sm font-medium transition-colors',

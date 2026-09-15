@@ -8,7 +8,7 @@
   "creators": [
     "admin"
   ],
-  "description": "To make your site editable with Inka you load hydra.js in your frontend and call initBridge(). This sets up a two-way communication channel that handles authentication, page navigation, and live content updates.",
+  "description": "To make your site editable with Hydra you load hydra.js in your frontend and call initBridge(). This sets up a two-way communication channel that handles authentication, page navigation, and live content updates.",
   "effective": "2025-01-01T00:00:00",
   "exclude_from_nav": false,
   "expires": null,
@@ -61,13 +61,13 @@
     },
     "p-1": {
       "@type": "slate",
-      "plaintext": "To make your site editable with Inka you load hydra.js in your frontend and call `initBridge()`. This sets up a two-way communication channel that handles authentication, page navigation, and live content updates.",
+      "plaintext": "To make your site editable with Hydra you load hydra.js in your frontend and call `initBridge()`. This sets up a two-way communication channel that handles authentication, page navigation, and live content updates.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "To make your site editable with Inka you load hydra.js in your frontend and call "
+              "text": "To make your site editable with Hydra you load hydra.js in your frontend and call "
             },
             {
               "type": "code",
@@ -236,7 +236,7 @@
     },
     "p-9": {
       "@type": "slate",
-      "plaintext": "Iterate `blocks_layout.items` and render each block by type. Add `data-block-uid` so Inka knows which block the user clicked.",
+      "plaintext": "Iterate `blocks_layout.items` and render each block by type. Add `data-block-uid` so Hydra knows which block the user clicked.",
       "value": [
         {
           "type": "p",
@@ -264,7 +264,7 @@
               ]
             },
             {
-              "text": " so Inka knows which block the user clicked."
+              "text": " so Hydra knows which block the user clicked."
             }
           ]
         }

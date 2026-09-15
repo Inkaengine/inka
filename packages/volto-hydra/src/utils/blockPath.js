@@ -10,6 +10,7 @@ import {
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
   isBlockReadonly,
+  isBlockPositionLocked,
   getChildBlockEntries,
   setChildBlockEntries,
   getBlockType,
@@ -2055,6 +2056,14 @@ export function resolveRegionConstraints(
       blockConfig?.defaultBlockType ??
       (inherited ? pageDefaults.defaultBlockType ?? null : null),
     maxLength: fieldDef?.maxLength ?? blockConfig?.maxLength ?? null,
+    // A FORCED region's layout is a constraint like the rest, and dropping it
+    // here quietly unmade the region. ensureEmptyBlockIfEmpty stamps a seeded
+    // placeholder with the template membership it reads off
+    // `containerConfig.allowedLayouts`; a config resolved through here carried
+    // none, so a region re-seeded after a delete came back as ordinary page
+    // content. The author then filled it and had nothing to lock — the
+    // placeholder they filled was no longer the template's.
+    allowedLayouts: fieldDef?.allowedLayouts ?? blockConfig?.allowedLayouts ?? null,
   };
 }
 
@@ -2939,4 +2948,47 @@ export function getCommonAncestor(blockPathMap, blockUids) {
     }
   }
   return common;
+}
+
+
+/**
+ * Remove the 'empty' placeholder a block was just dropped onto.
+ *
+ * A drop onto a placeholder means "put it HERE", so the placeholder goes and the
+ * dropped block takes its position rather than sitting beside it.
+ *
+ * Call this AFTER the dropped block's membership has been re-derived
+ * (applyMembershipAfterMove). The placeholder is a neighbour, and in a forced
+ * region it is the only neighbour carrying the template — remove it first and
+ * there is nothing left to derive membership from, so the block that just landed
+ * in the region does not belong to it.
+ *
+ * Written twice before this: once in the drag path, once in the chooser's
+ * ask-first drop, which is how the two came to disagree about ordering.
+ *
+ * @returns {Object} formData — unchanged when the target isn't an 'empty'
+ */
+export function removeReplacedPlaceholder(
+  formData,
+  blockPathMap,
+  replaceTargetId,
+  { blocksConfig, intl },
+) {
+  if (!replaceTargetId) return formData;
+  const blockData = getBlockById(formData, blockPathMap, replaceTargetId);
+  if (blockData?.['@type'] !== 'empty') return formData;
+  const containerConfig = getContainerFieldConfig(
+    replaceTargetId,
+    blockPathMap,
+    formData,
+    blocksConfig,
+    intl,
+  );
+  if (!containerConfig) return formData;
+  return deleteBlockFromContainer(
+    formData,
+    blockPathMap,
+    replaceTargetId,
+    containerConfig,
+  );
 }

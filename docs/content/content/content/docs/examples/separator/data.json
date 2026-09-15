@@ -273,12 +273,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  export let block;\n</script>\n\n<div data-block-uid={block['@uid']} class=\"separator-block separator-{block.styles?.align || 'full'}\">\n  <hr />\n</div>"
-        },
-        {
-          "@id": "ref-separator-rendering-astro-84f1fd",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\nconst { block } = Astro.props;\nconst align = block?.styles?.align || 'full';\n---\n<div class={`separator-block separator-${align}`}>\n  <hr />\n</div>"
         }
       ]
     },

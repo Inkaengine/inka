@@ -23,6 +23,14 @@ const nextConfig = {
       __dirname,
       '../../packages/helpers/index.js',
     );
+    // The one block registry every frontend reads. The Nuxt example and the
+    // mock test frontend already import it; this example used to build its own
+    // from the docs bundle, which is how five block types ended up unregistered
+    // here while working elsewhere.
+    config.resolve.alias['@test-fixtures'] = path.resolve(
+      __dirname,
+      '../../tests-playwright/fixtures',
+    );
     return config;
   },
 };

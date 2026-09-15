@@ -1,0 +1,38 @@
+{
+  "@id": "/too-long-string-page",
+  "@type": "Document",
+  "title": "A block holding a string longer than its schema allows",
+  "UID": "too-long-string-page-uid",
+  "blocks": {
+    "intro-1": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The slide below has a kicker longer than its schema's maxLength, so the page should not save."
+            }
+          ]
+        }
+      ]
+    },
+    "slider-1": {
+      "@type": "slider",
+      "slides": [
+        {
+          "@id": "slide-1",
+          "title": "A slide",
+          "description": "Body",
+          "head_title": "A kicker so long it runs well past the sixty characters the schema allows"
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "intro-1",
+      "slider-1"
+    ]
+  }
+}

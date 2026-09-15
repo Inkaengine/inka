@@ -17,7 +17,14 @@ import { URLS } from '../ports';
  * Map project names to frontend URLs.
  * The default (mock) uses the test frontend embedded on port 8888.
  */
-const FRONTEND_URLS: Record<string, string> = {
+// The frontends block-sanity ENFORCES. Others (react, svelte, vue, f7) ship
+// partial block coverage on purpose and skip the render contract — so nothing
+// discovered for them is ever asserted. Discovery reads this too: scanning a
+// frontend whose cases can only skip cost the react/svelte/vue/astro job ~1736
+// entries EACH and pushed it past the 30m CI limit.
+export const SANITY_PROJECTS = new Set(['mock', 'nuxt', 'nextjs']);
+
+export const FRONTEND_URLS: Record<string, string> = {
   nuxt: URLS.nuxt,
   react: URLS.reactDoc,
   svelte: URLS.svelteDoc,

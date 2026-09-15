@@ -93,15 +93,15 @@
     }
     .volto-hydra-add-button {
       position: fixed;
-      background: #007eb1;
-      color: white;
-      width: 24px;
-      height: 24px;
+      background: rgba(200, 200, 200, 0.5);   /* View.jsx */
+      color: #666;
+      width: 30px;          /* View.jsx: const buttonWidth = 30 */
+      height: 30px;         /* View.jsx: const buttonHeight = 30 */
       border-radius: 50%;
       display: none;
-      z-index: 1000;
+      z-index: 10;          /* View.jsx zIndex: 10, not 1000 */
       text-align: center;
-      line-height: 24px;
+      line-height: 30px;
     }
   </style>
 </head>
@@ -121,17 +121,30 @@
   </div>
 
   <script type="module">
-    import { buildBlockPathMap } from '/build-block-path-map.js';
+    import { buildBlockPathMap, buildIdFieldMap } from '/build-block-path-map.js';
+    import { mergeTemplatesIntoPage } from '/merge-templates.js';
 
-    // Configure iframe frontend from ?frontend= URL param (default: mock frontend on 8888)
+    // Configure iframe frontend from ?frontend= URL param. The default is the
+    // origin THIS page is served from — vite injects it (see vite.config.js), and
+    // it is also just window.location.origin, since the mock parent and the test
+    // frontend are the same server. It used to be a literal localhost:8889, so a
+    // run on an overridden port (HYDRA_TEST_FRONTEND_PORT) framed a dead server
+    // unless the caller remembered ?frontend=.
     const params = new URLSearchParams(window.location.search);
-    const frontendOrigin = params.get('frontend') || 'http://localhost:8889';
+    const frontendOrigin =
+      params.get('frontend') || window._frontendOrigin || window.location.origin;
     const contentName = params.get('content'); // e.g., 'examples' loads /examples.json
     const apiPath = params.get('api_path'); // e.g., '/block/toc-block' loads from API
     const adminOrigin = window.location.origin;
 
     // Derive API origin from api_path param if present, otherwise default
-    const apiOrigin = apiPath ? new URL(apiPath).origin : 'http://localhost:8888';
+    // Same lesson as the frontend origin above: ports are overridable
+    // (HYDRA_MOCK_API_PORT), so the fallback comes from the vite-injected
+    // _apiOrigin — a literal 8888 sent every overridden run to a dead port
+    // ("Failed to load API content", no #previewIframe, whole-suite failures).
+    const apiOrigin = apiPath
+      ? new URL(apiPath).origin
+      : (window._apiOrigin || 'http://localhost:8888');
 
     // Derive content path from api_path (e.g. "http://localhost:8891/blog" → "/blog")
     // Falls back to /_test_data/test-page for hydra's own test content
@@ -163,15 +176,54 @@
     // fixtures (hero, slate, mock-*) when checking that every frontend-
     // registered block type has a content example.
     const frontendBlockKeys = new Set();
+    // cssClasses of the style menu the frontend declares at INIT (#295).
+    const styleMenuClasses = new Set();
 
     // blocksConfig for schema-driven buildBlockPathMap (no Volto deps)
     const mockBlocksConfig = {
       _page: {
         schema: () => ({
-          properties: { items: { widget: 'blocks_layout' } },
+          // `title` / `description` are the PAGE's own metadata, annotated by the
+          // title/description blocks as `data-edit-text="/title"` and
+          // `"/description"`. They have to be declared here for the same reason a
+          // block's fields do: getFieldType resolves a `/`-scoped name against the
+          // page schema, and an undeclared field is never made contenteditable.
+          properties: {
+            items: { widget: 'blocks_layout' },
+            title: { title: 'Title', type: 'string' },
+            description: { title: 'Description', type: 'string' },
+            // …and the rest of the page's own fields, for the same reason. In
+            // the real admin these come from the CONTENT TYPE schema (View.jsx
+            // extractBlockFieldTypes: "page-level field types from content type
+            // schema … accessed via /fieldName"), so a Plone News Item just HAS
+            // `effective` and a dateField block can edit it. The mock parent
+            // stands in for the admin here, so it has to supply them itself —
+            // a frontend cannot, since its INIT `page` schema declares BLOCKS
+            // FIELDS and the admin turns every entry there into a region.
+            effective: { title: 'Publication date', type: 'string' },
+            created: { title: 'Created', type: 'string' },
+            modified: { title: 'Modified', type: 'string' },
+            start: { title: 'Start', type: 'string' },
+            end: { title: 'End', type: 'string' },
+            location: { title: 'Location', type: 'string' },
+            contact_name: { title: 'Contact name', type: 'string' },
+            contact_phone: { title: 'Contact phone', type: 'string' },
+          },
         }),
       },
-      slate: { id: 'slate', blockSchema: { properties: { value: { widget: 'slate' } } } },
+      slate: {
+        id: 'slate',
+        blockSchema: {
+          properties: {
+            value: { widget: 'slate' },
+            // Mirrors the real admin's slate schema factory (#335): the
+            // permanent fragment id a frontend renders on the block. Without
+            // the mirror, any fixture storing an anchor is flagged as an
+            // undeclared field by block-sanity's stray-field check.
+            anchor: { title: 'Anchor', type: 'string' },
+          },
+        },
+      },
       hero: {
         id: 'hero',
         blockSchema: {
@@ -337,7 +389,11 @@
 
     // Default inline form data for existing mock parent tests
     const defaultFormData = {
-      '@id': 'http://localhost:8888/_test_data/test-page',
+      // Same rule as apiOrigin above: the API port is overridable, so a literal
+      // 8888 here handed the frontend a page whose own @id pointed at a dead
+      // server on any overridden run — INIT never completed and discovery
+      // reported "returned no schemas".
+      '@id': `${apiOrigin}/_test_data/test-page`,
       '@type': 'Document',
       title: 'Mock Test Page',
       blocks: {
@@ -357,6 +413,13 @@
         'mock-text-block': {
           '@type': 'slate',
           value: [{ type: 'p', children: [{ text: 'Simple text field' }] }],
+        },
+        // A slate that is EMPTY from the start — no ZWS, no text — for the
+        // empty-slate typing test. Typing must land inside <p data-node-id>,
+        // not leak to the contenteditable wrapper (empty-slate-typing.spec.ts).
+        'mock-empty-slate': {
+          '@type': 'slate',
+          value: [{ type: 'p', children: [{ text: '' }] }],
         },
         'mock-multi-field-block': {
           '@type': 'hero',
@@ -485,7 +548,12 @@
       blocks_layout: {
         // mock-hero-block is intentionally last — block-navigation.spec.ts:180
         // ("ArrowDown at end of last block stays in same block") relies on it.
-        items: ['mock-block-1', 'mock-text-block', 'mock-multi-field-block', 'mock-textarea-block', 'mock-image-block', 'mock-columns', 'mock-table', 'mock-code-block', 'mock-form-block', 'mock-hero-block'],
+        // mock-empty-slate sits between code and form deliberately: block-navigation
+        // asserts the contiguous chain block-1 → text-block → multi-field-block
+        // (ArrowUp/ArrowDown edge navigation), so the empty-slate block must NOT
+        // break those adjacencies. code-block/form-block have no navigation
+        // adjacency assertions, so it's a safe home that keeps it out of the way.
+        items: ['mock-block-1', 'mock-text-block', 'mock-multi-field-block', 'mock-textarea-block', 'mock-image-block', 'mock-columns', 'mock-table', 'mock-code-block', 'mock-empty-slate', 'mock-form-block', 'mock-hero-block'],
       },
     };
 
@@ -515,6 +583,35 @@
         });
     } else {
       mockFormData = defaultFormData;
+    }
+
+    // --- Template / forced-layout merge (parity with the real admin) ---------
+    // View.jsx runs mergeTemplatesIntoPage before it posts INITIAL_DATA, with the
+    // comment "Always call mergeTemplatesIntoPage - it handles all cases". That is
+    // what stamps a forced layout's blocks onto the page and mints each one's
+    // templateInstanceId — the id template edit mode unlocks by.
+    //
+    // Skipping it here posted the raw API JSON, so a page with a forced region (a
+    // site footer, a global announcement) reached the bridge WITHOUT its chrome:
+    // the frontend still rendered the footer (frontends expand templates
+    // themselves), but the bridge had no block for it — nothing to resolve,
+    // select, or unlock. Every mock-parent test then asserted against a data model
+    // the real editor never has.
+    const templateCache = {};
+    async function loadTemplate(templateId) {
+      if (templateCache[templateId]) return templateCache[templateId];
+      // A templateId is a content path ('/templates/site-footer'), a resolveuid
+      // ref, or a full URL — normalise to a path on the API, as the test frontend
+      // does for its own expansion.
+      const url = templateId.startsWith('http')
+        ? new URL(templateId).pathname
+        : `/${templateId.replace(/^\//, '')}`;
+      const res = await fetch(`${apiOrigin}${url}`, { headers: { Accept: 'application/json' } });
+      if (!res.ok) {
+        throw new Error(`[MOCK_PARENT] template ${templateId} → ${res.status} ${res.statusText}`);
+      }
+      templateCache[templateId] = await res.json();
+      return templateCache[templateId];
     }
 
     // Hardcoded responses are no longer needed - we use real Slate transformations
@@ -567,6 +664,58 @@
               mockBlocksConfig[blockType] = blockDef;
             }
           }
+
+          // The frontend's page schema (INIT `page`) declares the page's blocks
+          // fields and any layouts forced on them — the same input the admin
+          // passes as pageBlocksFields. A frontend that sends none has nothing to
+          // merge, so its page data is used exactly as fetched.
+          // The frontend's page schema when it sends one, otherwise the mock
+          // parent's own `_page` — the same default buildBlockPathMap already
+          // uses, so a frontend that declares no page schema still gets its
+          // `items` region merged (the admin reads its registered _page for
+          // exactly this reason).
+          const pageBlocksFields =
+            message.page?.schema?.properties || mockBlocksConfig._page.schema().properties;
+          {
+            const menu = message.voltoConfig?.settings?.slate?.styleMenu;
+            for (const d of [
+              ...(menu?.blockStyles || []),
+              ...(menu?.inlineStyles || []),
+            ]) {
+              if (d?.cssClass) styleMenuClasses.add(d.cssClass);
+            }
+          }
+          if (message.page?.schema?.properties) {
+            // Adopt the frontend's page schema, exactly as the admin does: it is
+            // what tells buildBlockPathMap which regions exist (a property with
+            // widget 'blocks_layout' maps to formData.blocks_layout[<name>]), so
+            // without it the merged footer/announcement blocks land in the data
+            // but never in the path map — present on screen, unresolvable to the
+            // bridge. Merged per field so the baseline's own page metadata
+            // (title/description, annotated as `/title` and `/description`)
+            // survives a frontend that only declares its blocks fields.
+            const baseline = mockBlocksConfig._page.schema().properties;
+            const properties = { ...baseline };
+            for (const [field, def] of Object.entries(pageBlocksFields)) {
+              properties[field] = { ...baseline[field], ...def };
+            }
+            mockBlocksConfig._page = { schema: () => ({ properties }) };
+          }
+
+          // Merge UNCONDITIONALLY, exactly as View.jsx does ("Always call
+          // mergeTemplatesIntoPage — it handles all cases"). It is a no-op for a
+          // page with no templates, and gating it on the frontend sending a page
+          // schema would leave such a frontend's template definitions unstamped.
+          const { merged } = await mergeTemplatesIntoPage(mockFormData, {
+            loadTemplate,
+            preloadedTemplates: templateCache,
+            pageBlocksFields,
+            idFieldMap: buildIdFieldMap(mockBlocksConfig),
+            // Same as the admin's INITIAL_DATA merge: this document is being
+            // opened to edit, so it is never merged against its own template.
+            skipOwnTemplate: true,
+          });
+          mockFormData = merged;
 
           const blockPathMap = buildBlockPathMap(mockFormData, mockBlocksConfig);
 
@@ -826,6 +975,16 @@
         case 'BLOCK_SELECTED': {
           // Track the last selected block for test assertions
           window.mockParent.lastSelectedBlockUid = message.blockUid;
+          // The whole message, so a test can assert what the bridge reports
+          // about the block (e.g. hasEmbed) and not just which one it is.
+          window.mockParent.lastBlockSelectedMessage = message;
+          // ...and keyed by block, because BLOCK_SELECTED also arrives from the
+          // scroll handler for whatever is in view: a test asking about the
+          // block it just clicked would otherwise read a later message about a
+          // different one.
+          window.mockParent.blockSelectedByUid =
+            window.mockParent.blockSelectedByUid || {};
+          window.mockParent.blockSelectedByUid[message.blockUid] = message;
           // Position the block UI overlays based on rect from iframe
           const { rect, blockUid } = message;
           if (rect) {
@@ -849,13 +1008,74 @@
             outline.style.height = `${rect.height}px`;
             outline.style.display = 'block';
 
-            // Add button below block
-            addButton.style.left = `${iframeRect.left + rect.left + rect.width / 2 - 12}px`;
-            addButton.style.top = `${iframeRect.top + rect.top + rect.height + 8}px`;
+            // Add button — same placement rule as the real parent
+            // (View.jsx), which picks by addDirection rather than always
+            // sitting below and centred:
+            //   right  -> 8px to the RIGHT of the block, at its top
+            //   bottom -> 8px BELOW the block, aligned to its RIGHT edge
+            // The mock used to centre it horizontally in both cases, which put
+            // it over the middle of whatever followed — a position the real
+            // admin never uses. NOT reproduced: the canvas-edge clamps that
+            // pull the button back inside the block near the viewport edges.
+            const ADD_SIZE = 30;
+            const isRight = message.addDirection === 'right';
+            let addLeft;
+            let addTop;
+            if (isRight) {
+              addLeft = iframeRect.left + rect.left + rect.width + 8;
+              addTop = iframeRect.top + rect.top;
+            } else {
+              addLeft = iframeRect.left + rect.left + rect.width - ADD_SIZE;
+              addTop = iframeRect.top + rect.top + rect.height + 8;
+            }
+
+            // Canvas-edge clamps, ported from View.jsx. Without them the button
+            // escapes the canvas whenever a block ends at its edge — on a phone
+            // that lands on the bottom toolbar, over Save/Cancel. Pull it back
+            // INSIDE the block instead.
+            const iframeRight = iframeRect.left + iframeRect.width;
+            if (addLeft + ADD_SIZE > iframeRight) {
+              addLeft = iframeRect.left + rect.left + rect.width - ADD_SIZE - 8;
+            }
+            if (isRight) {
+              // A right-add pulled in for lack of room was only constrained
+              // horizontally, so it stays at the block's TOP-right.
+              addTop = iframeRect.top + rect.top;
+            }
+            const iframeBottom = iframeRect.top + iframeRect.height;
+            if (addTop + ADD_SIZE > iframeBottom) {
+              addTop = iframeRect.top + rect.top + rect.height - ADD_SIZE - 8;
+            }
+            if (addTop < iframeRect.top) {
+              addTop = iframeRect.top + 8;
+            }
+
+            addButton.style.left = `${addLeft}px`;
+            addButton.style.top = `${addTop}px`;
             addButton.style.display = 'block';
 
             console.log('[MOCK_PARENT] Positioned overlays for block:', blockUid, 'rect:', rect);
           }
+          break;
+        }
+
+        case 'HIDE_BLOCK_UI': {
+          // Mirror the real parent (View.jsx: setBlockUI(null)): hide the
+          // outline, toolbar and add button without deselecting the block.
+          //
+          // The mock parent used to fall through to "Unknown message type",
+          // so overlays it had positioned on BLOCK_SELECTED stayed on screen
+          // after hydra asked for them to go away. The add button sits under
+          // the block and overlaps whatever follows, so Playwright clicks on
+          // real content intermittently failed with
+          //   <div id="add-button" class="volto-hydra-add-button">+</div>
+          //   intercepts pointer events
+          // — a harness artefact that looked exactly like a product bug.
+          for (const id of ['quanta-toolbar', 'block-outline', 'add-button']) {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+          }
+          console.log('[MOCK_PARENT] Hid block UI overlays');
           break;
         }
 
@@ -871,6 +1091,11 @@
     window.mockParent = {
       getFormData: () => mockFormData,
       getBlocksConfig: () => mockBlocksConfig,
+      // The style menu the FRONTEND declared at INIT. block-sanity asks whether
+      // stored `styleName` content could have been authored, and only the
+      // frontend knows which styles it offers — the alternative is a hardcoded
+      // list that is wrong for every frontend but one.
+      getStyleMenuClasses: () => Array.from(styleMenuClasses),
       getFrontendBlockKeys: () => Array.from(frontendBlockKeys),
       getBlock: (blockId) => mockFormData.blocks[blockId],
       buildBlockPathMap: () => buildBlockPathMap(mockFormData, mockBlocksConfig),

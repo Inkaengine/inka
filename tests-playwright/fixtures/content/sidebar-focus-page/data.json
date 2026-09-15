@@ -1,0 +1,29 @@
+{
+ "@id": "http://localhost:8888/sidebar-focus-page",
+ "@type": "Document",
+ "id": "sidebar-focus-page",
+ "title": "Sidebar Focus Page",
+ "description": "Fixture for the sidebar-steals-the-caret test. The highlight block has text to type into and NO image, which is the trigger: an image field with no value renders its picker on every selection.",
+ "review_state": "published",
+ "UID": "sidebar-focus-page-uid",
+ "is_folderish": false,
+ "blocks_layout": {
+  "items": ["title-block", "highlight-1"]
+ },
+ "blocks": {
+  "title-block": {
+   "@type": "title"
+  },
+  "highlight-1": {
+   "@type": "highlight",
+   "title": "Type into me",
+   "description": [
+    {
+     "type": "p",
+     "children": [{ "text": "Clicking this text must leave the caret in the preview." }]
+    }
+   ],
+   "cta_title": "Read more"
+  }
+ }
+}

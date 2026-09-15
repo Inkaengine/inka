@@ -249,12 +249,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  export let block;\n  $: url = block.url || '';\n  $: youtubeId = url.match(/(?:youtu\\.be\\/|youtube\\.com\\/(?:watch\\?v=|embed\\/))([^&?/]+)/)?.[1];\n</script>\n\n<div data-block-uid={block['@uid']} class=\"video-block\">\n  {#if youtubeId}\n    <iframe\n      src=\"https://www.youtube.com/embed/{youtubeId}\"\n      allowfullscreen\n      style=\"width: 100%; aspect-ratio: 16/9; border: none\"\n      title=\"Video\"\n    />\n  {:else if url}\n    <video src={url} controls style=\"width: 100%\">\n      <track kind=\"captions\" />\n    </video>\n  {:else}\n    <p>No video URL set</p>\n  {/if}\n</div>"
-        },
-        {
-          "@id": "ref-video-rendering-astro-e0899a",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\n/**\n * Video block. Recognizes YouTube URLs and embeds them; falls back to a\n * native <video> for direct media URLs. Static placeholder if no URL.\n */\nconst { block } = Astro.props;\nconst url = block.url || '';\nconst youtubeId = url.match(/(?:youtu\\.be\\/|youtube\\.com\\/(?:watch\\?v=|embed\\/))([^&?/]+)/)?.[1];\n---\n<div class=\"video-block\">\n  {youtubeId && (\n    <iframe\n      src={`https://www.youtube.com/embed/${youtubeId}`}\n      allowfullscreen\n      style=\"width: 100%; aspect-ratio: 16/9; border: none\"\n      title=\"Video\"\n    />\n  )}\n  {!youtubeId && url && (\n    <video src={url} controls style=\"width: 100%\">\n      <track kind=\"captions\" />\n    </video>\n  )}\n  {!youtubeId && !url && <p>No video URL set</p>}\n</div>"
         }
       ]
     },

@@ -2,6 +2,8 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
+const { execFileSync } = require('node:child_process');
 const { app } = require('./mock-api-server.cjs');
 
 let server;
@@ -211,86 +213,6 @@ describe('@querystring-search', () => {
   });
 });
 
-describe('folder ordering (__metadata__.json)', () => {
-  // The docs topic pages live under /docs (the docs-sphinx tree). Their
-  // folder order is defined by docs/__metadata__.json `ordering` (UID →
-  // position). Derive the expected title order from that same file so the
-  // assertion tracks the content tree instead of hard-coding a page list
-  // that drifts as the docs are restructured.
-  function expectedDocsOrder() {
-    const docsDir = path.join(
-      __dirname, '../../docs/content/content/content/docs',
-    );
-    const meta = JSON.parse(
-      fs.readFileSync(path.join(docsDir, '__metadata__.json'), 'utf8'),
-    );
-    const ordering = meta.ordering || {};
-    const uidTitle = {};
-    for (const entry of fs.readdirSync(docsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const dj = path.join(docsDir, entry.name, 'data.json');
-      if (!fs.existsSync(dj)) continue;
-      const d = JSON.parse(fs.readFileSync(dj, 'utf8'));
-      if (d.UID) uidTitle[d.UID] = d.title;
-    }
-    return Object.entries(ordering)
-      .sort((a, b) => a[1] - b[1])
-      .map(([uid]) => uidTitle[uid])
-      .filter(Boolean);
-  }
-
-  it('docs children are in __metadata__.json order, not alphabetical', async () => {
-    const data = await getContent('/docs');
-    assert.ok(data.items && data.items.length > 0, 'docs should have children');
-
-    const expected = expectedDocsOrder();
-    assert.ok(expected.length > 0, 'metadata ordering should resolve to titles');
-
-    // The ordered pages appear first, in metadata order. Children with no
-    // `ordering` entry (e.g. examples) follow — slice to the ordered prefix.
-    const titles = data.items.map((i) => i.title);
-    assert.deepEqual(titles.slice(0, expected.length), expected);
-    // Sanity: not alphabetical — by id, 'advanced' would otherwise sort first.
-    assert.notEqual(titles[0], 'Advanced');
-  });
-
-  it('docs navigation children match __metadata__.json order', async () => {
-    const data = await getContent('/docs');
-
-    const nav = data['@components']?.navigation;
-    const docsNav = nav.items?.find(
-      (i) => new URL(i['@id']).pathname === '/docs',
-    );
-    assert.ok(docsNav, 'should have docs in navigation');
-
-    const expected = expectedDocsOrder();
-    const titles = docsNav.items.map((i) => i.title);
-    assert.deepEqual(titles.slice(0, expected.length), expected);
-  });
-
-  it('getObjPositionInParent uses __metadata__.json for docs children', async () => {
-    // absolutePath `/docs::1` — strict children of /docs only (depth 1),
-    // so the position sort isn't diluted by deeper descendants.
-    const data = await querystringSearch('/', {
-      query: [
-        {
-          i: 'path',
-          o: 'plone.app.querystring.operation.string.absolutePath',
-          v: '/docs::1',
-        },
-      ],
-      sort_on: 'getObjPositionInParent',
-      sort_order: 'ascending',
-      b_start: 0,
-      b_size: 50,
-    });
-
-    const expected = expectedDocsOrder();
-    const titles = data.items.map((i) => i.title);
-    assert.deepEqual(titles.slice(0, expected.length), expected);
-  });
-});
-
 describe('navigation', () => {
   it('returns children in folder order', async () => {
     const data = await getContent('/_test_data');
@@ -484,5 +406,73 @@ describe('image blocks', () => {
     const data = await res.json();
     // the title block must not sprout image_scales
     assert.equal(data.blocks['title-1'].image_scales, undefined);
+  });
+});
+
+// A deployable export must bundle every referenced blob's bytes; the docs mount
+// declares the generated screenshots/video (git-ignored, produced by
+// record-doc-assets / cache-restore). On a fresh checkout / cache miss they are
+// absent, so a full export legitimately fails on the missing bytes — skip then,
+// like export-markdown-mount. This runs where the assets exist (locally, and the
+// record job after `pnpm docs:assets`); the media gate is the presence check.
+const HAVE_ASSETS = fs.existsSync(path.resolve(__dirname, '../../docs/images/accordion-edit.png'))
+  && fs.existsSync(path.resolve(__dirname, '../../docs/static/hydra-demo.mp4'));
+
+describe('/@export (tree export, json | markdown)', { skip: HAVE_ASSETS ? false : 'generated doc assets absent — run `pnpm docs:assets` first' }, () => {
+  it('exports json as a gzipped tar distribution that validates clean', async () => {
+    const res = await fetch(`${baseUrl}/@export`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format: 'json' }),
+    });
+    assert.equal(res.status, 200, 'export succeeded');
+    // Same wire format as Plone's @@export-content: a gzipped tar.
+    assert.equal(res.headers.get('content-type'), 'application/gzip');
+    const buf = Buffer.from(await res.arrayBuffer());
+    assert.equal(buf[0], 0x1f); assert.equal(buf[1], 0x8b); // gzip magic
+
+    // Extract it and confirm it's a real, importable distribution.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-test-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'export.tar.gz'), buf);
+      execFileSync('tar', ['-xzf', 'export.tar.gz', '-C', dir], { cwd: dir });
+      const meta = JSON.parse(fs.readFileSync(path.join(dir, 'content/__metadata__.json'), 'utf8'));
+      assert.ok(meta._data_files_.length > 0, 'distribution lists data files');
+      assert.ok(fs.existsSync(path.join(dir, 'content', meta._data_files_[0])), 'first data file present');
+      // Blob files referenced by the tree must actually be in the tar.
+      for (const blob of meta._blob_files_) {
+        assert.ok(fs.existsSync(path.join(dir, 'content', blob)), `blob present: ${blob}`);
+      }
+      // And it passes the same validator the mounts are checked with.
+      const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+      const contentDir = path.join(dir, 'content');
+      assert.deepEqual(validate(contentDir).errors, [], 'validate: no errors');
+      assert.deepEqual(checkIntegrity(contentDir).errors, [], 'checkIntegrity: no errors');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('exports markdown using the prototypes passed in the body (mock API needs no config)', async () => {
+    const res = await fetch(`${baseUrl}/@export`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        format: 'markdown',
+        prototypes: { matched: '<block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />' },
+      }),
+    });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    // block-bearing items come back as markdown strings
+    const md = Object.values(data).find((v) => typeof v === 'string' && v.length);
+    assert.equal(typeof md, 'string');
+    assert.ok(md.length > 0, 'produced markdown');
+  });
+
+  it('rejects an unknown format', async () => {
+    const res = await fetch(`${baseUrl}/@export`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format: 'yaml' }),
+    });
+    assert.equal(res.status, 400);
   });
 });

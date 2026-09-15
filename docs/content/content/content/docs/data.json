@@ -91,7 +91,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "./server-rendered-frontends.md"
+                    "url": "/docs/server-rendered-frontends"
                   },
                   "children": [
                     {
@@ -218,27 +218,13 @@
     },
     "p-6": {
       "@type": "slate",
-      "plaintext": "Open [hydra.pretagov.com](https://hydra.pretagov.com), log in, then:",
+      "plaintext": "Open <https://hydra.pretagov.com>, log in, then:",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "Open "
-            },
-            {
-              "type": "link",
-              "data": {
-                "url": "https://hydra.pretagov.com"
-              },
-              "children": [
-                {
-                  "text": "hydra.pretagov.com"
-                }
-              ]
-            },
-            {
-              "text": ", log in, then:"
+              "text": "Open <https://hydra.pretagov.com>, log in, then:"
             }
           ]
         }
@@ -320,7 +306,7 @@
             {
               "type": "link",
               "data": {
-                "url": "./server-rendered-frontends.md"
+                "url": "/docs/server-rendered-frontends"
               },
               "children": [
                 {
@@ -334,7 +320,7 @@
             {
               "type": "link",
               "data": {
-                "url": "./build-a-frontend.md#deployment-patterns"
+                "url": "/docs/build-a-frontend#deployment-patterns"
               },
               "children": [
                 {
@@ -441,8 +427,8 @@
     "@id": "/",
     "@type": "Plone Site",
     "UID": "plone_site_root",
-    "description": "Design-system-first page building. Strike the right balance for your site — make it easy for editors to create engagement while staying compliant.",
-    "title": "Inka",
+    "description": "A Visual Headless CMS",
+    "title": "Volto Hydra",
     "type_title": "Plone Site"
   },
   "preview_caption": null,
@@ -450,7 +436,7 @@
   "review_state": "published",
   "rights": "",
   "subjects": [],
-  "title": "Docs",
+  "title": "Volto Hydra Documentation",
   "type_title": "Page",
   "version": "current",
   "workflow_history": {

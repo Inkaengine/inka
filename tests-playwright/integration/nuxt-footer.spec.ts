@@ -12,7 +12,7 @@ import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.use({
-  storageState: 'tests-playwright/fixtures/storage-nuxt.json',
+  storageState: 'tests-playwright/.generated/storage-nuxt.json',
 });
 
 test.describe('Nuxt site footer', () => {

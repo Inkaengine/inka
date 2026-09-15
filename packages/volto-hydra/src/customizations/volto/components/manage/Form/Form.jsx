@@ -61,9 +61,11 @@ import {
 import { getQuerystring } from '@plone/volto/actions/querystring/querystring';
 import { compose } from 'redux';
 import config from '@plone/volto/registry';
+import withSaveAsDraft from '@plone/volto/helpers/Utils/withSaveAsDraft';
 import SlotRenderer from '@plone/volto/components/theme/SlotRenderer/SlotRenderer';
 import Iframe from '../../../../../components/Iframe/View';
 import { validateTemplatePlaceholders } from '../../../../../utils/formDataValidation';
+import { validateBlocksAgainstSchemas } from '../../../../../utils/validateBlocks';
 import './styles.css';
 
 /**
@@ -96,6 +98,9 @@ class Form extends Component {
     metadataFieldFocus: PropTypes.string,
     pathname: PropTypes.string,
     onSubmit: PropTypes.func,
+    checkSavedDraft: PropTypes.func,
+    onSaveDraft: PropTypes.func,
+    onCancelDraft: PropTypes.func,
     onCancel: PropTypes.func,
     submitLabel: PropTypes.string,
     resetAfterSubmit: PropTypes.bool,
@@ -129,6 +134,9 @@ class Form extends Component {
   static defaultProps = {
     formData: null,
     onSubmit: null,
+    checkSavedDraft: () => {},
+    onSaveDraft: () => {},
+    onCancelDraft: () => {},
     onCancel: null,
     submitLabel: null,
     resetAfterSubmit: false,
@@ -283,6 +291,16 @@ class Form extends Component {
     let errors = {};
     let activeIndex = 0;
 
+    // The schema usually arrives AFTER mount, and the offer to restore a draft
+    // needs it (it decides which fields the draft covers). Without this, coming
+    // back to a page you left mid-edit silently keeps the server's copy.
+    if (!prevProps.schema && this.props.schema) {
+      this.props.checkSavedDraft(
+        this.state.formData,
+        this.updateFormDataWithSaved,
+      );
+    }
+
     if (!this.props.isFormSelected && prevProps.isFormSelected) {
       this.props.setUIState({
         selected: null,
@@ -319,7 +337,16 @@ class Form extends Component {
 
     // Hydra: Reset formData when navigating to a different page
     if (this.props?.location?.pathname !== prevProps?.location?.pathname) {
-      this.setState({ formData: this.props.formData });
+      this.setState({ formData: this.props.formData }, () => {
+        // Arriving at a different page is the other moment a draft can exist
+        // for it. The mount check only fires when the Form is created; hydra
+        // navigates between pages inside the editor without remounting it, so
+        // without this you are only ever offered a draft on a cold load.
+        this.props.checkSavedDraft(
+          this.state.formData,
+          this.updateFormDataWithSaved,
+        );
+      });
     }
 
     if (!isEqual(prevProps.schema, this.props.schema)) {
@@ -403,8 +430,26 @@ class Form extends Component {
    * @method componentDidMount
    * @returns {undefined}
    */
+  /**
+   * Take a draft the author accepted back into the form. Called by
+   * checkSavedDraft when they say yes to the offer.
+   */
+  updateFormDataWithSaved = (savedFormData) => {
+    if (savedFormData) {
+      this.setState({ formData: savedFormData });
+    }
+  };
+
   componentDidMount() {
     this.setState({ isClient: true });
+
+    // Offer back anything autosaved from a previous visit to this page.
+    if (this.props.schema) {
+      this.props.checkSavedDraft(
+        this.state.formData,
+        this.updateFormDataWithSaved,
+      );
+    }
 
     // Pre-fetch querystring indexes so widgets like QueryWidget don't crash
     // when mounted before their own getQuerystring() call completes
@@ -442,6 +487,9 @@ class Form extends Component {
    * @returns {undefined}
    */
   onChangeField(id, value) {
+    // Autosave (debounced inside the HOC). Blocks are drafted too — see the
+    // withSaveAsDraft shadow — so canvas work survives leaving the page.
+    this.props.onSaveDraft(this.state.formData);
     this.setState((prevState) => {
       const { errors, formData } = prevState;
       const newFormData = {
@@ -500,6 +548,9 @@ class Form extends Component {
     if (event) {
       event.preventDefault();
     }
+    // Cancelling means the author does not want this work; the draft must not
+    // outlive that decision and be offered back next time.
+    this.props.onCancelDraft();
     if (this.props.resetOnCancel || this.props.resetAfterSubmit) {
       this.setState({
         formData: this.props.formData,
@@ -539,7 +590,28 @@ class Form extends Component {
 
     // Validate template slot contiguity
     const templateValidation = validateTemplatePlaceholders(formData);
-    const blocksErrors = templateValidation.blocksErrors;
+    // …and every block against its own schema. Core's Form does this and this
+    // shadow had lost it, so a block's `required`, `maxLength`, `pattern` — and
+    // a fieldRules `error` — were never enforced on save. Nested, because
+    // hydra's blocks nest and core's top-level walk would miss everything
+    // inside a container.
+    // Validate what will actually be PERSISTED. Empty slot blocks exist for the
+    // canvas and are stripped on the way out (getOnlyFormModifiedValues), so a
+    // block that will not be saved must not be able to refuse the save.
+    const persistedFormData = stripEmptyBlocks(
+      formData,
+      config.blocks.blocksConfig,
+      this.props.intl,
+    );
+    const schemaValidation = validateBlocksAgainstSchemas(persistedFormData, {
+      blocksConfig: config.blocks.blocksConfig,
+      intl: this.props.intl,
+      formatMessage: this.props.intl.formatMessage,
+    });
+    const blocksErrors = {
+      ...schemaValidation.blocksErrors,
+      ...templateValidation.blocksErrors,
+    };
 
     if (keys(errors).length > 0) {
       const activeIndex = FormValidation.showFirstTabWithErrors({
@@ -686,6 +758,11 @@ class Form extends Component {
     this.setState({
       formData: newFormData,
     });
+    // Autosave the canvas too. This is THE path that matters in hydra: almost
+    // everything an author does happens in the iframe and arrives here, not
+    // through onChangeField, so a draft wired only to the sidebar would save a
+    // title and lose every block.
+    this.props.onSaveDraft(newFormData);
     if (this.props.global) {
       this.props.setFormData(newFormData);
     }
@@ -797,6 +874,10 @@ class Form extends Component {
           </Container>
           <Iframe
             formData={formData}
+            // Per-block validation errors from the last refused save, so the
+            // sidebar can mark the field. The toast names the block; this is
+            // what shows the author WHICH field and why, where they fix it.
+            blocksErrors={this.state.errors?.blocks}
             schema={this.props.schema}
             onChangeFormData={this.onIframeChangeFormData}
             onChangeField={this.onChangeField}
@@ -1081,4 +1162,5 @@ export default compose(
     null,
     { forwardRef: true },
   ),
+  withSaveAsDraft({ forwardRef: true }),
 )(FormIntl);

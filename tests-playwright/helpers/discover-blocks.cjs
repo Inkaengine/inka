@@ -232,6 +232,84 @@ function variationOf(blockData) {
 }
 
 /**
+ * Is this document the template the block belongs to? A `templateId` is written
+ * either as the template's path or as `resolveuid/<uid>`, so match both.
+ *
+ * @param {Object} content - The page JSON the block was found in
+ * @param {string} templateId
+ * @returns {boolean}
+ */
+function isOwnDefinition(content, templateId) {
+  if (!templateId || typeof templateId !== 'string') return false;
+  const ids = new Set();
+  if (content?.['@id']) ids.add(new URL(content['@id'], 'http://x').pathname);
+  if (content?.UID) ids.add(`resolveuid/${content.UID}`);
+  if (ids.has(templateId)) return true;
+  return ids.has(new URL(templateId, 'http://x').pathname);
+}
+
+/**
+ * Can an author edit this instance, and what does it take? Only an editable
+ * instance is a valid subject for the sanity checks, which click a field and
+ * require it to become editable.
+ *
+ * A `readOnly` block stamped onto an ordinary page is a COPY of a template
+ * member: the author edits the template, not the copy, so it is not a subject.
+ * On the template's OWN document that same block IS the thing being authored —
+ * it unlocks there like any template member (the merge gives a definition's
+ * blocks a `templateInstanceId`), so it is a subject that carries the id to
+ * unlock with.
+ *
+ * `fixed` is not a criterion at all. Fixed means position-locked — the bridge
+ * uses isFixed to keep a block out of drag and edge-drag candidates — which is
+ * a different thing from uneditable, the question isBlockReadonly answers. A
+ * contentLayout is the clearest case: the page has exactly one and you switch
+ * which layout rather than dragging it about, yet its own fields are edited in
+ * the sidebar and its regions hold ordinary authored content.
+ *
+ * Definition pages used to be excluded outright, because ranking by richness
+ * picked `alert0` in /templates/site-announcement for globalAlert — and back
+ * then a definition could not be edited at all, so the subject was doomed:
+ * "locked by design". Definitions unlock now, so a definition is as good a
+ * subject as any other instance and richness alone decides. The exclusion also
+ * hid every block whose only home is a template, which is how `footer` came to
+ * report "no editable content example" while being the most-edited chrome on
+ * the site.
+ *
+ * The caller learns only WHETHER unlocking is needed, never with what id. An
+ * unlock id is a `templateInstanceId` — one APPLICATION of a template — and in
+ * the general case the merge mints it (`const instanceId = uuidGenerator()`), so
+ * it cannot be derived from stored content at all. Predicting it worked only for
+ * the deterministic cases (a forced layout's `instanceId === templateId`, a
+ * fixture storing its own, the stamp for definitions lacking one) and failed as
+ * "stayed locked" for every other. The spec reads the id off the bridge instead.
+ *
+ * @param {Object} content - The page JSON the block was found in
+ * @param {Object} blockData - The block's stored data
+ * @returns {{needsUnlock: boolean}|null} null when not a subject
+ */
+function editableInstance(content, blockData) {
+  const templateId = blockData?.templateId;
+  const onOwnDefinition = isOwnDefinition(content, templateId);
+  // Template CHROME (`fixed` or `readOnly`) as opposed to slot CONTENT (neither,
+  // and the author's own). A `fixed` member is re-inserted from the template on
+  // every render — "copy block content from a page block with the same slotId" —
+  // so the copy on an ordinary page gets a freshly minted uid each load and
+  // cannot be addressed by the id discovery read from stored content. The
+  // definition is where it is authored and where its id is stable.
+  //
+  // `fixed` alone is NOT chrome: a contentLayout is fixed with no templateId,
+  // position-locked rather than template-owned, and is edited in place.
+  if (templateId && blockData?.fixed === true && !onOwnDefinition) {
+    return null;
+  }
+  if (blockData?.readOnly === true) {
+    return onOwnDefinition ? { needsUnlock: true } : null;
+  }
+  return { needsUnlock: false };
+}
+
+/**
  * Score an example block by content richness, so when multiple pages
  * contain the same (blockType, variation) we keep the most interesting
  * example for testing. Heuristic:
@@ -342,7 +420,7 @@ function validateSlateNode(node, pathStr, issues) {
  *
  * Schema-independent; runs against raw API data.
  */
-function collectSlateIssues(blockData, pagePath, blockId, out, blockType) {
+function collectSlateIssues(blockData, pagePath, blockId, out, blockType, inTableCell = false) {
   if (!blockData || typeof blockData !== 'object') return;
   for (const [key, value] of Object.entries(blockData)) {
     if (key.startsWith('@') || key === 'blocks' || key === 'blocks_layout') continue;
@@ -354,7 +432,7 @@ function collectSlateIssues(blockData, pagePath, blockId, out, blockType) {
     if (!looksSlate) continue;
 
     const issues = [];
-    if (value.length > 1) {
+    if (value.length > 1 && !inTableCell) {
       // Advice differs by where the field lives, but both are invalid stored data.
       const advice =
         blockType === 'slate'
@@ -403,18 +481,50 @@ const UNDECLARED_EXEMPT = new Set([
   'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'value',
   'styles', 'override', 'block',
   'fixed', 'slotId', 'templateId', 'templateInstanceId', 'readOnly',
+  // codeExample selector directives (single-source example pages): `source`
+  // names a block/@type on the page and `format` (json|schema) says what to
+  // show; resolved to `tabs` at load/build, not sidebar-authored schema fields.
+  'source', 'format',
   // Deep-link anchors hydra harvests + persists on the owning block (#273/#281).
   // Not sidebar-authored — a consumer (in-page nav) reads them; exempt like the
   // other serialisation/runtime fields above.
   '_linkableAnchors',
+  // hydra's own bookkeeping for copy-from-target (CUSTOM_FIELDS_KEY in
+  // utils/copyFromTarget.js): the list of fields an author has overridden, written
+  // by the editor at runtime. Declaring it as a schema property would offer the
+  // bookkeeping itself as an editable field.
+  '_customFields',
+  // collective.volto.formsupport regenerates `validationSettings` on every GET
+  // of a form block — it is the catalogue of settable validators the sidebar
+  // builds its "Rule settings" widget FROM, so it is a property of the response,
+  // not of what is stored. The undeclared-field check asks "is a stored field
+  // missing from the schema", and for this one the premise does not hold:
+  // declaring it would offer the catalogue itself as an editable field.
+  'validationSettings',
+  // Which field of the referenced content holds the image. Written by the
+  // serialiser alongside `image_scales` (already exempt above), not authored.
+  'image_field',
+  // volto-form-block stamps this to invalidate its cached render. A timestamp
+  // (e.g. 1710238630312) is not something an author writes in the sidebar.
+  'lastChange',
+  // Marks a template member as one the template requires, alongside
+  // fixed/slotId/templateId. Not a field: declaring it as one filled the
+  // sidebar for a metadata block that has no fields of its own, hiding the
+  // content item's fields it exists to project.
+  'required',
 ]);
 
-// Block-level slate STYLES a person can actually choose from the editor's style
-// menu (Volto's slate styleName plugin). There is no slate style menu yet, so
-// this is EMPTY: any `styleName` on a slate node is content a person cannot
-// author — it was hand-injected — and block-sanity must flag it. When a style
-// menu is added, list its style values here (or derive from the slate config).
-const AUTHORABLE_SLATE_STYLES = new Set([]);
+// Slate STYLES a person can actually choose from the editor's style menu
+// (Volto's `settings.slate.styleMenu`, stored as a node's `styleName`). Any
+// other `styleName` is content nobody can author — hand-injected — and
+// block-sanity flags it.
+//
+// DERIVED, not listed: the set comes from what the FRONTEND declares at INIT,
+// harvested by mock-parent and threaded in below. A hardcoded list would be
+// wrong for every frontend but one, and this rule is asked per frontend — the
+// same content is authorable against one and not another. The default stays
+// empty, so a frontend that declares no menu is judged exactly as before.
+let AUTHORABLE_SLATE_STYLES = new Set([]);
 
 // Hydra's own value validator (packages/volto-hydra/.../schemaValidation.mjs) —
 // the SAME `isValidValue` Hydra runs to strip un-authorable values on load, so
@@ -489,14 +599,86 @@ function unauthorableSlateStyles(nodes, seen = new Set()) {
   return seen;
 }
 
+// The conversions expandListingBlocks knows (convertFieldValue). A `type` outside
+// this set is a no-op: the raw catalog value reaches the item untouched, which is
+// how a mapping can look right and render nothing.
+const KNOWN_MAPPING_TYPES = new Set([
+  'string', 'textarea', 'slate', 'link', 'image', 'image_link', 'array',
+]);
+
+// A listing's `fieldMapping` is the only thing that decides what its results
+// carry, and every part of it can be wrong in a way nothing else notices: a
+// source the widget never offers (so no author can create or repair the
+// mapping), a target the item block does not have (so the value is dropped), a
+// conversion that mangles the value on the way (`string` over a keyword list
+// joins it into "a, b", and a renderer drawing one pill per entry draws none),
+// or a type that does not exist (silently no conversion at all).
+//
+// The allowed sources come from the listing's OWN schema — hydra hangs
+// `sourceFields` on the fieldMapping field — so this reads the same list the
+// sidebar offers rather than keeping a copy of it.
+function collectFieldMappingIssues(blockData, blockSchema, blocksConfig, issues) {
+  const mapping = blockData?.fieldMapping;
+  if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return;
+
+  const mappingDef = blockSchema?.properties?.fieldMapping;
+  const sourceFields = mappingDef?.sourceFields;
+  const itemTypeField = blockSchema?.properties
+    ? Object.keys(blockSchema.properties).find(
+        (f) => blockSchema.properties[f]?.filterConvertibleFrom,
+      )
+    : undefined;
+  const itemType = itemTypeField ? blockData[itemTypeField] : blockData.variation;
+  const itemProps = itemType
+    ? blocksConfig?.[itemType]?.blockSchema?.properties
+    : undefined;
+
+  for (const [source, entry] of Object.entries(mapping)) {
+    const target = typeof entry === 'string' ? entry : entry?.field;
+    const type = typeof entry === 'object' ? entry?.type : undefined;
+
+    if (!target) {
+      issues.push(`fieldMapping "${source}": no target field — the value goes nowhere.`);
+      continue;
+    }
+    if (sourceFields && !sourceFields[source]) {
+      issues.push(
+        `fieldMapping "${source}": not a source the sidebar offers (${Object.keys(sourceFields).join(', ')}) — ` +
+          `nobody can create or repair this mapping in the editor.`,
+      );
+    }
+    // `href` is where expandListingBlocks puts a result's own address. It is a
+    // convention of the expansion, not a field an author edits, so no item
+    // schema declares it — and it must not read as a missing target.
+    if (itemProps && target !== 'href' && !itemProps[target]) {
+      issues.push(
+        `fieldMapping "${source}" → "${target}": the ${itemType} block has no such field, so the value is dropped.`,
+      );
+    }
+    if (type && !KNOWN_MAPPING_TYPES.has(type)) {
+      issues.push(
+        `fieldMapping "${source}": unknown conversion "${type}" — the raw value is passed through unconverted.`,
+      );
+    }
+    const targetType = itemProps?.[target]?.type;
+    if (targetType === 'array' && type === 'string') {
+      issues.push(
+        `fieldMapping "${source}" → "${target}": "${target}" is a LIST but the mapping converts to a string, ` +
+          `which joins the values into one — use type "array".`,
+      );
+    }
+  }
+}
+
 function collectWidgetShapeIssues(
   blockData, blockSchema, pagePath, blockId, out, blockType, undeclaredFields, blockConfig, blocksConfig,
-  effectiveRequired, pathInfo,
+  effectiveRequired, pathInfo, optionUsage,
 ) {
   const props = blockSchema?.properties;
   if (!props || !blockData || typeof blockData !== 'object') return;
 
   const issues = [];
+  collectFieldMappingIssues(blockData, blockSchema, blocksConfig, issues);
 
   for (const [field, def] of Object.entries(props)) {
     if (!(field in blockData)) continue;
@@ -807,6 +989,33 @@ function collectWidgetShapeIssues(
     }
   }
 
+  // The INVERSE of the stray-field pass above. That one catches content the
+  // schema does not declare; this catches a declared OPTION no content ever
+  // sets — nothing renders it, so nothing can tell you whether it still works,
+  // and a doc page shows authors a setting whose effect it never demonstrates.
+  // The sibling of the canvas-field rule ("editable in at least one example"),
+  // for the half of a block's surface that carries no canvas annotation and so
+  // was excluded there.
+  //
+  // Scoped to what the sidebar offers as a CHOICE — `choices` / Choice factory
+  // / boolean — so a free-text field, whose "coverage" would be any string at
+  // all, is not demanded.
+  if (blockType && optionUsage) {
+    for (const name of Object.keys(props)) {
+      const field = props[name];
+      const isOption =
+        Array.isArray(field && field.choices) ||
+        (field && field.factory === 'Choice') ||
+        (field && field.type === 'boolean');
+      if (!isOption) continue;
+      const usageKey = `${blockType}\0${name}`;
+      const entry = optionUsage.get(usageKey) ||
+        { blockType, field: name, used: false, example: pagePath };
+      if (name in blockData) entry.used = true;
+      optionUsage.set(usageKey, entry);
+    }
+  }
+
   if (issues.length) {
     out.push({ pagePath, blockId, blockType: blockData['@type'], issues });
   }
@@ -879,7 +1088,89 @@ async function loadOfflineBlockSyncApi(blocksConfig) {
     api.resolveEffectiveBlockSchema(blockId, formData, pathMap, enhanced, intl);
 }
 
-async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, frontendKeys = []) {
+// Structural types: hydra's own plumbing, never a project's placement choice.
+// contentLayout: a structural page-layout block applied through the layout
+// picker (allowedLayouts) — it IS the content region's root, never a
+// reorderable content block, so containment doesn't apply.
+const CONTAINMENT_EXEMPT_TYPES = new Set([
+  'empty',
+  'column',
+  'title',
+  'description',
+  'contentLayout',
+]);
+
+/**
+ * Rules the CONSUMING PROJECT passes in, saying where a block placed outside
+ * its container's allowedBlocks is deliberate rather than a mistake.
+ *
+ * `CONTAINMENT_EXEMPT_SLOTS` — comma-separated template slot ids. The case this
+ * exists for: a documentation site shows every component on its own doc page,
+ * inside a showcase slot of a page template. Chrome like `header`, or a layout
+ * like `contentLayout`, is in no ordinary region's allowedBlocks and must stay
+ * that way — otherwise the block chooser offers site chrome on every page — yet
+ * the doc page still has to show one. Only the project that authored the
+ * template knows which slot means "an example lives here", so hydra takes it as
+ * configuration instead of guessing.
+ */
+// Pages that are test APPARATUS, not authored content. Their placements are
+// not a project's choice to get wrong, so the containment check does not apply.
+//
+// dnd-convert-page is the whole synthetic conversion graph: convSource and the
+// conv containers sit at page level because a drag source has to exist
+// somewhere to be dragged FROM, and they are `restricted` because you should
+// never be offered "convAlien" in a real block chooser. Both are correct, and
+// together they read as a containment violation — the page's allowed set is the
+// non-restricted types. Un-restricting them to satisfy this check breaks 28
+// tests: the option-counting those specs assert on ("one option -> auto-convert,
+// two -> chooser") flows from that same flag.
+const APPARATUS_PAGES = new Set(['/_test_data/dnd-convert-page']);
+
+function readContainmentRules(env = process.env) {
+  return {
+    slots: (env.CONTAINMENT_EXEMPT_SLOTS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    pages: [
+      ...APPARATUS_PAGES,
+      ...(env.CONTAINMENT_EXEMPT_PAGES || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ],
+  };
+}
+
+/**
+ * Is this block's placement exempt from the containment check?
+ *
+ * Exempt when: it is structural, template-placed or position-fixed; its
+ * container declares no allowed set, or declares one that includes the type;
+ * or it sits in a slot, or on an apparatus page, the project nominated
+ * (see readContainmentRules).
+ */
+function isContainmentExempt(entry, blockData, rules = { slots: [] }, pagePath = null) {
+  if (pagePath && (rules.pages || []).includes(pagePath)) return true;
+  if (entry.isTemplateInstance || entry.isFixed) return true;
+  if (CONTAINMENT_EXEMPT_TYPES.has(entry.blockType)) return true;
+  if (!Array.isArray(entry.allowedSiblingTypes) || entry.allowedSiblingTypes.length === 0) {
+    return true;
+  }
+  if (entry.allowedSiblingTypes.includes(entry.blockType)) return true;
+  const slotId = blockData && blockData.slotId;
+  return !!slotId && (rules.slots || []).includes(slotId);
+}
+
+async function discoverBlocks(
+  apiUrl,
+  maxPages = Infinity,
+  blocksConfig = {},
+  frontendKeys = [],
+  styleMenuClasses = [],
+) {
+  // What this frontend says an author can pick. See AUTHORABLE_SLATE_STYLES.
+  AUTHORABLE_SLATE_STYLES = new Set(styleMenuClasses);
   // Use hydra's canonical buildBlockPathMap to walk content — it knows
   // the schema-defined container fields (blocks_layout, object_list,
   // columns, …) and distinguishes real blocks from inline sub-items.
@@ -903,12 +1194,19 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
   // (blockType, field) → one example location, for fields present in data but
   // absent from the schema. Deduped so each missing field is reported once.
   const undeclaredFields = new Map();
+  // (blockType, option) → whether ANY example sets it; see the option-coverage
+  // pass in collectWidgetShapeIssues.
+  const optionUsage = new Map();
   // Containment: a non-fixed block whose @type isn't in its container's resolved
   // allowedSiblingTypes can't be reordered within its container (the mobile
   // chevron / drag walks it OUT to the nearest ancestor that accepts the type,
   // so it "escapes"). Surface each as a failing test, like the issues below.
   const allowedBlocksViolations = []; // {blockType, allowed, parentType, pagePath, blockId}
-  const CONTAINMENT_EXEMPT = new Set(['empty', 'column', 'title', 'description']);
+  // Every page as fetched, for the graph-integrity pass (the same validator
+  // the mock API runs over content DIRS, fed the API's answers instead —
+  // broken resolveuid/link/layout refs on the LIVE site).
+  const fetchedPages = [];
+  const containmentRules = readContainmentRules();
   // Track block @types seen in content that aren't in blocksConfig — the
   // frontend's Block.vue falls through to a "Not implemented" placeholder
   // for these. Collect all occurrences so the report shows every page
@@ -924,6 +1222,8 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
   // Plone content types appear as @type on the page root (Document, etc.)
   // — skip these, they're not blocks.
   const PAGE_TYPES = new Set(['Document', 'Folder', 'Plone Site', 'News Item', 'Event']);
+
+
   const objectListFields = buildObjectListFieldsMap(blocksConfig);
   const allowedBlocksList = buildAllowedBlocksList(blocksConfig);
 
@@ -938,7 +1238,7 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
   const subTypeExamples = new Map();
 
   // Step 1: Get all content paths via @search (b_size=9999 to avoid pagination)
-  const searchUrl = `${apiUrl}/@search?b_size=9999`;
+  const searchUrl = `${apiUrl}/@search?b_size=9999&metadata_fields=UID`;
   console.log(`[DISCOVER] Fetching content list from ${searchUrl}`);
   const searchResp = await fetch(searchUrl, {
     headers: { Accept: 'application/json' },
@@ -976,6 +1276,7 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
 
       const content = await resp.json();
       fetched++;
+      fetchedPages.push({ rel: pagePath.replace(/^\//, '') || '/', data: content });
 
       if (!content.blocks || !content.blocks_layout?.items) continue;
 
@@ -996,7 +1297,22 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
         }
         if (!blockData || typeof blockData !== 'object') continue;
 
-        const blockType = blockData['@type']; // may be undefined for object_list items
+        // `@type` for a real block; for a TYPED object_list item (a form's
+        // `subblocks`, keyed by `field_id` and typed by `field_type`) the item
+        // has no `@type`, so fall back to the per-item type buildBlockPathMap
+        // already resolved from the container's `typeField`. Without this a form
+        // field (text / select / single_choice …) is skipped from coverage
+        // instead of being credited as its own registered block type.
+        // A TYPED object_list item (a form's `subblocks`, keyed by `field_id`
+        // and typed by `field_type`) has no `@type`, so fall back to the type
+        // buildBlockPathMap resolved from the container's `typeField` —
+        // otherwise a form field (text / select / single_choice …) is skipped
+        // from coverage instead of being credited as its own block type.
+        // UNTYPED items (table rows/cells) only get a virtual `parent:field`
+        // display label, which no blocksConfig can ever register; counting one
+        // as a block type reports every table as an unregistered `table:rows`.
+        const blockType =
+          blockData['@type'] || (entry.isVirtualBlockType ? undefined : entry.blockType);
         // Resolved schema for this entry — may be inline (object_list schema)
         // or come from blocksConfig[blockType].
         const schemaRef = entry._schemaRef;
@@ -1004,16 +1320,10 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
         const schema = resolvedSchema || (blockType ? blocksConfig[blockType]?.blockSchema : null);
 
         // Containment check (see allowedBlocksViolations above): flag a block
-        // placed in a container that doesn't allow its @type. Skip template-
-        // placed / content-type-fixed blocks and exempt structural types.
+        // placed in a container that doesn't allow its @type.
         if (
           entry.blockType &&
-          !entry.isTemplateInstance &&
-          !entry.isFixed &&
-          !CONTAINMENT_EXEMPT.has(entry.blockType) &&
-          Array.isArray(entry.allowedSiblingTypes) &&
-          entry.allowedSiblingTypes.length > 0 &&
-          !entry.allowedSiblingTypes.includes(entry.blockType)
+          !isContainmentExempt(entry, blockData, containmentRules, pagePath)
         ) {
           allowedBlocksViolations.push({
             blockType: entry.blockType,
@@ -1024,7 +1334,16 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
           });
         }
 
-        collectSlateIssues(blockData, pagePath, blockId, slateIssues, blockType);
+        // A slateTable cell is addressable, so it arrives here as its own
+        // entry. Its path runs through `cells`, which is the signal: the editor
+        // FLATTENS a multi-node cell value on load rather than splitting it
+        // (container-blocks.spec: splitting corrupts the row and loops until
+        // "Maximum update depth exceeded"), and table-multinode-page holds a
+        // [h2, p] cell precisely to keep that behaviour honest.
+        collectSlateIssues(
+          blockData, pagePath, blockId, slateIssues, blockType,
+          Array.isArray(entry.path) && entry.path.includes('cells'),
+        );
         // Effective (dynamic) required set from Hydra's REAL resolver — fieldRules
         // + hideParentOwnedFields applied, so a conditionally-hidden field (a
         // card's `image` when its grid disables the image element) is correctly
@@ -1043,7 +1362,7 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
         collectWidgetShapeIssues(
           blockData, schema, pagePath, blockId, shapeIssues, blockType, undeclaredFields,
           blockType ? blocksConfig[blockType] : undefined, blocksConfig, effectiveRequired,
-          pathMap?.[blockId],
+          pathMap?.[blockId], optionUsage,
         );
 
         // Unregistered block type: any real @type the frontend can't render is
@@ -1107,6 +1426,13 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
         // (lowest score → catches degenerate cases like null slate values
         // that fall through to "Not implemented" rendering). Same render
         // test fires for each kind.
+        //
+        // Locked copies stamped onto ordinary pages are still walked above for
+        // shape/slate/containment validation, but are never the subject of the
+        // render + editing checks (see editableInstance).
+        const editable = editableInstance(content, blockData);
+        if (!editable) continue;
+
         for (const kind of ['rich', 'simple']) {
           const key = `${blockType}:${variation}:${kind}`;
           const existing = seen.get(key);
@@ -1126,6 +1452,9 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
             pagePath,
             blockData,
             isListing: blockType === 'listing',
+            // A locked block on its own definition page: the spec unlocks its
+            // template instance (id read from the bridge) before checking.
+            needsUnlock: editable.needsUnlock,
             _score: score,
           });
         }
@@ -1274,6 +1603,74 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
     result.push({ blockType, blockId, pagePath, field, undeclaredField: true });
   }
 
+  // The inverse backlog: a schema OPTION no example sets. Emitted as data (not
+  // a failing test each) so the aggregate can report the whole list at once —
+  // an option with no example is a documentation and regression gap, and the
+  // list is only useful whole.
+  // Only the FRONTEND's own registered types, for the reason the render-coverage
+  // set below gives: mock-parent ships a baseline of schemas (hero, slate,
+  // mock-*, and a fuller set for its own test frontend), and holding a project
+  // to another project's options reads as a backlog it cannot act on. Measured
+  // without this, one run reported 84 options against a frontend that declares
+  // none of them.
+  const frontendKeySetForOptions = new Set(frontendKeys || []);
+  for (const entry of optionUsage.values()) {
+    if (entry.used) continue;
+    if (frontendKeySetForOptions.size && !frontendKeySetForOptions.has(entry.blockType)) {
+      continue;
+    }
+    result.push({
+      blockType: entry.blockType,
+      field: entry.field,
+      pagePath: entry.example,
+      unexercisedOption: true,
+    });
+  }
+
+  // Graph integrity over what the API actually served: the SAME
+  // checkIntegrity the mock API runs against content dirs, fed the fetched
+  // pages (disk-only passes — blob files, __metadata__ — skip themselves).
+  // One failing test per affected page, so a broken resolveuid or a
+  // blocks_layout entry pointing at a deleted block fails by name.
+  {
+    const { checkIntegrity } = require('../fixtures/plone-content-validator.cjs');
+    // Discovery only FETCHES page-like items, but references point at every
+    // content type (an image block's url names an Image object). Register the
+    // rest of the @search result as stubs — path + UID into the maps, no
+    // blocks to walk — so their references resolve instead of false-flagging.
+    const fetchedPaths = new Set(fetchedPages.map((p) => p.rel));
+    const stubs = items
+      .filter((item) => {
+        const rel = new URL(item['@id']).pathname.replace(/^\//, '') || '/';
+        return !fetchedPaths.has(rel);
+      })
+      .map((item) => ({
+        rel: new URL(item['@id']).pathname.replace(/^\//, '') || '/',
+        data: { '@id': new URL(item['@id']).pathname, '@type': item['@type'], UID: item.UID },
+      }));
+    const { errors } = checkIntegrity([...fetchedPages, ...stubs]);
+    // A harness may mount extra content trees whose pages were authored for a
+    // different root (the parent's /_test_data fixture mount): their internal
+    // refs legitimately miss this merged view. Same idea as
+    // CONTAINMENT_EXEMPT_SLOTS — the harness states the exemption, discovery
+    // doesn't guess. CSV of page-path prefixes.
+    const exemptPrefixes = (process.env.INTEGRITY_EXEMPT_PREFIXES || '')
+      .split(',')
+      .map((prefix) => prefix.trim())
+      .filter(Boolean);
+    const byPage = new Map();
+    for (const message of errors) {
+      const rel = message.trim().split(':')[0];
+      const pagePath = rel.startsWith('/') ? rel : `/${rel}`;
+      if (exemptPrefixes.some((prefix) => pagePath.startsWith(prefix))) continue;
+      if (!byPage.has(pagePath)) byPage.set(pagePath, []);
+      byPage.get(pagePath).push(message.trim());
+    }
+    for (const [pagePath, issues] of byPage) {
+      result.push({ blockType: null, pagePath, integrityIssue: true, issues });
+    }
+  }
+
   // Every block type the FRONTEND registers needs at least one content
   // example so the sanity spec emits a render test for it — INCLUDING
   // `restricted` types. `restricted` only means "not offered in the page block
@@ -1297,9 +1694,45 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
       if (!frontendKeySet.has(parentType)) continue;
       for (const subType of allowedBlocks) required.add(subType);
     }
-    const discoveredTypes = new Set(result.map((r) => r.blockType));
+    // Only entries that carry block data are real render cases. Issue entries
+    // (shape, slate, undeclared field, containment) name a blockType too, and
+    // counting those as coverage let a type with an unrelated failure hide the
+    // fact that it has no example at all — `form` and `search` both have
+    // schema-gap failures, and were silently exempted from needing one.
+    const discoveredTypes = new Set(
+      result.filter((r) => r.blockData !== undefined).map((r) => r.blockType),
+    );
+    // An object_list sub-item IS an example of its own type, even though its
+    // render test is anchored on the parent and therefore carries the parent's
+    // blockType (kind: 'sub:<type>'). Counting only `blockType` reported "no
+    // content example" for every form field type while form-test-page plainly
+    // contained a text, a textarea, a select, a single_choice, a checkbox and a
+    // from. Turning that into a failure would have asked maintainers to add
+    // fixtures that already exist.
+    // Sub-item examples live inside a parent, so they never appear in `result`
+    // under their own blockType. `allCovered` is the schema-driven record of
+    // which sub-types a selected example contains, from the same container
+    // helpers (buildAllowedBlocksList + subTypesInField).
+    //
+    // Not a second buildBlockPathMap call: it populates a module-level schema
+    // cache keyed by blockType alone, so schemas leak into any later walk with
+    // a different registry. Keying that cache by registry fixes the leak and
+    // breaks the editor — block-sync's inherited_fields fieldset stops
+    // rendering — so it stays as it is.
+    for (const key of allCovered) discoveredTypes.add(key.split('|')[2]);
+    for (const r of seen.values()) {
+      if (typeof r.kind === 'string' && r.kind.startsWith('sub:')) {
+        discoveredTypes.add(r.kind.slice(4));
+      }
+    }
     for (const blockType of required) {
       if (discoveredTypes.has(blockType)) continue;
+      // `default` is a sentinel, not an item type: the item-type pass above
+      // deliberately skips the literal value ('itemType !== "default"'), so a
+      // listing naming it can never register coverage. Demanding an example for
+      // it would contradict a rule this file already states — and no fixture
+      // could satisfy it, because nothing ever carries @type "default".
+      if (blockType === 'default') continue;
       // A dynamic listing/grid item type has no stored authored instance, but a
       // stored listing/grid that VALIDLY names it renders it on a real page.
       // Emit its render test anchored on that page against the container's uid:
@@ -1326,4 +1759,16 @@ async function discoverBlocks(apiUrl, maxPages = Infinity, blocksConfig = {}, fr
   return result;
 }
 
-module.exports = { discoverBlocks, extractBlocks, buildObjectListFieldsMap, buildEmptyRegionCases };
+module.exports = {
+  // Exported so the content validator asks the same question this does — a
+  // second list of "fields that are not schema fields" would drift, and the
+  // drift would show up as a validator shouting about `slotId` on every block.
+  UNDECLARED_EXEMPT,
+  collectFieldMappingIssues,
+  discoverBlocks,
+  extractBlocks,
+  buildObjectListFieldsMap,
+  buildEmptyRegionCases,
+  isContainmentExempt,
+  readContainmentRules,
+};

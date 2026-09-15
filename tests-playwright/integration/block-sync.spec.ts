@@ -93,10 +93,8 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     const imageDefaultsFieldset = page.locator('#blockform-fieldset-inherited_fields');
     await expect(imageDefaultsFieldset).toBeVisible({ timeout: 5000 });
 
-    // Wait for Nuxt async re-rendering to settle after variation change
-    await helper.getStableBlockCount();
-
-    // Wait for teasers to disappear first (confirms variation change is taking effect)
+    // The variation change is confirmed by the teasers going away — assert
+    // that directly rather than waiting for the count to stop moving.
     await expect(teaserItems).toHaveCount(0, { timeout: 5000 });
 
     // Then wait for image blocks to appear
@@ -501,19 +499,28 @@ test.describe('Block Sync - Search Block with Listing Container', () => {
     const searchInputAfter = iframe.locator('[data-block-uid="search-block-1"] input[name="SearchableText"]');
     await expect(searchInputAfter).toHaveValue('accordion', { timeout: 10000 });
 
-    // Wait for block count to stabilize after reactive re-fetch
-    await helper.getStableBlockCount();
-
-    // Check filtered results
     const filteredResults = iframe.locator('[data-block-uid="search-block-1"] .search-results [data-block-uid]');
 
-    // Should have at least one result (accordion-test-page matches "accordion")
-    await expect(filteredResults.first()).toBeVisible({ timeout: 10000 });
-    const filteredCount = await filteredResults.count();
-    expect(filteredCount).toBeGreaterThan(0);
-
-    // Should have fewer results than initial (search filtered them)
-    expect(filteredCount).toBeLessThan(initialCount);
+    // Wait for the RESULT of the re-fetch, and wait for the WHOLE result in one
+    // step: filtered means fewer rows than before AND still some rows, since
+    // accordion-test-page matches. Polling only for "fewer" accepts the empty
+    // render the re-fetch passes through on its way to the filtered set — 0 is
+    // less than 6 — and the next line then failed on a state the poll had just
+    // approved. (`first()` being visible is no good either: the OLD rows
+    // satisfy it, which is how this once read a stale 6-of-6.)
+    await expect
+      .poll(
+        async () => {
+          const count = await filteredResults.count();
+          return count > 0 && count < initialCount ? 'filtered' : `count=${count}`;
+        },
+        {
+          timeout: 10000,
+          message:
+            `search for "accordion" never settled on a filtered set (started at ${initialCount})`,
+        },
+      )
+      .toBe('filtered');
   });
 
   test('search block filters results when user clicks facet checkbox', async ({ page }) => {
@@ -565,7 +572,10 @@ test.describe('Block Sync - Search Block with Listing Container', () => {
 
     // Count initial facets (wait for async expandListingBlocks to complete)
     const initialFacets = iframe.locator('.facet-item[data-block-uid]');
-    await expect(initialFacets).toHaveCount(3, { timeout: 10000 }); // facet-type, facet-state, facet-subject
+    // Wait for expandListingBlocks to finish, without asserting how many facets
+    // the fixture happens to carry — that number is incidental here.
+    await expect(initialFacets.first()).toBeVisible({ timeout: 10000 });
+    const initialFacetCount = await initialFacets.count();
 
     // Wait for iframe to finish re-rendering after initial load —
     // expanding facets triggers multiple FORM_DATA updates to iframe.
@@ -604,7 +614,7 @@ test.describe('Block Sync - Search Block with Listing Container', () => {
 
     // Wait for the new facet to be added (count goes from 3 to 4)
     const allFacets = iframe.locator('.facet-item[data-block-uid]');
-    await expect(allFacets).toHaveCount(4, { timeout: 10000 });
+    await expect(allFacets).toHaveCount(initialFacetCount + 1, { timeout: 10000 });
 
     // Find the new facet ID (not one of the known initial facets)
     const knownIds = ['facet-type', 'facet-state', 'facet-subject'];
@@ -1152,188 +1162,87 @@ test.describe('Frontend-Driven Schema Enhancers', () => {
   });
 });
 
+/**
+ * fieldRules reaching the sidebar, on blocks people ship.
+ *
+ * Volto expresses conditional field visibility as a schema FUNCTION of the
+ * data, which cannot reach a frontend — the block config crosses postMessage,
+ * and functions do not survive the trip. `fieldRules` is the declarative form
+ * that does, so the admin and the frontend resolve the same schema.
+ *
+ * What is checked here is that pipeline: rule → resolved schema → what the
+ * author is actually offered. The rule grammar itself is checked where it is
+ * cheap and exhaustive — operators in blockSync.test.js (is/isNot/isSet/
+ * gt/gte/lt/lte/oneOf/contains), item positions in
+ * blockPath.item-fieldrules.test.js (`../@index`), page fields in
+ * blockPath.page-field-rule.test.js (`../description`).
+ *
+ * Both blocks below carry rules for their own reasons, not for this test: a
+ * teaser that borrows its wording from the page it links to has nothing to ask
+ * for until "Overwrite" is ticked, and a full-width image has no size to
+ * choose because its width IS the page.
+ */
 test.describe('fieldRules - Conditional Field Visibility', () => {
-  test('field with fieldRules is hidden when condition not met', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
+  /** A field's row in the block sidebar, by field name. */
+  const field = (page, name: string) =>
+    page.locator(`#sidebar-properties .field-wrapper-${name}`);
 
-    await helper.login();
-    await helper.navigateToEdit('/test-page');
-
-    const iframe = helper.getIframe();
-
-    // Click on skiplogic-test block
-    const testBlock = iframe.locator('[data-block-uid="skiplogic-test"]');
-    await expect(testBlock).toBeVisible({ timeout: 10000 });
-    await testBlock.click();
-
+  async function selectBlock(page, helper: AdminUIHelper, uid: string) {
+    const block = helper.getIframe().locator(`[data-block-uid="${uid}"]`);
+    await expect(block).toBeVisible({ timeout: 10000 });
+    await block.click();
     await helper.waitForSidebarOpen();
     await helper.openSidebarTab('Block');
+  }
 
-    // Initially mode is not set, so 'Advanced Options' should be hidden
-    const advancedField = page.locator('text=Advanced Options');
-    await expect(advancedField).not.toBeVisible();
+  test('a teaser borrowing its wording is not asked for wording', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/field-rules-page');
+    await selectBlock(page, helper, 'fr-teaser');
 
-    // 'Basic Title' should always be visible
-    const basicField = page.locator('text=Basic Title');
-    await expect(basicField).toBeVisible();
+    // `overwrite` is off, so the teaser shows the linked page's own title and
+    // description — and the four fields that would override them are gone.
+    await expect(field(page, 'overwrite')).toBeVisible({ timeout: 5000 });
+    await expect(field(page, 'title')).toBeHidden();
+    await expect(field(page, 'description')).toBeHidden();
+    await expect(field(page, 'head_title')).toBeHidden();
+    await expect(field(page, 'preview_image')).toBeHidden();
   });
 
-  test('field with fieldRules is shown when condition is met', async ({ page }) => {
+  test('ticking Overwrite brings the wording fields back', async ({ page }) => {
     const helper = new AdminUIHelper(page);
-
     await helper.login();
-    await helper.navigateToEdit('/test-page');
+    await helper.navigateToEdit('/field-rules-page');
+    await selectBlock(page, helper, 'fr-teaser');
 
-    const iframe = helper.getIframe();
+    await field(page, 'overwrite').locator('input[type="checkbox"]').check({ force: true });
 
-    // Click on skiplogic-test block
-    const testBlock = iframe.locator('[data-block-uid="skiplogic-test"]');
-    await expect(testBlock).toBeVisible({ timeout: 10000 });
-    await testBlock.click();
-
-    await helper.waitForSidebarOpen();
-    await helper.openSidebarTab('Block');
-
-    // Find mode dropdown and select 'advanced'
-    const modeSelect = page.locator('.react-select__control').first();
-    await expect(modeSelect).toBeVisible({ timeout: 5000 });
-    await modeSelect.click();
-    const menu = page.locator('.react-select__menu');
-    await menu.waitFor({ state: 'visible', timeout: 3000 });
-    await menu.locator('.react-select__option', { hasText: 'Advanced' }).click();
-    await menu.waitFor({ state: 'hidden', timeout: 3000 });
-
-    // Now 'Advanced Options' should be visible
-    const advancedField = page.locator('text=Advanced Options');
-    await expect(advancedField).toBeVisible({ timeout: 5000 });
+    // The rule is re-resolved against the new value, so the sidebar grows the
+    // fields the author now needs — no reload, no re-select.
+    await expect(field(page, 'title')).toBeVisible({ timeout: 5000 });
+    await expect(field(page, 'description')).toBeVisible();
+    await expect(field(page, 'preview_image')).toBeVisible();
   });
 
-  test('fieldRules with isNot operator', async ({ page }) => {
+  test('a full-width image is offered no size to choose', async ({ page }) => {
+    // The image rule is a LIST — `[{ when: { url: isSet, align: isNot full } }, false]`
+    // — so this covers both halves of the shape at once: the condition that
+    // holds for an ordinary image, and the bare `false` that hides the field
+    // when none of the entries match.
     const helper = new AdminUIHelper(page);
-
     await helper.login();
-    await helper.navigateToEdit('/test-page');
+    await helper.navigateToEdit('/field-rules-page');
 
-    const iframe = helper.getIframe();
+    await selectBlock(page, helper, 'fr-image');
+    await expect(field(page, 'alt')).toBeVisible({ timeout: 5000 });
+    await expect(field(page, 'size'), 'a centred image has a size to choose').toBeVisible();
 
-    // Click on skiplogic-test block
-    const testBlock = iframe.locator('[data-block-uid="skiplogic-test"]');
-    await expect(testBlock).toBeVisible({ timeout: 10000 });
-    await testBlock.click();
-
-    await helper.waitForSidebarOpen();
-    await helper.openSidebarTab('Block');
-
-    // 'Simple Warning' has fieldRules: { when: { mode: { isNot: 'advanced' } }, else: false }
-    // Initially mode is not set, so isNot: 'advanced' is true -> should be visible
-    const warningField = page.locator('text=Simple Warning');
-    await expect(warningField).toBeVisible({ timeout: 5000 });
-
-    // Select 'advanced' mode
-    const modeSelect = page.locator('.react-select__control').first();
-    await modeSelect.click();
-    const menu = page.locator('.react-select__menu');
-    await menu.waitFor({ state: 'visible', timeout: 3000 });
-    await menu.locator('.react-select__option', { hasText: 'Advanced' }).click();
-    await menu.waitFor({ state: 'hidden', timeout: 3000 });
-
-    // Now 'Simple Warning' should be hidden (mode IS 'advanced')
-    await expect(warningField).not.toBeVisible({ timeout: 5000 });
-  });
-
-  test('fieldRules with numeric comparison', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-
-    await helper.login();
-    await helper.navigateToEdit('/test-page');
-
-    const iframe = helper.getIframe();
-
-    // Click on skiplogic-test block
-    const testBlock = iframe.locator('[data-block-uid="skiplogic-test"]');
-    await expect(testBlock).toBeVisible({ timeout: 10000 });
-    await testBlock.click();
-
-    await helper.waitForSidebarOpen();
-    await helper.openSidebarTab('Block');
-
-    // 'Column Layout' has fieldRules: { when: { columns: { gte: 2 } }, else: false }
-    // Initially columns is not set or 1, so should be hidden
-    const columnLayoutField = page.locator('text=Column Layout');
-    await expect(columnLayoutField).not.toBeVisible();
-
-    // Find columns number input and set to 3
-    const columnsInput = page.locator('input[type="number"]').first();
-    await columnsInput.fill('3');
-    await columnsInput.blur();
-
-    // Now 'Column Layout' should be visible (columns >= 2)
-    await expect(columnLayoutField).toBeVisible({ timeout: 5000 });
-  });
-
-  test('fieldRules array with bare false as catch-all hide', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-
-    await helper.login();
-    await helper.navigateToEdit('/test-page');
-
-    const iframe = helper.getIframe();
-
-    const testBlock = iframe.locator('[data-block-uid="skiplogic-test"]');
-    await expect(testBlock).toBeVisible({ timeout: 10000 });
-    await testBlock.click();
-
-    await helper.waitForSidebarOpen();
-    await helper.openSidebarTab('Block');
-
-    // switchField rule: [{when: mode=simple}, {when: mode=advanced}, false]
-    // mode is unset initially → all array entries miss, bare false hides
-    const switchField = page.locator('text=Switch Field');
-    await expect(switchField).not.toBeVisible();
-
-    // Select 'simple' → first array entry matches → visible
-    const modeSelect = page.locator('.react-select__control').first();
-    await modeSelect.click();
-    const menu = page.locator('.react-select__menu');
-    await menu.waitFor({ state: 'visible', timeout: 3000 });
-    await menu.locator('.react-select__option', { hasText: 'Simple' }).click();
-    await menu.waitFor({ state: 'hidden', timeout: 3000 });
-
-    await expect(switchField).toBeVisible({ timeout: 5000 });
-  });
-
-  test('fieldRules with parent path reference', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-
-    await helper.login();
-    await helper.navigateToEdit('/test-page');
-
-    const iframe = helper.getIframe();
-
-    // Click on the skiplogic-test block
-    const testBlock = iframe.locator('[data-block-uid="skiplogic-test"]');
-    await expect(testBlock).toBeVisible({ timeout: 10000 });
-    await testBlock.click();
-
-    await helper.waitForSidebarOpen();
-    await helper.openSidebarTab('Block');
-
-    // Page has description "A test page with blocks", so pageNotice should be visible
-    // fieldRules: { when: { '../description': { isSet: true } }, else: false }
-    let pageNoticeField = page.locator('text=Page Notice');
-    await expect(pageNoticeField).toBeVisible({ timeout: 5000 });
-
-    // Go to Page tab and clear the description
-    await helper.openSidebarTab('Page');
-    const summaryField = page.locator('textarea[name="description"]');
-    await summaryField.clear();
-
-    // Go back to Block tab
-    await helper.openSidebarTab('Block');
-
-    // Now description is empty, so pageNotice should be hidden
-    pageNoticeField = page.locator('text=Page Notice');
-    await expect(pageNoticeField).not.toBeVisible({ timeout: 5000 });
+    await selectBlock(page, helper, 'fr-image-full');
+    await expect(field(page, 'alt'), 'the sidebar is showing the other image').toBeVisible({
+      timeout: 5000,
+    });
+    await expect(field(page, 'size'), 'full width IS the size').toBeHidden();
   });
 });
 
@@ -1658,3 +1567,112 @@ test.describe('Block Type Conversion via fieldMappings', () => {
     await helper.cancelBlockChooser();
   });
 });
+
+/**
+ * fieldRules — a rule that REFUSES a value.
+ *
+ * The other rules on this page show and hide fields. This one raises an error,
+ * and the point of the test is that nothing about the consequence is ours: the
+ * message goes on the field DEFINITION, and Volto's own machinery does the
+ * rest. `Form.onSubmit` validates every block against its enhanced schema, so
+ * the rule is evaluated on the way to the server and the save is refused.
+ *
+ * The rssFeed fixture refuses "fewer than no items". No other fixture asks for
+ * that — the listings page uses the default 6 — so the rule is inert
+ * everywhere except the page written for it here.
+ */
+test.describe('fieldRules - a rule that refuses a value', () => {
+  test('a page holding a refused value does not save', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/refused-value-page');
+
+    // The page is up and being edited before anything is asked of it.
+    await expect(
+      helper.getIframe().locator('[data-block-uid="intro-1"]'),
+    ).toBeVisible({ timeout: 15000 });
+
+    // Not helper.saveContent(): that waits for the redirect a SUCCESSFUL save
+    // makes, and the whole point here is that there isn't one.
+    await page.locator('#toolbar-save, button:has-text("Save")').first().click();
+
+    // Refused: the editor says which field, and the page is still being edited.
+    // The shadow reports a block error as a toast naming the field, which is
+    // how an author learns about a block they may not be looking at.
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'Max items' }).first(),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(/\/edit(\?|$)/);
+
+    // And the field itself says so, in the sidebar, where it gets fixed. The
+    // refused save selects the offending block and opens its Block tab, so the
+    // form on screen is the one holding the bad value.
+    await expect(
+      page.locator('#sidebar-properties').getByText('Max items cannot be negative.'),
+    ).toBeVisible({ timeout: 10000 });
+  });
+  /**
+   * The same machinery, with Volto's OWN validators rather than a hydra rule.
+   *
+   * Every standard validator is covered as a unit in validateBlocks.test.js;
+   * these prove the wiring an author actually meets: a bad value NESTED inside
+   * a container — which core's validation, walking `blocks_layout.items`, would
+   * never open — and a string over its schema's maxLength.
+   *
+   * `required` is covered as a unit, not here: block sanity forbids a fixture
+   * holding a required-but-empty field ("the editor won't let a block save
+   * without it, so this content can't be authored"), which is the rule this
+   * change now enforces. Testing it in the browser needs the state made at
+   * RUNTIME — an author emptying the field and pressing save — not stored.
+   */
+  test('a warned value is said, not refused — the page still saves', async ({
+    page,
+  }) => {
+    // The difference between the two actions, in the only terms that matter to
+    // an author: an error stops the save, a warning does not. Advice about
+    // artwork that is merely unwise must not hold a page hostage.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/warned-value-page');
+    await expect(
+      helper.getIframe().locator('[data-block-uid="intro-1"]'),
+    ).toBeVisible({ timeout: 15000 });
+
+    await page.locator('#toolbar-save, button:has-text("Save")').first().click();
+
+    // Saved: the editor leaves edit mode, which a refused save never does.
+    await expect(page).not.toHaveURL(/\/edit(\?|$)/, { timeout: 15000 });
+  });
+
+  test('a string longer than its schema allows does not save', async ({ page }) => {
+    // maxLength — a standard Volto validator, on a plain string field of a
+    // fixture block. Every slide in the fixtures has a short kicker, so the
+    // constraint is inert until this page writes a long one.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/too-long-string-page');
+    await expect(
+      helper.getIframe().locator('[data-block-uid="intro-1"]'),
+    ).toBeVisible({ timeout: 15000 });
+
+    await page.locator('#toolbar-save, button:has-text("Save")').first().click();
+
+    await expect(page.getByRole('alert').first()).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(/\/edit(\?|$)/);
+  });
+
+  test('a bad value inside a container does not save', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/nested-bad-url-page');
+    await expect(
+      helper.getIframe().locator('[data-block-uid="intro-1"]'),
+    ).toBeVisible({ timeout: 15000 });
+
+    await page.locator('#toolbar-save, button:has-text("Save")').first().click();
+
+    await expect(page.getByRole('alert').first()).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(/\/edit(\?|$)/);
+  });
+});
+

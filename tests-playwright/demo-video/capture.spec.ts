@@ -54,7 +54,11 @@ test.describe.configure({ mode: 'serial' });
 // together if the demo flow gets new beats.
 const REQUIRED_SERVERS = [
   { url: `${URLS.mockApi}/@search?path=/`, label: `mock-api on :${PORTS.mockApi}    (pnpm start:mock-api)` },
-  { url: `${URLS.voltoWebpack}/health`,    label: `Volto compile on :${PORTS.voltoWebpack} (pnpm start:test)` },
+  // Check the admin's SSR server, not the webpack-dev-server /health. record-doc-assets
+  // runs `pnpm start:prod` (SSR only, no :${PORTS.voltoWebpack}); local dev's `pnpm start:test`
+  // serves the admin on :${PORTS.voltoSsr} too, so this check passes in both. A missing
+  // admin fetch-fails; one mid-compile returns 503 and is caught below.
+  { url: `${URLS.voltoSsr}/`,              label: `Volto admin on :${PORTS.voltoSsr} (pnpm start:test or start:prod)` },
   { url: `${URLS.nuxt}/`,                  label: `Nuxt on :${PORTS.nuxt}          (pnpm start:nuxt:test)` },
   { url: `${URLS.f7}/`,                    label: `F7 Mobile on :${PORTS.f7}     (cd examples/hydra-vue-f7 && pnpm dev:test)` },
 ];
@@ -63,7 +67,9 @@ test.beforeAll(async () => {
   const failures: string[] = [];
   for (const { url, label } of REQUIRED_SERVERS) {
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(2_000) });
+      // Generous timeout: the mock /@search can take ~3.5s cold, and an admin
+      // still warming can be slow — a tight 2s aborts a healthy-but-cold server.
+      const r = await fetch(url, { signal: AbortSignal.timeout(10_000) });
       if (r.status >= 500) failures.push(`${label} — HTTP ${r.status}`);
     } catch (e) {
       failures.push(`${label} — ${(e as Error).message}`);
@@ -79,7 +85,7 @@ test.beforeAll(async () => {
 });
 
 test('hydra-demo — homepage hero loop', async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const helper = new AdminUIHelper(page);
   await helper.login();
   await helper.navigateToEdit(DEMO_PATH);

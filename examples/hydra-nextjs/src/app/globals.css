@@ -60,3 +60,26 @@ body {
 .blog-content {
   line-height: 1.6;
 }
+
+
+/* A hidden form field is still the author's to configure, but it has no visual
+   form — the block had no size, so there was nothing on the page to click. It
+   is rendered only while editing (see FormBlock's showHiddenFields), so a
+   visitor's page carries no trace of it. */
+.hidden-field-standin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px dashed #9ca3af;
+  border-radius: 0.375rem;
+  color: #4b5563;
+  font-size: 0.875rem;
+}
+.hidden-field-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #6b7280;
+}

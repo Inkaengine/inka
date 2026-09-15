@@ -257,12 +257,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  import { getImageUrl } from './utils.js';\n  export let block;\n  $: href = block.href?.[0]?.['@id'] || block.href;\n  $: imgSrc = getImageUrl(block.url);\n</script>\n\n<div data-block-uid={block['@uid']}>\n  {#if href}\n    <a {href} data-edit-link=\"href\">\n      <img data-edit-media=\"url\" src={imgSrc} alt={block.alt} />\n    </a>\n  {:else}\n    <img data-edit-media=\"url\" src={imgSrc} alt={block.alt} />\n  {/if}\n</div>"
-        },
-        {
-          "@id": "ref-image-block-rendering-astro-8ae6a0",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\n/**\n * Image block. If `href` is set the image is wrapped in a link (and\n * `data-edit-link=\"href\"` lets the link editor work); otherwise it's a\n * bare <img>. `data-edit-media=\"url\"` is the media editor hook.\n */\nimport { getImageUrl } from './utils.js';\nconst { block } = Astro.props;\nconst href = block.href?.[0]?.['@id'] || block.href;\nconst imgSrc = getImageUrl(block.url);\n---\n<div>\n  {href ? (\n    <a href={href} data-edit-link=\"href\">\n      <img data-edit-media=\"url\" src={imgSrc} alt={block.alt} />\n    </a>\n  ) : (\n    <img data-edit-media=\"url\" src={imgSrc} alt={block.alt} />\n  )}\n</div>"
         }
       ]
     },

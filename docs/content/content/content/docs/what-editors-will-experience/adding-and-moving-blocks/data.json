@@ -530,7 +530,7 @@
             {
               "type": "link",
               "data": {
-                "url": "selecting-blocks.md#the-children-list-going-down"
+                "url": "/docs/what-editors-will-experience/selecting-blocks#the-children-list-going-down"
               },
               "children": [
                 {
@@ -976,7 +976,7 @@
             {
               "type": "link",
               "data": {
-                "url": "selecting-blocks.md"
+                "url": "/docs/what-editors-will-experience/selecting-blocks"
               },
               "children": [
                 {
@@ -1047,7 +1047,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "containers.md"
+                    "url": "/docs/what-editors-will-experience/containers"
                   },
                   "children": [
                     {

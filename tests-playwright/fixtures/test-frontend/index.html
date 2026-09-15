@@ -193,9 +193,12 @@
                     throw new Error(`Unknown adapter '${which}'`);
             }
         }
-        import { expandListingBlocks, ploneFetchItems, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
+        import { expandListingBlocks, staticBlocks, ploneFetchItems, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
+        // Expose staticBlocks so the renderer's expandItems can window static
+        // (non-listing) container children with combined paging, hand-in-hand with
+        // expandListingBlocks — the two abstract object_list/blocks_layout and paging.
+        window._staticBlocks = staticBlocks;
         import { sharedBlocksConfig } from '/shared-block-schemas.js';
-        import { coreBlocksConfig } from '/core-block-schemas.js';
 
         // Parse page numbers from URL query params (format: ?pg_{blockId}={pageNumber})
         function getPagesFromUrl() {
@@ -234,6 +237,14 @@
             }
 
             return criteria;
+        }
+
+        // window._apiOrigin is injected by vite from HYDRA_MOCK_API_PORT (see
+        // vite.config.js). Never hardcode it here: the mock API moves whenever
+        // the ports are overridden, and a stale constant silently fetches
+        // whatever else happens to be on that port.
+        if (!window._apiOrigin) {
+            throw new Error('window._apiOrigin was not injected — check vite.config.js');
         }
 
         // Make search criteria available globally for form handlers
@@ -289,7 +300,10 @@
                 const fi = contextOverride
                     ? ploneFetchItems({ apiUrl: window._apiOrigin, contextPath: contextOverride, extraCriteria })
                     : fetchItems;
-                return await expandListingBlocks(layout, { blocks, fetchItems: { listing: fi, ...exampleFetchers }, paging, itemTypeField: 'variation' });
+                // Forward `seen` so a listing run continues the SAME page window
+                // that a preceding staticBlocks run started — combined paging over a
+                // mixed container (static cards + a listing) is one window, not two.
+                return await expandListingBlocks(layout, { blocks, fetchItems: { listing: fi, ...exampleFetchers }, paging, itemTypeField: 'variation', seen: paging?.seen });
             };
 
             // Convert layout IDs to block objects with @uid
@@ -356,6 +370,33 @@
             }
         }
 
+        // Client-side paging (grid/listing). The pager links carry an href
+        // (?pg_{blockId}=N) so they stay real, linkable links — but a full
+        // navigation would reload the whole page just to move one block's window.
+        // Intercept the click, update the URL in place (history.pushState, so the
+        // back button and getPagesFromUrl still work), and re-render from the
+        // current data. hydra reveals a paged-out child by synthesising a click on
+        // the Next/Prev [data-block-selector] control, which lands here too — so the
+        // reveal pages client-side, no reload, matching nuxt's Paging.vue.
+        if (!window._pagerHandlerAdded) {
+            window._pagerHandlerAdded = true;
+            document.addEventListener('click', (e) => {
+                // Only intercept in EDIT mode. In VIEW mode there is no FORM_DATA
+                // (so window._currentFormData is never set) and nothing to re-render
+                // from — the page just navigates, which is the correct, tested
+                // view-mode behaviour. Client-side paging exists for the EDIT-mode
+                // reveal (hydra synthesises a Next/Prev click to page a hidden child
+                // into view without a reload that would tear down the editor).
+                if (!window._isEditMode) return;
+                const pager = e.target.closest('.paging-prev, .paging-next, .paging-page');
+                if (!pager || !pager.getAttribute('href')) return;
+                e.preventDefault();
+                const target = new URL(pager.getAttribute('href'), window.location.href);
+                history.pushState({}, '', target.pathname + target.search);
+                if (window._currentFormData) renderContentWithListings(window._currentFormData);
+            });
+        }
+
         // Track page loads to detect double-loading issues (persisted in sessionStorage)
         const SESSION_KEY = 'hydra_page_load_count';
 
@@ -411,6 +452,12 @@
                                      || editParam === 'true'
                                      || editParam === 'false';
                 const isEditMode = isHydraEdit || editParam === 'true';
+                // Exposed for renderer.js: a field with no value still has to
+                // render its annotated element in EDIT mode, or the bridge's
+                // applyPlaceholders has nothing to mark data-empty and the
+                // author cannot see or click an empty field. View mode keeps
+                // "no data ⇒ no element" (issue #296).
+                window._isEditMode = isEditMode;
                 tfLog('Mode detection:', {
                     url: window.location.href,
                     windowName: window.name,
@@ -510,6 +557,14 @@
                     const pagePath = window.location.pathname.replace(/\/edit$/, '');
                     const forceFooterLayout = pagePath.startsWith('/_test_data/another-page');
 
+                    // #295: one fixture page declares a slate style allow-list on
+                    // its items region, so the restriction tests have somewhere to
+                    // run without changing what every other admin-mock test sees.
+                    // The fixture tree is reachable at the root AND under
+                    // /_test_data depending on how the mock API is mounted, so
+                    // match on the page id rather than one of the two prefixes.
+                    const restrictStyles = /\/restricted-styles-page(\/|$)/.test(pagePath);
+
                     // Listen for changes from the admin UI and update blocks
                     // Return promise from async render so hydra.js can wait for DOM updates
                     window._formDataCount = 0;
@@ -532,20 +587,86 @@
                                 properties: {
                                     items: {
                                         title: 'Blocks',
-                                        allowedBlocks: ['slate', 'image', 'separator', 'hero', 'columns', 'slider', 'accordion', 'teaser', 'gridBlock', 'listing', 'search', 'skiplogicTest', 'title', 'description', 'section', 'contextNavigation', 'codeExample', 'objectBlocks', 'convSource', 'relatedItemsListing', 'searchShortcuts', 'rssFeed'],
+                                        // A page blocks field is identified by its widget — that is
+                                        // what buildBlockPathMap keys on when it walks
+                                        // formData.blocks_layout[<field>]. Declaring it here (as a
+                                        // real frontend's _page schema does) is what lets the admin
+                                        // — and the mock parent, which now merges templates the same
+                                        // way — resolve blocks in a non-default region.
+                                        widget: 'blocks_layout',
+                                        allowedBlocks: ['slate', 'image', 'separator', 'hero', 'columns', 'slider', 'accordion', 'teaser', 'gridBlock', 'listing', 'search', 'title', 'description', 'section', 'contextNavigation', 'codeExample', 'objectBlocks', 'convSource', 'relatedItemsListing', 'searchShortcuts', 'rssFeed'],
                                         allowedTemplates: ['/_test_data/templates/test-layout'],
                                         allowedLayouts: contextNavLayoutForced
                                             || [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout'],
+                                        ...(restrictStyles ? { disallowedStyles: ['blockquote', 'b', 'del'], disallowedMarks: ['highlight'] } : {}),
                                     },
                                     footer: {
                                         title: 'Footer',
+                                        widget: 'blocks_layout',
                                         allowedBlocks: ['slate', 'image'],
                                         ...(forceFooterLayout ? { allowedLayouts: ['/_test_data/templates/footer-layout'] } : {}),
+                                    },
+                                    // The page's OWN fields, not regions: this
+                                    // frontend renders the title and description
+                                    // inline (see #page-title), so it is the one
+                                    // that says what an empty one should invite.
+                                    title: {
+                                        title: 'Title',
+                                        type: 'string',
+                                        placeholder: 'Type the title…',
+                                    },
+                                    description: {
+                                        title: 'Description',
+                                        type: 'string',
+                                        placeholder: 'Add a description…',
                                     },
                                 },
                             },
                         },
-                        blocks: { ...coreBlocksConfig, ...sharedBlocksConfig },
+                        blocks: {
+                            ...sharedBlocksConfig,
+                            // #295 inheritance, page-scoped so no other spec sees it:
+                            // the column's own region re-lists `blockquote`, which the
+                            // PAGE denies. Deny accumulates down the tree and cannot be
+                            // re-allowed by a nested region; `h2` proves the allow half
+                            // still takes effect.
+                            ...(restrictStyles ? {
+                                column: {
+                                    ...sharedBlocksConfig.column,
+                                    blockSchema: {
+                                        ...sharedBlocksConfig.column.blockSchema,
+                                        properties: {
+                                            ...sharedBlocksConfig.column.blockSchema.properties,
+                                            items: {
+                                                ...sharedBlocksConfig.column.blockSchema.properties.items,
+                                                allowedStyles: ['p', 'h2', 'blockquote'],
+                                            },
+                                        },
+                                    },
+                                },
+                            } : {}),
+                        },
+                        voltoConfig: {
+                            settings: {
+                                slate: {
+                                    // A design system's own styles, declared for the
+                                    // WHOLE frontend rather than one fixture page.
+                                    // Discovery harvests blocksConfig from a single page
+                                    // load, so a page-scoped menu meant stored content
+                                    // using `styleName` was judged against a config that
+                                    // offered no styles — "not an authorable style", and
+                                    // rightly so.
+                                    styleMenu: {
+                                        blockStyles: [{ cssClass: 'lead', label: 'Lead' }],
+                                        inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }],
+                                    },
+                                    // The allow-list rules stay page-scoped: they are what
+                                    // the restriction specs vary, and every other spec
+                                    // must keep seeing an unrestricted editor.
+                                    ...(restrictStyles ? { styleAliases: { b: 'strong' } } : {}),
+                                },
+                            },
+                        },
                         debug: true,
                         // Pass onEditChange before init() sends INIT to avoid race condition
                         onEditChange: (formData) => {
@@ -557,13 +678,23 @@
                                 document.getElementById('page-title').textContent = formData.title;
                             }
 
-                            // Update preview image if provided
+                            // Update preview image if provided. The serialised
+                            // download path is relative to the CONTENT on the API
+                            // ("@@images/preview_image-800--….svg"), so it has to
+                            // be resolved against the API origin and the content's
+                            // own path — assigning it raw made the browser resolve
+                            // it against the FRONTEND, where it 404s.
                             const previewImg = document.getElementById('preview-image');
-                            if (formData.preview_image?.scales?.preview?.download) {
-                                previewImg.src = formData.preview_image.scales.preview.download;
-                                previewImg.style.display = 'block';
-                            } else if (formData.preview_image?.download) {
-                                previewImg.src = formData.preview_image.download;
+                            const previewDownload =
+                                formData.preview_image?.scales?.preview?.download
+                                || formData.preview_image?.download;
+                            if (previewDownload) {
+                                previewImg.src = /^https?:\/\//.test(previewDownload)
+                                    ? previewDownload
+                                    : new URL(
+                                        previewDownload,
+                                        `${window._apiOrigin || ''}${contentPath.replace(/\/?$/, '/')}`,
+                                      ).href;
                                 previewImg.style.display = 'block';
                             } else {
                                 previewImg.style.display = 'none';

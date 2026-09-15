@@ -8,7 +8,7 @@
   "creators": [
     "admin"
   ],
-  "description": "Inka works with any frontend, including ones that have no client-side",
+  "description": "Hydra works with any frontend, including ones that have no client-side",
   "effective": "2025-01-01T00:00:00",
   "exclude_from_nav": false,
   "expires": null,
@@ -61,13 +61,13 @@
     },
     "p-1": {
       "@type": "slate",
-      "plaintext": "Inka works with any frontend, including ones that have no client-side reactivity at all — pure server-rendered frameworks like **Astro**, **PHP**, **Django**, **Rails**, **Laravel**, **Symfony**, **Go html/template**. The bridge ships a built-in pattern for these: one config option on `initBridge` and one small endpoint on your server.",
+      "plaintext": "Hydra works with any frontend, including ones that have no client-side reactivity at all — pure server-rendered frameworks like **Astro**, **PHP**, **Django**, **Rails**, **Laravel**, **Symfony**, **Go html/template**. The bridge ships a built-in pattern for these: one config option on `initBridge` and one small endpoint on your server.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "Inka works with any frontend, including ones that have no client-side reactivity at all — pure server-rendered frameworks like "
+              "text": "Hydra works with any frontend, including ones that have no client-side reactivity at all — pure server-rendered frameworks like "
             },
             {
               "type": "strong",
@@ -538,7 +538,7 @@
     },
     "p-15": {
       "@type": "slate",
-      "plaintext": "That dispatch must also handle `@type: \"empty\"` — the placeholder Inka seeds into any container region with no `defaultBlockType` and more than one `allowedBlocks` — by rendering an empty, selectable slot (with its `data-block-uid`) rather than erroring. See [Empty Blocks](container-blocks.md#empty-blocks).",
+      "plaintext": "That dispatch must also handle `@type: \"empty\"` — the placeholder Hydra seeds into any container region with no `defaultBlockType` and more than one `allowedBlocks` — by rendering an empty, selectable slot (with its `data-block-uid`) rather than erroring. See [Empty Blocks](container-blocks.md#empty-blocks).",
       "value": [
         {
           "type": "p",
@@ -555,7 +555,7 @@
               ]
             },
             {
-              "text": " — the placeholder Inka seeds into any container region with no "
+              "text": " — the placeholder Hydra seeds into any container region with no "
             },
             {
               "type": "code",
@@ -593,7 +593,7 @@
             {
               "type": "link",
               "data": {
-                "url": "container-blocks.md#empty-blocks"
+                "url": "/docs/container-blocks#empty-blocks"
               },
               "children": [
                 {
@@ -672,12 +672,7 @@
               },
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "docs/examples/test-astro/"
-                    }
-                  ]
+                  "text": "`docs/examples/test-astro/`"
                 }
               ]
             },
@@ -691,12 +686,7 @@
               },
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "docs/examples/examples/astro/"
-                    }
-                  ]
+                  "text": "`docs/examples/examples/astro/`"
                 }
               ]
             },
@@ -1171,7 +1161,7 @@
     },
     "ul-32": {
       "@type": "slate",
-      "plaintext": "Network round trip per edit. Faster than full reload (Sanity's approach) but slower than client-side reconciliation. For a typical edit (one block at a time) it's a few hundred bytes and a few milliseconds on a same-origin endpoint. Don't put the endpoint behind authentication that adds another round trip. data-block-uid MUST be the outer element. A wrapper around the block from outside the renderer (e.g. a CSS-grid <li> your layout adds) will break outerHTML swaps — the swap would replace the wrapper too. Always wrap inside the renderer. The endpoint must be on the same origin as the rendered page (or CORS-enabled). The bridge POSTs from the iframe child to whatever URL you give it; cross-origin without CORS will fail. The endpoint receives the full formData on every edit. Don't log it to disk or replay it — it's editing state, potentially containing unpublished content.",
+      "plaintext": "Network round trip per edit. Faster than full reload (Sanity's",
       "value": [
         {
           "type": "ul",
@@ -1188,10 +1178,35 @@
                   ]
                 },
                 {
-                  "text": " Faster than full reload (Sanity's approach) but slower than client-side reconciliation. For a typical edit (one block at a time) it's a few hundred bytes and a few milliseconds on a same-origin endpoint. Don't put the endpoint behind authentication that adds another round trip."
+                  "text": " Faster than full reload (Sanity's"
                 }
               ]
-            },
+            }
+          ]
+        }
+      ]
+    },
+    "p-33": {
+      "@type": "slate",
+      "plaintext": "approach) but slower than client-side reconciliation. For a typical   edit (one block at a time) it's a few hundred bytes and a few   milliseconds on a same-origin endpoint. Don't put the endpoint behind   authentication that adds another round trip.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "approach) but slower than client-side reconciliation. For a typical   edit (one block at a time) it's a few hundred bytes and a few   milliseconds on a same-origin endpoint. Don't put the endpoint behind   authentication that adds another round trip."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-34": {
+      "@type": "slate",
+      "plaintext": "data-block-uid MUST be the outer element. A wrapper around the",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -1199,45 +1214,62 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "data-block-uid"
-                        }
-                      ]
-                    },
-                    {
-                      "text": " MUST be the outer element."
+                      "text": "`data-block-uid` MUST be the outer element."
                     }
                   ]
                 },
                 {
-                  "text": " A wrapper around the block from outside the renderer (e.g. a CSS-grid "
-                },
+                  "text": " A wrapper around the"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-35": {
+      "@type": "slate",
+      "plaintext": "block from outside the renderer (e.g. a CSS-grid `<li>` your layout   adds) will break `outerHTML` swaps — the swap would replace the wrapper   too. Always wrap inside the renderer.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "block from outside the renderer (e.g. a CSS-grid "
+            },
+            {
+              "type": "code",
+              "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "<li>"
-                    }
-                  ]
-                },
-                {
-                  "text": " your layout adds) will break "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "outerHTML"
-                    }
-                  ]
-                },
-                {
-                  "text": " swaps — the swap would replace the wrapper too. Always wrap inside the renderer."
+                  "text": "<li>"
                 }
               ]
             },
+            {
+              "text": " your layout   adds) will break "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "outerHTML"
+                }
+              ]
+            },
+            {
+              "text": " swaps — the swap would replace the wrapper   too. Always wrap inside the renderer."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-36": {
+      "@type": "slate",
+      "plaintext": "The endpoint must be on the same origin as the rendered page (or",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -1250,10 +1282,35 @@
                   ]
                 },
                 {
-                  "text": " as the rendered page (or CORS-enabled). The bridge POSTs from the iframe child to whatever URL you give it; cross-origin without CORS will fail."
+                  "text": " as the rendered page (or"
                 }
               ]
-            },
+            }
+          ]
+        }
+      ]
+    },
+    "p-37": {
+      "@type": "slate",
+      "plaintext": "CORS-enabled). The bridge POSTs from the iframe child to whatever URL   you give it; cross-origin without CORS will fail.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "CORS-enabled). The bridge POSTs from the iframe child to whatever URL   you give it; cross-origin without CORS will fail."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-38": {
+      "@type": "slate",
+      "plaintext": "The endpoint receives the full formData on every edit. Don't log",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -1266,9 +1323,23 @@
                   ]
                 },
                 {
-                  "text": " Don't log it to disk or replay it — it's editing state, potentially containing unpublished content."
+                  "text": " Don't log"
                 }
               ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-39": {
+      "@type": "slate",
+      "plaintext": "it to disk or replay it — it's editing state, potentially containing   unpublished content.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "it to disk or replay it — it's editing state, potentially containing   unpublished content."
             }
           ]
         }
@@ -1309,7 +1380,14 @@
       "tbl-29",
       "p-30",
       "h-31",
-      "ul-32"
+      "ul-32",
+      "p-33",
+      "ul-34",
+      "p-35",
+      "ul-36",
+      "p-37",
+      "ul-38",
+      "p-39"
     ]
   }
 }

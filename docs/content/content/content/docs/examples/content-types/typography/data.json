@@ -276,53 +276,67 @@
       "blocks": {
         "a7ffd7f2-5dbf-4b5c-b24e-d10db0dff8df": {
           "@type": "slate",
-          "plaintext": "Text Heading (H3, 24/30px)\nParagraph Text (p, 18/24px)",
+          "plaintext": "Text Heading (H3, 24/30px)",
           "value": [
             {
-              "type": "p",
               "children": [
                 {
-                  "type": "strong",
-                  "children": [
-                    {
-                      "text": "Text Heading (H3, 24/30px)"
-                    }
-                  ]
-                },
-                {
-                  "text": " Paragraph Text (p, 18/24px)"
+                  "text": "Text Heading (H3, 24/30px)"
                 }
-              ]
+              ],
+              "type": "h2"
             }
           ]
         },
         "c1163fcc-e2a4-4e81-b6ab-af537c8b4d56": {
           "@type": "slate",
-          "plaintext": "Text Heading (H3, 24/30px)\nParagraph Text (p, 18/24px)",
+          "plaintext": "Text Heading (H3, 24/30px)",
           "value": [
             {
-              "type": "p",
               "children": [
                 {
-                  "type": "strong",
-                  "children": [
-                    {
-                      "text": "Text Heading (H3, 24/30px)"
-                    }
-                  ]
-                },
-                {
-                  "text": " Paragraph Text (p, 18/24px)"
+                  "text": "Text Heading (H3, 24/30px)"
                 }
-              ]
+              ],
+              "type": "h2"
             }
           ]
+        },
+        "a7ffd7f2-5dbf-4b5c-b24e-d10db0dff8df-n2": {
+          "@type": "slate",
+          "value": [
+            {
+              "children": [
+                {
+                  "text": "Paragraph Text (p, 18/24px)"
+                }
+              ],
+              "type": "p"
+            }
+          ],
+          "plaintext": "Paragraph Text (p, 18/24px)"
+        },
+        "c1163fcc-e2a4-4e81-b6ab-af537c8b4d56-n2": {
+          "@type": "slate",
+          "value": [
+            {
+              "children": [
+                {
+                  "text": "Paragraph Text (p, 18/24px)"
+                }
+              ],
+              "type": "p"
+            }
+          ],
+          "plaintext": "Paragraph Text (p, 18/24px)"
         }
       },
       "blocks_layout": {
         "items": [
           "a7ffd7f2-5dbf-4b5c-b24e-d10db0dff8df",
-          "c1163fcc-e2a4-4e81-b6ab-af537c8b4d56"
+          "a7ffd7f2-5dbf-4b5c-b24e-d10db0dff8df-n2",
+          "c1163fcc-e2a4-4e81-b6ab-af537c8b4d56",
+          "c1163fcc-e2a4-4e81-b6ab-af537c8b4d56-n2"
         ]
       },
       "styles": {}
@@ -359,30 +373,37 @@
       "blocks": {
         "38e1fde4-8886-4673-9316-5e1b96bcc222": {
           "@type": "slate",
-          "plaintext": "Text Heading (H2, 30/36px)\nFor grid blocks, the font of the headlines are variable, depending on the number of cells in the grid.",
+          "plaintext": "Text Heading (H2, 30/36px)",
           "value": [
             {
-              "type": "p",
               "children": [
                 {
-                  "type": "strong",
-                  "children": [
-                    {
-                      "text": "Text Heading (H2, 30/36px)"
-                    }
-                  ]
-                },
-                {
-                  "text": " For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid."
+                  "text": "Text Heading (H2, 30/36px)"
                 }
-              ]
+              ],
+              "type": "h2"
             }
           ]
+        },
+        "38e1fde4-8886-4673-9316-5e1b96bcc222-n2": {
+          "@type": "slate",
+          "value": [
+            {
+              "children": [
+                {
+                  "text": "For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid."
+                }
+              ],
+              "type": "p"
+            }
+          ],
+          "plaintext": "For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid."
         }
       },
       "blocks_layout": {
         "items": [
-          "38e1fde4-8886-4673-9316-5e1b96bcc222"
+          "38e1fde4-8886-4673-9316-5e1b96bcc222",
+          "38e1fde4-8886-4673-9316-5e1b96bcc222-n2"
         ]
       },
       "styles": {}

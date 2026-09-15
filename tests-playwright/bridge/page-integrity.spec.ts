@@ -16,6 +16,7 @@ import { getFrontendUrl } from './fixtures';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { requireEnvironment } from '../helpers/preconditions';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,20 +28,31 @@ const discoveredPath = path.resolve(__dirname, '../../.discovered-blocks.json');
 let uniquePages: string[] = [];
 if (fs.existsSync(discoveredPath)) {
   const all: DiscoveredBlock[] = JSON.parse(fs.readFileSync(discoveredPath, 'utf-8'));
-  uniquePages = Array.from(new Set(all.map((b) => b.pagePath)));
+  // Some findings are about a TYPE, not a page — a registered block with no
+  // content example has nothing to point at, so it carries no pagePath. Without
+  // this filter they became a test literally named "undefined" that navigated to
+  // `<frontend>undefined`, failing for a reason unrelated to any page.
+  uniquePages = Array.from(new Set(all.map((b) => b.pagePath).filter(Boolean)));
 }
 
 test.describe('Page integrity (auto-discovered)', () => {
   test.beforeEach(async ({}, testInfo) => {
-    if (uniquePages.length === 0) {
-      testInfo.skip(true, 'No .discovered-blocks.json found — run with DISCOVER_BLOCKS_API=<url>');
-    }
+    requireEnvironment(
+      testInfo,
+      uniquePages.length > 0,
+      'no .discovered-blocks.json — discovery needs DISCOVER_BLOCKS_API=<mock api url> in this job',
+    );
   });
 
   for (const pagePath of uniquePages) {
     test(`${pagePath}`, async ({ page }, testInfo) => {
       const frontendUrl = process.env.FRONTEND_URL || getFrontendUrl(testInfo.project.name);
-      testInfo.skip(!frontendUrl, `No frontend URL configured for project ${testInfo.project.name}`);
+      // SCOPE, not environment: this check crawls a standalone frontend site,
+      // and projects absent from the URL map have none to crawl — `mock` is
+      // driven through mock-parent, and the `-firefox` variants re-run another
+      // project's site in a second browser. Nothing is broken, so it skips even
+      // on CI (unlike the discovery guard above).
+      testInfo.skip(!frontendUrl, `no standalone frontend site for project ${testInfo.project.name}`);
 
       await page.goto(`${frontendUrl}${pagePath}`, { timeout: 20000 });
       await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});

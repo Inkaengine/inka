@@ -1,7 +1,7 @@
 {
   "@id": "http://localhost:8888/heavy-slate-page",
   "@type": "Document",
-  "UID": "complex-slate-page-uid-12345",
+  "UID": "heavy-slate-page-uid-67890",
   "id": "heavy-slate-page",
   "title": "Heavy Slate Page",
   "description": "Page with many blocks for performance testing",

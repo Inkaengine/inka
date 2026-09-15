@@ -1,0 +1,26 @@
+{
+  "@id": "/nested-bad-url-page",
+  "@type": "Document",
+  "title": "A bad value inside a container",
+  "UID": "nested-bad-url-page-uid",
+  "blocks": {
+    "intro-1": {
+      "@type": "slate",
+      "value": [{ "type": "p", "children": [{ "text": "The feed inside the column below has a url that is not one. Core's validation walked the top level and would never have opened this container." }] }]
+    },
+    "cols-1": {
+      "@type": "columns",
+      "blocks": {
+        "col-1": {
+          "@type": "column",
+          "blocks": {
+            "rss-nested": { "@type": "rssFeed", "feedUrl": "not a url at all", "count": 6, "variation": "summary" }
+          },
+          "blocks_layout": { "items": ["rss-nested"] }
+        }
+      },
+      "blocks_layout": { "items": ["col-1"] }
+    }
+  },
+  "blocks_layout": { "items": ["intro-1", "cols-1"] }
+}

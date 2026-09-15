@@ -912,29 +912,21 @@ test.describe('Block Mode (Escape state machine)', () => {
     // signal is that a Column entry (col-2) shows up in the selection —
     // counts alone aren't enough since columns-1 has only 2 columns,
     // matching col-1's 2 children.
-    await page.keyboard.press('ControlOrMeta+a');
-    await expect.poll(async () => {
-      const rows = page.locator('.selected-block-path');
-      const texts = await rows.allTextContents();
-      return texts.some((t) => t.includes('Column')) ? texts.length : null;
-    }, { timeout: 3000 }).not.toBeNull();
-    const level4Count = await page.locator('.selected-block-path').count();
+    const level4Count = await helper.escalateSelection('Column');
 
     // Press 5: escalate to columns-1's siblings (page level). Page has title + columns-1 + text-after + grid-1.
-    await page.keyboard.press('ControlOrMeta+a');
-    await expect.poll(async () => {
-      const rows = page.locator('.selected-block-path');
-      const count = await rows.count();
-      if (count === 0) return null;
-      const texts = await rows.allTextContents();
-      // Page-level siblings include 'Title' (title-block type) which wasn't in previous levels
-      return texts.some((t) => t.includes('Title')) ? count : null;
-    }, { timeout: 3000 }).not.toBeNull();
-    const level5Count = await page.locator('.selected-block-path').count();
+    // Page-level siblings include 'Title' (title-block type), absent from every
+    // level below, so it identifies the top without relying on counts.
+    const level5Count = await helper.escalateSelection('Title');
 
-    // Further presses: no-op (already at page root — escalation has nowhere to go)
+    // Further presses: no-op (already at page root — escalation has nowhere to
+    // go). Nothing should change, so wait for a frame boundary rather than a
+    // sleep: the handler runs as a microtask, so by the next frame it has either
+    // acted or never will.
     await page.keyboard.press('ControlOrMeta+a');
-    await page.waitForTimeout(500);
+    await page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    );
     expect(await page.locator('.selected-block-path').count()).toBe(level5Count);
   });
 

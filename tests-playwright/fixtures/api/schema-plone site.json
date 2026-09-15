@@ -1,0 +1,44 @@
+{
+  "title": "Plone Site",
+  "description": "The site root. Editable in Volto like any other content — it carries a title, a description and blocks — but it is NOT a dexterity content type, so it has none of the behaviours schema-base.json describes: no publication dates, no short name, and nothing to exclude from a navigation it IS the root of. `mergeBase: false` says so.",
+  "mergeBase": false,
+  "properties": {
+    "title": {
+      "title": "Title",
+      "description": "",
+      "type": "string"
+    },
+    "description": {
+      "title": "Summary",
+      "description": "Used in item listings and search results.",
+      "type": "string",
+      "widget": "textarea"
+    },
+    "blocks": {
+      "behavior": "volto.blocks",
+      "default": {},
+      "description": "The JSON representation of the object blocks information. Must be a JSON object.",
+      "factory": "JSONField",
+      "title": "Blocks",
+      "type": "dict",
+      "widget": "json"
+    },
+    "blocks_layout": {
+      "behavior": "volto.blocks",
+      "default": { "items": [] },
+      "description": "The JSON representation of the object blocks layout. Must be a JSON object.",
+      "factory": "JSONField",
+      "title": "Blocks Layout",
+      "type": "dict",
+      "widget": "json"
+    }
+  },
+  "required": ["title"],
+  "fieldsets": [
+    {
+      "id": "default",
+      "title": "Default",
+      "fields": ["title", "description", "blocks", "blocks_layout"]
+    }
+  ]
+}

@@ -13,7 +13,7 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 // Set nuxt frontend cookie for all tests
 test.use({
-  storageState: 'tests-playwright/fixtures/storage-nuxt.json',
+  storageState: 'tests-playwright/.generated/storage-nuxt.json',
 });
 
 test.describe('Code Example Block', () => {

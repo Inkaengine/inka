@@ -57,12 +57,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  import ColumnBlock from './ColumnBlock.svelte';\n  export let block;\n</script>\n\n<div data-block-uid={block['@uid']} class=\"columns-block\">\n  <div style=\"display: flex; gap: 1rem\">\n    {#each block.blocks_layout?.columns || [] as id (id)}\n      <ColumnBlock block={{ ...block.blocks?.[id], '@uid': id }} />\n    {/each}\n  </div>\n</div>"
-        },
-        {
-          "@id": "ref-columns-rendering-astro-481d9d",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\n/**\n * Columns container. Each column is a sub-block of @type \"column\" rendered\n * by ColumnBlock. The columns themselves get their own data-block-uid\n * wrapper from ColumnBlock — this outer container is just layout.\n */\nimport ColumnBlock from './ColumnBlock.astro';\nconst { block } = Astro.props;\nconst items = block.blocks_layout?.columns || [];\nconst subBlocks = block.blocks || {};\n---\n<div class=\"columns-block\">\n  <div style=\"display: flex; gap: 1rem\">\n    {items.map((id: string) => (\n      <ColumnBlock block={{ ...subBlocks[id], '@uid': id }} />\n    ))}\n  </div>\n</div>"
         }
       ],
       "slotId": "rendering"

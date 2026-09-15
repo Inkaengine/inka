@@ -57,6 +57,62 @@ test.describe('Code Example Block', () => {
     await expect(buttons.nth(2)).toContainText('Bash');
   });
 
+  // The label on a tab's button is editable — that is the whole point of putting
+  // it there rather than on the panel. Every other tab test clicks the BUTTON;
+  // none of them clicked the label, so the editable-label feature shipped with
+  // no coverage at all, and block-sanity was the only thing catching it.
+  test('clicking an inactive tab\'s label switches to it and puts the caret in the label', async ({
+    page,
+  }) => {
+    const helper = new AdminUIHelper(page);
+    const iframe = helper.getIframe();
+
+    await helper.login();
+    await helper.navigateToEdit('/code-example-test-page');
+    await helper.waitForIframeReady();
+
+    const block = iframe.locator('[data-block-uid="multi-tab"]');
+    await expect(block).toBeVisible();
+    // Python starts hidden — clicking its label has to reveal it, exactly as
+    // clicking its button does.
+    await expect(block.locator('[data-block-uid="tab-py"]')).toBeHidden();
+
+    const pythonLabel = block
+      .locator('[data-tab-bar] button', { hasText: 'Python' })
+      .locator('[data-edit-text="label"]');
+    await pythonLabel.click();
+
+    await expect(
+      block.locator('[data-block-uid="tab-py"]'),
+      'clicking a tab label should switch to that tab',
+    ).toBeVisible({ timeout: 5000 });
+
+    await expect(
+      pythonLabel,
+      'the label the author clicked should be editable',
+    ).toHaveAttribute('contenteditable', 'true', { timeout: 5000 });
+
+    // Editable is not enough — the caret has to be IN it, or the first
+    // keystroke goes somewhere else.
+    await expect
+      .poll(
+        () =>
+          pythonLabel
+            .evaluate((node) => {
+              const doc = node.ownerDocument;
+              if (doc.activeElement !== node) return `activeElement=${doc.activeElement?.tagName}`;
+              const sel = doc.getSelection();
+              if (!sel || sel.rangeCount === 0) return 'no selection';
+              return node.contains(sel.getRangeAt(0).startContainer)
+                ? 'caret in label'
+                : 'caret elsewhere';
+            })
+            .catch((e) => `evaluate failed: ${String(e).slice(0, 60)}`),
+        { timeout: 5000, message: 'clicking a tab label should put the caret in it' },
+      )
+      .toBe('caret in label');
+  });
+
   test('clicking tab item opens sidebar with label, language, code fields', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 

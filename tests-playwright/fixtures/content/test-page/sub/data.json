@@ -1,0 +1,40 @@
+{
+  "@id": "/_test_data/test-page/sub",
+  "@type": "Document",
+  "UID": "test-page-sub-uid-0001",
+  "id": "sub",
+  "title": "Test Page child",
+  "description": "A child of test-page, so the nav item pointing three segments deep resolves.",
+  "effective": "2024-11-01T00:00:00+00:00",
+  "review_state": "published",
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "body-block": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A child page used by the context-navigation fixture."
+            }
+          ]
+        }
+      ],
+      "plaintext": "A child page used by the context-navigation fixture."
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "body-block"
+    ]
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": true,
+  "created": "2025-01-02T00:00:00+00:00",
+  "modified": "2025-01-02T00:00:00+00:00"
+}

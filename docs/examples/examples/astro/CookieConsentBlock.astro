@@ -1,0 +1,55 @@
+---
+/**
+ * Cookie consent — a block drawn in three places, two of them hidden.
+ *
+ * The bar is the block's own element. Its `message` is read in a banner at the
+ * foot of the page, and its `analyticsPurpose` beside a tick box in a
+ * preferences dialog: both outside this block's DOM, both hidden until their
+ * trigger is pressed. So asking whether the BLOCK is visible answers nothing —
+ * the bar always is — and each trigger names the FIELD its half holds, so the
+ * bridge can open the half whose field the author reached for in the sidebar.
+ *
+ * Server-rendered: the halves ship hidden and a small inline script opens them,
+ * which is also what lets the bridge reveal one by clicking its trigger.
+ */
+const { block } = Astro.props;
+const uid = block['@uid'];
+const slateToText = (value: any) =>
+  Array.isArray(value)
+    ? value
+        .map((node: any) => node.text ?? (node.children || []).map((c: any) => c.text ?? '').join(''))
+        .join('')
+    : '';
+---
+<div data-block-uid={uid} class="cookie-consent">
+  <div class="cookie-consent__bar">
+    <strong>Cookie consent</strong>
+    <button type="button" data-block-selector={`${uid}#message`} data-opens="cookie-banner">
+      Show the banner
+    </button>
+    <button type="button" data-block-selector={`${uid}#analyticsPurpose`} data-opens="cookie-dialog">
+      Show cookie preferences
+    </button>
+  </div>
+</div>
+
+<div class="cookie-banner" id="cookie-banner" data-block-selector={`${uid}#message`} role="alert">
+  <p data-edit-text="message">{slateToText(block.message)}</p>
+</div>
+
+<div class="cookie-dialog" id="cookie-dialog" data-block-selector={`${uid}#analyticsPurpose`} role="dialog" hidden>
+  <h2>Manage cookie preferences</h2>
+  <label><input type="checkbox" name="analytics" /> Analytics</label>
+  <p data-edit-text="analyticsPurpose">{block.analyticsPurpose}</p>
+</div>
+
+<script>
+  // The component's own behaviour. The bridge never knows about it: it clicks
+  // the trigger, and whatever the component does in response is what reveals
+  // the half.
+  document.addEventListener('click', (event) => {
+    const trigger = (event.target as HTMLElement)?.closest?.('[data-opens]');
+    if (!trigger) return;
+    document.getElementById(trigger.getAttribute('data-opens')!)?.removeAttribute('hidden');
+  });
+</script>

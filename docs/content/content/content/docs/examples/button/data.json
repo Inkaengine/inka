@@ -446,12 +446,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  export let block;\n  $: href = block.href?.[0]?.['@id'] || block.href || '#';\n</script>\n\n<div data-block-uid={block['@uid']} class=\"button-block\">\n  <a {href} data-edit-text=\"title\" data-edit-link=\"href\" class=\"btn\">\n    {block.title || 'Button'}\n  </a>\n</div>"
-        },
-        {
-          "@id": "ref-button-rendering-astro-1ee456",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\nconst { block } = Astro.props;\nconst href = block.href?.[0]?.['@id'] || block.href || '#';\nconst title = block.title || 'Button';\n---\n<div class=\"button-block\">\n  <a href={href} data-edit-text=\"title\" data-edit-link=\"href\" class=\"btn\">\n    {title}\n  </a>\n</div>"
         }
       ]
     },

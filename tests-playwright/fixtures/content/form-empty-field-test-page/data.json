@@ -9,15 +9,31 @@
   "is_folderish": false,
   "type_title": "Page",
   "blocks": {
-    "title-block": { "@type": "title" },
+    "title-block": {
+      "@type": "title"
+    },
     "form-1": {
       "@type": "form",
       "title": "Contact",
       "submit_label": "Submit",
       "subblocks": [
-        { "@id": "empty-1", "field_id": "empty-1", "field_type": "empty", "label": "" }
-      ]
+        {
+          "@id": "empty-1",
+          "field_id": "empty-1",
+          "field_type": "empty",
+          "label": ""
+        }
+      ],
+      "default_from": "noreply@example.com",
+      "default_to": "admin@example.com",
+      "default_subject": "New form submission",
+      "captcha": "honeypot"
     }
   },
-  "blocks_layout": { "items": ["title-block", "form-1"] }
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "form-1"
+    ]
+  }
 }

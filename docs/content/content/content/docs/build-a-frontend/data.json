@@ -176,7 +176,7 @@
     },
     "ul-6": {
       "@type": "slate",
-      "plaintext": "Blocks fields — one or more named, ordered lists of blocks. Each is a schema property with widget: 'blocks_layout'; the field name is a key inside the page's blocks_layout dict (the default field is items, plus e.g. header, footer). Every field's blocks live in the page's single shared blocks dict; the field only records ordering. Blocks — discrete visual elements with a schema and settings that can be moved and edited.Type, title, icon etc. so the user can pick from a menu.Fields: string, image, link etc. each with their own sidebar widget.slate is a special field that contains JSON for a paragraph, heading etc.blocks fields let a block hold other blocks.",
+      "plaintext": "Blocks fields — one or more named, ordered lists of blocks. Each is a schema property with widget: 'blocks_layout'; the field name is a key inside the page's blocks_layout dict (the default field is items, plus e.g. header, footer). Every field's blocks live in the page's single shared blocks dict; the field only records ordering. Blocks — discrete visual elements with a schema and settings that can be moved and edited.",
       "value": [
         {
           "type": "ul",
@@ -276,64 +276,6 @@
                 },
                 {
                   "text": " — discrete visual elements with a schema and settings that can be moved and edited."
-                },
-                {
-                  "type": "ul",
-                  "children": [
-                    {
-                      "type": "li",
-                      "children": [
-                        {
-                          "text": "Type, title, icon etc. so the user can pick from a menu."
-                        }
-                      ]
-                    },
-                    {
-                      "type": "li",
-                      "children": [
-                        {
-                          "text": "Fields: string, image, link etc. each with their own sidebar widget."
-                        },
-                        {
-                          "type": "ul",
-                          "children": [
-                            {
-                              "type": "li",
-                              "children": [
-                                {
-                                  "type": "code",
-                                  "children": [
-                                    {
-                                      "text": "slate"
-                                    }
-                                  ]
-                                },
-                                {
-                                  "text": " is a special field that contains JSON for a paragraph, heading etc."
-                                }
-                              ]
-                            },
-                            {
-                              "type": "li",
-                              "children": [
-                                {
-                                  "type": "code",
-                                  "children": [
-                                    {
-                                      "text": "blocks"
-                                    }
-                                  ]
-                                },
-                                {
-                                  "text": " fields let a block hold other blocks."
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
                 }
               ]
             }
@@ -342,6 +284,42 @@
       ]
     },
     "p-7": {
+      "@type": "slate",
+      "plaintext": "- Type, title, icon etc. so the user can pick from a menu.   - Fields: string, image, link etc. each with their own sidebar widget.     - `slate` is a special field that contains JSON for a paragraph, heading etc.     - `blocks` fields let a block hold other blocks.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "- Type, title, icon etc. so the user can pick from a menu.   - Fields: string, image, link etc. each with their own sidebar widget.     - "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "slate"
+                }
+              ]
+            },
+            {
+              "text": " is a special field that contains JSON for a paragraph, heading etc.     - "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "blocks"
+                }
+              ]
+            },
+            {
+              "text": " fields let a block hold other blocks."
+            }
+          ]
+        }
+      ]
+    },
+    "p-8": {
       "@type": "slate",
       "plaintext": "When the page loads inside Inka's edit iframe, you initialise the bridge and declare your blocks; otherwise you render normally from the API:",
       "value": [
@@ -355,18 +333,18 @@
         }
       ]
     },
-    "ce-8": {
+    "ce-9": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-8-js-bf605e",
+          "@id": "ce-9-js-912029",
           "label": "Js",
           "language": "js",
           "code": "let bridge;\n\nif (window.name.startsWith('hydra')) {\n    bridge = initBridge({\n      page: {\n        schema: {\n          // Each blocks field (widget: 'blocks_layout') is a named list of\n          // blocks. The field name is the key inside the `blocks_layout` dict;\n          // the default field is `items`. Each has its own allowedBlocks.\n          properties: {\n            items:  { widget: 'blocks_layout', allowedBlocks: ['slate', 'grid', 'myimage'] },\n            header: { widget: 'blocks_layout', allowedBlocks: ['slate', 'image'], maxLength: 3 },\n            footer: { widget: 'blocks_layout', allowedBlocks: ['slate', 'link'] },\n          },\n        },\n      },\n      blocks: {\n        // we can add custom blocks (or alter builtin ones)\n        myimage: {\n          blockSchema: {\n            properties: {\n              image: { widget: 'image' },\n              url: { widget: 'url' },\n              caption: { type: 'string' },\n            }\n          }\n        }\n      },\n      onEditChange: (formData) => renderPage(formData),\n    });\n}\nelse {\n    // When not editing, render from the server api\n    renderPage(await fetchContent(path));\n}"
         }
       ]
     },
-    "p-9": {
+    "p-10": {
       "@type": "slate",
       "plaintext": "Page data ends up shaped like this — one shared `blocks` dict, and a region per named list inside `blocks_layout`:",
       "value": [
@@ -402,18 +380,18 @@
         }
       ]
     },
-    "ce-10": {
+    "ce-11": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-10-js-2e9648",
+          "@id": "ce-11-js-c500c8",
           "label": "Js",
           "language": "js",
           "code": "{\n  ...\n  blocks: {\n    'text-1': { '@type': 'slate', ... },\n    'header-1': { '@type': 'image', ... },\n    'footer-1': { '@type': 'slate', ... }\n  },\n  blocks_layout: {\n    items: ['text-1'],     // main content region (the default)\n    header: ['header-1'],  // header region\n    footer: ['footer-1']   // footer region\n  }\n}"
         }
       ]
     },
-    "p-11": {
+    "p-12": {
       "@type": "slate",
       "plaintext": "Then you augment the rendered HTML with `data-` attributes (or `<!-- hydra ... -->` comments) so Inka can find your blocks and editable fields:",
       "value": [
@@ -449,18 +427,18 @@
         }
       ]
     },
-    "ce-12": {
+    "ce-13": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-12-html-e0187e",
+          "@id": "ce-13-html-ef9711",
           "label": "Html",
           "language": "html",
           "code": "<!-- hydra edit-text=title -->\n<div>Page Title</div>\n\n<div id=content>\n  <!-- hydra block-uid=\"1234\" edit-text=title(p) edit-media=image(img) edit-link=url -->\n  <a href=\"http://go.to\">\n    <img src=\"http://my.img\"/>\n    <p>A caption</p>\n  </a>\n</div>"
         }
       ]
     },
-    "h-13": {
+    "h-14": {
       "@type": "slate",
       "plaintext": "Deep-link anchors (fragments)",
       "value": [
@@ -474,7 +452,7 @@
         }
       ]
     },
-    "p-14": {
+    "p-15": {
       "@type": "slate",
       "plaintext": "To let editors link to a spot *inside* a page, mark the element with a real `id` (the `#fragment` the browser scrolls to) **and** a linkable-anchor attribute carrying the label shown in the link picker. The attribute you pick also records the anchor's **level**, so the picker (and consumers like an in-page navigation block) can show a hierarchy:",
       "value": [
@@ -543,9 +521,9 @@
         }
       ]
     },
-    "ul-15": {
+    "ul-16": {
       "@type": "slate",
-      "plaintext": "data-linkable-h1 … data-linkable-h6=\"Label\" — a heading anchor at that level. Use these on your headings; the suffix is the level. data-linkable-id=\"Label\" — a level-less anchor (a figure, a defined term, any non-heading target).",
+      "plaintext": "data-linkable-h1 … data-linkable-h6=\"Label\" — a heading anchor **at that",
       "value": [
         {
           "type": "ul",
@@ -573,21 +551,35 @@
                   ]
                 },
                 {
-                  "text": " — a heading anchor "
-                },
-                {
-                  "type": "strong",
-                  "children": [
-                    {
-                      "text": "at that level"
-                    }
-                  ]
-                },
-                {
-                  "text": ". Use these on your headings; the suffix is the level."
+                  "text": " — a heading anchor **at that"
                 }
               ]
-            },
+            }
+          ]
+        }
+      ]
+    },
+    "p-17": {
+      "@type": "slate",
+      "plaintext": "level**. Use these on your headings; the suffix is the level.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "level**. Use these on your headings; the suffix is the level."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-18": {
+      "@type": "slate",
+      "plaintext": "data-linkable-id=\"Label\" — a level-less anchor (a figure, a defined term,",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -611,7 +603,7 @@
                   ]
                 },
                 {
-                  "text": " anchor (a figure, a defined term, any non-heading target)."
+                  "text": " anchor (a figure, a defined term,"
                 }
               ]
             }
@@ -619,18 +611,32 @@
         }
       ]
     },
-    "ce-16": {
+    "p-19": {
+      "@type": "slate",
+      "plaintext": "any non-heading target).",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "any non-heading target)."
+            }
+          ]
+        }
+      ]
+    },
+    "ce-20": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-16-html-5cddab",
+          "@id": "ce-20-html-fe64be",
           "label": "Html",
           "language": "html",
           "code": "<h2 id=\"pricing\" data-linkable-h2=\"Pricing\">Pricing</h2>\n<h3 id=\"enterprise\" data-linkable-h3=\"Enterprise plan\">Enterprise plan</h3>\n<figure id=\"fig-1\" data-linkable-id=\"Figure 1\">…</figure>"
         }
       ]
     },
-    "p-17": {
+    "p-21": {
       "@type": "slate",
       "plaintext": "Inka harvests these per block on render as `{ id, name, level }` and stores them in the block's data, so the object browser offers them as `path#pricing` link targets — as a nested list reflecting the page's structure. Both attributes must survive into your **published** render for the anchor to resolve at runtime — Inka only reads them in edit mode.",
       "value": [
@@ -677,7 +683,7 @@
         }
       ]
     },
-    "p-18": {
+    "p-22": {
       "@type": "slate",
       "plaintext": "**Level is optional / automatic.** If you use plain `data-linkable-id` on an element that is *itself* an `h1`–`h6`, Inka infers the level from the tag — so tagging every heading with `data-linkable-id` still yields a hierarchy for free. Precedence is: explicit `data-linkable-h{n}` > the element's heading tag > none (a level-less leaf). Given the flat, document-ordered anchor list, `buildAnchorTree` (in `@volto-hydra/hydra-js`) turns the levels into a nested contents tree; no levels means a flat list.",
       "value": [
@@ -787,7 +793,7 @@
         }
       ]
     },
-    "p-19": {
+    "p-23": {
       "@type": "slate",
       "plaintext": "It's your choice which elements are linkable — a common pattern is to tag every heading, deriving its `id` from a slug of the heading text. If you want a heading to be linkable *while it's being edited* (before save), keep its `id`/`data-linkable-id` current as the text changes — e.g. a small `input` listener that re-slugifies the heading. Inka harvests anchors both on render **and** when inline edits flush, merging them into the edit form's `block._linkableAnchors` so a freshly-typed heading becomes linkable on the page being edited without saving first; other pages use their last saved anchors.",
       "value": [
@@ -878,7 +884,7 @@
         }
       ]
     },
-    "h-20": {
+    "h-24": {
       "@type": "slate",
       "plaintext": "Building an in-page navigation",
       "value": [
@@ -892,7 +898,7 @@
         }
       ]
     },
-    "p-21": {
+    "p-25": {
       "@type": "slate",
       "plaintext": "To build something *from* the anchors — an in-page navigation (\"On this page\") block — **derive the list from the page content you already render**, the same way you stamp the heading `id`s. That works identically published (no bridge, JS off) and while editing: structural edits (adding, removing, reordering heading blocks) re-render your frontend with fresh content, so the nav follows them. There is no bridge callback for this — the anchors ride in the ordinary edit-form data (`block._linkableAnchors`), which is what the object browser's link picker reads; a nav rebuilds itself from content on the next render.",
       "value": [
@@ -950,15 +956,15 @@
         }
       ]
     },
-    "bq-22": {
+    "p-26": {
       "@type": "slate",
-      "plaintext": "One consequence: text typed into an existing heading updates the nav on the next render (when you blur the block), not on every keystroke — inline text edits don't re-render the frontend until they're flushed. Adding or removing headings updates it immediately.",
+      "plaintext": "> One consequence: text typed into an *existing* heading updates the nav on the next > render (when you blur the block), not on every keystroke — inline text edits don't > re-render the frontend until they're flushed. Adding or removing headings updates it > immediately.",
       "value": [
         {
-          "type": "blockquote",
+          "type": "p",
           "children": [
             {
-              "text": "One consequence: text typed into an "
+              "text": "> One consequence: text typed into an "
             },
             {
               "type": "em",
@@ -969,13 +975,13 @@
               ]
             },
             {
-              "text": " heading updates the nav on the next render (when you blur the block), not on every keystroke — inline text edits don't re-render the frontend until they're flushed. Adding or removing headings updates it immediately."
+              "text": " heading updates the nav on the next > render (when you blur the block), not on every keystroke — inline text edits don't > re-render the frontend until they're flushed. Adding or removing headings updates it > immediately."
             }
           ]
         }
       ]
     },
-    "p-23": {
+    "p-27": {
       "@type": "slate",
       "plaintext": "If your anchors carry levels, pair the derived list with `buildAnchorTree(anchors)` (from `@volto-hydra/hydra-js`) to render a nested contents list; no levels means a flat list.",
       "value": [
@@ -1011,7 +1017,7 @@
         }
       ]
     },
-    "h-24": {
+    "h-28": {
       "@type": "slate",
       "plaintext": "The steps",
       "value": [
@@ -1025,7 +1031,7 @@
         }
       ]
     },
-    "p-25": {
+    "p-29": {
       "@type": "slate",
       "plaintext": "The steps involved in creating a frontend are roughly the same for all these frameworks:",
       "value": [
@@ -1039,7 +1045,7 @@
         }
       ]
     },
-    "h-26": {
+    "h-30": {
       "@type": "slate",
       "plaintext": "1. Create a Catch-All Route",
       "value": [
@@ -1053,7 +1059,7 @@
         }
       ]
     },
-    "p-27": {
+    "p-31": {
       "@type": "slate",
       "plaintext": "Create a route for any path which goes to a single page.",
       "value": [
@@ -1067,7 +1073,7 @@
         }
       ]
     },
-    "p-28": {
+    "p-32": {
       "@type": "slate",
       "plaintext": "For example, in Nuxt.js you create a file `pages/[..slug].vue`.",
       "value": [
@@ -1092,7 +1098,7 @@
         }
       ]
     },
-    "h-29": {
+    "h-33": {
       "@type": "slate",
       "plaintext": "2. Build the Page Template",
       "value": [
@@ -1106,7 +1112,7 @@
         }
       ]
     },
-    "p-30": {
+    "p-34": {
       "@type": "slate",
       "plaintext": "The page has a template with the static parts of your theme like header and footer. You might also check the content type to render each differently.",
       "value": [
@@ -1120,7 +1126,7 @@
         }
       ]
     },
-    "h-31": {
+    "h-35": {
       "@type": "slate",
       "plaintext": "3. Fetch Content from Plone REST API",
       "value": [
@@ -1134,7 +1140,7 @@
         }
       ]
     },
-    "p-32": {
+    "p-36": {
       "@type": "slate",
       "plaintext": "On page setup, take the path and make a [REST API call to the contents endpoint](https://6.docs.plone.org/plone.restapi/docs/source/endpoints/content-types.html) to get the JSON for this page.",
       "value": [
@@ -1162,9 +1168,9 @@
         }
       ]
     },
-    "ul-33": {
+    "ul-37": {
       "@type": "slate",
-      "plaintext": "You can use @plone/client for this In some frameworks (such as Nuxt.js) it's better to use their built-in fetch You can also use the Plone GraphQL APINote: this is just a wrapper on the REST API rather than a server-side implementation, so it's not more efficient than using the REST API directly",
+      "plaintext": "You can use @plone/client for this In some frameworks (such as Nuxt.js) it's better to use their built-in fetch You can also use the Plone GraphQL API",
       "value": [
         {
           "type": "ul",
@@ -1212,19 +1218,6 @@
                       "text": "Plone GraphQL API"
                     }
                   ]
-                },
-                {
-                  "type": "ul",
-                  "children": [
-                    {
-                      "type": "li",
-                      "children": [
-                        {
-                          "text": "Note: this is just a wrapper on the REST API rather than a server-side implementation, so it's not more efficient than using the REST API directly"
-                        }
-                      ]
-                    }
-                  ]
                 }
               ]
             }
@@ -1232,7 +1225,21 @@
         }
       ]
     },
-    "h-34": {
+    "p-38": {
+      "@type": "slate",
+      "plaintext": "- Note: this is just a wrapper on the REST API rather than a server-side implementation, so it's not more efficient than using the REST API directly",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "- Note: this is just a wrapper on the REST API rather than a server-side implementation, so it's not more efficient than using the REST API directly"
+            }
+          ]
+        }
+      ]
+    },
+    "h-39": {
       "@type": "slate",
       "plaintext": "4. Render Page Metadata",
       "value": [
@@ -1246,7 +1253,7 @@
         }
       ]
     },
-    "p-35": {
+    "p-40": {
       "@type": "slate",
       "plaintext": "In your page template, fill title etc. from the content metadata.",
       "value": [
@@ -1260,7 +1267,7 @@
         }
       ]
     },
-    "h-36": {
+    "h-41": {
       "@type": "slate",
       "plaintext": "5. Navigation",
       "value": [
@@ -1274,7 +1281,7 @@
         }
       ]
     },
-    "ol-37": {
+    "ol-42": {
       "@type": "slate",
       "plaintext": "Adjust the contents API call to use @expand and return navigation data in the same call Create a component for your top-level nav that uses this nav JSON to create a menu",
       "value": [
@@ -1294,12 +1301,7 @@
                   },
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "@expand"
-                        }
-                      ]
+                      "text": "`@expand`"
                     }
                   ]
                 },
@@ -1334,7 +1336,7 @@
         }
       ]
     },
-    "h-38": {
+    "h-43": {
       "@type": "slate",
       "plaintext": "6. Blocks",
       "value": [
@@ -1348,7 +1350,7 @@
         }
       ]
     },
-    "ol-39": {
+    "ol-44": {
       "@type": "slate",
       "plaintext": "Create a Block component that takes the id and block JSON as arguments Use if statements to check the block type and determine how to render that block If the block is a container, call the Block component recursively In your page, iterate down the blocks_layout list and render a Block component for each Rendering Slate — split into a separate component as it's used in many blocks and is also recursive",
       "value": [
@@ -1443,7 +1445,7 @@
         }
       ]
     },
-    "p-40": {
+    "p-45": {
       "@type": "slate",
       "plaintext": "Give `Block` an `@type: \"empty\"` case: a container region with no `defaultBlockType` and more than one `allowedBlocks` seeds an `empty` placeholder for the user to type in place, and any custom container renderer must route its children through `Block` so `empty` is handled rather than rejected. See [Empty Blocks](container-blocks.md#empty-blocks).",
       "value": [
@@ -1533,7 +1535,7 @@
             {
               "type": "link",
               "data": {
-                "url": "container-blocks.md#empty-blocks"
+                "url": "/docs/container-blocks#empty-blocks"
               },
               "children": [
                 {
@@ -1548,7 +1550,7 @@
         }
       ]
     },
-    "h-41": {
+    "h-46": {
       "@type": "slate",
       "plaintext": "7. Helper Functions",
       "value": [
@@ -1562,7 +1564,7 @@
         }
       ]
     },
-    "p-42": {
+    "p-47": {
       "@type": "slate",
       "plaintext": "Several helper functions get reused in many blocks:",
       "value": [
@@ -1576,9 +1578,9 @@
         }
       ]
     },
-    "ol-43": {
+    "ol-48": {
       "@type": "slate",
-      "plaintext": "Generating a URL for links — all REST API URLs are relative to the API URL, so you need to convert these to the right frontend URL Generating a URL for an image — blocks have image data in many formats so a helper function is usefulYou may also decide to use your framework or hosting solution for image resizing",
+      "plaintext": "Generating a URL for links — all REST API URLs are relative to the API URL, so you need to convert these to the right frontend URL Generating a URL for an image — blocks have image data in many formats so a helper function is useful",
       "value": [
         {
           "type": "ol",
@@ -1612,19 +1614,6 @@
                 },
                 {
                   "text": " — blocks have image data in many formats so a helper function is useful"
-                },
-                {
-                  "type": "ul",
-                  "children": [
-                    {
-                      "type": "li",
-                      "children": [
-                        {
-                          "text": "You may also decide to use your framework or hosting solution for image resizing"
-                        }
-                      ]
-                    }
-                  ]
                 }
               ]
             }
@@ -1632,7 +1621,21 @@
         }
       ]
     },
-    "h-44": {
+    "p-49": {
+      "@type": "slate",
+      "plaintext": "- You may also decide to use your framework or hosting solution for image resizing",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "- You may also decide to use your framework or hosting solution for image resizing"
+            }
+          ]
+        }
+      ]
+    },
+    "h-50": {
       "@type": "slate",
       "plaintext": "8. Listing Blocks",
       "value": [
@@ -1646,7 +1649,7 @@
         }
       ]
     },
-    "ul-45": {
+    "ul-51": {
       "@type": "slate",
       "plaintext": "Use the Listing Helpers or make your own REST API call to query items Create your own pagination scheme (e.g., embed page in URL for static generation) Render the items and pagination",
       "value": [
@@ -1662,7 +1665,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "listings.md"
+                    "url": "/docs/listings"
                   },
                   "children": [
                     {
@@ -1706,7 +1709,7 @@
         }
       ]
     },
-    "h-46": {
+    "h-52": {
       "@type": "slate",
       "plaintext": "9. Redirects",
       "value": [
@@ -1720,7 +1723,7 @@
         }
       ]
     },
-    "ol-47": {
+    "ol-53": {
       "@type": "slate",
       "plaintext": "If your contents call results in a redirect, you will need to do an internal redirect in the framework so the path shown is correct If you are using SSG, you will need special code to query all the redirects at generate time and add redirect routes",
       "value": [
@@ -1761,7 +1764,7 @@
         }
       ]
     },
-    "h-48": {
+    "h-54": {
       "@type": "slate",
       "plaintext": "10. Error Pages",
       "value": [
@@ -1775,7 +1778,7 @@
         }
       ]
     },
-    "p-49": {
+    "p-55": {
       "@type": "slate",
       "plaintext": "If your [REST API call returns an error](https://6.docs.plone.org/plone.restapi/docs/source/http-status-codes.html), handle this within the framework to display the error and set the status code.",
       "value": [
@@ -1803,7 +1806,7 @@
         }
       ]
     },
-    "h-50": {
+    "h-56": {
       "@type": "slate",
       "plaintext": "11. Search Blocks",
       "value": [
@@ -1817,7 +1820,7 @@
         }
       ]
     },
-    "p-51": {
+    "p-57": {
       "@type": "slate",
       "plaintext": "If you choose to allow Volto's built-in Search Block for end-user customisable search:",
       "value": [
@@ -1831,7 +1834,7 @@
         }
       ]
     },
-    "ul-52": {
+    "ul-58": {
       "@type": "slate",
       "plaintext": "Render Facets/Filters (currently not as sub-blocks but this could change) Build your query and make a REST API call to query items",
       "value": [
@@ -1869,7 +1872,7 @@
         }
       ]
     },
-    "h-53": {
+    "h-59": {
       "@type": "slate",
       "plaintext": "12. Form Blocks",
       "value": [
@@ -1883,7 +1886,7 @@
         }
       ]
     },
-    "p-54": {
+    "p-60": {
       "@type": "slate",
       "plaintext": "Form-block is a plugin that allows a visual form builder:",
       "value": [
@@ -1897,7 +1900,7 @@
         }
       ]
     },
-    "ul-55": {
+    "ul-61": {
       "@type": "slate",
       "plaintext": "Currently not a container with sub-blocks but this could change Render each field type component (or limit which are available) Produce a compatible JSON submission to the form-block endpoint Handle field validation errors Handle the thank-you page",
       "value": [
@@ -1948,7 +1951,7 @@
         }
       ]
     },
-    "h-56": {
+    "h-62": {
       "@type": "slate",
       "plaintext": "Deployment patterns",
       "value": [
@@ -1962,7 +1965,7 @@
         }
       ]
     },
-    "p-57": {
+    "p-63": {
       "@type": "slate",
       "plaintext": "Inka separates your production frontend from the editing experience, which gives you choice in how each is deployed.",
       "value": [
@@ -1976,7 +1979,7 @@
         }
       ]
     },
-    "h-58": {
+    "h-64": {
       "@type": "slate",
       "plaintext": "SPA / Hybrid — full visual editing",
       "value": [
@@ -1990,7 +1993,7 @@
         }
       ]
     },
-    "p-59": {
+    "p-65": {
       "@type": "slate",
       "plaintext": "The simplest setup — your frontend handles both production and editing:",
       "value": [
@@ -2004,7 +2007,7 @@
         }
       ]
     },
-    "ol-60": {
+    "ol-66": {
       "@type": "slate",
       "plaintext": "Deploy your frontend as SPA or Hybrid (SSR + client-side hydration). Deploy Inka and the Plone API server. Log in to Inka, go to user preferences, set your frontend URL.",
       "value": [
@@ -2039,7 +2042,7 @@
         }
       ]
     },
-    "p-61": {
+    "p-67": {
       "@type": "slate",
       "plaintext": "This gives you all visual editing features including inline text editing, drag and drop, and realtime preview.",
       "value": [
@@ -2053,7 +2056,7 @@
         }
       ]
     },
-    "h-62": {
+    "h-68": {
       "@type": "slate",
       "plaintext": "SSG / SSR — production speed + visual editing",
       "value": [
@@ -2067,7 +2070,7 @@
         }
       ]
     },
-    "p-63": {
+    "p-69": {
       "@type": "slate",
       "plaintext": "Get the speed of static generation while keeping visual editing. Deploy two versions of the same frontend:",
       "value": [
@@ -2081,7 +2084,7 @@
         }
       ]
     },
-    "ol-64": {
+    "ol-70": {
       "@type": "slate",
       "plaintext": "Production — deploy your frontend in SSG or SSR mode (fast, cacheable). Editing — deploy the same frontend in SPA mode to a separate URL (used only inside Inka). Inka + Plone — only needs to run during editing, so scale-to-zero / serverless works. SSG rebuild — for SSG, configure collective.webhook to trigger a rebuild on edit. SSR doesn't need this.",
       "value": [
@@ -2170,7 +2173,7 @@
         }
       ]
     },
-    "h-65": {
+    "h-71": {
       "@type": "slate",
       "plaintext": "Example: the Nuxt.js demo",
       "value": [
@@ -2184,7 +2187,7 @@
         }
       ]
     },
-    "p-66": {
+    "p-72": {
       "@type": "slate",
       "plaintext": "The default Inka demo uses exactly the SSG / SSR pattern above:",
       "value": [
@@ -2198,7 +2201,7 @@
         }
       ]
     },
-    "ul-67": {
+    "ul-73": {
       "@type": "slate",
       "plaintext": "Production — SSG on Netlify. All pages statically generated, images optimized, fast globally. Editing — same Nuxt codebase deployed as SPA to a different Netlify URL. Only loaded inside Inka's iframe. Inka + Plone — deployed to fly.io with scale-to-zero. Cost is free or minimal since it only runs during editing.",
       "value": [
@@ -2285,7 +2288,7 @@
         }
       ]
     },
-    "p-68": {
+    "p-74": {
       "@type": "slate",
       "plaintext": "For most frameworks, switching between SSG / SSR and SPA is just a config toggle, so you get the best of both worlds with minimal effort.",
       "value": [
@@ -2310,67 +2313,73 @@
       "p-5",
       "ul-6",
       "p-7",
-      "ce-8",
-      "p-9",
-      "ce-10",
-      "p-11",
-      "ce-12",
-      "h-13",
-      "p-14",
-      "ul-15",
-      "ce-16",
+      "p-8",
+      "ce-9",
+      "p-10",
+      "ce-11",
+      "p-12",
+      "ce-13",
+      "h-14",
+      "p-15",
+      "ul-16",
       "p-17",
-      "p-18",
+      "ul-18",
       "p-19",
-      "h-20",
+      "ce-20",
       "p-21",
-      "bq-22",
+      "p-22",
       "p-23",
       "h-24",
       "p-25",
-      "h-26",
+      "p-26",
       "p-27",
-      "p-28",
-      "h-29",
-      "p-30",
-      "h-31",
+      "h-28",
+      "p-29",
+      "h-30",
+      "p-31",
       "p-32",
-      "ul-33",
-      "h-34",
-      "p-35",
-      "h-36",
-      "ol-37",
-      "h-38",
-      "ol-39",
+      "h-33",
+      "p-34",
+      "h-35",
+      "p-36",
+      "ul-37",
+      "p-38",
+      "h-39",
       "p-40",
       "h-41",
-      "p-42",
-      "ol-43",
-      "h-44",
-      "ul-45",
+      "ol-42",
+      "h-43",
+      "ol-44",
+      "p-45",
       "h-46",
-      "ol-47",
-      "h-48",
+      "p-47",
+      "ol-48",
       "p-49",
       "h-50",
-      "p-51",
-      "ul-52",
-      "h-53",
-      "p-54",
-      "ul-55",
+      "ul-51",
+      "h-52",
+      "ol-53",
+      "h-54",
+      "p-55",
       "h-56",
       "p-57",
-      "h-58",
-      "p-59",
-      "ol-60",
-      "p-61",
+      "ul-58",
+      "h-59",
+      "p-60",
+      "ul-61",
       "h-62",
       "p-63",
-      "ol-64",
-      "h-65",
-      "p-66",
-      "ul-67",
-      "p-68"
+      "h-64",
+      "p-65",
+      "ol-66",
+      "p-67",
+      "h-68",
+      "p-69",
+      "ol-70",
+      "h-71",
+      "p-72",
+      "ul-73",
+      "p-74"
     ]
   }
 }

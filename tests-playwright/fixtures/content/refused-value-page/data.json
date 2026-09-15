@@ -1,0 +1,28 @@
+{
+  "@id": "/refused-value-page",
+  "@type": "Document",
+  "title": "A block holding a value its own rule refuses",
+  "UID": "refused-value-page-uid",
+  "blocks": {
+    "intro-1": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The feed below asks for fewer than no items, which its schema's field rule refuses. Saving this page should not go through."
+            }
+          ]
+        }
+      ]
+    },
+    "rss-refused": {
+      "@type": "rssFeed",
+      "feedUrl": "http://localhost:8888/rss-stub",
+      "count": -1,
+      "variation": "summary"
+    }
+  },
+  "blocks_layout": { "items": ["intro-1", "rss-refused"] }
+}

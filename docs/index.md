@@ -1,33 +1,71 @@
-# Docs
+---
+"@type": Document
+UID: docs-folder-001
+allow_discussion: false
+contributors: []
+creators:
+  - admin
+description: A design-system-first page-builder toolkit. Strike the right
+  balance for your site — make it easy for editors to create engagement while
+  staying compliant.
+effective: 2025-01-01T00:00:00
+exclude_from_nav: false
+expires: null
+id: docs
+is_folderish: true
+language: "##DEFAULT##"
+layout: document_view
+preview_caption: null
+preview_image: null
+review_state: published
+rights: ""
+subjects: []
+title: Volto Hydra Documentation
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="callout">
+    <region name="items" widget="blocks_layout">
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+    </region>
+  </block>
+  <block type="title" _="${h1}" />
+order:
+  - architecture
+  - build-a-frontend
+  - server-rendered-frontends
+  - live-preview
+  - custom-blocks
+  - container-blocks
+  - blockmd
+  - testing-content
+  - visual-editing
+  - what-editors-will-experience
+  - listings
+  - templates
+  - advanced
+  - examples
+  - static
+  - images
+exclude:
+  - content
+  - _build
+  - _static
+  - _myst
+  - blocks
+  - quickstart
+---
+
+# Volto Hydra Documentation
 
 A design-system-first page-builder toolkit. Strike the right balance for your site — make it easy for editors to create engagement while staying compliant.
 
-```{raw} html
-<video src="_static/hydra-demo.mp4"
-       autoplay loop muted playsinline
-       style="width:100%;max-width:960px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.15);margin:1.5em 0;"
-       aria-label="Inka editor demo: live edits, formatting, drag-and-drop, container ops, frontend switching">
-  Your browser doesn't support inline video — see <a href="https://hydra.pretagov.com">the live demo</a>.
-</video>
-```
+<block type="video" align="full" url="/docs/static/hydra-demo.mp4/@@download/file" data-json='{"autoplay":true,"loop":true,"muted":true,"controls":false}' />
 
-```{toctree}
-:maxdepth: 2
-:caption: Contents
+<block type="callout" variation="warning">
 
-architecture
-build-a-frontend
-server-rendered-frontends
-live-preview
-custom-blocks
-container-blocks
-visual-editing
-what-editors-will-experience/index
-listings
-templates
-advanced
-examples/README
-```
+Inka is a [Work in Progress](https://github.com/orgs/collective/projects/3/views/4). It should not be used in production yet.
+
+</block>
 
 ## Why Inka?
 
@@ -44,7 +82,7 @@ examples/README
 
 The fastest way to feel what Inka does is to log into the hosted demo and edit a real page against a real frontend.
 
-Open [hydra.pretagov.com](https://hydra.pretagov.com), log in, then:
+<block type="slate" data-json='{"value":[{"type":"p","children":[{"text":"Open <https://hydra.pretagov.com>, log in, then:"}]}]}' />
 
 - Open user preferences (bottom-left).
 - Pick one of the preset frontends, or paste in your own frontend URL.
@@ -54,7 +92,4 @@ The default preset is a Nuxt.js frontend deployed as an [SSG](https://hydra-nuxt
 
 To run Inka locally against your own frontend, see the **Run Locally** section of the [project README](https://github.com/collective/volto-hydra#run-locally).
 
-```{warning}
-Inka is a [Work in Progress](https://github.com/orgs/collective/projects/3/views/4).
-It should not be used in production yet.
-```
+<block type="listing" headlineTag="h2" variation="summary" data-json='{"fieldMapping":{"@id":"href","title":"title","description":"description","image":"image"}}' />

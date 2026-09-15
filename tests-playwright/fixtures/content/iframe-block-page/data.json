@@ -1,0 +1,37 @@
+{
+  "@id": "/iframe-block-page",
+  "@type": "Document",
+  "title": "A block whose body is an iframe",
+  "UID": "iframe-block-page-uid",
+  "blocks": {
+    "intro-1": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Both blocks below render as embeds. The video is a bare iframe; the map puts its iframe inside a custom element\u2019s shadow root, the way a PDF preview does. Both point at documents that really load, because an embed that fails to load does not swallow the click and so tests nothing."
+            }
+          ]
+        }
+      ]
+    },
+    "video-embed-1": {
+      "@type": "video",
+      "url": "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+    },
+    "maps-embed-1": {
+      "@type": "maps",
+      "url": "http://localhost:8888/embedded-document.html",
+      "title": "Sydney"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "intro-1",
+      "video-embed-1",
+      "maps-embed-1"
+    ]
+  }
+}

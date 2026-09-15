@@ -1349,3 +1349,61 @@ describe('mergeTemplatesIntoPage: object_list write-back on frozen input', () =>
     expect(Object.isFrozen(page.blocks['tbl-1'].table)).toBe(true);
   });
 });
+
+describe('a layout menu must not re-home a page', () => {
+  const uuidGenerator = (() => { let n = 0; return () => `uuid-${++n}`; })();
+
+  // A page-level blocks field ALWAYS carries its allowedLayouts — that is the
+  // layout MENU (`[null, layoutA, layoutB]`), not an instruction. A page laid
+  // out with a template the current menu doesn't happen to list (a content-type
+  // layout, say, offered only on that content type) was being re-homed to
+  // allowedLayouts[0] — `null` by the menu's own convention — which means its
+  // layout was REMOVED on load, taking every fixed block with it. Silent, and a
+  // save would persist it.
+  //
+  // The code already draws this distinction for the multi-instance split: "a
+  // genuine forced single-layout SWITCH ... passes exactly one allowedLayout; a
+  // menu list (length ≠ 1) is a re-render".
+  test('a page whose layout is absent from the menu keeps its blocks', async () => {
+    const page = {
+      '@id': '/docs/examples/an-event',
+      blocks: {
+        'ev-title': { '@type': 'title', templateId: '/templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'title', readOnly: true, fixed: true },
+        'ev-meta': { '@type': 'eventMetadata', templateId: '/templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'event-metadata', fixed: true },
+        'ev-body': { '@type': 'slate', templateId: '/templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'content', value: [{ type: 'p', children: [{ text: 'Body' }] }] },
+      },
+      blocks_layout: { items: ['ev-title', 'ev-meta', 'ev-body'] },
+    };
+
+    // The layout the page already uses. A render pass re-applies it (the admin
+    // serves these from its template cache); what must NOT happen is the menu
+    // swapping it for allowedLayouts[0].
+    const eventView = {
+      '@id': '/templates/event-view',
+      blocks: {
+        't-title': { '@type': 'title', templateId: '/templates/event-view', slotId: 'title', readOnly: true, fixed: true },
+        't-meta': { '@type': 'eventMetadata', templateId: '/templates/event-view', slotId: 'event-metadata', fixed: true },
+        't-content': { '@type': 'slate', templateId: '/templates/event-view', slotId: 'content', value: [] },
+      },
+      blocks_layout: { items: ['t-title', 't-meta', 't-content'] },
+    };
+
+    const { merged } = await mergeTemplatesIntoPage(page, {
+      loadTemplate: async (id) => {
+        if (id !== '/templates/event-view') {
+          throw new Error(`the menu must not apply a different layout (asked for ${id})`);
+        }
+        return eventView;
+      },
+      // The frontend's layout menu. It does not list event-view — that layout is
+      // offered for Events only — and `null` ("None") leads, as menus do.
+      pageBlocksFields: { items: { allowedLayouts: [null, '/templates/test-layout'] } },
+      uuidGenerator,
+    });
+
+    // If the menu re-homes the page, `null` (its first entry) removes the layout
+    // and these three go with it.
+    const types = Object.values(merged.blocks).map((b) => b['@type']).sort();
+    expect(types).toEqual(['eventMetadata', 'slate', 'title']);
+  });
+});

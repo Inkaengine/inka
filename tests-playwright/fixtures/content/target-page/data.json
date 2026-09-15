@@ -1,0 +1,40 @@
+{
+  "@id": "/_test_data/target-page",
+  "@type": "Document",
+  "UID": "target-page-uid-0001",
+  "id": "target-page",
+  "title": "Target Page",
+  "description": "The page other fixtures link to.",
+  "effective": "2024-11-01T00:00:00+00:00",
+  "review_state": "published",
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "body-block": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The page other fixtures link to."
+            }
+          ]
+        }
+      ],
+      "plaintext": "The page other fixtures link to."
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "body-block"
+    ]
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": false,
+  "created": "2025-01-02T00:00:00+00:00",
+  "modified": "2025-01-02T00:00:00+00:00"
+}

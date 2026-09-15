@@ -57,6 +57,9 @@ import FieldMappingWidget from './components/Widgets/FieldMappingWidget';
 import BlockTypeSelectWidget from './components/Widgets/BlockTypeSelectWidget';
 import CopyFromTargetField from './components/Widgets/CopyFromTargetField';
 import SchemaFieldSelectWidget from './components/Widgets/SchemaFieldSelectWidget';
+import VocabularySelectWidget from './components/Widgets/VocabularySelectWidget';
+import BlockPickerWidget from './components/Widgets/BlockPickerWidget';
+import QuerystringSelectWidget from './components/Widgets/QuerystringSelectWidget';
 import TableSchema, { TableBlockSchema } from '@plone/volto-slate/blocks/Table/schema';
 // Volto-slate ships TWO schemas for the slate block:
 //   ./schema.js          → "Block tab" form (override_toc / level / entry_text)
@@ -79,6 +82,22 @@ import columnAfterSVG from '@plone/volto/icons/column-after.svg';
 import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
 import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
+import StyleDropdown from './components/Toolbar/StyleDropdown';
+
+// The field types a `hydraRuleError` can land on. Volto looks a validator up by
+// the field's declared type (`field.type || 'string'`), so the rule's error has
+// to be offered for each type a rule might mark — there is no "any type" key.
+const RULE_ERROR_FIELD_TYPES = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
+
+/**
+ * Surface a field rule's `error` as a form error.
+ *
+ * `evaluateFieldRule` puts the message on the field DEFINITION when the rule
+ * matches; this is what turns that into the things an author sees — the widget
+ * red, the form's error summary, and a blocked save — all of which are Volto's
+ * own, keyed on the field. Nothing here decides anything: the rule already did.
+ */
+const hydraRuleErrorValidator = ({ field }) => field?.hydraRuleError || null;
 
 const applyConfig = (config) => {
   // Route every CMS call over the bridge to the frontend's adapter instead of
@@ -125,6 +144,25 @@ const applyConfig = (config) => {
     ];
   }
 
+  for (const fieldType of RULE_ERROR_FIELD_TYPES) {
+    config.registerUtility({
+      name: `hydraRuleError-${fieldType}`,
+      type: 'validator',
+      dependencies: { fieldType },
+      method: hydraRuleErrorValidator,
+    });
+  }
+
+  // Autosave the form to localStorage while editing, and offer it back if the
+  // author returns to a page they left mid-edit. Volto ships the feature but
+  // OFF (config.experimental.saveAsDraft.enabled = false), so nobody has ever
+  // had it here. Editing on a canvas makes losing the tab cost more than it
+  // does in a form: the work is spread across blocks, not one field.
+  config.experimental = {
+    ...config.experimental,
+    saveAsDraft: { ...config.experimental?.saveAsDraft, enabled: true },
+  };
+
   // Inject the Volto-config-derived values the pure block-path / schema utils
   // need, so those modules carry NO static `@plone/volto/registry` import and can
   // be loaded (bare Node) by block-sanity's offline discovery. Lazy getters so a
@@ -133,6 +171,35 @@ const applyConfig = (config) => {
     applyBlockDefaults,
     getDefaultBlockType: () => config.settings.defaultBlockType,
     getBlocksConfig: () => config.blocks.blocksConfig,
+    // #295: what a disallowed slate style is renamed to, and what it falls back
+    // to. `settings.slate.defaultBlockType` is the slate ELEMENT default ('p'),
+    // not `settings.defaultBlockType` (the BLOCK default, 'slate').
+    getSlateStyleAliases: () => config.settings.slate?.styleAliases,
+    getSlateDefaultBlockType: () => config.settings.slate?.defaultBlockType,
+    // The vocabulary, derived rather than listed: the element registry is open
+    // (a plugin writes into it), so anything that judges "is this type defined"
+    // has to read it live. The style menu's cssClasses come too — a DS style is
+    // stored as the node's `styleName` and is a style in the same sense.
+    getSlateVocabulary: () => {
+      const slate = config.settings.slate || {};
+      const menu = slate.styleMenu || {};
+      // `elements` answers "can the editor DRAW this", which is not the same as
+      // "may this be STORED". volto-slate registers renderers for `table`/`td`/…
+      // and `img`, but the block emitters (extractTables, extractImages) lift
+      // those out of the slate value into blocks of their own — hydra turns a
+      // pasted table into a `slateTable` BLOCK. They exist mid-paste and never
+      // in saved content, so a stored one means extraction failed: reportable,
+      // not permitted. Table types come from slate.tableTypes rather than a list
+      // written here.
+      const extracted = new Set([...(slate.tableTypes || []), 'img']);
+      return [
+        ...Object.keys(slate.elements || {}).filter((t) => !extracted.has(t)),
+        ...[...(menu.blockStyles || []), ...(menu.inlineStyles || [])]
+          .map((d) => d?.cssClass)
+          .filter(Boolean)
+          .map((c) => `.${c}`),
+      ];
+    },
   });
 
   // Patch setTimeout to catch focus errors from AddLinkForm
@@ -206,7 +273,7 @@ const applyConfig = (config) => {
   );
 
   // Frontend Switcher toolbar menu (viewport + frontend URL switching)
-  config.settings.additionalToolbarComponents = {
+config.settings.additionalToolbarComponents = {
     ...config.settings.additionalToolbarComponents,
     frontendSwitcher: {
       component: FrontendSwitcherPanel,
@@ -248,6 +315,16 @@ const applyConfig = (config) => {
   // See README "Synchronised block types in a container".
   config.widgets.widget.blockTypeSelect = BlockTypeSelectWidget;
   config.widgets.widget.schemaFieldSelect = SchemaFieldSelectWidget;
+  // Pick WHICH vocabulary, not a term from one — see the widget's own note for
+  // why Volto's vocabulary widgets cannot do this.
+  config.widgets.widget.vocabularySelect = VocabularySelectWidget;
+  // Pick another BLOCK and store a field of it — a form's skip logic naming the
+  // question it depends on, by label rather than by uid.
+  config.widgets.widget.blockPicker = BlockPickerWidget;
+  // Pick catalog indexes from what @querystring reports. Volto's search block
+  // fills the same field imperatively from its Edit component, which a
+  // JSON-schema frontend has no way to do.
+  config.widgets.widget.querystringSelect = QuerystringSelectWidget;
 
   // Copy-from-target: mapped fields (via fieldMappings['@target']) are swapped
   // to this wrapper by installCopyFromTargetEnhancers, which renders the field's
@@ -311,7 +388,7 @@ const applyConfig = (config) => {
           {
             id: 'default',
             title: 'Default',
-            fields: ['value', ...blockTabFields],
+            fields: ['value', ...blockTabFields, 'anchor'],
           },
           ...(blockTab?.fieldsets?.slice(1) || []),
         ],
@@ -332,6 +409,16 @@ const applyConfig = (config) => {
             default: config.settings.slate.defaultValue(),
           },
           ...(blockTab?.properties || {}),
+          // Permanent fragment id for a heading block. Frontends render it as
+          // the heading's id, so links and tables of contents survive the
+          // heading being retitled (text-derived slugs don't). Empty = the
+          // frontend falls back to a stable automatic id (the block uid).
+          anchor: {
+            title: 'Anchor',
+            description:
+              'Permanent link id for this heading. Leave empty for an automatic id.',
+            type: 'string',
+          },
         },
         required: blockTab?.required || [],
       };
@@ -917,6 +1004,15 @@ const applyConfig = (config) => {
   // Also remove the old backspaceInList keyboard handler which merges list
   // items instead of demoting them.
   if (config.settings.slate) {
+    // Replace volto-slate's StyleMenu with one that portals out of the toolbar.
+    // Its semantic Dropdown renders the menu inline, and the quanta toolbar is a
+    // fixed-height bar with `overflow: hidden` — the menu opened above the bar,
+    // outside its box, and was clipped away entirely. See StyleDropdown.
+    config.settings.slate.buttons = {
+      ...config.settings.slate.buttons,
+      styleMenu: (props) => <StyleDropdown {...props} />,
+    };
+
     const { backspaceListItem } = require('./extensions/backspaceListItem');
     // Register as a base editor extension so it applies to ALL Slate editors
     // (sidebar widgets, synced toolbar, etc.) — not just textblock editors.

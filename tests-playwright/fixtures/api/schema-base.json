@@ -25,13 +25,37 @@
       "type": "string",
       "widget": "datetime",
       "readonly": true
+    },
+    "exclude_from_nav": {
+      "title": "Exclude from navigation",
+      "description": "If selected, this item will not appear in the navigation tree",
+      "type": "boolean",
+      "default": false
+    },
+    "id": {
+      "title": "Short name",
+      "description": "This name will be displayed in the URL.",
+      "type": "string"
     }
   },
   "fieldsets": [
     {
       "id": "dates",
       "title": "Dates",
-      "fields": ["effective", "expires", "created", "modified"]
+      "fields": [
+        "effective",
+        "expires",
+        "created",
+        "modified"
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "Settings",
+      "fields": [
+        "exclude_from_nav",
+        "id"
+      ]
     }
   ]
 }

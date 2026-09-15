@@ -24,10 +24,12 @@ function BlockRenderer({ block, content }) {
     case 'separator':     return <SeparatorBlock block={block} />;
     case 'button':      return <ButtonBlock block={block} />;
     case 'highlight':     return <HighlightBlock block={block} />;
+    case 'callout':       return <CalloutBlock block={block} />;
     case 'video':         return <VideoBlock block={block} />;
     case 'maps':          return <MapsBlock block={block} />;
     case 'toc':           return <TocBlock block={block} content={content} />;
     case 'codeExample':   return <CodeExampleBlock block={block} />;
+    case 'cookieConsent': return <CookieConsentBlock block={block} />;
     case 'empty':         return <EmptyBlock block={block} />;
     case 'eventMetadata': return <EventMetadataBlock block={block} content={content} />;
     case 'socialLinks':   return <SocialLinksBlock block={block} />;

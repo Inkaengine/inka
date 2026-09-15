@@ -143,3 +143,28 @@ a:hover {
 .home-button:hover {
   background-color: #005bb5;
 }
+
+/* Space between top-level blocks.
+ *
+ * Not decoration: the editor draws its "+" (add a block here) straddling the
+ * boundary between two blocks, so with the blocks flush against each other that
+ * button lands on the next block's first line and swallows clicks meant for the
+ * text — the heading of a form or an introduction became impossible to click
+ * into. Any real site has this spacing; the example was the odd one out.
+ */
+.blocks-list > * + * {
+  margin-top: 1.5rem;
+}
+
+/* Give a one-line block enough height to be clickable.
+ *
+ * The "+" is 24px tall and is centred on the block's own bottom edge, so it
+ * covers the bottom 12px of the block whatever the spacing around it. An
+ * introduction block was exactly 20px tall — one line, no padding — so the
+ * button sat over its middle and every click meant for the text hit "add a
+ * block" instead. Padding is what fixes it; margin cannot, because the button
+ * follows the block's edge, not the gap after it.
+ */
+.introduction-block {
+  padding: 0.75rem 0;
+}

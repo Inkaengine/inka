@@ -5,58 +5,10 @@
   "allow_discussion": false,
   "blocks": {
     "183bf050-57b7-4841-b9c8-f9b5a15fe086": {
-      "@type": "gridBlock",
-      "blocks": {
-        "gallery-penguin1": {
-          "@type": "image",
-          "align": "center",
-          "image_field": "image",
-          "size": "l",
-          "title": "Image",
-          "url": "/images/penguin1.jpg"
-        },
-        "gallery-penguin2": {
-          "@type": "image",
-          "align": "center",
-          "image_field": "image",
-          "size": "l",
-          "title": "Image",
-          "url": "/images/penguin2.jpg"
-        },
-        "gallery-penguin3": {
-          "@type": "image",
-          "align": "center",
-          "image_field": "image",
-          "size": "l",
-          "title": "Image",
-          "url": "/images/penguin3.jpg"
-        },
-        "gallery-penguin4": {
-          "@type": "image",
-          "align": "center",
-          "image_field": "image",
-          "size": "l",
-          "title": "Image",
-          "url": "/images/penguin4.jpg"
-        },
-        "gallery-quadrant": {
-          "@type": "image",
-          "align": "center",
-          "image_field": "image",
-          "size": "l",
-          "title": "Image",
-          "url": "/images/quadrant"
-        }
-      },
-      "blocks_layout": {
-        "items": [
-          "gallery-penguin1",
-          "gallery-penguin2",
-          "gallery-penguin3",
-          "gallery-penguin4",
-          "gallery-quadrant"
-        ]
-      }
+      "@type": "listing",
+      "headlineTag": "h2",
+      "styles": {},
+      "variation": "image"
     },
     "2d181d1f-1fac-420a-b410-4f4d5379f8ea": {
       "@type": "slate",

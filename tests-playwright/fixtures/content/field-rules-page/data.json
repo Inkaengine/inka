@@ -1,0 +1,61 @@
+{
+  "@id": "http://localhost:8888/_test_data/field-rules-page",
+  "@type": "Document",
+  "UID": "field-rules-page-uid",
+  "id": "field-rules-page",
+  "title": "Field rules page",
+  "description": "Blocks whose sidebar fields appear and disappear with the data \u2014 a teaser that borrows its wording from the page it links to, and images whose size choice depends on their alignment",
+  "review_state": "published",
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "fr-title": {
+      "@type": "title"
+    },
+    "fr-teaser": {
+      "@type": "teaser",
+      "overwrite": false,
+      "href": [
+        {
+          "@id": "/_test_data/target-page",
+          "title": "Target Page",
+          "description": "Target page description",
+          "hasPreviewImage": false
+        }
+      ]
+    },
+    "fr-image": {
+      "@type": "image",
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='100%25' height='100%25' fill='%2377aadd'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='24'%3EField rules%3C/text%3E%3C/svg%3E",
+      "alt": "Field rules image",
+      "align": "center",
+      "href": "https://www.nsw.gov.au/",
+      "openLinkInNewTab": true
+    },
+    "fr-image-full": {
+      "@type": "image",
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='100%25' height='100%25' fill='%2377aadd'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='24'%3EField rules%3C/text%3E%3C/svg%3E",
+      "alt": "Full width image",
+      "align": "full"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "fr-title",
+      "fr-teaser",
+      "fr-image",
+      "fr-image-full"
+    ]
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": false,
+  "created": "2025-01-02T12:00:00+00:00",
+  "modified": "2025-01-02T12:00:00+00:00",
+  "lock": {
+    "locked": false
+  }
+}

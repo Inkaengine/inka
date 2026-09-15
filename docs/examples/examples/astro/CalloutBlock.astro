@@ -1,0 +1,30 @@
+---
+/**
+ * Callout block — a labelled admonition box (note / tip / warning / important).
+ * The level is block.variation; the body is a region of child blocks (items),
+ * each rendered by BlockRenderer. No data-block-uid: BlockRenderer.astro wraps
+ * every block in <div data-block-uid={uid}>.
+ */
+import BlockRenderer from './BlockRenderer.astro';
+const { block } = Astro.props;
+const calloutLevels: Record<string, { label: string; color: string; bg: string }> = {
+  note:      { label: 'Note',      color: '#2563eb', bg: '#eff6ff' },
+  tip:       { label: 'Tip',       color: '#059669', bg: '#ecfdf5' },
+  warning:   { label: 'Warning',   color: '#d97706', bg: '#fffbeb' },
+  important: { label: 'Important', color: '#dc2626', bg: '#fef2f2' },
+};
+const level = calloutLevels[block.variation] || calloutLevels.note;
+const subBlocks = block.blocks || {};
+const items = block.blocks_layout?.items || [];
+---
+<aside
+  class={`callout callout--${block.variation || 'note'}`}
+  style={`border-left:4px solid ${level.color};background:${level.bg};padding:12px 16px;border-radius:4px;margin:1em 0`}
+>
+  <div class="callout__label" style={`font-weight:700;color:${level.color};text-transform:uppercase;font-size:0.8em;letter-spacing:0.05em;margin-bottom:4px`}>
+    {level.label}
+  </div>
+  <div class="callout__body">
+    {items.map((id: string) => <BlockRenderer block={{ ...subBlocks[id], '@uid': id }} />)}
+  </div>
+</aside>

@@ -23,6 +23,7 @@ import { URLS } from '../ports';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { requireEnvironment } from '../helpers/preconditions';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface EmptyRegionCase {
@@ -79,12 +80,15 @@ function emptyRegionInPage(node: any, blockId: string, field: string): boolean {
 }
 
 base.beforeEach(async ({}, testInfo) => {
-  if (cases.length === 0) {
-    testInfo.skip(true, 'No .discovered-empty-regions.json — run with DISCOVER_BLOCKS_API=<url>');
-  }
+  // Scope first, environment second — see block-sanity for why the order matters.
   if (!SANITY_PROJECTS.has(testInfo.project.name)) {
     testInfo.skip(true, `empty-region sanity only runs on mock/nuxt/nextjs (skipping ${testInfo.project.name})`);
   }
+  requireEnvironment(
+    testInfo,
+    cases.length > 0,
+    'no .discovered-empty-regions.json — discovery needs DISCOVER_BLOCKS_API=<mock api url> in this job',
+  );
 });
 
 const test = base.extend<{ helper: AdminUIHelper }>({

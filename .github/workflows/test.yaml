@@ -3,10 +3,36 @@ name: Build and test
 on:
   push:
 
+# Every test port, stated. `tests-playwright/ports.ts` has no defaults on
+# purpose — a checkout that fell back to these numbers could take over another
+# checkout's servers without saying so — so CI declares them like any other
+# caller. The values are the historical ones; a runner has the machine to
+# itself, so there is nothing to avoid here.
+env:
+  HYDRA_MOCK_API_PORT: 8888
+  HYDRA_TEST_FRONTEND_PORT: 8889
+  HYDRA_MOCK_PARENT_PORT: 8891
+  # The three-CMS journey's backends. Declared here with everything else
+  # because PORTS is built eagerly: one missing name throws on import, so a
+  # run that never touches Drupal still needs the name to exist.
+  HYDRA_MOCK_DRUPAL_PORT: 8794
+  HYDRA_WORDPRESS_PORT: 8795
+  HYDRA_PLONE_SEED_PORT: 8898
+  HYDRA_VOLTO_SSR_PORT: 3001
+  HYDRA_VOLTO_WEBPACK_PORT: 3002
+  HYDRA_NUXT_PORT: 3003
+  HYDRA_REACT_DOC_PORT: 3004
+  HYDRA_VUE_DOC_PORT: 3005
+  HYDRA_SVELTE_DOC_PORT: 3006
+  HYDRA_NEXTJS_PORT: 3007
+  HYDRA_F7_PORT: 3008
+  HYDRA_ASTRO_DOC_PORT: 3009
+
 jobs:
   # ── Build Volto and upload artifact ──────────────────────────────────────
   build:
     runs-on: 'ubuntu-latest'
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,25 +70,10 @@ jobs:
         run: pnpm build:deps
       - name: Run volto-hydra addon unit tests (vitest)
         run: pnpm test
-      - name: Check docs content is in sync with the markdown
-        # docs/content/**/data.json is generated from docs/*.md by sync.mjs.
-        # Nothing verified that it matched, so a markdown edit without a
-        # re-sync shipped stale content to the site.
-        run: pnpm sync:docs:check
-      - name: Check the markdown tree agrees with the content JSON
-        # Both formats are committed while the markdown is being adopted, so
-        # something has to hold them together. This reconstructs every content
-        # item from the markdown and compares it against the JSON the frontend
-        # would be served -- not a file diff, which would pass on output that
-        # no longer loads.
-        run: pnpm check:content-md
-      - name: Check markdown and JSON serve the same content
-        # The stronger check: serve both formats and diff every path through
-        # the API. The item-level check above compares a fixed list of keys and
-        # passed while a Link's remoteUrl and every Event's start/end/location
-        # were being dropped -- comparing what is actually served has no list
-        # to be wrong about.
-        run: pnpm check:content-parity
+      - name: Check example renderers compile
+        # The examples pages embed real renderer files; check:docs parses each
+        # per framework so a broken example fails here rather than shipping.
+        run: pnpm check:docs
       - name: Run mock-api unit tests (node:test)
         # Plone 6.2 fidelity coverage (@aliases, SearchableText prefix
         # match, navigation, folder ordering). Was not previously wired
@@ -72,7 +83,12 @@ jobs:
         run: pnpm build
         env:
           RAZZLE_API_PATH: http://localhost:8888
-          RAZZLE_DEFAULT_IFRAME_URL: http://localhost:8889,http://localhost:3003,http://localhost:3004,http://localhost:3005,http://localhost:3006,http://localhost:3007,http://localhost:3008
+          # RAZZLE_ vars are inlined into the CLIENT bundle at build time (webpack
+          # DefinePlugin), so the frontend-switcher list the browser shows comes from
+          # HERE, not from a downstream job's runtime env. Label the entries the demo
+          # video narrates ("Nuxt blog", "F7 Mobile") and give F7 its hash-router
+          # suffix so the switch lands on a rendered page, not a blank one.
+          RAZZLE_DEFAULT_IFRAME_URL: "Test frontend|http://localhost:8889,Nuxt blog|http://localhost:3003,http://localhost:3004,http://localhost:3005,http://localhost:3006,http://localhost:3007,F7 Mobile|http://localhost:3008/#!"
           VOLTOCONFIG: ${{ github.workspace }}/volto.config.js
       - name: Upload Volto build
         uses: actions/upload-artifact@v4
@@ -81,8 +97,177 @@ jobs:
           path: build/
           retention-days: 1
 
+  # ── Record generated doc assets (screenshots + demo video) ───────────────
+  # The editor screenshots + demo video the docs embed are git-ignored and
+  # regenerated, not committed (see docs/.gitignore). This job is the ONLY one
+  # with the full editor stack (Volto admin + Nuxt iframe) needed to drive the
+  # live editor and record them. It restores the previous recording, so mtime
+  # staleness (scripts/missing-doc-assets.mjs) regenerates ONLY what a spec or an
+  # appearance dep changed since — fast when nothing did — then re-saves and runs
+  # the media gate. The bridge jobs below depend on it so page-integrity's
+  # broken-image check sees the images present. Sanity runs AFTER generation.
+  record-doc-assets:
+    needs: build
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup pnpm
+        run: |
+          npm install -g corepack
+          corepack cache clean
+          corepack enable
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - name: Install dependencies
+        run: |
+          pnpm dlx mrs-developer missdev --no-config --fetch-https
+          pnpm install --frozen-lockfile
+      - name: Build workspace deps (@plone/registry, @plone/components)
+        run: pnpm build:deps
+      - name: Download Volto build
+        uses: actions/download-artifact@v4
+        with:
+          name: volto-build
+          path: build/
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install --with-deps chromium firefox
+      - name: Install Playwright deps only
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install-deps chromium firefox
+      - name: Restore previous doc assets
+        # Restore-only: mtime staleness then regenerates just what changed. The
+        # prefix key picks up the most recent recording from any prior run.
+        uses: actions/cache/restore@v4
+        with:
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          key: docs-assets-${{ github.sha }}
+          restore-keys: docs-assets-
+      - name: Install and build Nuxt
+        # build:test bakes the LOCAL backend (localhost:8888) into the static
+        # .output; without it preview:test serves the prod-backed build and every
+        # /docs/examples/* is a 404 (the new content isn't on prod), so the
+        # screenshots can't render. Same step the test-nuxt-* jobs use.
+        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace && pnpm run build:test
+      - name: Install F7 mobile frontend
+        # The demo video records a switch to the F7 mobile frontend, so its Vite
+        # dev server (3008) must be up when the demo is regenerated.
+        run: cd examples/hydra-vue-f7 && pnpm install --ignore-workspace
+      - name: Install ffmpeg
+        # demo:encode (tests-playwright/demo-video/encode.sh) trims the captured
+        # .webm into the mp4 with ffmpeg. ubuntu-latest (24.04) no longer bundles
+        # it, so install it here. Same apt acquire-hardening + step timeout the
+        # Playwright deps step uses (a bare apt-get update once stalled 3h38m
+        # mid-fetch of the Ubuntu package indexes).
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version | head -1
+      - name: Start servers
+        # The screenshot specs drive the Volto admin (3001) with the Nuxt iframe
+        # (3003); mock-parent is served by the vite frontend (8889); content by
+        # the mock API (8888). The demo video also switches to the F7 frontend
+        # (3008), so the iframe list is labelled (the demo picks "F7 Mobile").
+        run: |
+          node tests-playwright/fixtures/mock-api-server.cjs &
+          npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
+          cd examples/nuxt-blog-starter && pnpm run preview:test &
+          cd "$GITHUB_WORKSPACE/examples/hydra-vue-f7" && pnpm run dev:test &
+          cd "$GITHUB_WORKSPACE" && PORT=3001 RAZZLE_API_PATH=http://localhost:8888 \
+            RAZZLE_DEFAULT_IFRAME_URL="Test frontend|http://localhost:8889,Nuxt blog|http://localhost:3003,F7 Mobile|http://localhost:3008/#!" \
+            VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
+            pnpm start:prod &
+          sleep 3
+      - name: Wait for servers
+        run: |
+          for port in 8888 8889 3001 3003 3008; do
+            echo "Waiting for port $port..."
+            for i in {1..30}; do curl -s http://localhost:$port > /dev/null && break; sleep 2; done
+          done
+          echo "All servers ready"
+      - name: Regenerate stale/absent doc assets
+        run: pnpm docs:assets
+        env:
+          CI: true
+          NO_WEBSERVER: true
+          USE_PREBUILT: true
+          CAPTURE_MOBILE_SCREENSHOTS: 1
+      - name: Media gate — every referenced asset present
+        run: pnpm docs:assets:check
+      - name: Export test (images present)
+        # The deployable-tar test needs every blob's bytes, so it runs here after
+        # generation (it skips in the build job where the images are absent).
+        run: node --test tests-playwright/fixtures/export-markdown-mount.test.cjs
+      - name: Save doc assets
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          key: docs-assets-${{ github.sha }}
+      - name: Upload doc assets (debugging)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: doc-assets
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          retention-days: 3
+
   # ── Bridge + unit tests (no Volto needed) ────────────────────────────────
   test-bridge-unit:
+    needs: record-doc-assets
     runs-on: 'ubuntu-latest'
     timeout-minutes: 30
     steps:
@@ -120,10 +305,44 @@ jobs:
           key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium firefox
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install --with-deps chromium firefox
       - name: Install Playwright deps only
+        # This step sat for 3h38m on one run. The log shows apt-get update stalling
+        # mid-fetch of the Ubuntu package indexes — silent after
+        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
+        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
+        # acquire so it fails fast, and bound the step as a backstop.
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium firefox
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install-deps chromium firefox
+      - name: Restore generated doc assets
+        # Recorded by record-doc-assets this run; present so page-integrity's
+        # broken-image check (sanity, after generation) sees the doc images.
+        uses: actions/cache/restore@v4
+        with:
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          key: docs-assets-${{ github.sha }}
+          restore-keys: docs-assets-
       - name: Start servers
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
@@ -150,6 +369,14 @@ jobs:
           NO_WEBSERVER: true
           SKIP_VOLTO_CHECK: true
           DISCOVER_BLOCKS_API: http://localhost:8888
+          # Discovery needs a frontend: without one it is type-only, container
+          # regions are invisible, and the schema-dependent checks measure less
+          # than they appear to. This job runs several frontends and discovery
+          # runs once, so it nominates its primary — the vite test-frontend,
+          # which carries the shared registry the fixtures are written against.
+          # Per-frontend discovery would remove the need to choose.
+          FRONTEND_URL: http://localhost:8889
+          MOCK_PARENT_URL: http://localhost:8889/mock-parent.html
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -311,6 +538,7 @@ jobs:
   test-admin-mock:
     needs: build
     runs-on: 'ubuntu-latest'
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -355,10 +583,30 @@ jobs:
           key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium firefox
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install --with-deps chromium firefox
       - name: Install Playwright deps only
+        # This step sat for 3h38m on one run. The log shows apt-get update stalling
+        # mid-fetch of the Ubuntu package indexes — silent after
+        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
+        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
+        # acquire so it fails fast, and bound the step as a backstop.
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium firefox
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install-deps chromium firefox
       - name: Start servers
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
@@ -393,7 +641,9 @@ jobs:
 
   # ── Nuxt bridge tests (no Volto needed) ─────────────────────────────────
   test-nuxt-bridge:
+    needs: record-doc-assets
     runs-on: 'ubuntu-latest'
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -431,10 +681,44 @@ jobs:
           key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium firefox
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install --with-deps chromium firefox
       - name: Install Playwright deps only
+        # This step sat for 3h38m on one run. The log shows apt-get update stalling
+        # mid-fetch of the Ubuntu package indexes — silent after
+        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
+        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
+        # acquire so it fails fast, and bound the step as a backstop.
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium firefox
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install-deps chromium firefox
+      - name: Restore generated doc assets
+        # Recorded by record-doc-assets this run; present so page-integrity's
+        # broken-image check (sanity, after generation) sees the doc images.
+        uses: actions/cache/restore@v4
+        with:
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          key: docs-assets-${{ github.sha }}
+          restore-keys: docs-assets-
       - name: Start servers
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
@@ -456,6 +740,13 @@ jobs:
           SKIP_VOLTO_CHECK: true
           DISCOVER_BLOCKS_API: http://localhost:8888
           FRONTEND_URL: http://localhost:3003
+          # Discovery reads the frontend's INIT through mock-parent. Without it
+          # discovery is type-only: no container regions, so nested blocks are
+          # invisible and every schema-dependent check passes by measuring
+          # nothing. The server has always been up in this job (8889, waited on
+          # above) — the variable was simply never passed, while FRONTEND_URL
+          # beside it was. globalSetup now fails rather than run type-only.
+          MOCK_PARENT_URL: http://localhost:8889/mock-parent.html
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -470,6 +761,7 @@ jobs:
   test-nuxt-admin:
     needs: build
     runs-on: 'ubuntu-latest'
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -516,10 +808,30 @@ jobs:
           key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium firefox
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install --with-deps chromium firefox
       - name: Install Playwright deps only
+        # This step sat for 3h38m on one run. The log shows apt-get update stalling
+        # mid-fetch of the Ubuntu package indexes — silent after
+        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
+        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
+        # acquire so it fails fast, and bound the step as a backstop.
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium firefox
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install-deps chromium firefox
       - name: Start servers
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
@@ -555,7 +867,9 @@ jobs:
 
   # ── Next.js + F7 bridge tests (no Volto needed) ─────────────────────────
   test-nextjs-f7:
+    needs: record-doc-assets
     runs-on: 'ubuntu-latest'
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -597,25 +911,68 @@ jobs:
           key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium firefox
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install --with-deps chromium firefox
       - name: Install Playwright deps only
+        # This step sat for 3h38m on one run. The log shows apt-get update stalling
+        # mid-fetch of the Ubuntu package indexes — silent after
+        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
+        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
+        # acquire so it fails fast, and bound the step as a backstop.
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium firefox
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install-deps chromium firefox
+      - name: Restore generated doc assets
+        # Recorded by record-doc-assets this run; present so page-integrity's
+        # broken-image check (sanity, after generation) sees the doc images.
+        uses: actions/cache/restore@v4
+        with:
+          # The git-ignored screenshots AND the git-ignored demo video are
+          # cached here; mtime-staleness regenerates only what changed. The demo
+          # video switches to the F7 mobile frontend, which record-doc-assets
+          # starts alongside Nuxt when a regen is needed.
+          path: |
+            docs/images
+            docs/static/hydra-demo.mp4
+          key: docs-assets-${{ github.sha }}
+          restore-keys: docs-assets-
       - name: Start servers
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/hydra-nextjs && pnpm run start:test &
-          cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:8888 npx vite --port 3008 --strictPort --config vite.config.test.js &
+          cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:8888 npx vite --port 3008 --strictPort --config vite.config.test.mjs &
           sleep 3
       - name: Wait for servers
         run: |
+          # Fail here if a server never came up. The old loop just ran out of
+          # attempts and carried on, so a dead frontend reached the tests as 140
+          # identical 30s timeouts ("no [data-block-uid] visible") and burned the
+          # job's whole 45min budget — the symptom looked like 140 bugs.
           for port in 8888 8889 3007 3008; do
             echo "Waiting for port $port..."
+            ready=""
             for i in {1..30}; do
-              curl -s http://localhost:$port > /dev/null && break
+              if curl -s http://localhost:$port > /dev/null; then ready=1; break; fi
               sleep 2
             done
+            if [ -z "$ready" ]; then
+              echo "::error::No server on port $port after 60s — check the Start servers step"
+              exit 1
+            fi
           done
           echo "All servers ready"
       - name: Run tests
@@ -624,6 +981,15 @@ jobs:
           CI: true
           NO_WEBSERVER: true
           SKIP_VOLTO_CHECK: true
+          # Without this, discovery never runs here, so block-sanity and
+          # page-integrity found no .discovered-blocks.json and skipped — the
+          # nextjs project is inside block-sanity's own scope, so it had simply
+          # stopped being checked while the job reported green.
+          DISCOVER_BLOCKS_API: http://localhost:8888
+          # See the bridge-unit job: discovery needs a frontend. This job runs
+          # two, and nominates nextjs.
+          FRONTEND_URL: http://localhost:3007
+          MOCK_PARENT_URL: http://localhost:8889/mock-parent.html
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4

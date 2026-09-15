@@ -147,13 +147,113 @@ export async function verifyNoBackendLinks(
 }
 
 /**
+ * Every internal link must actually resolve.
+ *
+ * Until now nothing checked this. `verifyNoBackendLinks` above discards any
+ * href starting with "/" before it looks at anything — it asks "does this point
+ * at the wrong ORIGIN?", never "does this go anywhere?" — and the block-level
+ * check in BlockVerificationHelper does the same. So a link to a page that does
+ * not exist passed every gate and shipped: a doc page linking to
+ * /components/sections when the page is `section`, a card whose href was the
+ * Plone admin's own `./add?type=Document` (which resolved to
+ * /./add?type=Document), and a set of "related pages" lists.
+ *
+ * Asking the browser is what makes this simple. The alternative — matching paths
+ * against the content manifest offline — cannot tell a typo from a link that is
+ * fine: content served under a mount prefix, a frontend route with no content
+ * object behind it (/dev/blocks/*), a relative href, a static asset in public/.
+ * Each needed its own special case and the result still misjudged links. The
+ * browser resolves all of that natively, because it is the thing doing the
+ * resolving.
+ *
+ * `alreadyChecked` lets a per-page walker share one set across pages, so the
+ * site chrome's links (nav, footer) are fetched once rather than once per page.
+ */
+export async function verifyNoDeadLinks(
+  page: Page,
+  options: { alreadyChecked?: Set<string>; concurrency?: number } = {},
+): Promise<void> {
+  const seen = options.alreadyChecked;
+  // Gentle by default. A local server shrugs off 8 at once; the deployed single
+  // machine returns 500 for ALL of them — verified: the same URLs answer 200
+  // sequentially. A checker that manufactures its own failures is worse than no
+  // checker, so callers hitting a real host should lower this further.
+  const concurrency = options.concurrency ?? 4;
+
+  const hrefs = (await page.evaluate(`(() => {
+    const origin = window.location.origin;
+    const out = new Set();
+    for (const el of document.querySelectorAll('a[href]')) {
+      const raw = el.getAttribute('href');
+      if (!raw) continue;
+      // A fragment is a position on this page, not a destination. Other schemes
+      // (mailto:, tel:) are not ours to resolve.
+      if (raw.startsWith('#')) continue;
+      let url;
+      try { url = new URL(raw, window.location.href); } catch { continue; }
+      if (url.origin !== origin) continue;   // off-site: verifyNoBackendLinks' job
+      out.add(url.pathname + url.search);
+    }
+    return Array.from(out);
+  })()`)) as string[];
+
+  const toCheck = hrefs.filter((h) => !seen || !seen.has(h));
+  for (const h of toCheck) seen?.add(h);
+
+  // Fetched from INSIDE the page, concurrently.
+  //
+  // Not page.request (Playwright's APIRequestContext): against the deployed
+  // site every one of those timed out at 15s while curl answered the same HEAD
+  // in 0.5s — a harness problem masquerading as dead links. The page's own
+  // fetch() is the same mechanism the browser uses for the links being checked,
+  // has the page's cookies and origin, and is what the video/audio check
+  // already uses successfully.
+  //
+  // Serially this is fine on localhost and hopeless remotely (~25 chrome links
+  // × network latency), so it runs with a small concurrency cap.
+  const dead = await page.evaluate(
+    async ({ hrefs, concurrency }: { hrefs: string[]; concurrency: number }) => {
+      const out: string[] = [];
+      const queue = [...hrefs];
+      const worker = async () => {
+        for (;;) {
+          const href = queue.shift();
+          if (href === undefined) return;
+          try {
+            // HEAD first (cheap); some routes only answer GET, so fall back
+            // rather than report a 405 as a dead link.
+            let resp = await fetch(href, { method: 'HEAD', redirect: 'follow' });
+            if (resp.status === 405 || resp.status === 501) {
+              resp = await fetch(href, { method: 'GET', redirect: 'follow' });
+            }
+            if (resp.status >= 400) out.push(`${href} -> HTTP ${resp.status}`);
+          } catch (e) {
+            // A request that cannot complete is a defect worth seeing, not a
+            // silent pass.
+            out.push(`${href} -> ${(e as Error).message}`);
+          }
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(concurrency, queue.length) }, worker),
+      );
+      return out.sort();
+    },
+    { hrefs: toCheck, concurrency },
+  );
+
+  expect(dead, `Dead links on ${page.url()}:\n${dead.join('\n')}`).toEqual([]);
+}
+
+/**
  * Run every page-level integrity check in order. Composes the smaller
  * checks so a consumer only needs to wire one call.
  */
 export async function verifyPageIntegrity(
   page: Page,
-  options: PageIntegrityOptions = {},
+  options: PageIntegrityOptions & { alreadyChecked?: Set<string> } = {},
 ): Promise<void> {
   await verifyNoBrokenImages(page);
   await verifyNoBackendLinks(page, options);
+  await verifyNoDeadLinks(page, options);
 }

@@ -4,7 +4,7 @@
  * Run with: pnpm exec playwright test --project=screenshots
  *
  * Each test below opens the showcase fixture page, drives the editor into a
- * specific state, and saves an image into docs/editor-guide/_images/. The
+ * specific state, and saves an image into docs/images/. The
  * Editor Guide markdown pages reference those images by filename.
  *
  * Not part of normal test runs — gated to its own project (see
@@ -18,14 +18,14 @@ import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = path.join(SCRIPT_DIR, '..', '..', 'docs', 'what-editors-will-experience', '_images');
+const OUT_DIR = path.join(SCRIPT_DIR, '..', '..', 'docs', 'images');
 const SHOWCASE_PATH = '/showcase-page';
 
 // Make sure the output directory exists once at import time.
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 /**
- * Save a viewport-sized screenshot under docs/editor-guide/_images/<name>.png.
+ * Save a viewport-sized screenshot under docs/images/<name>.png.
  */
 async function snap(page: import('@playwright/test').Page, name: string) {
   const file = path.join(OUT_DIR, `${name}.png`);
@@ -109,9 +109,14 @@ test.describe('Editor Guide screenshots', () => {
     await helper.login();
     await helper.navigateToEdit(SHOWCASE_PATH);
 
-    // Click the empty image block to surface its placeholder UI.
-    await helper.clickBlockInIframe('image-empty');
-    await helper.waitForBlockSelectedInAdmin('image-empty');
+    // Snap an image block before a file is picked — the state an author sees
+    // the moment they insert one. NOT stored in the fixture: `url` is required,
+    // and stored content with an empty required field contradicts its schema.
+    // addBlockOnCanvas already leaves the newly inserted image block selected.
+    // Don't click it again: an empty image renders a full-bleed upload-prompt
+    // overlay over the block, and a second click races/​is intercepted by it.
+    const uid = await helper.addBlockOnCanvas('empty-slate', 'image');
+    await helper.waitForBlockSelectedInAdmin(uid);
 
     await snap(page, 'media-empty-placeholder');
   });
@@ -299,9 +304,18 @@ test.describe('Editor Guide screenshots', () => {
     await helper.waitForSidebarOpen();
     await helper.escapeToParent();
 
-    // Unlock → template edit mode. Outside blocks lock; the bar toggle flips to 🔓.
+    // Unlock → template edit mode; the bar toggle flips to 🔓. Unlocking warns
+    // first (editing a template changes it everywhere) — confirm the modal,
+    // exactly as helper.unlockTemplate does, or the unlock never completes.
+    // v2: unlocking a template does NOT lock the rest of the page — the blocks
+    // outside it stay editable (see template-edit-mode.spec "blocks outside
+    // template stay editable in edit mode"). aria-pressed=true is the signal
+    // that edit mode is on.
     await page.locator('.edit-template-toggle').click();
-    await helper.waitForBlockReadonly('standalone-block-1');
+    const unlockConfirm = page.locator('.template-unlock-modal .template-confirm');
+    await expect(unlockConfirm).toBeVisible({ timeout: 5000 });
+    await unlockConfirm.click();
+    await expect(page.locator('.template-unlock-modal')).toHaveCount(0, { timeout: 5000 });
     await expect(page.locator('.edit-template-toggle')).toHaveAttribute('aria-pressed', 'true', { timeout: 5000 });
 
     // Re-select the instance so its (now enabled) Template Settings are shown.

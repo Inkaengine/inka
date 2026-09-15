@@ -56,7 +56,8 @@
     "docs/examples/table/preview_image/black-starry-night.jpg",
     "docs/examples/teaser/preview_image/black-starry-night.jpg",
     "docs/examples/toc/preview_image/black-starry-night.jpg",
-    "quadrant-svg/image/quadrant.svg"
+    "quadrant-svg/image/quadrant.svg",
+    "templates/newsitem-view/preview_image/newsitem.svg"
   ],
   "_data_files_": [
     "plone_site_root/data.json",
@@ -75,6 +76,7 @@
     "docs/listings/data.json",
     "docs/live-preview/data.json",
     "docs/server-rendered-frontends/data.json",
+    "docs/static/data.json",
     "docs/templates/data.json",
     "docs/visual-editing/data.json",
     "docs/what-editors-will-experience/data.json",
@@ -93,6 +95,7 @@
     "docs/examples/columns/data.json",
     "docs/examples/content-types/data.json",
     "docs/examples/contextNavigation/data.json",
+    "docs/examples/cookie-consent/data.json",
     "docs/examples/form/data.json",
     "docs/examples/grid/data.json",
     "docs/examples/heading/data.json",
@@ -109,6 +112,7 @@
     "docs/examples/separator/data.json",
     "docs/examples/slate/data.json",
     "docs/examples/slider/data.json",
+    "docs/examples/suggest/data.json",
     "docs/examples/table/data.json",
     "docs/examples/teaser/data.json",
     "docs/examples/toc/data.json",
@@ -147,6 +151,7 @@
     "docs-images-toc-edit-001/data.json",
     "docs-images-video-edit-001/data.json",
     "docs-images-wrap-chooser-001/data.json",
+    "docs/static/hydra-demo/data.json",
     "docs/what-editors-will-experience/adding-and-moving-blocks/data.json",
     "docs/what-editors-will-experience/containers/data.json",
     "docs/what-editors-will-experience/editing-text/data.json",
@@ -768,6 +773,20 @@
         ]
       }
     },
+    "docs-static-folder-001": {
+      "local_roles": {
+        "admin": [
+          "Owner"
+        ]
+      }
+    },
+    "docs-static-hydra-demo-001": {
+      "local_roles": {
+        "admin": [
+          "Owner"
+        ]
+      }
+    },
     "docs-examples-contextNavigation-001": {
       "local_roles": {
         "admin": [
@@ -944,6 +963,20 @@
       }
     },
     "docs-images-template-edit-locked-001": {
+      "local_roles": {
+        "admin": [
+          "Owner"
+        ]
+      }
+    },
+    "docs-examples-cookie-consent-001": {
+      "local_roles": {
+        "admin": [
+          "Owner"
+        ]
+      }
+    },
+    "docs-examples-suggest-001": {
       "local_roles": {
         "admin": [
           "Owner"

@@ -55,6 +55,8 @@ test('round-trip: an edited fixed-but-editable block survives a re-merge (save â
     ...headerBlock,
     value: [{ type: 'h1', children: [{ text: 'Editable Header EDITED' }] }],
     plaintext: 'Editable Header EDITED',
+    styles: { backgroundColor: 'grey' },
+    align: 'center',
   };
 
   // 3. RELOAD (view/edit re-merge): forward-merge the edited page again.
@@ -64,12 +66,27 @@ test('round-trip: an edited fixed-but-editable block survives a re-merge (save â
     uuidGenerator,
   });
 
-  // 4. ASSERT: the edit survives; the template did NOT re-inject "Editable Header".
-  const survived = Object.values(reloaded.blocks).some(
-    (b) =>
-      b.slotId === 'header' &&
-      (b.plaintext === 'Editable Header EDITED' ||
-        b.value?.[0]?.children?.[0]?.text === 'Editable Header EDITED'),
-  );
-  expect(survived).toBe(true);
+  // 4. ASSERT: the whole edited block survives â€” EVERY field the author touched,
+  // not one of them. An editable block is the page's to change: it is saved into
+  // the page as the author left it, and the merge keeps those fields.
+  //
+  // The old assertion was
+  //     plaintext === EDITED || value[0].children[0].text === EDITED
+  // and an `||` passes on a block that contradicts itself â€” which is exactly
+  // what the merge produced. It took `value` from the page and every other field
+  // from the template, so the page rendered the author's words while `plaintext`
+  // (what Plone indexes into SearchableText) still held the template's, and any
+  // other field the author had changed was silently reverted.
+  const header = Object.values(reloaded.blocks).find((b) => b.slotId === 'header');
+  expect(header).toBeTruthy();
+  expect(header.value?.[0]?.children?.[0]?.text).toBe('Editable Header EDITED');
+  expect(header.plaintext).toBe('Editable Header EDITED');
+  expect(header.styles).toEqual({ backgroundColor: 'grey' });
+  expect(header.align).toBe('center');
+
+  // The template keeps identity and ownership: the block stays matchable by the
+  // same slot, and a lock added to the template later still takes hold.
+  expect(header.slotId).toBe('header');
+  expect(header.fixed).toBe(true);
+  expect(header.readOnly).toBeFalsy();
 });

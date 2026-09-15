@@ -1,0 +1,45 @@
+{
+  "@id": "/docs/static",
+  "@type": "Document",
+  "UID": "docs-static-folder-001",
+  "allow_discussion": false,
+  "blocks": {
+    "title-1": { "@type": "title" }
+  },
+  "blocks_layout": { "items": ["title-1"] },
+  "contributors": [],
+  "created": "2025-01-01T00:00:00+00:00",
+  "creators": [
+    "admin"
+  ],
+  "description": "Static assets used by the docs landing page (homepage hero video, etc.).",
+  "effective": null,
+  "exclude_from_nav": true,
+  "expires": null,
+  "exportimport.constrains": {},
+  "exportimport.conversation": [],
+  "exportimport.versions": {},
+  "id": "static",
+  "is_folderish": true,
+  "language": "##DEFAULT##",
+  "layout": "document_view",
+  "lock": {},
+  "modified": "2025-01-01T00:00:00+00:00",
+  "parent": {
+    "@id": "/docs",
+    "@type": "Document",
+    "UID": "docs-folder-001",
+    "description": "Developer guide for Volto Hydra",
+    "title": "Docs",
+    "type_title": "Page"
+  },
+  "review_state": "published",
+  "rights": "",
+  "subjects": ["frontend"],
+  "title": "Static",
+  "type_title": "Page",
+  "version": "current",
+  "workflow_history": {},
+  "working_copy": null,
+  "working_copy_of": null
+}

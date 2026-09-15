@@ -90,7 +90,7 @@ const PROTO_TEXT = {
   ].join('\n'),
   gridBlock: [
     '<block type="gridBlock" headline="${h/text}">',
-    '  <region name="blocks" widget="blocks_layout">',
+    '  <region name="items" widget="blocks_layout">',
     '    <block type="teaser" title="${h/text}" description="${p/text}" />',
     '  </region>',
     '</block>',
@@ -115,6 +115,20 @@ const PROTO_TEXT = {
   // A hero: h1 heading, a bold subheading, an italic (slate) description, and a
   // button link — captured positionally, the italic description only in this run.
   hero: '<block type="hero" heading="${h1/text}" subheading="${strong/text}" description="${em/richtext}" buttonText="${p/text}" buttonLink="${p/link}" />',
+  // A columns block: a blocks_layout container whose region key is `columns`
+  // (region name = layout key), each column a nested blocks_layout container
+  // ordered under `items`. Its children are whatever bare markdown matches
+  // (slates), so the region item proto is empty. Doubly nested — proves the
+  // container path handles container-in-container.
+  columns: [
+    '<block type="columns">',
+    '  <region name="columns" widget="blocks_layout">',
+    '    <block type="column">',
+    '      <region name="items" widget="blocks_layout" />',
+    '    </block>',
+    '  </region>',
+    '</block>',
+  ].join('\n'),
 };
 // Prototypes split into two frontmatter sections: `blocks-matched` (implicit --
 // auto-matched from bare markdown, source order = cascade) and `blocks-tagged`

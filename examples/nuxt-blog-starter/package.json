@@ -10,7 +10,7 @@
     "dev": "nuxt dev",
     "predev_edit": "pnpm run sync-hydra",
     "dev_edit": "nuxt dev --envName edit",
-    "dev:test": "NUXT_TEST_BACKEND=http://localhost:8888 NUXT_ADMIN_URL=http://localhost:3001 NUXT_PUBLIC_BACKEND_BASE_URL=http://localhost:8888 NUXT_PUBLIC_ADMIN_URL=http://localhost:3001 nuxt dev --envName edit --port 3003",
+    "dev:test": "NUXT_PUBLIC_BACKEND_BASE_URL=http://localhost:${HYDRA_MOCK_API_PORT:-8888} NUXT_PUBLIC_ADMIN_URL=http://localhost:${HYDRA_VOLTO_SSR_PORT:-3001} nuxt dev --envName edit --port ${HYDRA_NUXT_PORT:-3003}",
     "build:test": "NUXT_TEST_BACKEND=http://localhost:8888 nuxt build --envName edit",
     "preview:test": "npx serve .output/public -s -l tcp://0.0.0.0:3003",
     "pregenerate": "pnpm run sync-hydra",

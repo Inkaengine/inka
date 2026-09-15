@@ -2,13 +2,22 @@
  * Central source of truth for test infrastructure ports.
  *
  * Every test, helper, and playwright config should import from here
- * instead of hard-coding `localhost:NNNN`. Each port has a sensible
- * default (matching the historical hard-coded values) and an env-var
- * override so parallel test runs, different CI shards, or local dev
- * environments with port conflicts can rebind without code changes.
+ * instead of hard-coding `localhost:NNNN`.
  *
- * Override pattern: set HYDRA_<NAME>_PORT in the environment.
- *   HYDRA_MOCK_API_PORT=18888 pnpm test:e2e
+ * THERE ARE NO DEFAULTS. Every port must be given as HYDRA_<NAME>_PORT, and a
+ * missing one is a hard failure rather than a quiet fall back to 8888/3001.
+ *
+ * The defaults were the problem. A checkout that ran playwright directly bound
+ * the historical numbers, which are shared with every other hydra checkout on
+ * the machine — so one run would take over, or quietly talk to, another
+ * project's servers. Nothing in the output said so; the ports simply worked
+ * until the day they belonged to someone else.
+ *
+ * Callers therefore say which ports they mean:
+ *   - from a consuming repo: its make target exports its own block
+ *     (`make hydra-test ARGS="<spec> --project=admin-mock"`)
+ *   - in this repo: the CI workflow and package.json scripts set them
+ *
  *
  * Keep the keys here aligned with package.json's start:* scripts and
  * the build job's "Start servers" step in .github/workflows/test.yaml.
@@ -18,9 +27,17 @@
  * historical site URLs in saved content, not infrastructure config.
  */
 
-const port = (envName: string, def: number): number => {
+const port = (envName: string): number => {
   const v = process.env[envName];
-  if (!v) return def;
+  if (!v) {
+    throw new Error(
+      `${envName} is not set. Test ports have no defaults — binding hydra's ` +
+        `historical numbers is what lets one checkout take over another's ` +
+        `servers.\n` +
+        `  From a consuming repo:  make hydra-test ARGS="<spec> --project=admin-mock"\n` +
+        `  In this repo:           the package.json scripts and CI set them`,
+    );
+  }
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) {
     throw new Error(`Invalid ${envName}: ${v} (must be a positive integer)`);
@@ -30,37 +47,37 @@ const port = (envName: string, def: number): number => {
 
 export const PORTS = {
   /** Mock Plone REST API (started by `pnpm start:mock-api`). */
-  mockApi: port('HYDRA_MOCK_API_PORT', 8888),
+  mockApi: port('HYDRA_MOCK_API_PORT'),
   /** Mock Drupal JSON:API, for the three-CMS journey. */
-  mockDrupal: port('HYDRA_MOCK_DRUPAL_PORT', 8794),
+  mockDrupal: port('HYDRA_MOCK_DRUPAL_PORT'),
   /** WordPress Playground, for the three-CMS journey. */
-  wordpress: port('HYDRA_WORDPRESS_PORT', 8795),
+  wordpress: port('HYDRA_WORDPRESS_PORT'),
   /** Test frontend: HTML + bridge fixture served by Vite (`pnpm start:test-frontend`). */
-  testFrontend: port('HYDRA_TEST_FRONTEND_PORT', 8889),
+  testFrontend: port('HYDRA_TEST_FRONTEND_PORT'),
   // A Plone mock serving the CANONICAL seed, for journey specs that need the
   // same fixtures as WordPress and Drupal. Separate from the docs-content mock
   // on mockApi, which the other Plone journey project keeps using.
-  plonSeeded: port('HYDRA_PLONE_SEED_PORT', 8898),
+  plonSeeded: port('HYDRA_PLONE_SEED_PORT'),
   /** Mock-parent test surface for bridge isolation tests. */
-  mockParent: port('HYDRA_MOCK_PARENT_PORT', 8891),
+  mockParent: port('HYDRA_MOCK_PARENT_PORT'),
   /** Volto admin SSR server (`pnpm start:test`, PORT). */
-  voltoSsr: port('HYDRA_VOLTO_SSR_PORT', 3001),
+  voltoSsr: port('HYDRA_VOLTO_SSR_PORT'),
   /** Razzle webpack-dev-server (auto-incremented from voltoSsr). */
-  voltoWebpack: port('HYDRA_VOLTO_WEBPACK_PORT', 3002),
+  voltoWebpack: port('HYDRA_VOLTO_WEBPACK_PORT'),
   /** Nuxt example frontend (`pnpm start:nuxt:test`). */
-  nuxt: port('HYDRA_NUXT_PORT', 3003),
+  nuxt: port('HYDRA_NUXT_PORT'),
   /** Doc-example: React (`pnpm start:react:test`). */
-  reactDoc: port('HYDRA_REACT_DOC_PORT', 3004),
+  reactDoc: port('HYDRA_REACT_DOC_PORT'),
   /** Doc-example: Svelte (`pnpm start:svelte:test`). */
-  svelteDoc: port('HYDRA_SVELTE_DOC_PORT', 3005),
+  svelteDoc: port('HYDRA_SVELTE_DOC_PORT'),
   /** Doc-example: Vue (no dedicated start script; see docs/examples/test-vue). */
-  vueDoc: port('HYDRA_VUE_DOC_PORT', 3006),
+  vueDoc: port('HYDRA_VUE_DOC_PORT'),
   /** Next.js example frontend. */
-  nextjs: port('HYDRA_NEXTJS_PORT', 3007),
+  nextjs: port('HYDRA_NEXTJS_PORT'),
   /** Vue F7 example frontend (hash-routed). */
-  f7: port('HYDRA_F7_PORT', 3008),
+  f7: port('HYDRA_F7_PORT'),
   /** Doc-example: Astro (SSR, Node adapter). */
-  astroDoc: port('HYDRA_ASTRO_DOC_PORT', 3009),
+  astroDoc: port('HYDRA_ASTRO_DOC_PORT'),
 } as const;
 
 /**
@@ -73,15 +90,7 @@ export const PORTS = {
  */
 export const URLS = {
   mockApi: `http://localhost:${PORTS.mockApi}`,
-  // 127.0.0.1, not localhost.
-  //
-  // WordPress refuses `localhost` as an application-password success_url — its
-  // SSRF guard rejects the host, and authorize-application.php 500s rather than
-  // declining cleanly. The sign-in flow redirects back to this origin, so the
-  // frontend has to be addressed as something the CMS will accept. The CMS
-  // mocks already use 127.0.0.1, so this is also the more consistent choice.
-  testFrontend: `http://127.0.0.1:${PORTS.testFrontend}`,
-  plonSeeded: `http://127.0.0.1:${PORTS.plonSeeded}`,
+  testFrontend: `http://localhost:${PORTS.testFrontend}`,
   mockParent: `http://localhost:${PORTS.mockParent}`,
   voltoSsr: `http://localhost:${PORTS.voltoSsr}`,
   voltoWebpack: `http://localhost:${PORTS.voltoWebpack}`,

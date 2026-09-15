@@ -202,12 +202,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  export let block;\n</script>\n\n<svelte:element this={block.tag || 'h2'} data-block-uid={block['@uid']} data-edit-text=\"heading\">\n  {block.heading}\n</svelte:element>"
-        },
-        {
-          "@id": "ref-heading-rendering-astro-a73687",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\n/**\n * Heading block. Tag is dynamic (h1..h6) — astro renders this via a\n * capitalized `const Tag = ...` then `<Tag>`, mirroring SlateNode's\n * dynamic-element pattern.\n */\nconst { block } = Astro.props;\nconst Tag = (block.tag || 'h2') as any;\n---\n<Tag data-edit-text=\"heading\">{block.heading}</Tag>"
         }
       ]
     },

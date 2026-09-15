@@ -48,7 +48,11 @@
           "label": "Subject",
           "plaintext": "Subject",
           "required": true,
-          "input_values": ["General Inquiry", "Bug Report", "Feature Request"]
+          "input_values": [
+            "General Inquiry",
+            "Bug Report",
+            "Feature Request"
+          ]
         },
         {
           "field_id": "field-message",
@@ -63,7 +67,11 @@
           "label": "Priority",
           "plaintext": "Priority",
           "required": false,
-          "input_values": ["Low", "Medium", "High"]
+          "input_values": [
+            "Low",
+            "Medium",
+            "High"
+          ]
         },
         {
           "field_id": "field-agree",
@@ -71,12 +79,71 @@
           "label": "I agree to the terms",
           "plaintext": "I agree to the terms",
           "required": true
+        },
+        {
+          "field_id": "field-quantity",
+          "field_type": "number",
+          "label": "Quantity",
+          "plaintext": "Quantity",
+          "required": false
+        },
+        {
+          "field_id": "field-when",
+          "field_type": "date",
+          "label": "Preferred date",
+          "plaintext": "Preferred date",
+          "required": false
+        },
+        {
+          "field_id": "field-note",
+          "field_type": "static_text",
+          "label": "We reply within two working days.",
+          "plaintext": "We reply within two working days."
+        },
+        {
+          "field_id": "field-source",
+          "field_type": "hidden",
+          "label": "Source",
+          "plaintext": "Source",
+          "default_value": "test-fixture"
+        },
+        {
+          "field_id": "field-file",
+          "field_type": "attachment",
+          "label": "Attach a file",
+          "plaintext": "Attach a file",
+          "required": false
         }
       ]
+    },
+    "form-block-2": {
+      "@type": "form",
+      "title": "A second form on the same page",
+      "subblocks": [
+        {
+          "field_id": "other-name",
+          "field_type": "text",
+          "label": "Full Name"
+        },
+        {
+          "field_id": "other-topic",
+          "field_type": "text",
+          "label": "Second form question"
+        }
+      ],
+      "default_to": "admin@example.com",
+      "default_from": "noreply@example.com",
+      "default_subject": "Second form submission",
+      "captcha": "honeypot",
+      "submit_label": "Submit"
     }
   },
   "blocks_layout": {
-    "items": ["title-block", "form-block-1"]
+    "items": [
+      "title-block",
+      "form-block-1",
+      "form-block-2"
+    ]
   },
   "review_state": "published",
   "is_folderish": false,

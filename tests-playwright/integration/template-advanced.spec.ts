@@ -11,6 +11,7 @@
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { URLS } from '../ports';
 
 test.describe('Fixed Editable Blocks', () => {
   test('fixed block without readOnly can be edited', async ({ page }) => {
@@ -105,7 +106,10 @@ test.describe('Fixed Editable Blocks', () => {
     page.on('request', (req) => {
       const m = req.method();
       if (m !== 'PATCH' && m !== 'POST') return;
-      if (!req.url().startsWith('http://localhost:8888')) return;
+      // Filter on the API this run is actually using. A literal 8888 here
+      // matched nothing once the port was overridden, so the filter dropped
+      // every request and the test kept passing while measuring nothing.
+      if (!req.url().startsWith(URLS.mockApi)) return;
       writes.push({ method: m, url: req.url() });
     });
 

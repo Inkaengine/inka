@@ -26,7 +26,8 @@
             },
             "description": {
               "title": "Description",
-              "widget": "slate"
+              "widget": "slate",
+              "type": "array"
             }
           }
         },
@@ -72,7 +73,8 @@
           "properties": {
             "value": {
               "title": "Text",
-              "widget": "slate"
+              "widget": "slate",
+              "type": "array"
             }
           }
         }
@@ -301,7 +303,8 @@
                           "schema": {
                             "properties": {
                               "value": {
-                                "widget": "slate"
+                                "widget": "slate",
+                                "type": "array"
                               }
                             }
                           }
@@ -765,8 +768,13 @@
       "search": {
         "blockSchema": {
           "properties": {
+            "headline": {
+              "title": "Headline",
+              "type": "string"
+            },
             "facetsTitle": {
-              "title": "Facets Title"
+              "title": "Facets Title",
+              "type": "string"
             },
             "facets": {
               "title": "Facets",
@@ -785,6 +793,22 @@
               "allowedBlocks": [
                 "listing"
               ]
+            },
+            "sortOn": {
+              "title": "Sort results by",
+              "description": "The index the results come back in. One index; empty means the catalog's own order.",
+              "type": "string",
+              "widget": "querystringSelect",
+              "indexes": "sortable",
+              "emptyLabel": "\u2014 no sorting \u2014"
+            },
+            "sortOnOptions": {
+              "title": "Sort-by options offered",
+              "description": "The indexes a visitor may re-sort by, in the order the menu should read.",
+              "type": "array",
+              "widget": "querystringSelect",
+              "indexes": "sortable",
+              "multiple": true
             }
           }
         }
@@ -910,7 +934,12 @@
           "listing": [
             "listing-1"
           ]
-        }
+        },
+        "sortOn": "effective",
+        "sortOnOptions": [
+          "effective",
+          "sortable_title"
+        ]
       }
     }
   },
@@ -1047,6 +1076,33 @@
               "title": "Required",
               "type": "boolean",
               "default": false
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1072,6 +1128,33 @@
               "title": "Required",
               "type": "boolean",
               "default": false
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1097,6 +1180,33 @@
               "title": "Required",
               "type": "boolean",
               "default": false
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1157,7 +1267,8 @@
             "label": "label",
             "description": "description",
             "required": "required"
-          }
+          },
+          "select": {}
         },
         "blockSchema": {
           "properties": {
@@ -1166,6 +1277,12 @@
             },
             "description": {
               "title": "Description"
+            },
+            "options_from": {
+              "title": "Options from",
+              "description": "A vocabulary this site keeps. Leave empty to write the options out below.",
+              "type": "string",
+              "widget": "vocabularySelect"
             },
             "input_values": {
               "title": "Possible values",
@@ -1176,6 +1293,41 @@
               "title": "Required",
               "type": "boolean",
               "default": false
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "input_values": {
+              "when": {
+                "options_from": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
+            },
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1207,6 +1359,33 @@
               "title": "Required",
               "type": "boolean",
               "default": false
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1238,6 +1417,33 @@
               "title": "Required",
               "type": "boolean",
               "default": false
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1263,6 +1469,33 @@
               "title": "Required",
               "type": "boolean",
               "default": false
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1288,6 +1521,33 @@
               "title": "Required",
               "type": "boolean",
               "default": false
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1323,6 +1583,33 @@
               "title": "Required",
               "type": "boolean",
               "default": false
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1342,6 +1629,33 @@
             },
             "description": {
               "title": "Description"
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1363,6 +1677,33 @@
             },
             "value": {
               "title": "Value for field"
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1388,6 +1729,33 @@
               "title": "Required",
               "type": "boolean",
               "default": false
+            },
+            "show_when_field": {
+              "title": "Only show when",
+              "description": "An earlier question in this form. Leave empty to always show this one.",
+              "type": "string",
+              "widget": "blockPicker",
+              "scope": "subblocks",
+              "direction": "before",
+              "valueField": "field_id",
+              "labelField": "label",
+              "emptyLabel": "\u2014 always show \u2014"
+            },
+            "show_when_is": {
+              "title": "\u2026answers",
+              "type": "string"
+            }
+          }
+        },
+        "schemaEnhancer": {
+          "fieldRules": {
+            "show_when_is": {
+              "when": {
+                "show_when_field": {
+                  "isNotSet": true
+                }
+              },
+              "else": false
             }
           }
         }
@@ -1423,12 +1791,8 @@
             "field_id": "department",
             "field_type": "select",
             "label": "Department",
-            "input_values": [
-              "Sales",
-              "Support",
-              "General"
-            ],
-            "required": false
+            "required": false,
+            "options_from": "plone.app.vocabularies.Keywords"
           },
           {
             "@id": "field-4",
@@ -1436,6 +1800,15 @@
             "field_type": "textarea",
             "label": "Message",
             "required": true
+          },
+          {
+            "@id": "field-5",
+            "field_id": "order_number",
+            "field_type": "text",
+            "label": "Order number",
+            "show_when_field": "department",
+            "show_when_is": "Sales",
+            "required": false
           }
         ]
       }
@@ -1448,7 +1821,8 @@
           "properties": {
             "value": {
               "title": "Text",
-              "widget": "slate"
+              "widget": "slate",
+              "type": "array"
             }
           }
         }
@@ -1599,7 +1973,8 @@
             },
             "description": {
               "title": "Description",
-              "widget": "slate"
+              "widget": "slate",
+              "type": "array"
             },
             "image": {
               "title": "Background Image",
@@ -1686,7 +2061,8 @@
         "blockSchema": {
           "properties": {
             "url": {
-              "title": "Map Embed URL"
+              "title": "Map Embed URL",
+              "widget": "url"
             },
             "title": {
               "title": "Title",
@@ -2187,5 +2563,83 @@
       }
     },
     "excludeFromExamplesPage": true
+  },
+  "cookieConsent": {
+    "blocks": {
+      "cookieConsent": {
+        "id": "cookieConsent",
+        "title": "Cookie consent",
+        "blockSchema": {
+          "fieldsets": [
+            {
+              "id": "default",
+              "title": "Default",
+              "fields": [
+                "message",
+                "analyticsPurpose"
+              ]
+            }
+          ],
+          "properties": {
+            "message": {
+              "title": "Banner message",
+              "widget": "slate",
+              "description": "Shown in the consent banner, at the foot of every page, until a visitor chooses."
+            },
+            "analyticsPurpose": {
+              "title": "Analytics cookies \u2014 what they are for",
+              "widget": "textarea",
+              "description": "Shown beside the analytics tick box, inside the preferences dialog."
+            }
+          },
+          "required": []
+        }
+      }
+    },
+    "examples": {
+      "ex-cookieConsent": {
+        "@type": "cookieConsent",
+        "message": [
+          {
+            "type": "p",
+            "children": [
+              {
+                "text": "We use essential cookies to make this site work, and analytics cookies to see how it is used."
+              }
+            ]
+          }
+        ],
+        "analyticsPurpose": "Counts visits and pages, so we can see what is worth improving. Never used to identify you."
+      }
+    }
+  },
+  "suggest": {
+    "blocks": {
+      "suggest": {
+        "blockSchema": {
+          "properties": {
+            "label": {
+              "title": "Question"
+            },
+            "suggestFrom": {
+              "title": "Suggest from",
+              "widget": "vocabularySelect",
+              "vocabularyFilter": "Keywords|Subject"
+            },
+            "value": {
+              "title": "Answer"
+            }
+          }
+        }
+      }
+    },
+    "examples": {
+      "ex-suggest": {
+        "@type": "suggest",
+        "label": "Topic",
+        "suggestFrom": "plone.app.vocabularies.Keywords",
+        "value": ""
+      }
+    }
   }
 }

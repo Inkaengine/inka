@@ -187,6 +187,15 @@
       />
     </div>
 
+    <!-- Rendered only once a question has been asked (URL-driven, like the
+         search itself). The editor reveals it by asking: mounted() stamps the
+         searchbar's inner input with data-block-selector-input. -->
+    <div v-if="quickAnswerUid && quickAnswerChild && currentSearchText"
+         :data-block-uid="quickAnswerUid" class="quick-answer"
+         style="margin:1rem 0; padding:0.75rem; background:#eef3fb; border-radius:0.5rem">
+      <div data-edit-text="answer">{{ quickAnswerChild.answer || '' }}</div>
+    </div>
+
     <!-- Facets on top (default or facetsTopSide) -->
     <template v-if="!block.variation || block.variation === 'facetsTopSide'">
       <h3 v-if="block.facetsTitle" data-edit-text="facetsTitle" style="font-weight:600; margin-bottom:0.75rem">{{ block.facetsTitle }}</h3>
@@ -366,9 +375,13 @@
   <!-- Highlight -->
   <section v-else-if="block['@type'] == 'highlight'" :data-block-uid="block_uid" class="highlight-block"
            :style="{ position: 'relative', overflow: 'hidden', borderRadius: '8px', padding: '0' }">
-    <div v-if="imageProps(block.image).url"
+    <!-- data-edit-media on BOTH branches, matching hydra-nextjs: the backdrop is
+         the only element this image ever produces, and it has to be pickable
+         when EMPTY (that is how an author sets one) as well as when filled. -->
+    <div v-if="imageProps(block.image).url" data-edit-media="image"
          :style="{ position: 'absolute', inset: '0', backgroundSize: 'cover', backgroundPosition: 'center', backgroundImage: `url(${imageProps(block.image).url})` }" />
-    <div v-else :style="{ position: 'absolute', inset: '0', background: highlightGradient(block.styles?.descriptionColor) }" />
+    <div v-else data-edit-media="image"
+         :style="{ position: 'absolute', inset: '0', background: highlightGradient(block.styles?.descriptionColor) }" />
     <div :style="{ position: 'absolute', inset: '0', background: 'rgba(0,0,0,0.5)' }" />
     <div :style="{ position: 'relative', zIndex: '1', padding: '4rem 2rem', textAlign: 'center', color: 'white' }">
       <h2 data-edit-text="title" style="margin-bottom:1rem; font-size:2rem; font-weight:800;">{{ block.title }}</h2>
@@ -550,6 +563,12 @@
   </div>
 
   <!-- Code Example (using F7 tabs) -->
+  <div v-else-if="block['@type'] == 'suggest'" :data-block-uid="block_uid" class="suggest">
+    <label :for="block_uid + '-input'" data-edit-text="label">{{ block.label }}</label>
+    <input :id="block_uid + '-input'" name="answer" type="text" :value="block.value"
+      aria-autocomplete="list" autocomplete="off">
+    <ul class="suggest__list" hidden></ul>
+  </div>
   <div v-else-if="block['@type'] == 'codeExample'" :data-block-uid="block_uid"
        data-block-container='{"add":"horizontal"}' style="margin:1rem 0">
     <div style="border-radius:0.5rem; overflow:hidden; background:#111827">
@@ -779,6 +798,14 @@ export default {
     };
   },
   computed: {
+    // A block that exists ONLY once a question has been asked — see the
+    // quick-answer template below and the mounted() attribute stamping.
+    quickAnswerUid() {
+      return this.block?.blocks_layout?.quickAnswer?.[0] || '';
+    },
+    quickAnswerChild() {
+      return this.quickAnswerUid ? this.block?.blocks?.[this.quickAnswerUid] : null;
+    },
     tocEntries() {
       const result = [];
       const blocks = this.data?.blocks;
@@ -798,7 +825,25 @@ export default {
       return result;
     },
   },
+  mounted() {
+    this.stampQuickAnswerReveal();
+  },
+  updated() {
+    this.stampQuickAnswerReveal();
+  },
   methods: {
+    // f7-searchbar owns its inner <input>, so the reveal attributes can't be
+    // written in the template — stamp them on after render. The searchbar IS a
+    // <form>, so hydra's no-activator branch submits it after filling.
+    stampQuickAnswerReveal() {
+      if (!this.quickAnswerUid) return;
+      const input = this.$el?.querySelector?.('.search-controls input');
+      if (!input) return;
+      input.setAttribute('data-block-selector', this.quickAnswerUid);
+      if (this.block?.quickAnswerSample) {
+        input.setAttribute('data-block-selector-input', this.block.quickAnswerSample);
+      }
+    },
     getUrl(href) {
       if (!href) return '';
       if (Array.isArray(href) && href.length) href = href[0];

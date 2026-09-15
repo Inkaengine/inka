@@ -30,8 +30,7 @@
           "fieldMapping": {
             "@id": { "field": "href", "type": "link" },
             "title": "title",
-            "description": "description",
-            "image": "preview_image"
+            "description": "description"
           },
           "querystring": {
             "query": [

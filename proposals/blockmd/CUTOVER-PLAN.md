@@ -2,14 +2,116 @@
 
 ## Goal / end state
 
-One markdown format is the source of truth. The **loader** turns it into Plone
-content (serving + deploy); **Sphinx** builds the docs from the *same files*. No
-committed JSON content trees, no `sync`, no prototype scaffolding.
+**Two mount formats, one content model.** The loader reads a mount as either
+**JSON** (`data.json`) or **markdown**, and both decode to the same content
+shape — so a developer picks per mount (e.g. tests mount JSON fixtures; the
+docs/site are authored in markdown). The **one markdown format** is the `<block>`
+prototype format (`prototype-mapping.mjs`); **Sphinx** builds the docs from those
+same files. One validator checks both formats.
 
-- `inka-site/` — top-level marketing, authored in the format.
-- `docs/` — documentation, authored in the format; Sphinx builds it, and the
-  loader includes it at `/docs`.
+What is **deleted** is *not* JSON support — it's the **old directive markdown
+dialect** (`:::block`, `blockmd.mjs`, `content-md`) and **`sync`** (the old
+markdown→JSON *build step*). Markdown becomes a loader-read source, not a
+generated artifact.
+
+- `inka-site/` — top-level marketing, authored in the markdown format.
+- `docs/` — documentation, authored in the markdown format; Sphinx builds it, and
+  the loader includes it at `/docs`.
+- JSON fixtures (tests, or any content a dev prefers as JSON) stay first-class.
 - Deploy builds the distribution from the loader. CI runs sanity on both trees.
+
+## Done (this branch, 2026-09)
+
+- **One validator.** `plone-content-validator.cjs` validates *both* the JSON tree
+  and the markdown-decoded tree (same shape). The parallel `content-validator.mjs`
+  + `check-content-validate.mjs` are retired; the single-node-slate rule lives in
+  the one validator and is enforced on both mounts.
+- **Deploy export from memory.** `POST /@export?format=json` emits a deployable
+  `.tar.gz` (plone.exportimport) from the in-memory served content of every
+  content-source mount, JSON or markdown alike — the `writeDistribution` emitter
+  normalises blobs to `<item dir>/<field>/<filename>`. `markdown-mount` ships a
+  content item's own image/file blob (leadimage). (`0e3afe67`→`cfef8768`.)
+- **Dialect consolidation — steps 1-3.** slate/md helpers live in `lib/slate-md.mjs`;
+  the loader's `decodeAuto` reads ONLY the `<block>` prototype format (directive
+  arm dropped, `738a355c`); `resolveMarkdownLink` ported into the loader for
+  hand-authored `.md` cross-links (`ea985faf`).
+- **Step 4 — serving half.** `/` mounts `docs/content-md-proto` (mock default, dev
+  script, playwright) — markdown is the served source of truth (`0fa96e39`).
+  Parity proven first: check-proto-parity 64/0-diff, check-proto-mount
+  63/0-block-diff/0-state-diff/45-of-45 blobs, paths 115=115; green on markdown
+  across node:test 25/25 + vitest 568 + playwright api-contract/mock.
+
+## Remaining for step 4/5 (the JSON-tree deletion)
+
+The generated JSON docs tree (`docs/content/content/content`) is still read by:
+the deploy build (`build-distribution-content.mjs`, `api/scripts/validate-content.py`),
+`start:mock-api`'s `--watch-path` (harmless), tests (`doc-examples.spec.ts`,
+`mock-api-server.test.cjs`), and the proto parity tooling (`check-proto-*` need
+both trees to compare). So deletion waits on: (a) step 5 deploy emitter sourcing
+docs from markdown; (b) repointing those tests; (c) retiring the parity tooling
+once markdown is frozen (step 3/7). Until then markdown (served) and the JSON
+tree (deployed) are proven-equivalent and both committed.
+
+## Containers: schema-free model-alignment (DONE — blockPath import REJECTED)
+
+The engine had its own container walk/order/nest (`unkeyBlocks`/`keyBlocks`/
+`decodeRegion`/`emitContainer`) that diverged from the schema's model and was
+buggy — a `columns` block (a blocks_layout container ordered under
+`blocks_layout.columns`) tier-3'd when nested, because `unkeyBlocks` hardcoded
+`blocks_layout.items`.
+
+**Decision (shipped `ca8276f4`): align the engine to the same container MODEL the
+schema / `blockPath` use, but keep the engine's own lean, SCHEMA-FREE code —
+do NOT import `blockPath`.**
+
+Why not import `blockPath` (this reverses an earlier draft of this section):
+- Decode is **schema-free** today, and that is the property we want: the
+  prototype's `<region widget=…>` declaration is self-describing, so a document
+  decodes with no external schema.
+- `blockPath`/`buildBlockPathMap` is **schema-driven** (reads `blocksConfig`).
+  Reusing it would force decode to require an external schema — **strictly
+  worse.** Synthesizing a config from the prototypes to feed it is *possible* but
+  pointless: it bolts ~985 lines of admin-shaped code (allowedBlocks, sibling
+  types, template instances, `intl`) onto a converter that only needs
+  "traverse + order".
+- The real fix was the **model, not the code**. A blocks_layout region's NAME is
+  its layout key (`gridBlock→items`, `columns→columns`); children live in the
+  shared `blocks` dict. `keyBlocks`/`unkeyBlocks` now key/order by that;
+  `collectProtos` finds nested item protos; a tier-3 block keeps its own
+  `blocks_layout` (guarded delete).
+
+**Result:** `columns` + arbitrary nesting emit as clean markdown, schema-free.
+Engine 76, site proto-parity 8/0, site clean 69→89%. The ~50 lines of engine
+container code is a correct, schema-free implementation — acceptable, and NOT
+duplication worth trading schema-freedom away to remove.
+
+## Consolidate the two markdown dialects (the remaining duplication)
+
+The branch still carries **two markdown dialects** for the same blocks — the old
+`:::block` directive (`blockmd.mjs`, `content-md`, `export-tree`/`import-tree`/
+`convert`) and the new `<block>` prototype format (`prototype-mapping.mjs`,
+`content-md-proto`, `export-proto`). Keep the new; delete the old:
+
+1. **Extract shared slate/md helpers.** `prototype-mapping.mjs` imports
+   `{ tagOf, mdParser, blockToSlate, slateToMd, fmtTagAttrs, renderTable }` from
+   `blockmd.mjs` (format-agnostic primitives). Move them to `lib/slate-md.mjs`;
+   repoint the new engine — so `blockmd.mjs` can be deleted without losing them.
+2. **Drop the directive branch in the loader.** `markdown-mount.mjs`'s
+   `decodeAuto` is `… ? decodePage : mdToPage`; remove the `mdToPage` arm so the
+   loader only reads the `<block>` format, and drop the `blockmd.mjs` import.
+3. **Port `sync`'s behavior into the loader FIRST** (prerequisite for deleting
+   `sync`): `sync.mjs` holds `resolveMarkdownLink` (`.md`→`/docs/…` dead-link
+   fix). Move it into the loader/decode path, or those links 404 post-delete.
+4. **Decide how the docs `data.json` is produced without `sync`.** Today `sync`
+   generates it from `.md` and `sync:docs:check` (a CI step) guards it. Once
+   `sync` is gone, either the docs are served through the loader (markdown mount,
+   no committed docs JSON) or the docs JSON is generated by the loader's
+   distribution emitter — and the `sync:docs:check` CI step is replaced by a
+   loader round-trip check. This is the real decision behind the deletion.
+5. **Delete the old pipeline:** `sync.mjs`, `blockmd.mjs`, `docs/content-md/`,
+   `export-tree.mjs`/`import-tree.mjs`/`convert.mjs`/`diag.mjs`/`check-parity.mjs`.
+   - check: JSON mounts and markdown mounts both load + validate; the docs render;
+     no `:::` directive references remain.
 
 ## Key finding (tested 2026-08-17, not assumed)
 
@@ -89,9 +191,12 @@ readable enough to hand/AI-author.
    `inka-site/content` (14 multi-node slates + any shape issues), so the deployed
    content — not just docs — is covered.
    - check: discovery on the marketing tree is slate/shape 0.
-7. **Retire scaffolding.** Delete the committed JSON trees, `sync.mjs`,
-   `export-proto`/`export-tree`/`convert`/`check-*`/`normalize-*`, the duplicate
-   `content-md`/`content-md-proto` copies — keep one loader + one validator.
+7. **Retire scaffolding.** Delete the old directive dialect + `sync` per
+   "Consolidate the two markdown dialects" and "Deleted at the end — and what
+   STAYS" above. Keep JSON-as-a-mount-format, the one `<block>` markdown source
+   tree, the one loader, and the one validator (validator already unified). The
+   new exporter (`export-proto`) and proto checks stay as long as markdown is
+   generated for review; they retire only once markdown is frozen as the source.
 
 ## Example-code path (removes the last sync step)
 
@@ -137,12 +242,24 @@ Loader change: when a codeExample tab's body is a `{literalinclude}` directive,
 read the referenced file for the code (else use the inline fence, for hand-
 written doc-only snippets). Sphinx needs no change.
 
-## Deleted at the end
+## Deleted at the end — and what STAYS
 
-`sync.mjs`, `docs/content/content/**` + `inka-site/content/**` (JSON as source),
-`build-distribution-content.mjs`, the prototype scripts, the duplicate md trees.
-(The `docs/examples/examples/**` renderer files STAY — they're the source, now
-referenced by `{literalinclude}` instead of copied.)
+**Deleted:** `sync.mjs`; the old directive dialect (`blockmd.mjs`, `content-md`,
+`export-tree`/`import-tree`/`convert`/`diag`/`check-parity`);
+`build-distribution-content.mjs`; the redundant one-off scripts (`normalize-*`
+once folded); and the committed docs/site **JSON-as-source** trees *iff* step-4
+decides the docs are loader-served from markdown (else they're generated by the
+distribution emitter, not hand-committed).
+
+**Stays (not deleted):**
+- **JSON as a mount format** — test fixtures and any dev-authored JSON content;
+  the loader + the one validator handle JSON and markdown identically.
+- **One markdown tree** — the `<block>` prototype source (`content-md-proto`
+  becomes *the* source, not a generated copy). Only the old `content-md`
+  directive tree goes.
+- **`docs/examples/examples/**` renderer files** — the source, referenced by
+  `{literalinclude}` instead of copied.
+- **One loader + one validator** (validator already unified — see Done).
 
 ## Risks
 

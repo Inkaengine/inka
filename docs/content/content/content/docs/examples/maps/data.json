@@ -157,7 +157,7 @@
           "@id": "ref-maps-schema-javascript-45f9f0",
           "label": "Schema",
           "language": "javascript",
-          "code": "{\n  \"maps\": {\n    \"blockSchema\": {\n      \"properties\": {\n        \"url\": {\n          \"title\": \"Map Embed URL\"\n        },\n        \"title\": {\n          \"title\": \"Title\",\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}"
+          "code": "{\n  \"maps\": {\n    \"blockSchema\": {\n      \"properties\": {\n        \"url\": {\n          \"title\": \"Map Embed URL\",\n          \"widget\": \"url\"\n        },\n        \"title\": {\n          \"title\": \"Title\",\n          \"type\": \"string\"\n        }\n      }\n    }\n  }\n}"
         }
       ]
     },
@@ -198,12 +198,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  export let block;\n</script>\n\n<div data-block-uid={block['@uid']} class=\"maps-block\">\n  {#if block.url}\n    <iframe\n      src={block.url}\n      title={block.title || 'Map'}\n      allowfullscreen\n      loading=\"lazy\"\n      style=\"width: 100%; height: 450px; border: none\"\n    />\n  {:else}\n    <p>No map URL set</p>\n  {/if}\n</div>"
-        },
-        {
-          "@id": "ref-maps-rendering-astro-6e7b3c",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\nconst { block } = Astro.props;\n---\n<div class=\"maps-block\">\n  {block.url ? (\n    <iframe\n      src={block.url}\n      title={block.title || 'Map'}\n      allowfullscreen\n      loading=\"lazy\"\n      style=\"width: 100%; height: 450px; border: none\"\n    />\n  ) : (\n    <p>No map URL set</p>\n  )}\n</div>"
         }
       ]
     },

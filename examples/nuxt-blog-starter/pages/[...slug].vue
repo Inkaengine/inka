@@ -68,7 +68,11 @@ import { useRuntimeConfig } from "#imports"
 // old component's `data` ref, so admin's resent FORM_DATA lands in the
 // wrong instance and the new instance never gets populated).
 definePageMeta({
-  key: (route) => route.path.replace(/\/@pg_[^/]+_\d+/g, ''),
+  // `|| '/'` so a ROOT-page paging URL ("/@pg_<id>_<n>") strips to "/" — the same
+  // key as the un-paged root "/". Without it the strip yields "", a DIFFERENT key
+  // from "/", so Nuxt remounts and re-fetches an empty path (a blank page) the
+  // moment you page the root document's grid.
+  key: (route) => route.path.replace(/\/@pg_[^/]+_\d+/g, '') || '/',
 });
 
 const runtimeConfig = useRuntimeConfig();
@@ -184,28 +188,6 @@ onMounted(() => {
 
         if (isHydraIframe) {
             const newBlocks = {
-                hello_from_the_other_side: {
-                    id: 'hello_from_the_other_side',
-                    title: 'Hello from the other side',
-                    group: 'common',
-                    icon: 'test', // Invalid icon string - fallback to block.svg
-                    blockSchema: {
-                        required: ['title'],
-                        fieldsets: [
-                            {
-                                id: 'default',
-                                title: 'Default',
-                                fields: ['title'],
-                                required: ['title'],
-                            },
-                        ],
-                        properties: {
-                            title: {
-                                title: "My field title",
-                            },
-                        },
-                    },
-                },
                 eventMetadata: {
                     id: 'eventMetadata',
                     title: 'Event Metadata',
@@ -280,10 +262,26 @@ onMounted(() => {
             });
             const bridge = initBridge({
                 debug: new URLSearchParams(window.location.search).has('_hydra_debug'),
+                // A design system's own text styles (#295). Declared here because
+                // stored content carrying `styleName` is validated against EVERY
+                // frontend that serves it: block-sanity asks whether an author
+                // could have produced it, and a style no menu offers fails that
+                // — correctly. The shared fixtures use these, so the example
+                // frontends that run block-sanity declare them.
+                voltoConfig: {
+                    settings: {
+                        slate: {
+                            styleMenu: {
+                                blockStyles: [{ cssClass: 'lead', label: 'Lead' }],
+                                inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }],
+                            },
+                        },
+                    },
+                },
                 page: {
                     schema: {
                         properties: {
-                            items: {
+                                                        items: {
                                 title: 'Blocks',
                                 allowedBlocks: [...new Set(['slate', 'image', 'separator', 'video', 'gridBlock', 'teaser', 'listing', 'summary', 'default', 'section', 'contextNavigation', ...pageLevelBlocks])],
                                 allowedTemplates: ['/_test_data/templates/test-layout'],
@@ -302,7 +300,7 @@ onMounted(() => {
                     },
                 },
                 blocks: newBlocks,
-                pathToApiPath: (path) => path.replace(/\/@pg_[^/]+_\d+/, ''),
+                pathToApiPath: (path) => path.replace(/\/@pg_[^/]+_\d+/, '') || '/',
                 // Pass onEditChange before init() sends INIT to avoid race condition
                 onEditChange: (page) => {
                     if (!page) return;

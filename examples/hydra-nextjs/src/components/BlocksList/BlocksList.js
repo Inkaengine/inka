@@ -4,8 +4,11 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import SlateBlock, { SlateInline } from "@/components/SlateBlock";
 import CodeExampleBlock from "@/components/CodeExampleBlock/CodeExampleBlock";
+import CookieConsentBlock from "@/components/CookieConsentBlock/CookieConsentBlock";
 import { expandTemplatesSync, expandListingBlocks, ploneFetchItems, staticBlocks, contentPath } from "#utils/helpers";
+import { isEditMode } from "#utils/hydra";
 import SwiperSlider from "@/components/SwiperSlider";
+import { pageFromPath } from "#utils/paging";
 
 // Template context for nested block expansion
 const TemplateContext = createContext({ templates: {}, templateState: {} });
@@ -87,8 +90,22 @@ function imageProps(block, backendBaseUrl) {
     image_url = `${image_url}/@@images/preview_image`;
     return { url: image_url };
   } else if ("@id" in block) {
-    // Image reference without scales
+    // Image reference with only a base path — a relation field ships
+    // [{ "@id": "/images/penguin1.jpg" }] with no scales and no @type. The @id is
+    // the Image object; its bytes live at @@images/image (the bare path 404s), so
+    // add the scale suffix now, mirroring the hasPreviewImage branch above. The
+    // final @type-driven suffix below can't help here — there is no @type.
     image_url = block["@id"];
+    image_url = image_url.startsWith("/") ? `${backendBaseUrl}${image_url}` : image_url;
+    if (
+      !image_url.includes("@@images") &&
+      !image_url.includes("@@download") &&
+      !image_url.includes("@@display-file") &&
+      !image_url.startsWith("data:")
+    ) {
+      image_url = `${image_url}/@@images/image`;
+    }
+    return { url: image_url };
   } else if (block?.download) {
     image_url = block.download;
   } else if (block?.url && block["@type"] === "image") {
@@ -140,13 +157,15 @@ function imageProps(block, backendBaseUrl) {
   } else if (block?.url && block?.image_field) {
     image_url = `${image_url}/@@images/${block.image_field}`;
   } else if (
-    block["@type"] === "image" &&
+    (block["@type"] === "image" || block["@type"] === "Image") &&
     !image_url.includes("@@images") &&
     !image_url.includes("@@download") &&
     !image_url.includes("@@display-file") &&
     !image_url.startsWith("data:")
   ) {
-    // Image block without scale info - add default image scale
+    // Image block / Plone Image reference without scale info — add the default
+    // image scale. Accept both the block @type "image" and the content @type
+    // "Image" (capital), as nuxt's imageProps does.
     image_url = `${image_url}/@@images/image`;
   }
 
@@ -280,6 +299,7 @@ function Paging({ paging, buildUrl, onNavigate }) {
               href={buildUrl(paging.prev)}
               className="paging-prev"
               data-linkable-allow
+              data-block-selector={`-${paging.size || 1}`}
               onClick={(e) => handleClick(e, paging.prev)}
               style={{ padding: "0.25rem 0.75rem", border: "1px solid #d1d5db", borderRadius: "4px 0 0 4px", color: "#6b7280", backgroundColor: "#fff" }}
             >
@@ -311,6 +331,7 @@ function Paging({ paging, buildUrl, onNavigate }) {
               href={buildUrl(paging.next)}
               className="paging-next"
               data-linkable-allow
+              data-block-selector={`+${paging.size || 1}`}
               onClick={(e) => handleClick(e, paging.next)}
               style={{ padding: "0.25rem 0.75rem", border: "1px solid #d1d5db", borderRadius: "0 4px 4px 0", color: "#6b7280", backgroundColor: "#fff" }}
             >
@@ -327,6 +348,16 @@ function Paging({ paging, buildUrl, onNavigate }) {
 
 const DEFAULT_PAGE_SIZE = 6;
 
+// Build a paging path. STRIP any trailing slash from the context first: a root
+// context ("/") would otherwise give "/" + "/@pg_…" = "//@pg_…", a
+// protocol-relative URL the browser reads as a host (the "@" splits userinfo),
+// so history.pushState throws SecurityError. Latent until the bridge could
+// actually click the pager to reveal an off-page child; now it can.
+const buildPagingPath = (contextPath, id, page) =>
+  page === 0
+    ? contextPath || "/"
+    : `${(contextPath || "/").replace(/\/+$/, "")}/@pg_${id}_${page}`;
+
 function ListingBlock({ id, block, data, apiUrl, contextPath }) {
   const [items, setItems] = useState([]);
   const [paging, setPaging] = useState(null);
@@ -335,11 +366,7 @@ function ListingBlock({ id, block, data, apiUrl, contextPath }) {
   // Read initial page from URL on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const path = window.location.pathname;
-      const match = path.match(new RegExp(`@pg_${id}_(\\d+)`));
-      if (match) {
-        setCurrentPage(parseInt(match[1], 10));
-      }
+      setCurrentPage(pageFromPath(window.location.pathname, id));
     }
   }, [id]);
 
@@ -359,29 +386,100 @@ function ListingBlock({ id, block, data, apiUrl, contextPath }) {
     });
   }, [id, block, apiUrl, contextPath, currentPage]);
 
-  const buildPagingUrl = useCallback((page) => {
-    const cp = contextPath || "/";
-    if (page === 0) return cp;
-    return `${cp}/@pg_${id}_${page}`;
-  }, [id, contextPath]);
+  const buildPagingUrl = useCallback((page) => buildPagingPath(contextPath, id, page), [id, contextPath]);
 
   const handleNavigate = useCallback((page) => {
     setCurrentPage(page);
     // Update URL without full page reload
     if (typeof window !== "undefined") {
-      const url = page === 0 ? (contextPath || "/") : `${contextPath || "/"}/@pg_${id}_${page}`;
-      window.history.pushState({}, "", url);
+      window.history.pushState({}, "", buildPagingPath(contextPath, id, page));
     }
   }, [id, contextPath]);
 
   if (!items.length && !paging) return null;
   return (
     <>
-      {items.map((item) => (
-        <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+      {/* Key by the item, not by the block. expandListingBlocks gives every
+          item the LISTING's uid — deliberately, so the bridge addresses them
+          all as that block — so @uid is the same string for all of them and
+          React duplicates or omits children. @id is the content each item is.
+          The uid still goes to `id`, which is what the bridge reads. */}
+      {items.map((item, index) => (
+        <Block key={item["@id"] ?? `${item["@uid"] ?? "item"}-${index}`} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
       ))}
       <Paging paging={paging} buildUrl={buildPagingUrl} onNavigate={handleNavigate} />
     </>
+  );
+}
+
+// ─── Grid Block ──────────────────────────────────────────────────────────────
+// A grid pages its children the SAME way whether or not one of them is a listing:
+// staticBlocks windows the static children (threading `seen`), and a listing child
+// pages through ListingBlock. Paging is not conditional on a listing — a plain
+// grid of cards renders a pager and pages just like a grid with a listing, so a
+// child on a later page has a data-block-selector control the bridge can reveal it
+// through.
+function GridBlock({ id, block, data, apiUrl, contextPath }) {
+  const [currentPage, setCurrentPage] = useState(0);
+  useEffect(() => {
+    if (typeof window !== "undefined") setCurrentPage(pageFromPath(window.location.pathname, id));
+  }, [id]);
+
+  const layout = block.blocks_layout?.items || [];
+  const blocks = block.blocks || {};
+  const start = currentPage * DEFAULT_PAGE_SIZE;
+  const hasListing = layout.some((cid) => blocks[cid]?.["@type"] === "listing");
+
+  // A grid pages ALL its children as ONE combined window. When a listing is
+  // present its items must be FETCHED, so we window the whole layout through
+  // expandListingBlocks (async) — which walks the layout, fetches each listing
+  // and windows every manual child inline against the running position. A
+  // manual block AFTER a listing therefore lands on whatever page the listing's
+  // item count pushes it to, and the bridge reveals it by paging the grid. A
+  // pure-static grid needs no fetch, so it windows synchronously through
+  // staticBlocks — same paging, SSR-friendly, no hydration flash. Paging is not
+  // conditional on a listing; only whether the window is fetched async is.
+  const [asyncItems, setAsyncItems] = useState(null);
+  const [asyncPaging, setAsyncPaging] = useState(null);
+  useEffect(() => {
+    if (!hasListing) return;
+    const fetchItems = { listing: ploneFetchItems({ apiUrl: apiUrl || "", contextPath: contextPath || "/" }) };
+    expandListingBlocks(layout, {
+      blocks,
+      fetchItems,
+      itemTypeField: "variation",
+      paging: { start, size: DEFAULT_PAGE_SIZE },
+    }).then((res) => {
+      setAsyncItems(res.items || []);
+      setAsyncPaging(res.paging || null);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, block, apiUrl, contextPath, start, hasListing]);
+
+  let items;
+  let paging;
+  if (hasListing) {
+    items = asyncItems || [];
+    paging = asyncPaging;
+  } else {
+    const res = staticBlocks(layout, { blocks, paging: { start, size: DEFAULT_PAGE_SIZE } });
+    items = res.items;
+    paging = res.paging;
+  }
+
+  const buildPagingUrl = (page) => buildPagingPath(contextPath, id, page);
+  const handleNavigate = (page) => {
+    setCurrentPage(page);
+    if (typeof window !== "undefined") window.history.pushState({}, "", buildPagingUrl(page));
+  };
+
+  return (
+    <div data-block-uid={id} data-block-container="{}" className="grid-block" style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(layout.length, 4)}, 1fr)`, gap: "1rem" }}>
+      {items.map((item, index) => (
+        <Block key={item["@id"] ?? `${item["@uid"] ?? "cell"}-${index}`} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+      ))}
+      <Paging paging={paging} buildUrl={buildPagingUrl} onNavigate={handleNavigate} />
+    </div>
   );
 }
 
@@ -409,6 +507,11 @@ function AccordionBlock({ id, block, data, apiUrl, contextPath }) {
       {panels.map((panel, i) => {
         const children = expand(panel.blocks_layout?.items || [], panel.blocks || {});
         const isOpen = !!openPanels[panel["@uid"]];
+        // What the toggle button can reveal: the panel itself and every block
+        // inside it, since the editor can select any of them from the document
+        // tree while the panel is closed. The bridge clicks this handle to open
+        // the panel before measuring the selected block.
+        const revealTargets = [panel["@uid"], ...(panel.blocks_layout?.items || [])].join(" ");
         return (
           <div key={panel["@uid"] || i} data-block-uid={panel["@uid"]} style={{ border: "1px solid #e5e7eb" }}>
             <h2>
@@ -416,6 +519,7 @@ function AccordionBlock({ id, block, data, apiUrl, contextPath }) {
                 type="button"
                 onClick={() => toggle(panel["@uid"])}
                 aria-expanded={isOpen ? "true" : "false"}
+                data-block-selector={revealTargets}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
                   width: "100%", padding: "1.25rem", fontWeight: 500, cursor: "pointer",
@@ -430,13 +534,18 @@ function AccordionBlock({ id, block, data, apiUrl, contextPath }) {
                 </svg>
               </button>
             </h2>
-            {isOpen && (
-              <div style={{ padding: "1.25rem", borderTop: "1px solid #e5e7eb" }}>
-                {children.map((item) => (
-                  <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
-                ))}
-              </div>
-            )}
+            {/* A closed panel HIDES its content, it does not unmount it. The
+                blocks inside are real blocks the editor can select from the
+                document tree, and a selected block that isn't in the DOM has no
+                rect, no toolbar and nothing to reveal — so the bridge can never
+                bring it into view. display:none is what hydra expects here. */}
+            <div
+              style={{ padding: "1.25rem", borderTop: "1px solid #e5e7eb", display: isOpen ? "block" : "none" }}
+            >
+              {children.map((item) => (
+                <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+              ))}
+            </div>
           </div>
         );
       })}
@@ -444,9 +553,50 @@ function AccordionBlock({ id, block, data, apiUrl, contextPath }) {
   );
 }
 
+// ─── Callout Block (note / tip / warning / important admonition) ─────────────
+// A callout is a container: its body is a region of child blocks (blocks_layout),
+// each rendered through <Block>. Without this the callout — and its child slate —
+// never rendered on nextjs, so the block-sanity reveal of the child timed out.
+const CALLOUT_LEVELS = {
+  note: { label: "Note", color: "#2563eb", bg: "#eff6ff" },
+  tip: { label: "Tip", color: "#059669", bg: "#ecfdf5" },
+  warning: { label: "Warning", color: "#d97706", bg: "#fffbeb" },
+  important: { label: "Important", color: "#dc2626", bg: "#fef2f2" },
+};
+
+function CalloutBlock({ id, block, data, apiUrl, contextPath }) {
+  const expand = useExpand();
+  const level = CALLOUT_LEVELS[block.variation] || CALLOUT_LEVELS.note;
+  const children = expand(block.blocks_layout?.items || [], block.blocks || {});
+  return (
+    <aside
+      data-block-uid={id}
+      className={`callout callout--${block.variation || "note"}`}
+      style={{ borderLeft: `4px solid ${level.color}`, background: level.bg, padding: "12px 16px", borderRadius: 4, margin: "1em 0" }}
+    >
+      <div style={{ fontWeight: 700, color: level.color, textTransform: "uppercase", fontSize: "0.8em", letterSpacing: "0.05em", marginBottom: 4 }}>
+        {level.label}
+      </div>
+      <div>
+        {children.map((item) => (
+          <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 // ─── Form Block (with state tracking, validation, submit) ────────────────────
 
 function FormBlock({ id, block, data, apiUrl, contextPath }) {
+  // Editing is a browser fact — isEditMode() reads window.name / ?_edit, and the
+  // server has neither — so this stays false through the first render and
+  // matches the HTML the server sent. Flipping it after mount is what adds the
+  // stand-ins, which is why a visitor's page never contains one at all.
+  const [showHiddenFields, setShowHiddenFields] = useState(false);
+  useEffect(() => {
+    setShowHiddenFields(isEditMode());
+  }, []);
   const expand = useExpand();
   const formFields = expand(block.subblocks || [], null, "field_id");
 
@@ -690,7 +840,17 @@ function FormBlock({ id, block, data, apiUrl, contextPath }) {
                 </div>
               )}
               {field.field_type === "hidden" && (
-                <input type="hidden" name={field.field_id} value={field.value || ""} />
+                <>
+                  <input type="hidden" name={field.field_id} value={field.value || ""} />
+                  {/* A hidden field has no visual form, so the block had no
+                      size and the author had nothing to click. Shown — marked
+                      as hidden — only while editing, so a visitor's page
+                      carries no trace of it. */}
+                  {showHiddenFields && <div className="hidden-field-standin">
+                    <span className="hidden-field-badge">Hidden</span>
+                    <span data-edit-text="label">{field.label}</span>
+                  </div>}
+                </>
               )}
             </div>
           ))}
@@ -727,6 +887,26 @@ function SearchBlock({ id, block, data, apiUrl, contextPath }) {
     const formData = new FormData(e.target);
     setSearchText(formData.get("SearchableText") || "");
   };
+
+  // A block that exists ONLY once a question has been asked — the quick-answer
+  // region. The input carries the sample question (data-block-selector-input)
+  // and the submit button the uid, so the editor can reveal it by asking; a
+  // React-controlled input is exactly the case setDeclaredValue's native
+  // setter exists for. In-place here (state), no navigation.
+  const quickAnswerUid = block.blocks_layout?.quickAnswer?.[0] || "";
+  const quickAnswerChild = quickAnswerUid ? block.blocks?.[quickAnswerUid] : null;
+  const revealProps = quickAnswerUid
+    ? { "data-block-selector": quickAnswerUid }
+    : {};
+  const revealInputProps = quickAnswerUid && block.quickAnswerSample
+    ? { ...revealProps, "data-block-selector-input": block.quickAnswerSample }
+    : {};
+  const quickAnswer = quickAnswerUid && quickAnswerChild && searchText ? (
+    <div data-block-uid={quickAnswerUid} className="quick-answer"
+      style={{ margin: "1rem 0", padding: "0.75rem", backgroundColor: "#eef3fb", borderRadius: "0.5rem" }}>
+      <div data-edit-text="answer">{quickAnswerChild.answer || ""}</div>
+    </div>
+  ) : null;
 
   const handleSortChange = (e) => {
     setSortOn(e.target.value);
@@ -851,12 +1031,14 @@ function SearchBlock({ id, block, data, apiUrl, contextPath }) {
         {block.showSearchInput && (
           <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
             <input type="text" name="SearchableText" placeholder="Search..." defaultValue={searchText}
+              {...revealInputProps}
               style={{ flex: 1, padding: "0.5rem 1rem", border: "1px solid #d1d5db", borderRadius: "0.5rem" }} />
-            <button type="submit" style={{ padding: "0.5rem 1rem", backgroundColor: "#2563eb", color: "#fff", borderRadius: "0.5rem", border: "none" }}>
+            <button type="submit" {...revealProps} style={{ padding: "0.5rem 1rem", backgroundColor: "#2563eb", color: "#fff", borderRadius: "0.5rem", border: "none" }}>
               Search
             </button>
           </form>
         )}
+        {quickAnswer}
         <div style={{ display: "flex", gap: "1.5rem", flexDirection: block.variation === "facetsRightSide" ? "row-reverse" : "row" }}>
           {facets.length > 0 && (
             <aside className="search-facets" style={{ width: "16rem", flexShrink: 0 }}>
@@ -902,12 +1084,14 @@ function SearchBlock({ id, block, data, apiUrl, contextPath }) {
       {block.showSearchInput && (
         <form onSubmit={handleSearchSubmit} style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
           <input type="text" name="SearchableText" placeholder="Search..." defaultValue={searchText}
+            {...revealInputProps}
             style={{ flex: 1, padding: "0.5rem 1rem", border: "1px solid #d1d5db", borderRadius: "0.5rem" }} />
-          <button type="submit" style={{ padding: "0.5rem 1rem", backgroundColor: "#2563eb", color: "#fff", borderRadius: "0.5rem", border: "none" }}>
+          <button type="submit" {...revealProps} style={{ padding: "0.5rem 1rem", backgroundColor: "#2563eb", color: "#fff", borderRadius: "0.5rem", border: "none" }}>
             Search
           </button>
         </form>
       )}
+      {quickAnswer}
       {facets.length > 0 && (
         <>
           {block.facetsTitle && <h3 data-edit-text="facetsTitle" style={{ fontWeight: 600, marginBottom: "0.75rem", color: "#374151" }}>{block.facetsTitle}</h3>}
@@ -939,6 +1123,15 @@ function SearchBlock({ id, block, data, apiUrl, contextPath }) {
     </div>
   );
 }
+
+/**
+ * Stand-in for an image block that has no image yet: a transparent-grey SVG with
+ * real intrinsic dimensions, so it lays out like the image it will become and
+ * gives the author something to click. Kept at module scope — a data URI rebuilt
+ * per render would change identity and churn the DOM.
+ */
+const IMAGE_BLOCK_PLACEHOLDER =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect width='400' height='300' fill='%23e5e7eb'/%3E%3C/svg%3E";
 
 // ─── Block Component ─────────────────────────────────────────────────────────
 
@@ -990,7 +1183,13 @@ function Block({ block, id, data, apiUrl, contextPath }) {
     // ── Image ──
     case "image": {
       const imgProps = imageProps(block, apiUrl);
-      const src = imgProps.url || "";
+      // An image block with no image still renders one — a grey placeholder at
+      // the shape a real image would take. This block exists to hold an image,
+      // so the author has to be able to click it to set one, and a block that
+      // renders nothing has no box to click and no toolbar to reveal from.
+      // That is NOT the always-render hack #296 forbids: that rule is about
+      // OPTIONAL fields (a hero's image), which stay absent until revealed.
+      const src = imgProps.url || IMAGE_BLOCK_PLACEHOLDER;
       const href = getUrl(block.href, apiUrl);
       return (
         <div
@@ -1109,8 +1308,15 @@ function Block({ block, id, data, apiUrl, contextPath }) {
           <div className="teaser-content">
             {teaserTitle && (
               <a href={teaserHref} data-edit-link="href">
+                {/* head_title is a schema field like any other, so it needs the
+                    annotation that makes it editable. Rendering it bare put the
+                    author in the worst position: the kicker is right there on
+                    screen, visibly part of the teaser they are editing, and
+                    clicking it does nothing at all. */}
                 {block.head_title && (
-                  <div className="teaser-head-title">{block.head_title}</div>
+                  <div className="teaser-head-title" data-edit-text="head_title">
+                    {block.head_title}
+                  </div>
                 )}
                 <h2 className="teaser-title" data-edit-text="title">
                   {teaserTitle}
@@ -1153,28 +1359,48 @@ function Block({ block, id, data, apiUrl, contextPath }) {
     }
 
     // ── Grid Block ──
-    case "gridBlock": {
-      const gridLayout = block.blocks_layout?.items || [];
-      const gridChildren = gridLayout.map((childId) => {
-        const childBlock = block.blocks?.[childId];
-        if (!childBlock) return null;
-        if (childBlock["@type"] === "listing") {
-          return { id: childId, block: childBlock, isListing: true };
-        }
-        const items = expand([childId], block.blocks || {});
-        return { id: childId, items, isListing: false };
-      }).filter(Boolean);
+    case "gridBlock":
+      return <GridBlock id={id} block={block} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
+
+    // ── Section — a plain container: a wrapper and the blocks it holds ──
+    case "section": {
+      const sectionChildren = expand(block.blocks_layout?.items || [], block.blocks || {});
       return (
-        <div data-block-uid={id} data-block-container="{}" className="grid-block" style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(gridLayout.length, 4)}, 1fr)`, gap: "1rem" }}>
-          {gridChildren.map((entry) =>
-            entry.isListing ? (
-              <ListingBlock key={entry.id} id={entry.id} block={entry.block} data={data} apiUrl={apiUrl} contextPath={contextPath} />
-            ) : (
-              entry.items.map((item) => (
-                <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
-              ))
-            )
-          )}
+        <section data-block-uid={id} data-block-container="{}" className="section-block">
+          {sectionChildren.map((item) => (
+            <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+          ))}
+        </section>
+      );
+    }
+
+    // ── Context navigation — its entries are child blocks: `navItem`s written by
+    // hand, or a `listing` that generates them from a query. Both are rendered
+    // as blocks, so each keeps its own data-block-uid and stays selectable.
+    case "contextNavigation": {
+      const navChildren = expand(block.blocks_layout?.items || [], block.blocks || {});
+      return (
+        <nav
+          data-block-uid={id}
+          data-block-container="{}"
+          className="context-navigation-block"
+          aria-label={block.ariaLabel || "Section navigation"}
+        >
+          {navChildren.map((item) => (
+            <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+          ))}
+        </nav>
+      );
+    }
+
+    // ── Nav item — one entry of a contextNavigation ──
+    case "navItem": {
+      const navHref = getUrl(block.href, apiUrl);
+      return (
+        <div data-block-uid={id} className="nav-item-block">
+          <a href={navHref || "#"} data-edit-link="href" data-edit-text="label">
+            {block.label || ""}
+          </a>
         </div>
       );
     }
@@ -1182,6 +1408,9 @@ function Block({ block, id, data, apiUrl, contextPath }) {
     // ── Accordion ──
     case "accordion":
       return <AccordionBlock id={id} block={block} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
+
+    case "callout":
+      return <CalloutBlock id={id} block={block} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
 
     // ── Slider ──
     case "slider": {
@@ -1206,6 +1435,40 @@ function Block({ block, id, data, apiUrl, contextPath }) {
       return <SearchBlock id={id} block={block} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
 
     // ── Slate Table ──
+    case "objectBlocks": {
+      // Fields grouped under a widget:'object' (#245). The headline (slate) and
+      // href (link) live directly on block.content; the body is a blocks_layout
+      // region nested at content.blocks_layout.body over content.blocks. Field
+      // paths use the `content/...` object-descent form, so the annotations name
+      // the path hydra writes back to — not a flat field name.
+      const content = block.content || {};
+      const body = expand(content.blocks_layout?.body || [], content.blocks || {});
+      return (
+        <div data-block-uid={id} className="object-blocks-block">
+          {/* A div, not a heading: slate renders <p>, and a <p> inside an <h3>
+              is invalid — the browser relocates it, server and client disagree,
+              and React drops the subtree ("Expected server HTML to contain a
+              matching <p> in <div>"), taking the nested blocks with it. Vue
+              tolerates the same markup, which is why only this frontend broke. */}
+          {(content.headline || []).length > 0 && (
+            <div className="ob-headline" data-edit-text="content/headline">
+              <SlateNodes value={content.headline} />
+            </div>
+          )}
+          {content.href !== undefined && (
+            <a data-edit-link="content/href" href={content.href || "#"}>
+              Object link
+            </a>
+          )}
+          <div className="object-blocks-body">
+            {body.map((item) => (
+              <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     case "slateTable": {
       const rows = expand(block.table?.rows || [], null, "key");
       return (
@@ -1234,6 +1497,28 @@ function Block({ block, id, data, apiUrl, contextPath }) {
               })}
             </tbody>
           </table>
+        </div>
+      );
+    }
+
+    // ── Suggest — the vocabularySelect worked example. The live type-ahead
+    // is the docs' SuggestBlock; here the resting markup renders and stays
+    // editable. ──
+    case "suggest": {
+      return (
+        <div data-block-uid={id} className="suggest">
+          <label htmlFor={`${id}-input`} data-edit-text="label">
+            {block.label || ""}
+          </label>
+          <input
+            id={`${id}-input`}
+            name="answer"
+            type="text"
+            defaultValue={block.value || ""}
+            aria-autocomplete="list"
+            autoComplete="off"
+          />
+          <ul className="suggest__list" hidden></ul>
         </div>
       );
     }
@@ -1275,8 +1560,13 @@ function Block({ block, id, data, apiUrl, contextPath }) {
           className="highlight-block"
           style={{ position: "relative", overflow: "hidden", borderRadius: "8px" }}
         >
+          {/* data-edit-media on BOTH branches: the backdrop element exists either
+              way (it is the block's background), so annotating it costs no extra
+              markup and is the only way this image is editable at all — as a CSS
+              background it has no <img> for the editor to aim at. */}
           {highlightImgProps.url ? (
             <div
+              data-edit-media="image"
               style={{
                 position: "absolute", inset: 0,
                 backgroundImage: `url(${highlightImgProps.url})`,
@@ -1284,7 +1574,7 @@ function Block({ block, id, data, apiUrl, contextPath }) {
               }}
             />
           ) : (
-            <div style={{ position: "absolute", inset: 0, backgroundColor: block.color || "#f0f0f0" }} />
+            <div data-edit-media="image" style={{ position: "absolute", inset: 0, backgroundColor: block.color || "#f0f0f0" }} />
           )}
           <div style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.5)" }} />
           <div style={{ position: "relative", padding: "4rem 1rem", textAlign: "center", color: "#fff" }}>
@@ -1310,7 +1600,13 @@ function Block({ block, id, data, apiUrl, contextPath }) {
 
     // ── Video ──
     case "video": {
-      const videoUrl = block.url || "";
+      // A doc video ships a relative Plone download path
+      // (/docs/static/hydra-demo.mp4/@@download/file). Left relative it resolves
+      // to the nextjs origin (:3007) and 404s — the backend serves it, so prepend
+      // the API base for a root-relative URL, exactly as imageProps does. An
+      // absolute URL (a YouTube link) is left untouched.
+      const rawVideoUrl = block.url || "";
+      const videoUrl = rawVideoUrl.startsWith("/") ? `${apiUrl}${rawVideoUrl}` : rawVideoUrl;
       const ytId = getYouTubeId(videoUrl);
       return (
         <div data-block-uid={id} className="video-block">
@@ -1390,6 +1686,12 @@ function Block({ block, id, data, apiUrl, contextPath }) {
     // ── Code Example ──
     case "codeExample":
       return <CodeExampleBlock id={id} block={block} />;
+
+    // ── Cookie Consent ──
+    // The two halves it words are rendered outside its element, each opened by
+    // the trigger that names the field it holds.
+    case "cookieConsent":
+      return <CookieConsentBlock id={id} block={block} SlateNodes={SlateNodes} />;
 
     // ── Empty ──
     case "empty":

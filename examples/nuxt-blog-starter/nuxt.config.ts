@@ -7,30 +7,14 @@ const hydraJsPath = resolve(__dirname, '../../packages/hydra-js')
 const helpersPath = resolve(__dirname, '../../packages/helpers')
 const fixturesPath = resolve(__dirname, '../../tests-playwright/fixtures')
 
-// Where the edit SPA talks to. The defaults reproduce the public demo
-// deployment, so building with no env set behaves exactly as before.
-//
-// Read at BUILD time, not runtime: the edit build is a static SPA (nitro
-// preset 'static'), so Nuxt's usual NUXT_PUBLIC_* runtime overrides can't
-// reach it — these values are baked into the bundle.
-const BACKEND_URL = process.env.NUXT_TEST_BACKEND || 'https://hydra-api.pretagov.com'
-const ADMIN_URL =
-  process.env.NUXT_ADMIN_URL ||
-  (process.env.NUXT_TEST_BACKEND ? 'http://localhost:3001' : 'https://hydra.pretagov.com')
-
-// The edit SPA loads images from the backend and calls both backend and admin,
-// so the CSP allow-list is DERIVED from those two rather than hard-coded.
-// Deriving it means pointing a deployment at a different backend cannot leave
-// a stale allow-list silently blocking every request — which is what the
-// previous hard-coded hydra.pretagov.com list did to any other deployment.
-const EDIT_CSP_SOURCES = ["'self'", 'data:', BACKEND_URL, ADMIN_URL]
-
-// @nuxt/image's `domains` takes bare hostnames, not URLs. Throws on a
-// malformed value rather than silently producing an allow-list that blocks
-// every image.
-const hostOf = (url: string) => new URL(url).host
-const BACKEND_HOST = hostOf(BACKEND_URL)
-const ADMIN_HOST = hostOf(ADMIN_URL)
+// The mock API and admin origins the test/edit profiles talk to. package.json's
+// dev:test already takes these ports from HYDRA_MOCK_API_PORT /
+// HYDRA_VOLTO_SSR_PORT, but the CSP below hardcoded 8888/3001 — so running the
+// example on any other port block (as a parent repo must, to avoid binding
+// hydra's defaults) had every API fetch blocked by CSP: no content, and a null
+// deref in onEditChange that reads as "the frontend never rendered".
+const MOCK_API_ORIGIN = `http://localhost:${process.env.HYDRA_MOCK_API_PORT || 8888}`;
+const ADMIN_ORIGIN = `http://localhost:${process.env.HYDRA_VOLTO_SSR_PORT || 3001}`;
 
 export default defineNuxtConfig({
   nitro: {
@@ -47,47 +31,6 @@ export default defineNuxtConfig({
       // instance, so 2 keeps the build faster than serial without
       // overwhelming a cold instance.
       concurrency: 2,
-    },
-  },
-
-  hooks: {
-    // Tell the prerenderer which routes exist, by asking the API.
-    //
-    // Without this the SSG shipped THREE files: nitro crawls outward from '/',
-    // and this site's header renders its navigation as <button> elements that
-    // open JS panels — there is not a single <a href> to a content page for a
-    // crawler to follow. So /docs and everything under it 404'd on the
-    // published site while existing perfectly well in the API.
-    //
-    // Enumerating from @search is also just more honest than crawling: a page
-    // that nothing happens to link to is still a page, and should still be
-    // built.
-    async 'nitro:config'(nitroConfig: any) {
-      if (nitroConfig.dev) return
-      // The edit build is a SPA — one shell serves every route, so prerendering
-      // content routes there would be pointless work. netlify-build.sh sets
-      // NUXT_EDIT_BASE_URL only for that pass.
-      if (process.env.NUXT_EDIT_BASE_URL) return
-
-      const res = await fetch(`${BACKEND_URL}/++api++/@search?b_size=9999`, {
-        headers: { Accept: 'application/json' },
-      })
-      if (!res.ok) {
-        // Fail the build rather than silently shipping a three-page site.
-        throw new Error(
-          `Could not enumerate routes for prerender: ${BACKEND_URL} returned ${res.status}`,
-        )
-      }
-      const { items = [] } = await res.json()
-      const routes = items
-        .map((i: any) => i['@id'].replace(BACKEND_URL, '').replace(/^\/\+\+api\+\+/, ''))
-        .filter((p: string) => p.startsWith('/'))
-
-      nitroConfig.prerender ||= {}
-      nitroConfig.prerender.routes = [
-        ...new Set([...(nitroConfig.prerender.routes || []), ...routes]),
-      ]
-      console.log(`[prerender] ${routes.length} routes from ${BACKEND_URL}`)
     },
   },
   app: {
@@ -131,8 +74,8 @@ export default defineNuxtConfig({
           security: {
             headers: { // Edit site can be put in an iframe
               contentSecurityPolicy: {
-                'img-src': EDIT_CSP_SOURCES,
-                'connect-src': EDIT_CSP_SOURCES,
+                'img-src': ["'self'", "data:", 'https://hydra.pretagov.com', 'https://hydra-api.pretagov.com', ADMIN_ORIGIN, MOCK_API_ORIGIN],
+                'connect-src': ["'self'", "data:", 'https://hydra.pretagov.com', 'https://hydra-api.pretagov.com', ADMIN_ORIGIN, MOCK_API_ORIGIN],
                 'frame-ancestors': ['*']
               },
               crossOriginResourcePolicy: "cross-origin",
@@ -144,10 +87,13 @@ export default defineNuxtConfig({
       runtimeConfig: {
         public: {
           image_alias: '',
-          // Set NUXT_TEST_BACKEND / NUXT_ADMIN_URL at build time to point a
-          // deployment elsewhere; the CSP above follows automatically.
-          backendBaseUrl: BACKEND_URL,
-          adminUrl: ADMIN_URL,
+          // Override API URL for test builds (NUXT_TEST_BACKEND env var)
+          backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://hydra-api.pretagov.com',
+          // The admin's port is overridable like every other (ports.ts), and a
+          // literal 3001 pointed test builds at whatever else was on it.
+          adminUrl: process.env.NUXT_TEST_BACKEND
+            ? `http://localhost:${process.env.HYDRA_VOLTO_SSR_PORT || 3001}`
+            : 'https://hydra.pretagov.com',
         }
       },
       image: {
@@ -179,8 +125,8 @@ export default defineNuxtConfig({
           security: {
             headers: {
               contentSecurityPolicy: {
-                'img-src': ["'self'", "data:", 'http://localhost:3001', 'http://localhost:8888', 'https://placehold.co'],
-                'connect-src': ["'self'", "data:", 'http://localhost:3001', 'http://localhost:8888'],
+                'img-src': ["'self'", "data:", ADMIN_ORIGIN, MOCK_API_ORIGIN, 'https://placehold.co'],
+                'connect-src': ["'self'", "data:", ADMIN_ORIGIN, MOCK_API_ORIGIN],
                 'frame-ancestors': ['*']
               },
               crossOriginResourcePolicy: "cross-origin",
@@ -193,8 +139,8 @@ export default defineNuxtConfig({
       runtimeConfig: {
         public: {
           image_alias: '',
-          backendBaseUrl: 'http://localhost:8888',
-          adminUrl: 'http://localhost:3001',
+          backendBaseUrl: MOCK_API_ORIGIN,
+          adminUrl: ADMIN_ORIGIN,
         }
       },
       image: {
@@ -206,8 +152,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       image_alias: '_plone_', // needed so we don't use image alias when no SSR
-      backendBaseUrl: BACKEND_URL,
-      adminUrl: ADMIN_URL,
+      backendBaseUrl: 'https://hydra-api.pretagov.com',
+      adminUrl: 'https://hydra.pretagov.com',
     },
   },
   css: ['/assets/css/main.css'],
@@ -224,12 +170,9 @@ export default defineNuxtConfig({
   // },
   image: {
     provider: 'ipx',
-    // Derived, not hard-coded: IPX refuses to fetch from a domain that isn't
-    // listed, so a deployment pointed at another backend would silently lose
-    // every image if this list still named only the demo hosts.
-    domains: [BACKEND_HOST, ADMIN_HOST],
+    domains: ['hydra-api.pretagov.com','hydra.pretagov.com'],
     alias: {
-      '_plone_': BACKEND_URL
+      '_plone_': "https://hydra-api.pretagov.com"
     }
   },
   experimental: {

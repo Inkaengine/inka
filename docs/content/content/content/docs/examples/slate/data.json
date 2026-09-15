@@ -66,6 +66,14 @@
               "text": ""
             },
             {
+              "children": [
+                {
+                  "text": ""
+                }
+              ],
+              "type": "em"
+            },
+            {
               "text": ""
             },
             {
@@ -281,7 +289,7 @@
           "@id": "ref-text-schema-javascript-6ffd2e",
           "label": "Schema",
           "language": "javascript",
-          "code": "{\n  \"slate\": {\n    \"blockSchema\": {\n      \"properties\": {\n        \"value\": {\n          \"title\": \"Text\",\n          \"widget\": \"slate\"\n        }\n      }\n    }\n  }\n}"
+          "code": "{\n  \"slate\": {\n    \"blockSchema\": {\n      \"properties\": {\n        \"value\": {\n          \"title\": \"Text\",\n          \"widget\": \"slate\",\n          \"type\": \"array\"\n        }\n      }\n    }\n  }\n}"
         }
       ]
     },
@@ -322,12 +330,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<!-- SlateBlock.svelte -->\n<script>\n  import SlateNode from './SlateNode.svelte';\n  export let block;\n</script>\n\n<div data-block-uid={block['@uid']} data-edit-text=\"value\">\n  {#each block.value || [] as node, i (i)}\n    <SlateNode {node} />\n  {/each}\n</div>\n\n<!-- SlateNode.svelte -->\n<script>\n  export let node;\n</script>\n\n{#if node.text !== undefined}\n  {node.text}\n{:else if node.type === 'link'}\n  <a href={node.data?.url} data-node-id={node.nodeId}>{#each node.children || [] as c, i (i)}<svelte:self node={c} />{/each}</a>\n{:else}\n  <svelte:element this={node.type} data-node-id={node.nodeId}>{#each node.children || [] as c, i (i)}<svelte:self node={c} />{/each}</svelte:element>\n{/if}"
-        },
-        {
-          "@id": "ref-slate-rendering-astro-6ff068",
-          "label": "Astro",
-          "language": "astro",
-          "code": "<!-- SlateBlock.astro -->\n---\n/**\n * Slate block: a rich-text editor's value tree. Renders the value array\n * recursively via SlateNode. The `data-edit-text=\"value\"` attribute is\n * the hook the bridge's selection sync uses to pair this DOM element\n * with the block's `value` field for inline editing.\n *\n * Note: this component does NOT set `data-block-uid` — the wrapper in\n * BlockRenderer.astro handles that. Mirrors test-svelte's SlateBlock\n * minus the outer wrapper (which is BlockRenderer's job here).\n */\nimport SlateNode from './SlateNode.astro';\nconst { block } = Astro.props;\nconst value = block?.value || [];\n---\n<div data-edit-text=\"value\"\n>{value.map((node: any) => <SlateNode node={node} />)}</div>\n\n<!-- SlateNode.astro -->\n---\n/**\n * Recursive slate node renderer.\n *\n * Self-recursion: Astro supports a component importing itself, which is\n * how children of a non-link element render. Svelte uses <svelte:self/>\n * for the same purpose — different syntax, same result.\n *\n * Three cases match the bridge's slate transform output:\n *   - text leaf: just its text content\n *   - link: <a href=\"...\" data-node-id=\"...\">\n *   - any other element: <Tag data-node-id=\"...\">  (h1/p/em/strong/...)\n *\n * `data-node-id` is what the bridge's selection sync uses to map\n * iframe DOM nodes back to slate node paths during editing — it MUST\n * end up on the rendered tag.\n */\nimport Self from './SlateNode.astro';\nconst { node } = Astro.props;\nconst Tag = node?.type;\n---\n{node?.text !== undefined ? (\n  node.text\n) : node?.type === 'link' ? (\n  <a href={node.data?.url} data-node-id={node.nodeId}>\n    {(node.children || []).map((c: any) => <Self node={c} />)}\n  </a>\n) : (\n  <Tag data-node-id={node.nodeId}>\n    {(node.children || []).map((c: any) => <Self node={c} />)}\n  </Tag>\n)}"
         }
       ]
     },

@@ -31,6 +31,7 @@ source_suffix = {
 # Exclude patterns
 exclude_patterns = [
     "_build",
+    "_myst",  # generated Sphinx source (gen:myst); built separately, not in-place
     "Thumbs.db",
     ".DS_Store",
     "**/node_modules",

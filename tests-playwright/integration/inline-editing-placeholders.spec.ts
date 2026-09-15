@@ -199,22 +199,6 @@ test.describe('Inline Editing - Placeholders', () => {
     await expect(buttonField).toHaveAttribute('data-placeholder', 'Click to edit');
   });
 
-  test.describe('flake-quarantined on admin-nuxt — height across focus states', () => {
-    // Chronically flaky on admin-nuxt: this branch's CI history shows
-    // ~33% fail-rate on this specific test (5/15 recent runs failing all
-    // retries). Root cause is admin-nuxt's slower iframe round-trip:
-    // clicking back into the field after a blur triggers a selection-
-    // change FORM_DATA echo that drives an `onEditChange` Vue update of
-    // the Nuxt hero block, which can race with `keyboard.type('x')` —
-    // the typing lands on the OLD contenteditable just before Vue
-    // replaces it, so the typed 'x' is lost and `data-empty=""` stays
-    // set on the freshly-rendered (empty) div. Fix belongs in the bridge
-    // (capture-in-flight-typing during a swap) or in the Nuxt example
-    // component, not in PR #229 (Astro example). Bumped retries to 5
-    // until the underlying race is fixed separately.
-    // TODO(follow-up): track typing-during-swap race as its own issue.
-    test.describe.configure({ retries: process.env.CI ? 5 : 0 });
-
     test('field height stays constant across unfocused-empty, focused-empty, and one-line typed states', async ({ page }) => {
     // The whole point of switching the placeholder ::before to
     // `:focus::before { visibility: hidden }` (instead of display:none)
@@ -254,10 +238,17 @@ test.describe('Inline Editing - Placeholders', () => {
     expect(unfocusedEmptyBox).not.toBeNull();
     expect(unfocusedEmptyBox!.height).toBeGreaterThan(10);
 
-    // (b) Empty + focused. Click back into the field. data-empty stays
-    // set (we no longer toggle it on focus); :focus::before hides the
-    // placeholder TEXT via visibility:hidden but the layout space stays.
-    await editField.click();
+    // (b) Empty + focused. Re-enter through enterEditMode rather than a bare
+    // click: clicking back in triggers a selection-change FORM_DATA echo that
+    // re-renders the block, and enterEditMode is the path that waits for
+    // contenteditable + focus to settle afterwards ("polling instead of a
+    // single check to handle race conditions with FORM_DATA re-renders").
+    // Hand-rolling click-then-type here is what made this chronically flaky on
+    // admin-nuxt: the keystroke landed on the contenteditable that was about to
+    // be replaced. data-empty stays set (we no longer toggle it on focus);
+    // :focus::before hides the placeholder TEXT via visibility:hidden but the
+    // layout space stays.
+    const editor = await helper.enterEditMode(blockId);
     const focusedEmptyBox = await editField.boundingBox();
     expect(focusedEmptyBox).not.toBeNull();
     expect(focusedEmptyBox!.height).toBeGreaterThan(10);
@@ -267,14 +258,14 @@ test.describe('Inline Editing - Placeholders', () => {
     // (c) After the first keystroke. data-empty toggles off, ::before
     // disappears, content provides the height. Single-line typed text
     // sits at the same line-height as the placeholder did.
-    await page.keyboard.type('x');
+    await editor.pressSequentially('x', { delay: 10 });
+    await helper.waitForEditorText(editor, /x/);
     await expect(editField).not.toHaveAttribute('data-empty', '', { timeout: 3000 });
     const typedBox = await editField.boundingBox();
     expect(typedBox).not.toBeNull();
     expect(typedBox!.height).toBeGreaterThan(10);
     // Height must NOT jump from focused-empty to one-line typed.
     expect(Math.abs(typedBox!.height - focusedEmptyBox!.height)).toBeLessThan(2);
-    });
   });
 
 

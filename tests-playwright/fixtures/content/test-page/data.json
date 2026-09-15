@@ -58,7 +58,7 @@
       "buttonText": "Click Me",
       "buttonLink": [
         {
-          "@id": "/target-page",
+          "@id": "/_test_data/target-page",
           "title": "Target Page"
         }
       ],
@@ -85,18 +85,12 @@
       "alt": "Linked test image",
       "href": "https://example.com"
     },
-    "block-6-empty-teaser": {
-      "@type": "teaser",
-      "href": [],
-      "title": "",
-      "description": ""
-    },
     "block-7-filled-teaser": {
       "@type": "teaser",
       "overwrite": false,
       "href": [
         {
-          "@id": "/target-page",
+          "@id": "/_test_data/target-page",
           "title": "Target Page",
           "description": "Target page description",
           "hasPreviewImage": false
@@ -112,7 +106,7 @@
           "description": "This is a manually added teaser",
           "href": [
             {
-              "@id": "/target-page",
+              "@id": "/_test_data/target-page",
               "title": "Target Page"
             }
           ]
@@ -164,7 +158,7 @@
           "description": "Teaser in a grid that has variation pre-set to teaser",
           "href": [
             {
-              "@id": "/target-page",
+              "@id": "/_test_data/target-page",
               "title": "Target"
             }
           ]
@@ -230,12 +224,6 @@
         "sort_order": "descending"
       }
     },
-    "skiplogic-test": {
-      "@type": "skiplogicTest",
-      "mode": null,
-      "columns": 1,
-      "basicTitle": "Test Title"
-    },
     "footer-block-1": {
       "@type": "slate",
       "value": [
@@ -263,13 +251,11 @@
       "block-3-uuid",
       "block-4-hero",
       "block-5-linked-image",
-      "block-6-empty-teaser",
       "block-7-filled-teaser",
       "block-8-grid",
       "block-preset-grid",
       "block-9-listing",
-      "block-10-listing-no-mapping",
-      "skiplogic-test"
+      "block-10-listing-no-mapping"
     ],
     "footer": [
       "footer-block-1",

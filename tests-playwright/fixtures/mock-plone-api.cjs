@@ -11,9 +11,24 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { execFileSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
+
+// Every absolute URL this server emits is built from the port it is ACTUALLY
+// listening on. `PORT` is overridable (playwright passes HYDRA_MOCK_API_PORT,
+// see tests-playwright/ports.ts) so a parent project embedding this checkout
+// can move the server off 8888 — and a URL still naming 8888 then points at a
+// dead port, or at whatever unrelated server got there first.
+const API_ORIGIN = `http://localhost:${PORT}`;
+
+// Content fixtures on disk are written against the canonical origin: `@id`s,
+// image `url`s and hrefs all say localhost:8888. That is a storage convention,
+// not a claim about where the server runs, so it is normalised on the way out
+// (see rewriteFixtureOrigin). Covered by tests-playwright/api/fixture-origin.spec.ts.
+const FIXTURE_ORIGIN = 'http://localhost:8888';
 
 /**
  * Parse CONTENT_MOUNTS env variable for multiple content directories
@@ -24,9 +39,16 @@ const PORT = process.env.PORT || 8888;
 function parseContentMounts() {
   const mountsEnv = process.env.CONTENT_MOUNTS;
   if (!mountsEnv) {
+    // Three mounts, most-specific first (mountFor resolves top-down; '/' owns
+    // everything so it must be last):
+    //   /docs        the docs, authored as <block> markdown in the repo docs/ dir
+    //                (one source of truth: readable md + website + Sphinx source)
+    //   /_test_data  block-coverage fixtures the integration tests drive
+    //   /            the test site root — home, search page, layout templates
     return [
-      { mountPath: '/', dirPath: path.join(__dirname, '../../docs/content/content/content') },
+      { mountPath: '/docs', dirPath: path.join(__dirname, '../../docs') },
       { mountPath: '/_test_data', dirPath: path.join(__dirname, 'content') },
+      { mountPath: '/', dirPath: path.join(__dirname, 'site-root') },
     ];
   }
 
@@ -148,8 +170,8 @@ const contentDirMap = {};
 // enrichment, @components, search, @@images, resolveuid -- is unchanged,
 // because it all works on the raw content object.
 //
-// blockmd is ESM and this file is CommonJS, so the module is pulled in with a
-// single dynamic import during startup. `ready` resolves when the trees are
+// The markdown loader is ESM and this file is CommonJS, so it is pulled in with
+// a single dynamic import during startup. `ready` resolves when the trees are
 // loaded; the server awaits it before listening.
 const MARKDOWN_BLOB_MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
@@ -160,10 +182,12 @@ const MARKDOWN_BLOB_MIME = {
 const markdownItems = new Map();   // url path -> raw content
 const markdownBlobs = new Map();   // url path -> absolute blob file
 let ready = Promise.resolve();
-// The ESM loaders (readTree, validateTree, schema) are imported once at startup
-// and held so a mount can be reloaded SYNCHRONOUSLY (on a watcher change or a
-// cache miss) without re-awaiting a dynamic import.
+// The ESM loaders (readTree, checkIntegrity) are imported once at startup and
+// held so a mount can be reloaded SYNCHRONOUSLY (on a watcher change or a cache
+// miss) without re-awaiting a dynamic import.
 let mdRuntime = null;
+// The prototype engine, imported once for the /@export endpoint's markdown mode.
+let engine = null; // { emitPage, parsePrototypes }
 
 // Map UIDs to URL paths (for resolveuid endpoint)
 const uidToPathMap = {};
@@ -208,18 +232,65 @@ function setSessionContent(sessionId, urlPath, content) {
  * Generate a fresh JWT token with 24-hour expiration from now.
  * Called on each login/renew to ensure token is always valid.
  */
+let tokenCounter = 0;
+
+/**
+ * Mint a session token.
+ *
+ * The `jti` is not decoration: every mutation in this mock is scoped to the
+ * caller's token (see getSessionId), and the payload used to be `{sub, exp}`
+ * with `exp` at SECOND granularity — so two logins in the same second produced
+ * a byte-identical token and silently shared one session. Two tests that each
+ * moved the same page then interfered with each other, passing or failing on
+ * where the second boundary happened to fall.
+ */
 function generateAuthToken(username = 'admin') {
   const header = Buffer.from(JSON.stringify({"alg":"HS256","typ":"JWT"})).toString('base64').replace(/=/g, '');
+  tokenCounter += 1;
   const payload = Buffer.from(JSON.stringify({
     "sub": username,
-    "exp": Math.floor(Date.now()/1000) + 86400  // 24 hours from NOW
+    "exp": Math.floor(Date.now()/1000) + 86400,  // 24 hours from NOW
+    "jti": `${Date.now()}-${tokenCounter}`
   })).toString('base64').replace(/=/g, '');
   return `${header}.${payload}.fake-signature`;
+}
+
+/**
+ * Carry a session across a token change.
+ *
+ * Real Plone's @login-renew answers with a fresh JWT, so the mock does too —
+ * but every store here is keyed on the token, and without this a renewal would
+ * strand each edit in the session the caller just stopped using. The admin
+ * renews on a timer, so that would look like edits vanishing at random.
+ */
+function migrateSession(fromToken, toToken) {
+  if (!fromToken || fromToken === toToken) return;
+  const from = `token:${fromToken}`;
+  const to = `token:${toToken}`;
+  for (const store of [
+    sessionContent,
+    sessionBlobs,
+    sessionDeletions,
+    sessionOrder,
+    sessionSharing,
+    sessionWorkingCopies,
+  ]) {
+    if (store[from] !== undefined) store[to] = store[from];
+  }
 }
 
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Increase limit for image uploads
+
+// Normalise the fixtures' baked origin to ours on the way out. Every JSON
+// response goes through res.json, so this is the one place a URL can leave the
+// server — no endpoint has to remember to call the rewrite itself.
+app.use((req, res, next) => {
+  const sendJson = res.json.bind(res);
+  res.json = (body) => sendJson(rewriteFixtureOrigin(body));
+  next();
+});
 
 // Virtual Host Monster path rewriting middleware
 // Volto's proxy adds VHM paths like: /VirtualHostBase/http/localhost:8888/++api++/VirtualHostRoot/@login
@@ -640,12 +711,12 @@ function parseExpand(req) {
   return String(raw).split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function loadContentFromDisk(urlPath, expandList = []) {
+function loadContentFromDisk(urlPath, expandList = [], sessionId) {
   const baseUrl = `http://localhost:${PORT}`;
   const content = loadRawContentFromDisk(urlPath);
   if (!content) return null;
 
-  return enrichContent(content, urlPath, baseUrl, expandList);
+  return enrichContent(content, urlPath, baseUrl, expandList, sessionId);
 }
 
 /**
@@ -653,10 +724,24 @@ function loadContentFromDisk(urlPath, expandList = []) {
  * remainingDepth controls how much of the subtree to include: 0 means no
  * children, 1 means direct children only, etc.
  */
-function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth) {
+/**
+ * The content a @components builder is allowed to read: session first, then
+ * disk, and RAW either way.
+ *
+ * `getContent` is the enriching reader — it attaches @components — so calling it
+ * from inside a component builder is a cycle waiting for the right mount. The
+ * session store wins here for the same reason it wins there: a page renamed or
+ * hidden in this session is renamed or hidden in the menu.
+ */
+function rawContentForComponents(urlPath, sessionId) {
+  const inSession = sessionId ? sessionContent[sessionId]?.[urlPath] : undefined;
+  return inSession || loadRawContentFromDisk(urlPath);
+}
+
+function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth, sessionId) {
   const hasPreviewImage = !!(rawContent.preview_image || rawContent['@type'] === 'Image');
   const children = (remainingDepth > 0 && rawContent.is_folderish !== false)
-    ? getNavigationItems(urlPath, remainingDepth, baseUrl)
+    ? getNavigationItems(urlPath, remainingDepth, baseUrl, sessionId)
     : [];
   return {
     '@id': `${baseUrl}${urlPath}`,
@@ -679,15 +764,41 @@ function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth) {
  * @param {string} basePath - The base path to get navigation for (e.g., '/' or '/pretagov')
  * @param {number} depth - How many levels deep to include (default 1)
  */
-function getNavigationItems(basePath = '/', depth = 1, baseUrlIn) {
+/*
+ * The menu follows the SESSION, not just the disk.
+ *
+ * This took a sessionId at both call sites — `getRootNavigationItems` and the
+ * /@navigation route — and did not declare a fourth parameter, so JavaScript
+ * dropped it and every item came off disk regardless. The plumbing read as
+ * though the menu were session-aware while nothing about it was, which is the
+ * hardest kind of wrong to see: a title renamed and SAVED in an editing session
+ * still came back as its old self, and the only symptom was a demo of "the
+ * pages ARE the menu" where the menu never changed.
+ *
+ * Session content wins where there is any, exactly as the content routes do.
+ * That covers a retitle (the label IS the title), an exclude_from_nav tick, and
+ * a page created or moved in the session — all three of which the menu is
+ * supposed to follow.
+ */
+function getNavigationItems(basePath = '/', depth = 1, baseUrlIn, sessionId) {
   const baseUrl = baseUrlIn || `http://localhost:${PORT}`;
   const normalizedBase = basePath.replace(/\/$/, '') || '/';
   const baseDepth = normalizedBase === '/' ? 0 : normalizedBase.split('/').filter(p => p).length;
 
-  const items = Object.keys(contentDirMap)
+  // Disk AND the session. A page created, moved or pasted in this session exists
+  // only in the session store, so enumerating contentDirMap alone leaves it out
+  // of the menu — cut a page into another folder and the menu goes on showing it
+  // where it was, or not at all. The contents view already unions the two for
+  // the same reason; the menu is the same question asked of the same tree. A
+  // path deleted (or cut away) in this session drops out here too, or the menu
+  // keeps offering a page that is no longer there.
+  const sessionPaths = sessionId ? Object.keys(sessionContent[sessionId] || {}) : [];
+  const candidates = [...new Set([...Object.keys(contentDirMap), ...sessionPaths])];
+  const items = candidates
     .filter((itemPath) => {
       if (itemPath === '/') return false;
       if (itemPath === normalizedBase) return false; // Exclude the base itself
+      if (sessionId && sessionDeletions[sessionId]?.has(itemPath)) return false;
 
       // Check if item is under the base path
       if (normalizedBase !== '/' && !itemPath.startsWith(normalizedBase + '/')) {
@@ -700,13 +811,30 @@ function getNavigationItems(basePath = '/', depth = 1, baseUrlIn) {
       return itemParts.length === baseDepth + 1;
     })
     .map((itemPath) => {
-      const rawContent = loadRawContentFromDisk(itemPath);
+      const rawContent = rawContentForComponents(itemPath, sessionId);
       if (!rawContent) return null;
       if (rawContent.exclude_from_nav) return null;
       if (rawContent['@type'] === 'Image' || rawContent['@type'] === 'File') return null;
-      return formatNavItem(rawContent, itemPath, baseUrl, depth - 1);
+      return formatNavItem(rawContent, itemPath, baseUrl, depth - 1, sessionId);
     })
     .filter(Boolean);
+
+  // An explicit ordering set via @order in THIS session wins over the one on
+  // disk. The contents view already honours it; the menu has to as well, or
+  // reordering pages there reorders the listing and leaves the menu alone —
+  // and the menu IS the content tree, which is the whole point of the gesture.
+  // Items the ordering does not name keep their natural position after the ones
+  // it does, exactly as the contents view treats them.
+  const explicit = sessionId && sessionOrder[sessionId]?.[normalizedBase];
+  if (explicit) {
+    const rank = (item) => {
+      const id = String(item['@id'] || '').split('/').filter(Boolean).pop();
+      const at = explicit.indexOf(id);
+      return at === -1 ? explicit.length : at;
+    };
+    items.sort((a, b) => rank(a) - rank(b));
+    return items;
+  }
 
   // Sort by __metadata__.json ordering (UID→position), preserving
   // contentDirMap key order (filesystem alphabetical) as fallback.
@@ -816,14 +944,83 @@ function buildNavigationComponent(cleanPath, baseUrl, sessionId) {
   };
 }
 
+// Content snapshots per path, grown on PATCH — versions the compare view diffs.
+const contentVersions = new Map();
+
+// How many versions to SYNTHESIZE for a page nobody has edited — so every
+// page's History offers something to compare in demos and dev.
+const SYNTH_VERSIONS = 2;
+
+// Deterministic PRNG (xfnv1a hash -> mulberry32), seeded by path#version:
+// the same synthetic version renders identically every time it is asked for.
+function seededRand(seed) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  return () => {
+    h = (h + 0x6d2b79f5) | 0;
+    let t = Math.imul(h ^ (h >>> 15), 1 | h);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// A plausible OLDER revision, derived deterministically from current content:
+// content grows over time, so version N drops the trailing blocks the later
+// versions "added"; and one paragraph gets a seeded word-swap so copy visibly
+// changed too. Purely synthetic — a real PATCH snapshot always wins.
+function synthesizeVersion(cleanPath, content, version, total) {
+  const rand = seededRand(`${cleanPath}#${version}`);
+  const old = JSON.parse(JSON.stringify(content));
+  const layout = old.blocks_layout && old.blocks_layout.items;
+  if (Array.isArray(layout) && layout.length > 2) {
+    const drop = Math.min(layout.length - 2, total - version);
+    const dropped = layout.splice(layout.length - drop, drop);
+    for (const uid of dropped) delete old.blocks[uid];
+  }
+  // Swap the two longest words in one seeded slate paragraph — visibly
+  // different copy without looking corrupted.
+  const slates = Object.values(old.blocks || {}).filter(
+    (b) => b && b['@type'] === 'slate' && typeof b.plaintext === 'string' && b.plaintext.split(' ').length > 6,
+  );
+  if (slates.length) {
+    const target = slates[Math.floor(rand() * slates.length)];
+    const words = target.plaintext.split(' ');
+    const byLen = words.map((w, i) => [w.length, i]).sort((a, b) => b[0] - a[0]);
+    const [i, j] = [byLen[0][1], byLen[1][1]];
+    [words[i], words[j]] = [words[j], words[i]];
+    const swapped = words.join(' ');
+    target.plaintext = swapped;
+    target.value = [{ type: 'p', children: [{ text: swapped }] }];
+  }
+  old.modified = new Date(Date.parse('2026-01-01T09:00:00Z') + version * 86400000).toISOString();
+  return old;
+}
+
 /**
  * Plone's simple_publication_workflow.
  *
- * Shape comes from tests-adapters/fixtures/plone/workflow_get.resp — a real
- * recorded response. Note what is NOT in it: a transition names no destination
+ * Shape comes from plone.restapi's recorded workflow_get response — see
+ * checking-against-plone.md. Note what is NOT in it: a transition names no destination
  * state, only an @id and a title. Behaviour (which transition leads where) is
  * simulated here because the workflow definition is not over REST at all.
  */
+/**
+ * Plone keeps the trail per WORKFLOW, in a dict keyed by the workflow's id —
+ * `{simple_publication_workflow: [entry, …]}` — not a bare list. Content
+ * exported from a real site therefore arrives carrying `workflow_history: {}`,
+ * and reading that as a list threw ("is not iterable") the moment anything
+ * published a page, taking @history down with it.
+ */
+const SPW_ID = 'simple_publication_workflow';
+
+/** The trail for OUR workflow, whatever shape the content arrived in. */
+function workflowTrail(content) {
+  const history = content?.workflow_history;
+  if (Array.isArray(history)) return history; // a mock-written list, pre-fix
+  if (history && typeof history === 'object') return history[SPW_ID] ?? [];
+  return [];
+}
+
 const SPW = {
   private: [
     { id: 'publish', title: 'Publish', to: 'published' },
@@ -845,7 +1042,13 @@ const STATE_TITLES = {
 
 function buildWorkflowComponent(cleanPath, baseUrl, sessionId) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
-  const content = getContent(cleanPath, sessionId);
+  // RAW, never getContent. getContent enriches, and enrichment builds
+  // @components — including this one. For a mount with no site root on disk
+  // that closes a loop: getContent('/') generates a root, generating it builds
+  // its components, and this builder asks getContent('/') again. Every request
+  // for that root died with "Maximum call stack size exceeded", and a Next
+  // frontend fetches the root for its chrome, so every page did.
+  const content = rawContentForComponents(cleanPath, sessionId);
   const state = content?.review_state || 'published';
   return {
     '@id': `${fullUrl}/@workflow`,
@@ -870,7 +1073,8 @@ function buildWorkflowComponent(cleanPath, baseUrl, sessionId) {
 }
 
 /**
- * Local roles. Shape from tests-adapters/fixtures/plone/sharing_folder_get.resp.
+ * Local roles. Shape from plone.restapi's recorded sharing_folder_get —
+ * see checking-against-plone.md.
  *
  * Entry-major, with a {Role: bool} map per principal — the grid. Transposing
  * that into one field per role is the ADAPTER's job, in both directions.
@@ -885,7 +1089,8 @@ const AVAILABLE_ROLES = [
 const sessionSharing = {};
 
 /**
- * Working copies. Shapes from tests-adapters/fixtures/plone/workingcopy_*.
+ * Working copies. Shapes from plone.restapi's recorded workingcopy_* —
+ * see checking-against-plone.md.
  * A checkout lives at a DIFFERENT path, which is the whole reason the
  * transition has to say where the editing session should go.
  */
@@ -904,6 +1109,12 @@ function getSharing(cleanPath, sessionId) {
   if (stored) return stored;
   return {
     available_roles: AVAILABLE_ROLES,
+    // TWO groups, not one. A sharing matrix with a single row cannot show what
+    // the view is for — you cannot see a role being given to one group and not
+    // another — and `Reviewer: 'global'` is the second thing it has to show: a
+    // role held GLOBALLY, which Plone marks with that string rather than `true`
+    // and which the UI renders as an inherited tick you cannot clear here.
+    // Both were in this mock until the rewrite dropped them.
     entries: [
       {
         disabled: false,
@@ -913,6 +1124,14 @@ function getSharing(cleanPath, sessionId) {
         title: 'Logged-in users',
         type: 'group',
       },
+      {
+        disabled: false,
+        id: 'reviewers',
+        login: null,
+        roles: { ...noRoles(), Reviewer: 'global' },
+        title: 'Reviewers',
+        type: 'group',
+      },
     ],
     inherit: true,
   };
@@ -920,12 +1139,21 @@ function getSharing(cleanPath, sessionId) {
 
 function buildNavrootComponent(cleanPath, baseUrl) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  // The navigation root is the SITE ROOT object, so serialise its real title and
+  // description — Plone does, and a frontend is entitled to read the site's name
+  // out of the response it already has rather than fetching the root itself.
+  // This used to answer `title: 'Site'` regardless, which is a lie a consumer
+  // can only discover by comparing against a real backend: our own frontend had
+  // grown a second request for the site root with a comment explaining that
+  // navroot "would work against Plone and quietly differ under test".
+  const root = loadRawContentFromDisk('/') || {};
   return {
     '@id': `${fullUrl}/@navroot`,
     navroot: {
       '@id': baseUrl,
-      '@type': 'Plone Site',
-      title: 'Site',
+      '@type': root['@type'] || 'Plone Site',
+      title: root.title || 'Site',
+      ...(root.description ? { description: root.description } : {}),
     },
   };
 }
@@ -939,15 +1167,22 @@ function buildTypesComponent() {
  * expand-aware caller (enrichContent) decides which entries are included
  * vs left as @id stubs.
  */
-function generateComponents(urlPath, baseUrl) {
+function generateComponents(urlPath, baseUrl, sessionId) {
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
   return {
-    // No session here: generateComponents builds the expander bundle, which
-    // has no request context. The adapter reads @actions directly, and that
-    // route IS session-aware, so a working copy still reports iterate_checkin.
+    // @actions has no session here on purpose: the adapter reads @actions
+    // directly, and that route IS session-aware, so a working copy still
+    // reports iterate_checkin.
     actions: buildActionsComponent(cleanPath, baseUrl),
     breadcrumbs: buildBreadcrumbsComponent(cleanPath, baseUrl),
-    navigation: buildNavigationComponent(cleanPath, baseUrl),
+    // navigation DOES need it. A frontend reads the menu from `?expand=
+    // navigation` on the page it is rendering, not from the /@navigation
+    // route — so leaving the session out here means the menu is the one on
+    // disk no matter what the editing session has done to it. The route was
+    // made session-aware and this path was not, which is the same bug one
+    // layer up: the two paths this file exists to keep identical drifted
+    // again, and only the one nothing reads was fixed.
+    navigation: buildNavigationComponent(cleanPath, baseUrl, sessionId),
     navroot: buildNavrootComponent(cleanPath, baseUrl),
     types: buildTypesComponent(),
     workflow: buildWorkflowComponent(cleanPath, baseUrl),
@@ -988,6 +1223,32 @@ function resolveUidUrls(obj, parentKey = null) {
     const result = {};
     for (const [key, value] of Object.entries(obj)) {
       result[key] = resolveUidUrls(value, key);
+    }
+    return result;
+  }
+  return obj;
+}
+
+/**
+ * Rewrite the fixtures' canonical origin to the one we are serving from.
+ *
+ * Plone builds absolute URLs from the incoming request, so stored content
+ * never dictates the origin. Our fixtures are static files that had to pick
+ * one, and picked 8888; this is the equivalent normalisation. Only the origin
+ * is touched — paths, and any other host, are left alone.
+ */
+function rewriteFixtureOrigin(obj) {
+  if (API_ORIGIN === FIXTURE_ORIGIN) return obj;
+  if (typeof obj === 'string') {
+    return obj.startsWith(FIXTURE_ORIGIN)
+      ? API_ORIGIN + obj.slice(FIXTURE_ORIGIN.length)
+      : obj;
+  }
+  if (Array.isArray(obj)) return obj.map(rewriteFixtureOrigin);
+  if (obj && typeof obj === 'object') {
+    const result = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = rewriteFixtureOrigin(value);
     }
     return result;
   }
@@ -1218,9 +1479,9 @@ function stubComponents(fullUrl) {
  * Replace stubs for the named components with their fully-expanded bodies.
  * `expandList` is parsed from ?expand= on the incoming request.
  */
-function expandComponents(stubs, expandList, urlPath, baseUrl) {
+function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId) {
   if (!expandList || expandList.length === 0) return stubs;
-  const expanded = generateComponents(urlPath, baseUrl);
+  const expanded = generateComponents(urlPath, baseUrl, sessionId);
   const out = { ...stubs };
   for (const name of expandList) {
     if (expanded[name] !== undefined) out[name] = expanded[name];
@@ -1228,7 +1489,7 @@ function expandComponents(stubs, expandList, urlPath, baseUrl) {
   return out;
 }
 
-function enrichContent(content, urlPath, baseUrl, expandList = []) {
+function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId) {
   // Always use urlPath for @id (includes mount prefix), normalize trailing slash
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
@@ -1270,7 +1531,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = []) {
     'parent': parent,
     'items': childItems,
     'items_total': childItems.length,
-    '@components': expandComponents(stubComponents(fullUrl), expandList, urlPath, baseUrl),
+    '@components': expandComponents(stubComponents(fullUrl), expandList, urlPath, baseUrl, sessionId),
     // Permissions - granted by default, but a fixture may set `_mockPermissions` to model
     // an unauthorized case (e.g. a templates folder the user can't add to, or a template
     // document the user can't modify). This mirrors Plone's per-object permission flags.
@@ -1285,10 +1546,33 @@ function enrichContent(content, urlPath, baseUrl, expandList = []) {
   // 1. Resolve resolveuid/UID references to actual URLs (like Plone's serializer)
   // 2. Turn relation fields into summaries of their target (RelationChoiceFieldSerializer)
   // 3. Add image_scales to anything summary-shaped (image_field + @id)
-  return enrichImageBrains(
-    resolveHrefLinks(summarizeRelations(resolveUidUrls(enriched), baseUrl), baseUrl),
-    baseUrl,
+  // 4. Give every form block the validator catalogue its serializer injects
+  return addFormValidationSettings(
+    enrichImageBrains(
+      resolveHrefLinks(summarizeRelations(resolveUidUrls(enriched), baseUrl), baseUrl),
+      baseUrl,
+    ),
   );
+}
+
+/**
+ * collective.volto.formsupport's form serializer adds `validationSettings` to
+ * every form block on read — the catalogue of settable validators the sidebar
+ * builds its "Rule settings" widget from. It is regenerated on each GET, so it
+ * is a property of the RESPONSE, not of what is stored, and a fixture that
+ * carried one by hand would be testing its own copy instead of the contract.
+ */
+function addFormValidationSettings(node) {
+  if (Array.isArray(node)) return node.map(addFormValidationSettings);
+  if (!node || typeof node !== 'object') return node;
+  const out = {};
+  for (const [key, value] of Object.entries(node)) {
+    out[key] = addFormValidationSettings(value);
+  }
+  if (out['@type'] === 'form') {
+    out.validationSettings = { ...VALIDATION_SETTINGS_CATALOGUE };
+  }
+  return out;
 }
 
 /**
@@ -1393,9 +1677,11 @@ function mountFor(urlPath) {
  *  is what clears deletions. */
 function loadMarkdownMount(mount) {
   if (!mdRuntime) return;
-  const { readTree, validateTree, schema } = mdRuntime;
+  const { readTree, checkIntegrity } = mdRuntime;
   const { mountPath, dirPath } = mount;
-  const { items, blobFiles } = readTree(dirPath);
+  // Pass the mountPath as the link prefix so hand-authored .md cross-links resolve
+  // to the served @ids (a /docs mount serves its tree under /docs, not at root).
+  const { items, blobFiles } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor });
   const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
   for (const [p, item] of items) {
     const urlPath = urlFor(p);
@@ -1409,22 +1695,30 @@ function loadMarkdownMount(mount) {
   }
   for (const [p, file] of blobFiles) markdownBlobs.set(urlFor(p), file);
   console.log(`Registered ${items.size} markdown items from ${dirPath} at ${mountPath}`);
-  // Content validation over the whole loaded tree: blocks_layout integrity, schema
-  // type-check, and cross-tree references. Loud but non-fatal so a --watch restart
-  // (or a reload) surfaces a problem while developing, not at test time.
-  if (process.env.SKIP_CONTENT_VALIDATION !== 'true') {
-    const problems = validateTree(markdownItems, { schema });
-    if (problems.length) {
-      console.log(`[content-check] ${problems.length} problem(s) in markdown content:`);
-      for (const m of problems.slice(0, 30)) console.log(`  ${m}`);
-    }
+}
+
+/** Validate the WHOLE markdown tree at once, via the SAME validator the JSON
+ *  mounts use (plone-content-validator) -- markdown and JSON decode to the same
+ *  content shape, so one validation path serves both. It runs after every
+ *  markdown mount is loaded (not per-mount): a /docs page's cross-link to the
+ *  site root '/' or '/images/*' is only resolvable once the '/' mount is in, so
+ *  a per-mount check would cry false positives on the mount that loads first.
+ *  Loud but non-fatal, so a --watch restart or reload surfaces a real problem
+ *  while developing rather than at test time. */
+function validateMarkdownContent() {
+  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
+  const source = [...markdownItems].map(([rel, data]) => ({ rel, data }));
+  const { errors } = mdRuntime.checkIntegrity(source);
+  if (errors.length) {
+    console.log(`[content-check] ${errors.length} problem(s) in markdown content:`);
+    for (const m of errors.slice(0, 30)) console.log(`  ${m}`);
   }
 }
 
 /** Reload one mount, format-agnostically -- the ContentSource.reload() seam that
  *  both the watcher and the cache-miss path call, so neither is JSON-specific. */
 function reloadMount(mount) {
-  if (isMarkdownMount(mount)) { loadMarkdownMount(mount); return; }
+  if (isMarkdownMount(mount)) { loadMarkdownMount(mount); validateMarkdownContent(); return; }
   if (mount.mountPath !== '/' && fs.existsSync(path.join(mount.dirPath, 'data.json'))) {
     contentDirMap[mount.mountPath] = { dirPath: mount.dirPath, dirName: path.basename(mount.dirPath) };
   }
@@ -1432,20 +1726,41 @@ function reloadMount(mount) {
 }
 
 /** Import the ESM loaders once, hold them, and load every markdown mount. */
+/** Import the prototype engine once (for /@export markdown), independent of
+ *  whether any markdown mounts are configured. */
+async function initEngine() {
+  const { emitPage, parsePrototypes } = await import('../../lib/prototype-mapping.mjs');
+  engine = { emitPage, parsePrototypes };
+}
+
 async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
   if (!mounts.length) return;
-  const { readTree } = await import('../../lib/markdown-mount.mjs');
-  const { validateTree } = await import('../../lib/content-validator.mjs');
+  const { readTree, schemaRegistryFromBlockDefinitions } = await import('../../lib/markdown-mount.mjs');
+  // One validator for both mounts: the JSON tree and the markdown tree decode to
+  // the same content shape, so markdown validates through plone-content-validator
+  // too (checkIntegrity accepts the in-memory [{rel, data}] form).
+  const { checkIntegrity } = require('./plone-content-validator.cjs');
+  // schemaFor lets a `<block type="codeExample" source= format="schema">` show the
+  // real block schema — from shared-block-schemas (the complete registry the
+  // frontends register from, every block type) — so a doc's schema view can't
+  // drift from what renders. ESM, so dynamic import from this CJS module.
   const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
-  const { allBlocksConfig } = await import('./core-block-schemas.js');
-  mdRuntime = { readTree, validateTree, schema: allBlocksConfig(sharedBlocksConfig) };
+  const schemaFor = schemaRegistryFromBlockDefinitions(sharedBlocksConfig);
+  mdRuntime = { readTree, checkIntegrity, schemaFor };
   for (const mount of mounts) loadMarkdownMount(mount);
+  validateMarkdownContent();
 }
 
 // Scan content directories on startup (content loaded on-demand)
 function initContentDirMap() {
   CONTENT_MOUNTS.forEach(({ mountPath, dirPath }) => {
+    // A markdown mount is loaded from its index.md tree by initMarkdownMounts and
+    // must NOT be JSON-scanned: scanContentDir walks for data.json dirs and would
+    // pick up any nested distribution tree (e.g. docs/content/, the generated
+    // deploy artifact that lives inside the docs source dir), double-registering
+    // content the markdown `exclude:` manifest deliberately skips.
+    if (isMarkdownMount({ dirPath })) return;
     // Register the mount point itself if it has a root data.json (e.g., /_test_data folder page).
     // The '/' mount is handled via plone_site_root inside scanContentDir.
     if (mountPath !== '/') {
@@ -1465,7 +1780,7 @@ initContentDirMap();
 // Markdown mounts need a dynamic import, so loading them is async. Anything
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
-ready = initMarkdownMounts();
+ready = Promise.all([initMarkdownMounts(), initEngine()]);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
@@ -1529,12 +1844,14 @@ function getContent(urlPath, sessionId, expandList = []) {
       // unconditionally so the read-time @components reflect the current
       // request's ?expand= choices, like Plone does.
       const baseUrl = `http://localhost:${PORT}`;
-      return enrichContent(stored, urlPath, baseUrl, expandList);
+      return enrichContent(stored, urlPath, baseUrl, expandList, sessionId);
     }
   }
 
-  // Try disk first (distribution content may have a site root)
-  const diskContent = loadContentFromDisk(urlPath, expandList);
+  // Try disk first (distribution content may have a site root). The SESSION
+  // still goes with it: the page may be untouched while a sibling was renamed
+  // or hidden, and the menu on this page has to show that.
+  const diskContent = loadContentFromDisk(urlPath, expandList, sessionId);
   if (diskContent) return diskContent;
 
   // Fall back to generated site root
@@ -1554,11 +1871,14 @@ app.post('/@login-renew', (req, res) => {
     console.log('Token renewal requested');
   }
 
-  // Generate fresh token with new expiration
+  // Fresh token, same session. See migrateSession.
+  const previous = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const renewed = generateAuthToken('admin');
+  migrateSession(previous, renewed);
   res.json({
-    token: generateAuthToken('admin'),
+    token: renewed,
     user: {
-      '@id': `http://localhost:${PORT}/@users/admin`,
+      '@id': `${API_ORIGIN}/@users/admin`,
       id: 'admin',
       fullname: 'Admin User',
       email: 'admin@example.com',
@@ -1584,7 +1904,7 @@ app.post('/@login', (req, res) => {
     const response = {
       token,
       user: {
-        '@id': `http://localhost:${PORT}/@users/${login}`,
+        '@id': `${API_ORIGIN}/@users/${login}`,
         id: login,
         fullname: 'Admin User',
         email: 'admin@example.com',
@@ -1777,6 +2097,224 @@ app.delete('/*', (req, res, next) => {
  * Create new content (e.g., Image upload)
  * Used by ImageWidget for file uploads
  */
+// The plone.exportimport siblings that ride alongside a content tree.
+const DISTRIBUTION_SIBLINGS = ['discussions.json', 'portlets.json', 'principals.json',
+                               'redirects.json', 'relations.json', 'translations.json'];
+// A blob rides in one of these two fields on Image/File content.
+const BLOB_FIELDS = ['image', 'file'];
+// Minimal, importer-valid siblings for a mount that ships none of its own.
+const SIBLING_DEFAULTS = {
+  'discussions.json': {}, 'portlets.json': [], 'principals.json': { groups: [], users: [] },
+  'redirects.json': {}, 'relations.json': [], 'translations.json': [],
+};
+
+/**
+ * Emit a plone.exportimport distribution at `dest/content` from IN-MEMORY items
+ * — the served content shape, not disk. This is the only correct source: a
+ * markdown mount has no exportimport tree on disk (it is decoded into memory at
+ * load), and a mount's on-disk folder layout is not the served layout. Each
+ * item's own data.json is written verbatim (its blob_path is already valid for
+ * its mount, be it UID-keyed from JSON or tree-relative from markdown — the
+ * format only requires blob_path to appear in _blob_files_ with its bytes
+ * present, which this keeps true either way); blob bytes are copied in from
+ * wherever they live via `blobSourceOf`.
+ *
+ * @param {string} dest                       staging dir (content/ is (re)created)
+ * @param {Array<{urlPath, data}>} items       served items, data = data.json shape
+ * @param {(uid:string)=>number|undefined} opts.positionOf  getObjPositionInParent, for ordering
+ * @param {(urlPath,field,blobPath)=>string} opts.blobSourceOf  abs source file for a blob's bytes
+ * @param {string[]} [opts.siblingsFrom]       dirs to copy the 6 siblings from (first that has each wins)
+ * @returns the written __metadata__
+ */
+function writeDistribution(dest, items, { positionOf = () => undefined, blobSourceOf, siblingsFrom = [] } = {}) {
+  const destContent = path.join(dest, 'content');
+  fs.rmSync(destContent, { recursive: true, force: true });
+  fs.mkdirSync(destContent, { recursive: true });
+
+  const dirKeyFor = (urlPath) => (urlPath === '/' ? 'plone_site_root' : urlPath.replace(/^\/+/, ''));
+  const dataFiles = [];
+  const blobFiles = new Set();
+  const localRoles = {};
+  const ordering = {};
+
+  for (const { urlPath, data } of items) {
+    const dirKey = dirKeyFor(urlPath);
+    const itemDir = path.join(destContent, dirKey);
+    fs.mkdirSync(itemDir, { recursive: true });
+
+    // Blobs are normalised to the canonical exportimport layout,
+    // `<item dir>/<field>/<filename>`. A mount's own blob_path can't be trusted
+    // to be safe here: a markdown standalone Image is served at, say,
+    // `/images/p.jpg` with blob_path `images/p.jpg`, so its data.json dir and its
+    // blob file would claim the very same path. Placing the blob under a field
+    // subfolder (as Plone does) removes that collision and unifies both mount
+    // kinds. `data` may be a shared cache object, so rewrite a shallow copy.
+    const out = { ...data };
+    for (const field of BLOB_FIELDS) {
+      const blobPath = data[field] && data[field].blob_path;
+      if (!blobPath) continue;
+      const src = blobSourceOf(urlPath, field, blobPath);
+      if (!src || !fs.existsSync(src)) {
+        throw new Error(`${urlPath}: no bytes for ${field}.blob_path "${blobPath}" (looked at ${src})`);
+      }
+      const filename = (data[field].filename) || path.basename(blobPath);
+      const canonical = `${dirKey}/${field}/${filename}`;
+      const destBlob = path.join(destContent, canonical);
+      fs.mkdirSync(path.dirname(destBlob), { recursive: true });
+      fs.copyFileSync(src, destBlob);
+      blobFiles.add(canonical);
+      out[field] = { ...data[field], blob_path: canonical };
+    }
+
+    fs.writeFileSync(path.join(itemDir, 'data.json'), JSON.stringify(out, null, 2) + '\n');
+    dataFiles.push(`${dirKey}/data.json`);
+    if (data.UID) {
+      // local_roles is constant in this content set; every item is Owner-admin.
+      localRoles[data.UID] = { local_roles: { admin: ['Owner'] } };
+      const pos = positionOf(data.UID);
+      if (pos !== undefined) ordering[data.UID] = pos;
+    }
+  }
+
+  // Parents before children (plone_site_root first) so the importer can attach
+  // each item to an already-created parent.
+  const depthOf = (rel) => (rel.startsWith('plone_site_root/') ? 0 : rel.split('/').length);
+  dataFiles.sort((a, b) => depthOf(a) - depthOf(b) || a.localeCompare(b));
+
+  for (const sib of DISTRIBUTION_SIBLINGS) {
+    const from = siblingsFrom.map((d) => path.join(d, sib)).find((p) => fs.existsSync(p));
+    if (from) fs.copyFileSync(from, path.join(dest, sib));
+    else fs.writeFileSync(path.join(dest, sib), JSON.stringify(SIBLING_DEFAULTS[sib], null, 2) + '\n');
+  }
+
+  const meta = {
+    __version__: '1.0.0',
+    _data_files_: dataFiles,
+    _blob_files_: [...blobFiles].sort(),
+    default_page: {},
+    local_roles: localRoles,
+    ordering,
+    relations: [],
+  };
+  fs.writeFileSync(path.join(destContent, '__metadata__.json'), JSON.stringify(meta, null, 2) + '\n');
+  return meta;
+}
+
+/**
+ * Gather every served content item from memory (JSON items read through their
+ * cache, markdown items straight from the decoded cache — `loadRawContentFromDisk`
+ * unifies both) and emit them as one distribution via `writeDistribution`. Blob
+ * bytes come from `markdownBlobs` for a markdown item, else from the owning JSON
+ * mount's dir (its blob_path is relative to that content root). Returns the
+ * written __metadata__, or null when there is no content to export.
+ */
+function buildDistributionFromMemory(dest) {
+  // Only genuine content-source mounts are exportable: a plone.exportimport tree
+  // (has __metadata__.json) or a markdown tree (has index.md). A loose fixture
+  // mount like /_test_data is neither — it holds intentionally-malformed test
+  // pages and must never end up in a deploy tar. Pick each path's MOST-SPECIFIC
+  // mount (longest matching mountPath), since '/' nominally owns everything.
+  const exportable = (m) => isMarkdownMount(m) || fs.existsSync(path.join(m.dirPath, '__metadata__.json'));
+  const ownerMount = (urlPath) => CONTENT_MOUNTS
+    .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(`${m.mountPath}/`))
+    .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
+
+  const items = [];
+  for (const urlPath of Object.keys(contentDirMap)) {
+    const owner = ownerMount(urlPath);
+    if (!owner || !exportable(owner)) continue;
+    const data = loadRawContentFromDisk(urlPath);
+    if (data) items.push({ urlPath, data });
+  }
+  if (!items.length) return null;
+
+  const blobSourceOf = (urlPath, _field, blobPath) => {
+    if (markdownBlobs.has(urlPath)) return markdownBlobs.get(urlPath);
+    const mount = mountFor(urlPath);
+    return mount ? path.join(mount.dirPath, blobPath) : null;
+  };
+  // Siblings come from any JSON mount that carries them (one level up from its
+  // content dir); a pure-markdown deploy falls back to the defaults.
+  const siblingsFrom = CONTENT_MOUNTS
+    .map((m) => path.join(m.dirPath, '..'))
+    .filter((d) => DISTRIBUTION_SIBLINGS.some((s) => fs.existsSync(path.join(d, s))));
+
+  return writeDistribution(dest, items, {
+    positionOf: (uid) => uidPositionMap[uid],
+    blobSourceOf,
+    siblingsFrom,
+  });
+}
+
+/**
+ * Export the whole content tree (mock-API extra feature). The real Plone
+ * @@export-content answers with a gzipped tar of the plone.exportimport tree
+ * (data.json + __metadata__.json + siblings + blob files), so `format: 'json'`
+ * responds the same way — a deployable distribution, byte-for-byte importable —
+ * emitted from the IN-MEMORY served content across every content-source mount
+ * (JSON or markdown alike, since markdown mounts have no exportimport tree on
+ * disk), and validated before it ships.
+ * `format: 'markdown'` runs each block-bearing item through the prototype engine
+ * and returns a { "/path": markdown } map; the CALLER supplies the prototypes in
+ * the body (`{ matched, tagged }` declaration text) so the mock API needs no
+ * format config of its own.
+ *   POST /@export  { format: 'json'|'markdown', prototypes?: { matched, tagged } }
+ *     json     -> application/gzip  (export.tar.gz: content/**, siblings)
+ *     markdown -> { "/path": markdown string, ... }
+ */
+app.post('/@export', async (req, res) => {
+  await ready;
+  const { format = 'json', prototypes = {} } = req.body || {};
+
+  if (format === 'markdown') {
+    const { emitPage, parsePrototypes } = engine;
+    const protos = [
+      ...parsePrototypes(prototypes.matched || ''),
+      ...parsePrototypes(prototypes.tagged || '', { explicit: true }),
+    ];
+    const out = {};
+    for (const p of Object.keys(contentDirMap)) {
+      const c = loadRawContentFromDisk(p);
+      if (!c || !c.blocks) continue; // only block-bearing content items get a body
+      out[p] = emitPage(protos, { blocks: c.blocks, blocks_layout: c.blocks_layout }).markdown;
+    }
+    return res.json(out);
+  }
+
+  if (format !== 'json') {
+    return res.status(400).json({ error: `unknown format "${format}" (use json|markdown)` });
+  }
+
+  // json: respond exactly like @@export-content — a gzipped tar of the
+  // distribution. Build it in a temp dir, validate, tar, stream, clean up.
+  const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'plone-export-'));
+  try {
+    const merged = buildDistributionFromMemory(staging);
+    if (!merged) {
+      return res.status(409).json({ error: 'no content to export' });
+    }
+    // Never ship a tree the importer would choke on.
+    const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+    const contentDir = path.join(staging, 'content');
+    const v = validate(contentDir);
+    const c = checkIntegrity(contentDir);
+    const errors = [...v.errors, ...c.errors];
+    if (errors.length) {
+      return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
+    }
+    const tarPath = path.join(staging, 'export.tar.gz');
+    // Tar the tree relative to `staging` so paths are content/... and siblings.
+    const members = ['content', ...DISTRIBUTION_SIBLINGS.filter((s) => fs.existsSync(path.join(staging, s)))];
+    execFileSync('tar', ['-czf', tarPath, '-C', staging, ...members]);
+    const buf = fs.readFileSync(tarPath);
+    res.set('Content-Type', 'application/gzip');
+    res.set('Content-Disposition', 'attachment; filename="export.tar.gz"');
+    return res.send(buf);
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
+});
+
 app.post('/*', (req, res, next) => {
   // Skip special endpoints (already handled above or below)
   if (req.path.startsWith('/@') || req.path.includes('/@')) {
@@ -1817,7 +2355,7 @@ app.post('/*', (req, res, next) => {
 
     // Create the image content
     const imageContent = {
-      '@id': `http://localhost:${PORT}${imagePath}`,
+      '@id': `${API_ORIGIN}${imagePath}`,
       '@type': 'Image',
       'UID': `uid-${imageId}`,
       'id': imageId,
@@ -1825,18 +2363,18 @@ app.post('/*', (req, res, next) => {
       'description': body.description || '',
       'image': {
         'content-type': body.image?.['content-type'] || 'image/png',
-        'download': `http://localhost:${PORT}${imagePath}/@@images/image`,
+        'download': `${API_ORIGIN}${imagePath}/@@images/image`,
         'filename': body.image?.filename || 'image.png',
         'height': height,
         'width': width,
         'scales': {
           'preview': {
-            'download': `http://localhost:${PORT}${imagePath}/@@images/image/preview`,
+            'download': `${API_ORIGIN}${imagePath}/@@images/image/preview`,
             'height': 400,
             'width': 400,
           },
           'large': {
-            'download': `http://localhost:${PORT}${imagePath}/@@images/image/large`,
+            'download': `${API_ORIGIN}${imagePath}/@@images/image/large`,
             'height': 800,
             'width': 800,
           },
@@ -1894,7 +2432,7 @@ app.post('/*', (req, res, next) => {
         .replace(/^-+|-+$/g, '');
     const filePath = `${parentPath === '/' ? '' : parentPath}/${fileId}`.replace(/\/+/g, '/');
     const fileContent = {
-      '@id': `http://localhost:${PORT}${filePath}`,
+      '@id': `${API_ORIGIN}${filePath}`,
       '@type': 'File',
       'UID': `uid-${fileId}`,
       'id': fileId,
@@ -1902,7 +2440,7 @@ app.post('/*', (req, res, next) => {
       'description': body.description || '',
       'file': {
         'content-type': body.file?.['content-type'] || 'application/octet-stream',
-        'download': `http://localhost:${PORT}${filePath}/@@download/file`,
+        'download': `${API_ORIGIN}${filePath}/@@download/file`,
         'filename': body.file?.filename || rawName,
         'size': body.file?.data?.length || 0,
       },
@@ -2000,6 +2538,29 @@ app.get('/health', (req, res) => {
 });
 
 /**
+ * GET /embedded-document.html
+ *
+ * A document for a block to EMBED. Served from the API's origin, which is a
+ * different origin from the frontend's, so an iframe pointing here is a real
+ * cross-origin embed — the shape a video, a map or a PDF preview has — and it
+ * always loads, with no third party and no network.
+ *
+ * That matters because an embed that fails to load is not the same test: the
+ * click falls through to the page and the block selects by the ordinary path,
+ * which is how a test for embed selection came to pass without ever exercising
+ * an embed. It is focusable so that clicking it moves focus the way a real
+ * embed's document does.
+ */
+app.get('/embedded-document.html', (req, res) => {
+  res.type('html').send(
+    '<!doctype html><meta charset="utf-8"><title>Embedded document</title>' +
+      '<style>html,body{margin:0;height:100%;font:14px system-ui}' +
+      'main{height:100%;display:grid;place-items:center;background:#eef}</style>' +
+      '<main tabindex="0">An embedded document</main>',
+  );
+});
+
+/**
  * Walk every registered content dir and collect unique `subjects` values
  * across all data.json files. Returns the `{ value: { title } }` shape
  * Plone's @querystring endpoint uses for the Subject (Keywords) index.
@@ -2028,7 +2589,7 @@ function collectSubjectValues() {
  */
 app.get('*/@querystring', (req, res) => {
   res.json({
-    '@id': `http://localhost:${PORT}/@querystring`,
+    '@id': `${API_ORIGIN}/@querystring`,
     'indexes': {
       'portal_type': {
         'title': 'Type',
@@ -2314,7 +2875,7 @@ app.get('*/@querystring', (req, res) => {
  */
 app.get('/@site', (req, res) => {
   res.json({
-    '@id': `http://localhost:${PORT}`,
+    '@id': API_ORIGIN,
     'plone.site_title': 'Plone Site',
     'plone.site_logo': null,
     // Volto 19 reads `plone.default_language` from this response as the
@@ -2322,8 +2883,17 @@ app.get('/@site', (req, res) => {
     // (server.jsx -> toBackendLang(initialLang)). Volto 18 used
     // `config.settings.defaultLanguage` instead — the source moved from
     // frontend config to backend response, so the mock has to provide it.
-    'plone.default_language': 'en',
-    'plone.available_languages': ['en'],
+    'plone.default_language': process.env.MOCK_SITE_DEFAULT_LANGUAGE || 'en',
+    // Defaults to a single-language site (['en']); set MOCK_SITE_LANGUAGES
+    // (comma-separated, e.g. "en,ar,vi,it") to report a multilingual site — the
+    // Google Translate selector only renders when the site advertises 2+
+    // languages. Env-driven so this stays configurable WITHOUT editing this
+    // (submodule) file per run; guarded by our repo's translate specs so a
+    // submodule resync that drops it is caught.
+    'plone.available_languages': (process.env.MOCK_SITE_LANGUAGES || 'en')
+      .split(',')
+      .map((lang) => lang.trim())
+      .filter(Boolean),
   });
 });
 
@@ -2340,7 +2910,7 @@ app.get(/.*\/@workflow$/, (req, res) => {
  * POST /:path/@workflow/:transition
  *
  * The body Plone accepts here is real, not invented — see
- * tests-adapters/fixtures/plone/workflow_post_with_body.req: comment,
+ * plone.restapi's recorded workflow_post_with_body request: comment,
  * effective, expires, include_children.
  */
 app.post(/.*\/@workflow\/[^/]+$/, (req, res) => {
@@ -2360,19 +2930,94 @@ app.post(/.*\/@workflow\/[^/]+$/, (req, res) => {
     });
   }
 
-  const patch = { review_state: move.to };
+  const record = {
+    action: transitionId,
+    actor: 'admin',
+    comments: req.body?.comment ?? '',
+    review_state: move.to,
+    time: new Date().toISOString(),
+    title: STATE_TITLES[move.to] ?? move.to,
+  };
+
+  const patch = {
+    review_state: move.to,
+    // Plone keeps the trail on the object, keyed by workflow id; @history reads
+    // it back from there. Written in Plone's shape so content that round-trips
+    // through the mock stays loadable by a real one.
+    workflow_history: {
+      ...(typeof content.workflow_history === 'object' &&
+      !Array.isArray(content.workflow_history)
+        ? content.workflow_history
+        : {}),
+      [SPW_ID]: [...workflowTrail(content), record],
+    },
+  };
   for (const field of ['effective', 'expires']) {
     if (req.body?.[field]) patch[field] = req.body[field];
   }
   setSessionContent(sessionId, cleanPath, { ...content, ...patch });
 
-  res.json({
-    action: transitionId,
-    actor: 'admin',
-    comments: req.body?.comment ?? '',
-    review_state: move.to,
-    title: STATE_TITLES[move.to] ?? move.to,
-  });
+  res.json(record);
+});
+
+/**
+ * GET /@history/:version — a content SNAPSHOT: what the page held before edit
+ * N+1 (or current for the newest). The compare view renders these in frontend
+ * iframes.
+ */
+app.get(/.*\/@history\/\d+$/, (req, res) => {
+  const match = req.path.match(/^(.*)\/@history\/(\d+)$/);
+  const cleanPath = (match[1].replace('/++api++', '') || '/').replace(/\/+$/, '') || '/';
+  const version = Number(match[2]);
+  const versions = contentVersions.get(cleanPath) || [];
+  const snapshot = versions.find((v) => v.version === version);
+  if (snapshot) return res.json(snapshot.content);
+  const current = getContent(cleanPath, getSessionId(req));
+  if (!current) return res.status(404).json({ error: { type: 'NotFound' } });
+  if (versions.length === 0 && version < SYNTH_VERSIONS) {
+    return res.json(synthesizeVersion(cleanPath, current, version, SYNTH_VERSIONS));
+  }
+  res.json(current);
+});
+
+/**
+ * GET /@history — the version + workflow trail the admin's History view lists.
+ * The workflow half comes off the content's own workflow_history, which is
+ * where a transition wrote it, so the trail grows as the demo publishes and
+ * retracts.
+ */
+app.get(/.*\/@history$/, (req, res) => {
+  const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@history$/, '') || '/').replace(/\/+$/, '') || '/';
+  const content = getContent(cleanPath, getSessionId(req));
+  let versions = contentVersions.get(cleanPath) || [];
+  if (versions.length === 0) {
+    versions = Array.from({ length: SYNTH_VERSIONS }, (_, n) => ({
+      version: n,
+      time: new Date(Date.parse('2026-01-01T09:00:00Z') + n * 86400000).toISOString(),
+    }));
+  }
+  const versioning = versions.map((v) => ({
+    '@id': `http://localhost:${PORT}${cleanPath}/@history/${v.version}`,
+    actor: { '@id': null, fullname: 'Admin User', id: 'admin', username: 'admin' },
+    comments: '',
+    may_revert: true,
+    time: v.time,
+    transition_title: 'Edited',
+    type: 'versioning',
+    version: v.version,
+  }));
+  const workflow = workflowTrail(content).map((h, n) => ({
+    '@id': `http://localhost:${PORT}${cleanPath}/@history/${n + 1}`,
+    action: h.action,
+    actor: { '@id': null, fullname: 'Admin User', id: 'admin', username: 'admin' },
+    comments: h.comments,
+    review_state: h.review_state,
+    state_title: h.title,
+    time: h.time,
+    transition_title: h.title,
+    type: 'workflow',
+  }));
+  res.json([...versioning, ...workflow].sort((a, b) => (a.time < b.time ? 1 : -1)));
 });
 
 app.post(/.*\/@workingcopy$/, (req, res) => {
@@ -2463,20 +3108,16 @@ app.post(/.*\/@sharing$/, (req, res) => {
 
 /**
  * GET /@users/:userid
+ * Get user information
  *
- * Matched with the /++api++ prefix optional, because every OTHER handler here
- * copes with it by stripping req.path and there is no middleware doing it
- * globally. Declared as an exact path, this was the one endpoint that answered
- * only WITHOUT the prefix — so an adapter, which prefixes every call, could
- * never identify its user. Adapter registration calls whoami first, so it died
- * there and took every test with it.
+ * A regex, not a path pattern, because the adapter asks for this with the
+ * ++api++ prefix the rest of its requests carry — and Express reads `+` as a
+ * repeat modifier, so '/++api++/@users/:userid' can never match as a path.
  */
 app.get(/^(?:\/\+\+api\+\+)?\/@users\/([^/]+)$/, (req, res) => {
-  // A regex, not a path pattern: `+` is a repeat modifier in Express's route
-  // syntax, so '/++api++/...' is not a valid pattern at all.
   const userid = req.params[0];
   res.json({
-    '@id': `http://localhost:${PORT}/@users/${userid}`,
+    '@id': `${API_ORIGIN}/@users/${userid}`,
     id: userid,
     fullname: 'Admin User',
     email: 'admin@example.com',
@@ -2537,7 +3178,18 @@ function getTypeSchema(typeName) {
     };
   }
 
-  // Merge base schema fields (only add fields not already defined)
+  // Merge base schema fields (only add fields not already defined).
+  //
+  // schema-base.json is the DEXTERITY BEHAVIOURS every content type carries —
+  // dates, short name, exclude-from-navigation. The site root carries none of
+  // them: it is not a dexterity type. A schema file says so with
+  // `mergeBase: false`, and without that opt-out the site root's settings form
+  // offers an author a publication date and a way to hide the site from its own
+  // menu.
+  if (schema.mergeBase === false) {
+    delete schema.mergeBase;
+    return schema;
+  }
   schema.properties = { ...base.properties, ...schema.properties };
   const existingFieldsetIds = new Set((schema.fieldsets || []).map((f) => f.id));
   for (const fs_ of base.fieldsets || []) {
@@ -2583,7 +3235,21 @@ app.get('/@types/:typeName', (req, res) => {
  * Shortcuts block reads Keywords (Subject) unique values in site-wide mode.
  */
 const VOCAB_ITEMS = {
-  'plone.app.vocabularies.Keywords': ['news', 'plone', 'events'],
+  // Five, not three, and three of them share a prefix on purpose: a type-ahead
+  // is the one caller that asks this endpoint a real question ("what starts
+  // with `new`?"), and with no two terms alike every answer was the whole list —
+  // which cannot tell a working filter from an ignored one.
+  'plone.app.vocabularies.Keywords': [
+    'news',
+    'newsletter',
+    'newsroom',
+    'plone',
+    'events',
+  ],
+  // A second one, so a picker that lists vocabularies has something to choose
+  // BETWEEN — with one entry, "offers the right list" and "offers any list at
+  // all" are the same assertion.
+  'plone.app.vocabularies.ReallyUserFriendlyTypes': ['Document', 'News Item'],
 };
 
 // Optional generated vocabularies, declared by a seed file and switched on
@@ -2612,14 +3278,30 @@ if (process.env.VOCAB_SPEC) {
   );
 }
 
+/**
+ * GET /@vocabularies — the LISTING: every vocabulary this site has, the shape
+ * plone.restapi answers with (`@id` + `title`, no token). A field that picks
+ * WHICH vocabulary to use reads this.
+ */
+app.get('/@vocabularies', (req, res) => {
+  res.json(
+    [...Object.keys(VOCAB_ITEMS), ...Object.keys(GENERATED_VOCABS)].map((name) => ({
+      '@id': `http://localhost:${PORT}/@vocabularies/${name}`,
+      title: name,
+    })),
+  );
+});
+
 app.get('/@vocabularies/:vocab', (req, res) => {
   const generated = GENERATED_VOCABS[req.params.vocab];
   if (generated) {
     // Real Plone filters and batches server-side; so must this, or the
     // contract suite's type-ahead latency assertion is meaningless.
+    // `?title=` is a case-insensitive substring filter in plone.restapi's
+    // serializer — what a type-ahead sends so the server does the narrowing.
     const title = req.query.title;
     const filtered = title
-      ? generated.filter((i) => i.title.includes(title))
+      ? generated.filter((i) => i.title.toLowerCase().includes(String(title).toLowerCase()))
       : generated;
     const size = req.query.b_size ? parseInt(req.query.b_size, 10) : 25;
     const start = req.query.b_start ? parseInt(req.query.b_start, 10) : 0;
@@ -2639,7 +3321,13 @@ app.get('/@vocabularies/:vocab', (req, res) => {
     });
   }
 
-  const values = VOCAB_ITEMS[req.params.vocab] || [];
+  const all = VOCAB_ITEMS[req.params.vocab] || [];
+  // `?title=` is a case-insensitive substring filter in plone.restapi's
+  // serializer — what a type-ahead sends so the server does the narrowing.
+  const title = String(req.query.title || '').toLowerCase();
+  const values = title
+    ? all.filter((v) => v.toLowerCase().includes(title))
+    : all;
   res.json({
     '@id': `http://localhost:${PORT}/@vocabularies/${req.params.vocab}`,
     items: values.map((v) => ({ token: v, title: v })),
@@ -2938,10 +3626,17 @@ app.post('*/@querystring-search', (req, res) => {
         });
       }
       allItems = allItems.filter((item) => new URL(item['@id']).pathname !== contextPath);
-    } else if (index === 'SearchableText' && operation.includes('string.contains')) {
+    } else if (
+      index === 'SearchableText' &&
+      (operation.includes('string.contains') ||
+        operation.includes('string.search'))
+    ) {
       // Full-text search across title/description/id. Mirrors Plone 6.2's
       // plone.app.querystring 3.0.0 wildcard-prefix behavior — each word in
       // the search term must prefix-match a word token in one of those fields.
+      // Both `string.contains` (Standard) and `string.search` (Advanced,
+      // queryType=search) resolve to a SearchableText full-text match; the
+      // block's queryType picks the operation, and both filter here.
       if (value) {
         allItems = allItems.filter((item) => matchSearchableText(value, item));
       }
@@ -3084,19 +3779,38 @@ app.get('*/@search', (req, res) => {
   const pathDepth = req.query['path.depth'];
   const pathQuery = req.query['path.query'];
   const searchableText = req.query['SearchableText'];
+  const titleQuery = req.query['Title'];
   const portalType = req.query['portal_type'];
   const baseUrl = `http://localhost:${PORT}`;
 
   let items;
 
-  // Handle SearchableText (used by ObjectBrowser search input). Plone 6.2
-  // (plone.app.querystring 3.0.0) appends a wildcard to each word and ANDs
-  // the parts — matchSearchableText replicates that on title/description/id.
-  if (searchableText) {
+  // Text queries: SearchableText (used by ObjectBrowser search input) and/or
+  // the Title INDEX alone (`@search?Title=` — what a title autocomplete asks).
+  // Plone 6.2 (plone.app.querystring 3.0.0) appends a wildcard to each word of
+  // SearchableText and ANDs the parts — matchSearchableText replicates that on
+  // title/description/id. The Title index is ZCTextIndex: whole words, with
+  // optional right-truncation (`sea*`) — replicated on the title only.
+  if (searchableText || titleQuery) {
     items = Object.keys(contentDirMap)
       .filter((itemPath) => itemPath !== '/')
-      .map((itemPath) => formatSearchItem(loadContentFromDisk(itemPath), baseUrl))
-      .filter((item) => matchSearchableText(searchableText, item));
+      .map((itemPath) => formatSearchItem(loadContentFromDisk(itemPath), baseUrl));
+    if (searchableText) {
+      items = items.filter((item) => matchSearchableText(searchableText, item));
+    }
+    if (titleQuery) {
+      const terms = String(titleQuery)
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((t) => (t.endsWith('*') ? t.slice(0, -1) : t));
+      items = items.filter((item) => {
+        const words = String(item.title || '')
+          .toLowerCase()
+          .split(/\W+/);
+        return terms.every((t) => words.some((w) => w.startsWith(t)));
+      });
+    }
     // Filter by portal_type if specified
     if (portalType) {
       const types = Array.isArray(portalType) ? portalType : [portalType];
@@ -3233,8 +3947,8 @@ app.get('*/@search', (req, res) => {
   }
 
   const searchUrl = searchPath === '' || searchPath === '/'
-    ? `http://localhost:${PORT}/@search`
-    : `http://localhost:${PORT}${searchPath}/@search`;
+    ? `${API_ORIGIN}/@search`
+    : `${API_ORIGIN}${searchPath}/@search`;
 
   res.json({
     '@id': searchUrl,
@@ -3312,7 +4026,7 @@ app.get('*/@contents', (req, res) => {
   }
 
   res.json({
-    '@id': `http://localhost:${PORT}${contentPath}/@contents`,
+    '@id': `${API_ORIGIN}${contentPath}/@contents`,
     'items': items,
     'items_total': items.length,
   });
@@ -3323,9 +4037,326 @@ app.get('*/@contents', (req, res) => {
  * Form submission endpoint (collective.volto.formsupport)
  * Accepts { block_id, data: [{ field_id, label, value }] }
  */
+// Submissions recorded in memory, keyed by `${contentPath}::${block_id}` —
+// exactly how formsupport keys stored data (its records carry a `block_id` that
+// the CSV export and clear service filter on), so two forms on a page keep
+// separate result sets here too.
+const formSubmissions = new Map();
+
+const submissionKey = (contentPath, blockId) => `${contentPath}::${blockId || ''}`;
+
+/**
+ * Find a block by uid anywhere in a content item's block tree, top level or
+ * nested in a container. Mirrors formsupport's get_block_data, which resolves
+ * against a FLATTENED hierarchy and refuses anything that is not a form block.
+ */
+function findFormBlock(node, blockId) {
+  const blocks = node && node.blocks;
+  if (!blocks || typeof blocks !== 'object') return null;
+  if (blocks[blockId]) {
+    return blocks[blockId]['@type'] === 'form' ? blocks[blockId] : null;
+  }
+  for (const child of Object.values(blocks)) {
+    const found = findFormBlock(child, blockId);
+    if (found) return found;
+  }
+  return null;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * The field `validations` collective.volto.formsupport enforces.
+ *
+ * The real backend registers `Products.validation`'s base validators (minus
+ * `inNumericRange`) as named utilities, plus four custom ones that take a
+ * setting. This reproduces the four settable ones and the regex validators a
+ * form is realistically authored with — enough that a test can prove a rule is
+ * enforced SERVER-side, which is the whole point of moving these off our own
+ * invented `minLength`/`maxLength`/`pattern` keys.
+ *
+ * Messages are the real ones. The backend strips the
+ * `Validation failed(<id>): ` prefix its custom validators emit, so they read
+ * as a continuation of the field's label.
+ */
+const FORM_VALIDATORS = {
+  maxCharacters: (value, s) =>
+    value.length > Number(s.characters)
+      ? `is more than ${s.characters} characters long`
+      : null,
+  minCharacters: (value, s) =>
+    value.length < Number(s.characters)
+      ? `is less than ${s.characters} characters long`
+      : null,
+  maxWords: (value, s) =>
+    (value.match(/\w+/g) || []).length > Number(s.words)
+      ? `is more than ${s.words} words long`
+      : null,
+  minWords: (value, s) =>
+    (value.match(/\w+/g) || []).length < Number(s.words)
+      ? `is less than ${s.words} words long`
+      : null,
+  isEmail: (value) => (EMAIL_RE.test(value) ? null : 'is not a valid email address.'),
+  isURL: (value) => (/^\w+:\/\/\S+$/.test(value) ? null : 'is not a valid url.'),
+  isInt: (value) => (/^[+-]?\d+$/.test(value) ? null : 'is not an integer.'),
+  isDecimal: (value) =>
+    /^([+-]?)(?=\d|[.,]\d)\d*([.,]\d*)?([Ee][+-]?\d+)?$/.test(value)
+      ? null
+      : 'is not a decimal number.',
+  isPrintable: (value) =>
+    /^[a-zA-Z0-9\s]+$/.test(value) ? null : 'contains unprintable characters',
+};
+
+/**
+ * The block-level catalogue the form serializer injects on GET: every settable
+ * validator's parameter, keyed `<validatorId>-<settingName>`. The sidebar builds
+ * the "Rule settings" widget from this, so it has to be present on the block the
+ * editor loads, not just understood at submit time.
+ */
+const VALIDATION_SETTINGS_CATALOGUE = {
+  'maxCharacters-characters': {
+    validation_title: 'maxCharacters',
+    title: 'characters',
+    type: 'integer',
+    default: 0,
+  },
+  'minCharacters-characters': {
+    validation_title: 'minCharacters',
+    title: 'characters',
+    type: 'integer',
+    default: 0,
+  },
+  'maxWords-words': {
+    validation_title: 'maxWords',
+    title: 'words',
+    type: 'integer',
+    default: 0,
+  },
+  'minWords-words': {
+    validation_title: 'minWords',
+    title: 'words',
+    type: 'integer',
+    default: 0,
+  },
+};
+
+/**
+ * Run a field's authored rules, exactly as @submit-form does: the field names
+ * validators in `validations`, and their parameters live in a FLAT
+ * `validationSettings` keyed `<validatorId>-<settingName>` which the backend
+ * splits on the hyphen to rebuild `{validator: {setting: value}}`.
+ *
+ * Returns `{validatorId: message}` — the backend's per-field error shape.
+ */
+function runFieldValidations(field, value) {
+  const names = Array.isArray(field.validations) ? field.validations : [];
+  if (!names.length || !value) return null;
+  const settings = {};
+  for (const [key, val] of Object.entries(field.validationSettings || {})) {
+    const [id, setting] = key.split('-');
+    if (!id || !setting || !names.includes(id)) continue;
+    (settings[id] = settings[id] || {})[setting] = val;
+  }
+  const errors = {};
+  for (const name of names) {
+    const validator = FORM_VALIDATORS[name];
+    if (!validator) continue;
+    const message = validator(String(value), settings[name] || {});
+    if (message) errors[name] = message;
+  }
+  return Object.keys(errors).length ? errors : null;
+}
+
+/**
+ * POST /:path/@submit-form
+ * Form submission endpoint (collective.volto.formsupport).
+ * Accepts { block_id, data: [{ field_id, label, value }], attachments, captcha }
+ *
+ * Records the submission so a test can assert on what the frontend actually
+ * sent, and reproduces the checks formsupport really performs, so a broken
+ * submission fails loudly here instead of silently succeeding:
+ *
+ *  - empty form data (no `data` entries and no attachments) -> 400, as
+ *    collective.volto.formsupport's post adapter does;
+ *  - the honeypot captcha -> 400 unless `captcha.value` is the empty string,
+ *    matching HoneypotSupport.verify;
+ *  - a `from` field whose value is not an address -> 400, matching
+ *    validate_email_fields.
+ *
+ *  - a `block_id` that resolves to no form block -> 400, matching
+ *    validate_form's `block_form_not_found_label`;
+ *  - a form with neither `send` nor `store` -> 400, matching `missing_action`
+ *    ("You need to set at least one form action between send and store"). This
+ *    one is easy to author by accident and impossible to notice until a visitor
+ *    tries to submit.
+ *
+ * The resolved block is also recorded as `block_found`, so a multi-form test can
+ * assert the id pointed at the form it meant.
+ */
 app.post('*/@submit-form', (req, res) => {
+  const contentPath = req.path.replace(/\/@submit-form$/, '') || '/';
+  const body = req.body || {};
+  const blockId = body.block_id;
+  const data = Array.isArray(body.data) ? body.data : [];
+  const attachments = body.attachments || {};
+
   if (process.env.DEBUG) {
-    console.log(`POST @submit-form: path=${req.path}`);
+    console.log(`POST @submit-form: path=${contentPath} block=${blockId}`);
+  }
+
+  const content = loadRawContentFromDisk(contentPath);
+  const block = content ? findFormBlock(content, blockId) : null;
+
+  if (!blockId) {
+    return res.status(400).json({ type: 'BadRequest', message: 'Missing block_id' });
+  }
+
+  if (!block) {
+    return res.status(400).json({
+      type: 'BadRequest',
+      message: `Block with @type "form" and id "${blockId}" not found in this context: ${contentPath}`,
+    });
+  }
+
+  if (!block.store && !block.send) {
+    return res.status(400).json({
+      type: 'BadRequest',
+      message:
+        'You need to set at least one form action between "send" and "store".',
+    });
+  }
+
+  if (data.length === 0 && Object.keys(attachments).length === 0) {
+    return res.status(400).json({ type: 'BadRequest', message: 'Empty form data.' });
+  }
+
+  // HoneypotSupport.verify has two branches, and only one of them is about the
+  // `captcha` object. A frontend that sends one (volto-form-block, and our
+  // Next.js action) is checked on its `value`; a frontend that does not — the
+  // Nuxt example here, for instance — falls back to looking for a FILLED
+  // honeypot field among the submitted data. An absent captcha is not by itself
+  // a rejection, and treating it as one fails every frontend that does not
+  // implement the token.
+  //
+  // The real fallback is `found_honeypot(form, required=True)`, which also
+  // rejects a submission MISSING the field. That rule depends on
+  // collective.honeypot's HONEYPOT_FIELD being configured in the environment —
+  // when it is unset the whole check short-circuits to "pass" — and there is no
+  // such environment here, so this models the "field is present and filled"
+  // half only.
+  if (block.captcha === 'honeypot') {
+    const captcha = body.captcha;
+    const reject = () =>
+      res.status(400).json({ type: 'BadRequest', message: 'Error submitting form.' });
+    if (captcha) {
+      if (typeof captcha.value !== 'string' || captcha.value !== '') return reject();
+    } else {
+      const honeypotId = (block.captcha_props || {}).id;
+      const trap = honeypotId
+        ? data.find((entry) => entry.field_id === honeypotId || entry.label === honeypotId)
+        : null;
+      if (trap && String(trap.value || '') !== '') return reject();
+    }
+  }
+
+  {
+    const emailFields = (block.subblocks || [])
+      .filter((f) => f && f.field_type === 'from')
+      .map((f) => f.field_id);
+    for (const entry of data) {
+      if (emailFields.includes(entry.field_id) && entry.value) {
+        if (!EMAIL_RE.test(String(entry.value))) {
+          return res.status(400).json({
+            type: 'BadRequest',
+            message: `Email not valid in "${entry.label || entry.field_id}" field.`,
+          });
+        }
+      }
+    }
+  }
+
+  // The authored answer rules. A field whose skip-logic condition is not met is
+  // not validated — @submit-form resolves the trigger field first and only
+  // validates the ones it decided to show.
+  {
+    const byId = new Map(
+      (block.subblocks || [])
+        .filter((f) => f && f.field_id)
+        .map((f) => [f.field_id, f]),
+    );
+    const answered = new Map(data.map((e) => [e.field_id, e.value]));
+    const errors = {};
+    for (const entry of data) {
+      const field = byId.get(entry.field_id);
+      if (!field) continue;
+      // Skip logic: the backend looks the trigger up by `id`, so a field
+      // stored without one makes the whole submission fail there. Mirror the
+      // lookup (not the crash) so a missing `id` shows up as a test failure.
+      const when = field.show_when_when;
+      if (when && when !== 'always') {
+        const trigger = (block.subblocks || []).find((f) => f && f.id === when);
+        if (!trigger) {
+          return res.status(400).json({
+            type: 'BadRequest',
+            message: `Field "${field.field_id}" is shown when "${when}", but no field has that id — @submit-form resolves the trigger by id, not field_id.`,
+          });
+        }
+        const target = String(answered.get(trigger.field_id) ?? '');
+        const shown =
+          field.show_when_is === 'value_is_not'
+            ? target !== (field.show_when_to ?? '')
+            : target === (field.show_when_to ?? '');
+        if (!shown) continue;
+      }
+      const fieldErrors = runFieldValidations(field, entry.value);
+      if (fieldErrors) errors[entry.field_id] = fieldErrors;
+    }
+    if (Object.keys(errors).length) {
+      return res.status(400).json({ error: { type: 'Invalid', errors } });
+    }
+  }
+
+  const key = submissionKey(contentPath, blockId);
+  const record = {
+    block_id: blockId,
+    block_found: Boolean(block),
+    data,
+    attachments,
+    captcha: body.captcha,
+    received: formSubmissions.get(key) ? formSubmissions.get(key).length : 0,
+  };
+  formSubmissions.set(key, [...(formSubmissions.get(key) || []), record]);
+
+  res.status(204).end();
+});
+
+/**
+ * GET /:path/@form-data?block_id=...
+ * Read back what was submitted — formsupport's own service, and how a test
+ * asserts that a form posted what it was supposed to. Without `block_id` every
+ * form on the page is returned.
+ */
+app.get('*/@form-data', (req, res) => {
+  const contentPath = req.path.replace(/\/@form-data$/, '') || '/';
+  const blockId = req.query.block_id;
+  const items = [];
+  for (const [key, records] of formSubmissions) {
+    const [path_, block] = key.split('::');
+    if (path_ !== contentPath) continue;
+    if (blockId && block !== blockId) continue;
+    items.push(...records);
+  }
+  res.json({ items, items_total: items.length });
+});
+
+/**
+ * DELETE /:path/@form-data
+ * Clear recorded submissions, so a test can start from a known state.
+ */
+app.delete('*/@form-data', (req, res) => {
+  const contentPath = req.path.replace(/\/@form-data$/, '') || '/';
+  for (const key of [...formSubmissions.keys()]) {
+    if (key.split('::')[0] === contentPath) formSubmissions.delete(key);
   }
   res.status(204).end();
 });
@@ -3410,6 +4441,13 @@ app.get('*/@@images/*', (req, res) => {
   const fieldName = rawField.replace(/-\d+.*$/, '');
   const scale = pathMatch && pathMatch[3] ? pathMatch[3] : 'preview';
 
+  // Bytes uploaded in this session take precedence: they have no directory on
+  // disk, so contentDirMap will never find them.
+  const blob = sessionBlobs[`${getSessionId(req)}:${contentPath}:${fieldName}`];
+  if (blob) {
+    res.set('Content-Type', blob.mime);
+    return res.send(blob.buffer);
+  }
   // A markdown mount keeps the blob as an ordinary file beside the markdown
   // that references it, so there is nothing to resolve.
   if (markdownBlobs.has(contentPath)) {
@@ -3418,14 +4456,6 @@ app.get('*/@@images/*', (req, res) => {
       || 'application/octet-stream');
     res.sendFile(file);
     return;
-  }
-
-  // Bytes uploaded in this session take precedence: they have no directory on
-  // disk, so contentDirMap will never find them.
-  const blob = sessionBlobs[`${getSessionId(req)}:${contentPath}:${fieldName}`];
-  if (blob) {
-    res.set('Content-Type', blob.mime);
-    return res.send(blob.buffer);
   }
 
   // Try to serve actual image file from content directory
@@ -3498,7 +4528,8 @@ app.get('*/@@images/*', (req, res) => {
   });
 });
 
-// @@download — same as @@images, serves image files from content directories
+// @@download — serves a content object's blob for any field directory (an
+// Image's `image/`, a File's `file/`), the way Plone serves @@download/<field>.
 app.get('*/@@download/*', (req, res) => {
   // e.g., /images/quadrant/@@download/image/quadrant.svg -> contentPath=/images/quadrant, fieldName=image
   const pathMatch = req.path.match(/^(.+?)\/@@download\/(\w+)(?:\/.*)?$/);
@@ -3528,6 +4559,11 @@ app.get('*/@@download/*', (req, res) => {
       const mimeTypes = {
         '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
         '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+        // A File's blob is whatever was uploaded — this route serves any field
+        // directory, not only images, and a video block's <video src> points
+        // straight at it.
+        '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
+        '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pdf': 'application/pdf',
       };
       res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
       res.sendFile(imageFile);
@@ -3713,7 +4749,71 @@ app.patch('*', (req, res) => {
   // Reload content from disk to pick up changes during development
   const content = getContent(cleanPath, sessionId);
 
+  // Changing the SHORT NAME renames the object, as Plone does: `id` is a real
+  // field (plone.shortname), and a PATCH that changes it moves the content to a
+  // new path — the old URL stops resolving and the new one starts. Storing the
+  // new id on the old path would leave the page answering at a URL that no
+  // longer matches its own id, and the menu would keep linking to the old one.
+  if (content && req.body?.id && req.body.id !== content.id) {
+    const parent = cleanPath.split('/').slice(0, -1).join('/') || '';
+    const renamedPath = `${parent}/${req.body.id}`;
+    const renamed = { ...content, ...req.body, id: req.body.id };
+    setSessionContent(sessionId, renamedPath, renamed);
+    if (!sessionDeletions[sessionId]) sessionDeletions[sessionId] = new Set();
+    sessionDeletions[sessionId].add(cleanPath);
+    if (renamed.UID) uidToPathMap[renamed.UID] = renamedPath;
+    return res.json(
+      enrichContent(renamed, renamedPath, `http://localhost:${PORT}`, parseExpand(req), sessionId),
+    );
+  }
+
+  // Reordering a folder's children is a PATCH on the CONTAINER carrying
+  // `ordering`, not a call to any @order endpoint — that is what Volto's
+  // contents view sends (actions/content: `data: { ordering: { obj_id, delta,
+  // subset_ids } }`) and what plone.restapi accepts. The mock had an @order
+  // route instead, which nothing calls, so dragging a row reordered the table
+  // in the browser and told the backend nothing: reload and the old order was
+  // back, and the site menu — which the order IS — never moved.
+  if (content && req.body?.ordering?.obj_id) {
+    const { obj_id: objId, delta, subset_ids: subsetIds } = req.body.ordering;
+    const naturalIds = getFolderChildItems(cleanPath, `http://localhost:${PORT}`)
+      .map((item) => String(item['@id'] || '').split('/').filter(Boolean).pop())
+      .filter(Boolean);
+    const current = sessionOrder[sessionId]?.[cleanPath] || naturalIds;
+    // A subset reorders only among the rows it names, leaving the rest put —
+    // the contents view sends one when a filter is on.
+    const scope = Array.isArray(subsetIds) && subsetIds.length ? subsetIds : current;
+    const from = scope.indexOf(objId);
+    if (from !== -1) {
+      const moved = [...scope];
+      moved.splice(from, 1);
+      const to =
+        delta === 'top'
+          ? 0
+          : delta === 'bottom'
+            ? moved.length
+            : Math.max(0, Math.min(moved.length, from + Number(delta)));
+      moved.splice(to, 0, objId);
+      const next =
+        scope === current
+          ? moved
+          : current.map((id) => (subsetIds.includes(id) ? moved.shift() : id));
+      if (!sessionOrder[sessionId]) sessionOrder[sessionId] = {};
+      sessionOrder[sessionId][cleanPath] = next;
+    }
+  }
+
   if (content) {
+    // Version snapshot: the state BEFORE this edit becomes version N (like
+    // CMFEditions). @history lists these; @history/<n> serves them; the
+    // admin's compare view renders any two side by side.
+    const versions = contentVersions.get(cleanPath) || [];
+    versions.push({
+      version: versions.length,
+      time: new Date().toISOString(),
+      content: JSON.parse(JSON.stringify(content)),
+    });
+    contentVersions.set(cleanPath, versions);
     // Emulate Plone's REST deserializer: only fields backed by a registered
     // dexterity field / behavior survive a save. Unknown top-level fields (e.g.
     // an ad-hoc `footer_blocks`) are silently dropped. This is WHY layout
@@ -3771,4 +4871,4 @@ if (require.main === module) {
 }
 
 // Export for use by test frontend server or test harnesses
-module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready };
+module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution };

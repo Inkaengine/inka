@@ -275,7 +275,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "selecting-blocks.md"
+                    "url": "/docs/what-editors-will-experience/selecting-blocks"
                   },
                   "children": [
                     {
@@ -642,7 +642,7 @@
             {
               "type": "link",
               "data": {
-                "url": "selecting-blocks.md"
+                "url": "/docs/what-editors-will-experience/selecting-blocks"
               },
               "children": [
                 {
@@ -886,15 +886,7 @@
               "type": "strong",
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "⬆"
-                    }
-                  ]
-                },
-                {
-                  "text": " button"
+                  "text": "`⬆` button"
                 }
               ]
             },

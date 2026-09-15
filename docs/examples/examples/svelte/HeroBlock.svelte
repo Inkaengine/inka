@@ -9,7 +9,7 @@
 </script>
 
 <!-- Data-driven: render a field only when it has data. No data ⇒ no element, so
-     view markup stays clean. Inka reveals an empty optional field for editing by
+     view markup stays clean. Hydra reveals an empty optional field for editing by
      seeding it, which makes these same checks true — no edit-mode branch needed. -->
 <div data-block-uid={block['@uid']} class="hero-block">
   {#if block.image}

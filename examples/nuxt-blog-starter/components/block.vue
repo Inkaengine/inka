@@ -3,6 +3,12 @@
     <RichText v-for="node in block['value']" :key="node" :node="node" />
   </div>
 
+  <div v-else-if="block['@type'] == 'suggest'" :data-block-uid="block_uid" class="suggest">
+    <label :for="block_uid + '-input'" data-edit-text="label">{{ block.label }}</label>
+    <input :id="block_uid + '-input'" name="answer" type="text" :value="block.value"
+      aria-autocomplete="list" autocomplete="off">
+    <ul class="suggest__list" hidden></ul>
+  </div>
   <div v-else-if="block['@type'] == 'introduction'" :data-block-uid="block_uid"
        data-edit-text="value" class="text-xl text-gray-600 leading-relaxed my-6 border-t border-b border-gray-200 py-4">
     <RichText v-for="node in block.value || []" :key="node" :node="node" />
@@ -108,8 +114,9 @@
         </template>
       </template>
     </div>
-    <!-- Combined paging: reactive via gridPaging (updated by ListingBlock via Object.assign) -->
-    <Paging v-if="gridPaging.totalPages > 1" :paging="gridPaging" :build-url="gridBuildPagingUrl" />
+    <!-- Combined paging. effectiveGridPaging is pure: the static chain's paging for
+         a manual grid, or the ListingBlock-published gridPaging for a listing grid. -->
+    <Paging v-if="effectiveGridPaging.totalPages > 1" :paging="effectiveGridPaging" :build-url="gridBuildPagingUrl" />
   </div>
 
   <!-- Columns container block -->
@@ -142,6 +149,23 @@
        container UX feature tests (wrap, unwrap, edge-drag, convert).
        Inner .section-body wrapper matches the vanilla test-frontend so
        cross-renderer tests can use the same selector. -->
+  <!-- Callout: a labelled admonition (note/tip/warning/important); the body is
+       the `items` region of child blocks, rendered recursively like section. -->
+  <aside v-else-if="block['@type'] == 'callout'" :data-block-uid="block_uid"
+         :class="`callout callout--${block.variation || 'note'}`"
+         style="border-left: 4px solid #2563eb; background: #eff6ff; padding: 12px 16px; border-radius: 4px; margin: 1em 0;">
+    <div class="callout__label" style="font-weight: 700; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.05em; margin-bottom: 4px;">
+      {{ block.variation || 'note' }}
+    </div>
+    <Block v-for="childId in (block.blocks_layout?.items || [])"
+           :key="childId"
+           :block_uid="childId"
+           :block="block.blocks?.[childId]"
+           :data="data"
+           :contained="true"
+           class="my-1" />
+  </aside>
+
   <div v-else-if="block['@type'] == 'section'" :data-block-uid="block_uid">
     <div class="section-body p-3 border border-dashed border-gray-500 rounded">
       <Block v-for="childId in (block.blocks_layout?.items || [])"
@@ -250,12 +274,25 @@
             data-carousel-item
             :style="entry.slide.preview_image ? imageProps(entry.slide, true).class : ''"
             data-block-add="right">
-            <!-- Clickable overlay for preview_image editing -->
-            <div data-edit-media="preview_image" class="absolute inset-0 cursor-pointer" style="z-index: 1;"></div>
+            <!-- Clickable overlay for editing the slide's image. WHICH field that
+                 is depends on the slide: a teaser-ish slide carries
+                 preview_image, but a slide that is an image block carries `url`,
+                 and hardcoding preview_image left image slides with no edit
+                 target at all — uneditable wherever a slider held one. -->
+            <div :data-edit-media="entry.slide['@type'] === 'image' ? 'url' : 'preview_image'"
+                 class="absolute inset-0 cursor-pointer" style="z-index: 1;"></div>
             <div
               class="max-w-sm p-6 bg-slate-200/90 border border-gray-200 m-12 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 absolute"
               :class="{ 'right-0': entry.slide.flagAlign == 'right' }" style="z-index: 2;">
-              <div data-edit-text="head_title">{{ entry.slide.head_title }}</div>
+              <!-- Annotate the field only when the slide has it. A slider holds
+                   blocks, and they disagree about their fields: an `image` slide
+                   is {url, alt} and its schema declares no head_title at all, so
+                   annotating one unconditionally advertised a field that does not
+                   exist. Hydra rightly refuses to make it editable, and the author
+                   is left with a "Click to edit" placeholder that never does.
+                   (Issue #296: no data ⇒ no element. The mock frontend's slide
+                   renderer already guards this the same way.) -->
+              <div v-if="entry.slide.head_title" data-edit-text="head_title">{{ entry.slide.head_title }}</div>
               <h5 :id="`heading-${entry.slide['@uid']}`"
                 class="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white" data-edit-text="title">
                 {{ entry.slide.title }}</h5>
@@ -264,11 +301,17 @@
               <NuxtLink v-if="entry.slide.href" :to="getUrl(entry.slide.href[0])" data-edit-text="buttonText" data-edit-link="href"
                 class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-white bg-blue-700 rounded-lg hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
                 :aria-describedby="`heading-${entry.slide['@uid']}`">
-                {{ entry.slide.buttonText || 'Read More' }}</NuxtLink>
-              <a v-else href="#" data-edit-text="buttonText" data-edit-link="href"
+                {{ entry.slide.buttonText }}</NuxtLink>
+              <!-- Same rule as head_title above. Without a href there is still a
+                   button worth showing if it has a label, but a slide with
+                   neither gets no <a> at all — an image slide has no buttonText
+                   in its schema either, so the annotation was another promise of
+                   editing that could not be kept. The literal 'Read More' hid
+                   this by making an empty field look full. -->
+              <a v-else-if="entry.slide.buttonText" href="#" data-edit-text="buttonText" data-edit-link="href"
                 class="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-white bg-blue-700 rounded-lg hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
                 :aria-describedby="`heading-${entry.slide['@uid']}`">
-                {{ entry.slide.buttonText || 'Read More' }}</a>
+                {{ entry.slide.buttonText }}</a>
             </div>
           </div>
         </template>
@@ -353,13 +396,27 @@
     <!-- Search controls -->
     <div v-if="block.showSearchInput" class="search-controls mb-4">
       <form class="search-form flex gap-2" @submit.prevent="handleSearchSubmit">
+        <!-- The input says WHAT to type, the button says WHICH block that
+             reveals (data-block-selector-input): the quick-answer region only
+             exists once a question has been asked, so the editor reveals it by
+             asking. -->
         <input type="text" name="SearchableText" placeholder="Search..." :value="currentSearchText"
+          :data-block-selector="quickAnswerUid(block) || null"
+          :data-block-selector-input="quickAnswerUid(block) && block.quickAnswerSample ? block.quickAnswerSample : null"
           class="search-input-field flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
         <button type="submit"
+          :data-block-selector="quickAnswerUid(block) || null"
           class="search-submit-button px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
           Search
         </button>
       </form>
+    </div>
+
+    <!-- Rendered only once a question has been asked (URL-driven, like the
+         search itself). -->
+    <div v-if="quickAnswerUid(block) && block.blocks?.[quickAnswerUid(block)] && currentSearchText"
+      :data-block-uid="quickAnswerUid(block)" class="quick-answer my-4 p-3 bg-blue-50 rounded-lg">
+      <div data-edit-text="answer">{{ block.blocks[quickAnswerUid(block)].answer || '' }}</div>
     </div>
 
     <!-- Facets on top (default or facetsTopSide) -->
@@ -525,8 +582,12 @@
           :is="(cell.type == 'header') ? 'th' : 'td'"
           :data-block-uid="cell['@uid']"
           data-block-add="right"
+          data-edit-text="value"
         >
-          <RichText v-for="(node, idx) in cell.value" :key="idx" :node="node" data-edit-text="value" />
+          <!-- data-edit-text on the CELL (one editable value field), like the
+               slate block's wrapper — not on each node, which exposed N fields
+               per cell and broke the DOM→slate round-trip. -->
+          <RichText v-for="(node, idx) in cell.value" :key="idx" :node="node" />
         </component>
       </tr>
     </table>
@@ -585,10 +646,13 @@
 
   <section v-else-if="block['@type'] == 'highlight'" :data-block-uid="block_uid"
            class="relative overflow-hidden rounded-lg my-6 isolate">
+    <!-- data-edit-media on BOTH branches: the field has to be pickable when it
+         is empty (that is how you set one) as well as when it is filled. -->
     <div v-if="imageProps(block.image).url"
          class="absolute inset-0 bg-cover bg-center z-0"
+         data-edit-media="image"
          :style="{ backgroundImage: `url(${imageProps(block.image).url})` }" />
-    <div v-else class="absolute inset-0 z-0"
+    <div v-else class="absolute inset-0 z-0" data-edit-media="image"
          :class="highlightGradient(block.styles?.descriptionColor)"></div>
     <div class="absolute inset-0 bg-black/50 z-10"></div>
     <div class="relative z-20 py-16 px-4 mx-auto max-w-screen-xl text-center lg:py-24">
@@ -796,6 +860,15 @@
           <!-- Hidden -->
           <template v-else-if="field.field_type === 'hidden'">
             <input type="hidden" :name="field.field_id" :value="field.value || ''" />
+            <!-- A hidden field has no visual form, so the block had no size: the
+                 author saw nothing on the page and had nothing to click, even
+                 though the field is theirs to configure. Shown — marked as
+                 hidden — only while editing, so a visitor's page carries no
+                 trace of it. -->
+            <div v-if="showHiddenFields" class="hidden-field-standin">
+              <span class="hidden-field-badge">Hidden</span>
+              <span data-edit-text="label">{{ field.label }}</span>
+            </div>
           </template>
         </div>
       </template>
@@ -814,6 +887,9 @@
 
   <!-- Code example block: tabbed code with syntax highlighting -->
   <CodeExample v-else-if="block['@type'] == 'codeExample'" :block_uid="block_uid" :block="block" />
+
+  <!-- Cookie consent: a bar, plus two halves built outside the block's element -->
+  <CookieConsent v-else-if="block['@type'] == 'cookieConsent'" :block_uid="block_uid" :block="block" />
 
   <!-- Empty block - placeholder for deleted blocks in containers -->
   <div v-else-if="block['@type'] == 'empty'" :data-block-uid="block_uid" class="empty-block min-h-[60px]">
@@ -881,7 +957,7 @@
 
 </template>
 <script setup>
-import { ref, reactive, watch, nextTick, computed, toRefs, inject, onMounted, unref } from 'vue';
+import { ref, reactive, watch, watchEffect, nextTick, computed, toRefs, inject, onMounted, unref } from 'vue';
 import { isEditMode } from '@hydra-js/hydra.js';
 import { staticBlocks, expandTemplatesSync } from '@hydra-js/helpers';
 import RichText from './richtext.vue';
@@ -1040,30 +1116,56 @@ const gridPaging = reactive({ start: 0, size: GRID_PAGE_SIZE });
 
 const gridBuildPagingUrl = (page) => {
   if (page === 0) return effectiveContextPath.value;
-  return `${effectiveContextPath.value}/@pg_${block_uid.value}_${page}`;
+  // Strip a trailing slash so a root context ("/") gives "/@pg_…" not "//@pg_…"
+  // (the latter is protocol-relative — navigateTo would read it as an external host).
+  return `${effectiveContextPath.value.replace(/\/+$/, '')}/@pg_${block_uid.value}_${page}`;
 };
 
 // Process grid children: listings marked for Suspense, static blocks filtered by paging window
 // staticBlocks and expandListingBlocks return { items, paging } — chain paging.seen for position tracking
 const LISTING_TYPES = ['listing', 'relatedItemsListing', 'searchShortcuts', 'rssFeed'];
-const gridChildren = computed(() => {
+// PURE computed — no side effects. staticBlocks/expandListingBlocks return
+// { items, paging }; chain paging.seen for position tracking and surface the
+// final static paging for the manual-grid case below.
+const gridData = computed(() => {
   const layout = block.value.blocks_layout?.items || [];
   const blocks = block.value.blocks || {};
-  // Read page number (reactive dependency) and compute paging start
   const start = gridPageFromUrl.value * GRID_PAGE_SIZE;
-  gridPaging.start = start;
   let seen = 0;
-  return layout.map(id => {
+  let staticPaging = null;
+  let hasListing = false;
+  const children = layout.map(id => {
     const child = blocks[id];
     if (!child) return null;
     if (LISTING_TYPES.includes(child['@type'])) {
+      hasListing = true;
       return { id, block: child, isListing: true, seen };
     }
     const result = staticBlocks([id], { blocks, paging: { start, size: GRID_PAGE_SIZE }, seen });
     seen = result.paging.seen;
+    staticPaging = result.paging;
     return { id, block: child, isListing: false, items: result.items };
   }).filter(Boolean);
+  return { children, staticPaging, hasListing };
 });
+const gridChildren = computed(() => gridData.value.children);
+// The grid's paging comes from ONE of two sources, kept SEPARATE so neither is a
+// side-effect of rendering the other (mutating gridPaging inside the children
+// computed left the pager reading a stale, totalPages-less object on first paint,
+// so it never rendered — and hydra had no +N control to reveal an off-page child):
+//  - a manual-only grid: the static chain's final paging (staticBlocks already
+//    computes totalPages/prev/next) IS the grid's paging, derived purely here;
+//  - a grid WITH a listing: the trailing ListingBlock publishes the combined
+//    total into the reactive `gridPaging` sink (it receives `seen`), so use that.
+const effectiveGridPaging = computed(() => {
+  if (gridData.value.hasListing) return gridPaging;
+  const p = gridData.value.staticPaging;
+  return p ? { ...p, size: GRID_PAGE_SIZE } : { start: gridPaging.start, size: GRID_PAGE_SIZE, totalPages: 0 };
+});
+// Keep the reactive sink's `start` current for the listing case (ListingBlock
+// reads it to window its query). A watchEffect is the right home for this write —
+// a computed must stay pure.
+watchEffect(() => { gridPaging.start = gridPageFromUrl.value * GRID_PAGE_SIZE; });
 
 // Slider: expand templates and detect listing blocks among slides
 const sliderChildren = computed(() => {
@@ -1146,6 +1248,15 @@ function slideClasses(index) {
 // animate to wrong positions. In visitor mode, transitions work fine.
 const useTransitions = !isEditMode();
 
+// Editing is a browser fact — isEditMode() reads window.name / ?_edit, and the
+// server has neither — so this stays false through the first render and matches
+// the HTML the server sent. Flipping it after mount is what adds the stand-in,
+// which is why a visitor's page never contains one at all.
+const showHiddenFields = ref(false);
+onMounted(() => {
+  showHiddenFields.value = isEditMode();
+});
+
 // Next/prev handlers — simple reactive position update, Vue handles the rest
 function carouselNext() {
   const total = totalSlides.value;
@@ -1161,25 +1272,38 @@ function carouselPrev() {
 }
 
 // Navigate to a specific slide by its block UID (for indicator/direct selector clicks).
-function carouselGoTo(uid) {
-  // Find the flat index for this UID by checking sliderChildren + listing items
+//
+// The flat index depends on how many items each listing slide expanded to, and
+// trackItems fills those counts on nextTick — so a request that arrives before
+// a listing resolves counts it as 1 and lands short of the target. Remember the
+// request and re-apply it whenever the counts change, so selecting a slide that
+// sits after a listing settles on the right one instead of stopping wherever
+// the counts happened to be.
+const carouselTargetUid = ref(null);
+
+function flatIndexOf(uid) {
   let idx = 0;
   for (const entry of sliderChildren.value) {
-    if (entry.isListing) {
-      if (entry.slide['@uid'] === uid) {
-        carouselPosition.value = idx;
-        return;
-      }
-      idx += listingItemCounts[entry.slide['@uid']] || 1;
-    } else {
-      if (entry.slide['@uid'] === uid) {
-        carouselPosition.value = idx;
-        return;
-      }
-      idx++;
-    }
+    if (entry.slide['@uid'] === uid) return idx;
+    idx += entry.isListing ? listingItemCounts[entry.slide['@uid']] || 1 : 1;
   }
+  return null;
 }
+
+function applyCarouselTarget() {
+  const uid = carouselTargetUid.value;
+  if (!uid) return;
+  const idx = flatIndexOf(uid);
+  if (idx !== null) carouselPosition.value = idx;
+}
+
+function carouselGoTo(uid) {
+  carouselTargetUid.value = uid;
+  applyCarouselTarget();
+}
+
+// Counts arrive asynchronously; re-apply the pending target when they do.
+watch(listingItemCounts, applyCarouselTarget, { deep: true });
 
 // On mount: attach click handlers for next/prev buttons and indicators
 onMounted(() => {
@@ -1344,6 +1468,10 @@ const getListingTotalResults = (searchBlock) => {
   const listingBlock = searchBlock.blocks?.[listingUid];
   return listingBlock?._paging?.totalItems || listingBlock?.items_total || null;
 };
+
+// The quick-answer region a search block declares (a block that exists only
+// once a question has been asked) — see the reveal attributes in the template.
+const quickAnswerUid = (block) => block?.blocks_layout?.quickAnswer?.[0] || '';
 
 // Get current search text from URL (for preserving in input field)
 const currentSearchText = computed(() => {
@@ -1565,3 +1693,24 @@ const handleFormSubmit = async (event, formBlock) => {
 };
 
 </script>
+
+<style>
+/* Rendered only while editing (see showHiddenFields). */
+.hidden-field-standin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px dashed #9ca3af;
+  border-radius: 0.375rem;
+  color: #4b5563;
+  font-size: 0.875rem;
+}
+.hidden-field-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+</style>

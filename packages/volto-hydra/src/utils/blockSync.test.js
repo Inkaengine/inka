@@ -885,9 +885,14 @@ describe('fieldRules — multiselect surface (array of values)', () => {
     expect(run(undefined, { f: { gt: 0 } })).toBe(false);
   });
 
-  test('isSet — empty selection is unset', () => {
+  test('isSet / isNotSet — empty selection is unset', () => {
+    // Array widgets (multiselect, object_browser) leave `[]` behind when the
+    // last entry is removed rather than dropping the key, so a field the author
+    // has just cleared must read as unset — not still answered.
     expect(run(['image'], { f: { isSet: true } })).toBe(true);
     expect(run([], { f: { isSet: true } })).toBe(false);
+    expect(run([], { f: { isNotSet: true } })).toBe(true);
+    expect(run(['image'], { f: { isNotSet: true } })).toBe(false);
   });
 
   test('oneOf and regex throw on an array field', () => {
@@ -1026,5 +1031,301 @@ describe('fieldRules — numeric operators count ONE blocks_layout region', () =
     expect(
       enhancer({ schema, formData: {} }).properties.target !== undefined,
     ).toBe(false);
+  });
+});
+
+/**
+ * fieldRules — an `error` action, and operands that name another field.
+ *
+ * A cross-field check ("the maximum is below the minimum") needed two things
+ * the grammar could not say: comparing a field to ANOTHER FIELD rather than to
+ * a literal, and raising an error rather than showing or hiding something.
+ *
+ * It is written on the field that should show the error, not on the block: an
+ * error keyed to a field is the only shape Volto acts on — the widget goes red,
+ * the form summarises, and the save is blocked — so a block-level address would
+ * have been a new concept that did less.
+ */
+describe('fieldRules — error action with a field-reference operand', () => {
+  const baseSchema = () => ({
+    fieldsets: [{ id: 'default', title: 'Default', fields: ['minItems', 'maxItems'] }],
+    properties: {
+      minItems: { title: 'Minimum', type: 'number' },
+      maxItems: { title: 'Maximum', type: 'number' },
+    },
+    required: [],
+  });
+
+  const recipe = {
+    fieldRules: {
+      maxItems: {
+        when: { maxItems: { isSet: true, lt: { field: 'minItems' } } },
+        error: 'The maximum is below the minimum.',
+      },
+    },
+  };
+
+  test('marks the field when it compares badly against the other field', () => {
+    const enhancer = createSchemaEnhancerFromRecipe(recipe);
+    const out = enhancer({
+      schema: baseSchema(),
+      formData: { minItems: 10, maxItems: 4 },
+    });
+    expect(out.properties.maxItems.hydraRuleError).toBe(
+      'The maximum is below the minimum.',
+    );
+  });
+
+  test('says nothing when the two fields agree', () => {
+    const enhancer = createSchemaEnhancerFromRecipe(recipe);
+    const out = enhancer({
+      schema: baseSchema(),
+      formData: { minItems: 4, maxItems: 10 },
+    });
+    expect(out.properties.maxItems.hydraRuleError).toBeUndefined();
+  });
+
+  test('says nothing while the field is still empty', () => {
+    // An author part-way through filling the form has not made a mistake yet.
+    const enhancer = createSchemaEnhancerFromRecipe(recipe);
+    const out = enhancer({
+      schema: baseSchema(),
+      formData: { minItems: 4 },
+    });
+    expect(out.properties.maxItems.hydraRuleError).toBeUndefined();
+  });
+
+  test('an unresolvable reference is unset, not a throw', () => {
+    const enhancer = createSchemaEnhancerFromRecipe({
+      fieldRules: {
+        maxItems: {
+          when: { maxItems: { lt: { field: 'noSuchField' } } },
+          error: 'never mind',
+        },
+      },
+    });
+    const out = enhancer({
+      schema: baseSchema(),
+      formData: { maxItems: 4 },
+    });
+    expect(out.properties.maxItems.hydraRuleError).toBeUndefined();
+  });
+
+  test('an error composes with a `set` from the same rule', () => {
+    const enhancer = createSchemaEnhancerFromRecipe({
+      fieldRules: {
+        maxItems: {
+          when: { maxItems: { isSet: true, lt: { field: 'minItems' } } },
+          set: { title: 'Maximum (check this)' },
+          error: 'The maximum is below the minimum.',
+        },
+      },
+    });
+    const out = enhancer({
+      schema: baseSchema(),
+      formData: { minItems: 10, maxItems: 4 },
+    });
+    expect(out.properties.maxItems.title).toBe('Maximum (check this)');
+    expect(out.properties.maxItems.hydraRuleError).toBe(
+      'The maximum is below the minimum.',
+    );
+  });
+
+  test('a reference does not smuggle a value past the surface rules', () => {
+    // Operators are typed by the field's DECLARED type, and a reference operand
+    // changes nothing about that: `lt` on a string surface is still an error,
+    // whether the operand is a literal or another field. So comparing two date
+    // STRINGS is not expressible — it would need a date surface, which is a
+    // separate question from where the operand comes from.
+    const enhancer = createSchemaEnhancerFromRecipe({
+      fieldRules: {
+        endDate: {
+          when: { endDate: { lt: { field: 'startDate' } } },
+          error: 'never reached',
+        },
+      },
+    });
+    expect(() =>
+      enhancer({
+        schema: {
+          fieldsets: [{ id: 'default', title: 'Default', fields: ['startDate', 'endDate'] }],
+          properties: {
+            startDate: { title: 'Start', type: 'string' },
+            endDate: { title: 'End', type: 'string' },
+          },
+          required: [],
+        },
+        formData: { startDate: '2026-03-01', endDate: '2026-02-01' },
+      }),
+    ).toThrow(/not valid for a string/);
+  });
+});
+
+/**
+ * fieldRules — a rule that SAYS something rather than refusing it.
+ *
+ * Some constraints are advice. "This SVG is not drawn to the 48×48 grid" should
+ * reach the author, but refusing to save over it would be hostile: the artwork
+ * may be a little off and still be the right artwork. An error blocks; a
+ * warning does not, and the difference is the whole point of having both.
+ */
+describe('fieldRules — warning action', () => {
+  const baseSchema = () => ({
+    fieldsets: [{ id: 'default', title: 'Default', fields: ['image'] }],
+    properties: { image: { title: 'Pictogram', type: 'string' } },
+    required: [],
+  });
+
+  const recipe = {
+    fieldRules: {
+      image: {
+        when: { image: { regex: '\\.png$' } },
+        warning: 'A pictogram should be an SVG drawn to the 48×48 grid.',
+      },
+    },
+  };
+
+  test('marks the field when the condition holds', () => {
+    const out = createSchemaEnhancerFromRecipe(recipe)({
+      schema: baseSchema(),
+      formData: { image: '/images/photo.png' },
+    });
+    expect(out.properties.image.hydraRuleWarning).toBe(
+      'A pictogram should be an SVG drawn to the 48×48 grid.',
+    );
+  });
+
+  test('does NOT produce an error — a warning must not block the save', () => {
+    const out = createSchemaEnhancerFromRecipe(recipe)({
+      schema: baseSchema(),
+      formData: { image: '/images/photo.png' },
+    });
+    expect(out.properties.image.hydraRuleError).toBeUndefined();
+  });
+
+  test('says nothing when the condition does not hold', () => {
+    const out = createSchemaEnhancerFromRecipe(recipe)({
+      schema: baseSchema(),
+      formData: { image: '/images/pictogram.svg' },
+    });
+    expect(out.properties.image.hydraRuleWarning).toBeUndefined();
+  });
+
+  test('a rule can carry both: refuse one thing while advising another', () => {
+    const out = createSchemaEnhancerFromRecipe({
+      fieldRules: {
+        image: [
+          { when: { image: { regex: '\\.png$' } }, error: 'Must be an SVG.' },
+          { when: { image: { isSet: true } }, warning: 'Check it is on the grid.' },
+        ],
+      },
+    })({ schema: baseSchema(), formData: { image: '/images/photo.png' } });
+    // First matching rule wins in a switch — the error, here.
+    expect(out.properties.image.hydraRuleError).toBe('Must be an SVG.');
+  });
+});
+
+/**
+ * Reading INTO a value, and doing arithmetic on a reference.
+ *
+ * The pictogram rules need both. "Is this an SVG" and "is it square" are
+ * answerable from data the block already carries — Volto stores an image's mime
+ * type and dimensions in `image_scales`, beside the reference — but only if a
+ * path can reach inside a value, and only if a comparison can carry a tolerance:
+ * no real measurement is exactly equal to another.
+ */
+describe('fieldRules — value sub-paths and arithmetic', () => {
+  const schema = () => ({
+    fieldsets: [{ id: 'default', title: 'Default', fields: ['image'] }],
+    properties: { image: { title: 'Pictogram', type: 'string' } },
+    required: [],
+  });
+
+  const withScales = (contentType, width, height) => ({
+    image: '/images/thing',
+    image_scales: { image: [{ 'content-type': contentType, width, height }] },
+  });
+
+  test('a sub-path reads a mime type out of image_scales', () => {
+    const out = createSchemaEnhancerFromRecipe({
+      fieldRules: {
+        image: {
+          when: {
+            'image_scales.image.0.content-type': { isNot: 'image/svg+xml' },
+          },
+          error: 'A pictogram must be an SVG.',
+        },
+      },
+    })({ schema: schema(), formData: withScales('image/png', 120, 68) });
+    expect(out.properties.image.hydraRuleError).toBe('A pictogram must be an SVG.');
+  });
+
+  test('…and says nothing when the type is right', () => {
+    const out = createSchemaEnhancerFromRecipe({
+      fieldRules: {
+        image: {
+          when: {
+            'image_scales.image.0.content-type': { isNot: 'image/svg+xml' },
+          },
+          error: 'A pictogram must be an SVG.',
+        },
+      },
+    })({ schema: schema(), formData: withScales('image/svg+xml', 48, 48) });
+    expect(out.properties.image.hydraRuleError).toBeUndefined();
+  });
+
+  test('a sub-path into a number compares as a number', () => {
+    // The surface comes from the value here — there is no schema for
+    // `image_scales.image.0.width` — so a numeric operator must work on it.
+    const out = createSchemaEnhancerFromRecipe({
+      fieldRules: {
+        image: {
+          when: { 'image_scales.image.0.width': { lt: 48 } },
+          warning: 'Smaller than the 48×48 grid.',
+        },
+      },
+    })({ schema: schema(), formData: withScales('image/svg+xml', 24, 24) });
+    expect(out.properties.image.hydraRuleWarning).toBe('Smaller than the 48×48 grid.');
+  });
+
+  test('arithmetic gives a comparison its tolerance: not square within a tenth', () => {
+    const recipe = {
+      fieldRules: {
+        image: {
+          when: {
+            'image_scales.image.0.width': {
+              gt: { field: 'image_scales.image.0.height', times: 1.1 },
+            },
+          },
+          warning: 'A pictogram is drawn square, on a 48×48 grid.',
+        },
+      },
+    };
+    const wide = createSchemaEnhancerFromRecipe(recipe)({
+      schema: schema(),
+      formData: withScales('image/svg+xml', 120, 48),
+    });
+    expect(wide.properties.image.hydraRuleWarning).toBe(
+      'A pictogram is drawn square, on a 48×48 grid.',
+    );
+
+    // 50x48 is off-square by 4% — inside the tolerance, so nothing is said.
+    const nearlySquare = createSchemaEnhancerFromRecipe(recipe)({
+      schema: schema(),
+      formData: withScales('image/svg+xml', 50, 48),
+    });
+    expect(nearlySquare.properties.image.hydraRuleWarning).toBeUndefined();
+  });
+
+  test('a sub-path that leads nowhere is unset, not a throw', () => {
+    const out = createSchemaEnhancerFromRecipe({
+      fieldRules: {
+        image: {
+          when: { 'image_scales.image.0.width': { lt: 48 } },
+          warning: 'never mind',
+        },
+      },
+    })({ schema: schema(), formData: { image: '/images/thing' } });
+    expect(out.properties.image.hydraRuleWarning).toBeUndefined();
   });
 });

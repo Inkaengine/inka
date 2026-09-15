@@ -1,0 +1,153 @@
+{
+  "@id": "/docs/examples/cookie-consent",
+  "@type": "Document",
+  "UID": "docs-examples-cookie-consent-001",
+  "allow_discussion": false,
+  "blocks": {
+    "title-1": {
+      "@type": "title"
+    },
+    "ref-cookie-consent-description": {
+      "@type": "slate",
+      "plaintext": "A consent banner and a preferences dialog, written by one block. It is the worked example for revealing the place a FIELD is edited — data-block-selector=\"uid#fieldName\".",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A consent banner and a preferences dialog, written by one block. It is the worked example for revealing the place a FIELD is edited — data-block-selector=\"uid#fieldName\"."
+            }
+          ]
+        }
+      ]
+    },
+    "ref-cookie-consent-schema": {
+      "@type": "codeExample",
+      "templateId": "/templates/block-reference-layout",
+      "templateInstanceId": "tpl-inst-cookie-consent",
+      "slotId": "schema",
+      "tabs": [
+        {
+          "@id": "ref-cookie-consent-schema-javascript-6ba1e2",
+          "label": "Schema",
+          "language": "javascript",
+          "code": "{\n  \"cookieConsent\": {\n    \"id\": \"cookieConsent\",\n    \"title\": \"Cookie consent\",\n    \"blockSchema\": {\n      \"fieldsets\": [\n        {\n          \"id\": \"default\",\n          \"title\": \"Default\",\n          \"fields\": [\n            \"message\",\n            \"analyticsPurpose\"\n          ]\n        }\n      ],\n      \"properties\": {\n        \"message\": {\n          \"title\": \"Banner message\",\n          \"widget\": \"slate\",\n          \"description\": \"Shown in the consent banner, at the foot of every page, until a visitor chooses.\"\n        },\n        \"analyticsPurpose\": {\n          \"title\": \"Analytics cookies \\u2014 what they are for\",\n          \"widget\": \"textarea\",\n          \"description\": \"Shown beside the analytics tick box, inside the preferences dialog.\"\n        }\n      },\n      \"required\": []\n    }\n  }\n}"
+        }
+      ]
+    },
+    "ref-cookie-consent-json-data": {
+      "@type": "codeExample",
+      "templateId": "/templates/block-reference-layout",
+      "templateInstanceId": "tpl-inst-cookie-consent",
+      "slotId": "json-data",
+      "tabs": [
+        {
+          "@id": "ref-cookie-consent-json-data-json-bacd31",
+          "label": "JSON Block Data",
+          "language": "json",
+          "code": "{\n  \"@type\": \"cookieConsent\",\n  \"message\": [\n    {\n      \"type\": \"p\",\n      \"children\": [\n        {\n          \"text\": \"We use essential cookies to make this site work, and analytics cookies to see how it is used. You can \"\n        },\n        {\n          \"type\": \"link\",\n          \"data\": {\n            \"url\": \"/cookies\"\n          },\n          \"children\": [\n            {\n              \"text\": \"manage your cookie settings\"\n            }\n          ]\n        },\n        {\n          \"text\": \" at any time.\"\n        }\n      ]\n    }\n  ],\n  \"analyticsPurpose\": \"Counts visits and pages, so we can see what is worth improving. Never used to identify you.\"\n}"
+        }
+      ]
+    },
+    "ref-cookie-consent-rendering": {
+      "@type": "codeExample",
+      "templateId": "/templates/block-reference-layout",
+      "templateInstanceId": "tpl-inst-cookie-consent",
+      "slotId": "rendering",
+      "tabs": [
+        {
+          "@id": "ref-cookie-consent-rendering-jsx-06f33f",
+          "label": "React",
+          "language": "jsx",
+          "code": "// A block drawn in three places, two of them hidden.\n//\n// Cookie consent is the everyday case for `data-block-selector=\"uid#field\"`.\n// The block's own element is a bar; its `message` is read in a BANNER at the\n// foot of the page, and its `analyticsPurpose` beside a tick box inside a\n// PREFERENCES DIALOG. Both sit OUTSIDE the block's element — a real frontend\n// usually portals them to <body>, which is where a design system's own\n// JavaScript puts them — and both are hidden until their trigger is pressed.\n//\n// So \"is the block visible?\" is the wrong question: the bar is always visible,\n// and neither half of what an author writes is. Each trigger therefore names\n// the FIELD its half holds, and the bridge opens the half whose field the\n// author reached for in the sidebar.\nfunction CookieConsentBlock({ block }) {\n  const uid = block['@uid'];\n  const [showBanner, setShowBanner] = useState(true);\n  const [showDialog, setShowDialog] = useState(false);\n\n  return (\n    <>\n      {/* The block's own element: always on screen, and the way back to two\n          halves a visitor may already have dismissed. */}\n      <div data-block-uid={uid} className=\"cookie-consent__bar\">\n        <strong>Cookie consent</strong>\n        <button\n          type=\"button\"\n          // \"I reveal where `message` is edited.\" Put the cursor in Banner\n          // message in the sidebar and the bridge clicks this, so the banner is\n          // on screen while its wording is written.\n          data-block-selector={`${uid}#message`}\n          onClick={() => setShowBanner(true)}\n        >\n          Show the banner\n        </button>\n        <button\n          type=\"button\"\n          // The other half. One handle could not serve both: it is one click,\n          // and whichever it opened, the other half's wording would stay\n          // unreachable from the sidebar.\n          data-block-selector={`${uid}#analyticsPurpose`}\n          onClick={() => setShowDialog(true)}\n        >\n          Show cookie preferences\n        </button>\n      </div>\n\n      {/* Outside the block's element, and annotated where the text is READ.\n          Each half advertises the field it holds, as well as the bar's trigger doing so.\n          Without that the wording inside belongs to no block — it sits outside the block's\n          element, so `data-edit-text` there resolves to nothing and cannot be edited. The\n          trigger in the bar is still what the bridge CLICKS: a hidden handle cannot open\n          anything, so the bridge takes the first one that is on screen. */}\n      <div\n        className=\"cookie-banner\"\n        data-block-selector={`${uid}#message`}\n        hidden={!showBanner}\n        role=\"alert\"\n      >\n        <p data-edit-text=\"message\">{slateToText(block.message)}</p>\n        <button type=\"button\" onClick={() => setShowBanner(false)}>\n          Accept all\n        </button>\n        <button type=\"button\" onClick={() => setShowDialog(true)}>\n          Manage preferences\n        </button>\n      </div>\n\n      <div\n        className=\"cookie-dialog\"\n        data-block-selector={`${uid}#analyticsPurpose`}\n        hidden={!showDialog}\n        role=\"dialog\"\n      >\n        <h2>Manage cookie preferences</h2>\n        <label>\n          <input type=\"checkbox\" name=\"analytics\" />\n          Analytics\n        </label>\n        <p data-edit-text=\"analyticsPurpose\">{block.analyticsPurpose}</p>\n        <button type=\"button\" onClick={() => setShowDialog(false)}>\n          Save\n        </button>\n      </div>\n    </>\n  );\n}\n\n// Slate is an array of nodes; the banner shows its text. A real frontend would\n// render the marks and links too — kept flat here so the pattern stays visible.\nfunction slateToText(value) {\n  if (!Array.isArray(value)) return '';\n  return value\n    .map(node => (node.text ?? (node.children || []).map(c => c.text ?? '').join('')))\n    .join('');\n}"
+        },
+        {
+          "@id": "ref-cookie-consent-rendering-vue-49ac4b",
+          "label": "Vue",
+          "language": "vue",
+          "code": "<template>\n  <!--\n    A block drawn in three places, two of them hidden.\n\n    The block's own element is the bar; its `message` is read in a BANNER at the\n    foot of the page and its `analyticsPurpose` beside a tick box in a\n    PREFERENCES DIALOG. Both sit OUTSIDE the block's element — a real frontend\n    usually teleports them to <body>, where a design system's own JavaScript\n    puts them — and both are hidden until their trigger is pressed. So \"is the block visible?\" is the wrong question, and each trigger\n    names the FIELD its half holds instead.\n  -->\n  <div class=\"cookie-consent\">\n    <div :data-block-uid=\"block['@uid']\" class=\"cookie-consent__bar\">\n      <strong>Cookie consent</strong>\n      <!-- \"I reveal where `message` is edited\": focusing Banner message in the\n           sidebar makes the bridge click this, so the banner is on screen while\n           its wording is written. -->\n      <button type=\"button\"\n        :data-block-selector=\"`${block['@uid']}#message`\"\n        @click=\"showBanner = true\">Show the banner</button>\n      <!-- The other half. One handle is one click, so a block-level handle\n           could only ever open one of the two. -->\n      <button type=\"button\"\n        :data-block-selector=\"`${block['@uid']}#analyticsPurpose`\"\n        @click=\"showDialog = true\">Show cookie preferences</button>\n    </div>\n\n    <!-- Both halves live outside this block's DOM, so their editable text is\n         annotated where it is READ. A real frontend often teleports these to\n         <body>, where a design system's own JavaScript puts them; sibling\n         elements are the same thing as far as the bridge is concerned — outside\n         the block's element, and hidden. -->\n      <div class=\"cookie-banner\" :data-block-selector=\"`${block['@uid']}#message`\"\n        :hidden=\"!showBanner\" role=\"alert\">\n        <p data-edit-text=\"message\">{{ slateToText(block.message) }}</p>\n        <button type=\"button\" @click=\"showBanner = false\">Accept all</button>\n        <button type=\"button\" @click=\"showDialog = true\">Manage preferences</button>\n      </div>\n      <div class=\"cookie-dialog\" :data-block-selector=\"`${block['@uid']}#analyticsPurpose`\"\n        :hidden=\"!showDialog\" role=\"dialog\">\n        <h2>Manage cookie preferences</h2>\n        <label><input type=\"checkbox\" name=\"analytics\" /> Analytics</label>\n        <p data-edit-text=\"analyticsPurpose\">{{ block.analyticsPurpose }}</p>\n        <button type=\"button\" @click=\"showDialog = false\">Save</button>\n      </div>\n  </div>\n</template>\n\n<script setup>\nimport { ref } from 'vue';\n\nconst props = defineProps({ block: Object });\nconst showBanner = ref(true);\nconst showDialog = ref(false);\n\n// Slate is an array of nodes; the banner shows its text. A real frontend would\n// render the marks and links too — kept flat here so the pattern stays visible.\nfunction slateToText(value) {\n  if (!Array.isArray(value)) return '';\n  return value\n    .map((node) => node.text ?? (node.children || []).map((c) => c.text ?? '').join(''))\n    .join('');\n}\n</script>"
+        },
+        {
+          "@id": "ref-cookie-consent-rendering-svelte-92073b",
+          "label": "Svelte",
+          "language": "svelte",
+          "code": "<script>\n  // A block drawn in three places, two of them hidden. The bar is the block's\n  // own element; `message` is read in a banner at the foot of the page and\n  // `analyticsPurpose` beside a tick box in a preferences dialog, both hidden\n  // until their trigger is pressed. Each trigger names the FIELD its half holds,\n  // because one block-level handle is one click and could open only one of them.\n  export let block;\n\n  let showBanner = true;\n  let showDialog = false;\n\n  // Slate is an array of nodes; the banner shows its text.\n  function slateToText(value) {\n    if (!Array.isArray(value)) return '';\n    return value\n      .map((node) => node.text ?? (node.children || []).map((c) => c.text ?? '').join(''))\n      .join('');\n  }\n</script>\n\n<div data-block-uid={block['@uid']} class=\"cookie-consent\">\n  <div class=\"cookie-consent__bar\">\n    <strong>Cookie consent</strong>\n    <button type=\"button\"\n      data-block-selector={`${block['@uid']}#message`}\n      on:click={() => (showBanner = true)}>Show the banner</button>\n    <button type=\"button\"\n      data-block-selector={`${block['@uid']}#analyticsPurpose`}\n      on:click={() => (showDialog = true)}>Show cookie preferences</button>\n  </div>\n</div>\n\n<!-- Svelte renders these where they are written; a real frontend would portal\n     them to <body>, as the React and Vue examples do. What matters for the\n     pattern is that they are OUTSIDE the block's element and hidden. -->\n<div class=\"cookie-banner\" data-block-selector={`${block['@uid']}#message`}\n  hidden={!showBanner} role=\"alert\">\n  <p data-edit-text=\"message\">{slateToText(block.message)}</p>\n  <button type=\"button\" on:click={() => (showBanner = false)}>Accept all</button>\n  <button type=\"button\" on:click={() => (showDialog = true)}>Manage preferences</button>\n</div>\n\n<div class=\"cookie-dialog\" data-block-selector={`${block['@uid']}#analyticsPurpose`}\n  hidden={!showDialog} role=\"dialog\">\n  <h2>Manage cookie preferences</h2>\n  <label><input type=\"checkbox\" name=\"analytics\" /> Analytics</label>\n  <p data-edit-text=\"analyticsPurpose\">{block.analyticsPurpose}</p>\n  <button type=\"button\" on:click={() => (showDialog = false)}>Save</button>\n</div>"
+        }
+      ]
+    },
+    "cookie-live-heading": {
+      "@type": "slate",
+      "plaintext": "Live example",
+      "value": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Live example"
+            }
+          ]
+        }
+      ]
+    },
+    "cookie-live-1": {
+      "@type": "cookieConsent",
+      "message": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "We use essential cookies to make this site work, and analytics cookies to see how it is used."
+            }
+          ]
+        }
+      ],
+      "analyticsPurpose": "Counts visits and pages, so we can see what is worth improving. Never used to identify you."
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-1",
+      "ref-cookie-consent-description",
+      "cookie-live-heading",
+      "cookie-live-1",
+      "ref-cookie-consent-schema",
+      "ref-cookie-consent-json-data",
+      "ref-cookie-consent-rendering"
+    ]
+  },
+  "contributors": [],
+  "created": "2025-01-01T00:00:00+00:00",
+  "creators": [
+    "admin"
+  ],
+  "description": "A consent banner and a preferences dialog, written by one block. It is the worked example for revealing the place a FIELD is edited — data-block-selector=\"uid#fieldName\".",
+  "effective": null,
+  "exclude_from_nav": false,
+  "expires": null,
+  "exportimport.constrains": {},
+  "exportimport.conversation": [],
+  "exportimport.versions": {},
+  "id": "cookie-consent",
+  "is_folderish": false,
+  "language": "##DEFAULT##",
+  "layout": "document_view",
+  "lock": {},
+  "modified": "2025-01-01T00:00:00+00:00",
+  "parent": {
+    "@id": "/docs/examples",
+    "@type": "Document",
+    "UID": "docs-examples-folder-001",
+    "description": "Block reference: schema, JSON, and rendered examples for every block type Volto Hydra ships.",
+    "title": "Examples",
+    "type_title": "Page"
+  },
+  "review_state": "published",
+  "rights": "",
+  "subjects": [],
+  "title": "Cookie Consent Block",
+  "type_title": "Page",
+  "version": "current",
+  "workflow_history": {},
+  "working_copy": null,
+  "working_copy_of": null
+}

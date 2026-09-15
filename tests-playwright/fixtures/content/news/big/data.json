@@ -1,0 +1,40 @@
+{
+  "@id": "/_test_data/news/big",
+  "@type": "Document",
+  "UID": "news-big-uid-0001",
+  "id": "big",
+  "title": "Target Title",
+  "description": "A news item fixtures link to by href.",
+  "effective": "2024-11-01T00:00:00+00:00",
+  "review_state": "published",
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "body-block": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A news item fixtures link to by href."
+            }
+          ]
+        }
+      ],
+      "plaintext": "A news item fixtures link to by href."
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "body-block"
+    ]
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": false,
+  "created": "2025-01-02T00:00:00+00:00",
+  "modified": "2025-01-02T00:00:00+00:00"
+}

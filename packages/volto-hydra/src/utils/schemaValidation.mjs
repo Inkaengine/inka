@@ -17,23 +17,46 @@
  * Check if a value is valid for a field definition.
  * Returns true if valid, false if invalid.
  *
- * For Choice fields with `choices`: value must be one of the allowed choices.
+ * For Choice fields with `choices`: value must be one of the allowed choices —
+ *   or, where the field takes SEVERAL of them, a list of them.
  * For `enum` fields (JSON Schema style): value must be in enum.
  * For objects with `propertyNames.enum`: every key must be allowed.
  * For objects with `additionalProperties.enum`: every non-empty value must be allowed.
  * Otherwise (no constraints): always valid.
  */
+
+/** The tokens a `choices` list allows, however each entry is written. */
+function choiceTokens(choices) {
+  return new Set(
+    choices.map((c) => {
+      if (c === undefined || c === null) return c;
+      if (Array.isArray(c)) return c[0];
+      return c.value ?? c.token ?? c;
+    }),
+  );
+}
+
 export function isValidValue(value, fieldDef) {
-  // For choice fields: check if value is one of the allowed choices
-  if (fieldDef.choices) {
-    const validValues = new Set(
-      fieldDef.choices.map((c) => {
-        if (c === undefined || c === null) return c;
-        if (Array.isArray(c)) return c[0];
-        return c.value ?? c.token ?? c;
-      }),
-    );
-    return validValues.has(value);
+  // For choice fields: check if value is one of the allowed choices.
+  //
+  // A field can take SEVERAL of them, and then it holds an array — Volto's
+  // ArrayWidget is `type: 'array'` with these same `choices`, and hands back a
+  // list of tokens. Each ELEMENT is what has to be in the vocabulary; the list
+  // itself never is, so comparing it whole failed every multi-select there is.
+  // Not cosmetically: `applySchemaDefaultsToBlock` nulls what this rejects, so
+  // loading a page in the editor emptied the field — no edit, no save, no word
+  // said. (Found on a form block's `send: ['recipient']`, the setting that
+  // decides whether a submission is emailed to anyone: opening the page stopped
+  // the form mailing.)
+  //
+  // `items.choices` is the same declaration in JSON Schema's shape, which is how
+  // plone.restapi serialises a List of Choice.
+  const choices = fieldDef.choices ?? fieldDef.items?.choices;
+  if (choices) {
+    const validValues = choiceTokens(choices);
+    return Array.isArray(value)
+      ? value.every((v) => validValues.has(v))
+      : validValues.has(value);
   }
 
   // Button-bar widgets (ButtonsWidget: size/align/layout) declare their options

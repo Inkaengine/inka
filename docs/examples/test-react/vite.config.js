@@ -10,6 +10,7 @@ import { readFileSync } from 'fs';
 const COMPONENT_IMPORTS = {
   SlateNode:         './SlateNode.jsx',
   BlockRenderer:     './BlockRenderer.jsx',
+  CookieConsentBlock: './CookieConsentBlock.jsx',
   SlateBlock:        './SlateBlock.jsx',
   IntroductionBlock: './IntroductionBlock.jsx',
   ListingBlock:      './ListingBlock.jsx',
@@ -28,6 +29,7 @@ const COMPONENT_IMPORTS = {
   SeparatorBlock:    './SeparatorBlock.jsx',
   ButtonBlock:       './ButtonBlock.jsx',
   HighlightBlock:    './HighlightBlock.jsx',
+  CalloutBlock:      './CalloutBlock.jsx',
   VideoBlock:        './VideoBlock.jsx',
   MapsBlock:           './MapsBlock.jsx',
   TocBlock:            './TocBlock.jsx',

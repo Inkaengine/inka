@@ -1,0 +1,137 @@
+{
+  "@id": "http://localhost:8888/restricted-styles-page",
+  "@type": "Document",
+  "UID": "restricted-styles-page-uid",
+  "id": "restricted-styles-page",
+  "title": "Restricted Styles Page",
+  "description": "Exercises the per-region slate style allow-list (#295): the page's items region disallows blockquote, `b` and `del`, and spells bold `strong` — so the toolbar hides Blockquote and Strikethrough, a pasted <blockquote> lands as a paragraph, the stored `b` normalizes on load, and a `del` transform driven straight at the admin is refused.",
+  "review_state": "published",
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "legacy": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "was "
+            },
+            {
+              "type": "b",
+              "children": [
+                {
+                  "text": "bold"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "plaintext": "was bold"
+    },
+    "target": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "paste here"
+            }
+          ]
+        }
+      ],
+      "plaintext": "paste here"
+    },
+    "styled": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "styleName": "lead",
+          "children": [
+            {
+              "text": "D",
+              "style-dropcap": true
+            },
+            {
+              "text": "esign-system styles, as the sidebar shows them."
+            }
+          ]
+        }
+      ],
+      "plaintext": "Design-system styles, as the sidebar shows them."
+    },
+    "cols": {
+      "@type": "columns",
+      "blocks": {
+        "col-a": {
+          "@type": "column",
+          "blocks": {
+            "deep": {
+              "@type": "slate",
+              "value": [
+                {
+                  "type": "p",
+                  "children": [
+                    {
+                      "text": "Nested inside a column."
+                    }
+                  ]
+                }
+              ],
+              "plaintext": "Nested inside a column."
+            }
+          },
+          "blocks_layout": {
+            "items": [
+              "deep"
+            ]
+          }
+        }
+      },
+      "blocks_layout": {
+        "columns": [
+          "col-a"
+        ]
+      }
+    },
+    "marked": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "kept ",
+              "highlight": true
+            },
+            {
+              "text": "and kept",
+              "underline": true
+            }
+          ]
+        }
+      ],
+      "plaintext": "kept and kept"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "legacy",
+      "target",
+      "styled",
+      "cols",
+      "marked"
+    ]
+  }
+}

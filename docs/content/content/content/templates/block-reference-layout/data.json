@@ -94,7 +94,7 @@
               "text": " to register this block type with the admin UI. See "
             },
             {
-              "type": "link",
+              "type": "a",
               "data": {
                 "url": "/docs/live-preview"
               },
@@ -123,7 +123,8 @@
           "language": "javascript",
           "code": ""
         }
-      ]
+      ],
+      "fixed": false
     },
     "tpl-json-heading": {
       "@type": "slate",
@@ -186,7 +187,8 @@
           "language": "json",
           "code": ""
         }
-      ]
+      ],
+      "fixed": false
     },
     "tpl-rendering-heading": {
       "@type": "slate",
@@ -214,13 +216,13 @@
       "templateId": "/templates/block-reference-layout",
       "templateInstanceId": "tpl-block-ref-def",
       "slotId": "rendering-desc",
-      "plaintext": "How this block renders in your frontend. Add its handling to your renderer, or — for list-style blocks — register a fetcher and reuse your list rendering.",
+      "plaintext": "How this block renders in your frontend. Add its handling to your renderer, or \u2014 for list-style blocks \u2014 register a fetcher and reuse your list rendering.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "How this block renders in your frontend. Add its handling to your renderer, or — for list-style blocks — register a fetcher and reuse your list rendering."
+              "text": "How this block renders in your frontend. Add its handling to your renderer, or \u2014 for list-style blocks \u2014 register a fetcher and reuse your list rendering."
             }
           ]
         }
@@ -250,7 +252,8 @@
           "language": "svelte",
           "code": ""
         }
-      ]
+      ],
+      "fixed": false
     }
   },
   "blocks_layout": {

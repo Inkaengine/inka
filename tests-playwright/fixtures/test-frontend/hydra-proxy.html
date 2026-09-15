@@ -51,12 +51,17 @@
     // The journeys survived it because they hand the admin an explicit API path
     // and the adapter picks it up from the announcement — but registration runs
     // BEFORE that, so whoami went out against the wrong origin regardless.
-    const cmsBaseUrl = params.get('cms') || __MOCK_API_ORIGIN__;
+    // window._apiOrigin is injected by vite.config.js as a head script, which is
+    // how the rest of the fixture learns its API too. It replaced a
+    // transformIndexHtml token substitution: vite extracts an inline
+    // `type="module"` into an html-proxy before a default-order transform runs,
+    // so the token reached the module verbatim.
+    const cmsBaseUrl = params.get('cms') || window._apiOrigin;
     if (!cmsBaseUrl) {
       throw new Error(
-        '[proxy] no CMS base URL: pass ?cms= or let Vite inject one. ' +
-          'Refusing to guess, because guessing means asking the frontend ' +
-          'for content and reading a 404 as "not found".',
+        '[proxy] no CMS base URL: pass ?cms= or let vite inject window._apiOrigin. ' +
+          'Refusing to guess, because guessing means asking the FRONTEND for ' +
+          'content and reading a 404 as "not found".',
       );
     }
     const token = params.get('access_token');

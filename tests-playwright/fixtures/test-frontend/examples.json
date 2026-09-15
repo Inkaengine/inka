@@ -403,7 +403,12 @@
         "listing": [
           "listing-1"
         ]
-      }
+      },
+      "sortOn": "effective",
+      "sortOnOptions": [
+        "effective",
+        "sortable_title"
+      ]
     },
     "ex-form": {
       "@type": "form",
@@ -434,12 +439,8 @@
           "field_id": "department",
           "field_type": "select",
           "label": "Department",
-          "input_values": [
-            "Sales",
-            "Support",
-            "General"
-          ],
-          "required": false
+          "required": false,
+          "options_from": "plone.app.vocabularies.Keywords"
         },
         {
           "@id": "field-4",
@@ -447,6 +448,15 @@
           "field_type": "textarea",
           "label": "Message",
           "required": true
+        },
+        {
+          "@id": "field-5",
+          "field_id": "order_number",
+          "field_type": "text",
+          "label": "Order number",
+          "show_when_field": "department",
+          "show_when_is": "Sales",
+          "required": false
         }
       ]
     },
@@ -670,6 +680,26 @@
           "nav-3"
         ]
       }
+    },
+    "ex-cookieConsent": {
+      "@type": "cookieConsent",
+      "message": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "We use essential cookies to make this site work, and analytics cookies to see how it is used."
+            }
+          ]
+        }
+      ],
+      "analyticsPurpose": "Counts visits and pages, so we can see what is worth improving. Never used to identify you."
+    },
+    "ex-suggest": {
+      "@type": "suggest",
+      "label": "Topic",
+      "suggestFrom": "plone.app.vocabularies.Keywords",
+      "value": ""
     }
   },
   "blocks_layout": {
@@ -698,7 +728,9 @@
       "ex-toc",
       "ex-codeExample",
       "ex-grid",
-      "ex-contextnav"
+      "ex-contextnav",
+      "ex-cookieConsent",
+      "ex-suggest"
     ]
   },
   "is_folderish": false,

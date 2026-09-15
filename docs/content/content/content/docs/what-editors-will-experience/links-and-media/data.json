@@ -331,7 +331,7 @@
     },
     "ul-12": {
       "@type": "slate",
-      "plaintext": "The page you're editing is live. Add a heading and it's immediately available as a target, before you save. Other pages use their last saved version. If a heading was added to another page but not saved yet, it won't appear until that page is saved.",
+      "plaintext": "The page you're editing is live. Add a heading and it's immediately available as a",
       "value": [
         {
           "type": "ul",
@@ -348,10 +348,35 @@
                   ]
                 },
                 {
-                  "text": " Add a heading and it's immediately available as a target, before you save."
+                  "text": " Add a heading and it's immediately available as a"
                 }
               ]
-            },
+            }
+          ]
+        }
+      ]
+    },
+    "p-13": {
+      "@type": "slate",
+      "plaintext": "target, before you save.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "target, before you save."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-14": {
+      "@type": "slate",
+      "plaintext": "Other pages use their last saved version. If a heading was added to another page but",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -364,7 +389,7 @@
                   ]
                 },
                 {
-                  "text": " If a heading was added to another page but not saved yet, it won't appear until that page is saved."
+                  "text": " If a heading was added to another page but"
                 }
               ]
             }
@@ -372,7 +397,21 @@
         }
       ]
     },
-    "h-13": {
+    "p-15": {
+      "@type": "slate",
+      "plaintext": "not saved yet, it won't appear until that page is saved.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "not saved yet, it won't appear until that page is saved."
+            }
+          ]
+        }
+      ]
+    },
+    "h-16": {
       "@type": "slate",
       "plaintext": "Uploading media",
       "value": [
@@ -386,7 +425,7 @@
         }
       ]
     },
-    "p-14": {
+    "p-17": {
       "@type": "slate",
       "plaintext": "When the frontend marks an image (or other media element) as inline-editable, you can:",
       "value": [
@@ -400,7 +439,7 @@
         }
       ]
     },
-    "h-15": {
+    "h-18": {
       "@type": "slate",
       "plaintext": "Empty media element",
       "value": [
@@ -414,7 +453,7 @@
         }
       ]
     },
-    "p-16": {
+    "p-19": {
       "@type": "slate",
       "plaintext": "You'll see an empty placeholder with a prompt to **upload, browse, or drag in** an image. Three ways:",
       "value": [
@@ -439,7 +478,7 @@
         }
       ]
     },
-    "ul-17": {
+    "ul-20": {
       "@type": "slate",
       "plaintext": "Click the placeholder → the media picker opens. Pick from existing CMS images or upload a new one. Drag an image file from your desktop and drop it directly onto the placeholder. Drag an image from another tab / source if your browser supports it.",
       "value": [
@@ -474,14 +513,14 @@
         }
       ]
     },
-    "img-18": {
+    "img-21": {
       "@type": "image",
       "url": "/docs/images/media-empty-placeholder",
       "alt": "Empty image block selected — placeholder with image icon, \"Browse the site, drop an image...\" input, sidebar showing \"NO IMAGE SELECTED\".",
       "align": "center",
       "size": "l"
     },
-    "h-19": {
+    "h-22": {
       "@type": "slate",
       "plaintext": "Replacing an existing media element",
       "value": [
@@ -495,7 +534,7 @@
         }
       ]
     },
-    "p-20": {
+    "p-23": {
       "@type": "slate",
       "plaintext": "Hover the image — controls appear. You can:",
       "value": [
@@ -509,7 +548,7 @@
         }
       ]
     },
-    "ul-21": {
+    "ul-24": {
       "@type": "slate",
       "plaintext": "Replace — opens the media picker to pick or upload a different image. Remove — clears the field, returns to the empty placeholder state. Drag and drop a new image directly onto the existing one to replace it.",
       "value": [
@@ -568,7 +607,7 @@
         }
       ]
     },
-    "p-22": {
+    "p-25": {
       "@type": "slate",
       "plaintext": "The same actions are available from the sidebar field if you'd rather not click into the preview.",
       "value": [
@@ -582,7 +621,7 @@
         }
       ]
     },
-    "h-23": {
+    "h-26": {
       "@type": "slate",
       "plaintext": "What gets stored",
       "value": [
@@ -596,7 +635,7 @@
         }
       ]
     },
-    "p-24": {
+    "p-27": {
       "@type": "slate",
       "plaintext": "When you pick or upload an image, what gets stored on the block isn't a URL string — it's a small object containing the image's CMS path, the field name, and the available scales. The frontend resolves a specific scale at render time (so the same image data renders at thumbnail size in a listing and full size in a hero). You don't have to think about scales as an editor; they're a developer concern.",
       "value": [
@@ -610,7 +649,7 @@
         }
       ]
     },
-    "h-25": {
+    "h-28": {
       "@type": "slate",
       "plaintext": "What's not (yet) inline-editable",
       "value": [
@@ -624,7 +663,7 @@
         }
       ]
     },
-    "p-26": {
+    "p-29": {
       "@type": "slate",
       "plaintext": "A few media types currently still require sidebar editing:",
       "value": [
@@ -638,7 +677,7 @@
         }
       ]
     },
-    "ul-27": {
+    "ul-30": {
       "@type": "slate",
       "plaintext": "File uploads (PDFs, downloads) — pickable from the sidebar but no drag-onto-preview support yet. Embedded video URLs — sidebar field; click-to-edit on the player isn't wired up.",
       "value": [
@@ -681,7 +720,7 @@
         }
       ]
     },
-    "p-28": {
+    "p-31": {
       "@type": "slate",
       "plaintext": "If your frontend doesn't expose a particular media field as inline-editable, you can always edit it from the sidebar — that's available for every field.",
       "value": [
@@ -711,22 +750,25 @@
       "img-10",
       "p-11",
       "ul-12",
-      "h-13",
-      "p-14",
-      "h-15",
-      "p-16",
-      "ul-17",
-      "img-18",
-      "h-19",
-      "p-20",
-      "ul-21",
-      "p-22",
-      "h-23",
-      "p-24",
-      "h-25",
-      "p-26",
-      "ul-27",
-      "p-28"
+      "p-13",
+      "ul-14",
+      "p-15",
+      "h-16",
+      "p-17",
+      "h-18",
+      "p-19",
+      "ul-20",
+      "img-21",
+      "h-22",
+      "p-23",
+      "ul-24",
+      "p-25",
+      "h-26",
+      "p-27",
+      "h-28",
+      "p-29",
+      "ul-30",
+      "p-31"
     ]
   }
 }

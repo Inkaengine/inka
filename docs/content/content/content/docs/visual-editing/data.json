@@ -101,12 +101,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "data-block-uid=\"blockId\""
-                        }
-                      ]
+                      "text": "`data-block-uid=\"blockId\"`"
                     }
                   ]
                 },
@@ -122,12 +117,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "data-edit-text=\"fieldName\""
-                        }
-                      ]
+                      "text": "`data-edit-text=\"fieldName\"`"
                     }
                   ]
                 },
@@ -143,12 +133,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "data-edit-media=\"fieldName\""
-                        }
-                      ]
+                      "text": "`data-edit-media=\"fieldName\"`"
                     }
                   ]
                 },
@@ -164,12 +149,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "data-edit-link=\"fieldName\""
-                        }
-                      ]
+                      "text": "`data-edit-link=\"fieldName\"`"
                     }
                   ]
                 },
@@ -207,7 +187,79 @@
         }
       ]
     },
-    "h-6": {
+    "p-6": {
+      "@type": "slate",
+      "plaintext": "**Worked examples:** [Hero Block](./examples/hero.md) — text, rich text, media and link annotations in one block; [Button Block](./examples/button.md) — `data-edit-text` and `data-edit-link` on the same element.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Worked examples:"
+                }
+              ]
+            },
+            {
+              "text": " "
+            },
+            {
+              "type": "link",
+              "data": {
+                "url": "/docs/examples/hero"
+              },
+              "children": [
+                {
+                  "text": "Hero Block"
+                }
+              ]
+            },
+            {
+              "text": " — text, rich text, media and link annotations in one block; "
+            },
+            {
+              "type": "link",
+              "data": {
+                "url": "/docs/examples/button"
+              },
+              "children": [
+                {
+                  "text": "Button Block"
+                }
+              ]
+            },
+            {
+              "text": " — "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "data-edit-text"
+                }
+              ]
+            },
+            {
+              "text": " and "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "data-edit-link"
+                }
+              ]
+            },
+            {
+              "text": " on the same element."
+            }
+          ]
+        }
+      ]
+    },
+    "h-7": {
       "@type": "slate",
       "plaintext": "Comment Syntax",
       "value": [
@@ -221,7 +273,7 @@
         }
       ]
     },
-    "p-7": {
+    "p-8": {
       "@type": "slate",
       "plaintext": "If you can't modify the markup (e.g., using a 3rd party component library), use comment syntax to specify block attributes:",
       "value": [
@@ -235,18 +287,18 @@
         }
       ]
     },
-    "ce-8": {
+    "ce-9": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-8-html-5005a4",
+          "@id": "ce-9-html-49f5cb",
           "label": "Html",
           "language": "html",
           "code": "<!-- hydra block-uid=block-123\n     edit-text=title(.card-title)\n     edit-media=url(img)\n     edit-link=href(a.link) -->\n<div class=\"third-party-card\">\n  <h3 class=\"card-title\">Title</h3>\n  <img src=\"image.jpg\">\n  <a class=\"link\" href=\"...\">Read more</a>\n</div>\n<!-- /hydra -->"
         }
       ]
     },
-    "ul-9": {
+    "ul-10": {
       "@type": "slate",
       "plaintext": "Attributes without selectors apply to the root element: block-uid=xxx Attributes with selectors target child elements: edit-text=title(.card-title) Closing <!-- /hydra --> marks end of scope Self-closing <!-- hydra block-uid=xxx /--> applies only to next sibling element",
       "value": [
@@ -327,7 +379,7 @@
         }
       ]
     },
-    "p-10": {
+    "p-11": {
       "@type": "slate",
       "plaintext": "Supported attributes: `block-uid`, `block-readonly`, `edit-text`, `edit-link`, `edit-media`, `block-add`",
       "value": [
@@ -404,7 +456,7 @@
         }
       ]
     },
-    "h-11": {
+    "h-12": {
       "@type": "slate",
       "plaintext": "Optional Fields — empty means absent",
       "value": [
@@ -418,7 +470,7 @@
         }
       ]
     },
-    "p-12": {
+    "p-13": {
       "@type": "slate",
       "plaintext": "Render optional fields **data-driven**: no data, no element. Don't render an empty element just to give the editor something to click — it leaks empty markup into your published page.",
       "value": [
@@ -443,20 +495,20 @@
         }
       ]
     },
-    "ce-13": {
+    "ce-14": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-13-html-20bcae",
+          "@id": "ce-14-jsx-1a5f34",
           "label": "Jsx",
           "language": "jsx",
           "code": "{block.heading && <h1 data-edit-text=\"heading\">{block.heading}</h1>}\n{block.image && <img data-edit-media=\"image\" src={block.image} />}"
         }
       ]
     },
-    "p-14": {
+    "p-15": {
       "@type": "slate",
-      "plaintext": "Plain truthiness is enough — you never need `.length` or a null-safe walk. Inka normalises a field the editor has cleared (widgets write `[]`, which is truthy) to absent before your renderer sees it.",
+      "plaintext": "Plain truthiness is enough — you never need `.length` or a null-safe walk. Hydra normalises a field the editor has cleared (widgets write `[]`, which is truthy) to absent before your renderer sees it.",
       "value": [
         {
           "type": "p",
@@ -473,7 +525,7 @@
               ]
             },
             {
-              "text": " or a null-safe walk. Inka normalises a field the editor has cleared (widgets write "
+              "text": " or a null-safe walk. Hydra normalises a field the editor has cleared (widgets write "
             },
             {
               "type": "code",
@@ -490,9 +542,9 @@
         }
       ]
     },
-    "p-15": {
+    "p-16": {
       "@type": "slate",
-      "plaintext": "To fill an empty field from the canvas, the editor selects the block and presses **reveal optional fields** in the Quanta toolbar. Inka feeds your renderer a placeholder value for each empty field, so your own `&&` guard produces the element and it becomes editable. The placeholder exists only in the data handed to your renderer: it is never stored, so fields left unfilled leave no trace in saved content and render nothing in view. Your renderer needs no code for this.",
+      "plaintext": "To fill an empty field from the canvas, the editor selects the block and presses **reveal optional fields** in the Quanta toolbar. Hydra feeds your renderer a placeholder value for each empty field, so your own `&&` guard produces the element and it becomes editable. The placeholder exists only in the data handed to your renderer: it is never stored, so fields left unfilled leave no trace in saved content and render nothing in view. Your renderer needs no code for this.",
       "value": [
         {
           "type": "p",
@@ -509,7 +561,7 @@
               ]
             },
             {
-              "text": " in the Quanta toolbar. Inka feeds your renderer a placeholder value for each empty field, so your own "
+              "text": " in the Quanta toolbar. Hydra feeds your renderer a placeholder value for each empty field, so your own "
             },
             {
               "type": "code",
@@ -526,21 +578,21 @@
         }
       ]
     },
-    "p-16": {
+    "p-17": {
       "@type": "slate",
-      "plaintext": "Reveal is best-effort. Inka offers any field whose type could be edited inline, which it cannot always tell apart from a field you keep in the sidebar (alt text and css classes are strings too). Fields you don't render inline simply don't appear — the editor fills those from the sidebar as usual.",
+      "plaintext": "Reveal is best-effort. Hydra offers any field whose type could be edited inline, which it cannot always tell apart from a field you keep in the sidebar (alt text and css classes are strings too). Fields you don't render inline simply don't appear — the editor fills those from the sidebar as usual.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "Reveal is best-effort. Inka offers any field whose type could be edited inline, which it cannot always tell apart from a field you keep in the sidebar (alt text and css classes are strings too). Fields you don't render inline simply don't appear — the editor fills those from the sidebar as usual."
+              "text": "Reveal is best-effort. Hydra offers any field whose type could be edited inline, which it cannot always tell apart from a field you keep in the sidebar (alt text and css classes are strings too). Fields you don't render inline simply don't appear — the editor fills those from the sidebar as usual."
             }
           ]
         }
       ]
     },
-    "p-17": {
+    "p-18": {
       "@type": "slate",
       "plaintext": "Reveal replaces a per-block boolean only where \"has data\" and \"should render\" are the same thing. When they genuinely differ — the author has content but wants it hidden, or a field should appear only in certain configurations — add your own field and drive it with [`fieldRules`](custom-blocks.md#schema-enhancers).",
       "value": [
@@ -553,16 +605,11 @@
             {
               "type": "link",
               "data": {
-                "url": "custom-blocks.md#schema-enhancers"
+                "url": "/docs/custom-blocks#schema-enhancers"
               },
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "fieldRules"
-                    }
-                  ]
+                  "text": "`fieldRules`"
                 }
               ]
             },
@@ -573,7 +620,7 @@
         }
       ]
     },
-    "h-18": {
+    "h-19": {
       "@type": "slate",
       "plaintext": "Allowed Navigation (data-linkable-allow)",
       "value": [
@@ -587,7 +634,7 @@
         }
       ]
     },
-    "p-19": {
+    "p-20": {
       "@type": "slate",
       "plaintext": "Add `data-linkable-allow` to elements that should navigate during edit mode (paging links, facet controls, etc.):",
       "value": [
@@ -612,18 +659,18 @@
         }
       ]
     },
-    "ce-20": {
+    "ce-21": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-20-html-da86a1",
+          "@id": "ce-21-html-ebe5dd",
           "label": "Html",
           "language": "html",
           "code": "<a href=\"/page?pg=2\" data-linkable-allow>Next</a>\n<select data-linkable-allow @change=\"handleFilter\">...</select>"
         }
       ]
     },
-    "h-21": {
+    "h-22": {
       "@type": "slate",
       "plaintext": "Field Path Syntax",
       "value": [
@@ -637,7 +684,7 @@
         }
       ]
     },
-    "p-22": {
+    "p-23": {
       "@type": "slate",
       "plaintext": "Every `data-edit-*` attribute — `data-edit-text`, `data-edit-link`, `data-edit-media` — takes a Unix-style **field path**, resolved the same way for all three. A path has two independent axes:",
       "value": [
@@ -706,7 +753,7 @@
         }
       ]
     },
-    "p-23": {
+    "p-24": {
       "@type": "slate",
       "plaintext": "**Which block** (the leading part):",
       "value": [
@@ -728,7 +775,7 @@
         }
       ]
     },
-    "ul-24": {
+    "ul-25": {
       "@type": "slate",
       "plaintext": "fieldName — this block's own field (default) ../fieldName — the parent block's field ../../fieldName — the grandparent block's field /fieldName — a page/root field",
       "value": [
@@ -742,12 +789,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "fieldName"
-                        }
-                      ]
+                      "text": "`fieldName`"
                     }
                   ]
                 },
@@ -763,12 +805,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "../fieldName"
-                        }
-                      ]
+                      "text": "`../fieldName`"
                     }
                   ]
                 },
@@ -795,12 +832,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "../../fieldName"
-                        }
-                      ]
+                      "text": "`../../fieldName`"
                     }
                   ]
                 },
@@ -816,12 +848,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "/fieldName"
-                        }
-                      ]
+                      "text": "`/fieldName`"
                     }
                   ]
                 },
@@ -834,7 +861,7 @@
         }
       ]
     },
-    "p-25": {
+    "p-26": {
       "@type": "slate",
       "plaintext": "`..` always steps up one **block** — never an object or region level (see below).",
       "value": [
@@ -867,7 +894,7 @@
         }
       ]
     },
-    "p-26": {
+    "p-27": {
       "@type": "slate",
       "plaintext": "**Where inside the block** (`/` descends objects):",
       "value": [
@@ -900,9 +927,9 @@
         }
       ]
     },
-    "ul-27": {
+    "ul-28": {
       "@type": "slate",
-      "plaintext": "content/headline — descend a widget: 'object' field to a nested field (the key mirrors the storage path, block.content.headline)",
+      "plaintext": "content/headline — descend a widget: 'object'",
       "value": [
         {
           "type": "ul",
@@ -914,12 +941,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "content/headline"
-                        }
-                      ]
+                      "text": "`content/headline`"
                     }
                   ]
                 },
@@ -929,32 +951,13 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "container-blocks.md#widget-object-nesting-fields-and-containers-inside-a-block-field"
+                    "url": "/docs/container-blocks#widget-object-nesting-fields-and-containers-inside-a-block-field"
                   },
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "widget: 'object'"
-                        }
-                      ]
+                      "text": "`widget: 'object'`"
                     }
                   ]
-                },
-                {
-                  "text": " field to a nested field (the key mirrors the storage path, "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "block.content.headline"
-                    }
-                  ]
-                },
-                {
-                  "text": ")"
                 }
               ]
             }
@@ -962,7 +965,32 @@
         }
       ]
     },
-    "p-28": {
+    "p-29": {
+      "@type": "slate",
+      "plaintext": "field to a nested field (the key mirrors the storage path, `block.content.headline`)",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "field to a nested field (the key mirrors the storage path, "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "block.content.headline"
+                }
+              ]
+            },
+            {
+              "text": ")"
+            }
+          ]
+        }
+      ]
+    },
+    "p-30": {
       "@type": "slate",
       "plaintext": "The two compose: `../content/headline` is \"the parent block, its `content.headline`\". `/` descends objects only — a region (`object_list` / `blocks_layout`) or a value is the end of a path (a region's children are separate blocks with their own `data-block-uid`).",
       "value": [
@@ -1042,18 +1070,18 @@
         }
       ]
     },
-    "ce-29": {
+    "ce-31": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-29-html-a5e4fc",
+          "@id": "ce-31-html-5ea617",
           "label": "Html",
           "language": "html",
           "code": "<!-- page fields (not inside any block) -->\n<h1 data-edit-text=\"/title\">My Page Title</h1>\n<p  data-edit-text=\"/description\">Page description here</p>\n\n<!-- inside a nested block, edit the parent container's title -->\n<h3 data-edit-text=\"../title\">Column Title</h3>\n\n<!-- fields nested on a widget:'object' — text, link and media all use the same path -->\n<h3 data-edit-text=\"content/headline\">…</h3>\n<a  data-edit-link=\"content/href\">…</a>\n<img data-edit-media=\"content/image\" />"
         }
       ]
     },
-    "p-30": {
+    "p-32": {
       "@type": "slate",
       "plaintext": "This lets fixed parts of the page (headers), parent-block fields, and fields grouped inside an object all be edited in place, with one addressing model.",
       "value": [
@@ -1067,7 +1095,239 @@
         }
       ]
     },
-    "h-31": {
+    "h-33": {
+      "@type": "slate",
+      "plaintext": "Where a page field comes from",
+      "value": [
+        {
+          "type": "h3",
+          "children": [
+            {
+              "text": "Where a page field comes from"
+            }
+          ]
+        }
+      ]
+    },
+    "p-34": {
+      "@type": "slate",
+      "plaintext": "A `/fieldName` path resolves against the **content type's schema**, not against anything the frontend declares. The admin reads the schema for the content being edited and hands the bridge a field type per property (`View.jsx` `extractBlockFieldTypes`: *\"page-level field types from content type schema … accessed via /fieldName\"*). So `data-edit-text=\"/title\"` works on any content type with a `title`, and `data-edit-text=\"/effective\"` works on one that has an `effective` — no registration step.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "/fieldName"
+                }
+              ]
+            },
+            {
+              "text": " path resolves against the "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "content type's schema"
+                }
+              ]
+            },
+            {
+              "text": ", not against anything the frontend declares. The admin reads the schema for the content being edited and hands the bridge a field type per property ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "View.jsx"
+                }
+              ]
+            },
+            {
+              "text": " "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "extractBlockFieldTypes"
+                }
+              ]
+            },
+            {
+              "text": ": "
+            },
+            {
+              "type": "em",
+              "children": [
+                {
+                  "text": "\"page-level field types from content type schema … accessed via /fieldName\""
+                }
+              ]
+            },
+            {
+              "text": "). So "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "data-edit-text=\"/title\""
+                }
+              ]
+            },
+            {
+              "text": " works on any content type with a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "title"
+                }
+              ]
+            },
+            {
+              "text": ", and "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "data-edit-text=\"/effective\""
+                }
+              ]
+            },
+            {
+              "text": " works on one that has an "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "effective"
+                }
+              ]
+            },
+            {
+              "text": " — no registration step."
+            }
+          ]
+        }
+      ]
+    },
+    "p-35": {
+      "@type": "slate",
+      "plaintext": "The corollary matters, because getting it wrong is silent: **do not add page metadata to `initBridge`'s `page.schema.properties`.** That schema lists the page's *blocks fields* (its regions), and the admin turns every entry in it into a region — `widget: 'blocks_layout'` is stamped on and an empty `blocks_layout[<name>]` minted. Declaring `title`/`effective` there gives the page phantom empty regions; page-level selection then lands on one of them, and `Cmd+A` selects one block where it should select all siblings.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The corollary matters, because getting it wrong is silent: "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "do not add page metadata to `initBridge`'s `page.schema.properties`."
+                }
+              ]
+            },
+            {
+              "text": " That schema lists the page's "
+            },
+            {
+              "type": "em",
+              "children": [
+                {
+                  "text": "blocks fields"
+                }
+              ]
+            },
+            {
+              "text": " (its regions), and the admin turns every entry in it into a region — "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "widget: 'blocks_layout'"
+                }
+              ]
+            },
+            {
+              "text": " is stamped on and an empty "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "blocks_layout[<name>]"
+                }
+              ]
+            },
+            {
+              "text": " minted. Declaring "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "title"
+                }
+              ]
+            },
+            {
+              "text": "/"
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "effective"
+                }
+              ]
+            },
+            {
+              "text": " there gives the page phantom empty regions; page-level selection then lands on one of them, and "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "Cmd+A"
+                }
+              ]
+            },
+            {
+              "text": " selects one block where it should select all siblings."
+            }
+          ]
+        }
+      ]
+    },
+    "p-36": {
+      "@type": "slate",
+      "plaintext": "If a field is annotated but clicking it does nothing, the field is missing from the content type's schema — the annotation renders either way, since the DOM knows nothing about schemas.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "If a field is annotated but clicking it does nothing, the field is missing from the content type's schema — the annotation renders either way, since the DOM knows nothing about schemas."
+            }
+          ]
+        }
+      ]
+    },
+    "h-37": {
       "@type": "slate",
       "plaintext": "Readonly Regions",
       "value": [
@@ -1081,7 +1341,7 @@
         }
       ]
     },
-    "p-32": {
+    "p-38": {
       "@type": "slate",
       "plaintext": "Add `data-block-readonly` (or `<!-- hydra block-readonly -->` comment) to disable inline editing for all fields inside an element:",
       "value": [
@@ -1117,18 +1377,18 @@
         }
       ]
     },
-    "ce-33": {
+    "ce-39": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-33-html-6eefe4",
+          "@id": "ce-39-html-349939",
           "label": "Html",
           "language": "html",
           "code": "<div class=\"teaser\" data-block-uid=\"teaser-1\">\n  <div data-block-readonly>\n    <h2 data-edit-text=\"title\">Target Page Title</h2>\n  </div>\n  <a data-edit-link=\"href\" href=\"/target\">Read more</a>\n</div>"
         }
       ]
     },
-    "p-34": {
+    "p-40": {
       "@type": "slate",
       "plaintext": "Or using comment syntax:",
       "value": [
@@ -1142,18 +1402,18 @@
         }
       ]
     },
-    "ce-35": {
+    "ce-41": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-35-html-9626f2",
+          "@id": "ce-41-html-0d2700",
           "label": "Html",
           "language": "html",
           "code": "<!-- hydra block-readonly -->\n<div class=\"listing-item\" data-block-uid=\"item-1\">...</div>"
         }
       ]
     },
-    "p-36": {
+    "p-42": {
       "@type": "slate",
       "plaintext": "`data-block-readonly` is *your* call — use it when your frontend wants to lock a block for its own reasons (a teaser mirroring another page, a listing item).",
       "value": [
@@ -1186,9 +1446,9 @@
         }
       ]
     },
-    "p-37": {
+    "p-43": {
       "@type": "slate",
-      "plaintext": "You do **not** need it for template content. Inka already knows which blocks a template marks read-only from the block data and enforces that itself, so your renderer doesn't need to detect template blocks or mark them.",
+      "plaintext": "You do **not** need it for template content. Hydra already knows which blocks a template marks read-only from the block data and enforces that itself, so your renderer doesn't need to detect template blocks or mark them.",
       "value": [
         {
           "type": "p",
@@ -1205,13 +1465,13 @@
               ]
             },
             {
-              "text": " need it for template content. Inka already knows which blocks a template marks read-only from the block data and enforces that itself, so your renderer doesn't need to detect template blocks or mark them."
+              "text": " need it for template content. Hydra already knows which blocks a template marks read-only from the block data and enforces that itself, so your renderer doesn't need to detect template blocks or mark them."
             }
           ]
         }
       ]
     },
-    "h-38": {
+    "h-44": {
       "@type": "slate",
       "plaintext": "Renderer Node-ID Rules",
       "value": [
@@ -1225,7 +1485,7 @@
         }
       ]
     },
-    "p-39": {
+    "p-45": {
       "@type": "slate",
       "plaintext": "When rendering Slate nodes to DOM, your renderer must follow these rules for `data-node-id`:",
       "value": [
@@ -1250,7 +1510,7 @@
         }
       ]
     },
-    "ol-40": {
+    "ol-46": {
       "@type": "slate",
       "plaintext": "Element nodes (p, strong, em, etc.) must have data-node-id matching the Slate node's nodeId Wrapper elements — If you add extra wrapper elements around a Slate node, ALL wrappers must have the same data-node-id as the inner element",
       "value": [
@@ -1340,7 +1600,7 @@
         }
       ]
     },
-    "p-41": {
+    "p-47": {
       "@type": "slate",
       "plaintext": "hydra.js uses node-ids to map between Slate's data model and your DOM. When restoring cursor position after formatting changes, it walks your DOM counting Slate children.",
       "value": [
@@ -1354,18 +1614,18 @@
         }
       ]
     },
-    "ce-42": {
+    "ce-48": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-42-html-7ddfd5",
+          "@id": "ce-48-html-8b45b3",
           "label": "Html",
           "language": "html",
           "code": "Valid wrapper pattern:\n<strong data-node-id=\"0.1\"><b data-node-id=\"0.1\">bold</b></strong>\nBoth elements have the same node-id, so they count as one Slate child.\n\nInvalid (missing node-id on wrapper):\n<span class=\"my-style\"><strong data-node-id=\"0.1\">bold</strong></span>\nThis breaks cursor positioning because hydra.js can't correlate DOM structure to Slate structure."
         }
       ]
     },
-    "h-43": {
+    "h-49": {
       "@type": "slate",
       "plaintext": "Non-editable content inside a slate field",
       "value": [
@@ -1379,7 +1639,7 @@
         }
       ]
     },
-    "p-44": {
+    "p-50": {
       "@type": "slate",
       "plaintext": "Sometimes a renderer adds elements to slate output that are **not** part of the editable content — a decorative icon (an \"opens in a new tab\" glyph), a generated chip, an embedded non-editable widget. These have no `data-node-id` (they aren't Slate nodes), and they must be marked so that **both** the editor's caret and hydra's DOM→Slate reader skip them:",
       "value": [
@@ -1426,9 +1686,9 @@
         }
       ]
     },
-    "ul-45": {
+    "ul-51": {
       "@type": "slate",
-      "plaintext": "contenteditable=\"false\" — the browser treats the element as a non-editable island: the caret steps over it, backspace/delete removes it as a unit, and selection includes it whole. Add this to anything that must not be typed into. aria-hidden=\"true\" — for purely decorative chrome (e.g. icons), so assistive tech ignores it too.",
+      "plaintext": "contenteditable=\"false\" — the browser treats the element as a",
       "value": [
         {
           "type": "ul",
@@ -1440,38 +1700,12 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "contenteditable=\"false\""
-                        }
-                      ]
+                      "text": "`contenteditable=\"false\"`"
                     }
                   ]
                 },
                 {
-                  "text": " — the browser treats the element as a non-editable island: the caret steps over it, backspace/delete removes it as a unit, and selection includes it whole. Add this to anything that must not be typed into."
-                }
-              ]
-            },
-            {
-              "type": "li",
-              "children": [
-                {
-                  "type": "strong",
-                  "children": [
-                    {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "aria-hidden=\"true\""
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "text": " — for purely decorative chrome (e.g. icons), so assistive tech ignores it too."
+                  "text": " — the browser treats the element as a"
                 }
               ]
             }
@@ -1479,7 +1713,62 @@
         }
       ]
     },
-    "p-46": {
+    "p-52": {
+      "@type": "slate",
+      "plaintext": "non-editable island: the caret steps over it, backspace/delete removes it as a   unit, and selection includes it whole. Add this to anything that must not be   typed into.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "non-editable island: the caret steps over it, backspace/delete removes it as a   unit, and selection includes it whole. Add this to anything that must not be   typed into."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-53": {
+      "@type": "slate",
+      "plaintext": "aria-hidden=\"true\" — for purely decorative chrome (e.g. icons), so",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "`aria-hidden=\"true\"`"
+                    }
+                  ]
+                },
+                {
+                  "text": " — for purely decorative chrome (e.g. icons), so"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-54": {
+      "@type": "slate",
+      "plaintext": "assistive tech ignores it too.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "assistive tech ignores it too."
+            }
+          ]
+        }
+      ]
+    },
+    "p-55": {
       "@type": "slate",
       "plaintext": "hydra's DOM→Slate reader skips any child (without a `data-node-id`) that carries **either** attribute — treating it as chrome, not content. Without this, the element's text would be read back into the Slate value on every edit / select / delete over it, corrupting the value.",
       "value": [
@@ -1515,18 +1804,18 @@
         }
       ]
     },
-    "ce-47": {
+    "ce-56": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-47-html-a67f8c",
+          "@id": "ce-56-html-1b50a5",
           "label": "Html",
           "language": "html",
           "code": "An <a data-node-id=\"0.1\">external link<span class=\"external-icon\"\n  aria-hidden=\"true\" contenteditable=\"false\">&#8599;</span></a>\nThe icon is decoration: the caret skips it and it never enters the value."
         }
       ]
     },
-    "p-48": {
+    "p-57": {
       "@type": "slate",
       "plaintext": "Contrast this with the wrapper rule above: a wrapper that holds real content carries the inner node's `data-node-id` (and neither of these attributes), so it IS read; decorative / non-editable chrome carries these attributes and is skipped.",
       "value": [
@@ -1551,7 +1840,7 @@
         }
       ]
     },
-    "h-49": {
+    "h-58": {
       "@type": "slate",
       "plaintext": "One top-level node per slate field",
       "value": [
@@ -1565,7 +1854,7 @@
         }
       ]
     },
-    "p-50": {
+    "p-59": {
       "@type": "slate",
       "plaintext": "A slate field's `value` is an array, but it always holds exactly **one top-level node** — a single paragraph, heading, list, or blockquote. Inline content (bold, links, …) lives in that node's `children`.",
       "value": [
@@ -1612,9 +1901,9 @@
         }
       ]
     },
-    "p-51": {
+    "p-60": {
       "@type": "slate",
-      "plaintext": "Editing can transiently produce more than one top-level node — pasting multiple paragraphs, pressing Enter, or a Backspace that demotes a list item to a paragraph (`[ul, p]`). Inka normalizes that immediately:",
+      "plaintext": "Editing can transiently produce more than one top-level node — pasting multiple paragraphs, pressing Enter, or a Backspace that demotes a list item to a paragraph (`[ul, p]`). Hydra normalizes that immediately:",
       "value": [
         {
           "type": "p",
@@ -1631,15 +1920,15 @@
               ]
             },
             {
-              "text": "). Inka normalizes that immediately:"
+              "text": "). Hydra normalizes that immediately:"
             }
           ]
         }
       ]
     },
-    "ul-52": {
+    "ul-61": {
       "@type": "slate",
-      "plaintext": "Split — when the field is the value of a slate block, each extra node becomes its own slate block, inserted after the original in the same container (blocks_layout or object_list). This is how pressing Enter in a text block produces a new block. Flatten — when the field can't be split — a slate field of a non-slate block (e.g. a slateTable cell's value), a slate field nested on a widget: 'object' (content/headline), or a container that's full or in table mode — the extra nodes' content merges back into the first node. No text is lost.",
+      "plaintext": "Split — when the field is the value of a slate block, each extra",
       "value": [
         {
           "type": "ul",
@@ -1678,43 +1967,68 @@
                   ]
                 },
                 {
-                  "text": " block, each extra node becomes its own "
-                },
+                  "text": " block, each extra"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-62": {
+      "@type": "slate",
+      "plaintext": "node becomes its own `slate` block, inserted after the original in the   same container (`blocks_layout` or `object_list`). This is how pressing   Enter in a text block produces a new block.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "node becomes its own "
+            },
+            {
+              "type": "code",
+              "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "slate"
-                    }
-                  ]
-                },
-                {
-                  "text": " block, inserted after the original in the same container ("
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "blocks_layout"
-                    }
-                  ]
-                },
-                {
-                  "text": " or "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "object_list"
-                    }
-                  ]
-                },
-                {
-                  "text": "). This is how pressing Enter in a text block produces a new block."
+                  "text": "slate"
                 }
               ]
             },
+            {
+              "text": " block, inserted after the original in the   same container ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "blocks_layout"
+                }
+              ]
+            },
+            {
+              "text": " or "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "object_list"
+                }
+              ]
+            },
+            {
+              "text": "). This is how pressing   Enter in a text block produces a new block."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-63": {
+      "@type": "slate",
+      "plaintext": "Flatten — when the field can't be split — a slate field of a",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -1738,51 +2052,7 @@
                   ]
                 },
                 {
-                  "text": " be split — a slate field of a non-slate block (e.g. a "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "slateTable"
-                    }
-                  ]
-                },
-                {
-                  "text": " cell's "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "value"
-                    }
-                  ]
-                },
-                {
-                  "text": "), a slate field nested on a "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "widget: 'object'"
-                    }
-                  ]
-                },
-                {
-                  "text": " ("
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "content/headline"
-                    }
-                  ]
-                },
-                {
-                  "text": "), or a container that's full or in table mode — the extra nodes' content merges back into the first node. No text is lost."
+                  "text": " be split — a slate field of a"
                 }
               ]
             }
@@ -1790,7 +2060,65 @@
         }
       ]
     },
-    "p-53": {
+    "p-64": {
+      "@type": "slate",
+      "plaintext": "non-slate block (e.g. a `slateTable` cell's `value`), a slate field nested   on a `widget: 'object'` (`content/headline`), or a container that's full or   in table mode — the extra nodes' content merges back into the first node.   No text is lost.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "non-slate block (e.g. a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "slateTable"
+                }
+              ]
+            },
+            {
+              "text": " cell's "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "value"
+                }
+              ]
+            },
+            {
+              "text": "), a slate field nested   on a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "widget: 'object'"
+                }
+              ]
+            },
+            {
+              "text": " ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "content/headline"
+                }
+              ]
+            },
+            {
+              "text": "), or a container that's full or   in table mode — the extra nodes' content merges back into the first node.   No text is lost."
+            }
+          ]
+        }
+      ]
+    },
+    "p-65": {
       "@type": "slate",
       "plaintext": "A frontend renderer can therefore always assume one top-level node per slate field; it never has to handle a multi-node `value`.",
       "value": [
@@ -1815,7 +2143,43 @@
         }
       ]
     },
-    "h-54": {
+    "p-66": {
+      "@type": "slate",
+      "plaintext": "**Worked example:** [Table Block](./examples/table.md) — a slate value per cell, each its own field.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Worked example:"
+                }
+              ]
+            },
+            {
+              "text": " "
+            },
+            {
+              "type": "link",
+              "data": {
+                "url": "/docs/examples/table"
+              },
+              "children": [
+                {
+                  "text": "Table Block"
+                }
+              ]
+            },
+            {
+              "text": " — a slate value per cell, each its own field."
+            }
+          ]
+        }
+      ]
+    },
+    "h-67": {
       "@type": "slate",
       "plaintext": "Complete Slate Rendering Example",
       "value": [
@@ -1829,7 +2193,7 @@
         }
       ]
     },
-    "p-55": {
+    "p-68": {
       "@type": "slate",
       "plaintext": "Slate data structure (value is an array but always contains a single root node):",
       "value": [
@@ -1843,18 +2207,18 @@
         }
       ]
     },
-    "ce-56": {
+    "ce-69": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-56-json-a0b37e",
+          "@id": "ce-69-json-6c465d",
           "label": "Json",
           "language": "json",
           "code": "{\n  \"value\": [\n    {\n      \"type\": \"p\", \"nodeId\": \"0\",\n      \"children\": [\n        { \"text\": \"Hello \" },\n        { \"type\": \"strong\", \"nodeId\": \"0.1\",\n          \"children\": [{ \"text\": \"world\" }] },\n        { \"text\": \"! Visit \" },\n        { \"type\": \"link\", \"nodeId\": \"0.3\",\n          \"data\": { \"url\": \"/about\" },\n          \"children\": [{ \"text\": \"our page\" }] }\n      ]\n    }\n  ]\n}"
         }
       ]
     },
-    "p-57": {
+    "p-70": {
       "@type": "slate",
       "plaintext": "Renderer:",
       "value": [
@@ -1868,18 +2232,18 @@
         }
       ]
     },
-    "ce-58": {
+    "ce-71": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-58-javascript-3cee82",
+          "@id": "ce-71-javascript-43358a",
           "label": "Javascript",
           "language": "javascript",
           "code": "function renderSlate(nodes) {\n  return (nodes || []).map(node => {\n    if (node.text !== undefined) return escapeHtml(node.text);\n    const tag = { p:'p', h1:'h1', h2:'h2', strong:'strong',\n                  em:'em', link:'a' }[node.type] || 'span';\n    const attrs = node.type === 'link'\n      ? ` href=\"${node.data?.url || '#'}\"` : '';\n    return `<${tag} data-node-id=\"${node.nodeId}\"${attrs}>${renderSlate(node.children)}</${tag}>`;\n  }).join('');\n}"
         }
       ]
     },
-    "p-59": {
+    "p-72": {
       "@type": "slate",
       "plaintext": "Usage:",
       "value": [
@@ -1893,14 +2257,50 @@
         }
       ]
     },
-    "ce-60": {
+    "ce-73": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-60-html-7e15f3",
+          "@id": "ce-73-html-e47175",
           "label": "Html",
           "language": "html",
           "code": "<div data-block-uid=\"block-1\" data-edit-text=\"value\">\n  <!-- renderSlate(block.value) output goes here -->\n</div>"
+        }
+      ]
+    },
+    "p-74": {
+      "@type": "slate",
+      "plaintext": "**Worked example:** [Slate (Text) Block](./examples/slate.md) — the block itself, rendered per stack.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Worked example:"
+                }
+              ]
+            },
+            {
+              "text": " "
+            },
+            {
+              "type": "link",
+              "data": {
+                "url": "/docs/examples/slate"
+              },
+              "children": [
+                {
+                  "text": "Slate (Text) Block"
+                }
+              ]
+            },
+            {
+              "text": " — the block itself, rendered per stack."
+            }
+          ]
         }
       ]
     }
@@ -1913,61 +2313,75 @@
       "ul-3",
       "p-4",
       "ce-5",
-      "h-6",
-      "p-7",
-      "ce-8",
-      "ul-9",
-      "p-10",
-      "h-11",
-      "p-12",
-      "ce-13",
-      "p-14",
+      "p-6",
+      "h-7",
+      "p-8",
+      "ce-9",
+      "ul-10",
+      "p-11",
+      "h-12",
+      "p-13",
+      "ce-14",
       "p-15",
       "p-16",
       "p-17",
-      "h-18",
-      "p-19",
-      "ce-20",
-      "h-21",
-      "p-22",
+      "p-18",
+      "h-19",
+      "p-20",
+      "ce-21",
+      "h-22",
       "p-23",
-      "ul-24",
-      "p-25",
+      "p-24",
+      "ul-25",
       "p-26",
-      "ul-27",
-      "p-28",
-      "ce-29",
+      "p-27",
+      "ul-28",
+      "p-29",
       "p-30",
-      "h-31",
+      "ce-31",
       "p-32",
-      "ce-33",
+      "h-33",
       "p-34",
-      "ce-35",
+      "p-35",
       "p-36",
-      "p-37",
-      "h-38",
-      "p-39",
-      "ol-40",
-      "p-41",
-      "ce-42",
-      "h-43",
-      "p-44",
-      "ul-45",
-      "p-46",
-      "ce-47",
-      "p-48",
+      "h-37",
+      "p-38",
+      "ce-39",
+      "p-40",
+      "ce-41",
+      "p-42",
+      "p-43",
+      "h-44",
+      "p-45",
+      "ol-46",
+      "p-47",
+      "ce-48",
       "h-49",
       "p-50",
-      "p-51",
-      "ul-52",
-      "p-53",
-      "h-54",
+      "ul-51",
+      "p-52",
+      "ul-53",
+      "p-54",
       "p-55",
       "ce-56",
       "p-57",
-      "ce-58",
+      "h-58",
       "p-59",
-      "ce-60"
+      "p-60",
+      "ul-61",
+      "p-62",
+      "ul-63",
+      "p-64",
+      "p-65",
+      "p-66",
+      "h-67",
+      "p-68",
+      "ce-69",
+      "p-70",
+      "ce-71",
+      "p-72",
+      "ce-73",
+      "p-74"
     ]
   }
 }

@@ -1,0 +1,145 @@
+{
+  "@id": "/docs/examples/suggest",
+  "@type": "Document",
+  "UID": "docs-examples-suggest-001",
+  "allow_discussion": false,
+  "blocks": {
+    "title-1": {
+      "@type": "title"
+    },
+    "ref-suggest-description": {
+      "@type": "slate",
+      "plaintext": "A question whose answer is completed from a vocabulary the author picked.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A question whose answer is completed from a vocabulary the author picked."
+            }
+          ]
+        }
+      ]
+    },
+    "ref-suggest-schema": {
+      "@type": "codeExample",
+      "templateId": "/templates/block-reference-layout",
+      "templateInstanceId": "tpl-inst-suggest",
+      "slotId": "schema",
+      "tabs": [
+        {
+          "@id": "ref-suggest-schema-javascript-38aa69",
+          "label": "Schema",
+          "language": "javascript",
+          "code": "{\n  \"suggest\": {\n    \"blockSchema\": {\n      \"properties\": {\n        \"label\": {\n          \"title\": \"Question\"\n        },\n        \"suggestFrom\": {\n          \"title\": \"Suggest from\",\n          \"widget\": \"vocabularySelect\",\n          \"vocabularyFilter\": \"Keywords|Subject\"\n        },\n        \"value\": {\n          \"title\": \"Answer\"\n        }\n      }\n    }\n  }\n}"
+        }
+      ]
+    },
+    "ref-suggest-json-data": {
+      "@type": "codeExample",
+      "templateId": "/templates/block-reference-layout",
+      "templateInstanceId": "tpl-inst-suggest",
+      "slotId": "json-data",
+      "tabs": [
+        {
+          "@id": "ref-suggest-json-data-json-f45b27",
+          "label": "JSON Block Data",
+          "language": "json",
+          "code": ""
+        }
+      ]
+    },
+    "ref-suggest-rendering": {
+      "@type": "codeExample",
+      "templateId": "/templates/block-reference-layout",
+      "templateInstanceId": "tpl-inst-suggest",
+      "slotId": "rendering",
+      "tabs": [
+        {
+          "@id": "ref-suggest-rendering-jsx-f4100e",
+          "label": "React",
+          "language": "jsx",
+          "code": ""
+        },
+        {
+          "@id": "ref-suggest-rendering-vue-0dd086",
+          "label": "Vue",
+          "language": "vue",
+          "code": ""
+        },
+        {
+          "@id": "ref-suggest-rendering-svelte-2d790f",
+          "label": "Svelte",
+          "language": "svelte",
+          "code": ""
+        }
+      ]
+    },
+    "suggest-live-heading": {
+      "@type": "slate",
+      "plaintext": "Try it",
+      "value": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Try it"
+            }
+          ]
+        }
+      ]
+    },
+    "suggest-live-1": {
+      "@type": "suggest",
+      "label": "Topic",
+      "suggestFrom": "plone.app.vocabularies.Keywords",
+      "value": ""
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-1",
+      "ref-suggest-description",
+      "suggest-live-heading",
+      "suggest-live-1",
+      "ref-suggest-schema",
+      "ref-suggest-json-data",
+      "ref-suggest-rendering"
+    ]
+  },
+  "contributors": [],
+  "created": "2025-01-01T00:00:00+00:00",
+  "creators": [
+    "admin"
+  ],
+  "description": "A question whose answer is completed from a vocabulary the author picked.",
+  "effective": null,
+  "exclude_from_nav": false,
+  "expires": null,
+  "exportimport.constrains": {},
+  "exportimport.conversation": [],
+  "exportimport.versions": {},
+  "id": "suggest",
+  "is_folderish": false,
+  "language": "##DEFAULT##",
+  "layout": "document_view",
+  "lock": {},
+  "modified": "2025-01-01T00:00:00+00:00",
+  "parent": {
+    "@id": "/docs/examples",
+    "@type": "Document",
+    "UID": "docs-examples-folder-001",
+    "description": "Block reference: schema, JSON, and rendered examples for every block type Volto Hydra ships.",
+    "title": "Examples",
+    "type_title": "Page"
+  },
+  "review_state": "published",
+  "rights": "",
+  "subjects": [],
+  "title": "Suggest Block",
+  "type_title": "Page",
+  "version": "current",
+  "workflow_history": {},
+  "working_copy": null,
+  "working_copy_of": null
+}

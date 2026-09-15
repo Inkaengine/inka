@@ -17,7 +17,33 @@ describe('resolveRegionConstraints — field → block → page precedence', () 
       { defaultBlockType: 'x' },
       page,
     );
-    expect(rc).toEqual({ allowedBlocks: ['teaser'], defaultBlockType: 'teaser', maxLength: 3 });
+    expect(rc).toEqual({
+      allowedBlocks: ['teaser'],
+      defaultBlockType: 'teaser',
+      maxLength: 3,
+      allowedLayouts: null,
+    });
+  });
+
+  // A forced region's layout is a constraint like the others, and it has to
+  // survive this resolution: ensureEmptyBlockIfEmpty reads it off the resolved
+  // config to stamp a seeded placeholder with the template's membership. When it
+  // was dropped here, a region re-seeded after a delete came back as ordinary
+  // page content and the author had nothing left to lock.
+  test('carries a forced region\'s allowedLayouts', () => {
+    expect(
+      resolveRegionConstraints(
+        { allowedLayouts: ['/templates/site-announcement'] },
+        {},
+        page,
+      ).allowedLayouts,
+    ).toEqual(['/templates/site-announcement']);
+    // From the block config when the field is silent, and null when neither says.
+    expect(
+      resolveRegionConstraints({}, { allowedLayouts: ['/templates/site-footer'] }, page)
+        .allowedLayouts,
+    ).toEqual(['/templates/site-footer']);
+    expect(resolveRegionConstraints({}, {}, page).allowedLayouts).toBeNull();
   });
 
   test('block config wins when the field is silent', () => {

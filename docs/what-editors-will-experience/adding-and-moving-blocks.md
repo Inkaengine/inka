@@ -1,3 +1,43 @@
+---
+"@type": Document
+UID: docs-what-editors-will-experience-adding-and-moving-blocks-001
+allow_discussion: false
+contributors: []
+creators:
+  - admin
+description: The block chooser, slash menu, and drag handles are part of Inka
+  and look the same everywhere. What you can pick from those choosers — the list
+  of block types — comes from your site's design system. One site might offer
+  "Lead paragraph", "Pull quote", "Stat highlight"; another might just have
+  "Text" and "Image". Mechanic is identical.
+effective: 2025-01-01T00:00:00
+exclude_from_nav: false
+expires: null
+id: adding-and-moving-blocks
+is_folderish: false
+language: "##DEFAULT##"
+layout: document_view
+preview_caption: null
+preview_image: null
+review_state: published
+rights: ""
+subjects: []
+title: Adding and moving blocks
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
+blocks-tagged: |
+  <block type="slateTable">
+    <region name="table.rows">
+      <block type="row">
+        <region name="cells">
+          <block type="cell" value="${td/slate}" />
+        </region>
+      </block>
+    </region>
+  </block>
+---
+
 # Adding and moving blocks
 
 The block chooser, slash menu, and drag handles are part of Inka and look the same everywhere. What you can pick from those choosers — the list of block types — comes from your site's design system. One site might offer "Lead paragraph", "Pull quote", "Stat highlight"; another might just have "Text" and "Image". Mechanic is identical.
@@ -38,7 +78,7 @@ Drop targets are filtered by `allowedBlocks` — the line/shade indicator only a
 
 ### Reordering from the sidebar
 
-The sidebar's children list (visible when a container block is selected) has a drag handle (`⋮⋮`) on each child row. Drag it up or down to reorder children **within** the same container. Useful when the children are paged (slides of a slider, panels of an accordion) and you can't drag in the preview because only one is visible at a time. See [Selecting blocks › The children list](selecting-blocks.md#the-children-list-going-down).
+The sidebar's children list (visible when a container block is selected) has a drag handle (`⋮⋮`) on each child row. Drag it up or down to reorder children **within** the same container. Useful when the children are paged (slides of a slider, panels of an accordion) and you can't drag in the preview because only one is visible at a time. See [Selecting blocks › The children list](./selecting-blocks.md#the-children-list-going-down).
 
 ### Cut / copy / paste
 
@@ -54,22 +94,26 @@ This works across pages — copy a block on one page, navigate to another, paste
 
 In block mode (after pressing `Escape`):
 
+<block type="slateTable" table.fixed table.celled>
+
 | Key | Effect |
-|-----|--------|
+| --- | --- |
 | `Arrow Up` / `Arrow Down` | Move selection to previous / next sibling |
 | `Enter` | Add a new block after this one |
 | `Delete` / `Backspace` | Remove the selected block(s) |
 | `Escape` | Go up to the parent container (or deselect) |
 
+</block>
+
 `Arrow Up/Down` is **container-aware** — it walks across container boundaries. Pressing Down on the last block of a column jumps into the next column rather than getting stuck.
 
 ## Working with multiple blocks at once
 
-If you've selected multiple blocks (see [Selecting blocks](selecting-blocks.md)):
+If you've selected multiple blocks (see [Selecting blocks](./selecting-blocks.md)):
 
 - **Drag and drop** — works on the whole group; line indicator shows where the group will land.
 - **Delete** — removes all selected blocks.
-- **Wrap / Convert / Cut / Copy / Paste** — all apply to the group. See [Containers](containers.md) for wrap.
+- **Wrap / Convert / Cut / Copy / Paste** — all apply to the group. See [Containers](./containers.md) for wrap.
 
 ## Empty containers
 

@@ -138,6 +138,10 @@ test.describe('Sidebar Forms - Slate Block Behavior', () => {
     // Slate blocks should have TOC override settings from base schema
     const hasOverrideTocField = await helper.hasSidebarField('override_toc');
     expect(hasOverrideTocField).toBe(true);
+
+    // ...and the permanent anchor id (survives the heading being retitled)
+    const hasAnchorField = await helper.hasSidebarField('anchor');
+    expect(hasAnchorField).toBe(true);
   });
 
   test('Slate block shortcut and markdown help is collapsed by default', async ({ page }) => {

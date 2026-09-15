@@ -196,7 +196,14 @@ test.describe('Template Creation', () => {
     // Make Template auto-selects the instance and enters edit mode, so the Short
     // name field is editable. Set a custom short name.
     await expect(page.locator('.edit-template-toggle')).toHaveAttribute('aria-pressed', 'true', { timeout: 5000 });
-    const shortName = page.locator('.field').filter({ hasText: 'Short name' }).locator('input');
+    // Scoped to the template instance's own sidebar section. The content type
+    // declares `id`, titled "Short name" too, and the page pane renders it in
+    // the same sidebar at the same time — an unscoped `.field` matched both and
+    // strict mode refused the pair.
+    const shortName = page
+      .locator('.parent-block-settings .field')
+      .filter({ hasText: 'Short name' })
+      .locator('input');
     await expect(shortName).toBeEnabled({ timeout: 5000 });
     await shortName.fill('my-new-layout');
 
@@ -265,6 +272,61 @@ test.describe('Template Creation', () => {
     // mid-load or stuck in a template-expansion loop).
     await helper.clickBlockInIframe(headerBlockId);
     await helper.waitForBlockSelectedInAdmin(headerBlockId);
+  });
+
+  // The test above passes for the WRONG reason: test-layout happens to be one of
+  // the `items` region's allowedLayouts, so re-merging it into its own document
+  // re-inserts the same content and nothing looks broken.
+  //
+  // A template forced into a DIFFERENT region has no such luck. footer-layout is
+  // forced into `footer` (page schema, test-frontend), while its own blocks live
+  // in `items` on its definition page — so the merge, seeing a templateId that is
+  // not among that region's allowedLayouts, removes those blocks and re-inserts
+  // nothing. The definition page then shows an empty shell: the one document
+  // where a site footer is authored offers nothing to author.
+  //
+  // A page should never be re-merged against its own template. The save path
+  // already knows this (getUniqueTemplateIds(...).filter(id => id !== currentPath));
+  // the load path did not.
+  test('a template page forced into another region keeps its own blocks', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/templates/footer-layout');
+
+    const { blockId: brandingId, locator: branding } = await helper.waitForBlockByContent(
+      'Footer Branding - Forced Layout',
+    );
+    await expect(branding).toBeVisible();
+
+    // Present is not enough — the point of opening the definition is to edit it.
+    await helper.clickBlockInIframe(brandingId);
+    await helper.waitForBlockSelectedInAdmin(brandingId);
+  });
+
+  // Editing the definition still goes through the SAME unlock gesture as editing
+  // it from a page — the lock is what says "this changes everywhere", and that is
+  // true on the definition page too. All that is needed for the toggle to appear
+  // is a templateInstanceId on the definition's own blocks (see the
+  // templates/editable-fixed-layout fixture, whose blocks carry a definition-side
+  // instance id); without one, isBlockInEditedTemplate has nothing to match and
+  // the block is locked with no way to unlock it.
+  test('a template definition page unlocks + edits like any template', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/templates/footer-layout');
+
+    const { blockId: brandingId, locator: branding } = await helper.waitForBlockByContent(
+      'Footer Branding - Forced Layout',
+    );
+
+    await helper.unlockTemplate(brandingId);
+
+    // Click into the block after unlocking, as the page-side template tests do:
+    // the bridge restores contenteditable when a block is SELECTED for text
+    // editing, and skips the restore while the editor is still in block mode.
+    await helper.clickBlockInIframe(brandingId);
+    const editor = helper.getSlateField(branding);
+    await expect(editor).toHaveAttribute('contenteditable', 'true', { timeout: 5000 });
   });
 
   test.skip('template edit mode is automatically activated when creating template', async ({ page }) => {
@@ -462,6 +524,63 @@ test.describe('Template Edit Mode - Save', () => {
 });
 
 test.describe('Template Edit Mode - Editability', () => {
+  test('a fixed member can be REMOVED once the template is unlocked', async ({ page }) => {
+    // `fixed` means "not yours to remove from THIS page" — the point of a
+    // template's chrome. It is not meant to survive unlocking: an author who
+    // has taken the template into edit mode is editing the template itself,
+    // and a member they can retype but never delete is a dead end.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+
+    const iframe = helper.getIframe();
+    const { blockId: footerBlockId } = await helper.waitForBlockByContent(TEMPLATE_FOOTER_CONTENT);
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
+    const dropdown = page.locator('.volto-hydra-dropdown-menu');
+
+    // Select and open the menu directly rather than through the helpers: those
+    // assert the toolbar's drag handle lines up with the block, which is a
+    // race against their own scroll-into-view here and is beside the point.
+    // (A fixed member IS selectable while locked — outline and toolbar appear
+    // exactly as they do for any block.)
+    const openMenuOn = async (blockId: string) => {
+      await iframe.locator(`[data-block-uid="${blockId}"]`).click({ force: true });
+      const toolbar = page.locator('.quanta-toolbar');
+      await expect(toolbar).toBeVisible({ timeout: 10000 });
+      await toolbar.locator('[title*="options" i]').first().click();
+      await expect(dropdown).toBeVisible({ timeout: 5000 });
+    };
+
+    // LOCKED: its settings are SHOWN but disabled — an empty sidebar reads as
+    // broken; greyed fields say the setting exists and is not editable here.
+    await iframe.locator(`[data-block-uid="${footerBlockId}"]`).click({ force: true });
+    const readOnlyFields = page.locator('#sidebar-properties [class*="field-wrapper-"]');
+    if (await readOnlyFields.count()) {
+      await expect(
+        page.locator('#sidebar-properties input:not([disabled]), #sidebar-properties textarea:not([disabled])'),
+        'a read-only block offers no ENABLED input',
+      ).toHaveCount(0);
+    }
+
+    // LOCKED: the page may not remove the template's chrome.
+    await openMenuOn(footerBlockId);
+    await expect(
+      dropdown.locator('.volto-hydra-dropdown-item:has-text("Remove")'),
+      'a locked template\'s fixed member offers no Remove',
+    ).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    // UNLOCKED: the same member is the template author's to delete.
+    await helper.unlockTemplate(headerBlockId);
+    await helper.waitForBlockEditable(footerBlockId);
+
+    await openMenuOn(footerBlockId);
+    await expect(
+      dropdown.locator('.volto-hydra-dropdown-item:has-text("Remove")'),
+      'an unlocked template\'s fixed member can be removed',
+    ).toBeVisible({ timeout: 5000 });
+  });
+
   test('fixed readonly blocks inside template become editable in edit mode', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 

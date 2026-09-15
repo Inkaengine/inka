@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { URLS } from '../ports';
 
 /**
  * Persistence of layout regions.
@@ -9,11 +10,12 @@ import { test, expect } from '@playwright/test';
  * are not registered — which is exactly why a separate `footer_blocks` field
  * would NOT persist, and why the region model is needed.
  *
- * This is an HTTP-contract test against the mock API (port 8888): a unique
- * Bearer token gives us an isolated, persisting session.
+ * This is an HTTP-contract test against the mock API: a unique Bearer token
+ * gives us an isolated, persisting session. The port comes from ports.ts —
+ * hardcoding 8888 breaks the moment HYDRA_MOCK_API_PORT moves the server.
  */
 
-const MOCK_API = 'http://localhost:8888';
+const MOCK_API = URLS.mockApi;
 const PATH = '/++api++/test-page';
 
 test.describe('blocks_layout region persistence', () => {

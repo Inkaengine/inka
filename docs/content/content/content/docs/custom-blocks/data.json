@@ -325,12 +325,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "title"
-                        }
-                      ]
+                      "text": "`title`"
                     }
                   ]
                 },
@@ -346,12 +341,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "allowedBlocks"
-                        }
-                      ]
+                      "text": "`allowedBlocks`"
                     }
                   ]
                 },
@@ -367,12 +357,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "allowedTemplates"
-                        }
-                      ]
+                      "text": "`allowedTemplates`"
                     }
                   ]
                 },
@@ -382,7 +367,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "templates.md"
+                    "url": "/docs/templates"
                   },
                   "children": [
                     {
@@ -402,12 +387,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "allowedLayouts"
-                        }
-                      ]
+                      "text": "`allowedLayouts`"
                     }
                   ]
                 },
@@ -423,12 +403,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "maxLength"
-                        }
-                      ]
+                      "text": "`maxLength`"
                     }
                   ]
                 },
@@ -667,7 +642,7 @@
           "@id": "ce-14-js-c5449c",
           "label": "Js",
           "language": "js",
-          "code": "blocks: {\n  slider: {                          // new custom block\n    id: 'slider',\n    title: 'Slider',\n    icon: 'data:...',\n    group: 'common',\n    mostUsed: true,\n    blockSchema: { properties: { /* fields */ } },\n  },\n  slate: {                           // override the built-in slate block\n    blockSchema: { /* override */ },\n  },\n}"
+          "code": "blocks: {\n  slider: {                          // new custom block\n    id: 'slider',\n    title: 'Slider',\n    icon: 'data:...',\n    group: 'common',\n    mostUsed: true,\n    blockSchema: { properties: { /* fields */ } },\n  },\n  toc: {                             // override a built-in block\n    blockSchema: { /* YOUR fields — see \"Overriding a built-in block\" */ },\n  },\n}"
         }
       ]
     },
@@ -687,7 +662,7 @@
     },
     "ul-16": {
       "@type": "slate",
-      "plaintext": "id — block type identifier (matches the key). title — display name in the BlockChooser. icon — icon shown in the BlockChooser (data URL or SVG component). group — chooser group (e.g. 'common'). restricted — true hides the block from the chooser; can also be a function for conditional restrictions. mostUsed — pin to the top of the chooser. disableCustomSidebarEditForm — set true to use only the schema form in the sidebar (no custom edit component). blockSchema — JSON-schema-style definition of the block's fields. See Schema Enhancers below and the Block reference. fieldMappings — block-to-block conversion rules. See Block Conversion & fieldMappings below. schemaEnhancer — recipe-based schema modifier; supports fieldRules, inheritSchemaFrom, etc. See Schema Enhancers.",
+      "plaintext": "id — block type identifier (matches the key). title — display name in the BlockChooser. icon — icon shown in the BlockChooser (data URL or SVG component). group — chooser group (e.g. 'common'). restricted — true hides the block from the chooser; can also be a function for conditional restrictions. mostUsed — pin to the top of the chooser. disableCustomSidebarEditForm — use only the schema form in the sidebar (no custom edit component). Defaults to true for any block you give a blockSchema — see Overriding a built-in block. Set false to keep the admin's own edit component for a block whose sidebar does something a JSON schema cannot express. blockSchema — JSON-schema-style definition of the block's fields. See Schema Enhancers below and the Block reference. fieldMappings — block-to-block conversion rules. See Block Conversion & fieldMappings below. schemaEnhancer — recipe-based schema modifier; supports fieldRules, inheritSchemaFrom, etc. See Schema Enhancers.",
       "value": [
         {
           "type": "ul",
@@ -699,12 +674,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "id"
-                        }
-                      ]
+                      "text": "`id`"
                     }
                   ]
                 },
@@ -720,12 +690,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "title"
-                        }
-                      ]
+                      "text": "`title`"
                     }
                   ]
                 },
@@ -741,12 +706,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "icon"
-                        }
-                      ]
+                      "text": "`icon`"
                     }
                   ]
                 },
@@ -762,12 +722,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "group"
-                        }
-                      ]
+                      "text": "`group`"
                     }
                   ]
                 },
@@ -794,12 +749,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "restricted"
-                        }
-                      ]
+                      "text": "`restricted`"
                     }
                   ]
                 },
@@ -826,12 +776,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "mostUsed"
-                        }
-                      ]
+                      "text": "`mostUsed`"
                     }
                   ]
                 },
@@ -847,28 +792,48 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "disableCustomSidebarEditForm"
-                        }
-                      ]
+                      "text": "`disableCustomSidebarEditForm`"
                     }
                   ]
                 },
                 {
-                  "text": " — set "
+                  "text": " — use only the schema form in the sidebar (no custom edit component). "
+                },
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "Defaults to `true` for any block you give a `blockSchema`"
+                    }
+                  ]
+                },
+                {
+                  "text": " — see "
+                },
+                {
+                  "type": "link",
+                  "data": {
+                    "url": "#overriding-a-built-in-block"
+                  },
+                  "children": [
+                    {
+                      "text": "Overriding a built-in block"
+                    }
+                  ]
+                },
+                {
+                  "text": ". Set "
                 },
                 {
                   "type": "code",
                   "children": [
                     {
-                      "text": "true"
+                      "text": "false"
                     }
                   ]
                 },
                 {
-                  "text": " to use only the schema form in the sidebar (no custom edit component)."
+                  "text": " to keep the admin's own edit component for a block whose sidebar does something a JSON schema cannot express."
                 }
               ]
             },
@@ -879,12 +844,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "blockSchema"
-                        }
-                      ]
+                      "text": "`blockSchema`"
                     }
                   ]
                 },
@@ -908,7 +868,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "examples/README.md"
+                    "url": "/docs/examples"
                   },
                   "children": [
                     {
@@ -928,12 +888,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "fieldMappings"
-                        }
-                      ]
+                      "text": "`fieldMappings`"
                     }
                   ]
                 },
@@ -963,12 +918,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "schemaEnhancer"
-                        }
-                      ]
+                      "text": "`schemaEnhancer`"
                     }
                   ]
                 },
@@ -1107,6 +1057,287 @@
     },
     "h-18": {
       "@type": "slate",
+      "plaintext": "Overriding a built-in block",
+      "value": [
+        {
+          "type": "h3",
+          "children": [
+            {
+              "text": "Overriding a built-in block"
+            }
+          ]
+        }
+      ]
+    },
+    "p-19": {
+      "@type": "slate",
+      "plaintext": "Your frontend is the thing that renders, so it decides what an author can set. Give a built-in block a `blockSchema` and **your schema is the whole schema**: the sidebar shows your fields and nothing else.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Your frontend is the thing that renders, so it decides what an author can set. Give a built-in block a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "blockSchema"
+                }
+              ]
+            },
+            {
+              "text": " and "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "your schema is the whole schema"
+                }
+              ]
+            },
+            {
+              "text": ": the sidebar shows your fields and nothing else."
+            }
+          ]
+        }
+      ]
+    },
+    "ce-20": {
+      "@type": "codeExample",
+      "tabs": [
+        {
+          "@id": "ce-20-js-bf115a",
+          "label": "Js",
+          "language": "js",
+          "code": "blocks: {\n  toc: {\n    blockSchema: {\n      fieldsets: [{ id: 'default', title: 'Default', fields: ['levels'] }],\n      properties: {\n        levels: { title: 'Heading levels', type: 'array', items: { choices: [['h2', 'Heading 2']] } },\n      },\n      required: [],\n    },\n  },\n}"
+        }
+      ]
+    },
+    "p-21": {
+      "@type": "slate",
+      "plaintext": "That sidebar offers `levels`. It does not offer the admin's `hide_title`, `ordered`, `title` or `variation`, because your frontend never said it renders them.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "That sidebar offers "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "levels"
+                }
+              ]
+            },
+            {
+              "text": ". It does not offer the admin's "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "hide_title"
+                }
+              ]
+            },
+            {
+              "text": ", "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "ordered"
+                }
+              ]
+            },
+            {
+              "text": ", "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "title"
+                }
+              ]
+            },
+            {
+              "text": " or "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "variation"
+                }
+              ]
+            },
+            {
+              "text": ", because your frontend never said it renders them."
+            }
+          ]
+        }
+      ]
+    },
+    "p-22": {
+      "@type": "slate",
+      "plaintext": "This is deliberate: before, the admin's fields were merged in and its edit component kept rendering the sidebar, so an author was offered settings the frontend could not honour — they ticked a box and the page did not change.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "This is deliberate: before, the admin's fields were merged in and its edit component kept rendering the sidebar, so an author was offered settings the frontend could not honour — they ticked a box and the page did not change."
+            }
+          ]
+        }
+      ]
+    },
+    "p-23": {
+      "@type": "slate",
+      "plaintext": "Two consequences worth knowing:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Two consequences worth knowing:"
+            }
+          ]
+        }
+      ]
+    },
+    "ul-24": {
+      "@type": "slate",
+      "plaintext": "Variations follow the schema. Variations are a separate registry the admin fills in. Declare a blockSchema and the admin's variations for that block are dropped too; send your own variations to keep a picker. Labels are yours. The admin's built-in labels come from its translation catalogue. A schema sent over the bridge carries plain strings, so an overriding frontend supplies its own — in whatever language it wants them.",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "Variations follow the schema."
+                    }
+                  ]
+                },
+                {
+                  "text": " Variations are a separate registry the admin fills in. Declare a "
+                },
+                {
+                  "type": "code",
+                  "children": [
+                    {
+                      "text": "blockSchema"
+                    }
+                  ]
+                },
+                {
+                  "text": " and the admin's variations for that block are dropped too; send your own "
+                },
+                {
+                  "type": "code",
+                  "children": [
+                    {
+                      "text": "variations"
+                    }
+                  ]
+                },
+                {
+                  "text": " to keep a picker."
+                }
+              ]
+            },
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "Labels are yours."
+                    }
+                  ]
+                },
+                {
+                  "text": " The admin's built-in labels come from its translation catalogue. A schema sent over the bridge carries plain strings, so an overriding frontend supplies its own — in whatever language it wants them."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-25": {
+      "@type": "slate",
+      "plaintext": "`slate` is the one exception: the admin's slate schema carries the `value` field that block-sync and inline editing depend on, which a frontend cannot know to send, so declaring a slate schema adds to it rather than replacing it.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "slate"
+                }
+              ]
+            },
+            {
+              "text": " is the one exception: the admin's slate schema carries the "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "value"
+                }
+              ]
+            },
+            {
+              "text": " field that block-sync and inline editing depend on, which a frontend cannot know to send, so declaring a slate schema adds to it rather than replacing it."
+            }
+          ]
+        }
+      ]
+    },
+    "p-26": {
+      "@type": "slate",
+      "plaintext": "To keep the admin's edit component for one block — a picker or upload UI a schema cannot describe — send `disableCustomSidebarEditForm: false` for that block.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "To keep the admin's edit component for one block — a picker or upload UI a schema cannot describe — send "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "disableCustomSidebarEditForm: false"
+                }
+              ]
+            },
+            {
+              "text": " for that block."
+            }
+          ]
+        }
+      ]
+    },
+    "h-27": {
+      "@type": "slate",
       "plaintext": "Other top-level options",
       "value": [
         {
@@ -1119,7 +1350,7 @@
         }
       ]
     },
-    "ul-19": {
+    "ul-28": {
       "@type": "slate",
       "plaintext": "onEditChange(formData) — callback invoked with the new form data whenever the editor changes anything. See Live Preview › Setting Up the Bridge. pathToApiPath(path) — function transforming a frontend path to the API/admin path on PATH_CHANGE messages. Use when your frontend embeds state (paging, filters) in URL segments that don't exist on the CMS side. See Listings › Path Transformation. voltoConfig — passes additional Volto config (non-block settings) through to the admin. Future home for things like slate formats (TODO #109) and toolbar actions. debug — true enables verbose console logging in the bridge. Default false.",
       "value": [
@@ -1133,12 +1364,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "onEditChange(formData)"
-                        }
-                      ]
+                      "text": "`onEditChange(formData)`"
                     }
                   ]
                 },
@@ -1148,7 +1374,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "live-preview.md#setting-up-the-bridge"
+                    "url": "/docs/live-preview#setting-up-the-bridge"
                   },
                   "children": [
                     {
@@ -1168,12 +1394,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "pathToApiPath(path)"
-                        }
-                      ]
+                      "text": "`pathToApiPath(path)`"
                     }
                   ]
                 },
@@ -1194,7 +1415,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "listings.md#path-transformation-pathtoapipath"
+                    "url": "/docs/listings#path-transformation-pathtoapipath"
                   },
                   "children": [
                     {
@@ -1214,12 +1435,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "voltoConfig"
-                        }
-                      ]
+                      "text": "`voltoConfig`"
                     }
                   ]
                 },
@@ -1249,12 +1465,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "debug"
-                        }
-                      ]
+                      "text": "`debug`"
                     }
                   ]
                 },
@@ -1289,7 +1500,7 @@
         }
       ]
     },
-    "h-20": {
+    "h-29": {
       "@type": "slate",
       "plaintext": "Returns",
       "value": [
@@ -1303,7 +1514,7 @@
         }
       ]
     },
-    "p-21": {
+    "p-30": {
       "@type": "slate",
       "plaintext": "The `Bridge` instance, which exposes additional API methods you can call from the frontend (e.g. `getAccessToken()`, `sendBlockUpdate()`, `sendBlockAction()`). See [Advanced › Custom Sidebar UI](advanced.md#custom-sidebar-and-cms-ui) for those.",
       "value": [
@@ -1360,7 +1571,7 @@
             {
               "type": "link",
               "data": {
-                "url": "advanced.md#custom-sidebar-and-cms-ui"
+                "url": "/docs/advanced#custom-sidebar-and-cms-ui"
               },
               "children": [
                 {
@@ -1375,7 +1586,7 @@
         }
       ]
     },
-    "h-22": {
+    "h-31": {
       "@type": "slate",
       "plaintext": "Defining a custom block",
       "value": [
@@ -1389,18 +1600,18 @@
         }
       ]
     },
-    "ce-23": {
+    "ce-32": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-23-javascript-a47dd8",
+          "@id": "ce-32-javascript-817c7e",
           "label": "Javascript",
           "language": "javascript",
           "code": "const bridge = initBridge({\n    page: {\n        schema: {\n            properties: {\n                blocks_layout: {\n                    title: 'Content',\n                    allowedBlocks: ['slate', 'image', 'video', 'slider'],\n                },\n            },\n        },\n    },\n    blocks: {\n        slider: {\n            id: 'slider',\n            title: 'Slider',\n            icon: 'data:...',\n            group: 'common',\n            restricted: false,\n            mostUsed: true,\n            disableCustomSidebarEditForm: false,\n            blockSchema: {\n                properties: {\n                    slider_timing: {\n                        title: 'Delay',\n                        widget: 'float',\n                    },\n                    slides: {\n                        title: 'Slides',\n                        widget: 'blocks_layout',\n                        allowedBlocks: ['slide', 'image'],\n                        defaultBlockType: 'slide',\n                    }\n                },\n            }\n        },\n        slide: {\n            id: 'slide',\n            title: 'Slide',\n            blockSchema: {\n                properties: {\n                    url: { title: 'Link', widget: 'url' },\n                    title: { title: 'Title' },\n                    image: { title: 'Image', widget: 'image' },\n                    description: { title: 'Description',\n                                   widget: 'slate' },\n                },\n            },\n        },\n    },\n});"
         }
       ]
     },
-    "p-24": {
+    "p-33": {
       "@type": "slate",
       "plaintext": "Child block types (like `slide` above) must be defined at the top level of `blocks`. You can also:",
       "value": [
@@ -1436,7 +1647,7 @@
         }
       ]
     },
-    "ul-25": {
+    "ul-34": {
       "@type": "slate",
       "plaintext": "Set restricted: true to hide a block from the block chooser (only usable as child blocks) Set mostUsed: true to pin a block to the top of the chooser Set disableCustomSidebarEditForm: true to use only the schema form in the sidebar (no custom edit component) Use fieldsets in the schema to organize fields into tabs",
       "value": [
@@ -1523,7 +1734,7 @@
         }
       ]
     },
-    "p-26": {
+    "p-35": {
       "@type": "slate",
       "plaintext": "**A `widget: 'slate'` field holds one top-level node.** A slate field — like `description` on the `slide` above — stores a single paragraph, heading, or list, not a document of several. Pasting or typing multiple paragraphs into it flattens them back into one node; only the built-in `slate` *block* splits multi-node content into separate blocks. Design slate fields for single-node content, and use a `blocks_layout`/`object_list` of `slate` blocks when you need several. See [Visual Editing › One top-level node per slate field](visual-editing.md#one-top-level-node-per-slate-field).",
       "value": [
@@ -1534,18 +1745,7 @@
               "type": "strong",
               "children": [
                 {
-                  "text": "A "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "widget: 'slate'"
-                    }
-                  ]
-                },
-                {
-                  "text": " field holds one top-level node."
+                  "text": "A `widget: 'slate'` field holds one top-level node."
                 }
               ]
             },
@@ -1632,7 +1832,7 @@
             {
               "type": "link",
               "data": {
-                "url": "visual-editing.md#one-top-level-node-per-slate-field"
+                "url": "/docs/visual-editing#one-top-level-node-per-slate-field"
               },
               "children": [
                 {
@@ -1647,7 +1847,2755 @@
         }
       ]
     },
-    "h-27": {
+    "p-36": {
+      "@type": "slate",
+      "plaintext": "**Worked example:** [Heading Block](./examples/heading.md) — roughly the smallest custom block there is: one field, one annotation.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Worked example:"
+                }
+              ]
+            },
+            {
+              "text": " "
+            },
+            {
+              "type": "link",
+              "data": {
+                "url": "/docs/examples/heading"
+              },
+              "children": [
+                {
+                  "text": "Heading Block"
+                }
+              ]
+            },
+            {
+              "text": " — roughly the smallest custom block there is: one field, one annotation."
+            }
+          ]
+        }
+      ]
+    },
+    "h-37": {
+      "@type": "slate",
+      "plaintext": "Inline-editable fields: annotation and schema must agree",
+      "value": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Inline-editable fields: annotation and schema must agree"
+            }
+          ]
+        }
+      ]
+    },
+    "p-38": {
+      "@type": "slate",
+      "plaintext": "A field is inline-editable only when BOTH halves are in place. They are easy to get out of step, because each half looks fine on its own.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A field is inline-editable only when BOTH halves are in place. They are easy to get out of step, because each half looks fine on its own."
+            }
+          ]
+        }
+      ]
+    },
+    "p-39": {
+      "@type": "slate",
+      "plaintext": "**1. Your markup renders something to click**, annotated with the field name:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "1. Your markup renders something to click"
+                }
+              ]
+            },
+            {
+              "text": ", annotated with the field name:"
+            }
+          ]
+        }
+      ]
+    },
+    "ce-40": {
+      "@type": "codeExample",
+      "tabs": [
+        {
+          "@id": "ce-40-html-9fc935",
+          "label": "Html",
+          "language": "html",
+          "code": "<h3 data-edit-text=\"title\">Sydney Opera House</h3>"
+        }
+      ]
+    },
+    "p-41": {
+      "@type": "slate",
+      "plaintext": "An *empty* field still has to render its element in edit mode — the editor reveals empty fields by marking them `data-empty` and drawing a \"Click to edit\" placeholder, and it can only mark an element that exists. A field that renders nothing when empty can never be filled in on the canvas. (In view mode, render nothing — the annotations are edit-mode only.)",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "An "
+            },
+            {
+              "type": "em",
+              "children": [
+                {
+                  "text": "empty"
+                }
+              ]
+            },
+            {
+              "text": " field still has to render its element in edit mode — the editor reveals empty fields by marking them "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "data-empty"
+                }
+              ]
+            },
+            {
+              "text": " and drawing a \"Click to edit\" placeholder, and it can only mark an element that exists. A field that renders nothing when empty can never be filled in on the canvas. (In view mode, render nothing — the annotations are edit-mode only.)"
+            }
+          ]
+        }
+      ]
+    },
+    "p-42": {
+      "@type": "slate",
+      "plaintext": "Text with no box on screen is not inline-editable at all: a `.sr-only` element is clipped to 1×1, so there is nothing to put a cursor in. Leave it unannotated and let the sidebar edit it.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Text with no box on screen is not inline-editable at all: a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": ".sr-only"
+                }
+              ]
+            },
+            {
+              "text": " element is clipped to 1×1, so there is nothing to put a cursor in. Leave it unannotated and let the sidebar edit it."
+            }
+          ]
+        }
+      ]
+    },
+    "p-43": {
+      "@type": "slate",
+      "plaintext": "**2. Your schema declares that field as text.** The bridge will not make a field editable unless its schema says it is one:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "2. Your schema declares that field as text."
+                }
+              ]
+            },
+            {
+              "text": " The bridge will not make a field editable unless its schema says it is one:"
+            }
+          ]
+        }
+      ]
+    },
+    "ce-44": {
+      "@type": "codeExample",
+      "tabs": [
+        {
+          "@id": "ce-44-javascript-ad5a7b",
+          "label": "Javascript",
+          "language": "javascript",
+          "code": "properties: {\n    title:       { title: 'Title', type: 'string' },\n    description: { title: 'Description', type: 'string', widget: 'textarea' },\n    body:        { title: 'Body', widget: 'slate' },\n}"
+        }
+      ]
+    },
+    "p-45": {
+      "@type": "slate",
+      "plaintext": "`type` is the DATA type (`string`, `array`, `object`, `boolean`) and `widget` is the editor. Do not put a widget name in `type` — `{ type: 'textarea' }` is not a textarea field, and the bridge will silently refuse to make it editable, with no error and no clue in the DOM. Either declare both (`type: 'string', widget: 'textarea'`) or the widget alone.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "type"
+                }
+              ]
+            },
+            {
+              "text": " is the DATA type ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "string"
+                }
+              ]
+            },
+            {
+              "text": ", "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "array"
+                }
+              ]
+            },
+            {
+              "text": ", "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "object"
+                }
+              ]
+            },
+            {
+              "text": ", "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "boolean"
+                }
+              ]
+            },
+            {
+              "text": ") and "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "widget"
+                }
+              ]
+            },
+            {
+              "text": " is the editor. Do not put a widget name in "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "type"
+                }
+              ]
+            },
+            {
+              "text": " — "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "{ type: 'textarea' }"
+                }
+              ]
+            },
+            {
+              "text": " is not a textarea field, and the bridge will silently refuse to make it editable, with no error and no clue in the DOM. Either declare both ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "type: 'string', widget: 'textarea'"
+                }
+              ]
+            },
+            {
+              "text": ") or the widget alone."
+            }
+          ]
+        }
+      ]
+    },
+    "p-46": {
+      "@type": "slate",
+      "plaintext": "`block-sanity` checks both halves: every schema text field visible on screen has to be annotated, and every annotated field has to become editable and take the caret when clicked.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "block-sanity"
+                }
+              ]
+            },
+            {
+              "text": " checks both halves: every schema text field visible on screen has to be annotated, and every annotated field has to become editable and take the caret when clicked."
+            }
+          ]
+        }
+      ]
+    },
+    "p-47": {
+      "@type": "slate",
+      "plaintext": "It asks the same question of the fields that never reach the canvas. A sidebar OPTION — one offering a choice, so `choices` / a `Choice` factory / a boolean — has no annotation to look for, so it proves itself by being SET in at least one of your content examples. An option no example sets is reported by name: nothing renders it, so nothing can tell you it has stopped working, and no doc page shows an author what it does. Set it somewhere — a content fixture is enough, it does not have to be a page you ship — or drop the option.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "It asks the same question of the fields that never reach the canvas. A sidebar OPTION — one offering a choice, so "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "choices"
+                }
+              ]
+            },
+            {
+              "text": " / a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "Choice"
+                }
+              ]
+            },
+            {
+              "text": " factory / a boolean — has no annotation to look for, so it proves itself by being SET in at least one of your content examples. An option no example sets is reported by name: nothing renders it, so nothing can tell you it has stopped working, and no doc page shows an author what it does. Set it somewhere — a content fixture is enough, it does not have to be a page you ship — or drop the option."
+            }
+          ]
+        }
+      ]
+    },
+    "h-48": {
+      "@type": "slate",
+      "plaintext": "Widgets hydra registers",
+      "value": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Widgets hydra registers"
+            }
+          ]
+        }
+      ]
+    },
+    "p-49": {
+      "@type": "slate",
+      "plaintext": "A schema names a widget by string, so anything in `config.widgets.widget` is available — Volto's own included (`select_querystring_field`, `query_sort_on`, `object_browser`, …). These are the ones hydra adds:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A schema names a widget by string, so anything in "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "config.widgets.widget"
+                }
+              ]
+            },
+            {
+              "text": " is available — Volto's own included ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "select_querystring_field"
+                }
+              ]
+            },
+            {
+              "text": ", "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "query_sort_on"
+                }
+              ]
+            },
+            {
+              "text": ", "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "object_browser"
+                }
+              ]
+            },
+            {
+              "text": ", …). These are the ones hydra adds:"
+            }
+          ]
+        }
+      ]
+    },
+    "tbl-50": {
+      "@type": "slateTable",
+      "table": {
+        "fixed": true,
+        "compact": false,
+        "basic": false,
+        "celled": true,
+        "inverted": false,
+        "striped": false,
+        "rows": [
+          {
+            "key": "tbl-50-r0",
+            "cells": [
+              {
+                "key": "tbl-50-r0c0",
+                "type": "header",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "widget"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r0c1",
+                "type": "header",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "picks"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r0c2",
+                "type": "header",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "documented"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-50-r1",
+            "cells": [
+              {
+                "key": "tbl-50-r1c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "blockTypeSelect"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r1c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "which block type a container's item is"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r1c2",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "link",
+                        "data": {
+                          "url": "/docs/container-blocks#blocktypeselect-widget-options"
+                        },
+                        "children": [
+                          {
+                            "text": "container blocks"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-50-r2",
+            "cells": [
+              {
+                "key": "tbl-50-r2c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "schemaFieldSelect"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r2c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "a field of a CONTENT TYPE, from "
+                      },
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "/@types"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r2c2",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "link",
+                        "data": {
+                          "url": "/docs/listings"
+                        },
+                        "children": [
+                          {
+                            "text": "listings"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-50-r3",
+            "cells": [
+              {
+                "key": "tbl-50-r3c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "vocabularySelect"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r3c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "WHICH vocabulary (not a term from one)"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r3c2",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "below"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-50-r4",
+            "cells": [
+              {
+                "key": "tbl-50-r4c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "blockPicker"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r4c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "a block, storing a named field value from it"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r4c2",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "below"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-50-r5",
+            "cells": [
+              {
+                "key": "tbl-50-r5c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "querystringSelect"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r5c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "catalog indexes, one or several"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r5c2",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "below"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-50-r6",
+            "cells": [
+              {
+                "key": "tbl-50-r6c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "field_mapping"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r6c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "how one block's fields map onto another's"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-50-r6c2",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "link",
+                        "data": {
+                          "url": "#block-conversion--fieldmappings"
+                        },
+                        "children": [
+                          {
+                            "text": "fieldMappings"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "p-51": {
+      "@type": "slate",
+      "plaintext": "Three more are swapped in rather than named: `url`, `blocks_layout` and `object_list` replace Volto's own so the bridge can handle them.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Three more are swapped in rather than named: "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "url"
+                }
+              ]
+            },
+            {
+              "text": ", "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "blocks_layout"
+                }
+              ]
+            },
+            {
+              "text": " and "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "object_list"
+                }
+              ]
+            },
+            {
+              "text": " replace Volto's own so the bridge can handle them."
+            }
+          ]
+        }
+      ]
+    },
+    "p-52": {
+      "@type": "slate",
+      "plaintext": "Reach for a Volto widget first where one fits; each section below says when it does.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Reach for a Volto widget first where one fits; each section below says when it does."
+            }
+          ]
+        }
+      ]
+    },
+    "h-53": {
+      "@type": "slate",
+      "plaintext": "Picking a vocabulary (vocabularySelect)",
+      "value": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Picking a vocabulary ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "vocabularySelect"
+                }
+              ]
+            },
+            {
+              "text": ")"
+            }
+          ]
+        }
+      ]
+    },
+    "p-54": {
+      "@type": "slate",
+      "plaintext": "A field can reference a vocabulary — \"suggest this answer from the site's keywords\", \"offer these states\". Volto has widgets for picking a **term from** a vocabulary; it has none for picking **which vocabulary**, and the reason is structural rather than an oversight:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A field can reference a vocabulary — \"suggest this answer from the site's keywords\", \"offer these states\". Volto has widgets for picking a "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "term from"
+                }
+              ]
+            },
+            {
+              "text": " a vocabulary; it has none for picking "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "which vocabulary"
+                }
+              ]
+            },
+            {
+              "text": ", and the reason is structural rather than an oversight:"
+            }
+          ]
+        }
+      ]
+    },
+    "ul-55": {
+      "@type": "slate",
+      "plaintext": "Vocabularies are named utilities, and GET /@vocabularies lists them all. But it answers {\"@id\", \"title\"} per item, while Volto's vocabulary reducer",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
+            {
+              "type": "li",
+              "children": [
+                {
+                  "text": "Vocabularies are named utilities, and "
+                },
+                {
+                  "type": "code",
+                  "children": [
+                    {
+                      "text": "GET /@vocabularies"
+                    }
+                  ]
+                },
+                {
+                  "text": " lists them all."
+                }
+              ]
+            },
+            {
+              "type": "li",
+              "children": [
+                {
+                  "text": "But it answers "
+                },
+                {
+                  "type": "code",
+                  "children": [
+                    {
+                      "text": "{\"@id\", \"title\"}"
+                    }
+                  ]
+                },
+                {
+                  "text": " per item, while Volto's vocabulary reducer"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-56": {
+      "@type": "slate",
+      "plaintext": "reads `{token, title}` — so a built-in select aimed at the listing shows every   name and stores `undefined`.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "reads "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "{token, title}"
+                }
+              ]
+            },
+            {
+              "text": " — so a built-in select aimed at the listing shows every   name and stores "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "undefined"
+                }
+              ]
+            },
+            {
+              "text": "."
+            }
+          ]
+        }
+      ]
+    },
+    "p-57": {
+      "@type": "slate",
+      "plaintext": "`vocabularySelect` reads the listing itself and keeps the **name** (the last segment of `@id`), which is what every consumer accepts — `@vocabularies/<name>`, Volto's `getVocabulary`, a schema's `vocabulary: { \"@id\": … }`.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "vocabularySelect"
+                }
+              ]
+            },
+            {
+              "text": " reads the listing itself and keeps the "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "name"
+                }
+              ]
+            },
+            {
+              "text": " (the last segment of "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "@id"
+                }
+              ]
+            },
+            {
+              "text": "), which is what every consumer accepts — "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "@vocabularies/<name>"
+                }
+              ]
+            },
+            {
+              "text": ", Volto's "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "getVocabulary"
+                }
+              ]
+            },
+            {
+              "text": ", a schema's "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "vocabulary: { \"@id\": … }"
+                }
+              ]
+            },
+            {
+              "text": "."
+            }
+          ]
+        }
+      ]
+    },
+    "ce-58": {
+      "@type": "codeExample",
+      "tabs": [
+        {
+          "@id": "ce-58-js-8241da",
+          "label": "Js",
+          "language": "js",
+          "code": "suggest_from: {\n  title: 'Suggest from',\n  widget: 'vocabularySelect',\n  // Optional: only offer vocabularies whose NAME matches this expression.\n  vocabularyFilter: 'Keywords|Subject',\n}"
+        }
+      ]
+    },
+    "p-59": {
+      "@type": "slate",
+      "plaintext": "The stored value is a name (`plone.app.vocabularies.Keywords`), not a URL, so content does not carry one environment's origin.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The stored value is a name ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "plone.app.vocabularies.Keywords"
+                }
+              ]
+            },
+            {
+              "text": "), not a URL, so content does not carry one environment's origin."
+            }
+          ]
+        }
+      ]
+    },
+    "h-60": {
+      "@type": "slate",
+      "plaintext": "What it deliberately does not offer",
+      "value": [
+        {
+          "type": "h3",
+          "children": [
+            {
+              "text": "What it deliberately does not offer"
+            }
+          ]
+        }
+      ]
+    },
+    "p-61": {
+      "@type": "slate",
+      "plaintext": "**Catalog queries.** A query is not a list of terms. \"Content matching these criteria\" belongs to a listing's `querystring`, which has its own widget.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Catalog queries."
+                }
+              ]
+            },
+            {
+              "text": " A query is not a list of terms. \"Content matching these criteria\" belongs to a listing's "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "querystring"
+                }
+              ]
+            },
+            {
+              "text": ", which has its own widget."
+            }
+          ]
+        }
+      ]
+    },
+    "p-62": {
+      "@type": "slate",
+      "plaintext": "**Field-bound sources.** In `zope.schema` a vocabulary *is* a source, and `@sources/<field>` will even enumerate one when it is `IIterableSource` — the same serializer answers both. But a source has no name to store: it is identified by a field on an object (`field.bind(context).source`), so nothing registers it and nothing can list it. `@sources` and `@querysources` also require the `plone.restapi.vocabularies` permission (Manager / Site Administrator), while `@vocabularies` is `zope2.View` — so an anonymous visitor filling in a form can read a vocabulary and can never read a source.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Field-bound sources."
+                }
+              ]
+            },
+            {
+              "text": " In "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "zope.schema"
+                }
+              ]
+            },
+            {
+              "text": " a vocabulary "
+            },
+            {
+              "type": "em",
+              "children": [
+                {
+                  "text": "is"
+                }
+              ]
+            },
+            {
+              "text": " a source, and "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "@sources/<field>"
+                }
+              ]
+            },
+            {
+              "text": " will even enumerate one when it is "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "IIterableSource"
+                }
+              ]
+            },
+            {
+              "text": " — the same serializer answers both. But a source has no name to store: it is identified by a field on an object ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "field.bind(context).source"
+                }
+              ]
+            },
+            {
+              "text": "), so nothing registers it and nothing can list it. "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "@sources"
+                }
+              ]
+            },
+            {
+              "text": " and "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "@querysources"
+                }
+              ]
+            },
+            {
+              "text": " also require the "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "plone.restapi.vocabularies"
+                }
+              ]
+            },
+            {
+              "text": " permission (Manager / Site Administrator), while "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "@vocabularies"
+                }
+              ]
+            },
+            {
+              "text": " is "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "zope2.View"
+                }
+              ]
+            },
+            {
+              "text": " — so an anonymous visitor filling in a form can read a vocabulary and can never read a source."
+            }
+          ]
+        }
+      ]
+    },
+    "h-63": {
+      "@type": "slate",
+      "plaintext": "Searching a vocabulary",
+      "value": [
+        {
+          "type": "h3",
+          "children": [
+            {
+              "text": "Searching a vocabulary"
+            }
+          ]
+        }
+      ]
+    },
+    "p-64": {
+      "@type": "slate",
+      "plaintext": "`@vocabularies/<name>` supports `?title=` (a case-insensitive substring filter, applied server-side) and `b_start` / `b_size` batching. A type-ahead should send `?title=` per keystroke rather than fetch every term — a long vocabulary is exactly the case where a list is the wrong control.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "@vocabularies/<name>"
+                }
+              ]
+            },
+            {
+              "text": " supports "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "?title="
+                }
+              ]
+            },
+            {
+              "text": " (a case-insensitive substring filter, applied server-side) and "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "b_start"
+                }
+              ]
+            },
+            {
+              "text": " / "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "b_size"
+                }
+              ]
+            },
+            {
+              "text": " batching. A type-ahead should send "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "?title="
+                }
+              ]
+            },
+            {
+              "text": " per keystroke rather than fetch every term — a long vocabulary is exactly the case where a list is the wrong control."
+            }
+          ]
+        }
+      ]
+    },
+    "h-65": {
+      "@type": "slate",
+      "plaintext": "Picking a block, and a value from it (blockPicker)",
+      "value": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Picking a block, and a value from it ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "blockPicker"
+                }
+              ]
+            },
+            {
+              "text": ")"
+            }
+          ]
+        }
+      ]
+    },
+    "p-66": {
+      "@type": "slate",
+      "plaintext": "A field that names **another block** — \"show this question when THAT one is answered\" — should offer a menu, not ask for a uid. `blockPicker` reads `blockPathMap`, the same container/region map the editor uses, and stores a **field of the block chosen**.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A field that names "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "another block"
+                }
+              ]
+            },
+            {
+              "text": " — \"show this question when THAT one is answered\" — should offer a menu, not ask for a uid. "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "blockPicker"
+                }
+              ]
+            },
+            {
+              "text": " reads "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "blockPathMap"
+                }
+              ]
+            },
+            {
+              "text": ", the same container/region map the editor uses, and stores a "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "field of the block chosen"
+                }
+              ]
+            },
+            {
+              "text": "."
+            }
+          ]
+        }
+      ]
+    },
+    "ce-67": {
+      "@type": "codeExample",
+      "tabs": [
+        {
+          "@id": "ce-67-js-8ebb80",
+          "label": "Js",
+          "language": "js",
+          "code": "show_when_when: {\n  title: 'Show when',\n  widget: 'blockPicker',\n  scope: 'siblings',      // 'siblings' (default) | '..' (parent's siblings) | '<region>'\n  direction: 'before',    // only blocks earlier than this one\n  blockTypes: ['text', 'select', 'single_choice'],\n  valueField: 'field_id', // what to STORE (default: the block's own id)\n  labelField: 'label',    // what to SHOW  (optional — see below)\n}"
+        }
+      ]
+    },
+    "p-68": {
+      "@type": "slate",
+      "plaintext": "`valueField` is the part worth understanding. A rule is evaluated against the value a field submits — a form question's `field_id` — so storing the block's uid would produce a rule that reads correctly in the sidebar and never matches anything. Name the field the consumer actually resolves.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "valueField"
+                }
+              ]
+            },
+            {
+              "text": " is the part worth understanding. A rule is evaluated against the value a field submits — a form question's "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "field_id"
+                }
+              ]
+            },
+            {
+              "text": " — so storing the block's uid would produce a rule that reads correctly in the sidebar and never matches anything. Name the field the consumer actually resolves."
+            }
+          ]
+        }
+      ]
+    },
+    "p-69": {
+      "@type": "slate",
+      "plaintext": "`direction: 'before'` is what keeps skip logic honest: a question cannot depend on an answer given after it, and the first question has nothing to depend on at all (the menu is then empty rather than wrong).",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "direction: 'before'"
+                }
+              ]
+            },
+            {
+              "text": " is what keeps skip logic honest: a question cannot depend on an answer given after it, and the first question has nothing to depend on at all (the menu is then empty rather than wrong)."
+            }
+          ]
+        }
+      ]
+    },
+    "h-70": {
+      "@type": "slate",
+      "plaintext": "What a candidate reads as",
+      "value": [
+        {
+          "type": "h3",
+          "children": [
+            {
+              "text": "What a candidate reads as"
+            }
+          ]
+        }
+      ]
+    },
+    "p-71": {
+      "@type": "slate",
+      "plaintext": "`labelField` only nominates where THIS kind of block keeps its name. Without it, a block is named by the shared `blockDisplayTitle` — `title`, then `label`, then the block's own rich text read live, then the stored `plaintext`, then the block type's configured title, then the raw type.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "labelField"
+                }
+              ]
+            },
+            {
+              "text": " only nominates where THIS kind of block keeps its name. Without it, a block is named by the shared "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "blockDisplayTitle"
+                }
+              ]
+            },
+            {
+              "text": " — "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "title"
+                }
+              ]
+            },
+            {
+              "text": ", then "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "label"
+                }
+              ]
+            },
+            {
+              "text": ", then the block's own rich text read live, then the stored "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "plaintext"
+                }
+              ]
+            },
+            {
+              "text": ", then the block type's configured title, then the raw type."
+            }
+          ]
+        }
+      ]
+    },
+    "p-72": {
+      "@type": "slate",
+      "plaintext": "Live text comes before `plaintext` on purpose. Nothing in the editor writes `plaintext`: the backend serializer does, at save time. Preferring it would name a heading by its previous wording for as long as the author kept typing, so the slate value is read directly (`slateNodesText`) and the stored text is the fallback for blocks whose words are not slate.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Live text comes before "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "plaintext"
+                }
+              ]
+            },
+            {
+              "text": " on purpose. Nothing in the editor writes "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "plaintext"
+                }
+              ]
+            },
+            {
+              "text": ": the backend serializer does, at save time. Preferring it would name a heading by its previous wording for as long as the author kept typing, so the slate value is read directly ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "slateNodesText"
+                }
+              ]
+            },
+            {
+              "text": ") and the stored text is the fallback for blocks whose words are not slate."
+            }
+          ]
+        }
+      ]
+    },
+    "p-73": {
+      "@type": "slate",
+      "plaintext": "That is the same function the sidebar's child list uses, deliberately: a question that reads \"Your name\" in one list and \"Text\" in another is confusing in a way nobody reports. Set `labelField` when a block's name lives somewhere the chain would not look — a form question's `label` beats its `plaintext`.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "That is the same function the sidebar's child list uses, deliberately: a question that reads \"Your name\" in one list and \"Text\" in another is confusing in a way nobody reports. Set "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "labelField"
+                }
+              ]
+            },
+            {
+              "text": " when a block's name lives somewhere the chain would not look — a form question's "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "label"
+                }
+              ]
+            },
+            {
+              "text": " beats its "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "plaintext"
+                }
+              ]
+            },
+            {
+              "text": "."
+            }
+          ]
+        }
+      ]
+    },
+    "h-74": {
+      "@type": "slate",
+      "plaintext": "Not the same as schemaFieldSelect",
+      "value": [
+        {
+          "type": "h3",
+          "children": [
+            {
+              "text": "Not the same as "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "schemaFieldSelect"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "tbl-75": {
+      "@type": "slateTable",
+      "table": {
+        "fixed": true,
+        "compact": false,
+        "basic": false,
+        "celled": true,
+        "inverted": false,
+        "striped": false,
+        "rows": [
+          {
+            "key": "tbl-75-r0",
+            "cells": [
+              {
+                "key": "tbl-75-r0c0",
+                "type": "header",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-75-r0c1",
+                "type": "header",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "schemaFieldSelect"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-75-r0c2",
+                "type": "header",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "blockPicker"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-75-r1",
+            "cells": [
+              {
+                "key": "tbl-75-r1c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "choices"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-75-r1c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "the CONTENT TYPE's schema fields, from "
+                      },
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "/@types"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-75-r1c2",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "blocks on the page, from "
+                      },
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "blockPathMap"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-75-r2",
+            "cells": [
+              {
+                "key": "tbl-75-r2c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "scope"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-75-r2c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "the whole type"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-75-r2c2",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "relative — siblings, "
+                      },
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": ".."
+                          }
+                        ]
+                      },
+                      {
+                        "text": ", a named region"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-75-r3",
+            "cells": [
+              {
+                "key": "tbl-75-r3c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "stores"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-75-r3c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "the field name"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-75-r3c2",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "any field of the chosen block"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "p-76": {
+      "@type": "slate",
+      "plaintext": "They share only their tail (build choices, hand them to the select). One asks the backend what a content type looks like; the other walks the block tree in the editor.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "They share only their tail (build choices, hand them to the select). One asks the backend what a content type looks like; the other walks the block tree in the editor."
+            }
+          ]
+        }
+      ]
+    },
+    "h-77": {
+      "@type": "slate",
+      "plaintext": "Picking a catalog index (querystringSelect)",
+      "value": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Picking a catalog index ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "querystringSelect"
+                }
+              ]
+            },
+            {
+              "text": ")"
+            }
+          ]
+        }
+      ]
+    },
+    "p-78": {
+      "@type": "slate",
+      "plaintext": "A field that names a catalog index — what a listing sorts on, what a facet filters by — should offer the site's indexes, not a text box. A typo in a text box produces a sort option that appears in the menu and silently sorts nothing.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A field that names a catalog index — what a listing sorts on, what a facet filters by — should offer the site's indexes, not a text box. A typo in a text box produces a sort option that appears in the menu and silently sorts nothing."
+            }
+          ]
+        }
+      ]
+    },
+    "p-79": {
+      "@type": "slate",
+      "plaintext": "One widget covers both shapes: `multiple: false` (the default) stores one index name, `multiple: true` stores a chosen subset in the author's order.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "One widget covers both shapes: "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "multiple: false"
+                }
+              ]
+            },
+            {
+              "text": " (the default) stores one index name, "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "multiple: true"
+                }
+              ]
+            },
+            {
+              "text": " stores a chosen subset in the author's order."
+            }
+          ]
+        }
+      ]
+    },
+    "p-80": {
+      "@type": "slate",
+      "plaintext": "`indexes: \"sortable\"` (also the default) offers only what the catalog can sort on. That list is worth taking as given rather than deriving: index type sets the floor — a KeywordIndex like `Subject` is multi-valued and has no single key to sort by, a ZCTextIndex is ranked text — but Plone layers judgment on top. In its registry `portal_type` and `review_state` are both `FieldIndex`, and only `review_state` is flagged sortable. Filtering an index list by type would offer things Plone deliberately does not.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "indexes: \"sortable\""
+                }
+              ]
+            },
+            {
+              "text": " (also the default) offers only what the catalog can sort on. That list is worth taking as given rather than deriving: index type sets the floor — a KeywordIndex like "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "Subject"
+                }
+              ]
+            },
+            {
+              "text": " is multi-valued and has no single key to sort by, a ZCTextIndex is ranked text — but Plone layers judgment on top. In its registry "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "portal_type"
+                }
+              ]
+            },
+            {
+              "text": " and "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "review_state"
+                }
+              ]
+            },
+            {
+              "text": " are both "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "FieldIndex"
+                }
+              ]
+            },
+            {
+              "text": ", and only "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "review_state"
+                }
+              ]
+            },
+            {
+              "text": " is flagged sortable. Filtering an index list by type would offer things Plone deliberately does not."
+            }
+          ]
+        }
+      ]
+    },
+    "p-81": {
+      "@type": "slate",
+      "plaintext": "**Volto's own widgets, for comparison.** Both are registered and pass straight through a hydra schema:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Volto's own widgets, for comparison."
+                }
+              ]
+            },
+            {
+              "text": " Both are registered and pass straight through a hydra schema:"
+            }
+          ]
+        }
+      ]
+    },
+    "tbl-82": {
+      "@type": "slateTable",
+      "table": {
+        "fixed": true,
+        "compact": false,
+        "basic": false,
+        "celled": true,
+        "inverted": false,
+        "striped": false,
+        "rows": [
+          {
+            "key": "tbl-82-r0",
+            "cells": [
+              {
+                "key": "tbl-82-r0c0",
+                "type": "header",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "widget"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-82-r0c1",
+                "type": "header",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "for"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-82-r1",
+            "cells": [
+              {
+                "key": "tbl-82-r1c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "link",
+                        "data": {
+                          "url": "https://github.com/plone/volto/blob/main/packages/volto/src/components/manage/Widgets/QuerySortOnWidget.jsx"
+                        },
+                        "children": [
+                          {
+                            "text": "`query_sort_on`"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-82-r1c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "ONE index to sort by — a menu grouped by the registry's "
+                      },
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "group"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-82-r2",
+            "cells": [
+              {
+                "key": "tbl-82-r2c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "select_querystring_field"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-82-r2c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "ONE index to query on (what the facet examples use)"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "p-83": {
+      "@type": "slate",
+      "plaintext": "Prefer `query_sort_on` for a single sort field in a schema that also carries a `querystring` field, where its grouped menu is nicer and the data is already loaded. Prefer this widget otherwise, and for every `multiple` case.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Prefer "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "query_sort_on"
+                }
+              ]
+            },
+            {
+              "text": " for a single sort field in a schema that also carries a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "querystring"
+                }
+              ]
+            },
+            {
+              "text": " field, where its grouped menu is nicer and the data is already loaded. Prefer this widget otherwise, and for every "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "multiple"
+                }
+              ]
+            },
+            {
+              "text": " case."
+            }
+          ]
+        }
+      ]
+    },
+    "p-84": {
+      "@type": "slate",
+      "plaintext": "The reason for \"already loaded\": `query_sort_on` reads `state.querystring.sortable_indexes` but never dispatches `getQuerystring()` — in Volto's listing sidebar the `QueryWidget` beside it does the asking. Alone in a hydra schema it renders an empty menu with no error. This widget asks for itself.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The reason for \"already loaded\": "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "query_sort_on"
+                }
+              ]
+            },
+            {
+              "text": " reads "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "state.querystring.sortable_indexes"
+                }
+              ]
+            },
+            {
+              "text": " but never dispatches "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "getQuerystring()"
+                }
+              ]
+            },
+            {
+              "text": " — in Volto's listing sidebar the "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "QueryWidget"
+                }
+              ]
+            },
+            {
+              "text": " beside it does the asking. Alone in a hydra schema it renders an empty menu with no error. This widget asks for itself."
+            }
+          ]
+        }
+      ]
+    },
+    "p-85": {
+      "@type": "slate",
+      "plaintext": "Volto has no declarative answer at all for the `multiple` case: its search block builds that field imperatively in `SearchBlockEdit`, which writes `sortOnOptions.items.choices` before rendering — a route a JSON schema cannot take.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Volto has no declarative answer at all for the "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "multiple"
+                }
+              ]
+            },
+            {
+              "text": " case: its search block builds that field imperatively in "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "SearchBlockEdit"
+                }
+              ]
+            },
+            {
+              "text": ", which writes "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "sortOnOptions.items.choices"
+                }
+              ]
+            },
+            {
+              "text": " before rendering — a route a JSON schema cannot take."
+            }
+          ]
+        }
+      ]
+    },
+    "ce-86": {
+      "@type": "codeExample",
+      "tabs": [
+        {
+          "@id": "ce-86-json-5bb8d3",
+          "label": "Json",
+          "language": "json",
+          "code": "\"sortOnOptions\": {\n  \"title\": \"Sort-by options\",\n  \"type\": \"array\",\n  \"widget\": \"querystringSelect\",\n  \"indexes\": \"sortable\",\n  \"multiple\": true\n}"
+        }
+      ]
+    },
+    "tbl-87": {
+      "@type": "slateTable",
+      "table": {
+        "fixed": true,
+        "compact": false,
+        "basic": false,
+        "celled": true,
+        "inverted": false,
+        "striped": false,
+        "rows": [
+          {
+            "key": "tbl-87-r0",
+            "cells": [
+              {
+                "key": "tbl-87-r0c0",
+                "type": "header",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "option"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-87-r0c1",
+                "type": "header",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "meaning"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-87-r1",
+            "cells": [
+              {
+                "key": "tbl-87-r1c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "indexes"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-87-r1c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "\"sortable\""
+                          }
+                        ]
+                      },
+                      {
+                        "text": " (default) offers only what the catalog can sort on; "
+                      },
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "\"all\""
+                          }
+                        ]
+                      },
+                      {
+                        "text": " offers every queryable index"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-87-r2",
+            "cells": [
+              {
+                "key": "tbl-87-r2c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "multiple"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-87-r2c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "true"
+                          }
+                        ]
+                      },
+                      {
+                        "text": " stores an array — a chosen subset, in the author's order, which is what a \"sort by\" menu is"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "key": "tbl-87-r3",
+            "cells": [
+              {
+                "key": "tbl-87-r3c0",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "emptyLabel"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "tbl-87-r3c1",
+                "type": "data",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "wording of the \"none\" entry in single mode (default "
+                      },
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "— no sorting —"
+                          }
+                        ]
+                      },
+                      {
+                        "text": "). Single mode needs one: no sorting is a real answer, usually the default. Ignored when "
+                      },
+                      {
+                        "type": "code",
+                        "children": [
+                          {
+                            "text": "multiple"
+                          }
+                        ]
+                      },
+                      {
+                        "text": ", where an empty list says it already"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "p-88": {
+      "@type": "slate",
+      "plaintext": "The stored value is the index NAME (`effective`, `sortable_title`), because that is what a query is built from; the title is only what the author reads.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The stored value is the index NAME ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "effective"
+                }
+              ]
+            },
+            {
+              "text": ", "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "sortable_title"
+                }
+              ]
+            },
+            {
+              "text": "), because that is what a query is built from; the title is only what the author reads."
+            }
+          ]
+        }
+      ]
+    },
+    "p-89": {
+      "@type": "slate",
+      "plaintext": "`@querystring` is loaded once for the whole editor, so the widget asks for it only if nothing else has, and shows an empty menu — not a crash — while it is still in flight.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "@querystring"
+                }
+              ]
+            },
+            {
+              "text": " is loaded once for the whole editor, so the widget asks for it only if nothing else has, and shows an empty menu — not a crash — while it is still in flight."
+            }
+          ]
+        }
+      ]
+    },
+    "h-90": {
       "@type": "slate",
       "plaintext": "Schema Enhancers",
       "value": [
@@ -1661,7 +4609,7 @@
         }
       ]
     },
-    "p-28": {
+    "p-91": {
       "@type": "slate",
       "plaintext": "Schema enhancers modify block schemas dynamically:",
       "value": [
@@ -1675,18 +4623,18 @@
         }
       ]
     },
-    "ce-29": {
+    "ce-92": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-29-javascript-f2ef0c",
+          "@id": "ce-92-javascript-13418f",
           "label": "Javascript",
           "language": "javascript",
           "code": "const bridge = initBridge({\n    blocks: {\n        myBlock: {\n            blockSchema: {\n                properties: {\n                    mode: {\n                        title: 'Mode', widget: 'select',\n                        choices: [['simple', 'Simple'], ['advanced', 'Advanced']],\n                    },\n                    advancedOptions: { title: 'Advanced Options', type: 'string' },\n                },\n            },\n            schemaEnhancer: {\n                fieldRules: {\n                    advancedOptions: { when: { mode: 'advanced' }, else: false },\n                },\n            },\n        },\n    },\n});"
         }
       ]
     },
-    "p-30": {
+    "p-93": {
       "@type": "slate",
       "plaintext": "**`fieldRules`** — add, remove, or conditionally modify field definitions. The value for each rule key can be:",
       "value": [
@@ -1697,12 +4645,7 @@
               "type": "strong",
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "fieldRules"
-                    }
-                  ]
+                  "text": "`fieldRules`"
                 }
               ]
             },
@@ -1713,9 +4656,9 @@
         }
       ]
     },
-    "ul-31": {
+    "ul-94": {
       "@type": "slate",
-      "plaintext": "false — always hide the field { set: { title: '...', widget: '...' } } — always add or replace the field definition { when: { fieldName: value }, else: false } — show only when condition met { when: { fieldName: { gte: 2 } }, set: { ... } } — conditional definition override [rule, rule, ...] — switch: first matching rule wins. A bare false in the array is a catch-all hide: [{ when: A }, { when: B }, false] shows on A or B, hides otherwise. 'parent.child': false — hide a field inside a widget's inner schema",
+      "plaintext": "false — always hide the field { set: { title: '...', widget: '...' } } — always add or replace the field definition { when: { fieldName: value }, else: false } — show only when condition met { when: { fieldName: { gte: 2 } }, set: { ... } } — conditional definition override [rule, rule, ...] — switch: first matching rule wins. A bare false in the array is a catch-all hide: [{ when: A }, { when: B }, false] shows on A or B, hides otherwise. 'parent.child': false — hide a field inside a widget's inner schema { when: { ... }, error: 'message' } — mark the field invalid when the condition holds",
       "value": [
         {
           "type": "ul",
@@ -1837,14 +4780,30 @@
                   "text": " — hide a field inside a widget's inner schema"
                 }
               ]
+            },
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "code",
+                  "children": [
+                    {
+                      "text": "{ when: { ... }, error: 'message' }"
+                    }
+                  ]
+                },
+                {
+                  "text": " — mark the field invalid when the condition holds"
+                }
+              ]
             }
           ]
         }
       ]
     },
-    "p-32": {
+    "p-95": {
       "@type": "slate",
-      "plaintext": "Condition operators: `is`, `isNot`, `isSet`, `isNotSet`, `oneOf`, `notOneOf`, `contains`, `notContains`, `containsAny`, `notContainsAny`, `containsAll`, `notContainsAll`, `regex`, `notRegex`, `gt`, `gte`, `lt`, `lte`. A bare value (`{ mode: 'advanced' }`) is shorthand for `is`.",
+      "plaintext": "Condition operators: `is`, `isNot`, `isSet`, `isNotSet`, `oneOf`, `notOneOf`, `contains`, `notContains`, `containsAny`, `notContainsAny`, `containsAll`, `notContainsAll`, `regex`, `notRegex`, `gt`, `gte`, `lt`, `lte`. A bare value (`{ mode: 'advanced' }`) is shorthand for `is`. An operand may be a literal or `{ field: '<path>' }` — see [compare against another field](#-field----compare-against-another-field).",
       "value": [
         {
           "type": "p",
@@ -2070,13 +5029,38 @@
               ]
             },
             {
+              "text": ". An operand may be a literal or "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "{ field: '<path>' }"
+                }
+              ]
+            },
+            {
+              "text": " — see "
+            },
+            {
+              "type": "link",
+              "data": {
+                "url": "#-field----compare-against-another-field"
+              },
+              "children": [
+                {
+                  "text": "compare against another field"
+                }
+              ]
+            },
+            {
               "text": "."
             }
           ]
         }
       ]
     },
-    "p-33": {
+    "p-96": {
       "@type": "slate",
       "plaintext": "Each operator is driven by the field's **declared type**, never the value shape. A field reduces to one of four **surfaces**, and an operator used off its surface raises an error (a mis-authored rule fails loudly rather than silently mismatching):",
       "value": [
@@ -2112,7 +5096,7 @@
         }
       ]
     },
-    "tbl-34": {
+    "tbl-97": {
       "@type": "slateTable",
       "table": {
         "fixed": true,
@@ -2123,10 +5107,10 @@
         "striped": false,
         "rows": [
           {
-            "key": "tbl-34-r0",
+            "key": "tbl-97-r0",
             "cells": [
               {
-                "key": "tbl-34-r0c0",
+                "key": "tbl-97-r0c0",
                 "type": "header",
                 "value": [
                   {
@@ -2140,7 +5124,7 @@
                 ]
               },
               {
-                "key": "tbl-34-r0c1",
+                "key": "tbl-97-r0c1",
                 "type": "header",
                 "value": [
                   {
@@ -2154,7 +5138,7 @@
                 ]
               },
               {
-                "key": "tbl-34-r0c2",
+                "key": "tbl-97-r0c2",
                 "type": "header",
                 "value": [
                   {
@@ -2170,10 +5154,10 @@
             ]
           },
           {
-            "key": "tbl-34-r1",
+            "key": "tbl-97-r1",
             "cells": [
               {
-                "key": "tbl-34-r1c0",
+                "key": "tbl-97-r1c0",
                 "type": "data",
                 "value": [
                   {
@@ -2192,7 +5176,7 @@
                 ]
               },
               {
-                "key": "tbl-34-r1c1",
+                "key": "tbl-97-r1c1",
                 "type": "data",
                 "value": [
                   {
@@ -2217,7 +5201,7 @@
                 ]
               },
               {
-                "key": "tbl-34-r1c2",
+                "key": "tbl-97-r1c2",
                 "type": "data",
                 "value": [
                   {
@@ -2337,10 +5321,10 @@
             ]
           },
           {
-            "key": "tbl-34-r2",
+            "key": "tbl-97-r2",
             "cells": [
               {
-                "key": "tbl-34-r2c0",
+                "key": "tbl-97-r2c0",
                 "type": "data",
                 "value": [
                   {
@@ -2359,7 +5343,7 @@
                 ]
               },
               {
-                "key": "tbl-34-r2c1",
+                "key": "tbl-97-r2c1",
                 "type": "data",
                 "value": [
                   {
@@ -2373,7 +5357,7 @@
                 ]
               },
               {
-                "key": "tbl-34-r2c2",
+                "key": "tbl-97-r2c2",
                 "type": "data",
                 "value": [
                   {
@@ -2474,10 +5458,10 @@
             ]
           },
           {
-            "key": "tbl-34-r3",
+            "key": "tbl-97-r3",
             "cells": [
               {
-                "key": "tbl-34-r3c0",
+                "key": "tbl-97-r3c0",
                 "type": "data",
                 "value": [
                   {
@@ -2496,7 +5480,7 @@
                 ]
               },
               {
-                "key": "tbl-34-r3c1",
+                "key": "tbl-97-r3c1",
                 "type": "data",
                 "value": [
                   {
@@ -2510,7 +5494,7 @@
                 ]
               },
               {
-                "key": "tbl-34-r3c2",
+                "key": "tbl-97-r3c2",
                 "type": "data",
                 "value": [
                   {
@@ -2553,10 +5537,10 @@
             ]
           },
           {
-            "key": "tbl-34-r4",
+            "key": "tbl-97-r4",
             "cells": [
               {
-                "key": "tbl-34-r4c0",
+                "key": "tbl-97-r4c0",
                 "type": "data",
                 "value": [
                   {
@@ -2575,7 +5559,7 @@
                 ]
               },
               {
-                "key": "tbl-34-r4c1",
+                "key": "tbl-97-r4c1",
                 "type": "data",
                 "value": [
                   {
@@ -2611,7 +5595,7 @@
                 ]
               },
               {
-                "key": "tbl-34-r4c2",
+                "key": "tbl-97-r4c2",
                 "type": "data",
                 "value": [
                   {
@@ -2766,7 +5750,7 @@
         ]
       }
     },
-    "p-35": {
+    "p-98": {
       "@type": "slate",
       "plaintext": "`oneOf` (scalar value ∈ set) and `containsAny` (array shares any with a set) differ only on the field side — `oneOf` is for a single-valued field, `containsAny` for a multiselect; `oneOf` on an array throws (use `containsAny`).",
       "value": [
@@ -2843,7 +5827,765 @@
         }
       ]
     },
-    "p-36": {
+    "h-99": {
+      "@type": "slate",
+      "plaintext": "error — a rule that refuses a value",
+      "value": [
+        {
+          "type": "h3",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "error"
+                }
+              ]
+            },
+            {
+              "text": " — a rule that refuses a value"
+            }
+          ]
+        }
+      ]
+    },
+    "p-100": {
+      "@type": "slate",
+      "plaintext": "A rule can raise a validation error instead of showing or hiding something:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A rule can raise a validation error instead of showing or hiding something:"
+            }
+          ]
+        }
+      ]
+    },
+    "ce-101": {
+      "@type": "codeExample",
+      "tabs": [
+        {
+          "@id": "ce-101-javascript-4772d5",
+          "label": "Javascript",
+          "language": "javascript",
+          "code": "fieldRules: {\n    maxItems: {\n        when: { maxItems: { isSet: true, lt: { field: 'minItems' } } },\n        error: 'The maximum is below the minimum.',\n    },\n},"
+        }
+      ]
+    },
+    "p-102": {
+      "@type": "slate",
+      "plaintext": "The message lands on the field, and everything an author sees is Volto's own: the widget goes red, the form shows its error summary, and **the save is blocked** (`Form.onSubmit` validates every block against its enhanced schema and refuses to submit while any block has errors).",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The message lands on the field, and everything an author sees is Volto's own: the widget goes red, the form shows its error summary, and "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "the save is blocked"
+                }
+              ]
+            },
+            {
+              "text": " ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "Form.onSubmit"
+                }
+              ]
+            },
+            {
+              "text": " validates every block against its enhanced schema and refuses to submit while any block has errors)."
+            }
+          ]
+        }
+      ]
+    },
+    "p-103": {
+      "@type": "slate",
+      "plaintext": "An `error` composes with a `set` in the same rule — the field can be re-titled *and* marked — and it is skipped entirely when the rule's `when` does not match, so a form that has not been filled in yet is not scolded for it.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "An "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "error"
+                }
+              ]
+            },
+            {
+              "text": " composes with a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "set"
+                }
+              ]
+            },
+            {
+              "text": " in the same rule — the field can be re-titled "
+            },
+            {
+              "type": "em",
+              "children": [
+                {
+                  "text": "and"
+                }
+              ]
+            },
+            {
+              "text": " marked — and it is skipped entirely when the rule's "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "when"
+                }
+              ]
+            },
+            {
+              "text": " does not match, so a form that has not been filled in yet is not scolded for it."
+            }
+          ]
+        }
+      ]
+    },
+    "p-104": {
+      "@type": "slate",
+      "plaintext": "**Write a cross-field rule on the field that should show the error.** There is no block-level address, and adding one would do less: an error keyed to a field is the only shape Volto acts on, so a block-level error would show a banner and let the save through. If a constraint genuinely belongs to no single field, list the same rule under each field it concerns.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Write a cross-field rule on the field that should show the error."
+                }
+              ]
+            },
+            {
+              "text": " There is no block-level address, and adding one would do less: an error keyed to a field is the only shape Volto acts on, so a block-level error would show a banner and let the save through. If a constraint genuinely belongs to no single field, list the same rule under each field it concerns."
+            }
+          ]
+        }
+      ]
+    },
+    "h-105": {
+      "@type": "slate",
+      "plaintext": "warning — a rule that says something rather than refusing it",
+      "value": [
+        {
+          "type": "h3",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "warning"
+                }
+              ]
+            },
+            {
+              "text": " — a rule that says something rather than refusing it"
+            }
+          ]
+        }
+      ]
+    },
+    "p-106": {
+      "@type": "slate",
+      "plaintext": "Not every constraint should stop a save:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Not every constraint should stop a save:"
+            }
+          ]
+        }
+      ]
+    },
+    "ce-107": {
+      "@type": "codeExample",
+      "tabs": [
+        {
+          "@id": "ce-107-javascript-aa8927",
+          "label": "Javascript",
+          "language": "javascript",
+          "code": "fieldRules: {\n    image: {\n        when: { image: { regex: '\\\\.png$' } },\n        warning: 'A pictogram should be an SVG drawn to the 48×48 grid.',\n    },\n},"
+        }
+      ]
+    },
+    "p-108": {
+      "@type": "slate",
+      "plaintext": "An `error` is **refused** — a registered validator turns it into a form error and `Form.onSubmit` will not submit. A `warning` is **said**: it is deliberately not a validator, so nothing blocks. The sidebar shows it beside the field, and the page saves.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "An "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "error"
+                }
+              ]
+            },
+            {
+              "text": " is "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "refused"
+                }
+              ]
+            },
+            {
+              "text": " — a registered validator turns it into a form error and "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "Form.onSubmit"
+                }
+              ]
+            },
+            {
+              "text": " will not submit. A "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "warning"
+                }
+              ]
+            },
+            {
+              "text": " is "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "said"
+                }
+              ]
+            },
+            {
+              "text": ": it is deliberately not a validator, so nothing blocks. The sidebar shows it beside the field, and the page saves."
+            }
+          ]
+        }
+      ]
+    },
+    "p-109": {
+      "@type": "slate",
+      "plaintext": "Use a warning when the value may well be right and the author should simply know: artwork a little off the 48×48 grid is still the right artwork, and refusing to save over it would be hostile. Use an error when the value cannot work at all — a raster where the design system inlines an SVG.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Use a warning when the value may well be right and the author should simply know: artwork a little off the 48×48 grid is still the right artwork, and refusing to save over it would be hostile. Use an error when the value cannot work at all — a raster where the design system inlines an SVG."
+            }
+          ]
+        }
+      ]
+    },
+    "p-110": {
+      "@type": "slate",
+      "plaintext": "Both actions compose with `set`, and both work in a switch (`[rule, rule, …]`), where the first matching entry wins — so a rule can refuse one case and merely advise on another.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Both actions compose with "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "set"
+                }
+              ]
+            },
+            {
+              "text": ", and both work in a switch ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "[rule, rule, …]"
+                }
+              ]
+            },
+            {
+              "text": "), where the first matching entry wins — so a rule can refuse one case and merely advise on another."
+            }
+          ]
+        }
+      ]
+    },
+    "h-111": {
+      "@type": "slate",
+      "plaintext": "{ field: '...' } — compare against another field",
+      "value": [
+        {
+          "type": "h3",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "{ field: '...' }"
+                }
+              ]
+            },
+            {
+              "text": " — compare against another field"
+            }
+          ]
+        }
+      ]
+    },
+    "p-112": {
+      "@type": "slate",
+      "plaintext": "Any operand may name a field instead of a literal:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Any operand may name a field instead of a literal:"
+            }
+          ]
+        }
+      ]
+    },
+    "ce-113": {
+      "@type": "codeExample",
+      "tabs": [
+        {
+          "@id": "ce-113-javascript-0c99f3",
+          "label": "Javascript",
+          "language": "javascript",
+          "code": "{ when: { maxItems: { lt: { field: 'minItems' } } } }        // this block\n{ when: { b_size:   { gt: { field: '../pageSize' } } } }     // parent's field"
+        }
+      ]
+    },
+    "p-114": {
+      "@type": "slate",
+      "plaintext": "The reference goes through the same path grammar as a `when` key, so `../` steps work in an operand exactly as they do in a key.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "The reference goes through the same path grammar as a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "when"
+                }
+              ]
+            },
+            {
+              "text": " key, so "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "../"
+                }
+              ]
+            },
+            {
+              "text": " steps work in an operand exactly as they do in a key."
+            }
+          ]
+        }
+      ]
+    },
+    "h-115": {
+      "@type": "slate",
+      "plaintext": "Reading into a value, and arithmetic",
+      "value": [
+        {
+          "type": "h3",
+          "children": [
+            {
+              "text": "Reading into a value, and arithmetic"
+            }
+          ]
+        }
+      ]
+    },
+    "p-116": {
+      "@type": "slate",
+      "plaintext": "A `when` path may continue INTO the field's value, and an operand may do basic arithmetic:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "when"
+                }
+              ]
+            },
+            {
+              "text": " path may continue INTO the field's value, and an operand may do basic arithmetic:"
+            }
+          ]
+        }
+      ]
+    },
+    "ce-117": {
+      "@type": "codeExample",
+      "tabs": [
+        {
+          "@id": "ce-117-javascript-ac3c78",
+          "label": "Javascript",
+          "language": "javascript",
+          "code": "fieldRules: {\n    image: [\n        {\n            when: { 'image_scales.image.0.content-type': { isNot: 'image/svg+xml' } },\n            error: 'A pictogram must be an SVG: it is inlined and takes its colour from the page.',\n        },\n        {\n            when: {\n                'image_scales.image.0.width': {\n                    gt: { field: 'image_scales.image.0.height', times: 1.1 },\n                },\n            },\n            warning: 'A pictogram is drawn square, on a 48×48 grid.',\n        },\n    ],\n},"
+        }
+      ]
+    },
+    "p-118": {
+      "@type": "slate",
+      "plaintext": "Some of what a rule needs to ask about is not a field at all. Volto stores an image's mime type and dimensions ALONGSIDE the reference, in `image_scales`, so \"is this an SVG\" and \"is it square\" are answerable from data the block already carries — no fetching, no extra state.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Some of what a rule needs to ask about is not a field at all. Volto stores an image's mime type and dimensions ALONGSIDE the reference, in "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "image_scales"
+                }
+              ]
+            },
+            {
+              "text": ", so \"is this an SVG\" and \"is it square\" are answerable from data the block already carries — no fetching, no extra state."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-119": {
+      "@type": "slate",
+      "plaintext": "A sub-path's surface comes from the VALUE, because no schema describes",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "A sub-path's surface comes from the VALUE"
+                    }
+                  ]
+                },
+                {
+                  "text": ", because no schema describes"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-120": {
+      "@type": "slate",
+      "plaintext": "`image_scales.image.0.width`. This is the one place the rule engine reads a   value's shape, and only because a declared type does not exist to consult.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "image_scales.image.0.width"
+                }
+              ]
+            },
+            {
+              "text": ". This is the one place the rule engine reads a   value's shape, and only because a declared type does not exist to consult."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-121": {
+      "@type": "slate",
+      "plaintext": "A sub-path that leads nowhere is UNSET: every comparison is false, and",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "A sub-path that leads nowhere is UNSET"
+                    }
+                  ]
+                },
+                {
+                  "text": ": every comparison is false, and"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-122": {
+      "@type": "slate",
+      "plaintext": "only `isSet`/`isNotSet` answer. A rule must not fire on a block whose image   has not been chosen yet.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "only "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "isSet"
+                }
+              ]
+            },
+            {
+              "text": "/"
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "isNotSet"
+                }
+              ]
+            },
+            {
+              "text": " answer. A rule must not fire on a block whose image   has not been chosen yet."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-123": {
+      "@type": "slate",
+      "plaintext": "times and plus apply to a field reference, so a comparison can carry a",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "`times` and `plus`"
+                    }
+                  ]
+                },
+                {
+                  "text": " apply to a field reference, so a comparison can carry a"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-124": {
+      "@type": "slate",
+      "plaintext": "tolerance — \"square, within a tenth\" rather than exactly equal, which no real   measurement is.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "tolerance — \"square, within a tenth\" rather than exactly equal, which no real   measurement is."
+            }
+          ]
+        }
+      ]
+    },
+    "p-125": {
+      "@type": "slate",
+      "plaintext": "Two things to know:",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Two things to know:"
+            }
+          ]
+        }
+      ]
+    },
+    "ul-126": {
+      "@type": "slate",
+      "plaintext": "Surfaces still apply. A reference does not smuggle a value past the",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "Surfaces still apply."
+                    }
+                  ]
+                },
+                {
+                  "text": " A reference does not smuggle a value past the"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-127": {
+      "@type": "slate",
+      "plaintext": "operator table — `lt` on a `string` surface throws whether the operand is a   literal or a field. Comparing two date strings is therefore not expressible;   that needs a date surface, which is a separate question from where the operand   comes from.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "operator table — "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "lt"
+                }
+              ]
+            },
+            {
+              "text": " on a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "string"
+                }
+              ]
+            },
+            {
+              "text": " surface throws whether the operand is a   literal or a field. Comparing two date strings is therefore not expressible;   that needs a date surface, which is a separate question from where the operand   comes from."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-128": {
+      "@type": "slate",
+      "plaintext": "An empty reference makes the condition false. If the named field holds",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
+            {
+              "type": "li",
+              "children": [
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "text": "An empty reference makes the condition false."
+                    }
+                  ]
+                },
+                {
+                  "text": " If the named field holds"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-129": {
+      "@type": "slate",
+      "plaintext": "nothing there is no value to compare against, and reading that as \"no   constraint\" would fire the rule on every form where the other field has not   been filled in yet.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "nothing there is no value to compare against, and reading that as \"no   constraint\" would fire the rule on every form where the other field has not   been filled in yet."
+            }
+          ]
+        }
+      ]
+    },
+    "p-130": {
       "@type": "slate",
       "plaintext": "Two extras drive **position-** and **type-**aware rules:",
       "value": [
@@ -2862,13 +6604,24 @@
               ]
             },
             {
-              "text": " and **type-**aware rules:"
+              "text": " and "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "type-"
+                }
+              ]
+            },
+            {
+              "text": "aware rules:"
             }
           ]
         }
       ]
     },
-    "ul-37": {
+    "ul-131": {
       "@type": "slate",
       "plaintext": "The virtual field @index reads a block's ordinal position within its parent object_list region (a number surface) — { '@index': { lt: 1 } } means \"first in my region\", and ../@index is the parent block's index. Distinct from a region's count (which counts children). A rule whose set is a block-type NAME (a string) rather than a field definition is a @type rule — it changes the item's type by position, not a field. Declared as typeRule on a typed object_list; see typeRule — position picks a typed item's @type. The retype is applied by CONVERSION (a schema enhancer can't rewrite stored @type), which brings up the confirm described under Drag / paste via conversion.",
       "value": [
@@ -2885,12 +6638,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "@index"
-                        }
-                      ]
+                      "text": "`@index`"
                     }
                   ]
                 },
@@ -2964,15 +6712,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "set"
-                        }
-                      ]
-                    },
-                    {
-                      "text": " is a block-type NAME"
+                      "text": "`set` is a block-type NAME"
                     }
                   ]
                 },
@@ -2983,15 +6723,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "@type"
-                        }
-                      ]
-                    },
-                    {
-                      "text": " rule"
+                      "text": "`@type` rule"
                     }
                   ]
                 },
@@ -3038,23 +6770,7 @@
                   },
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "typeRule"
-                        }
-                      ]
-                    },
-                    {
-                      "text": " — position picks a typed item's "
-                    },
-                    {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "@type"
-                        }
-                      ]
+                      "text": "`typeRule` — position picks a typed item's `@type`"
                     }
                   ]
                 },
@@ -3092,18 +6808,18 @@
         }
       ]
     },
-    "ce-38": {
+    "ce-132": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-38-javascript-4acd08",
+          "@id": "ce-132-javascript-1eccef",
           "label": "Javascript",
           "language": "javascript",
           "code": "schemaEnhancer: {\n    fieldRules: {\n        // multiselect `elements: ['image','date','tag']` — reveal each option's field\n        date: { when: { elements: { contains: 'date' } }, else: false },\n        media: { when: { elements: { containsAny: ['image', 'video'] } }, else: false },\n        layout: { when: { elements: { containsAll: ['image', 'date'] } }, else: false },\n        // scalar Choice\n        invert: { when: { colour: { oneOf: ['brand-dark', 'black'] } }, else: false },\n        // text: substring / pattern\n        cta: { when: { title: { contains: 'Sale' } }, else: false },\n        year: { when: { title: { regex: { pattern: '\\\\b20\\\\d\\\\d\\\\b', flags: 'i' } } }, else: false },\n    },\n}"
         }
       ]
     },
-    "p-39": {
+    "p-133": {
       "@type": "slate",
       "plaintext": "For a **region** (an `object_list` field, or a single `blocks_layout` region named by its region key), the array surface is its **child block types**, and the numeric operators **count** that region's children — only its own, never a cross-region total:",
       "value": [
@@ -3172,18 +6888,18 @@
         }
       ]
     },
-    "ce-40": {
+    "ce-134": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-40-javascript-c0236e",
+          "@id": "ce-134-javascript-88c8c6",
           "label": "Javascript",
           "language": "javascript",
           "code": "schemaEnhancer: {\n    fieldRules: {\n        // reveal a caption field only when the `body` region has an image block\n        caption: { when: { body: { contains: 'image' } }, else: false },\n        // offer \"columns layout\" only once the `columns` region has ≥2 blocks\n        columnsLayout: { when: { columns: { gte: 2 } }, else: false },\n        // \"carousel options\" only when the `slides` object_list has >1 item\n        carouselOptions: { when: { slides: { gt: 1 } }, else: false },\n    },\n}"
         }
       ]
     },
-    "p-41": {
+    "p-135": {
       "@type": "slate",
       "plaintext": "To condition on a block's **position** rather than a field value, use the virtual field **`@index`** — a block's ordinal index within its parent `object_list` region (a `number` surface). It composes with the block-step grammar, so `../@index` is the parent block's index. Unlike the region's numeric ops (which *count* children), `@index` is *where this block sits*:",
       "value": [
@@ -3208,12 +6924,7 @@
               "type": "strong",
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "@index"
-                    }
-                  ]
+                  "text": "`@index`"
                 }
               ]
             },
@@ -3290,18 +7001,18 @@
         }
       ]
     },
-    "ce-42": {
+    "ce-136": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-42-javascript-bdaefa",
+          "@id": "ce-136-javascript-57dd3f",
           "label": "Javascript",
           "language": "javascript",
           "code": "schemaEnhancer: {\n    fieldRules: {\n        // a table cell's blocks region: cap at one block when this cell is in the\n        // first row (a header row) — `../@index` is the cell's ROW index\n        blocks: [\n            { when: { '../../headerMode': { oneOf: ['row', 'both'] }, '../@index': { lt: 1 } }, set: { maxLength: 1 } },\n            { when: { '../../headerMode': { oneOf: ['col', 'both'] }, '@index':    { lt: 1 } }, set: { maxLength: 1 } },\n        ],\n    },\n}"
         }
       ]
     },
-    "p-43": {
+    "p-137": {
       "@type": "slate",
       "plaintext": "A block that isn't an `object_list` item yields an unset `@index`, so comparisons are simply false (never an error). `lt: 1` is \"first\"; `lt: 2` is \"first two\", etc.",
       "value": [
@@ -3359,7 +7070,7 @@
         }
       ]
     },
-    "p-44": {
+    "p-138": {
       "@type": "slate",
       "plaintext": "Field paths: `../field` for the parent block's field (and `@index` / `../@index` for position), `/field` for a page metadata field.",
       "value": [
@@ -3417,7 +7128,79 @@
         }
       ]
     },
-    "h-45": {
+    "p-139": {
+      "@type": "slate",
+      "plaintext": "**Worked examples:** two blocks in the reference carry rules for their own reasons — the [Teaser Block](./examples/teaser.md) has nothing to ask for while it borrows the linked page's wording (`overwrite` off), and the [Image Block](./examples/image-block.md) offers no size for a full-width image, written as a list of rules with a bare `false` as the catch-all.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Worked examples:"
+                }
+              ]
+            },
+            {
+              "text": " two blocks in the reference carry rules for their own reasons — the "
+            },
+            {
+              "type": "link",
+              "data": {
+                "url": "/docs/examples/teaser"
+              },
+              "children": [
+                {
+                  "text": "Teaser Block"
+                }
+              ]
+            },
+            {
+              "text": " has nothing to ask for while it borrows the linked page's wording ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "overwrite"
+                }
+              ]
+            },
+            {
+              "text": " off), and the "
+            },
+            {
+              "type": "link",
+              "data": {
+                "url": "/docs/examples/image-block"
+              },
+              "children": [
+                {
+                  "text": "Image Block"
+                }
+              ]
+            },
+            {
+              "text": " offers no size for a full-width image, written as a list of rules with a bare "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "false"
+                }
+              ]
+            },
+            {
+              "text": " as the catch-all."
+            }
+          ]
+        }
+      ]
+    },
+    "h-140": {
       "@type": "slate",
       "plaintext": "Block Conversion & fieldMappings",
       "value": [
@@ -3431,7 +7214,7 @@
         }
       ]
     },
-    "p-46": {
+    "p-141": {
       "@type": "slate",
       "plaintext": "`fieldMappings` (plural) on a block config defines how fields map between block types (and from linked content). This enables:",
       "value": [
@@ -3453,7 +7236,7 @@
         }
       ]
     },
-    "ul-47": {
+    "ul-142": {
       "@type": "slate",
       "plaintext": "\"Convert to...\" UI action — editors can convert a block to another type (e.g. teaser → image). Listing item types — query results are mapped to item blocks via @default (see Listings). Synchronised container children — a parent controls child type, all children convert together (see Container Blocks › Synchronised Block Types). Drag / paste via conversion — a block can be dropped or pasted into a container that only accepts a convertible type; it's converted on drop (see below). Copy from a linked target — a block pulls fields from the content item its link field points at, with a per-field linked/custom toggle (see @target).",
       "value": [
@@ -3504,7 +7287,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "listings.md"
+                    "url": "/docs/listings"
                   },
                   "children": [
                     {
@@ -3534,7 +7317,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "container-blocks.md#synchronised-block-types-in-a-container"
+                    "url": "/docs/container-blocks#synchronised-block-types-in-a-container"
                   },
                   "children": [
                     {
@@ -3595,12 +7378,7 @@
                   },
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "@target"
-                        }
-                      ]
+                      "text": "`@target`"
                     }
                   ]
                 },
@@ -3613,7 +7391,7 @@
         }
       ]
     },
-    "p-48": {
+    "p-143": {
       "@type": "slate",
       "plaintext": "Each key in `fieldMappings` is either a **specific block type name**, **`@default`**, or **`@target`**.",
       "value": [
@@ -3649,12 +7427,7 @@
               "type": "strong",
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "@default"
-                    }
-                  ]
+                  "text": "`@default`"
                 }
               ]
             },
@@ -3665,12 +7438,7 @@
               "type": "strong",
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "@target"
-                    }
-                  ]
+                  "text": "`@target`"
                 }
               ]
             },
@@ -3681,7 +7449,54 @@
         }
       ]
     },
-    "h-49": {
+    "p-144": {
+      "@type": "slate",
+      "plaintext": "**Worked example:** [Teaser Block](./examples/teaser.md) — `@default` mappings, so a converted or dragged block keeps its title, description and image.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Worked example:"
+                }
+              ]
+            },
+            {
+              "text": " "
+            },
+            {
+              "type": "link",
+              "data": {
+                "url": "/docs/examples/teaser"
+              },
+              "children": [
+                {
+                  "text": "Teaser Block"
+                }
+              ]
+            },
+            {
+              "text": " — "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "@default"
+                }
+              ]
+            },
+            {
+              "text": " mappings, so a converted or dragged block keeps its title, description and image."
+            }
+          ]
+        }
+      ]
+    },
+    "h-145": {
       "@type": "slate",
       "plaintext": "@default — the canonical content shape",
       "value": [
@@ -3703,7 +7518,7 @@
         }
       ]
     },
-    "p-50": {
+    "p-146": {
       "@type": "slate",
       "plaintext": "`@default` is a virtual type representing a linked content item's fields — anything a catalog **search** returns as metadata (`metadata_fields: '_all'`): `@id`, `title`, `description`, `image`, `Subject` (tags), `created`/`effective` dates, and so on. A block with `fieldMappings['@default']` is saying \"I can be populated from a content item.\" The keys are content/metadata field names — not this block's own field names (e.g. `label`, `field`, `required` are not content metadata and are invalid).",
       "value": [
@@ -3868,7 +7683,7 @@
         }
       ]
     },
-    "h-51": {
+    "h-147": {
       "@type": "slate",
       "plaintext": "Explicit type-to-type mappings",
       "value": [
@@ -3882,7 +7697,7 @@
         }
       ]
     },
-    "p-52": {
+    "p-148": {
       "@type": "slate",
       "plaintext": "Use these when blocks share fields that aren't part of the `@default` set — for example, facet types sharing `{ title, field, hidden }` or form field types sharing `{ label, description, required }`.",
       "value": [
@@ -3929,18 +7744,18 @@
         }
       ]
     },
-    "ce-53": {
+    "ce-149": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-53-javascript-6ea81c",
+          "@id": "ce-149-javascript-8a46be",
           "label": "Javascript",
           "language": "javascript",
           "code": "// Content item types: use @default (canonical fields) + explicit cross-mappings\nteaser: {\n    fieldMappings: {\n        '@default': { '@id': 'href', 'title': 'title', 'image': 'preview_image' },\n        image: { 'href': 'href', 'alt': 'title', 'url': 'preview_image' },\n    },\n},\nimage: {\n    fieldMappings: {\n        '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },\n        teaser: { 'href': 'href', 'title': 'alt', 'preview_image': 'url' },\n    },\n},\n\n// Non-content types: use explicit hub-type mappings (NOT @default).\n// All facet types map through checkboxFacet as a hub:\nselectFacet:  { fieldMappings: { checkboxFacet: { title: 'title', field: 'field', hidden: 'hidden' } } },\ncheckboxFacet: { fieldMappings: { selectFacet: { /* ... */ }, daterangeFacet: { /* ... */ } } },"
         }
       ]
     },
-    "h-54": {
+    "h-150": {
       "@type": "slate",
       "plaintext": "@target — copy from a linked content item",
       "value": [
@@ -3962,7 +7777,7 @@
         }
       ]
     },
-    "p-55": {
+    "p-151": {
       "@type": "slate",
       "plaintext": "`@target` maps a **linked** content item's attributes onto this block's own fields — the generic version of the Volto teaser's \"copy from target\" button. It maps *source content attributes* (`title`, `description`, `image`, …) to *this block's fields*. The item is whichever the block's **link field** points at (the `object_browser mode: 'link'` field — its stored snapshot is the source), so you don't name a URL field separately: \"the url is the link in the mapping\".",
       "value": [
@@ -4072,18 +7887,18 @@
         }
       ]
     },
-    "ce-56": {
+    "ce-152": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-56-javascript-46bfa7",
+          "@id": "ce-152-javascript-85afbc",
           "label": "Javascript",
           "language": "javascript",
           "code": "button: {\n    // The Label (title) syncs from the linked item's title.\n    fieldMappings: {\n        '@target': {\n            title: 'title',\n            description: 'description',\n            // image: the conversion is derived from the destination field's\n            // widget, so the value is assembled into the shape it expects.\n            image: 'preview_image',\n        },\n    },\n},"
         }
       ]
     },
-    "p-57": {
+    "p-153": {
       "@type": "slate",
       "plaintext": "Declaring `@target` is the **only** opt-in — no per-block enhancer wiring. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected). Every mapped field is one of two states:",
       "value": [
@@ -4130,9 +7945,9 @@
         }
       ]
     },
-    "ul-58": {
+    "ul-154": {
       "@type": "slate",
-      "plaintext": "Linked (default, toggle ticked) — the field pulls from the linked item. Its value is filled from the target's snapshot when the page opens for editing and re-pulled when you change the link, so it always mirrors the linked content. Custom (toggle unticked) — your own value, ignored by the target. A field becomes custom the moment you edit it, or when you untick the toggle; re-ticking re-pulls the target value. Custom fields are recorded in the block's _customFields array (absence ⇒ linked), so the state persists with the block.",
+      "plaintext": "Linked (default, toggle ticked) — the field pulls from the linked item.",
       "value": [
         {
           "type": "ul",
@@ -4160,10 +7975,35 @@
                   ]
                 },
                 {
-                  "text": ". Its value is filled from the target's snapshot when the page opens for editing and re-pulled when you change the link, so it always mirrors the linked content."
+                  "text": "."
                 }
               ]
-            },
+            }
+          ]
+        }
+      ]
+    },
+    "p-155": {
+      "@type": "slate",
+      "plaintext": "Its value is filled from the target's snapshot when the page opens for editing   and re-pulled when you change the link, so it always mirrors the linked content.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Its value is filled from the target's snapshot when the page opens for editing   and re-pulled when you change the link, so it always mirrors the linked content."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-156": {
+      "@type": "slate",
+      "plaintext": "Custom (toggle unticked) — your own value, ignored by the target. A field",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -4176,18 +8016,7 @@
                   ]
                 },
                 {
-                  "text": " (toggle unticked) — your own value, ignored by the target. A field becomes custom the moment you edit it, or when you untick the toggle; re-ticking re-pulls the target value. Custom fields are recorded in the block's "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "_customFields"
-                    }
-                  ]
-                },
-                {
-                  "text": " array (absence ⇒ linked), so the state persists with the block."
+                  "text": " (toggle unticked) — your own value, ignored by the target. A field"
                 }
               ]
             }
@@ -4195,7 +8024,32 @@
         }
       ]
     },
-    "h-59": {
+    "p-157": {
+      "@type": "slate",
+      "plaintext": "becomes custom the moment you edit it, or when you untick the toggle;   re-ticking re-pulls the target value. Custom fields are recorded in the block's   `_customFields` array (absence ⇒ linked), so the state persists with the block.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "becomes custom the moment you edit it, or when you untick the toggle;   re-ticking re-pulls the target value. Custom fields are recorded in the block's   "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "_customFields"
+                }
+              ]
+            },
+            {
+              "text": " array (absence ⇒ linked), so the state persists with the block."
+            }
+          ]
+        }
+      ]
+    },
+    "h-158": {
       "@type": "slate",
       "plaintext": "Container ⇄ value (region-crossing paths)",
       "value": [
@@ -4209,7 +8063,7 @@
         }
       ]
     },
-    "p-60": {
+    "p-159": {
       "@type": "slate",
       "plaintext": "A `fieldMappings` value is usually a sibling **field name**. It may instead be a **region-crossing path** `<region>/<type|*>/<field>`, which reaches the `<field>` of a container region's children — the one place the path grammar crosses a region boundary. This bridges a **container** block (a region of child blocks) and a **value** block (a scalar field), so a block can convert between the two shapes:",
       "value": [
@@ -4300,20 +8154,20 @@
         }
       ]
     },
-    "ce-61": {
+    "ce-160": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-61-javascript-9a6e0e",
+          "@id": "ce-160-javascript-851653",
           "label": "Javascript",
           "language": "javascript",
           "code": "tableHeaderCell: {                                   // the value form: one slate\n    blockSchema: { properties: { value: { widget: 'slate' } } },\n    // Declared ONCE on the value block; works both directions.\n    fieldMappings: { tableCell: { value: 'blocks/slate/value' } },\n},\ntableCell: {                                         // the container form\n    blockSchema: { properties: {\n        blocks: { widget: 'object_list', typeField: '@type',\n                  allowedBlocks: ['slate', 'image', 'video'] },\n    } },\n},"
         }
       ]
     },
-    "ul-62": {
+    "ul-161": {
       "@type": "slate",
-      "plaintext": "container → value (collapse) — gather the region's matching children's <field>; slate values are merged into one (lossless), not truncated. value → container (expand) — wrap the value in one child of <type> in the region. <type> selects a child type; * = any child that exposes <field> (siblings without it — an image for a value path — are skipped). A concrete type (blocks/slate/value) makes expand unambiguous, so use it for a two-way bridge; * suits read-only cross-region reads (e.g. a when condition).",
+      "plaintext": "container → value (collapse) — gather the region's matching children's",
       "value": [
         {
           "type": "ul",
@@ -4330,32 +8184,54 @@
                   ]
                 },
                 {
-                  "text": " — gather the region's matching children's "
-                },
+                  "text": " — gather the region's matching children's"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "p-162": {
+      "@type": "slate",
+      "plaintext": "`<field>`; slate values are **merged** into one (lossless), not truncated.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "type": "code",
+              "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "<field>"
-                    }
-                  ]
-                },
-                {
-                  "text": "; slate values are "
-                },
-                {
-                  "type": "strong",
-                  "children": [
-                    {
-                      "text": "merged"
-                    }
-                  ]
-                },
-                {
-                  "text": " into one (lossless), not truncated."
+                  "text": "<field>"
                 }
               ]
             },
+            {
+              "text": "; slate values are "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "merged"
+                }
+              ]
+            },
+            {
+              "text": " into one (lossless), not truncated."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-163": {
+      "@type": "slate",
+      "plaintext": "value → container (expand) — wrap the value in one child of <type> in",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -4390,10 +8266,35 @@
                   ]
                 },
                 {
-                  "text": " in the region."
+                  "text": " in"
                 }
               ]
-            },
+            }
+          ]
+        }
+      ]
+    },
+    "p-164": {
+      "@type": "slate",
+      "plaintext": "the region.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "the region."
+            }
+          ]
+        }
+      ]
+    },
+    "ul-165": {
+      "@type": "slate",
+      "plaintext": "<type> selects a child type; * = any child that exposes <field> (siblings",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
             {
               "type": "li",
               "children": [
@@ -4428,73 +8329,7 @@
                   ]
                 },
                 {
-                  "text": " (siblings without it — an "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "image"
-                    }
-                  ]
-                },
-                {
-                  "text": " for a "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "value"
-                    }
-                  ]
-                },
-                {
-                  "text": " path — are skipped). A "
-                },
-                {
-                  "type": "strong",
-                  "children": [
-                    {
-                      "text": "concrete"
-                    }
-                  ]
-                },
-                {
-                  "text": " type ("
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "blocks/slate/value"
-                    }
-                  ]
-                },
-                {
-                  "text": ") makes expand unambiguous, so use it for a two-way bridge; "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "*"
-                    }
-                  ]
-                },
-                {
-                  "text": " suits read-only cross-region reads (e.g. a "
-                },
-                {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "when"
-                    }
-                  ]
-                },
-                {
-                  "text": " condition)."
+                  "text": " (siblings"
                 }
               ]
             }
@@ -4502,7 +8337,87 @@
         }
       ]
     },
-    "p-63": {
+    "p-166": {
+      "@type": "slate",
+      "plaintext": "without it — an `image` for a `value` path — are skipped). A **concrete** type   (`blocks/slate/value`) makes expand unambiguous, so use it for a two-way bridge;   `*` suits read-only cross-region reads (e.g. a `when` condition).",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "without it — an "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "image"
+                }
+              ]
+            },
+            {
+              "text": " for a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "value"
+                }
+              ]
+            },
+            {
+              "text": " path — are skipped). A "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "concrete"
+                }
+              ]
+            },
+            {
+              "text": " type   ("
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "blocks/slate/value"
+                }
+              ]
+            },
+            {
+              "text": ") makes expand unambiguous, so use it for a two-way bridge;   "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "*"
+                }
+              ]
+            },
+            {
+              "text": " suits read-only cross-region reads (e.g. a "
+            },
+            {
+              "type": "code",
+              "children": [
+                {
+                  "text": "when"
+                }
+              ]
+            },
+            {
+              "text": " condition)."
+            }
+          ]
+        }
+      ]
+    },
+    "p-167": {
       "@type": "slate",
       "plaintext": "Non-region scalar fields (`key`, `width`, …) carry over unchanged. This is the `convertValueContainer` helper; DnD/paste and the block chooser reuse it via the same `fieldMappings` graph. See `proposals/container-value-conversion.md`.",
       "value": [
@@ -4571,7 +8486,7 @@
         }
       ]
     },
-    "h-64": {
+    "h-168": {
       "@type": "slate",
       "plaintext": "typeRule — position picks a typed item's @type",
       "value": [
@@ -4601,7 +8516,7 @@
         }
       ]
     },
-    "p-65": {
+    "p-169": {
       "@type": "slate",
       "plaintext": "The bridge converts on demand; a **`@type` rule** on a typed `object_list` field decides *when*, by **position**. It is an ordinary `when`-based fieldRule (same grammar — `@index`, `../@index`, `../../<field>`, `oneOf`, `lt`, …) whose `set` is a block-**type name** instead of a field definition:",
       "value": [
@@ -4615,15 +8530,7 @@
               "type": "strong",
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "@type"
-                    }
-                  ]
-                },
-                {
-                  "text": " rule"
+                  "text": "`@type` rule"
                 }
               ]
             },
@@ -4755,18 +8662,18 @@
         }
       ]
     },
-    "ce-66": {
+    "ce-170": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-66-javascript-11d07c",
+          "@id": "ce-170-javascript-9c4d9c",
           "label": "Javascript",
           "language": "javascript",
           "code": "cells: {\n    widget: 'object_list', typeField: '@type',\n    allowedBlocks: ['tableCell', 'tableHeaderCell'],\n    typeRule: [\n        // header row OR header column → the value form\n        { when: { '../../headerMode': { oneOf: ['row', 'both'] }, '../@index': { lt: 1 } }, set: 'tableHeaderCell' },\n        { when: { '../../headerMode': { oneOf: ['col', 'both'] }, '@index': { lt: 1 } },     set: 'tableHeaderCell' },\n        { set: 'tableCell' },                                // otherwise the container form\n    ],\n},"
         }
       ]
     },
-    "p-67": {
+    "p-171": {
       "@type": "slate",
       "plaintext": "The rule is evaluated in the same pass that applies field defaults (run on every edit): each typed item's target `@type` is re-resolved, and when it differs from the stored `@type` the item is **converted in place** via the bridge above. So moving a row to/from row 0 flips its cells between `tableHeaderCell` (a slate `value`) and `tableCell` (a `blocks` container), losslessly — no imperative \"re-type the cells\" code. Only meaningful on a **typed** object_list (a `typeField` item has an `@type` to rewrite); it settles in one pass (the target type re-resolves to itself once the item is in place).",
       "value": [
@@ -4890,7 +8797,7 @@
         }
       ]
     },
-    "p-68": {
+    "p-172": {
       "@type": "slate",
       "plaintext": "Each field's value is converted to the shape its destination widget expects (derived from the widget): strings copy across, an image field is assembled from the target's `image_scales` / `image_field`, multi-value fields (e.g. `Subject` → tags) pass through as-is.",
       "value": [
@@ -4937,7 +8844,7 @@
         }
       ]
     },
-    "p-69": {
+    "p-173": {
       "@type": "slate",
       "plaintext": "The pull is **snapshot-based** — there is no separate live fetch. When you pick or type a link, the url widget stores the target's **full** metadata onto the link field (the object browser already fetches every item with `metadata_fields: '_all'`, and the field's `selectedItemAttrs` keeps the whole canonical set), so the block carries its own source data. Every mapped field then pulls straight from that stored snapshot: **on page open** (all blocks fill at once) and again whenever you change the link.",
       "value": [
@@ -5006,7 +8913,7 @@
         }
       ]
     },
-    "p-70": {
+    "p-174": {
       "@type": "slate",
       "plaintext": "Only an **internal** link is a pull source. An external URL has no catalog item to search, so a field linked to one can't pull — the toggle is hidden and the field behaves as a plain editable field. (Unfurling external links via OpenGraph is a future enhancement.)",
       "value": [
@@ -5031,7 +8938,7 @@
         }
       ]
     },
-    "h-71": {
+    "h-175": {
       "@type": "slate",
       "plaintext": "Conversion graph rules",
       "value": [
@@ -5045,7 +8952,7 @@
         }
       ]
     },
-    "ul-72": {
+    "ul-176": {
       "@type": "slate",
       "plaintext": "Explicit fieldMappings[typeName] always creates a conversion edge. @default only creates edges between types that both have valid @default mappings (keys from { @id, title, description, image }). Types with non-canonical @default keys are ignored. Types without fieldMappings never appear in the \"Convert to...\" menu. Transitive conversions use paths through intermediate types (e.g. hero → teaser → image). Unmapped fields are kept in the data so converting back restores them.",
       "value": [
@@ -5159,7 +9066,7 @@
         }
       ]
     },
-    "h-73": {
+    "h-177": {
       "@type": "slate",
       "plaintext": "Drag / paste via conversion",
       "value": [
@@ -5173,7 +9080,7 @@
         }
       ]
     },
-    "p-74": {
+    "p-178": {
       "@type": "slate",
       "plaintext": "The same conversion graph gives drag-and-drop (and paste) more valid destinations: a block can be dropped or pasted into a container whose `allowedBlocks` only admits a type the block can *convert* to.",
       "value": [
@@ -5209,7 +9116,7 @@
         }
       ]
     },
-    "p-75": {
+    "p-179": {
       "@type": "slate",
       "plaintext": "**Every drop/paste is TRIALLED before it commits.** The candidate result is normalised (the same pass that applies field defaults and evaluates [`@type` rules](#typerule--position-picks-a-typed-items-type)), then each block's `@type` is diffed against what was dropped. If **anything** converted — because the dropped block had to convert to fit the container, **or** because a rule re-typed a block by its new position (e.g. a table row moved to row 0 turns its cells into header cells) — a **\"Convert blocks?\"** confirm lists each `from → to` and waits: **Convert** commits the already-converted result, **Cancel** aborts the whole drop. Nothing converted → it commits silently.",
       "value": [
@@ -5234,15 +9141,7 @@
               },
               "children": [
                 {
-                  "type": "code",
-                  "children": [
-                    {
-                      "text": "@type"
-                    }
-                  ]
-                },
-                {
-                  "text": " rules"
+                  "text": "`@type` rules"
                 }
               ]
             },
@@ -5330,7 +9229,7 @@
         }
       ]
     },
-    "p-76": {
+    "p-180": {
       "@type": "slate",
       "plaintext": "The chooser popup survives only for the genuinely ambiguous case: a single block reachable to *several* target types, where you pick which one (cancelling leaves it untouched). Zero reachable types rejects the drop; multi-block selections are auto-only (every member must reach exactly one type). On mobile, conversion happens via cut → paste (drag/chevron move stays native-only). External-link and other type restrictions are unaffected; only the container's `allowedBlocks` gate is relaxed to \"allowed or convertible\".",
       "value": [
@@ -5366,7 +9265,7 @@
         }
       ]
     },
-    "h-77": {
+    "h-181": {
       "@type": "slate",
       "plaintext": "Mapping value format",
       "value": [
@@ -5380,7 +9279,7 @@
         }
       ]
     },
-    "p-78": {
+    "p-182": {
       "@type": "slate",
       "plaintext": "A mapping value is either a string (simple field rename) or `{ field, type }` (rename with type conversion):",
       "value": [
@@ -5405,18 +9304,18 @@
         }
       ]
     },
-    "ce-79": {
+    "ce-183": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-79-json-1fc605",
+          "@id": "ce-183-json-16e4c3",
           "label": "Json",
           "language": "json",
           "code": "{\n    \"@id\": { \"field\": \"href\", \"type\": \"link\" },\n    \"title\": \"title\",\n    \"description\": \"description\",\n    \"image\": \"preview_image\"\n}"
         }
       ]
     },
-    "p-80": {
+    "p-184": {
       "@type": "slate",
       "plaintext": "When `type` is specified, the value is converted at runtime:",
       "value": [
@@ -5441,7 +9340,7 @@
         }
       ]
     },
-    "tbl-81": {
+    "tbl-185": {
       "@type": "slateTable",
       "table": {
         "fixed": true,
@@ -5452,10 +9351,10 @@
         "striped": false,
         "rows": [
           {
-            "key": "tbl-81-r0",
+            "key": "tbl-185-r0",
             "cells": [
               {
-                "key": "tbl-81-r0c0",
+                "key": "tbl-185-r0c0",
                 "type": "header",
                 "value": [
                   {
@@ -5469,7 +9368,7 @@
                 ]
               },
               {
-                "key": "tbl-81-r0c1",
+                "key": "tbl-185-r0c1",
                 "type": "header",
                 "value": [
                   {
@@ -5485,10 +9384,10 @@
             ]
           },
           {
-            "key": "tbl-81-r1",
+            "key": "tbl-185-r1",
             "cells": [
               {
-                "key": "tbl-81-r1c0",
+                "key": "tbl-185-r1c0",
                 "type": "data",
                 "value": [
                   {
@@ -5507,7 +9406,7 @@
                 ]
               },
               {
-                "key": "tbl-81-r1c1",
+                "key": "tbl-185-r1c1",
                 "type": "data",
                 "value": [
                   {
@@ -5534,10 +9433,10 @@
             ]
           },
           {
-            "key": "tbl-81-r2",
+            "key": "tbl-185-r2",
             "cells": [
               {
-                "key": "tbl-81-r2c0",
+                "key": "tbl-185-r2c0",
                 "type": "data",
                 "value": [
                   {
@@ -5556,7 +9455,7 @@
                 ]
               },
               {
-                "key": "tbl-81-r2c1",
+                "key": "tbl-185-r2c1",
                 "type": "data",
                 "value": [
                   {
@@ -5583,10 +9482,10 @@
             ]
           },
           {
-            "key": "tbl-81-r3",
+            "key": "tbl-185-r3",
             "cells": [
               {
-                "key": "tbl-81-r3c0",
+                "key": "tbl-185-r3c0",
                 "type": "data",
                 "value": [
                   {
@@ -5605,7 +9504,7 @@
                 ]
               },
               {
-                "key": "tbl-81-r3c1",
+                "key": "tbl-185-r3c1",
                 "type": "data",
                 "value": [
                   {
@@ -5632,10 +9531,10 @@
             ]
           },
           {
-            "key": "tbl-81-r4",
+            "key": "tbl-185-r4",
             "cells": [
               {
-                "key": "tbl-81-r4c0",
+                "key": "tbl-185-r4c0",
                 "type": "data",
                 "value": [
                   {
@@ -5654,7 +9553,7 @@
                 ]
               },
               {
-                "key": "tbl-81-r4c1",
+                "key": "tbl-185-r4c1",
                 "type": "data",
                 "value": [
                   {
@@ -5678,10 +9577,10 @@
             ]
           },
           {
-            "key": "tbl-81-r5",
+            "key": "tbl-185-r5",
             "cells": [
               {
-                "key": "tbl-81-r5c0",
+                "key": "tbl-185-r5c0",
                 "type": "data",
                 "value": [
                   {
@@ -5700,7 +9599,7 @@
                 ]
               },
               {
-                "key": "tbl-81-r5c1",
+                "key": "tbl-185-r5c1",
                 "type": "data",
                 "value": [
                   {
@@ -5718,7 +9617,7 @@
         ]
       }
     },
-    "h-82": {
+    "h-186": {
       "@type": "slate",
       "plaintext": "FieldMappingWidget",
       "value": [
@@ -5732,7 +9631,7 @@
         }
       ]
     },
-    "p-83": {
+    "p-187": {
       "@type": "slate",
       "plaintext": "When a parent block has `mappingField` set in its `inheritSchemaFrom` recipe, the admin sidebar shows a widget that lets editors configure field mappings visually:",
       "value": [
@@ -5768,7 +9667,7 @@
         }
       ]
     },
-    "ul-84": {
+    "ul-188": {
       "@type": "slate",
       "plaintext": "Shows the @default source fields (@id, title, description, image) on the left. For each source field, lets the editor pick a field from the selected child type's schema. Auto-detects the conversion type from the target field definition (e.g. object_browser with mode=link → type: \"link\"). Saves the result as fieldMapping (singular) on the block data.",
       "value": [
@@ -5921,7 +9820,7 @@
         }
       ]
     },
-    "p-85": {
+    "p-189": {
       "@type": "slate",
       "plaintext": "The saved `fieldMapping` is read at render time by `expandListingBlocks` — no block registry access needed at render time.",
       "value": [
@@ -5957,7 +9856,7 @@
         }
       ]
     },
-    "h-86": {
+    "h-190": {
       "@type": "slate",
       "plaintext": "HTML Paste Support (TODO)",
       "value": [
@@ -5971,32 +9870,32 @@
         }
       ]
     },
-    "p-87": {
+    "p-191": {
       "@type": "slate",
-      "plaintext": "When the editor pastes rich HTML into the page, Inka will eventually be able to recognise it as a custom block by matching against a CSS selector mapping. The proposed shape:",
+      "plaintext": "When the editor pastes rich HTML into the page, Hydra will eventually be able to recognise it as a custom block by matching against a CSS selector mapping. The proposed shape:",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "When the editor pastes rich HTML into the page, Inka will eventually be able to recognise it as a custom block by matching against a CSS selector mapping. The proposed shape:"
+              "text": "When the editor pastes rich HTML into the page, Hydra will eventually be able to recognise it as a custom block by matching against a CSS selector mapping. The proposed shape:"
             }
           ]
         }
       ]
     },
-    "ce-88": {
+    "ce-192": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-88-javascript-e562d7",
+          "@id": "ce-192-javascript-d04dec",
           "label": "Javascript",
           "language": "javascript",
           "code": "video: {\n    fieldMappings: {\n        'css:video': { 'src': 'url', 'caption[@class=\"alt\"]': 'alt' },\n    },\n}"
         }
       ]
     },
-    "p-89": {
+    "p-193": {
       "@type": "slate",
       "plaintext": "The `css:<selector>` key in `fieldMappings` matches a pasted HTML element; the value maps element attributes to block fields. Not yet implemented — open question on whether this should run via `htmlTagsToSlate` (bypassing slate conversion) or be encoded into slate so attributes/classes survive.",
       "value": [
@@ -6065,77 +9964,181 @@
       "ul-16",
       "p-17",
       "h-18",
-      "ul-19",
-      "h-20",
+      "p-19",
+      "ce-20",
       "p-21",
-      "h-22",
-      "ce-23",
-      "p-24",
-      "ul-25",
+      "p-22",
+      "p-23",
+      "ul-24",
+      "p-25",
       "p-26",
       "h-27",
-      "p-28",
-      "ce-29",
+      "ul-28",
+      "h-29",
       "p-30",
-      "ul-31",
-      "p-32",
+      "h-31",
+      "ce-32",
       "p-33",
-      "tbl-34",
+      "ul-34",
       "p-35",
       "p-36",
-      "ul-37",
-      "ce-38",
+      "h-37",
+      "p-38",
       "p-39",
       "ce-40",
       "p-41",
-      "ce-42",
+      "p-42",
       "p-43",
-      "p-44",
-      "h-45",
+      "ce-44",
+      "p-45",
       "p-46",
-      "ul-47",
-      "p-48",
-      "h-49",
-      "p-50",
-      "h-51",
+      "p-47",
+      "h-48",
+      "p-49",
+      "tbl-50",
+      "p-51",
       "p-52",
-      "ce-53",
-      "h-54",
-      "p-55",
-      "ce-56",
+      "h-53",
+      "p-54",
+      "ul-55",
+      "p-56",
       "p-57",
-      "ul-58",
-      "h-59",
-      "p-60",
-      "ce-61",
-      "ul-62",
-      "p-63",
-      "h-64",
-      "p-65",
-      "ce-66",
-      "p-67",
+      "ce-58",
+      "p-59",
+      "h-60",
+      "p-61",
+      "p-62",
+      "h-63",
+      "p-64",
+      "h-65",
+      "p-66",
+      "ce-67",
       "p-68",
       "p-69",
-      "p-70",
-      "h-71",
-      "ul-72",
-      "h-73",
-      "p-74",
-      "p-75",
+      "h-70",
+      "p-71",
+      "p-72",
+      "p-73",
+      "h-74",
+      "tbl-75",
       "p-76",
       "h-77",
       "p-78",
-      "ce-79",
+      "p-79",
       "p-80",
-      "tbl-81",
-      "h-82",
+      "p-81",
+      "tbl-82",
       "p-83",
-      "ul-84",
+      "p-84",
       "p-85",
-      "h-86",
-      "p-87",
-      "ce-88",
-      "p-89"
+      "ce-86",
+      "tbl-87",
+      "p-88",
+      "p-89",
+      "h-90",
+      "p-91",
+      "ce-92",
+      "p-93",
+      "ul-94",
+      "p-95",
+      "p-96",
+      "tbl-97",
+      "p-98",
+      "h-99",
+      "p-100",
+      "ce-101",
+      "p-102",
+      "p-103",
+      "p-104",
+      "h-105",
+      "p-106",
+      "ce-107",
+      "p-108",
+      "p-109",
+      "p-110",
+      "h-111",
+      "p-112",
+      "ce-113",
+      "p-114",
+      "h-115",
+      "p-116",
+      "ce-117",
+      "p-118",
+      "ul-119",
+      "p-120",
+      "ul-121",
+      "p-122",
+      "ul-123",
+      "p-124",
+      "p-125",
+      "ul-126",
+      "p-127",
+      "ul-128",
+      "p-129",
+      "p-130",
+      "ul-131",
+      "ce-132",
+      "p-133",
+      "ce-134",
+      "p-135",
+      "ce-136",
+      "p-137",
+      "p-138",
+      "p-139",
+      "h-140",
+      "p-141",
+      "ul-142",
+      "p-143",
+      "p-144",
+      "h-145",
+      "p-146",
+      "h-147",
+      "p-148",
+      "ce-149",
+      "h-150",
+      "p-151",
+      "ce-152",
+      "p-153",
+      "ul-154",
+      "p-155",
+      "ul-156",
+      "p-157",
+      "h-158",
+      "p-159",
+      "ce-160",
+      "ul-161",
+      "p-162",
+      "ul-163",
+      "p-164",
+      "ul-165",
+      "p-166",
+      "p-167",
+      "h-168",
+      "p-169",
+      "ce-170",
+      "p-171",
+      "p-172",
+      "p-173",
+      "p-174",
+      "h-175",
+      "ul-176",
+      "h-177",
+      "p-178",
+      "p-179",
+      "p-180",
+      "h-181",
+      "p-182",
+      "ce-183",
+      "p-184",
+      "tbl-185",
+      "h-186",
+      "p-187",
+      "ul-188",
+      "p-189",
+      "h-190",
+      "p-191",
+      "ce-192",
+      "p-193"
     ]
   }
 }

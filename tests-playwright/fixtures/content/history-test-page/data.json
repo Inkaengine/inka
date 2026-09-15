@@ -1,0 +1,156 @@
+{
+  "@id": "http://localhost:8888/history-test-page",
+  "@type": "Document",
+  "UID": "history-test-page-uid-90001",
+  "id": "history-test-page",
+  "title": "History Test Page",
+  "description": "Dedicated to history-diff.spec.ts: NO other spec may edit it, so the mock synthesizes exactly SYNTH_VERSIONS deterministic revisions.",
+  "effective": "2024-11-01T00:00:00+00:00",
+  "review_state": "published",
+  "preview_image": false,
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "htp-block-1": {
+      "@type": "slate",
+      "plaintext": "History paragraph 1 with several distinctive words",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "History paragraph 1 with several distinctive words"
+            }
+          ]
+        }
+      ]
+    },
+    "htp-block-2": {
+      "@type": "slate",
+      "plaintext": "History paragraph 2 with several distinctive words",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "History paragraph 2 with several distinctive words"
+            }
+          ]
+        }
+      ]
+    },
+    "htp-block-3": {
+      "@type": "slate",
+      "plaintext": "History paragraph 3 with several distinctive words",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "History paragraph 3 with several distinctive words"
+            }
+          ]
+        }
+      ]
+    },
+    "htp-block-4": {
+      "@type": "slate",
+      "plaintext": "History paragraph 4 with several distinctive words",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "History paragraph 4 with several distinctive words"
+            }
+          ]
+        }
+      ]
+    },
+    "htp-block-5": {
+      "@type": "slate",
+      "plaintext": "History paragraph 5 with several distinctive words",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "History paragraph 5 with several distinctive words"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "htp-block-1",
+      "htp-block-2",
+      "htp-block-3",
+      "htp-block-4",
+      "htp-block-5"
+    ]
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": true,
+  "created": "2025-01-02T12:00:00+00:00",
+  "modified": "2025-01-02T12:00:00+00:00",
+  "lock": {
+    "locked": false,
+    "stealable": true
+  },
+  "@components": {
+    "actions": {
+      "@id": "http://localhost:8888/another-page-2/@actions",
+      "document_actions": [],
+      "object": [
+        {
+          "id": "view",
+          "title": "View"
+        },
+        {
+          "id": "edit",
+          "title": "Edit"
+        },
+        {
+          "id": "folderContents",
+          "title": "Contents"
+        }
+      ],
+      "object_buttons": [],
+      "portal_tabs": [],
+      "site_actions": [],
+      "user": []
+    },
+    "breadcrumbs": {
+      "@id": "http://localhost:8888/another-page-2/@breadcrumbs",
+      "items": [
+        {
+          "@id": "http://localhost:8888",
+          "title": "Home"
+        },
+        {
+          "@id": "http://localhost:8888/another-page-2",
+          "title": "Another Page 2"
+        }
+      ],
+      "root": "http://localhost:8888"
+    },
+    "navigation": {
+      "@id": "http://localhost:8888/another-page-2/@navigation",
+      "items": []
+    },
+    "workflow": {
+      "@id": "http://localhost:8888/another-page-2/@workflow"
+    }
+  },
+  "can_manage_portlets": true,
+  "can_view": true,
+  "can_edit": true,
+  "can_delete": true,
+  "can_add": true
+}

@@ -78,11 +78,21 @@ const result = await fetchListing(route.query);
 const items = ref(result.items);
 if (paging) Object.assign(paging, result.paging);
 
-// Re-fetch when route query, block data, or paging page (from URL) changes.
+// The page we should be showing. When we OWN paging it comes from our own
+// `@pg_<id>_n` URL segment; when paging is SHARED (a gridBlock combines all its
+// children under one pager) the container writes the window into `props.paging`
+// and THAT is the source of truth. The old watch tracked only `listingPage`,
+// which is hard-wired to 0 in the shared case — so a shared grid's page never
+// changed here, the listing never re-fetched, and the pager stayed on page 1.
+const pageStart = computed(() =>
+  ownsPaging ? listingPage.value * DEFAULT_PAGE_SIZE : (props.paging?.start ?? 0),
+);
+
+// Re-fetch whenever the query, the block, or the page-to-show changes.
 watch(
-  [() => route.query, () => props.block, () => listingPage.value],
-  async ([newQuery, , newPage]) => {
-    if (ownsPaging) paging.start = newPage * DEFAULT_PAGE_SIZE;
+  [() => route.query, () => props.block, pageStart],
+  async ([newQuery]) => {
+    paging.start = pageStart.value;
     const result = await fetchListing(newQuery);
     items.value = result.items;
     if (paging) Object.assign(paging, result.paging);
@@ -94,6 +104,7 @@ watch(
 let contextPath = props.contextPath;
 const buildPagingUrl = (page) => {
   if (page === 0) return contextPath;
-  return `${contextPath}/@pg_${props.id}_${page}`;
+  // Strip a trailing slash so a root context gives "/@pg_…" not "//@pg_…".
+  return `${contextPath.replace(/\/+$/, '')}/@pg_${props.id}_${page}`;
 };
 </script>

@@ -1,214 +1,99 @@
-# Accordion Block
+---
+"@type": Document
+UID: f8cd4a2d8d7c4703b4e41d2093b21aed
+allow_discussion: false
+contributors: []
+creators:
+  - admin
+description: The accordion contains other blocks in an accordion behavior layout.
+effective: 2023-09-22T16:09:00
+exclude_from_nav: false
+expires: null
+id: accordion
+is_folderish: true
+language: "##DEFAULT##"
+layout: document_view
+preview_caption: null
+preview_image: null
+review_state: published
+rights: ""
+subjects:
+  - blocks
+  - containers
+title: Accordion
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
+  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block type="codeExample">
+    <region name="tabs" widget="object_list">
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+blocks-tagged: |
+  <block type="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />
+  <block type="slateTable">
+    <region name="table.rows">
+      <block type="row">
+        <region name="cells">
+          <block type="cell" value="${td/slate}" />
+        </region>
+      </block>
+    </region>
+  </block>
+  <block type="accordion" right_arrows=true>
+    <region name="panels" widget="object_list">
+      <block type="panel" title="${h/text}" />
+    </region>
+  </block>
+---
 
-A collapsible panel group. Each panel is an `object_list` item with a title and a content area that holds child blocks.
+# Accordion
 
-This is a **custom** block — register it via `initBridge`.
+A collapsible panel group. Each panel is an object\_list item with a title and a content area that holds child blocks.
 
-## Schema
+<block type="image">
 
-```json
-{
-  "accordion": {
-    "blockSchema": {
-      "properties": {
-        "panels": {
-          "title": "Panels",
-          "widget": "object_list",
-          "schema": {
-            "properties": {
-              "title": {
-                "title": "Title"
-              },
-              "items": {
-                "title": "Content",
-                "widget": "blocks_layout",
-                "allowedBlocks": [
-                  "slate",
-                  "image"
-                ],
-                "defaultBlockType": "slate"
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-```
+![The accordion example block being edited in Volto Hydra](/docs/images/accordion-edit.png)
 
+</block>
 
-## JSON Block Data
+<fields data-json='{"collapsed":false,"filtering":false,"non_exclusive":false,"right_arrows":true}'>
 
-```json
-{
-  "@type": "accordion",
-  "panels": [
-    {
-      "@id": "panel-1",
-      "title": "Frequently Asked Questions",
-      "blocks": {
-        "content-text-1": {
-          "@type": "slate",
-          "value": [
-            {
-              "type": "p",
-              "children": [
-                {
-                  "text": "Here are the answers to common questions."
-                }
-              ]
-            }
-          ]
-        }
-      },
-      "blocks_layout": {
-        "items": [
-          "content-text-1"
-        ]
-      }
-    }
-  ]
-}
-```
+<block type="accordion" data-json='{"panels":[{"title":"What is a block?","blocks":[{"@type":"slate","value":[{"type":"p","children":[{"text":"A reusable unit of content you can add, edit and reorder."}]}]}]},{"title":"Adding a panel","blocks":[{"@type":"slate","value":[{"type":"p","children":[{"text":"Each panel is an object-list item with a title and a content area that holds child blocks."}]}]}]}]}' />
 
-## Rendering
+<block type="accordion" data-json='{"styles":{"backgroundColor":"grey"},"panels":[{"title":"Accordion with text","blocks":[{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet."}],"type":"p"}]}]},{"title":"Accordion with image","blocks":[{"@type":"image","align":"center","credit":{},"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"l","title":"Image - Light","url":"/docs/examples/content-types/image-light.jpg"},{"@type":"separator","styles":{"align":"left"}},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]},{"@type":"image","align":"left","credit":{},"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"l","title":"Image","url":"/docs/examples/content-types/image-dark"},{"@type":"slate","plaintext":"Text Heading H3","styles":{},"value":[{"children":[{"text":"Text Heading H3"}],"type":"h2"}]},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]},{"@type":"separator","styles":{"align":"left"}},{"@type":"image","align":"left","credit":{},"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"m","styles":{"size:noprefix":"medium"},"title":"Image","url":"/docs/examples/content-types/image-dark"},{"@type":"slate","plaintext":"Text Heading H3","styles":{},"value":[{"children":[{"text":"Text Heading H3"}],"type":"h2"}]},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]},{"@type":"image","align":"right","credit":{},"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"m","styles":{"size:noprefix":"medium"},"title":"Image - Light","url":"/docs/examples/content-types/image-light.jpg"},{"@type":"slate","plaintext":"Text Heading H3","styles":{},"value":[{"children":[{"text":"Text Heading H3"}],"type":"h2"}]},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]},{"@type":"separator","styles":{"align":"left"}},{"@type":"image","align":"left","credit":{},"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"s","styles":{"size:noprefix":"small"},"title":"Image","url":"/docs/examples/content-types/image-dark"},{"@type":"slate","plaintext":"Text Heading H3","styles":{},"value":[{"children":[{"text":"Text Heading H3"}],"type":"h2"}]},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]},{"@type":"image","align":"right","credit":{},"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"s","styles":{"size:noprefix":"small"},"title":"Image","url":"/docs/examples/content-types/image-dark"},{"@type":"slate","plaintext":"Text Heading H3","styles":{},"value":[{"children":[{"text":"Text Heading H3"}],"type":"h2"}]},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]}]},{"title":"Accordion with teaser","blocks":[{"@type":"teaser","description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo","head_title":null,"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","Title":"Page","getRemoteUrl":null,"hasPreviewImage":true,"head_title":null,"image_field":"preview_image","title":"Page"}],"styles":{"align":"center"},"title":"Teaser Title H2"},{"@type":"teaser","description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper ","head_title":null,"href":[{"@id":"/docs/examples/content-types/image-light.jpg","@type":"Image","Description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","Title":"Image - Light","getRemoteUrl":null,"hasPreviewImage":null,"head_title":null,"image_field":"image","title":"Image - Light"}],"styles":{"align":"left"},"title":"Teaser Title H2"},{"@type":"teaser","description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper ","head_title":null,"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","Title":"Page","getRemoteUrl":null,"hasPreviewImage":true,"head_title":null,"image_field":"preview_image","title":"Page"}],"styles":{"align":"right"},"title":"Teaser Title H2"}]},{"title":"Accordion with listing","blocks":[{"@type":"listing","headlineTag":"h2","querystring":{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true},"styles":{},"variation":"summary"}]},{"title":"Accordion with table","blocks":[{"@type":"slateTable","styles":{"backgroundColor":"transparent"},"table":{"basic":false,"celled":true,"compact":false,"fixed":true,"hideHeaders":false,"inverted":false,"rows":[{"cells":[{"key":"f446n","type":"header","value":[{"children":[{"text":"Title Tablehead "}],"type":"p"}]},{"key":"26qcg","type":"header","value":[{"children":[{"text":"Title Tablehead "}],"type":"p"}]},{"key":"dhv72","type":"header","value":[{"children":[{"text":"Title Tablehead "}],"type":"p"}]}],"key":"dda2b"},{"cells":[{"key":"52vlv","type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"/docs/examples/content-types/image-dark"},"type":"link"},{"text":" "}],"type":"p"}]},{"key":"5ko7h","type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"/docs/examples/content-types/image-dark"},"type":"link"},{"text":" "}],"type":"p"}]},{"key":"878jv","type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"/docs/examples/content-types/image-dark"},"type":"link"},{"text":" "}],"type":"p"}]}],"key":"3ihrs"},{"cells":[{"key":"754if","type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"/docs/examples/content-types/image-dark"},"type":"link"},{"text":" "}],"type":"p"}]},{"key":"1bjdt","type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"/docs/examples/content-types/image-dark"},"type":"link"},{"text":" "}],"type":"p"}]},{"key":"32g6k","type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"/docs/examples/content-types/image-dark"},"type":"link"},{"text":" "}],"type":"p"}]}],"key":"au6so"},{"cells":[{"key":"5fhem","type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"/docs/examples/content-types/image-dark"},"type":"link"},{"text":" "}],"type":"p"}]},{"key":"e78dh","type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"/docs/examples/content-types/image-dark"},"type":"link"},{"text":" "}],"type":"p"}]},{"key":"feacr","type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"/docs/examples/content-types/image-dark"},"type":"link"},{"text":" "}],"type":"p"}]}],"key":"fqhgk"}],"striped":true}}]}]}' />
+
+</fields>
+
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-accordion">
+
+<block type="codeExample" slotId="schema" source="accordion" format="schema" />
+
+<block type="codeExample" slotId="json-data" source="accordion" format="json" />
+
+<block type="codeExample" slotId="rendering">
 
 ### React
 
-<!-- file: examples/react/AccordionBlock.jsx -->
-```jsx
-function AccordionBlock({ block }) {
-  const panels = block.panels || [];
-
-  return (
-    <div data-block-uid={block['@uid']} className="accordion-block">
-      {panels.map(panel => {
-        const panelId = panel['@id'];
-        return <AccordionPanel key={panelId} panel={panel} panelId={panelId} />;
-      })}
-    </div>
-  );
-}
-
-function AccordionPanel({ panel, panelId }) {
-  const [open, setOpen] = useState(!panel.collapsed);
-  const contentBlocks = panel.blocks || {};
-  const contentLayout = panel.blocks_layout?.items || [];
-
-  return (
-    <div data-block-uid={panelId} className="accordion-panel">
-      <button onClick={() => setOpen(!open)} className="accordion-header">
-        <span data-edit-text="title">{panel.title}</span>
-        <span>{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div className="accordion-content">
-          {contentLayout.map(id => (
-            <BlockRenderer key={id} block={{ ...contentBlocks[id], '@uid': id }} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+```{literalinclude} examples/react/AccordionBlock.jsx
+:language: jsx
 ```
 
 ### Vue
 
-<!-- file: examples/vue/AccordionBlock.vue -->
-```vue
-<template>
-  <div :data-block-uid="block['@uid']" class="accordion-block">
-    <div
-      v-for="panel in block.panels || []"
-      :key="panel['@id']"
-      :data-block-uid="panel['@id']"
-      class="accordion-panel"
-    >
-      <button @click="toggle(panel['@id'])" class="accordion-header">
-        <span data-edit-text="title">{{ panel.title }}</span>
-        <span>{{ openPanels[panel['@id']] ? '▲' : '▼' }}</span>
-      </button>
-      <div v-if="openPanels[panel['@id']]" class="accordion-content">
-        <BlockRenderer
-          v-for="id in panel.blocks_layout?.items || []"
-          :key="id"
-          :block="{ ...panel.blocks[id], '@uid': id }"
-        />
-      </div>
-    </div>
-  </div>
-</template>
-
-<script setup>
-import { reactive } from 'vue';
-const props = defineProps({ block: Object });
-const openPanels = reactive(Object.fromEntries((props.block.panels || []).filter(p => !p.collapsed).map(p => [p['@id'], true])));
-function toggle(id) { openPanels[id] = !openPanels[id]; }
-</script>
+```{literalinclude} examples/vue/AccordionBlock.vue
+:language: vue
 ```
 
 ### Svelte
 
-<!-- file: examples/svelte/AccordionBlock.svelte -->
-```svelte
-<script>
-  import BlockRenderer from './BlockRenderer.svelte';
-  export let block;
-
-  let openPanels = Object.fromEntries((block.panels || []).filter(p => !p.collapsed).map(p => [p['@id'], true]));
-  function toggle(id) { openPanels[id] = !openPanels[id]; openPanels = openPanels; }
-</script>
-
-<div data-block-uid={block['@uid']} class="accordion-block">
-  {#each block.panels || [] as panel (panel['@id'])}
-    <div data-block-uid={panel['@id']} class="accordion-panel">
-      <button on:click={() => toggle(panel['@id'])} class="accordion-header">
-        <span data-edit-text="title">{panel.title}</span>
-        <span>{openPanels[panel['@id']] ? '▲' : '▼'}</span>
-      </button>
-      {#if openPanels[panel['@id']]}
-        <div class="accordion-content">
-          {#each panel.blocks_layout?.items || [] as id (id)}
-            <BlockRenderer block={{ ...panel.blocks[id], '@uid': id }} />
-          {/each}
-        </div>
-      {/if}
-    </div>
-  {/each}
-</div>
+```{literalinclude} examples/svelte/AccordionBlock.svelte
+:language: svelte
 ```
 
-### Astro
+</block>
 
-<!-- file: examples/astro/AccordionBlock.astro -->
-```astro
----
-/**
- * Accordion. Server-render shows every panel open (no client interactivity
- * in the SSR example), matching what the bridge needs to see for
- * selection sync against `data-edit-text="title"`. The svelte version's
- * toggle behavior is editor-only ergonomics and isn't required by tests.
- *
- * Each panel keeps its own data-block-uid so panel selection works.
- */
-import BlockRenderer from './BlockRenderer.astro';
-const { block } = Astro.props;
-const panels = block.panels || [];
----
-<div class="accordion-block">
-  {panels.map((panel: any) => (
-    <div data-block-uid={panel['@id']} class="accordion-panel">
-      <button class="accordion-header">
-        <span data-edit-text="title">{panel.title}</span>
-      </button>
-      <div class="accordion-content">
-        {(panel.blocks_layout?.items || []).map((id: string) => (
-          <BlockRenderer block={{ ...panel.blocks?.[id], '@uid': id }} />
-        ))}
-      </div>
-    </div>
-  ))}
-</div>
-```
+</fields>

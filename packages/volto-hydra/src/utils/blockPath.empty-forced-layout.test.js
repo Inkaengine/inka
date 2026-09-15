@@ -7,7 +7,15 @@
  * This pins down whether the typeless seed is a config gap (region needs a
  * defaultBlockType / single allowedBlocks) or a deeper forced-layout bug.
  */
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
+
+// blockSync reaches HydraSchemaContext.js — JSX inside a .js file, which esbuild
+// (vitest) can't parse. Nothing here touches the live schema context.
+vi.mock('../context', () => ({
+  getHydraSchemaContext: () => ({}),
+  setHydraSchemaContext: () => () => {},
+  getLiveBlockData: () => undefined,
+}));
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { getBlockAddability } from '@volto-hydra/helpers';
 import {
@@ -15,6 +23,9 @@ import {
   ensureEmptyBlockIfEmpty,
   getBlockById,
 } from './blockPath.js';
+// deleteBlocks lives in the EDIT layer (blockSync), not among the storage
+// primitives: it deletes and then settles the structure the delete disturbed.
+import { deleteBlocks } from './blockSync.js';
 import { mergeTemplatesIntoPage } from './mergeTemplates.mjs';
 
 const EMPTY_ANNOUNCEMENT_TEMPLATE = {
@@ -185,7 +196,22 @@ describe('forced empty layout is empty but LOCKED until the template is unlocked
     );
     map = buildBlockPathMap(seeded, cfg, intl);
     const id = seeded.blocks_layout.announcement[0];
-    return { seed: seeded.blocks[id], id };
+    return { seed: seeded.blocks[id], id, seeded, map };
+  }
+
+  // The walk SyncedSlateToolbar does to decide whether to draw the lock: from the
+  // selected block, up through parentId, looking for a top-level template
+  // instance. Null means no lock control — on the toolbar OR in the sidebar.
+  function instanceOf(map, blockId) {
+    let instanceId = null;
+    let cur = blockId;
+    while (cur) {
+      const info = map[cur];
+      if (!info) break;
+      if (info.isTemplateInstance && !info.isNestedTemplateInstance) instanceId = cur;
+      cur = info.parentId;
+    }
+    return instanceId;
   }
 
   test('the seeded empty is a template member (has a templateInstanceId)', async () => {
@@ -207,6 +233,114 @@ describe('forced empty layout is empty but LOCKED until the template is unlocked
       seed?.readOnly,
       'a forced-layout empty must be locked until the template is unlocked',
     ).toBe(true);
+  });
+
+  // The empty is only half the story. An author unlocks the region, fills it, and
+  // then has to LOCK it again to publish — and the lock is drawn only if the walk
+  // above finds a template instance from the selected block. On the docs site
+  // that walk came up empty after adding a global alert into an emptied
+  // announcement: no lock on the toolbar, none in the sidebar, no way to publish
+  // what had just been written.
+  //
+  // Membership on an add is otherwise inherited from a NEIGHBOUR, and an emptied
+  // forced region has none — which is why this case needs pinning separately from
+  // the object_list one.
+  test('the walk that draws the lock reaches the instance from the seeded empty', async () => {
+    const { map, id, seed } = await seedForcedEmpty();
+    expect(
+      instanceOf(map, id),
+      'no template instance above the seeded empty — nothing would draw a lock',
+    ).toBe(seed.templateInstanceId);
+  });
+
+  test('a block that REPLACES the empty is still inside the instance', async () => {
+    // What filling the placeholder produces: convertBlockInPlace builds the new
+    // block from the chosen type and carries the empty's membership across
+    // (templateId/templateInstanceId/slotId/fixed/readOnly).
+    const { seeded, id, seed, map: seedMap } = await seedForcedEmpty();
+    const filled = {
+      ...seeded,
+      blocks: {
+        ...seeded.blocks,
+        [id]: {
+          '@type': 'globalAlert',
+          templateId: seed.templateId,
+          templateInstanceId: seed.templateInstanceId,
+          slotId: seed.slotId,
+          fixed: seed.fixed,
+          readOnly: seed.readOnly,
+        },
+      },
+    };
+    expect(instanceOf(seedMap, id)).toBe(seed.templateInstanceId);
+    const map = buildBlockPathMap(filled, cfg, intl);
+    expect(
+      instanceOf(map, id),
+      'the filled block lost the instance the empty belonged to — the lock disappears',
+    ).toBe(seed.templateInstanceId);
+  });
+
+  // The docs-site flow that lost its lock does not start from an empty region: it
+  // starts from a region with an alert in it, which the author REMOVES before
+  // adding a new one. So the placeholder has to be re-seeded mid-session, not
+  // just at load — and it has to come back with the same membership, or the
+  // block that replaces it is per-page content and cannot be locked.
+  test('re-seeding after the member is removed restores the membership', async () => {
+    const { seeded, id, seed } = await seedForcedEmpty();
+    // The author removes what was there: the region is empty again.
+    const emptied = {
+      ...seeded,
+      blocks: Object.fromEntries(
+        Object.entries(seeded.blocks).filter(([key]) => key !== id),
+      ),
+      blocks_layout: { ...seeded.blocks_layout, announcement: [] },
+    };
+    const map = buildBlockPathMap(emptied, cfg, intl);
+    const reseeded = ensureEmptyBlockIfEmpty(
+      emptied,
+      { parentId: PAGE_BLOCK_UID },
+      map,
+      () => 're-seed',
+      cfg,
+      { intl, properties: emptied },
+    );
+    const newId = reseeded.blocks_layout.announcement[0];
+    expect(newId, 'the region was not re-seeded at all').toBeTruthy();
+    expect(
+      reseeded.blocks[newId]?.templateInstanceId,
+      'the re-seeded empty lost the template instance — nothing to lock',
+    ).toBe(seed.templateInstanceId);
+    expect(instanceOf(buildBlockPathMap(reseeded, cfg, intl), newId)).toBe(
+      seed.templateInstanceId,
+    );
+  });
+
+  // There were two deletes — View.jsx's single (the toolbar's Remove) re-seeded,
+  // its multi (hydra-delete-blocks, multi-select) didn't — so whether a forced
+  // region survived being emptied depended on how many blocks you had selected
+  // when you emptied it. One implementation now, and this pins the behaviour for
+  // both shapes it is called in.
+  test.each([
+    ['one block at a time', (id) => [id]],
+    ['several at once', (id) => [id, 'a']],
+  ])('deleting %s re-seeds the forced region it empties', async (_label, ids) => {
+    const { seeded, id, seed } = await seedForcedEmpty();
+    const map = buildBlockPathMap(seeded, cfg, intl);
+    // A COUNTER, not a constant: emptying two regions seeds two placeholders,
+    // and one id for both would have the second overwrite the first.
+    let n = 0;
+    const { formData: after } = deleteBlocks(seeded, map, ids(id), {
+      blocksConfig: cfg,
+      intl,
+      uuidGenerator: () => `re-seed-${(n += 1)}`,
+      templateEditMode: [seed.templateInstanceId],
+    });
+    const region = after.blocks_layout.announcement;
+    expect(region.length, 'the forced region was emptied into nothing').toBe(1);
+    expect(
+      after.blocks[region[0]]?.templateInstanceId,
+      'the re-seeded placeholder is not the template\'s — nothing to lock',
+    ).toBe(seed.templateInstanceId);
   });
 
   test('locked outside template-edit-mode, replaceable once the template is unlocked', async () => {

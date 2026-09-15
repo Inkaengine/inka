@@ -37,10 +37,10 @@
         }
       ]
     },
-    "image-empty": {
+    "image-simple": {
       "@type": "image",
-      "url": "",
-      "alt": ""
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='80'%3E%3Crect width='120' height='80' fill='%23bcd'/%3E%3C/svg%3E",
+      "alt": "A placeholder image"
     },
     "columns-1": {
       "@type": "columns",
@@ -126,7 +126,7 @@
     "items": [
       "title-block",
       "intro",
-      "image-empty",
+      "image-simple",
       "columns-1",
       "after-columns",
       "another-paragraph",

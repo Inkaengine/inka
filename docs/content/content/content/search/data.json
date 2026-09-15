@@ -7,9 +7,7 @@
   "description": "Search the site",
   "allow_discussion": false,
   "contributors": [],
-  "creators": [
-    "admin"
-  ],
+  "creators": ["admin"],
   "effective": null,
   "exclude_from_nav": true,
   "expires": null,
@@ -21,7 +19,7 @@
     "@type": "Plone Site",
     "UID": "plone_site_root",
     "description": "",
-    "title": "Inka"
+    "title": "Volto Hydra"
   },
   "review_state": "published",
   "rights": null,
@@ -57,22 +55,15 @@
           "multiple": true
         }
       ],
-      "sortOnOptions": [
-        "effective",
-        "sortable_title"
-      ],
+      "sortOnOptions": ["effective", "sortable_title"],
       "blocks": {
         "results-listing": {
           "@type": "listing",
           "variation": "default",
           "fieldMapping": {
-            "@id": {
-              "field": "href",
-              "type": "link"
-            },
+            "@id": { "field": "href", "type": "link" },
             "title": "title",
-            "description": "description",
-            "image": "preview_image"
+            "description": "description"
           },
           "querystring": {
             "query": [
@@ -88,15 +79,11 @@
         }
       },
       "blocks_layout": {
-        "listing": [
-          "results-listing"
-        ]
+        "listing": ["results-listing"]
       }
     }
   },
   "blocks_layout": {
-    "items": [
-      "search-block"
-    ]
+    "items": ["search-block"]
   }
 }

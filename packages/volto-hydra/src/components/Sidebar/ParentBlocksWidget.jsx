@@ -172,6 +172,7 @@ const getFilteredBlockSchema = (blockType, intl, blockPathMap, blockId, blockDat
 // React/Volto component tree. Imported at the top of this file.
 
 const ParentBlockSection = ({
+  blocksErrors = {},
   blockId,
   blockType,
   blockData,
@@ -374,7 +375,15 @@ const ParentBlockSection = ({
                 addDirection={pathInfo?.addDirection}
                 convertibleTypes={convertibleTypes}
                 onConvertBlock={handleConvertBlock}
-                isFixed={!!blockData?.fixed}
+                // Same rule as the canvas toolbar: `fixed` withholds removal
+                // from a PAGE, not from the template's own author. Once the
+                // template a block BELONGS to is unlocked, it is removable.
+                // (`isEditingThisTemplate` is about the instance itself, so it
+                // is the wrong question for a member.)
+                isFixed={
+                  !!blockData?.fixed &&
+                  !(templateEditMode || []).includes(blockData?.templateInstanceId)
+                }
                 isReadonly={!!blockData?.readOnly}
                 isInTemplate={!!blockData?.templateId}
                 onMakeTemplate={onBlockAction ? () => onBlockAction('makeTemplate', blockId) : null}
@@ -440,13 +449,48 @@ const ParentBlockSection = ({
         </HydraSchemaProvider>
       )}
 
-      {/* Fallback: If no Edit component but has schema, render BlockDataForm directly */}
+      {/* Fallback: If no Edit component but has schema, render BlockDataForm directly.
+          NOT for a read-only block: that one renders its values as static text
+          through ReadOnlyForm below, and rendering an editable form as well —
+          however thoroughly disabled — means every widget has to honour
+          `isDisabled` for the panel to be trustworthy. Volto's object browser
+          does not: it disables its browse button but still renders a typeable
+          <input> for an empty field, so a locked block had a box an author
+          could type into whose value was then dropped on the way out. A form
+          that isn't rendered has nothing to lock. */}
       {!BlockEdit && schema && !isReadonly && !pathInfo?.isTemplateInstance && (() => {
+        const formSchema = schema;
+        // Field rules that SAY something rather than refuse it. A warning is
+        // deliberately not a validator — it must not block the save — so it
+        // has no route through Volto's error machinery and is rendered here,
+        // from the resolved schema, beside the fields it is about.
+        const warnings = Object.entries(formSchema.properties || {})
+          .filter(([, def]) => def?.hydraRuleWarning)
+          .map(([field, def]) => ({
+            field,
+            title: def.title || field,
+            message: def.hydraRuleWarning,
+          }));
         const formContent = (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
+            <>
+            {warnings.length > 0 && (
+              <div className="hydra-field-warnings" role="status">
+                {warnings.map((w) => (
+                  <p key={w.field} className="hydra-field-warning">
+                    <strong>{w.title}:</strong> {w.message}
+                  </p>
+                ))}
+              </div>
+            )}
             <BlockDataForm
-              schema={schema}
+              errors={blocksErrors?.[blockId] ? { [blockId]: blocksErrors[blockId] } : {}}
+              schema={formSchema}
               onChangeField={(fieldId, value) => {
+                // Belt and braces: the widgets are disabled, and a change that
+                // reaches here anyway (a widget that ignores `isDisabled`) is
+                // not written to a block the page may not edit.
+                if (isReadonly) return;
                 // Use lodash set for nested paths like 'itemDefaults.overwrite'
                 const newBlockData = cloneDeep(blockData);
                 set(newBlockData, fieldId, value);
@@ -459,6 +503,7 @@ const ParentBlockSection = ({
               block={blockId}
               applySchemaEnhancers={true}
             />
+            </>
           </HydraSchemaProvider>
         );
         // Portal to the target element (sidebar-properties for current, parent-sidebar-{id} for parents)
@@ -604,6 +649,11 @@ const ParentBlockSection = ({
 const ParentBlocksWidget = ({
   selectedBlock,
   multiSelected = [],
+  // blockId → { field: [messages] }, from the last refused save. Volto's
+  // InlineForm takes `errors` keyed the same way and marks the field, so the
+  // author sees WHICH field is wrong where they would fix it — the toast only
+  // names the block.
+  blocksErrors = {},
   formData,
   blockPathMap,
   onSelectBlock,
@@ -802,6 +852,7 @@ const ParentBlocksWidget = ({
             return (
               <ParentBlockSection
                 key={parentId}
+                blocksErrors={blocksErrors}
                 blockId={parentId}
                 blockType={parentType}
                 blockData={parentData}
@@ -828,6 +879,7 @@ const ParentBlocksWidget = ({
           {/* Current block form (ChildBlocksWidget renders inside its schema fields) */}
           <ParentBlockSection
             key={selectedBlock}
+            blocksErrors={blocksErrors}
             blockId={selectedBlock}
             blockType={currentBlockType}
             blockData={currentBlockData}

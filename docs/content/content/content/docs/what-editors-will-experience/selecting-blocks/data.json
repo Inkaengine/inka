@@ -212,7 +212,7 @@
     },
     "ul-8": {
       "@type": "slate",
-      "plaintext": "A full border appears around the block (visually stronger than the text-mode hint). Keyboard shortcuts now operate on the whole block:Arrow Up / Down — move selection to the previous / next sibling block (container-aware: jumps into and out of containers).Enter — add a new block after this one.Delete / Backspace — remove the selected block.",
+      "plaintext": "A full border appears around the block (visually stronger than the text-mode hint). Keyboard shortcuts now operate on the whole block:",
       "value": [
         {
           "type": "ul",
@@ -230,59 +230,6 @@
               "children": [
                 {
                   "text": "Keyboard shortcuts now operate on the whole block:"
-                },
-                {
-                  "type": "ul",
-                  "children": [
-                    {
-                      "type": "li",
-                      "children": [
-                        {
-                          "type": "strong",
-                          "children": [
-                            {
-                              "text": "Arrow Up / Down"
-                            }
-                          ]
-                        },
-                        {
-                          "text": " — move selection to the previous / next sibling block (container-aware: jumps into and out of containers)."
-                        }
-                      ]
-                    },
-                    {
-                      "type": "li",
-                      "children": [
-                        {
-                          "type": "strong",
-                          "children": [
-                            {
-                              "text": "Enter"
-                            }
-                          ]
-                        },
-                        {
-                          "text": " — add a new block after this one."
-                        }
-                      ]
-                    },
-                    {
-                      "type": "li",
-                      "children": [
-                        {
-                          "type": "strong",
-                          "children": [
-                            {
-                              "text": "Delete / Backspace"
-                            }
-                          ]
-                        },
-                        {
-                          "text": " — remove the selected block."
-                        }
-                      ]
-                    }
-                  ]
                 }
               ]
             }
@@ -291,6 +238,53 @@
       ]
     },
     "p-9": {
+      "@type": "slate",
+      "plaintext": "- **Arrow Up / Down** — move selection to the previous / next sibling block (container-aware: jumps into and out of containers).   - **Enter** — add a new block after this one.   - **Delete / Backspace** — remove the selected block.",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "- "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Arrow Up / Down"
+                }
+              ]
+            },
+            {
+              "text": " — move selection to the previous / next sibling block (container-aware: jumps into and out of containers).   - "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Enter"
+                }
+              ]
+            },
+            {
+              "text": " — add a new block after this one.   - "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Delete / Backspace"
+                }
+              ]
+            },
+            {
+              "text": " — remove the selected block."
+            }
+          ]
+        }
+      ]
+    },
+    "p-10": {
       "@type": "slate",
       "plaintext": "Press `Escape` again to **deselect** (or go up to the parent container if this block is inside one). Each `Escape` walks one step up the hierarchy.",
       "value": [
@@ -337,14 +331,14 @@
         }
       ]
     },
-    "img-10": {
+    "img-11": {
       "@type": "image",
       "url": "/docs/images/block-mode",
       "alt": "Same paragraph in block mode — full blue border, no cursor.",
       "align": "center",
       "size": "l"
     },
-    "h-11": {
+    "h-12": {
       "@type": "slate",
       "plaintext": "Multi-selection",
       "value": [
@@ -358,7 +352,7 @@
         }
       ]
     },
-    "p-12": {
+    "p-13": {
       "@type": "slate",
       "plaintext": "You can select multiple blocks at once and operate on the group.",
       "value": [
@@ -372,7 +366,7 @@
         }
       ]
     },
-    "tbl-13": {
+    "tbl-14": {
       "@type": "slateTable",
       "table": {
         "fixed": true,
@@ -383,10 +377,10 @@
         "striped": false,
         "rows": [
           {
-            "key": "tbl-13-r0",
+            "key": "tbl-14-r0",
             "cells": [
               {
-                "key": "tbl-13-r0c0",
+                "key": "tbl-14-r0c0",
                 "type": "header",
                 "value": [
                   {
@@ -400,7 +394,7 @@
                 ]
               },
               {
-                "key": "tbl-13-r0c1",
+                "key": "tbl-14-r0c1",
                 "type": "header",
                 "value": [
                   {
@@ -416,10 +410,10 @@
             ]
           },
           {
-            "key": "tbl-13-r1",
+            "key": "tbl-14-r1",
             "cells": [
               {
-                "key": "tbl-13-r1c0",
+                "key": "tbl-14-r1c0",
                 "type": "data",
                 "value": [
                   {
@@ -441,7 +435,7 @@
                 ]
               },
               {
-                "key": "tbl-13-r1c1",
+                "key": "tbl-14-r1c1",
                 "type": "data",
                 "value": [
                   {
@@ -457,10 +451,10 @@
             ]
           },
           {
-            "key": "tbl-13-r2",
+            "key": "tbl-14-r2",
             "cells": [
               {
-                "key": "tbl-13-r2c0",
+                "key": "tbl-14-r2c0",
                 "type": "data",
                 "value": [
                   {
@@ -482,7 +476,7 @@
                 ]
               },
               {
-                "key": "tbl-13-r2c1",
+                "key": "tbl-14-r2c1",
                 "type": "data",
                 "value": [
                   {
@@ -498,10 +492,10 @@
             ]
           },
           {
-            "key": "tbl-13-r3",
+            "key": "tbl-14-r3",
             "cells": [
               {
-                "key": "tbl-13-r3c0",
+                "key": "tbl-14-r3c0",
                 "type": "data",
                 "value": [
                   {
@@ -523,7 +517,7 @@
                 ]
               },
               {
-                "key": "tbl-13-r3c1",
+                "key": "tbl-14-r3c1",
                 "type": "data",
                 "value": [
                   {
@@ -539,10 +533,10 @@
             ]
           },
           {
-            "key": "tbl-13-r4",
+            "key": "tbl-14-r4",
             "cells": [
               {
-                "key": "tbl-13-r4c0",
+                "key": "tbl-14-r4c0",
                 "type": "data",
                 "value": [
                   {
@@ -556,7 +550,7 @@
                 ]
               },
               {
-                "key": "tbl-13-r4c1",
+                "key": "tbl-14-r4c1",
                 "type": "data",
                 "value": [
                   {
@@ -574,7 +568,7 @@
         ]
       }
     },
-    "p-14": {
+    "p-15": {
       "@type": "slate",
       "plaintext": "While multiple blocks are selected:",
       "value": [
@@ -588,7 +582,7 @@
         }
       ]
     },
-    "ul-15": {
+    "ul-16": {
       "@type": "slate",
       "plaintext": "A combined bounding box is drawn around them. Delete / Backspace removes all of them. The Quanta toolbar dropdown offers actions that apply to all (e.g. \"Wrap in...\", see Containers). The sidebar shows the count and lists each selected block by type.",
       "value": [
@@ -639,7 +633,7 @@
                 {
                   "type": "link",
                   "data": {
-                    "url": "containers.md"
+                    "url": "/docs/what-editors-will-experience/containers"
                   },
                   "children": [
                     {
@@ -664,14 +658,14 @@
         }
       ]
     },
-    "img-16": {
+    "img-17": {
       "@type": "image",
       "url": "/docs/images/multi-select",
       "alt": "Two adjacent paragraphs multi-selected — combined bounding box, sidebar shows \"2 selected\", toolbar shows count badge.",
       "align": "center",
       "size": "l"
     },
-    "h-17": {
+    "h-18": {
       "@type": "slate",
       "plaintext": "Selecting from the sidebar",
       "value": [
@@ -685,7 +679,7 @@
         }
       ]
     },
-    "p-18": {
+    "p-19": {
       "@type": "slate",
       "plaintext": "The sidebar is the other way to navigate selection — useful when the block you want is offscreen, buried inside a paged container (e.g. a specific slide of a slider), or you just prefer keyboard / pointer nav over hunting in the preview.",
       "value": [
@@ -699,7 +693,7 @@
         }
       ]
     },
-    "h-19": {
+    "h-20": {
       "@type": "slate",
       "plaintext": "The parent chain (going up)",
       "value": [
@@ -713,7 +707,7 @@
         }
       ]
     },
-    "p-20": {
+    "p-21": {
       "@type": "slate",
       "plaintext": "When a block is selected, the sidebar shows the **chain of parent containers** from the root down to the block — one collapsible section per level. Each level has a `‹` arrow on the left.",
       "value": [
@@ -749,18 +743,18 @@
         }
       ]
     },
-    "ce-21": {
+    "ce-22": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-21-text-3d139a",
+          "@id": "ce-22-text-ab2b2a",
           "label": "Text",
           "language": "text",
           "code": "‹ Columns          ← click ‹ to deselect (go to page level)\n   [Columns settings]\n   ‹ Column        ← click ‹ to select Columns\n      [Column settings]\n      ‹ Text       ← current block, highlighted\n         [Text body, …]"
         }
       ]
     },
-    "p-22": {
+    "p-23": {
       "@type": "slate",
       "plaintext": "Click any `‹` arrow to **navigate up** to that level. This does the same thing as pressing `Escape` repeatedly, but visibly — you can see what each parent is named, jump several levels in one click, and edit the parent's own settings (alignment, padding, …) inline without leaving the current selection.",
       "value": [
@@ -807,14 +801,14 @@
         }
       ]
     },
-    "img-23": {
+    "img-24": {
       "@type": "image",
       "url": "/docs/images/parent-chain",
       "alt": "Sidebar showing parent chain for a slate inside a column inside columns. Three sections each with a `‹` arrow: Columns (\"My Columns Section\"), Column (\"Left Column\"), Text (current, body field shown).",
       "align": "center",
       "size": "l"
     },
-    "p-24": {
+    "p-25": {
       "@type": "slate",
       "plaintext": "This works for any depth — nested columns, slider with templated children, accordion inside a section inside the page. The chain reflects the real DOM hierarchy.",
       "value": [
@@ -828,7 +822,7 @@
         }
       ]
     },
-    "h-25": {
+    "h-26": {
       "@type": "slate",
       "plaintext": "The children list (going down)",
       "value": [
@@ -842,7 +836,7 @@
         }
       ]
     },
-    "p-26": {
+    "p-27": {
       "@type": "slate",
       "plaintext": "When a container block is selected, the sidebar shows that container's **children** as a list, one row per child:",
       "value": [
@@ -867,18 +861,18 @@
         }
       ]
     },
-    "ce-27": {
+    "ce-28": {
       "@type": "codeExample",
       "tabs": [
         {
-          "@id": "ce-27-text-19ff8a",
+          "@id": "ce-28-text-e6d028",
           "label": "Text",
           "language": "text",
           "code": "Slides                    [+]\n⋮⋮  Slide 1                >\n⋮⋮  Slide 2                >\n⋮⋮  Slide 3                >"
         }
       ]
     },
-    "ul-28": {
+    "ul-29": {
       "@type": "slate",
       "plaintext": "⋮⋮ drag handle — drag to reorder children within the container. > drill-in arrow — selects that child, scrolls the preview to it, switches the sidebar to its settings. [+] add button — opens the BlockChooser to add a new child to that field.",
       "value": [
@@ -892,15 +886,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "⋮⋮"
-                        }
-                      ]
-                    },
-                    {
-                      "text": " drag handle"
+                      "text": "`⋮⋮` drag handle"
                     }
                   ]
                 },
@@ -916,15 +902,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": ">"
-                        }
-                      ]
-                    },
-                    {
-                      "text": " drill-in arrow"
+                      "text": "`>` drill-in arrow"
                     }
                   ]
                 },
@@ -940,15 +918,7 @@
                   "type": "strong",
                   "children": [
                     {
-                      "type": "code",
-                      "children": [
-                        {
-                          "text": "[+]"
-                        }
-                      ]
-                    },
-                    {
-                      "text": " add button"
+                      "text": "`[+]` add button"
                     }
                   ]
                 },
@@ -961,7 +931,7 @@
         }
       ]
     },
-    "p-29": {
+    "p-30": {
       "@type": "slate",
       "plaintext": "If the container has multiple blocks fields (e.g. a header field and a body field), each appears as a separate section with its own children list and add button.",
       "value": [
@@ -975,14 +945,14 @@
         }
       ]
     },
-    "img-30": {
+    "img-31": {
       "@type": "image",
       "url": "/docs/images/children-list",
       "alt": "Sidebar with a search container selected, showing two children-list sections — Facets (with three facet rows) and Results Listing (with one Listing row). Each row has a `⋮⋮` drag handle and a `>` drill-in arrow; each section has a `+` add button.",
       "align": "center",
       "size": "l"
     },
-    "h-31": {
+    "h-32": {
       "@type": "slate",
       "plaintext": "Picking from the outline (for paged containers)",
       "value": [
@@ -996,7 +966,7 @@
         }
       ]
     },
-    "p-32": {
+    "p-33": {
       "@type": "slate",
       "plaintext": "Some containers paginate their children — a slider only renders the active slide; an accordion only the expanded panel. Use the children list to pick a slide / panel that's not currently visible — the preview scrolls and pages to it automatically.",
       "value": [
@@ -1010,7 +980,7 @@
         }
       ]
     },
-    "h-33": {
+    "h-34": {
       "@type": "slate",
       "plaintext": "Selecting page-level fields",
       "value": [
@@ -1024,7 +994,7 @@
         }
       ]
     },
-    "p-34": {
+    "p-35": {
       "@type": "slate",
       "plaintext": "The page itself has metadata fields (title, description, preview image). Some are inline-editable in the preview (e.g. clicking the rendered `<h1>` to edit the page title); all are editable from the sidebar when no block is selected.",
       "value": [
@@ -1062,31 +1032,32 @@
       "p-7",
       "ul-8",
       "p-9",
-      "img-10",
-      "h-11",
-      "p-12",
-      "tbl-13",
-      "p-14",
-      "ul-15",
-      "img-16",
-      "h-17",
-      "p-18",
-      "h-19",
-      "p-20",
-      "ce-21",
-      "p-22",
-      "img-23",
-      "p-24",
-      "h-25",
-      "p-26",
-      "ce-27",
-      "ul-28",
-      "p-29",
-      "img-30",
-      "h-31",
-      "p-32",
-      "h-33",
-      "p-34"
+      "p-10",
+      "img-11",
+      "h-12",
+      "p-13",
+      "tbl-14",
+      "p-15",
+      "ul-16",
+      "img-17",
+      "h-18",
+      "p-19",
+      "h-20",
+      "p-21",
+      "ce-22",
+      "p-23",
+      "img-24",
+      "p-25",
+      "h-26",
+      "p-27",
+      "ce-28",
+      "ul-29",
+      "p-30",
+      "img-31",
+      "h-32",
+      "p-33",
+      "h-34",
+      "p-35"
     ]
   }
 }

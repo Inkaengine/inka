@@ -2820,7 +2820,9 @@ test.describe('Sidebar Child Blocks Reordering', () => {
     const childTexts = await childItems
       .locator('.block-type')
       .allTextContents();
-    expect(childTexts).toEqual(['Teaser', 'Teaser']);
+    // Named by the shared namer (blockDisplayTitle): a child with its own
+    // title reads by it, not by its type.
+    expect(childTexts).toEqual(['Grid Teaser 1', 'Grid Teaser 2']);
   });
 });
 
@@ -4683,7 +4685,12 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     // Scope to Facets section (search block also has Results Listing section)
     const facetsSection = sidebar.locator('.container-field-section').filter({ hasText: 'Facets' }).first();
     const facetItems = facetsSection.locator('.child-block-item');
-    await expect(facetItems).toHaveCount(3, { timeout: 5000 });
+    // Wait for the list to populate; how many facets the fixture ships is not
+    // what these tests are about, and hardcoding it blocks adding an example
+    // of a facet type that has none.
+    await expect(facetItems.first()).toBeVisible({ timeout: 5000 });
+    const facetCount = await facetItems.count();
+    expect(facetCount).toBeGreaterThan(0);
 
     // Click on the first facet in the sidebar to select it
     await facetItems.first().click();
@@ -4715,8 +4722,9 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     const facetsSection = sidebar.locator('.container-field-section').filter({ hasText: 'Facets' }).first();
     const facetItems = facetsSection.locator('.child-block-item');
 
-    // We have 3 facets: 2 checkboxFacet + 1 selectFacet
-    await expect(facetItems).toHaveCount(3, { timeout: 5000 });
+    // Wait for the list to populate. What matters below is that each item is
+    // labelled with its facet's title, not how many the fixture ships.
+    await expect(facetItems.first()).toBeVisible({ timeout: 5000 });
 
     // Verify the facet titles are shown correctly
     // ChildBlocksWidget shows item.title (the facet label), not the block type
@@ -4743,7 +4751,12 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     await helper.waitForSidebarCurrentBlock('Search');
     const facetsSection = sidebar.locator('.container-field-section').filter({ hasText: 'Facets' }).first();
     const facetItems = facetsSection.locator('.child-block-item');
-    await expect(facetItems).toHaveCount(3, { timeout: 5000 });
+    // Wait for the list to populate; how many facets the fixture ships is not
+    // what these tests are about, and hardcoding it blocks adding an example
+    // of a facet type that has none.
+    await expect(facetItems.first()).toBeVisible({ timeout: 5000 });
+    const facetCount = await facetItems.count();
+    expect(facetCount).toBeGreaterThan(0);
 
     // Click first facet in sidebar to select it
     await facetItems.first().click();
@@ -4791,7 +4804,12 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     // Scope to Facets section
     const facetsSection = sidebar.locator('.container-field-section').filter({ hasText: 'Facets' }).first();
     const facetItems = facetsSection.locator('.child-block-item');
-    await expect(facetItems).toHaveCount(3, { timeout: 5000 });
+    // Wait for the list to populate; how many facets the fixture ships is not
+    // what these tests are about, and hardcoding it blocks adding an example
+    // of a facet type that has none.
+    await expect(facetItems.first()).toBeVisible({ timeout: 5000 });
+    const facetCount = await facetItems.count();
+    expect(facetCount).toBeGreaterThan(0);
 
     // Add a new selectFacet via sidebar
     await helper.addBlockViaSidebar('Facets', 'Select');
@@ -4811,7 +4829,7 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     await sidebar.locator('[data-is-current="true"] .nav-back').click();
     await helper.waitForSidebarCurrentBlock('Search');
 
-    await expect(facetItems).toHaveCount(4, { timeout: 5000 });
+    await expect(facetItems).toHaveCount(facetCount + 1, { timeout: 5000 });
   });
 
   test('adding a typed item (checkboxFacet) via toolbar add button', async ({
@@ -4831,7 +4849,12 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     await helper.waitForSidebarCurrentBlock('Search');
     const facetsSection = sidebar.locator('.container-field-section').filter({ hasText: 'Facets' }).first();
     const facetItems = facetsSection.locator('.child-block-item');
-    await expect(facetItems).toHaveCount(3, { timeout: 5000 });
+    // Wait for the list to populate; how many facets the fixture ships is not
+    // what these tests are about, and hardcoding it blocks adding an example
+    // of a facet type that has none.
+    await expect(facetItems.first()).toBeVisible({ timeout: 5000 });
+    const facetCount = await facetItems.count();
+    expect(facetCount).toBeGreaterThan(0);
 
     // Select a facet to enable the toolbar add button
     await facetItems.first().click();
@@ -4874,7 +4897,7 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
 
     // Re-scope facets section after navigating back
     const facetsSectionAfter = sidebar.locator('.container-field-section').filter({ hasText: 'Facets' }).first();
-    await expect(facetsSectionAfter.locator('.child-block-item')).toHaveCount(4, { timeout: 5000 });
+    await expect(facetsSectionAfter.locator('.child-block-item')).toHaveCount(facetCount + 1, { timeout: 5000 });
   });
 
   test('deleting a typed facet selects previous sibling and removes it', async ({ page }) => {
@@ -4893,7 +4916,12 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     await helper.waitForSidebarCurrentBlock('Search');
     const facetsSection = sidebar.locator('.container-field-section').filter({ hasText: 'Facets' }).first();
     const facetItems = facetsSection.locator('.child-block-item');
-    await expect(facetItems).toHaveCount(3, { timeout: 5000 });
+    // Wait for the list to populate; how many facets the fixture ships is not
+    // what these tests are about, and hardcoding it blocks adding an example
+    // of a facet type that has none.
+    await expect(facetItems.first()).toBeVisible({ timeout: 5000 });
+    const facetCount = await facetItems.count();
+    expect(facetCount).toBeGreaterThan(0);
 
     // Delete facet-state (second item) — should select facet-type (previous sibling)
     await facetItems.nth(1).click();
@@ -4910,7 +4938,7 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     await helper.waitForSidebarCurrentBlock('Search');
 
     const updatedFacetsSection = sidebar.locator('.container-field-section').filter({ hasText: 'Facets' }).first();
-    await expect(updatedFacetsSection.locator('.child-block-item')).toHaveCount(2, { timeout: 5000 });
+    await expect(updatedFacetsSection.locator('.child-block-item')).toHaveCount(facetCount - 1, { timeout: 5000 });
   });
 
   test('reordering typed facets in sidebar updates order', async ({
@@ -4930,7 +4958,12 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     await helper.waitForSidebarCurrentBlock('Search');
     const facetsSection = sidebar.locator('.container-field-section').filter({ hasText: 'Facets' }).first();
     const facetItems = facetsSection.locator('.child-block-item');
-    await expect(facetItems).toHaveCount(3, { timeout: 5000 });
+    // Wait for the list to populate; how many facets the fixture ships is not
+    // what these tests are about, and hardcoding it blocks adding an example
+    // of a facet type that has none.
+    await expect(facetItems.first()).toBeVisible({ timeout: 5000 });
+    const facetCount = await facetItems.count();
+    expect(facetCount).toBeGreaterThan(0);
 
     // Get initial order - first should be "Content Type" (checkboxFacet)
     const firstItemText = await facetItems.first().textContent();
@@ -4988,16 +5021,21 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
 
     // Verify initial facet order: facet-type, facet-state, facet-subject
     const facetItems = iframe.locator('.facet-item');
-    await expect(facetItems).toHaveCount(3, { timeout: 5000 });
+    await expect(facetItems.first()).toBeVisible({ timeout: 5000 });
+    const facetCount = await facetItems.count();
+    expect(facetCount).toBeGreaterThan(1);
     expect(await facetItems.first().getAttribute('data-block-uid')).toBe('facet-type');
-    expect(await facetItems.last().getAttribute('data-block-uid')).toBe('facet-subject');
+    // WHICH facet is last is the fixture's business — this test drags the first
+    // one past whatever the last one is. Naming it pinned the fixture's size.
+    const lastFacetId = await facetItems.last().getAttribute('data-block-uid');
+    expect(lastFacetId).not.toBe('facet-type');
 
     // Click on facet title to select it (avoid checkboxes in the facet body)
     await helper.clickBlockInIframe('facet-type', { selector: '[data-edit-text="title"]' });
     await helper.waitForBlockSelectedInAdmin('facet-type');
 
     // Drag after last facet
-    const targetBlock = iframe.locator('[data-block-uid="facet-subject"]').first();
+    const targetBlock = iframe.locator(`[data-block-uid="${lastFacetId}"]`).first();
     await helper.dragBlockWithMouse(targetBlock, targetBlock, true);
 
     // Verify the order changed: facet-type should now be last

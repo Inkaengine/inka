@@ -57,12 +57,6 @@
           "label": "Svelte",
           "language": "svelte",
           "code": "<script>\n  import NavItem from './NavItem.svelte';\n  export let block;\n  export let blocks;\n  $: items = block.blocks_layout?.items || [];\n</script>\n\n<nav\n  data-block-uid={block['@uid']}\n  aria-label={block.ariaLabel || 'Section navigation'}\n  class=\"context-navigation\"\n>\n  <ul role=\"list\" class=\"context-navigation-list\">\n    {#each items as id (id)}\n      <li>\n        <NavItem block={{ ...blocks[id], '@uid': id }} />\n      </li>\n    {/each}\n  </ul>\n</nav>"
-        },
-        {
-          "@id": "ref-contextNavigation-rendering-astro-7718b9",
-          "label": "Astro",
-          "language": "astro",
-          "code": "---\n/**\n * Context navigation block: a vertical nav list whose rows are either\n * hand-added `navItem` blocks or a `listing` block that auto-populates\n * from a query. Mirrors test-svelte's ContextNavigationBlock minus the\n * outer `data-block-uid` (BlockRenderer wraps every block in that).\n *\n * `blocks` is the sibling map of inner blocks indexed by id — each entry\n * is the child block, and we splice the id back in as `@uid` so the\n * NavItem renderer can produce a stable selector.\n */\nimport NavItem from './NavItem.astro';\nconst { block, blocks = {} } = Astro.props;\nconst items = block?.blocks_layout?.items || [];\n---\n<nav\n  aria-label={block.ariaLabel || 'Section navigation'}\n  class=\"context-navigation\"\n>\n  <ul role=\"list\" class=\"context-navigation-list\">\n    {items.map((id: string) => (\n      <li>\n        <NavItem block={{ ...blocks[id], '@uid': id }} />\n      </li>\n    ))}\n  </ul>\n</nav>"
         }
       ],
       "slotId": "rendering"

@@ -21,10 +21,12 @@ import HeadingBlock from './HeadingBlock.vue';
 import SeparatorBlock from './SeparatorBlock.vue';
 import ButtonBlock from './ButtonBlock.vue';
 import HighlightBlock from './HighlightBlock.vue';
+import CalloutBlock from './CalloutBlock.vue';
 import VideoBlock from './VideoBlock.vue';
 import MapsBlock from './MapsBlock.vue';
 import TocBlock from './TocBlock.vue';
 import CodeExampleBlock from './CodeExampleBlock.vue';
+import CookieConsentBlock from './CookieConsentBlock.vue';
 import { h } from 'vue';
 
 defineProps({ block: Object, blockId: String, content: Object });
@@ -61,10 +63,12 @@ const typeMap = {
   separator: SeparatorBlock,
   button: ButtonBlock,
   highlight: HighlightBlock,
+  callout: CalloutBlock,
   video: VideoBlock,
   maps: MapsBlock,
   toc: TocBlock,
   codeExample: CodeExampleBlock,
+  cookieConsent: CookieConsentBlock,
   summary: ListingItemBlock,
   default: ListingItemBlock,
 };

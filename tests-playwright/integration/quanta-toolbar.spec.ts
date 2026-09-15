@@ -915,7 +915,7 @@ test.describe('Quanta Toolbar - Auto-fade', () => {
     await helper.navigateToEdit('/test-page');
 
     // test-page has two page-level block fields:
-    // blocks: [block-1-uuid, ..., skiplogic-test]
+    // blocks: [block-1-uuid, ..., block-10-listing-no-mapping]
     // footer_blocks: [footer-block-1 (slate), footer-block-2 (image)]
     // ArrowUp from footer-block-1 should cross into main blocks
 

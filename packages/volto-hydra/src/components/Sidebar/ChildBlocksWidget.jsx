@@ -21,8 +21,14 @@ import { Icon } from '@plone/volto/components';
 import { setUIState } from '@plone/volto/actions';
 import rightArrowSVG from '@plone/volto/icons/right-key.svg';
 import config from '@plone/volto/registry';
+import { blockDisplayTitle } from '../../utils/blockDisplayTitle';
 import { DragDropList } from '@plone/volto/components';
-import { getAllContainerFields, getBlockById, listContainerChildren, getContainerItems } from '../../utils/blockPath';
+import {
+  getAllContainerFields,
+  getBlockById,
+  listContainerChildren,
+  getContainerItems,
+} from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isBlockPositionLocked } from '@volto-hydra/helpers';
 import LayoutSelector from './LayoutSelector';
@@ -46,15 +52,17 @@ const messages = defineMessages({
 // Presentation: derive a display title from a storage-agnostic child
 // descriptor ({ id, type, data }) produced by listContainerChildren.
 const childDisplayTitle = (child, isObjectList, index) => {
-  const blockConfig = config.blocks?.blocksConfig?.[child.type];
-  if (isObjectList) {
-    // Typed items carry a real @type; single-schema items get 'object_list_item'.
-    if (child.type !== 'object_list_item') {
-      return child.data?.title || child.data?.plaintext || blockConfig?.title || child.type;
-    }
-    return child.data?.title || child.data?.plaintext || `Item ${index + 1}`;
-  }
-  return child.data?.plaintext || blockConfig?.title || child.type;
+  // The shared namer, so a block reads the same here as in any picker that
+  // offers it. An untyped object_list item has no type to fall back on, hence
+  // its position; everything else can name itself.
+  const fallback =
+    isObjectList && child.type === 'object_list_item'
+      ? `Item ${index + 1}`
+      : child.type;
+  return blockDisplayTitle(
+    { '@type': child.type, ...child.data },
+    { fallback },
+  );
 };
 
 // Children of a selected block's container. Storage shape (region / object_list
@@ -68,18 +76,13 @@ const getChildBlocks = (blockData, containerConfig) =>
 /**
  * Get the display title for a block
  */
-const getBlockTitle = (blockData) => {
-  const blockType = blockData?.['@type'];
-  if (!blockType) return 'Block';
-
-  // Fixed template blocks: show plaintext content so users can identify them
-  if (blockData.fixed && blockData.plaintext) {
-    return blockData.plaintext;
-  }
-
-  const blockConfig = config.blocks?.blocksConfig?.[blockType];
-  return blockConfig?.title || blockType;
-};
+const getBlockTitle = (blockData) =>
+  // The same namer as everywhere else, with one rule kept: a FIXED template
+  // block is identified by its words, not by its type — every fixed heading in
+  // a template is a "Heading", and the author is looking for a particular one.
+  blockDisplayTitle(blockData, {
+    labelField: blockData?.fixed ? 'plaintext' : undefined,
+  });
 
 /**
  * Group template instance children into sections by slotId.
@@ -183,7 +186,8 @@ const ContainerFieldSection = ({
   const dispatch = useDispatch();
   const store = useStore();
   const selected = useSelector((state) => state.form.ui.selected);
-  const multiSelected = useSelector((state) => state.form.ui.multiSelected) || [];
+  const multiSelected =
+    useSelector((state) => state.form.ui.multiSelected) || [];
   // Read fresh multiSelected from the store at click time. Two ctrl+clicks
   // fired in quick succession would otherwise both close over the
   // pre-first-click `multiSelected` value (React hasn't committed the
@@ -234,48 +238,70 @@ const ContainerFieldSection = ({
       </div>
       <div className="child-blocks-list">
         {childBlocks.length > 0 ? (
-          <DragDropList
-            childList={childList}
-            onMoveItem={handleMoveItem}
-          >
+          <DragDropList childList={childList} onMoveItem={handleMoveItem}>
             {({ child, draginfo }) => (
               <div
                 ref={draginfo.innerRef}
                 {...draginfo.draggableProps}
                 className={`child-block-item${multiSelected.includes(child.id) ? ' selected' : ''}`}
-                style={multiSelected.includes(child.id) ? { background: '#e8f4fd' } : undefined}
+                style={
+                  multiSelected.includes(child.id)
+                    ? { background: '#e8f4fd' }
+                    : undefined
+                }
                 onClick={(e) => {
                   // Read the latest multiSelected from the store rather
                   // than the closure — see getCurrentMultiSelected above.
                   const current = getCurrentMultiSelected();
                   if (e.shiftKey) {
                     // Shift+Click: select range from anchor to clicked
-                    const siblingIds = childBlocks.map(c => c.id);
-                    const anchor = current.length > 0
-                      ? current[0]
-                      : selected;
+                    const siblingIds = childBlocks.map((c) => c.id);
+                    const anchor = current.length > 0 ? current[0] : selected;
                     const anchorIdx = siblingIds.indexOf(anchor);
                     const focusIdx = siblingIds.indexOf(child.id);
                     if (anchorIdx >= 0 && focusIdx >= 0) {
                       const start = Math.min(anchorIdx, focusIdx);
                       const end = Math.max(anchorIdx, focusIdx);
-                      dispatch(setUIState({ selected: null, multiSelected: siblingIds.slice(start, end + 1) }));
+                      dispatch(
+                        setUIState({
+                          selected: null,
+                          multiSelected: siblingIds.slice(start, end + 1),
+                        }),
+                      );
                     }
                   } else if (e.ctrlKey || e.metaKey) {
                     // Ctrl/Cmd+Click: toggle in/out of multi-selection
                     if (current.includes(child.id)) {
-                      dispatch(setUIState({ multiSelected: current.filter(uid => uid !== child.id) }));
+                      dispatch(
+                        setUIState({
+                          multiSelected: current.filter(
+                            (uid) => uid !== child.id,
+                          ),
+                        }),
+                      );
                     } else {
-                      dispatch(setUIState({ multiSelected: [...current, child.id] }));
+                      dispatch(
+                        setUIState({ multiSelected: [...current, child.id] }),
+                      );
                     }
                     // Enter selection mode — iframe shows checkboxes
-                    document.dispatchEvent(new CustomEvent('hydra-enter-selection-mode'));
+                    document.dispatchEvent(
+                      new CustomEvent('hydra-enter-selection-mode'),
+                    );
                   } else if (current.length > 0) {
                     // Selection mode: plain click toggles (don't navigate)
                     if (current.includes(child.id)) {
-                      dispatch(setUIState({ multiSelected: current.filter(uid => uid !== child.id) }));
+                      dispatch(
+                        setUIState({
+                          multiSelected: current.filter(
+                            (uid) => uid !== child.id,
+                          ),
+                        }),
+                      );
                     } else {
-                      dispatch(setUIState({ multiSelected: [...current, child.id] }));
+                      dispatch(
+                        setUIState({ multiSelected: [...current, child.id] }),
+                      );
                     }
                   } else {
                     onSelectBlock(child.id);
@@ -289,10 +315,7 @@ const ContainerFieldSection = ({
                   }
                 }}
               >
-                <span
-                  className="drag-handle"
-                  {...draginfo.dragHandleProps}
-                >
+                <span className="drag-handle" {...draginfo.dragHandleProps}>
                   ⋮⋮
                 </span>
                 <span className="block-type">{child.title}</span>
@@ -306,7 +329,11 @@ const ContainerFieldSection = ({
                     onSelectBlock(child.id);
                   }}
                 >
-                  <Icon className="nav-arrow" name={rightArrowSVG} size="24px" />
+                  <Icon
+                    className="nav-arrow"
+                    name={rightArrowSVG}
+                    size="24px"
+                  />
                 </span>
               </div>
             )}
@@ -355,7 +382,14 @@ const ChildBlocksWidget = ({
   // If no block selected, show page-level blocks for each page field
   // Uses getAllContainerFields(PAGE_BLOCK_UID, ...) to get _page container fields
   if (!selectedBlock) {
-    const fieldsConfig = getAllContainerFields(PAGE_BLOCK_UID, blockPathMap, formData, blocksConfig, intl, templateEditMode);
+    const fieldsConfig = getAllContainerFields(
+      PAGE_BLOCK_UID,
+      blockPathMap,
+      formData,
+      blocksConfig,
+      intl,
+      templateEditMode,
+    );
 
     if (!isClient) return null;
 
@@ -372,7 +406,9 @@ const ChildBlocksWidget = ({
               key={fieldConfig.region || 'items'}
               region={fieldConfig.region}
               containerConfig={fieldConfig}
-              fieldTitle={fieldConfig.title || intl.formatMessage(messages.blocks)}
+              fieldTitle={
+                fieldConfig.title || intl.formatMessage(messages.blocks)
+              }
               childBlocks={childBlocks}
               allowedBlocks={fieldConfig.allowedBlocks}
               allowedTemplates={fieldConfig.allowedTemplates}
@@ -414,7 +450,8 @@ const ChildBlocksWidget = ({
 
   // Get the block data for retrieving children (use virtual blockData for template instances)
   const pathInfo = blockPathMap[selectedBlock];
-  const blockData = pathInfo?.blockData || getBlockById(formData, blockPathMap, selectedBlock);
+  const blockData =
+    pathInfo?.blockData || getBlockById(formData, blockPathMap, selectedBlock);
 
   return createPortal(
     <div className="child-blocks-widget">
@@ -428,8 +465,10 @@ const ChildBlocksWidget = ({
             const childPathInfo = blockPathMap[childId];
             const childData = getBlockById(formData, blockPathMap, childId);
             const blockType = childPathInfo?.blockType || 'unknown';
-            const blockConfig = config.blocks?.blocksConfig?.[blockType];
-            const title = childData?.plaintext || blockConfig?.title || blockType;
+            const title = blockDisplayTitle(
+              { '@type': blockType, ...childData },
+              { fallback: blockType },
+            );
             return { id: childId, type: blockType, title, data: childData };
           });
 
@@ -455,7 +494,11 @@ const ChildBlocksWidget = ({
                   }}
                 >
                   <span className="block-type">{section.block.title}</span>
-                  <Icon className="nav-arrow" name={rightArrowSVG} size="24px" />
+                  <Icon
+                    className="nav-arrow"
+                    name={rightArrowSVG}
+                    size="24px"
+                  />
                 </div>
               );
             }
@@ -464,12 +507,19 @@ const ChildBlocksWidget = ({
             const sectionBlockIds = section.blocks.map((b) => b.id);
 
             // Wrap onMoveBlock to translate section reorder → full layout reorder
-            const wrappedMoveBlock = (_parentBlockId, _fieldName, reorderedIds) => {
-              const realParent = realParentId === PAGE_BLOCK_UID
-                ? formData
-                : getBlockById(formData, blockPathMap, realParentId);
+            const wrappedMoveBlock = (
+              _parentBlockId,
+              _fieldName,
+              reorderedIds,
+            ) => {
+              const realParent =
+                realParentId === PAGE_BLOCK_UID
+                  ? formData
+                  : getBlockById(formData, blockPathMap, realParentId);
               // Read the instance's region via the funnel — no direct storage indexing.
-              const fullLayout = getContainerItems(realParent, { region: realRegion });
+              const fullLayout = getContainerItems(realParent, {
+                region: realRegion,
+              });
               let idx = 0;
               const newLayout = fullLayout.map((id) =>
                 sectionBlockIds.includes(id) ? reorderedIds[idx++] : id,
@@ -479,15 +529,17 @@ const ChildBlocksWidget = ({
 
             // Wrap onAddBlock to insert after last block in section (or preceding fixed block)
             const wrappedAddBlock = () => {
-              const afterBlockId = section.blocks.length > 0
-                ? section.blocks[section.blocks.length - 1].id
-                : section.precedingFixedId;
+              const afterBlockId =
+                section.blocks.length > 0
+                  ? section.blocks[section.blocks.length - 1].id
+                  : section.precedingFixedId;
               if (afterBlockId) {
                 onAddBlock(null, null, { afterBlockId });
               }
             };
 
-            const slotTitle = section.name.charAt(0).toUpperCase() + section.name.slice(1);
+            const slotTitle =
+              section.name.charAt(0).toUpperCase() + section.name.slice(1);
             return (
               <ContainerFieldSection
                 key={`slot-${section.name}-${sectionIdx}`}

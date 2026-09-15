@@ -67,6 +67,27 @@ function imageSrc(value, size) {
 
 const Dropzone = loadable(() => import('react-dropzone'));
 
+/**
+ * Does this file match the field's `accept` list?
+ *
+ * Accepts the same forms the HTML attribute does — a comma-separated list of
+ * mime types, each either exact ("image/svg+xml") or a wildcard ("image/*").
+ * An empty list accepts anything.
+ */
+function fileTypeAccepted(file, accept) {
+  if (!accept) return true;
+  const type = (file?.type || '').toLowerCase();
+  return accept
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+    .some((entry) =>
+      entry.endsWith('/*')
+        ? type.startsWith(entry.slice(0, -1))
+        : type === entry,
+    );
+}
+
 export const ImageToolbar = ({ className, data, id, onChange, selected }) => (
   <div className="image-upload-widget-toolbar">
     <Button.Group>
@@ -89,6 +110,10 @@ const messages = defineMessages({
   Error: {
     id: 'Error',
     defaultMessage: 'Error',
+  },
+  imageUploadWrongType: {
+    id: 'imageUploadWrongType',
+    defaultMessage: 'That file type cannot be used here. This field takes {accept}.',
   },
   imageUploadErrorMessage: {
     id: 'imageUploadErrorMessage',
@@ -113,6 +138,11 @@ const UnconnectedImageInput = (props) => {
     objectBrowserPickerType = 'image',
     description,
     placeholder,
+    // HYDRA: which file types this FIELD takes, from its schema. A pictogram
+    // field is SVG-only (a raster cannot take its colour from the page), and
+    // without this the widget offered every image type and the wrong file
+    // failed silently much later, at render.
+    accept = 'image/*',
     showPreview = true, // HYDRA: New prop - set to false for inline use
     onClose, // HYDRA: Optional callback when form should close (for inline use)
   } = props;
@@ -196,6 +226,22 @@ const UnconnectedImageInput = (props) => {
       if (restrictFileUpload === true) return;
 
       setUploading(true);
+      // `accept` on a dropzone is advisory — it greys files out in the picker
+      // and is skipped entirely by a drag. This is the one place both the drop
+      // and the file input arrive, so check the actual file here.
+      if (!fileTypeAccepted(file, accept)) {
+        setUploading(false);
+        toast.error(
+          <Toast
+            error
+            title={intl.formatMessage(messages.Error)}
+            content={intl.formatMessage(messages.imageUploadWrongType, {
+              accept,
+            })}
+          />,
+        );
+        return;
+      }
       if (!validateFileUploadSize(file, intl.formatMessage)) {
         setUploading(false);
         return;
@@ -385,6 +431,9 @@ const UnconnectedImageInput = (props) => {
   // No image - show picker UI
   const pickerContent = (
     <AddLinkForm
+      // Mounted because a block was selected, not because the author asked for
+      // this form — so it must not steal the caret from the preview iframe.
+      autoFocus={false}
       data={{ url: '' }}
       theme={{}}
       objectBrowserPickerType="image"
@@ -404,7 +453,7 @@ const UnconnectedImageInput = (props) => {
     return (
       <Dropzone
         noClick
-        accept="image/*"
+        accept={accept}
         onDrop={handleDrop}
         onDragEnter={onDragEnter}
         onDragLeave={onDragLeave}

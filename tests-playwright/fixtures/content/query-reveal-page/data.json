@@ -1,0 +1,33 @@
+{
+  "@id": "/query-reveal-page",
+  "@type": "Document",
+  "id": "query-reveal-page",
+  "title": "Query reveal",
+  "description": "A block that does not exist until a question is asked.",
+  "exclude_from_nav": true,
+  "blocks": {
+    "search-block": {
+      "@type": "search",
+      "headline": "Search",
+      "showSearchInput": true,
+      "quickAnswerSample": "what is inka",
+      "blocks": {
+        "quick-answer-block": {
+          "@type": "quickAnswer",
+          "answer": "Inka is a page builder."
+        }
+      },
+      "blocks_layout": {
+        "quickAnswer": [
+          "quick-answer-block"
+        ],
+        "listing": []
+      }
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "search-block"
+    ]
+  }
+}

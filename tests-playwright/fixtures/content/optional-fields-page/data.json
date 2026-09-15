@@ -23,7 +23,7 @@
       "buttonText": "Populated Button",
       "buttonLink": [
         {
-          "@id": "/target-page",
+          "@id": "/_test_data/target-page",
           "title": "Target Page"
         }
       ],
