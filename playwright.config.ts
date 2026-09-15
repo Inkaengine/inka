@@ -43,6 +43,21 @@ const needsJourney = projectArgs.some((p) => p.startsWith('journey'));
 // what we are moving away from.
 const useBridgeBackend = 'true';
 
+// Expansion is on everywhere except an EMULATING adapter, where it measurably
+// costs more than it saves: Drupal's journey went 190 -> 214 requests, and
+// ungated from 1.5 minutes to 6.9 and failed. See bridge/expanders.js.
+// Overridable from the environment so a run can A/B expansion without editing
+// this file — which is how the cost of expansion gets measured rather than
+// assumed. Validated rather than defaulted: a typo must fail, not silently
+// pick a side.
+const expandersOverride = process.env.RAZZLE_BRIDGE_EXPANDERS;
+if (expandersOverride && !['true', 'false'].includes(expandersOverride)) {
+  throw new Error(
+    `RAZZLE_BRIDGE_EXPANDERS must be 'true' or 'false', got '${expandersOverride}'`,
+  );
+}
+const bridgeExpanders = expandersOverride ?? (needsDrupal ? 'false' : 'true');
+
 /**
  * Playwright Test configuration for Volto Hydra tests.
  *
@@ -510,6 +525,7 @@ export default defineConfig({
             ].join(','),
             VOLTOCONFIG: process.cwd() + '/volto.config.js',
             RAZZLE_USE_BRIDGE_BACKEND: useBridgeBackend,
+            RAZZLE_BRIDGE_EXPANDERS: bridgeExpanders,
           },
         }
       : {
@@ -537,6 +553,7 @@ export default defineConfig({
             ].join(','),
             VOLTOCONFIG: process.cwd() + '/volto.config.js',
             RAZZLE_USE_BRIDGE_BACKEND: useBridgeBackend,
+            RAZZLE_BRIDGE_EXPANDERS: bridgeExpanders,
             // Prevent parcel from trying to access TTY (fixes segfault in background process)
             CI: process.env.CI || 'true',
           },

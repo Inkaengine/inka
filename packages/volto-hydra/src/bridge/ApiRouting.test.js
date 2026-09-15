@@ -12,6 +12,7 @@ import Api from '../customizations/volto/helpers/Api/Api';
  */
 
 const originalFlag = config.settings.useBridgeBackend;
+const originalExpanders = config.settings.apiExpanders;
 
 beforeEach(() => {
   delete window.__hydraBridgeRpc;
@@ -19,6 +20,7 @@ beforeEach(() => {
 
 afterEach(() => {
   config.settings.useBridgeBackend = originalFlag;
+  config.settings.apiExpanders = originalExpanders;
   delete window.__hydraBridgeRpc;
 });
 
@@ -93,5 +95,37 @@ describe('Api transport selection', () => {
     const api = new Api({ universalCookies: { get: () => null } });
     expect(() => api.get('/news')).toThrow(/server-side rendering/);
     expect(request).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * apiExpanders is read at TWO moments, and an announcement lands between them.
+ *
+ * Volto asks it once when it builds the content request — does this route
+ * expand? — and again when the answer comes back — was this expanded, so the
+ * reducer may take @components? Components consult it a third time to decide
+ * whether to fetch their own data.
+ *
+ * Changing it on ADAPTER_READY desynchronises those readers. The route's
+ * request goes out WITH `?expand=breadcrumbs,actions,types,navigation` and the
+ * CMS answers it in full; the adapter then announces, apiExpanders is emptied,
+ * and the actions reducer refuses the bundle it was handed because the config
+ * now says nothing was expanded. Meanwhile the Toolbar, which mounted while
+ * expanders were still configured, has already skipped its own fetch. The data
+ * is fetched, delivered, and thrown away, and the toolbar renders no Edit
+ * button — which is what broke every edit-mode spec in the suite.
+ *
+ * The decision belongs where it is made before the first request: statically,
+ * in applyConfig. Whatever it decided must survive the announcement.
+ */
+describe('apiExpanders across an adapter announcement', () => {
+  it('leaves the configured expanders untouched', () => {
+    config.settings.useBridgeBackend = true;
+    const configured = [{ match: '', GET_CONTENT: ['breadcrumbs', 'actions'] }];
+    config.settings.apiExpanders = configured;
+
+    announceAdapter(['content', 'http-passthrough']);
+
+    expect(config.settings.apiExpanders).toEqual(configured);
   });
 });

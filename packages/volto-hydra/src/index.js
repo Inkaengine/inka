@@ -82,6 +82,7 @@ import columnAfterSVG from '@plone/volto/icons/column-after.svg';
 import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
 import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
+import { BRIDGE_EXPANDERS } from './bridge/expanders';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
 
 // The field types a `hydraRuleError` can land on. Volto looks a validator up by
@@ -108,14 +109,30 @@ const applyConfig = (config) => {
     process.env.RAZZLE_USE_BRIDGE_BACKEND === 'true';
 
   if (config.settings.useBridgeBackend) {
-    // Expanders are decided from the adapter's CAPABILITIES, not statically
-    // here: at config time no adapter has announced itself yet, and baking in
-    // a default that never gets revisited is exactly how every request once
-    // ended up on the passthrough regardless of which CMS was connected.
+    // Expansion, decided HERE rather than from the adapter's announcement.
     //
-    // Off until the frontend says it can expand natively — see
-    // bridge/expanders.js for why that gate exists and what it measured.
-    config.settings.apiExpanders = [];
+    // Deriving it at runtime was the bug. apiExpanders is read synchronously
+    // when Volto BUILDS a request, so the first route's content GET went out
+    // before any adapter had announced and carried no expand parameter — while
+    // the Toolbar, mounting afterwards, saw expanders configured and skipped
+    // getTypes on the promise the data had ridden along. The types arrived from
+    // nowhere and the toolbar rendered empty. Static removes the race: every
+    // request is built from the same answer.
+    //
+    // Volto ships expansion ON (config/index.js), so clearing it was not
+    // declining an optimisation, it was removing a default — a route load cost
+    // five requests instead of one. That is what made this suite flaky under
+    // load: the same specs pass alone and fail together, because a 10s wait
+    // cannot absorb five round trips per route across four workers.
+    //
+    // Expansion goes through the adapter like everything else, so nothing needs
+    // to be negotiated to ASK for it. The one case where it measurably costs
+    // more than it saves is an EMULATING adapter — Drupal's journey went from
+    // 190 requests to 214, and ungated from 1.5 minutes to 6.9 and failed (see
+    // bridge/expanders.js). Those runs opt out explicitly rather than everyone
+    // paying for the exception.
+    config.settings.apiExpanders =
+      process.env.RAZZLE_BRIDGE_EXPANDERS === 'false' ? [] : BRIDGE_EXPANDERS;
 
     // Guarantee the server can resolve a UI language without asking a CMS.
     //

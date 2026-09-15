@@ -181,26 +181,30 @@ function installListener(rpcClient) {
         config.settings.apiPath = event.data.cmsBaseUrl.replace(/\/+$/, '');
       }
 
-      // NOT enabled from the announcement, even for an adapter that expands
-      // natively — declaring expanders here arrives too late to be true.
+      // apiExpanders is deliberately NOT touched here.
       //
-      // apiExpanders does two things: it adds `?expand=...` to the content
-      // request, and it makes components skip their own fetch on the promise
-      // that the data rides along. Those are read at different moments. The
-      // route's content request goes out while the adapter is still
-      // announcing, so it carries no expand parameter; the Toolbar mounts
-      // afterwards, sees the expanders, and skips getTypes. The types then
-      // never arrive from anywhere — and with no types the toolbar renders no
-      // Add button at all, so nothing can be created.
+      // It used to be emptied on this line, to undo expanders that had been
+      // declared from the announcement — which did arrive too late to be true,
+      // because the first route's content request goes out while the adapter is
+      // still announcing. The decision now lives in applyConfig, made
+      // statically before any request exists (see bridge/expanders.js), so
+      // there is nothing left here to undo.
       //
-      // Measured on the Plone journey: not one content request carried the
-      // bundle, while every expandable thing was still fetched separately. The
-      // optimisation was never actually being had; only the skipping was.
+      // Clearing it now is actively wrong, because the flag is read at THREE
+      // moments and an announcement lands between them:
       //
-      // Turning this back on means making the decision BEFORE the first route
-      // loads, or refetching the route once it is made. Until then an adapter
-      // that could expand natively is served the same way as one that cannot.
-      config.settings.apiExpanders = [];
+      //   1. building the content request — add `?expand=...`?
+      //   2. the answer coming back — may the reducer take @components?
+      //   3. a component mounting — should it fetch its own data?
+      //
+      // Emptying it between 1 and 2 desynchronises them: the request went out
+      // expanded and the CMS answered in full, then the actions reducer refused
+      // the bundle because the config now said nothing was expanded, while the
+      // Toolbar had already skipped its own fetch at 3. The data was fetched,
+      // delivered and discarded, and the toolbar rendered no Edit button — which
+      // is what broke every edit-mode spec in the suite.
+      //
+      // Pinned by ApiRouting.test.js: an announcement must leave it alone.
 
       // A DIFFERENT window announcing means the previous one is gone, and with
       // it every reply it still owed. Say so before marking ready, so those
