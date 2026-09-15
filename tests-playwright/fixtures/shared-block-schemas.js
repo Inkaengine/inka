@@ -771,7 +771,16 @@ export const sharedBlocksConfig = {
                                     ['json', 'JSON'],
                                     ['html', 'HTML'],
                                     ['css', 'CSS'],
+                                    // Shell and Markdown are staples of technical docs — shell
+                                    // command snippets and, for a docs site about a Markdown
+                                    // format, the Markdown source itself. Both `sh`/`bash` and
+                                    // `md` aliases are accepted because that is how authors (and
+                                    // markdown code fences) actually spell them.
                                     ['bash', 'Bash'],
+                                    ['sh', 'Shell'],
+                                    ['shell', 'Shell'],
+                                    ['markdown', 'Markdown'],
+                                    ['md', 'Markdown'],
                                     ['xml', 'XML'],
                                     ['text', 'Text'],
                                 ],

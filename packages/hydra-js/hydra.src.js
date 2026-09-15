@@ -4797,6 +4797,45 @@ export class Bridge {
           selectorElement.hasAttribute('data-linkable-allow') &&
           linkableTokens.some((t) => /^[+-]\d+$/.test(t));
         if (isSelfNavigatingPager) {
+          // The pager navigates ITSELF (its own click handler), so don't let
+          // handleBlockSelector's carousel stepping fight it — but a PATH-based
+          // pager (nuxt/nextjs `/@pg_<id>_<n>`) still needs its imminent
+          // navigation flagged IN-PAGE, or the PATH_CHANGE it triggers is
+          // classified inPage:false and hydra resets the iframe to the form-data
+          // state, throwing away the page just navigated to (a revealed off-page
+          // child then vanishes; edit-mode paging snaps back to page 1).
+          //
+          // Flag it ONLY when the pager's href actually changes the pathname —
+          // exactly the case detectNavigation will consume the flag on. A
+          // QUERY-based pager (the mock frontend's `?pg_<id>=<n>`) changes no
+          // pathname, fires no PATH_CHANGE, and needs no flag; marking it anyway
+          // left hydra_in_page_nav_time set with nothing to consume it, so a
+          // LATER unrelated PATH_CHANGE read it as in-page — the stale-state leak
+          // that destabilized block-sanity's off-page reveals.
+          const pagerHref = selectorElement.getAttribute('href');
+          let changesPath = false;
+          if (pagerHref) {
+            try {
+              changesPath =
+                new URL(pagerHref, window.location.href).pathname !==
+                window.location.pathname;
+            } catch {
+              // A non-URL href (e.g. "#"): treat as no pathname change.
+            }
+          }
+          if (changesPath) {
+            this._allowLinkNavigation = true;
+            setTimeout(() => {
+              this._allowLinkNavigation = false;
+            }, 100);
+            sessionStorage.setItem('hydra_in_page_nav_time', String(Date.now()));
+            if (this.selectedBlockUid) {
+              sessionStorage.setItem(
+                'hydra_in_page_nav_block',
+                `${Date.now()}|${this.selectedBlockUid}`,
+              );
+            }
+          }
           return;
         }
         // tryMakeBlockVisible reveals a hidden block by SYNTHESISING a click on
