@@ -1,6 +1,7 @@
 import mkcert from 'vite-plugin-mkcert'
 import { fileURLToPath } from 'url'
-import { dirname, resolve } from 'path'
+import { dirname, resolve, join } from 'path'
+import { existsSync } from 'fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const hydraJsPath = resolve(__dirname, '../../packages/hydra-js')
@@ -31,6 +32,17 @@ export default defineNuxtConfig({
       // instance, so 2 keeps the build faster than serial without
       // overwhelming a cold instance.
       concurrency: 2,
+      // IPX build cache: skip re-rendering /_ipx image variants already on disk
+      // in the persistent cache dir, so unchanged images aren't re-baked. The
+      // builder mounts a Fly volume and sets NUXT_IPX_CACHE_DIR; run-build.sh
+      // restores the skipped files into the output afterward. Only active when
+      // NUXT_IPX_CACHE_DIR is set (the builder) — dev/test generate every
+      // variant normally. (An image replaced in place keeps its source-URL /_ipx
+      // key, so it stays cached until IPX_CACHE_CLEAR=1 forces a re-bake.)
+      ignore: process.env.NUXT_IPX_CACHE_DIR
+        ? [(path: string) => path.startsWith('/_ipx/')
+            && existsSync(join(process.env.NUXT_IPX_CACHE_DIR as string, path))]
+        : undefined,
     },
   },
   app: {
