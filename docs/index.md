@@ -33,6 +33,7 @@ order:
   - architecture
   - build-a-frontend
   - server-rendered-frontends
+  - cms-adapters
   - live-preview
   - custom-blocks
   - container-blocks
