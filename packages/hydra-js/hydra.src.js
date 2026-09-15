@@ -14333,20 +14333,21 @@ export class Bridge {
         [data-edit-text][data-placeholder][data-empty]:focus::before {
           visibility: hidden;
         }
-        /* If the frontend renders its own empty-paragraph placeholder
-           inside the editable field (Slate's <p><br></p> convention, which
-           contributes one line of layout via the <br>), don't ALSO render
-           the bridge's ::before placeholder — it would stack on top of the
-           empty paragraph and the field would be 2 lines tall when empty but
-           1 line tall after the first keystroke.
-           Suppress ONLY when a <br> is present — that is the marker that
-           actually provides a line of layout. An earlier :has(*:not(:empty))
-           form also matched a paragraph whose only child is an EMPTY wrapper
-           element that provides no height (the Framework7 example renders an
-           empty text leaf as <p><span></span></p>): the placeholder was
-           suppressed, the field collapsed to 0px, and the block became
-           unclickable. A truly bare <p></p>, or a <p> wrapping only empty
-           elements, provides no layout, so ::before still fires for it. */
+        /* The placeholder gives an empty field its one line of height so it
+           stays clickable. Suppress it ONLY when the field already has a line
+           of height of its own — i.e. a rendered <br> (the browser's bogus
+           <br> in a focused-empty contenteditable, or a frontend that renders
+           one for an empty paragraph). Otherwise the two would stack and the
+           field would be 2 lines tall when empty but 1 after the first
+           keystroke.
+           A <br> is never CONTENT — a <br> node stored in a slate value fails
+           the sanity round-trip — so this keys off render output only, never
+           the fixture. Keep the placeholder for every other empty case, which
+           all render zero height: a bare <p></p>, or a <p> wrapping only empty
+           elements (a frontend that wraps the empty leaf, e.g. <p><span></span></p>).
+           An earlier :has(*:not(:empty)) form wrongly counted such an empty
+           wrapper as "provides layout", suppressed the placeholder, and the
+           field collapsed to 0px and became unclickable. */
         [data-edit-text][data-placeholder][data-empty]:has(br)::before {
           content: none;
         }
