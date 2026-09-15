@@ -14263,18 +14263,20 @@ export class Bridge {
           visibility: hidden;
         }
         /* If the frontend renders its own empty-paragraph placeholder
-           inside the editable field (e.g. Slate's <p><br></p> convention
-           which contributes one line of layout via the <br> and any ZWS
-           the bridge has inserted for cursor preservation), don't ALSO
-           render the bridge's ::before placeholder — it would stack on
-           top of the empty paragraph and the field would be 2 lines tall
-           when empty but 1 line tall after the first keystroke. We only
-           suppress ::before when the editable has a NON-EMPTY child
-           element (one that itself has children/text). A truly bare
-           <p></p> doesn't provide layout, so ::before still fires for it
-           (covers the fixture-empty case where the frontend renders no
-           empty-paragraph marker). */
-        [data-edit-text][data-placeholder][data-empty]:has(*:not(:empty))::before {
+           inside the editable field (Slate's <p><br></p> convention, which
+           contributes one line of layout via the <br>), don't ALSO render
+           the bridge's ::before placeholder — it would stack on top of the
+           empty paragraph and the field would be 2 lines tall when empty but
+           1 line tall after the first keystroke.
+           Suppress ONLY when a <br> is present — that is the marker that
+           actually provides a line of layout. An earlier :has(*:not(:empty))
+           form also matched a paragraph whose only child is an EMPTY wrapper
+           element that provides no height (the Framework7 example renders an
+           empty text leaf as <p><span></span></p>): the placeholder was
+           suppressed, the field collapsed to 0px, and the block became
+           unclickable. A truly bare <p></p>, or a <p> wrapping only empty
+           elements, provides no layout, so ::before still fires for it. */
+        [data-edit-text][data-placeholder][data-empty]:has(br)::before {
           content: none;
         }
         /* Linkable field hover styles - indicate clickable link areas.
