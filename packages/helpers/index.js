@@ -1152,7 +1152,24 @@ export function getFieldTypeString(field) {
   const type = field.type;
   const widget = field.widget;
   if (type && widget) return `${type}:${widget}`;
-  if (widget) return `:${widget}`;
+  // A field with a widget and no declared `type` is a STRING — which is exactly
+  // what the no-widget path below has always assumed. Emitting `:widget` made a
+  // widget quietly mean "no type at all", and the predicates key off the type
+  // half: `isPlainStringFieldType` wants `string` or `string:…`, so such a field
+  // stopped being inline-editable.
+  //
+  // Which is not hypothetical. `copy-from-target` swaps a mapped destination
+  // field's widget to `copyFromTargetField`, so a card's `title` — declared as
+  // just `{ title: 'Headline' }`, as most schemas declare an obvious string —
+  // went from `string` to `:copyFromTargetField` the moment the block gained the
+  // ability to fill itself from a link. Typing into a card title silently
+  // stopped working, and a front-page demo video filmed someone doing it to a
+  // card that stayed empty.
+  //
+  // Widgets that imply a different EDITOR are unaffected: the predicates match
+  // on `:slate` / `:textarea` anywhere in the string, so `string:textarea` still
+  // reads as a textarea.
+  if (widget) return `string:${widget}`;
   if (type) return type;
   return 'string';
 }
