@@ -116,7 +116,7 @@ if (process.env.SKIP_CONTENT_VALIDATION !== 'true') {
   for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
     if (!fs.existsSync(path.join(dirPath, '__metadata__.json'))) continue;
     const v = validate(dirPath);
-    const c = checkIntegrity(dirPath);
+    const c = checkIntegrity(dirPath, { schemaFor: mdRuntime && mdRuntime.schemaFor });
     const problems = v.errors.length + v.warnings.length + c.errors.length + c.warnings.length;
     if (problems > 0) {
       console.log(`[content-check] ${mountPath} -> ${dirPath}`);
@@ -1708,7 +1708,7 @@ function loadMarkdownMount(mount) {
 function validateMarkdownContent() {
   if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
   const source = [...markdownItems].map(([rel, data]) => ({ rel, data }));
-  const { errors } = mdRuntime.checkIntegrity(source);
+  const { errors } = mdRuntime.checkIntegrity(source, { schemaFor: mdRuntime.schemaFor });
   if (errors.length) {
     console.log(`[content-check] ${errors.length} problem(s) in markdown content:`);
     for (const m of errors.slice(0, 30)) console.log(`  ${m}`);
@@ -2297,7 +2297,7 @@ app.post('/@export', async (req, res) => {
     const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
     const contentDir = path.join(staging, 'content');
     const v = validate(contentDir);
-    const c = checkIntegrity(contentDir);
+    const c = checkIntegrity(contentDir, { schemaFor: mdRuntime && mdRuntime.schemaFor });
     const errors = [...v.errors, ...c.errors];
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });

@@ -13549,7 +13549,8 @@ export class Bridge {
 
   /**
    * Check if a field type string indicates a slate field
-   * Formats: "array:slate", ":slate", "array:richtext", ":richtext"
+   * Formats: "array:slate", ":slate". A `richtext` widget is HTML, not slate,
+   * and is not inline-editable in the bridge, so it is not matched here.
    * @param {string} fieldType - The field type string
    * @returns {boolean} True if the field is a slate field
    */
