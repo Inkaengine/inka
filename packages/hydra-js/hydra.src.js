@@ -5719,9 +5719,27 @@ export class Bridge {
 
     // Handle ELEMENT nodes - cursor can land on wrapper DIV when clicking at edge of block
     if (node.nodeType === Node.ELEMENT_NODE) {
-      // If this element has a valid data-node-id, cursor position is valid
+      // A caret on an element with a valid data-node-id is normally fine — EXCEPT
+      // when that element is empty (no text node to hold the caret), e.g. an
+      // empty <p data-node-id="0"></p> materialised from a slate default before
+      // any ZWS was inserted. There is no insertion target inside it, so a native
+      // keystroke leaks out to the wrapper. Flag it as needing correction so
+      // correctInvalidWhitespaceSelection → getValidPositionForWhitespace parks a
+      // ZWS inside the element and moves the caret onto it. hydra owns inserting
+      // the ZWS even when the node-id is already present; the default itself
+      // carries neither the node-id nor the ZWS.
       if (node.hasAttribute?.('data-node-id') && isValidNodeId(node.getAttribute('data-node-id'))) {
-        return false;
+        // "Empty" means no text node with ANY character — not merely no text
+        // node. A Vue-rendered empty <p> can hold several zero-length text nodes
+        // ({{ '' }} interpolations, v-for placeholders); none is a caret target.
+        // A ZWS text node (length 1) DOES count as a target, so a corrected block
+        // is not re-flagged.
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        let t;
+        while ((t = walker.nextNode())) {
+          if (t.textContent && t.textContent.length > 0) return false;
+        }
+        return true;
       }
 
       // If this element is an editable field itself, check if it has data-node-id children
@@ -5792,10 +5810,20 @@ export class Bridge {
     // Walk up from node to find if there's a data-node-id ancestor (including editableField itself)
     current = node.parentNode;
     while (current) {
-      // If we hit an element with a valid data-node-id, cursor is valid
+      // If we hit an element with a valid data-node-id, the caret is valid —
+      // UNLESS that element is empty (only zero-length text nodes, e.g. Vue's
+      // {{ '' }} artifacts around an empty <p>). Then there is no character to
+      // insert beside and a native keystroke leaks out, so flag it and let the
+      // correction park a ZWS inside. A ZWS text node (length 1) counts as a
+      // target, so a corrected element is not re-flagged.
       if (current.nodeType === Node.ELEMENT_NODE && current.hasAttribute?.('data-node-id')
           && isValidNodeId(current.getAttribute('data-node-id'))) {
-        return false;
+        const walker = document.createTreeWalker(current, NodeFilter.SHOW_TEXT);
+        let t;
+        while ((t = walker.nextNode())) {
+          if (t.textContent && t.textContent.length > 0) return false;
+        }
+        return true;
       }
       // Stop at editable field boundary
       if (current === editableField) {
@@ -5867,11 +5895,39 @@ export class Bridge {
     // Otherwise, determine based on DOM position of the whitespace
     let returnEndPosition = isRangeEnd;
     if (!isRangeEnd) {
-      // Determine if whitespace is before first or after last by comparing DOM positions
-      const position = node.compareDocumentPosition(firstNodeIdEl);
-      const isBeforeFirst = position & Node.DOCUMENT_POSITION_FOLLOWING;
-      returnEndPosition = !isBeforeFirst; // After content = return end position
-      log('getValidPositionForWhitespace: isBeforeFirst=', isBeforeFirst, 'firstNodeIdEl=', firstNodeIdEl.tagName, 'nodeId=', firstNodeIdEl.getAttribute('data-node-id'));
+      // Is firstNodeIdEl empty of VISIBLE text? (ZWS/ZWSP don't count — an element
+      // holding only a parked ZWS is still "empty" and should position on it.)
+      let elHasVisibleText = false;
+      const vWalker = document.createTreeWalker(firstNodeIdEl, NodeFilter.SHOW_TEXT);
+      let vt;
+      while ((vt = vWalker.nextNode())) {
+        if (vt.textContent && vt.textContent.replace(/[﻿​]/g, '').length > 0) {
+          elHasVisibleText = true;
+          break;
+        }
+      }
+
+      if (firstNodeIdEl.contains(node) && !elHasVisibleText) {
+        // The node is INSIDE an EMPTY node-id element (e.g. its own empty text
+        // node, or Vue's {{ '' }} artifacts inside an empty <p data-node-id>).
+        // compareDocumentPosition would call a contained node "after content"
+        // and route to the end branch, which never creates a ZWS. Force the
+        // start branch so it parks/prepends the ﻿ caret target.
+        //
+        // Guarded on emptiness: when the element HAS visible text (e.g. a
+        // trailing-space text node inside "some text bold "), a contained
+        // whitespace node must still be positioned by real DOM order via
+        // compareDocumentPosition below — otherwise select-all/format on that
+        // content breaks.
+        returnEndPosition = false;
+        log('getValidPositionForWhitespace: node inside EMPTY firstNodeIdEl, using start position');
+      } else {
+        // Determine if whitespace is before first or after last by comparing DOM positions
+        const position = node.compareDocumentPosition(firstNodeIdEl);
+        const isBeforeFirst = position & Node.DOCUMENT_POSITION_FOLLOWING;
+        returnEndPosition = !isBeforeFirst; // After content = return end position
+        log('getValidPositionForWhitespace: isBeforeFirst=', isBeforeFirst, 'firstNodeIdEl=', firstNodeIdEl.tagName, 'nodeId=', firstNodeIdEl.getAttribute('data-node-id'));
+      }
     }
 
     if (!returnEndPosition) {
@@ -14207,18 +14263,20 @@ export class Bridge {
           visibility: hidden;
         }
         /* If the frontend renders its own empty-paragraph placeholder
-           inside the editable field (e.g. Slate's <p><br></p> convention
-           which contributes one line of layout via the <br> and any ZWS
-           the bridge has inserted for cursor preservation), don't ALSO
-           render the bridge's ::before placeholder — it would stack on
-           top of the empty paragraph and the field would be 2 lines tall
-           when empty but 1 line tall after the first keystroke. We only
-           suppress ::before when the editable has a NON-EMPTY child
-           element (one that itself has children/text). A truly bare
-           <p></p> doesn't provide layout, so ::before still fires for it
-           (covers the fixture-empty case where the frontend renders no
-           empty-paragraph marker). */
-        [data-edit-text][data-placeholder][data-empty]:has(*:not(:empty))::before {
+           inside the editable field (Slate's <p><br></p> convention, which
+           contributes one line of layout via the <br>), don't ALSO render
+           the bridge's ::before placeholder — it would stack on top of the
+           empty paragraph and the field would be 2 lines tall when empty but
+           1 line tall after the first keystroke.
+           Suppress ONLY when a <br> is present — that is the marker that
+           actually provides a line of layout. An earlier :has(*:not(:empty))
+           form also matched a paragraph whose only child is an EMPTY wrapper
+           element that provides no height (the Framework7 example renders an
+           empty text leaf as <p><span></span></p>): the placeholder was
+           suppressed, the field collapsed to 0px, and the block became
+           unclickable. A truly bare <p></p>, or a <p> wrapping only empty
+           elements, provides no layout, so ::before still fires for it. */
+        [data-edit-text][data-placeholder][data-empty]:has(br)::before {
           content: none;
         }
         /* Linkable field hover styles - indicate clickable link areas.
