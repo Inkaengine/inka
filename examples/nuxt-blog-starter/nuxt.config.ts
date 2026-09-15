@@ -164,8 +164,13 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       image_alias: '_plone_', // needed so we don't use image alias when no SSR
-      backendBaseUrl: 'https://hydra-api.pretagov.com',
-      adminUrl: 'https://hydra.pretagov.com',
+      // The PUBLIC SSG build (`pnpm run generate`, default env) bakes these into
+      // the client bundle, so they must be the deploy's real backend — NOT a
+      // hardcoded host. The builder sets NUXT_TEST_BACKEND (the API the
+      // prerender also fetches from, see netlify-build.sh) and NUXT_ADMIN_URL.
+      // The hydra.pretagov.com fallbacks are only for a plain local build.
+      backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://hydra-api.pretagov.com',
+      adminUrl: process.env.NUXT_ADMIN_URL || 'https://hydra.pretagov.com',
     },
   },
   css: ['/assets/css/main.css'],
