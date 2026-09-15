@@ -25,7 +25,25 @@ export interface PageIntegrityOptions {
    * mock-api + frontend on different ports).
    */
   backendOriginMatches?: (origin: string) => boolean;
+
+  /**
+   * Skip the broken-image check (verifyNoBrokenImages). The editor screenshots
+   * and demo assets the docs embed are git-ignored and GENERATED, not committed
+   * (docs/.gitignore); a checkout that has not recorded them — one where asset
+   * generation runs elsewhere (a parent repo's deploy) rather than in this CI —
+   * legitimately serves those pages with the `<img>` unresolved, and flagging
+   * that as broken is a false negative. Defaults to the SKIP_BROKEN_IMAGE_CHECK
+   * env var, so CI can set it once for a whole run without threading the option
+   * through every caller. The link checks still run — a typo'd path is still a
+   * bug — only the "did every image's bytes load" assertion is skipped.
+   */
+  skipBrokenImages?: boolean;
 }
+
+/** The env fallback for {@link PageIntegrityOptions.skipBrokenImages}. */
+const SKIP_BROKEN_IMAGES_ENV =
+  process.env.SKIP_BROKEN_IMAGE_CHECK === '1' ||
+  process.env.SKIP_BROKEN_IMAGE_CHECK === 'true';
 
 /**
  * No *visible* rendered `<img>` should be broken (empty src, failed load).
@@ -253,7 +271,8 @@ export async function verifyPageIntegrity(
   page: Page,
   options: PageIntegrityOptions & { alreadyChecked?: Set<string> } = {},
 ): Promise<void> {
-  await verifyNoBrokenImages(page);
+  const skipBrokenImages = options.skipBrokenImages ?? SKIP_BROKEN_IMAGES_ENV;
+  if (!skipBrokenImages) await verifyNoBrokenImages(page);
   await verifyNoBackendLinks(page, options);
   await verifyNoDeadLinks(page, options);
 }
