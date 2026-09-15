@@ -1,4 +1,11 @@
-import { buildQuerystringSearchBody, loadTemplates } from './index.js';
+import {
+  buildQuerystringSearchBody,
+  getFieldTypeString,
+  isPlainStringFieldType,
+  isSlateFieldType,
+  isTextareaFieldType,
+  loadTemplates,
+} from './index.js';
 
 // Unit tests for buildQuerystringSearchBody — the pure builder that turns a
 // listing's queryConfig + paging + extraCriteria into the @querystring-search
@@ -400,5 +407,48 @@ describe('loadTemplates — the per-template timeout', () => {
 
     expect(attempts).toBe(3);
     expect(Object.keys(templates)).toContain('/templates/one');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('getFieldTypeString — a field with no declared type is a string', () => {
+  test('a widget alone does not make a field typeless', () => {
+    // A schema may give a field a widget and no `type` — most do, because the
+    // type is obvious. The no-widget path has always assumed string for exactly
+    // that case (`return 'string'`), so a widget must not quietly change the
+    // assumption into "no type at all".
+    expect(getFieldTypeString({ widget: 'copyFromTargetField' })).toBe(
+      'string:copyFromTargetField',
+    );
+  });
+
+  test('so such a field is still plain-string editable', () => {
+    // The bug this pins. `copy-from-target` swaps a mapped destination field's
+    // widget to `copyFromTargetField` — so a card's `title`, declared as just
+    // `{ title: "Headline" }`, went from "string" (editable) to
+    // ":copyFromTargetField" (not). Inline editing of the card title silently
+    // stopped working the moment the block gained the ability to fill itself
+    // from a link, and the front-page demo filmed someone typing into a card
+    // that stayed empty.
+    expect(
+      isPlainStringFieldType(getFieldTypeString({ widget: 'copyFromTargetField' })),
+    ).toBe(true);
+  });
+
+  test('a widget that DOES imply a different editor still wins', () => {
+    // The assumption is about the TYPE, not the widget: a textarea or slate
+    // widget must keep classifying as itself, or this fix would turn every
+    // rich-text field into a one-line string.
+    expect(getFieldTypeString({ widget: 'textarea' })).toBe('string:textarea');
+    expect(isTextareaFieldType(getFieldTypeString({ widget: 'textarea' }))).toBe(true);
+    expect(isPlainStringFieldType(getFieldTypeString({ widget: 'textarea' }))).toBe(false);
+    expect(isSlateFieldType(getFieldTypeString({ widget: 'slate' }))).toBe(true);
+  });
+
+  test('a declared type is never overridden', () => {
+    expect(getFieldTypeString({ type: 'array', widget: 'select' })).toBe('array:select');
+    expect(getFieldTypeString({ type: 'boolean' })).toBe('boolean');
+    expect(getFieldTypeString({})).toBe('string');
   });
 });
