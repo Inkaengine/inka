@@ -5327,20 +5327,17 @@ export class AdminUIHelper {
 
     await logoutButton.click();
 
-    // Wait for redirect to login page
-    try {
-      await this.page.waitForURL(/.*login.*/, { timeout: 5000 });
-    } catch (e) {
-      // Check if we're on login page by looking for login form
-      const loginForm = this.page.locator('input[type="password"]');
-      const isOnLoginPage = await loginForm.isVisible();
-
-      if (!isOnLoginPage) {
-        throw new Error(
-          'Logout did not redirect to login page. Check that logout is working correctly.'
-        );
-      }
-    }
+    // Deliberately does NOT assert where the admin lands.
+    //
+    // It used to wait for a /login URL. Volto's Logout replaces history with
+    // the RETURN url, not /login, and a client-side replace does no SSR round
+    // trip, so nothing bounces an anonymous request to the login form. Under
+    // the bridge that is correct rather than broken: signing in happens in the
+    // proxy frame, so /login is the one screen that cannot sign you back in.
+    //
+    // What logging out has to achieve — the adapter's session ending — is the
+    // caller's assertion to make, because only the caller knows which frame
+    // holds that session.
   }
 
   /**

@@ -129,3 +129,40 @@ describe('apiExpanders across an adapter announcement', () => {
     expect(config.settings.apiExpanders).toEqual(configured);
   });
 });
+
+/**
+ * Logging out is the adapter's session ending, not an HTTP call to forward.
+ *
+ * A passthrough adapter would otherwise proxy Volto's POST @logout to the CMS
+ * and keep its own credential — the admin's UI clears while the session that
+ * actually matters stays open, which is the shared-machine case the adapter
+ * contract calls out. An adapter WITHOUT passthrough fares worse: there is no
+ * @logout route in intentRouter, so the call cannot be routed at all.
+ *
+ * Both are answered the same way: the canonical intent, before the transport
+ * choice is made.
+ */
+describe('logging out', () => {
+  it('ends the adapter session rather than proxying @logout', async () => {
+    config.settings.useBridgeBackend = true;
+    const request = vi.fn().mockResolvedValue(null);
+    window.__hydraBridgeRpc = { request };
+    announceAdapter(['content', 'http-passthrough']);
+
+    await new Api().post('/@logout', { data: {} });
+
+    expect(request).toHaveBeenCalledWith('auth.logout', {});
+    expect(request).not.toHaveBeenCalledWith('http', expect.anything());
+  });
+
+  it('ends it for an adapter with no passthrough too', async () => {
+    config.settings.useBridgeBackend = true;
+    const request = vi.fn().mockResolvedValue(null);
+    window.__hydraBridgeRpc = { request };
+    announceAdapter(['content']);
+
+    await new Api().post('/@logout', { data: {} });
+
+    expect(request).toHaveBeenCalledWith('auth.logout', {});
+  });
+});

@@ -94,6 +94,23 @@
     }
 
     const adapter = buildAdapter(stored);
+
+    // The proxy wrote the credential, so the proxy removes it.
+    //
+    // auth.logout ends the adapter's IN-MEMORY session; the copy in
+    // localStorage would revive it on the very next load, so the logout would
+    // look right and change nothing — an editor on a shared machine clicks
+    // logout and the session that matters is still there. Wrapped here rather
+    // than inside the adapter because the storage key is the proxy's choice:
+    // it is scoped per adapter AND per CMS, which the adapter knows nothing
+    // about.
+    const dispatchToAdapter = adapter.dispatch.bind(adapter);
+    adapter.dispatch = async (intent, args) => {
+      const result = await dispatchToAdapter(intent, args);
+      if (intent === 'auth.logout') localStorage.removeItem(storeKey);
+      return result;
+    };
+
     const bridge = connectProxy(adapter, { cmsBaseUrl });
 
     // --- sign-in -----------------------------------------------------------

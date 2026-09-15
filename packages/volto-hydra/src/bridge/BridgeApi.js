@@ -83,6 +83,21 @@ export class BridgeApi {
           `registered an adapter.`,
       );
     }
+    // Logging out is the adapter's session ending, not a call to forward.
+    //
+    // Volto posts @logout. Routed like anything else, a passthrough adapter
+    // proxies that to the CMS and keeps its own credential: the admin's UI
+    // clears while the session that actually matters stays open — the shared
+    // machine case auth.spec.ts calls out. An adapter without passthrough is
+    // worse off still: intentRouter has no @logout case, so the call cannot be
+    // routed at all and logout simply fails.
+    //
+    // Handled before passthrough so every adapter ends its session the same
+    // way, through the canonical intent the contract already pins.
+    if (op === 'post' && String(path).split('?')[0].endsWith('@logout')) {
+      return this.rpc.request('auth.logout', {});
+    }
+
     if (this.supportsPassthrough(info)) {
       return this.rpc.request('http', { op, path, data, headers, params });
     }
