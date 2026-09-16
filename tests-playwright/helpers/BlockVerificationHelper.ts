@@ -11,6 +11,7 @@ import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage';
+import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
 
 export interface SubBlock {
   id: string;
@@ -554,8 +555,17 @@ export async function checkEditAnnotations(
   ).toEqual([]);
   expect(r.offSiteLinks, 'Links should not point to a different localhost service (e.g. the API)').toEqual([]);
   expect(r.imagesWithout, 'All non-decorative images should have data-edit-media').toEqual([]);
-  expect(r.brokenImages, 'All images should have valid src and load successfully').toEqual([]);
-  expect(r.brokenMedia, 'All video/audio sources should exist').toEqual([]);
+  // The "asset bytes actually loaded" assertions — broken images AND broken
+  // video/audio — are only meaningful where the assets exist. hydra CI moved
+  // doc-asset generation to the parent repo, so a generated asset (e.g. the demo
+  // video hydra-demo.mp4) is legitimately absent here and its source 404s; that
+  // is not a content bug. Same env, same class as PageIntegrityHelper's image
+  // skip — the annotation/structure checks above still run, so a real broken
+  // reference (a typo'd path on a committed asset) is still caught elsewhere.
+  if (!SKIP_BROKEN_IMAGES_ENV) {
+    expect(r.brokenImages, 'All images should have valid src and load successfully').toEqual([]);
+    expect(r.brokenMedia, 'All video/audio sources should exist').toEqual([]);
+  }
   for (const { field, value } of r.textViolations) {
     expect(
       false,
