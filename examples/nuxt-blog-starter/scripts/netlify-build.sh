@@ -57,12 +57,19 @@ rm -f nuxt-generate.log
 # Backstop 2 — inspect the BAKED OUTPUT, not just the log. A forced-layout
 # template that fails to load renders a GRACEFUL 500 error component, which nitro
 # bakes as a normal (200) route — so failOnError and the [500] log grep above
-# miss it, and a broken homepage ships and gets CDN-cached for its TTL. The error
-# text is stable and never appears in a good page. Checked on the PROD SSG output
-# only (before the client-only edit SPA is built into /edit/). NB: an unrendered
-# `{{data?.title}}` is NOT a valid signal — that's the editable-metadata h1, which
-# stays a template in a perfectly good view/SSG render.
-if grep -rlF 'not found in pre-loaded templates' .output/public --include='*.html' > /tmp/badpages 2>/dev/null && [ -s /tmp/badpages ]; then
+# miss it, and a broken homepage ships and gets CDN-cached for its TTL. Checked on
+# the PROD SSG output only (before the client-only edit SPA is built into /edit/).
+# NB: an unrendered `{{data?.title}}` is NOT a valid signal — that's the
+# editable-metadata h1, which stays a template in a perfectly good view/SSG render.
+#
+# Match the FULL runtime error signature ("... not found in pre-loaded templates.
+# Available: <keys>", helpers/index.js), NOT the bare phrase: the templates
+# documentation page (docs/templates.md) legitimately quotes the message —
+# `Template "…" not found in pre-loaded templates` — as prose, and the bare-phrase
+# grep false-positived on it and refused to ship a perfectly good build. The real
+# error always appends ". Available:"; the docs prose never does (it closes the
+# <code> and ends the sentence right after "templates").
+if grep -rlF 'not found in pre-loaded templates. Available:' .output/public --include='*.html' > /tmp/badpages 2>/dev/null && [ -s /tmp/badpages ]; then
   echo >&2
   echo "ERROR: a prerendered page rendered a 'not found in pre-loaded templates' error (a forced-layout template failed to load) — refusing to ship a broken site:" >&2
   head -10 /tmp/badpages >&2
