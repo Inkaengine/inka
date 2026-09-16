@@ -20,7 +20,7 @@ preview_image: null
 review_state: published
 rights: ""
 subjects: []
-title: Volto Hydra Documentation
+title: Docs
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="callout">

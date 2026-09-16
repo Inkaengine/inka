@@ -3,6 +3,13 @@ import { loadTemplates } from '@hydra-js/helpers';
 
 // Shared template cache across all page renders (survives SSG prerendering)
 const templateCache = {};
+// In-flight fetches, keyed by template path. templateCache only holds COMPLETED
+// templates, so with prerender concurrency > 1 two routes starting together both
+// miss the still-empty cache and each fetch the same forced layout (the footer,
+// on every page) — doubling the instant load on a small auto-suspend API and
+// making one time out ("not found in pre-loaded templates. Available:"). Sharing
+// one in-flight promise per path collapses that to a single fetch.
+const inFlightTemplates = {};
 
 export default async function ploneApi({
   path,
@@ -58,35 +65,45 @@ export default async function ploneApi({
     headers,
   });
 
-  // Fetch a single template by id/path.
+  // Fetch a single template by id/path — de-duped per path (see inFlightTemplates).
   const loadTemplate = async (templateId) => {
     // templateId may be a path or a full URL — normalise to path
     const tplPath = templateId.startsWith('http')
       ? new URL(templateId).pathname
       : `/${templateId.replace(/^\//, '')}`;
-    const url = `${runtimeConfig.public.backendBaseUrl}/++api++${tplPath}`;
-    // Bound the fetch: a hung request (cold API that never answers) aborts instead of
-    // stalling the whole prerender indefinitely.
-    const controller = templateFetchTimeout > 0 ? new AbortController() : null;
-    const timer = controller
-      ? setTimeout(() => controller.abort(), templateFetchTimeout)
-      : null;
-    try {
-      const response = await fetch(url, { headers, signal: controller?.signal });
-      if (!response.ok) {
-        throw new Error(`Failed to fetch template ${templateId}: HTTP ${response.status}`);
+    // Concurrent renders of the same forced layout share ONE fetch.
+    if (inFlightTemplates[tplPath]) return inFlightTemplates[tplPath];
+    const fetchTemplate = async () => {
+      const url = `${runtimeConfig.public.backendBaseUrl}/++api++${tplPath}`;
+      // Bound the fetch: a hung request (cold API that never answers) aborts instead of
+      // stalling the whole prerender indefinitely.
+      const controller = templateFetchTimeout > 0 ? new AbortController() : null;
+      const timer = controller
+        ? setTimeout(() => controller.abort(), templateFetchTimeout)
+        : null;
+      try {
+        const response = await fetch(url, { headers, signal: controller?.signal });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch template ${templateId}: HTTP ${response.status}`);
+        }
+        return await response.json();
+      } catch (error) {
+        if (error?.name === 'AbortError') {
+          throw new Error(
+            `Timed out fetching template ${templateId} after ${templateFetchTimeout}ms`,
+          );
+        }
+        throw error;
+      } finally {
+        if (timer) clearTimeout(timer);
       }
-      return await response.json();
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        throw new Error(
-          `Timed out fetching template ${templateId} after ${templateFetchTimeout}ms`,
-        );
-      }
-      throw error;
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+    };
+    const p = fetchTemplate();
+    inFlightTemplates[tplPath] = p;
+    // Clear once settled (success OR failure) so a later render can retry a
+    // failed fetch and a success doesn't pin the promise.
+    p.finally(() => { if (inFlightTemplates[tplPath] === p) delete inFlightTemplates[tplPath]; });
+    return p;
   };
 
   // Working template set for this render: the shared cross-render cache in view/SSG (so a
@@ -157,6 +174,13 @@ export default async function ploneApi({
           tplCache,
           preloadTemplates,
         );
+        // Persist newly-loaded templates into the SHARED cross-render cache.
+        // loadTemplates COPIES the cache it's given and returns a new object, so
+        // without this write-back templateCache never fills — every prerendered
+        // route re-fetched the forced footer layout (~once per page), hammering
+        // the 1-thread API until a fetch dropped and the page 500'd with
+        // "not found in pre-loaded templates". Skip while editing (fresh each time).
+        if (!reloadTemplates) Object.assign(templateCache, templates);
         if (errors.length) {
           const summary = errors.map(e => `${e.templateId}: ${e.error?.message || e.error}`).join('; ');
           // Default: don't swallow. A failed template load fails the render with the real
