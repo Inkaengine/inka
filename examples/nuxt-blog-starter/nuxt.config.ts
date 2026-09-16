@@ -17,6 +17,14 @@ const fixturesPath = resolve(__dirname, '../../tests-playwright/fixtures')
 const MOCK_API_ORIGIN = `http://localhost:${process.env.HYDRA_MOCK_API_PORT || 8888}`;
 const ADMIN_ORIGIN = `http://localhost:${process.env.HYDRA_VOLTO_SSR_PORT || 3001}`;
 
+// The PUBLIC deploy's backend (the builder sets NUXT_TEST_BACKEND). The image
+// provider (ipxStatic) fetches source images from here at BUILD time, so it must
+// match the API the prerender pulls content from — a hardcoded host means the
+// build fetches /docs/images/*/@@images/* from the WRONG backend and every doc
+// image 404s, failing the prerender. Fallback is the historical default.
+const PUBLIC_BACKEND = process.env.NUXT_TEST_BACKEND || 'https://hydra-api.pretagov.com';
+const PUBLIC_BACKEND_HOST = new URL(PUBLIC_BACKEND).host;
+
 export default defineNuxtConfig({
   nitro: {
     preset: 'static',
@@ -187,10 +195,12 @@ export default defineNuxtConfig({
   // },
   image: {
     provider: 'ipx',
-    domains: ['hydra-api.pretagov.com','hydra.pretagov.com'],
+    // The backend host must be allow-listed AND the `_plone_` alias must point at
+    // it, or ipxStatic can't fetch the source doc images at build time.
+    domains: [PUBLIC_BACKEND_HOST, 'hydra-api.pretagov.com', 'hydra.pretagov.com'],
     alias: {
-      '_plone_': "https://hydra-api.pretagov.com"
-    }
+      '_plone_': PUBLIC_BACKEND,
+    },
   },
   experimental: {
       payloadExtraction: false
