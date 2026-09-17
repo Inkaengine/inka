@@ -116,7 +116,18 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
         || /\.svg($|[?#])/i.test(image_url);
 
     if (isSvg && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.startsWith('data:')) {
-        image_url = `${image_url}/@@images/${block?.image_field || 'image'}`;
+        // Serve the SVG via @@download/<field>/<filename>, NOT @@images/<field>.
+        // Both return the original with image/svg+xml from Plone, but @@download
+        // ends in the real filename (…/architecture.svg) while @@images/<field>
+        // ends in the extensionless field name (…/image). IPX names its baked
+        // static object after the source URL, so the @@images form produces an
+        // EXTENSIONLESS object; Bunny then types it by extension (none →
+        // application/octet-stream) and ignores the content-type we PUT, so the
+        // browser won't render it. The @@download form keeps `.svg` on the object,
+        // so Bunny serves image/svg+xml. Filename = the id's last path segment.
+        const field = block?.image_field || 'image';
+        const filename = image_url.split(/[?#]/)[0].split('/').pop();
+        image_url = `${image_url}/@@download/${field}/${filename}`;
     } else if (block?.image_scales && block?.image_field && block.image_scales[block.image_field]?.[0]) {
         const field = block.image_field;
         const meta = block.image_scales[field][0];
