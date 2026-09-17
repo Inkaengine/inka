@@ -2,8 +2,6 @@
 
 A **Visual Headless CMS** using Plone as a server, with an Administration interface based on Volto. Hydra provides a true visual editor with drag-and-drop blocks and editable text — with **any frontend stack you choose**. No assumptions. No learning curve.
 
-> ⚠️ **Work in progress** — see the [Hydra project board](https://github.com/orgs/collective/projects/3/views/4). Not yet recommended for production. Originally a GSoC project.
-
 ## Why Hydra?
 
 - **Visual + true Headless + Open Source** — a unique combination in the CMS space
