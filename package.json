@@ -59,7 +59,8 @@
     "@plone/volto": "workspace:*",
     "remark-definition-list": "^2.0.0",
     "send": "~0.19.0",
-    "volto-hydra": "workspace:*"
+    "volto-hydra": "workspace:*",
+    "yaml": "2.8.2"
   },
   "peerDependencies": {
     "@playwright/test": "1.61.0"
