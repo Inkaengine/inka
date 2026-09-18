@@ -118,6 +118,18 @@ export class BridgeApi {
       );
     }
 
+    // Several canonical operations for one request (a bulk @move): perform
+    // them in order — moves into the same folder must not race — and answer
+    // with each result, as Plone answers a bulk request with a list.
+    if (Array.isArray(routed)) {
+      const results = [];
+      for (const step of routed) {
+        const result = await this.rpc.request(step.intent, step.args);
+        results.push(plonify(step.intent, result, { path: fullPath }));
+      }
+      return results;
+    }
+
     // JOIN a read that is already on its way, rather than asking again.
     //
     // Volto loads the same document from more than one place: the App-level

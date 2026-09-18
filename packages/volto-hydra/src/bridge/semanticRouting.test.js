@@ -30,9 +30,25 @@ describe('routeToIntent', () => {
     ['del', '/news/first-post', 'content.delete'],
     ['get', '/news/@breadcrumbs', 'breadcrumbs.get'],
     ['post', '/news/@workflow/publish', 'state.transition'],
-    ['post', '/target/@move', 'content.move'],
   ])('%s %s -> %s', (op, path, intent) => {
     expect(routeToIntent({ op, path, data: {} })?.intent).toBe(intent);
+  });
+
+  /**
+   * Volto's cut-and-paste sends every selected item in one @move. Routing only
+   * source[0] moved the first and silently dropped the rest — a bulk move that
+   * half-lands while the listing looks plausible.
+   */
+  it('routes a @move to one content.move per source', () => {
+    const steps = routeToIntent({
+      op: 'post',
+      path: '/target/@move',
+      data: { source: ['/a/one', '/a/two'] },
+    });
+    expect(steps).toEqual([
+      { intent: 'content.move', args: { path: '/a/one', targetParentPath: '/target' } },
+      { intent: 'content.move', args: { path: '/a/two', targetParentPath: '/target' } },
+    ]);
   });
 
   it('routes an upload to asset.upload, not content.create', () => {
@@ -231,6 +247,17 @@ describe('BridgeApi transport selection', () => {
       params: { 'path.depth': '1' },
     });
     expect(rpc.request).toHaveBeenCalledWith('tree.list', { parent: '/news' });
+  });
+
+  it('performs every move of a bulk @move, in order', async () => {
+    const rpc = { request: vi.fn().mockResolvedValue(doc) };
+    await new BridgeApi(rpc, { getAdapterInfo: semanticAdapter }).post('/target/@move', {
+      data: { source: ['/a/one', '/a/two'] },
+    });
+    expect(rpc.request.mock.calls).toEqual([
+      ['content.move', { path: '/a/one', targetParentPath: '/target' }],
+      ['content.move', { path: '/a/two', targetParentPath: '/target' }],
+    ]);
   });
 
   it('fails loudly on an unroutable path rather than returning empty', async () => {

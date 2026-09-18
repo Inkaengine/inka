@@ -11,7 +11,9 @@
  * translation table serves all of them, and the action creators stay untouched.
  *
  * Returns null when a path has no semantic equivalent — the caller then falls
- * back to the passthrough, which is exactly what Plone wants anyway.
+ * back to the passthrough, which is exactly what Plone wants anyway. Returns an
+ * array of {intent, args} when one request is several canonical operations
+ * (a bulk @move); the caller performs them in order.
  */
 
 const stripQuery = (path) => String(path).split('?')[0];
@@ -271,13 +273,15 @@ export function routeToIntent({ op, path, data }) {
         : { intent: 'state.get', args: { path: contextPath } };
 
     case 'move':
-      return {
-        intent: 'content.move',
-        args: {
-          path: Array.isArray(data?.source) ? data.source[0] : data?.source,
-          targetParentPath: contextPath,
-        },
-      };
+      // One @move carries every item a cut-and-paste selected; the canonical
+      // intent moves one document. Several steps, not source[0]: taking only
+      // the first silently dropped the rest of a bulk move.
+      return (Array.isArray(data?.source) ? data.source : [data?.source]).map(
+        (source) => ({
+          intent: 'content.move',
+          args: { path: source, targetParentPath: contextPath },
+        }),
+      );
 
     default:
       // Anything else — @history, @sharing, @controlpanels — has no canonical
