@@ -15,11 +15,32 @@
  */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const MODULE = path.join(__dirname, 'mock-plone-api.cjs');
-const TREE = path.resolve(__dirname, '../../docs/content/content/content');
+
+/**
+ * The smallest exportimport tree: a __metadata__.json and one item. Built here
+ * rather than borrowed — the docs site's old content tree is a leftover since
+ * the docs moved to markdown, and a test should not break the day someone
+ * deletes it.
+ */
+function exportTree() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-startup-'));
+  fs.writeFileSync(
+    path.join(dir, '__metadata__.json'),
+    JSON.stringify({ __version__: '1.0.0', _data_files_: ['page/data.json'], _blob_files_: [] }),
+  );
+  fs.mkdirSync(path.join(dir, 'page'));
+  fs.writeFileSync(
+    path.join(dir, 'page', 'data.json'),
+    JSON.stringify({ '@id': '/page', '@type': 'Document', UID: 'startup-page-0001', id: 'page', title: 'Page' }),
+  );
+  return dir;
+}
 
 describe('mock API startup', () => {
   it('loads with a mount that is an exportimport tree (has __metadata__.json)', () => {
@@ -29,7 +50,7 @@ describe('mock API startup', () => {
       {
         env: {
           ...process.env,
-          CONTENT_MOUNTS: `/:${TREE}`,
+          CONTENT_MOUNTS: `/:${exportTree()}`,
           SKIP_CONTENT_VALIDATION: '',
         },
         encoding: 'utf8',
