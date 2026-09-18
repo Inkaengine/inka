@@ -723,6 +723,75 @@ describe('inheritSchemaFrom — the item type default follows the container', ()
   });
 });
 
+describe('inheritSchemaFrom — `restricted` hides a type from the add menu, not from a listing', () => {
+  // A region that names no allowedBlocks of its own — the page — allows every
+  // type that is not `restricted`: that is its add menu. Inka's `summary` is
+  // restricted precisely so it is NOT offered there, because it only makes
+  // sense as a listing's item type. Read as "not allowed", a listing on a page
+  // could never be a list of summaries. So a DERIVED list (one the region did
+  // not write out) offers every convertible type as an item type, restricted
+  // included; a container that lists its own allowedBlocks still decides alone.
+  const intl = { formatMessage: (m) => (m && m.defaultMessage) || '' };
+  const blocksConfig = {
+    listing: { title: 'Listing' },
+    summary: { title: 'Summary', restricted: true, fieldMappings: { '@default': { title: 'title' } } },
+    teaser: { title: 'Teaser', fieldMappings: { '@default': { title: 'title' } } },
+    navItem: { title: 'Nav item', fieldMappings: { '@default': { title: 'label' } } },
+  };
+  const recipe = {
+    inheritSchemaFrom: {
+      typeField: 'variation',
+      mappingField: 'fieldMapping',
+      blocksField: '..',
+      filterConvertibleFrom: '@default',
+      default: 'summary',
+    },
+  };
+  const baseSchema = {
+    fieldsets: [{ id: 'default', title: 'Default', fields: ['variation'] }],
+    properties: { variation: { title: 'Item Type', widget: 'blockTypeSelect' } },
+  };
+  const resolve = (pathInfo) => {
+    const prev = config.blocks?.blocksConfig;
+    config.blocks = config.blocks || {};
+    config.blocks.blocksConfig = blocksConfig;
+    const schema = createSchemaEnhancerFromRecipe(recipe)({
+      schema: baseSchema,
+      formData: { '@type': 'listing' },
+      intl,
+      blockPathMap: { 'listing-1': { blockType: 'listing', ...pathInfo } },
+      blockId: 'listing-1',
+    });
+    config.blocks.blocksConfig = prev;
+    return schema.properties.variation;
+  };
+
+  test('on a page (derived list) a restricted type is still an item type, and the default', () => {
+    const v = resolve({
+      // The page's add menu: everything not restricted — so no summary.
+      allowedSiblingTypes: ['listing', 'teaser', 'navItem'],
+      allowedSiblingTypesDerived: true,
+    });
+    expect(v.choices.map(([value]) => value)).toContain('summary');
+    expect(v.default).toBe('summary');
+  });
+
+  test('a container that lists its own allowedBlocks still decides alone', () => {
+    const v = resolve({ allowedSiblingTypes: ['navItem', 'listing'] });
+    expect(v.choices.map(([value]) => value)).toEqual(['navItem']);
+    expect(v.default).toBe('navItem');
+  });
+
+  test('a type disallowed below the listing stays out even on a page', () => {
+    const v = resolve({
+      allowedSiblingTypes: ['listing', 'teaser', 'navItem'],
+      allowedSiblingTypesDerived: true,
+      descendantDisallowedTypes: ['summary'],
+    });
+    expect(v.choices.map(([value]) => value)).not.toContain('summary');
+  });
+});
+
 /**
  * SURFACE MODEL — each field reduces to a comparison surface (string / number /
  * boolean / array) and every operator is valid only for specific surfaces,

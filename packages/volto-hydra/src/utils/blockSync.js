@@ -2626,14 +2626,22 @@ export function getBlockTypeChoices(options, blocksConfig, blockPathMap, blockId
   }
 
   let types;
+  // Set when the '..' parent list was derived rather than written out — see below.
+  let derivedDisallow = null;
   if (effectiveBlocksField) {
     if (effectiveBlocksField === '..') {
       // ".." means get sibling allowed types from parent container
       // This is available via blockPathMap[blockId].allowedSiblingTypes
       if (blockPathMap && blockId) {
         const pathInfo = blockPathMap[blockId];
-        if (pathInfo?.allowedSiblingTypes) {
+        if (pathInfo?.allowedSiblingTypes && !pathInfo.allowedSiblingTypesDerived) {
           types = pathInfo.allowedSiblingTypes;
+        } else if (pathInfo?.allowedSiblingTypesDerived) {
+          // A derived list is the region's ADD MENU — every type that is not
+          // `restricted`. Restriction keeps a type out of the menu, not out of
+          // the region, so as ITEM types every convertible type is offered
+          // (the fallback below), minus anything disallowed below this block.
+          derivedDisallow = pathInfo.descendantDisallowedTypes || [];
         }
       }
     } else if (formData) {
@@ -2653,7 +2661,7 @@ export function getBlockTypeChoices(options, blocksConfig, blockPathMap, blockId
   }
 
   // Try parent's allowedSiblingTypes from pathMap
-  if (!types && blockPathMap && blockId) {
+  if (!types && !derivedDisallow && blockPathMap && blockId) {
     const pathInfo = blockPathMap[blockId];
     if (pathInfo?.allowedSiblingTypes) {
       types = pathInfo.allowedSiblingTypes;
@@ -2665,6 +2673,9 @@ export function getBlockTypeChoices(options, blocksConfig, blockPathMap, blockId
     types = Object.keys(blocksConfig).filter(
       (type) => blocksConfig[type] && (filterConvertibleFrom || !blocksConfig[type].restricted),
     );
+    if (derivedDisallow?.length) {
+      types = types.filter((type) => !derivedDisallow.includes(type));
+    }
   }
 
   // Filter by filterConvertibleFrom (types with fieldMappings[source])

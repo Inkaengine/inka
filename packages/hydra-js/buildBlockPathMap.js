@@ -715,6 +715,12 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
           blocksConfig,
           disallow,
         ),
+        // The region named no allowedBlocks, so its list was DERIVED — every
+        // type that is not `restricted`, i.e. its add menu. `restricted` keeps a
+        // type out of that menu; it does not make it unwelcome here. A listing's
+        // item-type picker reads this to offer restricted item types (Inka's
+        // `summary`) on a page, where only the add menu leaves them out.
+        ...(!effectiveAllowedBlocks && { allowedSiblingTypesDerived: true }),
         allowedTemplates: fieldDef.allowedTemplates || null,
         ...(regionSlateRules && { slateRules: regionSlateRules }),
         maxSiblings: effectiveMaxLength,
