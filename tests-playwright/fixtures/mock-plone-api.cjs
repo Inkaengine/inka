@@ -2486,10 +2486,28 @@ app.post('/@export', async (req, res) => {
           const src = markdownBlobs.get(p);
           const field = c[BLOB_FIELD[c['@type']]];
           const file = field.filename || path.basename(field.blob_path);
-          const dest = path.join(treeRoot, rel.replace(/\/[^/]*$/, ''), file);
+          // The blob sits next to its parent folder's index.md; a root-level blob
+          // (rel with no slash) has parent '' — not itself.
+          const parentDir = rel.includes('/') ? rel.replace(/\/[^/]*$/, '') : '';
+          const dest = path.join(treeRoot, parentDir, file);
           if (src && fs.existsSync(src)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(src, dest); }
           continue;
         }
+        // A page (not an Image/File object) may still carry blob FIELDS — a lead
+        // image, a file field. Same shape (a value with a blob_path); the bytes
+        // live at that tree-relative blob_path. Copy every one so the archive is
+        // self-contained and re-mountable.
+        const copyFieldBlobs = (node) => {
+          if (Array.isArray(node)) { node.forEach(copyFieldBlobs); return; }
+          if (!node || typeof node !== 'object') return;
+          if (typeof node.blob_path === 'string') {
+            const bsrc = path.join(m.dirPath, node.blob_path);
+            const bdest = path.join(treeRoot, node.blob_path);
+            if (fs.existsSync(bsrc)) { fs.mkdirSync(path.dirname(bdest), { recursive: true }); fs.copyFileSync(bsrc, bdest); }
+          }
+          for (const v of Object.values(node)) copyFieldBlobs(v);
+        };
+        copyFieldBlobs(c);
         const folderish = c.is_folderish || (childrenByParent[p] || []).length > 0;
         const dest = path.join(treeRoot, rel === '' ? 'index.md' : (folderish ? `${rel}/index.md` : `${rel}.md`));
         fs.mkdirSync(path.dirname(dest), { recursive: true });
