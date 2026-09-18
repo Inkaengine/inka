@@ -136,7 +136,10 @@ function buildEmptyRegionCases(blocksConfig, blocks) {
  *  1. `no-example` — the container ALLOWS a listing and no content puts one
  *     there, so the pairing is never rendered by anything.
  *  2. `pinned-type-not-allowed` — the listing's type field pins a value (a
- *     static `default`, or a `choices` entry) that the container does not allow.
+ *     static `default`, a `choices` entry, or a recipe `default` with no
+ *     `blocksField` tying it to the container) that the container does not
+ *     allow. A recipe default WITH `blocksField` is resolved against the
+ *     container's allowed types, so it is a preference, not a pin.
  *     The container then imposes its own type at render while the listing's
  *     stored field mapping was computed for the pinned one.
  *  3. `item-type-without-default-mapping` — the container allows an item type
@@ -221,6 +224,13 @@ function collectListingContainerIssues(blocksConfig, blocks) {
         for (const choice of typeField.choices || []) {
           pinned.add(Array.isArray(choice) ? choice[0] : choice);
         }
+        // A recipe default is a pin only when nothing ties it to the container.
+        // With `blocksField` the choices ARE the container's allowed types and
+        // blockSync resolves the default against them (kept if allowed, else
+        // the first allowed), so it can never land outside them.
+        if (typeof recipe.default === 'string' && !recipe.blocksField) {
+          pinned.add(recipe.default);
+        }
         for (const itemType of pinned) {
           if (!offered.includes(itemType)) {
             issues.push({ kind: 'pinned-type-not-allowed', ...where, itemType });
@@ -240,6 +250,21 @@ function collectListingContainerIssues(blocksConfig, blocks) {
  */
 function subTypesInField(blockData, field) {
   const types = new Set();
+  // blocks_layout REGION: a blocks_layout field named `items` keeps its ids at
+  // `blocks_layout.items`, pointing into the shared `blocks` dict — the same
+  // lookup the runtime does (getChildEntries in packages/helpers). Reading only
+  // `blockData[field]` missed every container stored this way: discovery reported
+  // context navs as having no navItem and no listing example while two real
+  // pages had both.
+  const regionIds = blockData?.blocks_layout?.[field];
+  if (Array.isArray(regionIds)) {
+    const dict = blockData?.blocks || {};
+    for (const id of regionIds) {
+      const t = dict[id]?.['@type'];
+      if (typeof t === 'string') types.add(t);
+    }
+    return types;
+  }
   const value = blockData?.[field];
   if (!value) return types;
   // blocks_layout: { items: [...] } pointing into blockData.blocks

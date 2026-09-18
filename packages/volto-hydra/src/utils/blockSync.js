@@ -692,16 +692,31 @@ export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFi
         intl,
       );
 
+      // The default is a PREFERENCE, not a pin. Choices come from what this
+      // position allows (`blocksField: '..'` = the enclosing container's
+      // allowed types), and a default outside them is a value the container
+      // forbids — or, on a frontend that has no such block, a type that does not
+      // exist. Keep it where it is allowed; otherwise take the container's first
+      // allowed type; with nothing allowed, set none rather than an invalid one.
+      // Schema defaults are written into block data on load
+      // (applySchemaDefaultsToFormData), so this is what the listing becomes.
+      const allowed = choices.map(([value]) => value);
+      const resolvedDefault = allowed.includes(defaultValue)
+        ? defaultValue
+        : allowed[0];
+      const { default: _staleDefault, ...priorField } =
+        schema.properties?.[typeField] || {};
+
       // Create or update the typeField
       schema = {
         ...schema,
         properties: {
           ...schema.properties,
           [typeField]: {
-            ...(schema.properties?.[typeField] || {}),
+            ...priorField,
             title: title || schema.properties?.[typeField]?.title || 'Item Type',
             choices,
-            ...(defaultValue ? { default: defaultValue } : {}),
+            ...(resolvedDefault ? { default: resolvedDefault } : {}),
           },
         },
       };
