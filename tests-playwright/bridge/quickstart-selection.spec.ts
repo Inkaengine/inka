@@ -27,6 +27,7 @@ import { URLS } from '../ports';
 const QUICKSTART_FRONTENDS: Record<string, { contentPath?: string }> = {
   vanilla: {},
   nuxt: { contentPath: '/quickstart-card' },
+  nextjs: { contentPath: '/quickstart-card' },
 };
 const QUICKSTART_PROJECTS = new Set(Object.keys(QUICKSTART_FRONTENDS));
 

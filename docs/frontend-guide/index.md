@@ -59,7 +59,7 @@ Add Inka to a page in your framework. Each tab is a real, working starter — th
 
 ### Next.js
 
-```{literalinclude} ../quickstart/nextjs/page.jsx
+```{literalinclude} ../../examples/hydra-nextjs/src/app/quickstart-card/page.jsx
 :language: jsx
 ```
 
