@@ -291,7 +291,7 @@ test('listing-derived level + hierarchical sort: depth=2 listing renders mixed l
     // uid in its data-block-selector word-list (the <summary>) and
     // opens the enclosing <details>.
     await page.evaluate(() => {
-      const iframeEl = document.querySelector('iframe');
+      const iframeEl = document.querySelector('#previewIframe');
       iframeEl.contentWindow.postMessage({ type: 'SELECT_BLOCK', uid: 'snav-listing' }, '*');
     });
 
@@ -347,7 +347,7 @@ test('listing-derived level + hierarchical sort: depth=2 listing renders mixed l
     // whose `data-block-selector` word-list contains childUid, and
     // flip `details.open = true`.
     await page.evaluate((uid) => {
-      const iframeEl = document.querySelector('iframe');
+      const iframeEl = document.querySelector('#previewIframe');
       iframeEl.contentWindow.postMessage({ type: 'SELECT_BLOCK', uid }, '*');
     }, childUid);
 

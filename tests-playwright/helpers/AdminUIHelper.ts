@@ -1,11 +1,25 @@
 /**
  * Helper class for interacting with Volto Hydra admin UI in tests.
  */
-import { Page, Locator, FrameLocator, expect, ElementHandle } from '@playwright/test';
+import { Page, Frame, Locator, FrameLocator, expect, ElementHandle } from '@playwright/test';
 import { TEST_DATA_PREFIX } from './test-paths';
 import { showCaption, clearCaption } from './caption';
 import { URLS } from '../ports';
 import { randomUUID } from 'node:crypto';
+
+/**
+ * The preview iframe's Frame, for evaluating against the bridge's window
+ * globals (a FrameLocator can find elements but not evaluate). Found by id:
+ * the admin also hosts a hidden CMS proxy frame, so "the first child frame"
+ * is not the preview.
+ */
+export async function previewFrame(page: Page): Promise<Frame> {
+  const handle = await page.locator('#previewIframe').elementHandle();
+  if (!handle) throw new Error('No #previewIframe on the page');
+  const frame = await handle.contentFrame();
+  if (!frame) throw new Error('#previewIframe has no content frame');
+  return frame;
+}
 
 // Base test JWT — the mock API only checks for the "Bearer " prefix, never
 // validates. sub=admin, exp=4102444800 (2100-01-01). Each AdminUIHelper

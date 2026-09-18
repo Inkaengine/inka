@@ -28,7 +28,7 @@ test.describe('Tab reveal', () => {
     await expect(pyCode).toBeHidden();
 
     await page.evaluate((uid) => {
-      (document.querySelector('iframe') as HTMLIFrameElement).contentWindow!.postMessage(
+      (document.querySelector('#previewIframe') as HTMLIFrameElement).contentWindow!.postMessage(
         { type: 'SELECT_BLOCK', uid }, '*');
     }, 'tab-py');
 

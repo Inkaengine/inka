@@ -22,9 +22,11 @@ test.describe('Navigation and URL Handling', () => {
     const iframeElement = page.locator('#previewIframe');
     const iframeSrc = await iframeElement.getAttribute('src');
 
-    // Iframe src should exist and point to localhost
+    // Iframe src should exist and point at a local frontend (the test frontend
+    // is served on 127.0.0.1 so WordPress's SSRF guard accepts it; others on
+    // localhost).
     expect(iframeSrc, 'Iframe src attribute should exist').toBeTruthy();
-    expect(iframeSrc).toContain('localhost');
+    expect(['localhost', '127.0.0.1']).toContain(new URL(iframeSrc!).hostname);
     expect(iframeSrc).not.toContain('example.com');
   });
 
@@ -465,7 +467,7 @@ test.describe('Navigation and URL Handling', () => {
     // Get the current iframe src (should be path-based: test-frontend host/test-page)
     const iframeElement = page.locator('#previewIframe');
     const srcBefore = await iframeElement.getAttribute('src');
-    expect(srcBefore).toContain(`localhost:${PORTS.testFrontend}${TEST_DATA_PREFIX}/test-page`);
+    expect(srcBefore).toContain(`${URLS.testFrontend}${TEST_DATA_PREFIX}/test-page`);
     expect(srcBefore).not.toContain('#');
 
     // Open frontend switcher panel
@@ -492,7 +494,7 @@ test.describe('Navigation and URL Handling', () => {
       await page.locator('#toolbar-frontend-switcher').click();
       await expect(panel).toBeVisible({ timeout: 5000 });
     }
-    const hashUrlItem = panel.locator('.frontend-switcher-url-item', { hasText: `localhost:${PORTS.testFrontend}/#/` });
+    const hashUrlItem = panel.locator('.frontend-switcher-url-item', { hasText: `${new URL(URLS.testFrontend).host}/#/` });
     await expect(hashUrlItem).toBeVisible({ timeout: 5000 });
     await hashUrlItem.click();
 

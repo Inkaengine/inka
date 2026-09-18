@@ -58,7 +58,7 @@ test.describe('Reveal a block nested under the handle', () => {
 
     // Select it the way the admin does.
     await page.evaluate((uid) => {
-      const el = document.querySelector('iframe') as HTMLIFrameElement;
+      const el = document.querySelector('#previewIframe') as HTMLIFrameElement;
       el.contentWindow!.postMessage({ type: 'SELECT_BLOCK', uid }, '*');
     }, 'grid-inner-slate');
 
@@ -79,7 +79,7 @@ test.describe('Reveal a block nested under the handle', () => {
     await expect(deep).toBeHidden();
 
     await page.evaluate((uid) => {
-      const el = document.querySelector('iframe') as HTMLIFrameElement;
+      const el = document.querySelector('#previewIframe') as HTMLIFrameElement;
       el.contentWindow!.postMessage({ type: 'SELECT_BLOCK', uid }, '*');
     }, 'deep-slate');
 

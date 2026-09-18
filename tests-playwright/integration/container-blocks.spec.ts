@@ -5190,7 +5190,7 @@ test.describe('Accordion Block', () => {
 
     // Drive selection of the hidden grandchild like the admin would.
     await page.evaluate((uid) => {
-      const iframeEl = document.querySelector('iframe');
+      const iframeEl = document.querySelector('#previewIframe');
       iframeEl.contentWindow.postMessage({ type: 'SELECT_BLOCK', uid }, '*');
     }, 'panel2-hidden-text');
 

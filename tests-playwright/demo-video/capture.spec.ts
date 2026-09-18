@@ -106,7 +106,7 @@ test('hydra-demo — homepage hero loop', async ({ page }) => {
   fs.writeFileSync(TRIM_MARKER_FILE, String(trimMs));
   console.log(`[demo-video] trim point: ${trimMs.toFixed(0)} ms`);
 
-  const iframe = page.frameLocator('iframe');
+  const iframe = page.frameLocator('#previewIframe');
 
   // Playwright 1.61 screencast: an animated pointer that tracks between action points,
   // over the iframe too. Per-action labels are suppressed — caption() narrates each beat.
