@@ -93,6 +93,16 @@ const STORAGE_FRONTENDS: Record<string, string> = {
   // F7 is hash-routed: the editor needs the `#!` or it loads the app shell
   // without a route.
   f7: `${URLS.f7}/#!`,
+  // The journeys pick their CMS through the FRONTEND's ?adapter= and ?cms=, so
+  // the saved frontend is the only thing that makes a journey Drupal rather than
+  // Plone. These used to be static files hardcoding iframe_url_3001, 8889 and
+  // 8794: on any other ports the cookie name missed, the admin loaded the
+  // default frontend with no ?adapter=, and the proxy silently built a Plone
+  // adapter for a Drupal journey — every request 404ing against the wrong CMS.
+  'journey-plone': `${URLS.testFrontend}/?adapter=plone&cms=${URLS.mockApi}`,
+  'journey-plone-seeded': `${URLS.testFrontend}/?adapter=plone&cms=http://localhost:${PORTS.plonSeeded}`,
+  'journey-drupal': `${URLS.testFrontend}/?adapter=drupal&cms=http://127.0.0.1:${PORTS.mockDrupal}`,
+  'journey-wordpress': `${URLS.testFrontend}/?adapter=wordpress&cms=http://127.0.0.1:${PORTS.wordpress}`,
 };
 
 export const GENERATED_DIR = path.resolve(__dirname, '.generated');

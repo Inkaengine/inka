@@ -315,7 +315,7 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 720 },
         permissions: ['clipboard-read', 'clipboard-write'],
-        storageState: 'tests-playwright/fixtures/storage-journey-plone.json',
+        storageState: 'tests-playwright/.generated/storage-journey-plone.json',
       },
     },
     {
@@ -329,7 +329,7 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 720 },
         permissions: ['clipboard-read', 'clipboard-write'],
-        storageState: 'tests-playwright/fixtures/storage-journey-plone-seeded.json',
+        storageState: 'tests-playwright/.generated/storage-journey-plone-seeded.json',
       },
     },
     {
@@ -342,7 +342,7 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 720 },
         permissions: ['clipboard-read', 'clipboard-write'],
-        storageState: 'tests-playwright/fixtures/storage-journey-drupal.json',
+        storageState: 'tests-playwright/.generated/storage-journey-drupal.json',
       },
     },
     {
@@ -354,7 +354,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 720 },
-        storageState: 'tests-playwright/fixtures/storage-journey-wordpress.json',
+        storageState: 'tests-playwright/.generated/storage-journey-wordpress.json',
       },
     },
     {
