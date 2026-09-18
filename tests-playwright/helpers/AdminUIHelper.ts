@@ -6,6 +6,7 @@ import { TEST_DATA_PREFIX } from './test-paths';
 import { showCaption, clearCaption } from './caption';
 import { URLS } from '../ports';
 import { randomUUID } from 'node:crypto';
+import { selectablePoint } from './selectablePoint';
 
 // Base test JWT — the mock API only checks for the "Bearer " prefix, never
 // validates. sub=admin, exp=4102444800 (2100-01-01). Each AdminUIHelper
@@ -695,17 +696,28 @@ export class AdminUIHelper {
     // is added asynchronously by materializeHydraComments after render.
     await block.waitFor({ state: 'attached', timeout: 10000 });
 
-    // Determine click target - either specific selector within block, or block itself
-    const clickTarget = selector ? block.locator(selector) : block;
-
-    // Scroll click target into view inside the iframe first
-    await clickTarget.scrollIntoViewIfNeeded();
-
-    // Wait for click target to be visible
-    await clickTarget.waitFor({ state: 'visible', timeout: 5000 });
-
-    await this.demoStep(clickTarget);
-    await clickTarget.click();
+    if (selector) {
+      const clickTarget = block.locator(selector);
+      await clickTarget.scrollIntoViewIfNeeded();
+      await clickTarget.waitFor({ state: 'visible', timeout: 5000 });
+      await this.demoStep(clickTarget);
+      await clickTarget.click();
+    } else {
+      // Where a click SELECTS the block — not blindly the centre of its first
+      // element, which for a block of several elements can be a link the editor
+      // lets navigate (see selectablePoint). The centre is still tried first.
+      await blockLocator.filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 5000 });
+      const point = await block.evaluate(selectablePoint, blockId);
+      if (!point) {
+        throw new Error(
+          `clickBlockInIframe: nowhere on block ${blockId} selects it — every spot is a ` +
+            'link the editor lets navigate, a reveal handle, a button or a form control',
+        );
+      }
+      const clickTarget = blockLocator.nth(point.index);
+      await this.demoStep(clickTarget);
+      await clickTarget.click({ position: { x: point.x, y: point.y } });
+    }
 
     if (waitForToolbar) {
       // Try to wait for the target block to be selected
@@ -997,8 +1009,9 @@ export class AdminUIHelper {
     const iframe = this.getIframe();
     const blockLocator = iframe.locator(`[data-block-uid="${blockId}"]`);
 
-    // Use first() for multi-element blocks
-    await blockLocator.first().waitFor({ state: 'visible', timeout });
+    // Any of a multi-element block's elements — the first in the DOM may be one
+    // that is hidden (a closed banner the block also draws into).
+    await blockLocator.filter({ visible: true }).first().waitFor({ state: 'visible', timeout });
 
     // Wait for iframe drag handle to appear and become visible
     // The drag handle is created with display:none and becomes visible when sendBlockSelected runs
