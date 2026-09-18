@@ -887,6 +887,46 @@ export class Bridge {
   }
 
   /**
+   * Where a reveal handle is SEEN. An `<option>` has no box of its own — a
+   * browser reports no client rects for it while its dropdown is closed — so it
+   * reads as hidden and was never picked. It is on screen exactly when its
+   * `<select>` is.
+   */
+  static revealSurface(el) {
+    return (el?.tagName === 'OPTION' && el.closest('select')) || el;
+  }
+
+  /**
+   * Reveal through a form control by ANSWERING it, as a person would, rather
+   * than clicking it. Returns true when it handled the element.
+   *
+   * - `<option>`: select it in its dropdown (a click on an option does
+   *   nothing) and fire input/change on the select.
+   * - checkbox / radio: tick it — and leave an already-ticked one alone. A
+   *   click TOGGLES a checkbox, so revealing through a ticked one unticked it
+   *   and hid the block being revealed.
+   *
+   * Anything else (a button, a tab, a link) is still clicked by the caller.
+   */
+  static answerRevealHandle(el) {
+    if (el?.tagName === 'OPTION') {
+      const select = el.closest('select');
+      if (!select) return false;
+      if (!el.selected) {
+        el.selected = true;
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      return true;
+    }
+    if (el?.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
+      if (!el.checked) el.click();
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * The tokens of a `data-block-selector`, from the element or the raw value.
    * Every reader of the attribute goes through here: the word list is the
    * grammar (`uid`, `uid#field`, `uid:direction`, `+1`, `-1`), and splitting it
@@ -12235,7 +12275,7 @@ export class Bridge {
     // reachable; if none is, fall through to the ancestor walk and open from the
     // outside in, and these become usable on a later pass.
     const directSelector =
-      candidates.find((el) => !this.isElementHidden(el)) || null;
+      candidates.find((el) => !this.isElementHidden(Bridge.revealSurface(el))) || null;
     if (directCandidate && !directSelector) {
       log(`tryMakeBlockVisible: handle for ${targetUid} is itself hidden, opening its ancestors first`);
     }
@@ -12336,6 +12376,16 @@ export class Bridge {
       // +1/-1 walk because that walk needs the target element to exist, and the
       // whole point of this branch is that it does not yet.
       const filled = this.fillDeclaredInputs(targetUid);
+      // Filling may be the whole reveal: a form's conditional question appears
+      // the moment the question it depends on is answered. Submitting then
+      // would send a contact form out from under an author in the editor.
+      // Submit only when filling alone did not bring the block into view — the
+      // search case, where the answer arrives with the query's results.
+      const revealed = this.queryBlockElement(targetUid);
+      if (revealed && !this.isElementHidden(revealed)) {
+        log(`tryMakeBlockVisible: filling ${targetUid}'s declared input revealed it`);
+        return true;
+      }
       const form = filled[filled.length - 1]?.closest('form');
       if (!form) {
         log(`tryMakeBlockVisible: declared inputs for ${targetUid} but no form to submit`);
@@ -12502,6 +12552,8 @@ export class Bridge {
       log(`tryMakeBlockVisible: opened <details> via summary`);
     } else if (expandedAttr === 'true') {
       log(`tryMakeBlockVisible: target trigger already expanded, skipping click`);
+    } else if (Bridge.answerRevealHandle(clickedSelector)) {
+      log(`tryMakeBlockVisible: answered ${clickedSelector.tagName.toLowerCase()} handle`);
     } else {
       clickedSelector.click();
       log(`tryMakeBlockVisible: click() called`);
