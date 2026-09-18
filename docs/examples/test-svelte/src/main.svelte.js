@@ -1,10 +1,12 @@
+import { mount } from 'svelte';
 import { initBridge } from '$hydra';
 import { expandListingBlocks, ploneFetchItems, contentPath, expandTemplatesSync } from '$helpers';
 import docPageDefinitions from '$schemas';
+import App from './App.svelte';
+
 const docBlocksConfig = Object.fromEntries(
   Object.values(docPageDefinitions).flatMap(page => Object.entries(page.blocks))
 );
-import App from './App.svelte';
 
 // Expose hydra.js helpers globally for doc example components
 window.expandListingBlocks = expandListingBlocks;
@@ -13,21 +15,16 @@ window.ploneFetchItems = ploneFetchItems;
 window._API_URL = 'http://localhost:8888';
 window._contentPath = (url) => contentPath(url, window._API_URL);
 
-let app;
+// Svelte 5: mount once, then drive re-renders by mutating reactive props
+// (replacing Svelte 4's `new App({...})` + `app.$set(...)`).
+const props = $state({ items: [], content: {} });
+mount(App, { target: document.getElementById('app'), props });
 
 function renderApp(content) {
   const layout = content.blocks_layout?.items || [];
   const blocks = content.blocks || {};
-  const items = layout.map(id => ({ ...blocks[id], '@uid': id }));
-
-  if (app) {
-    app.$set({ items, content });
-  } else {
-    app = new App({
-      target: document.getElementById('app'),
-      props: { items, content },
-    });
-  }
+  props.items = layout.map(id => ({ ...blocks[id], '@uid': id }));
+  props.content = content;
 }
 
 // Init bridge — Volto sends content via onEditChange, no API fetch needed
