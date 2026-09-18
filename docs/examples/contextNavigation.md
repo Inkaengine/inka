@@ -39,7 +39,7 @@ blocks-matched: |
 
 A vertical navigation list for grouped pages — a left sidebar on desktop and a collapsible disclosure at the top on mobile. Each row is a navItem (hand-added link) and/or a listing (auto-populated from a path query). The active link is detected from the current URL and gets aria-current="page" plus a .current class. Named after Plone's @contextnavigation endpoint, which serves the same purpose.
 
-<block type="contextNavigation" data-json='{"ariaLabel":"Section navigation","blocks":{"nav-1":{"@type":"navItem","label":"Architecture","href":[{"@id":"/docs/architecture"}]},"nav-2":{"@type":"navItem","label":"Custom blocks","href":[{"@id":"/docs/custom-blocks"}]},"nav-3":{"@type":"navItem","label":"Listings","href":[{"@id":"/docs/listings"}]}},"blocks_layout":{"items":["nav-1","nav-2","nav-3"]}}' />
+<block type="contextNavigation" data-json='{"ariaLabel":"Section navigation","blocks":{"nav-1":{"@type":"navItem","label":"Architecture","href":[{"@id":"/docs/architecture"}]},"nav-2":{"@type":"navItem","label":"Custom blocks","href":[{"@id":"/docs/frontend-guide/custom-blocks"}]},"nav-3":{"@type":"navItem","label":"Listings","href":[{"@id":"/docs/frontend-guide/listings"}]}},"blocks_layout":{"items":["nav-1","nav-2","nav-3"]}}' />
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-contextNavigation">
 
