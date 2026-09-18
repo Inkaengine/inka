@@ -495,7 +495,19 @@
                     const response = await fetch(`${pageCms.base}/++api++${contentPath}?expand=navigation`, { headers: fetchHeaders });
                     content = await response.json();
                 } else {
-                    content = await adapterGetContent(cmsAdapter(), contentPath, { expand: ['navigation'] });
+                    try {
+                        content = await adapterGetContent(cmsAdapter(), contentPath, { expand: ['navigation'] });
+                    } catch (err) {
+                        // A path that is not a page in the CMS — an add form's
+                        // `/news/add` above all. The Plone branch gets a 404 body
+                        // back and carries on, because in edit mode the admin
+                        // supplies the page over the bridge; an adapter throws
+                        // instead, and letting that abort init broke every
+                        // journey step that creates a page. Hand init the same
+                        // thing the Plone branch would. Anything else is real.
+                        if (err?.code !== 'NOT_FOUND') throw err;
+                        content = { error: { type: 'NotFound', message: err.message } };
+                    }
                 }
 
                 // Helper to load templates
