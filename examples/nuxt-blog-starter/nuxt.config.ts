@@ -222,6 +222,11 @@ export default defineNuxtConfig({
       alias: {
         // Always use workspace source — Vite/Nuxt bundles tabbable automatically
         '@hydra-js/hydra.js': resolve(hydraJsPath, 'hydra.src.js'),
+        // The adapter the proxy frame hosts (pages/hydra-proxy.html.vue). This
+        // app sits outside the pnpm workspace, so the adapter and the core it
+        // imports are resolved from source like hydra-js itself.
+        '@volto-hydra/hydra-adapters-plone': resolve(hydraJsPath, '../hydra-adapters-plone/index.js'),
+        '@volto-hydra/hydra-adapters-core': resolve(hydraJsPath, '../hydra-adapters-core/baseAdapter.js'),
         '@hydra-js/helpers': resolve(helpersPath, 'index.js'),
         '@hydra-js': hydraJsPath,
         '@test-fixtures': fixturesPath

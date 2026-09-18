@@ -76,6 +76,7 @@
   import store from '../js/store';
   import SideMenu from '../pages/sidenav.vue'
   import { initBridge, isEditMode } from '@hydra-js/hydra.js';
+  import { CMS_BASE_URL } from '../js/cms.js';
   // docPageDefinitions is the canonical schema bundle for the doc-blocks
   // examples. Without registering blocks, addNodeIdsToAllSlateFields can't
   // identify slate fields like highlight.description, so the bridge skips
@@ -146,7 +147,7 @@
           console.log('[F7-EDIT] onEditChange, firstBlock:', firstBlock, 'text:', firstText?.substring(0, 30));
           store.state.content = data;
           // Always set apiBase — needed for listing/search API calls
-          store.state.apiBase = import.meta.env.VITE_API_BASE_URL || "https://hydra-api.pretagov.com";
+          store.state.apiBase = CMS_BASE_URL;
         },
       });
       }

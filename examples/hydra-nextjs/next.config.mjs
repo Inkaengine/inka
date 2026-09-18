@@ -23,6 +23,17 @@ const nextConfig = {
       __dirname,
       '../../packages/helpers/index.js',
     );
+    // The adapter the proxy frame hosts (src/app/hydra-proxy.html). This app
+    // sits outside the pnpm workspace, so the adapter and the core it imports
+    // are resolved from source like hydra-js itself.
+    config.resolve.alias['@volto-hydra/hydra-adapters-plone'] = path.resolve(
+      __dirname,
+      '../../packages/hydra-adapters-plone/index.js',
+    );
+    config.resolve.alias['@volto-hydra/hydra-adapters-core'] = path.resolve(
+      __dirname,
+      '../../packages/hydra-adapters-core/baseAdapter.js',
+    );
     // The one block registry every frontend reads. The Nuxt example and the
     // mock test frontend already import it; this example used to build its own
     // from the docs bundle, which is how five block types ended up unregistered
