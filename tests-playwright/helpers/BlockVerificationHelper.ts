@@ -379,17 +379,42 @@ export async function revealBlock(iframe: FrameLocator, blockUid: string): Promi
   // target. That is what the editor does on select, so the harness asks the
   // bridge instead of re-deriving carousel navigation here — a second
   // implementation would drift from the one users actually get.
-  // tryMakeBlockVisible can return false for a paged container child: the
-  // container's page-step control ([data-block-selector] +N) renders ASYNCHRONOUSLY.
-  // A Nuxt grid in the editor only mounts its pager after FORM_DATA arrives and a
-  // reactivity tick or two settles — measured at ~2-5s in CI — so an instant probe
-  // (and a short retry) reports "no page-step control on its container" while the
-  // pager is still on its way. Poll until the reveal takes hold, up to a generous
-  // deadline: a genuinely unrevealable block just returns false the whole time
-  // (bounded, no spin), while a slow pager gets the seconds it needs to appear.
+  //
+  // Whether a `false` is worth RETRYING depends on WHY the block is not visible,
+  // and the two reasons want opposite handling:
+  //
+  //   - Laid out but off-SCREEN (a carousel slide / paged-grid child at
+  //     translate-x-full, or clipped past its container's edge). It HAS client
+  //     rects. Its page-step control ([data-block-selector] +N) can render
+  //     ASYNCHRONOUSLY — a Nuxt grid mounts its pager only after FORM_DATA and a
+  //     reactivity tick or two, ~2-5s in CI — so an instant probe reports "no
+  //     page-step control" while the pager is still on its way. This is the case
+  //     the retry exists for.
+  //   - CSS-HIDDEN (display:none / hidden / visibility:hidden). A conditional
+  //     form field the enhancer hides until its question is answered is the
+  //     canonical one: there is NO paging control, and none is coming — it is
+  //     revealed by answering another field, not by a container the harness can
+  //     click. tryMakeBlockVisible returns false the instant it looks, and will
+  //     keep returning false forever, so retrying just spins the reveal for the
+  //     whole deadline and blows the test's budget before anything can settle.
+  //
+  // So only POLL for a block that is off-screen-but-laid-out; a CSS-hidden block
+  // gets a single attempt and then bails, the way it did before the async-pager
+  // retry was added. checkVisibility() is the same primitive isElementHidden and
+  // Playwright use, so this reads hidden-ness exactly as the bridge does.
+  const offScreenNotCssHidden =
+    exists &&
+    (await block
+      .evaluate((node) =>
+        typeof (node as any).checkVisibility === 'function'
+          ? (node as HTMLElement).checkVisibility({ checkVisibilityCSS: true })
+          : true,
+      )
+      .catch(() => false));
+
   let clicked = false;
-  const revealDeadline = Date.now() + 12000;
-  for (let attempt = 0; !clicked && Date.now() < revealDeadline; attempt++) {
+  const revealDeadline = Date.now() + (offScreenNotCssHidden ? 12000 : 0);
+  for (let attempt = 0; !clicked && (attempt === 0 || Date.now() < revealDeadline); attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
     clicked = await iframe
       .locator('body')
