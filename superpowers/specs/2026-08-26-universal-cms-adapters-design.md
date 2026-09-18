@@ -847,14 +847,27 @@ Half of the direction is already built. `ADAPTER_READY` carries `cmsBaseUrl`,
 and the admin adopts it as its `apiPath` (`bridge/client.js`). The admin already
 learns its CMS from the adapter rather than from its own settings.
 
-The other half: the adapter also announces its frontends. The frontend is the
-one party that knows both its own URL and its CMS, so it is the right source for
-both. Adding a site in the admin then becomes adding an adapter: the user enters
-ONE URL, the proxy's, and everything else arrives in the announcement.
+The other half: the adapter also announces its frontends. Adding a site in the
+admin then becomes adding an adapter: the user enters ONE URL, the proxy's, and
+everything else arrives in the announcement.
 
-That one URL is not an arbitrary bootstrap. It is exactly the trust boundary the
-section above says the site owner must choose, so the configuration this spec
-already requires becomes the only configuration there is.
+**A frontend does not need to know about adapters at all.** It renders straight
+from the CMS API when nobody is editing, and even while editing, its own fetches
+(navigation, listings) go to the CMS directly. The adapter is purely an editing
+concern. The only reason the proxy sits on the frontend today is the convention
+above — the admin finds it by rewriting the frontend URL.
+
+What the proxy's host does have to satisfy is the trust boundary: it holds the
+credential, so it must be an origin the site owner trusts, and never the admin's
+own origin, or the admin would hold the credential after all. The CMS is the
+natural host. It already holds its own credentials, so serving the adapter from
+it adds no trust that was not there, and a CMS often knows its frontends already
+(Plone's site settings, WordPress's site URL). A self-hosted Inka could serve it
+too, from an origin separate from the admin's.
+
+So that one URL is not an arbitrary bootstrap. It is exactly the trust boundary
+the section above says the site owner must choose, and the configuration this
+spec already requires becomes the only configuration there is.
 
 Two constraints for when it is built:
 
@@ -870,10 +883,13 @@ Two constraints for when it is built:
 It extends to "More than one backend" above without change: N adapters is N
 proxy URLs, each announcing its own frontends and CMS.
 
-Until then the env vars stay separate. The risk they carry is a frontend's pages
-and its proxy disagreeing about the CMS. The F7 example avoids that by reading
-the backend from one module (`src/js/cms.js`) in both; Nuxt and Next.js read a
-single config value in both places.
+Until then the env vars stay separate, and the example apps (Nuxt, Next.js, F7)
+each serve `/hydra-proxy.html` so the convention finds an adapter. That is a
+stopgap: it makes every frontend ship an adapter, which is not the model. When
+adding an adapter lands, those proxies go and the frontends know nothing about
+adapters again. Meanwhile the risk is a frontend's pages and its proxy
+disagreeing about the CMS; the F7 example reads the backend from one module
+(`src/js/cms.js`) in both, and Nuxt and Next.js read a single config value.
 
 ### What this retires
 
