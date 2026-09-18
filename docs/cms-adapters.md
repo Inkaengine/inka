@@ -74,24 +74,27 @@ npm install @volto-hydra/hydra-adapters-plone
 # or @volto-hydra/hydra-adapters-drupal
 ```
 
-Then hand it to `initBridge` alongside your existing options. This is the same `initBridge` call from [Build a frontend](./build-a-frontend.md) — the adapter is one more option on it.
+Then give your frontend one more page, served at **`/hydra-proxy.html`**, that constructs the adapter and hands it to `connectProxy`. That page is where the adapter lives.
 
 ### Js
 
 ```js
-import { initBridge } from '@volto-hydra/hydra-js';
+import { connectProxy } from '@volto-hydra/hydra-js';
 import { PloneAdapter } from '@volto-hydra/hydra-adapters-plone';
 
-initBridge({
-  adapter: new PloneAdapter({
-    cmsBaseUrl: 'https://cms.example.com',
-    // Called on every request, so a refreshed session is picked up without
-    // rebuilding the adapter.
-    getAuthToken: () => localStorage.getItem('token'),
-  }),
-  onEditChange: (formData) => renderPage(formData),
-});
+const cmsBaseUrl = 'https://cms.example.com';
+// The admin passes the session it already has; read it on every request, so
+// a renewed token is picked up without rebuilding the adapter.
+const token = new URLSearchParams(window.location.search).get('access_token');
+
+connectProxy(new PloneAdapter({ cmsBaseUrl, getAuthToken: () => token }), { cmsBaseUrl });
 ```
+
+The admin loads this page once, in a hidden iframe, and sends every CMS request to it for the whole editing session. It is a page of its own, rather than part of the page being edited, so that it survives whatever the editor navigates to: the preview is replaced as the editor moves around, and an adapter living there would take its in-flight requests with it. Keep it minimal: it should render nothing and navigate nowhere.
+
+Point it at the same CMS your site renders from, or the admin will edit one site while the preview shows another. Your pages still call `initBridge` exactly as in [Build a frontend](./build-a-frontend.md); the adapter is not passed there.
+
+The example apps each serve one, written the way their framework would: Nuxt as a page (`pages/hydra-proxy.html.vue`), Next.js as an app-router route (`src/app/hydra-proxy.html/page.js`), and Framework7 as a second Vite entry (`src/hydra-proxy.html`).
 
 Each adapter takes the options its CMS needs:
 
