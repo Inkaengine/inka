@@ -443,7 +443,12 @@ export class PloneAdapter extends BaseAdapter {
       case 'http': {
         const { op, path, data, headers } = args;
         const method = op === 'del' ? 'DELETE' : op.toUpperCase();
-        return this.fetchJson(path, { method, body: data, headers });
+        const request = () => this.requestJson(path, { method, body: data, headers });
+        // Past the read cache: these are the admin's own requests, and Volto
+        // keeps its own store — when it asks again it means it (the template
+        // re-fetch on unlock exists to replace a stale copy). Writes are
+        // invalidated around by dispatchWithInvalidation already.
+        return method === 'GET' ? this.readWithRetry(request) : request();
       }
 
       case 'content.get': {
