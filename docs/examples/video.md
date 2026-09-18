@@ -42,7 +42,7 @@ Embeds a video from a URL. Detects YouTube links and renders an iframe embed; ot
 
 <block type="image">
 
-![The video example block being edited in Volto Hydra](/docs/images/video-edit.png)
+![The video example block being edited in Inka](/docs/images/video-edit.png)
 
 </block>
 

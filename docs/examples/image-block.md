@@ -49,7 +49,7 @@ Displays an image with optional alt text and link. Supports the image picker wid
 
 <block type="image">
 
-![The image-block example block being edited in Volto Hydra](/docs/images/image-block-edit.png)
+![The image-block example block being edited in Inka](/docs/images/image-block-edit.png)
 
 </block>
 

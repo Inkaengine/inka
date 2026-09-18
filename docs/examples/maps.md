@@ -40,7 +40,7 @@ Embeds a map from a URL (Google Maps, OpenStreetMap, etc.) using an iframe. The 
 
 <block type="image">
 
-![The maps example block being edited in Volto Hydra](/docs/images/maps-edit.png)
+![The maps example block being edited in Inka](/docs/images/maps-edit.png)
 
 </block>
 

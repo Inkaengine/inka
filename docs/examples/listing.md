@@ -52,7 +52,7 @@ Displays a list of content items from a query. The listing block fetches items f
 
 <block type="image">
 
-![The listing example block being edited in Volto Hydra](/docs/images/listing-edit.png)
+![The listing example block being edited in Inka](/docs/images/listing-edit.png)
 
 </block>
 

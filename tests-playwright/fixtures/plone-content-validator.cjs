@@ -96,9 +96,13 @@ function* walkData(contentDir) {
  * Walks the entire content tree (not just direct children) so nested
  * pages catch the same failures as top-level ones.
  */
-function validate(contentDir) {
+function validate(contentDir, { allowMissingBlobs = false } = {}) {
   const errors = [];
   const warnings = [];
+  // Generated doc assets are git-ignored; a structure-only check on a fresh
+  // checkout has not regenerated them. Under allowMissingBlobs a bytes-less
+  // blob is a warning, not an error (a real export keeps it fatal).
+  const missingBlob = (msg) => (allowMissingBlobs ? warnings : errors).push(msg);
   const stats = { dataFiles: 0, blobFiles: 0 };
 
   const metaPath = path.join(contentDir, '__metadata__.json');
@@ -196,7 +200,7 @@ function validate(contentDir) {
       } else if (blobPath) {
         const fullBlob = path.join(contentDir, blobPath);
         if (!fs.existsSync(fullBlob)) {
-          errors.push(`  ${entry} blob_path file missing: ${blobPath}`);
+          missingBlob(`  ${entry} blob_path file missing: ${blobPath}`);
         }
         if (!listedBlobs.has(blobPath)) {
           warnings.push(`  ${entry} blob_path not in _blob_files_: ${blobPath}`);
@@ -213,7 +217,7 @@ function validate(contentDir) {
       const blobPath = (data.file || {}).blob_path || '';
       if (blobPath) {
         if (!fs.existsSync(path.join(contentDir, blobPath))) {
-          errors.push(`  ${entry} blob_path file missing: ${blobPath}`);
+          missingBlob(`  ${entry} blob_path file missing: ${blobPath}`);
         }
         if (!listedBlobs.has(blobPath)) {
           warnings.push(`  ${entry} blob_path not in _blob_files_: ${blobPath}`);
@@ -292,11 +296,13 @@ function validate(contentDir) {
 /**
  * Graph integrity. Mirrors test-content.py.
  */
-function checkIntegrity(source, { schemaFor } = {}) {
+function checkIntegrity(source, { schemaFor, allowMissingBlobs = false } = {}) {
   const onDisk = typeof source === 'string';
   const contentDir = onDisk ? source : null;
   const errors = [];
   const warnings = [];
+  // See validate(): a bytes-less generated blob is a warning under this flag.
+  const missingBlob = (msg) => (allowMissingBlobs ? warnings : errors).push(msg);
   const stats = {
     items: 0,
     imagesOk: 0, imagesBroken: 0, imagesPlaceholder: 0,
@@ -441,7 +447,7 @@ function imageDimensions(file) {
           stats.imagesOk += 1;
         }
       } else {
-        errors.push(`  ${rel}: blob file missing: ${blobPath}`);
+        missingBlob(`  ${rel}: blob file missing: ${blobPath}`);
         stats.imagesBroken += 1;
       }
     } else {

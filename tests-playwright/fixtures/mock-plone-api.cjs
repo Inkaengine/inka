@@ -2146,7 +2146,7 @@ const SIBLING_DEFAULTS = {
  * @param {string[]} [opts.siblingsFrom]       dirs to copy the 6 siblings from (first that has each wins)
  * @returns the written __metadata__
  */
-function writeDistribution(dest, items, { positionOf = () => undefined, blobSourceOf, siblingsFrom = [] } = {}) {
+function writeDistribution(dest, items, { positionOf = () => undefined, blobSourceOf, siblingsFrom = [], allowMissingBlobs = false } = {}) {
   const destContent = path.join(dest, 'content');
   fs.rmSync(destContent, { recursive: true, force: true });
   fs.mkdirSync(destContent, { recursive: true });
@@ -2175,6 +2175,14 @@ function writeDistribution(dest, items, { positionOf = () => undefined, blobSour
       if (!blobPath) continue;
       const src = blobSourceOf(urlPath, field, blobPath);
       if (!src || !fs.existsSync(src)) {
+        // Generated doc assets (screenshots, demo video) are git-ignored and
+        // regenerated at deploy time. A deploy MUST have them (default: throw),
+        // but a structure-only check on a fresh checkout has not; there, skip
+        // the bytes-less blob with a warning rather than fail the export.
+        if (allowMissingBlobs) {
+          console.warn(`${urlPath}: no bytes for ${field}.blob_path "${blobPath}" (looked at ${src}) — skipping (allowMissingBlobs)`);
+          continue;
+        }
         throw new Error(`${urlPath}: no bytes for ${field}.blob_path "${blobPath}" (looked at ${src})`);
       }
       const filename = (data[field].filename) || path.basename(blobPath);
@@ -2228,7 +2236,7 @@ function writeDistribution(dest, items, { positionOf = () => undefined, blobSour
  * mount's dir (its blob_path is relative to that content root). Returns the
  * written __metadata__, or null when there is no content to export.
  */
-function buildDistributionFromMemory(dest) {
+function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
   // Only genuine content-source mounts are exportable: a plone.exportimport tree
   // (has __metadata__.json) or a markdown tree (has index.md). A loose fixture
   // mount like /_test_data is neither — it holds intentionally-malformed test
@@ -2263,6 +2271,7 @@ function buildDistributionFromMemory(dest) {
     positionOf: (uid) => uidPositionMap[uid],
     blobSourceOf,
     siblingsFrom,
+    allowMissingBlobs,
   });
 }
 
@@ -2284,7 +2293,7 @@ function buildDistributionFromMemory(dest) {
  */
 app.post('/@export', async (req, res) => {
   await ready;
-  const { format = 'json', prototypes = {} } = req.body || {};
+  const { format = 'json', prototypes = {}, allowMissingBlobs = false } = req.body || {};
 
   if (format === 'markdown') {
     const { emitPage, parsePrototypes } = await getEngine();
@@ -2309,15 +2318,15 @@ app.post('/@export', async (req, res) => {
   // distribution. Build it in a temp dir, validate, tar, stream, clean up.
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'plone-export-'));
   try {
-    const merged = buildDistributionFromMemory(staging);
+    const merged = buildDistributionFromMemory(staging, { allowMissingBlobs });
     if (!merged) {
       return res.status(409).json({ error: 'no content to export' });
     }
     // Never ship a tree the importer would choke on.
     const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
     const contentDir = path.join(staging, 'content');
-    const v = validate(contentDir);
-    const c = checkIntegrity(contentDir, { schemaFor: mdRuntime && mdRuntime.schemaFor });
+    const v = validate(contentDir, { allowMissingBlobs });
+    const c = checkIntegrity(contentDir, { schemaFor: mdRuntime && mdRuntime.schemaFor, allowMissingBlobs });
     const errors = [...v.errors, ...c.errors];
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });

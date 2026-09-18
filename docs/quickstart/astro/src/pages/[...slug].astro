@@ -1,0 +1,30 @@
+---
+// src/pages/[...slug].astro
+// First paint and every subsequent render come from /api/render — blocks are
+// rendered server-side by .astro components via Astro's Container API. The same
+// pattern works for PHP, Django, Rails, Laravel: see server-rendered-frontends.md
+---
+<!DOCTYPE html>
+<html>
+  <body>
+    <div id="content"></div>
+    <script>
+      import { initBridge } from '@hydra-js/hydra.js'
+      if (window.name.startsWith('hydra')) {
+        initBridge({
+          // Declare the one block type we render richly.
+          blocks: { card: { blockSchema: { properties: {
+            image: { widget: 'image' },
+            title: { type: 'string' },
+            description: { type: 'string' },
+            link: { widget: 'url' },
+          } } } },
+          // Server-render mode: the bridge POSTs each smallest-changed-unit to
+          // renderEndpoint and swaps the returned HTML into renderContainer.
+          renderEndpoint: '/api/render',
+          renderContainer: '#content',
+        })
+      }
+    </script>
+  </body>
+</html>

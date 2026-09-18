@@ -49,7 +49,7 @@ A prominent content section with a background image, overlay, title, rich text b
 
 <block type="image">
 
-![The highlight example block being edited in Volto Hydra](/docs/images/highlight-edit.png)
+![The highlight example block being edited in Inka](/docs/images/highlight-edit.png)
 
 </block>
 
