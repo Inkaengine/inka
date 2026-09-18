@@ -74,9 +74,26 @@ Displays a list of content items from a query. The listing block fetches items f
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-listing">
 
-<block type="codeExample" slotId="schema" source="listing" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="listing" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: listing
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./listing.md
+:block: listing
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

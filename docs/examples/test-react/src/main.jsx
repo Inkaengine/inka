@@ -2,10 +2,9 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { initBridge } from '$hydra';
 import { expandTemplatesSync, expandListingBlocks, ploneFetchItems, contentPath } from '$helpers';
-import docPageDefinitions from '$schemas';
-const docBlocksConfig = Object.fromEntries(
-  Object.values(docPageDefinitions).flatMap(page => Object.entries(page.blocks))
-);
+// One source of truth: the flat shared-block-schemas registry, read directly.
+import { sharedBlocksConfig } from '$schemas';
+const docBlocksConfig = sharedBlocksConfig;
 import App from './App.jsx';
 
 // Expose hydra.js helpers globally for doc example components

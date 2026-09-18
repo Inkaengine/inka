@@ -39,9 +39,26 @@ A full-width hero section with heading, subheading, image, rich text description
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-hero">
 
-<block type="codeExample" slotId="schema" source="hero" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="hero" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: hero
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./hero.md
+:block: hero
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

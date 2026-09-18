@@ -114,9 +114,26 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-table">
 
-<block type="codeExample" slotId="schema" source="slateTable" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="slateTable" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: slateTable
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./table.md
+:block: slateTable
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

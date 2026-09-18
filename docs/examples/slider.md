@@ -40,9 +40,26 @@ A carousel/slider that cycles through slides. Slides are stored as an object\_li
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-slider">
 
-<block type="codeExample" slotId="schema" source="slider" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="slider" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: slider
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./slider.md
+:block: slider
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

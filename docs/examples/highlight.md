@@ -69,9 +69,26 @@ A prominent content section with a background image, overlay, title, rich text b
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-highlight">
 
-<block type="codeExample" slotId="schema" source="highlight" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="highlight" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: highlight
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./highlight.md
+:block: highlight
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

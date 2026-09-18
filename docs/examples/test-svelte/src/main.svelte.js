@@ -1,12 +1,11 @@
 import { mount } from 'svelte';
 import { initBridge } from '$hydra';
 import { expandListingBlocks, ploneFetchItems, contentPath, expandTemplatesSync } from '$helpers';
-import docPageDefinitions from '$schemas';
+import { sharedBlocksConfig } from '$schemas';
 import App from './App.svelte';
 
-const docBlocksConfig = Object.fromEntries(
-  Object.values(docPageDefinitions).flatMap(page => Object.entries(page.blocks))
-);
+// One source of truth: the flat shared-block-schemas registry, read directly.
+const docBlocksConfig = sharedBlocksConfig;
 
 // Expose hydra.js helpers globally for doc example components
 window.expandListingBlocks = expandListingBlocks;

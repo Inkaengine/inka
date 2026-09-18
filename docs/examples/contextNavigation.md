@@ -43,9 +43,26 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-contextNavigation">
 
-<block type="codeExample" slotId="schema" source="contextNavigation" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="contextNavigation" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: contextNavigation
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./contextNavigation.md
+:block: contextNavigation
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

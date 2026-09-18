@@ -39,9 +39,26 @@ A horizontal multi-column container. The block has one slot — columns — rest
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-columns">
 
-<block type="codeExample" slotId="schema" source="columns" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="columns" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: columns
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./columns.md
+:block: columns
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

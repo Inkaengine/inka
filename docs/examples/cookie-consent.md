@@ -39,9 +39,26 @@ A consent banner and a preferences dialog, written by one block. It is the worke
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent">
 
-<block type="codeExample" slotId="schema" source="cookieConsent" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="cookieConsent" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: cookieConsent
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./cookie-consent.md
+:block: cookieConsent
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

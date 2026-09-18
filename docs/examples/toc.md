@@ -100,9 +100,26 @@ Text can be **bold** or *italic*.
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-toc">
 
-<block type="codeExample" slotId="schema" source="toc" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="toc" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: toc
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./toc.md
+:block: toc
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

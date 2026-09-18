@@ -97,9 +97,26 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-text">
 
-<block type="codeExample" slotId="schema" source="slate" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="slate" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: slate
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./slate.md
+:block: slate
+:as: json
+```
+
+</block>
 
 <block type="callout" variation="note" slotId="rendering">
 

@@ -115,9 +115,26 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-separator">
 
-<block type="codeExample" slotId="schema" source="separator" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="separator" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: separator
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./separator.md
+:block: separator
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

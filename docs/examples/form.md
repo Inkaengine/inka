@@ -49,9 +49,26 @@ A multi-field form with configurable field types, validation, and email submissi
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-form">
 
-<block type="codeExample" slotId="schema" source="form" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="form" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: form
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./form.md
+:block: form
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

@@ -88,9 +88,26 @@ blandit praesent luptatum zzril qui.
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-maps">
 
-<block type="codeExample" slotId="schema" source="maps" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="maps" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: maps
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./maps.md
+:block: maps
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

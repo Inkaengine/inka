@@ -88,9 +88,26 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-video">
 
-<block type="codeExample" slotId="schema" source="video" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="video" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: video
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./video.md
+:block: video
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

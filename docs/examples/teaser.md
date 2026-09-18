@@ -82,9 +82,26 @@ A content preview card that links to another page. Selecting a target page via t
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-teaser">
 
-<block type="codeExample" slotId="schema" source="teaser" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="teaser" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: teaser
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./teaser.md
+:block: teaser
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

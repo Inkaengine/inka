@@ -58,9 +58,26 @@ A responsive grid that lays out child blocks in equal-width cells. The block use
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-grid">
 
-<block type="codeExample" slotId="schema" source="gridBlock" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="gridBlock" format="json" />
+### Schema
+
+```{literalinclude} ../../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: gridBlock
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./index.md
+:block: gridBlock
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

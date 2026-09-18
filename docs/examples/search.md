@@ -62,9 +62,26 @@ A search interface with faceted filtering. Contains a child listing block for re
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-search">
 
-<block type="codeExample" slotId="schema" source="search" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="search" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: search
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./search.md
+:block: search
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

@@ -70,9 +70,26 @@ This is an **important** — for a must-know gotcha.
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-callout">
 
-<block type="codeExample" slotId="schema" source="callout" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="callout" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: callout
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./callout.md
+:block: callout
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

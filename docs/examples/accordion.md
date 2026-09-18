@@ -70,9 +70,26 @@ A collapsible panel group. Each panel is an object\_list item with a title and a
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-accordion">
 
-<block type="codeExample" slotId="schema" source="accordion" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="accordion" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: accordion
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./accordion.md
+:block: accordion
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

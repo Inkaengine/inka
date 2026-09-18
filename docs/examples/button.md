@@ -239,9 +239,26 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-button">
 
-<block type="codeExample" slotId="schema" source="button" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="button" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: button
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./button.md
+:block: button
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 
