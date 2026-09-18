@@ -292,7 +292,7 @@ function validate(contentDir) {
 /**
  * Graph integrity. Mirrors test-content.py.
  */
-function checkIntegrity(source) {
+function checkIntegrity(source, { schemaFor } = {}) {
   const onDisk = typeof source === 'string';
   const contentDir = onDisk ? source : null;
   const errors = [];
@@ -542,6 +542,26 @@ function imageDimensions(file) {
   }
 
   function checkBlockRefs(rel, bid, block) {
+    // A block FIELD's value must match its schema widget's shape. This catches a
+    // decode bug the link/slate-value checks below can't: they only look at
+    // block.value, so a mismatched FIELD (a slate field stored as {value:[…]}
+    // instead of a bare array, or a richtext HTML field stored as slate) slips
+    // straight through. Schema-driven on purpose — "which field is slate" only
+    // exists in the schema, so this runs when a `schemaFor` is supplied.
+    const schema = schemaFor && block['@type'] ? schemaFor(block['@type']) : null;
+    if (schema && schema.properties) {
+      const shape = (v) => Array.isArray(v) ? 'an array'
+        : (v && typeof v === 'object' ? `an object {${Object.keys(v).join(',')}}` : typeof v);
+      for (const [field, def] of Object.entries(schema.properties)) {
+        const v = block[field];
+        if (v == null) continue;
+        if (def.widget === 'slate' && !Array.isArray(v)) {
+          errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:slate but its value is ${shape(v)} — a slate field must be a bare array of nodes (a {value:[…]} wrapper or richtext value has leaked in)`);
+        } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
+          errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
+        }
+      }
+    }
     // A slate value must be a SINGLE top-level node. The editor makes one block
     // per paragraph, and a paragraph boundary is a block boundary, so a value
     // with >1 top-level node (a title + body packed into one slate) has no

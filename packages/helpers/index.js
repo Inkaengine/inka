@@ -1176,17 +1176,17 @@ export function getFieldTypeString(field) {
 
 /**
  * Check if a field type indicates a Slate field.
- * Handles both old format ('slate') and new format ('array:slate', 'object:richtext').
+ * Handles both old format ('slate') and new format ('array:slate'). A `richtext`
+ * widget is HTML, not slate, so it is deliberately NOT matched here.
  * @param {string} fieldType - Field type string
  * @returns {boolean}
  */
 export function isSlateFieldType(fieldType) {
   if (!fieldType) return false;
-  return (
-    fieldType === 'slate' ||
-    fieldType.includes(':slate') ||
-    fieldType.includes(':richtext')
-  );
+  // A `richtext` widget stores HTML ({data, content-type, encoding}), NOT slate,
+  // so it is NOT inline-editable in the bridge — do not treat `:richtext` as a
+  // slate field.
+  return fieldType === 'slate' || fieldType.includes(':slate');
 }
 
 /**

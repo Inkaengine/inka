@@ -130,11 +130,13 @@
              :key="item['@uid']" :block_uid="item['@uid']" :block="item" :data="data" :contained="true" data-block-add="right" />
     </div>
 
-    <!-- Columns row - horizontal layout -->
-    <div class="columns-row flex gap-4">
+    <!-- Columns row - one column per row on mobile, side by side as the
+         viewport grows (responsiveColsClass), so a 3/4-column layout stacks
+         instead of overflowing the screen on a phone. -->
+    <div :class="['columns-row grid gap-4 grid-cols-1', ...responsiveColsClass((block.blocks_layout?.columns || []).length)]">
       <div v-for="columnId in (block.blocks_layout?.columns || [])" :key="columnId"
            :data-block-uid="columnId" data-block-add="right"
-           class="column flex-1 p-3 border border-dashed border-gray-300 rounded">
+           class="column p-3 border border-dashed border-gray-300 rounded">
         <!-- Column title -->
         <h4 v-if="block.blocks?.[columnId]?.title" data-edit-text="title"
             class="column-title mb-2 text-sm font-medium">{{ block.blocks[columnId].title }}</h4>
@@ -1348,11 +1350,16 @@ const gridBgStyle = (block) => {
   return { backgroundColor: colorMap[bg] || bg };
 };
 
-const gridColsClass = (block) => {
-  const count = block.blocks_layout?.items?.length || 4;
-  const cols = Math.min(count, 4);
+// Responsive column count for a row of N equal cells: one column on a phone
+// (the base `grid-cols-1` on the element), then progressively more as the
+// viewport grows, capped at the real count. Shared by the grid block and the
+// columns block so both stack on mobile instead of overflowing the screen.
+const responsiveColsClass = (count) => {
+  const cols = Math.min(count || 4, 4);
   return [`sm:grid-cols-${Math.min(cols, 2)}`, `md:grid-cols-${Math.min(cols, 3)}`, `lg:grid-cols-${cols}`];
 };
+
+const gridColsClass = (block) => responsiveColsClass(block.blocks_layout?.items?.length);
 
 // Helper to extract YouTube video ID from various URL formats
 const getYouTubeId = (url) => {

@@ -40,8 +40,17 @@ export interface PageIntegrityOptions {
   skipBrokenImages?: boolean;
 }
 
-/** The env fallback for {@link PageIntegrityOptions.skipBrokenImages}. */
-const SKIP_BROKEN_IMAGES_ENV =
+/**
+ * The env fallback for {@link PageIntegrityOptions.skipBrokenImages}.
+ *
+ * Exported because it gates the same class of assertion in block-sanity
+ * (BlockVerificationHelper): the "did the asset bytes actually load" checks —
+ * broken images AND broken video/audio sources — are invalid in an environment
+ * that deliberately does not generate those assets (hydra CI moved doc-asset
+ * generation to the parent repo). The name says IMAGE but the meaning is
+ * "asset bytes may be absent here"; media is the same case, not a different one.
+ */
+export const SKIP_BROKEN_IMAGES_ENV =
   process.env.SKIP_BROKEN_IMAGE_CHECK === '1' ||
   process.env.SKIP_BROKEN_IMAGE_CHECK === 'true';
 

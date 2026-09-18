@@ -1493,7 +1493,8 @@ export function reportDisallowedSlateNodes(formData, blockPathMap, blocksConfig,
     // Types nothing renders. Judged against the LIVE registry when the addon has
     // injected it — inside the editor it always has.
     for (const [field, def] of Object.entries(schema.properties || {})) {
-      if (def?.widget !== 'slate' && def?.widget !== 'slate_richtext') continue;
+      // Only `slate` fields hold slate; a `richtext` widget is HTML, not slate.
+      if (def?.widget !== 'slate') continue;
       for (const u of undefinedSlateTypes(blockData[field], rules, vocabulary)) {
         report.push({ blockId, field, path: u.path, from: u.type, to: null, kind: 'undefined-type' });
       }
