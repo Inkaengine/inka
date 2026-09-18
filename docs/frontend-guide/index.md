@@ -77,8 +77,14 @@ Add Inka to a page in your framework. Each tab is a real, working starter — th
 
 ### Astro
 
-```{literalinclude} ../quickstart/astro/page.astro
+```{literalinclude} ../quickstart/astro/src/pages/[...slug].astro
 :language: astro
+```
+
+### Astro — /api/render
+
+```{literalinclude} ../quickstart/astro/src/pages/api/render.ts
+:language: typescript
 ```
 
 </block>

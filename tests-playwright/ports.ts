@@ -72,6 +72,10 @@ export const PORTS = {
   astroDoc: port('HYDRA_ASTRO_DOC_PORT'),
   /** Quick Start: vanilla HTML/JS starter (docs/quickstart/vanilla). */
   vanillaDoc: port('HYDRA_VANILLA_DOC_PORT'),
+  /** Quick Start: dedicated Svelte 5 starter (docs/quickstart/svelte). */
+  svelteQs: port('HYDRA_SVELTE_QS_PORT'),
+  /** Quick Start: dedicated Astro starter (docs/quickstart/astro). */
+  astroQs: port('HYDRA_ASTRO_QS_PORT'),
 } as const;
 
 /**
@@ -96,4 +100,6 @@ export const URLS = {
   f7: `http://localhost:${PORTS.f7}`,
   astroDoc: `http://localhost:${PORTS.astroDoc}`,
   vanillaDoc: `http://localhost:${PORTS.vanillaDoc}`,
+  svelteQs: `http://localhost:${PORTS.svelteQs}`,
+  astroQs: `http://localhost:${PORTS.astroQs}`,
 } as const;

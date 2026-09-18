@@ -17,6 +17,7 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { getFrontendUrl } from './fixtures';
+import { requireEnvironment } from '../helpers/preconditions';
 import { URLS } from '../ports';
 
 // The quickstart frontends this spec runs on, each with the route its app serves
@@ -26,6 +27,8 @@ import { URLS } from '../ports';
 // there while the card fixture still supplies the data).
 const QUICKSTART_FRONTENDS: Record<string, { contentPath?: string }> = {
   vanilla: {},
+  'svelte-qs': {},
+  'astro-qs': {},
   nuxt: { contentPath: '/quickstart-card' },
   nextjs: { contentPath: '/quickstart-card' },
 };
@@ -63,6 +66,17 @@ test.describe('Quick Start starter: selecting a block in edit mode', () => {
     const helper = new AdminUIHelper(page);
     const frontend = getFrontendUrl(testInfo.project.name);
     expect(frontend, `no frontend URL for project ${testInfo.project.name}`).toBeTruthy();
+
+    // These frontends are opt-in — their server only starts when the project is
+    // requested. On a full local run it is down: skip. On CI it must be up (the
+    // workflow starts it), so an unreachable frontend is a failure, not a skip.
+    let reachable = false;
+    try {
+      reachable = (await fetch(frontend!, { signal: AbortSignal.timeout(2000) })).ok;
+    } catch {
+      reachable = false;
+    }
+    requireEnvironment(testInfo, reachable, `${testInfo.project.name} frontend on ${frontend} not reachable`);
 
     await page.goto(parentUrl(frontend!, QUICKSTART_FRONTENDS[testInfo.project.name].contentPath));
     await helper.waitForIframeReady();
