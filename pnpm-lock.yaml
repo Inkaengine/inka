@@ -1532,13 +1532,6 @@ importers:
       '@volto-hydra/hydra-types':
         specifier: workspace:*
         version: link:../hydra-types
-    devDependencies:
-      jest:
-        specifier: ^30.0.0
-        version: 30.2.0(@types/node@24.12.4)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.0))(node-notifier@8.0.2)(ts-node@10.9.2(@types/node@24.12.4)(typescript@5.9.3))
-      jest-environment-node:
-        specifier: ^30.0.0
-        version: 30.2.0
 
   packages/hydra-adapters-drupal:
     dependencies:
@@ -1548,13 +1541,6 @@ importers:
       '@volto-hydra/hydra-types':
         specifier: workspace:*
         version: link:../hydra-types
-    devDependencies:
-      jest:
-        specifier: ^30.0.0
-        version: 30.2.0(@types/node@24.12.4)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.0))(node-notifier@8.0.2)(ts-node@10.9.2(@types/node@24.12.4)(typescript@5.9.3))
-      jest-environment-node:
-        specifier: ^30.0.0
-        version: 30.2.0
 
   packages/hydra-adapters-plone:
     dependencies:

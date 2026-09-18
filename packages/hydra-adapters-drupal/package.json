@@ -3,13 +3,17 @@
   "version": "1.0.0",
   "description": "Hydra adapter for Drupal via JSON:API. Hierarchy comes from menu links.",
   "type": "module",
-  "exports": { ".": "./index.js", "./normalize": "./normalize.js" },
-  "files": ["index.js", "normalize.js"],
-  "scripts": { "test": "NODE_OPTIONS='--experimental-vm-modules' jest" },
+  "exports": {
+    ".": "./index.js",
+    "./normalize": "./normalize.js"
+  },
+  "files": [
+    "index.js",
+    "normalize.js"
+  ],
   "dependencies": {
     "@volto-hydra/hydra-adapters-core": "workspace:*",
     "@volto-hydra/hydra-types": "workspace:*"
   },
-  "devDependencies": { "jest": "^30.0.0", "jest-environment-node": "^30.0.0" },
   "license": "MIT"
 }
