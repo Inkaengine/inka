@@ -2297,15 +2297,112 @@ app.post('/@export', async (req, res) => {
 
   if (format === 'markdown') {
     const { emitPage, parsePrototypes } = await getEngine();
+    const YAML = (await import('yaml')).default;
+    const { SERVER_STATE } = await import('../../lib/blockmd.mjs');
+    const { BLOB_FIELD, blobDefaults } = await import('../../lib/markdown-mount.mjs');
+
+    // The CALLER supplies the readability rules; this endpoint writes each page
+    // as a WHOLE, self-contained file — frontmatter (page meta + assignments +
+    // the rules that page used) + a clean body — so "export the site and put it
+    // back" is just: POST here, write the strings to disk. Split the caller's
+    // rule text by block type so each file carries only the rules it needs.
+    const splitByType = (text) => {
+      const map = new Map();
+      let cur = null, depth = 0;
+      for (const line of (text || '').split('\n')) {
+        const opens = (line.match(/<block\b/g) || []).length;
+        const selfs = (line.match(/<block\b[^>]*\/>/g) || []).length;
+        const closes = (line.match(/<\/block>/g) || []).length;
+        const net = (opens - selfs) - closes;
+        if (!cur) {
+          const m = /<block\s+type="([^"]+)"/.exec(line);
+          if (!m) continue;
+          cur = { type: m[1], lines: [line] }; depth = net;
+        } else { cur.lines.push(line); depth += net; }
+        if (cur && depth <= 0) {
+          const prev = map.get(cur.type);
+          map.set(cur.type, prev ? `${prev}\n${cur.lines.join('\n')}` : cur.lines.join('\n'));
+          cur = null; depth = 0;
+        }
+      }
+      return map;
+    };
+    const collectTypes = (blocks, out = new Set()) => {
+      for (const b of Object.values(blocks || {})) {
+        if (!b || typeof b !== 'object') continue;
+        if (b['@type']) out.add(b['@type']);
+        if (b.blocks) collectTypes(b.blocks, out);
+        for (const v of Object.values(b)) if (Array.isArray(v)) for (const it of v) if (it && it.blocks) collectTypes(it.blocks, out);
+      }
+      return out;
+    };
+    const flow = (o) => `{ ${Object.entries(o).map(([k, v]) => `${k}: ${v}`).join(', ')} }`;
+    const section = (key, map, used) => {
+      const lines = [...used].flatMap((t) => (map.has(t) ? map.get(t).split('\n') : []));
+      return lines.length ? `${key}: |\n${lines.map((l) => `  ${l}`).join('\n')}` : '';
+    };
+
+    // A blob (Image/File) is carried in its parent folder's `blobs:`, never
+    // emitted as its own page. Reconstruct the two folder-level facts the mount
+    // derives from tree position — child `order:` and `blobs:` — from the served
+    // tree, so folders round-trip too.
+    const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif']);
+    const typeForFile = (f) => (IMAGE_EXT.has(path.extname(f).toLowerCase()) ? 'Image' : 'File');
+    const isBlobItem = (d) => !!(d && BLOB_FIELD[d['@type']] && d[BLOB_FIELD[d['@type']]] && d[BLOB_FIELD[d['@type']]].blob_path);
+    const blobEntry = (d) => {
+      const field = d[BLOB_FIELD[d['@type']]];
+      const file = field.filename || path.basename(field.blob_path);
+      const entry = { file, uid: d.UID };
+      if (d.id !== file.replace(/\.[^.]+$/, '')) entry.id = d.id;
+      if (d['@type'] !== typeForFile(file)) entry.type = d['@type'];
+      for (const [k, v] of Object.entries(blobDefaults(d['@type'], field.filename))) {
+        if (d[k] !== undefined && JSON.stringify(d[k]) !== JSON.stringify(v)) entry[k] = d[k];
+      }
+      return entry;
+    };
+    const childrenByParent = {};
+    for (const k of Object.keys(contentDirMap)) {
+      if (k === '/') continue;
+      const parent = k.replace(/\/[^/]+$/, '') || '/';
+      (childrenByParent[parent] || (childrenByParent[parent] = [])).push(k);
+    }
+
+    const matchedMap = splitByType(prototypes.matched || '');
+    const taggedMap = splitByType(prototypes.tagged || '');
     const protos = [
       ...parsePrototypes(prototypes.matched || ''),
       ...parsePrototypes(prototypes.tagged || '', { explicit: true }),
     ];
+
     const out = {};
     for (const p of Object.keys(contentDirMap)) {
       const c = loadRawContentFromDisk(p);
-      if (!c || !c.blocks) continue; // only block-bearing content items get a body
-      out[p] = emitPage(protos, { blocks: c.blocks, blocks_layout: c.blocks_layout }).markdown;
+      if (!c || isBlobItem(c)) continue;
+      // Page meta: everything the frontmatter carries (SERVER_STATE — parent,
+      // position, blocks/blocks_layout, etc. — is derived, not authored).
+      const meta = Object.fromEntries(Object.entries(c).filter(([k]) => !SERVER_STATE.has(k)));
+      const kids = (childrenByParent[p] || []).map((k) => loadRawContentFromDisk(k)).filter(Boolean);
+      const childPages = kids.filter((d) => !isBlobItem(d))
+        .sort((a, b) => (uidPositionMap[a.UID] ?? 0) - (uidPositionMap[b.UID] ?? 0));
+      const blobItems = kids.filter(isBlobItem);
+      const front = [
+        YAML.stringify(meta).trim(),
+        childPages.length ? YAML.stringify({ order: childPages.map((d) => d.id) }).trim() : '',
+        blobItems.length ? YAML.stringify({ blobs: blobItems.map(blobEntry) }).trim() : '',
+      ].filter(Boolean).join('\n');
+      if (c.blocks && c.blocks_layout?.items?.length) {
+        const { markdown, assignments } = emitPage(protos, { blocks: c.blocks, blocks_layout: c.blocks_layout });
+        const used = collectTypes(c.blocks);
+        const asg = `blocks-assignments:\n${assignments.map((a) => `  - ${flow(a)}`).join('\n')}`;
+        const fmBody = [front, asg, section('blocks-matched', matchedMap, used), section('blocks-tagged', taggedMap, used)]
+          .filter(Boolean).join('\n');
+        // Fill the title block's empty `# ` with the page title (emit-only; the
+        // title block is match-only, so decode reads `title` from frontmatter).
+        const body = c.title ? markdown.replace(/^# *$/m, () => `# ${c.title}`) : markdown;
+        out[p] = `---\n${fmBody}\n---\n\n${body}\n`;
+      } else {
+        out[p] = `---\n${front}\n---\n`;
+      }
     }
     return res.json(out);
   }
