@@ -829,6 +829,52 @@ today:
 Deliberately deferred. Recorded so the single-backend assumptions above are
 known choices rather than accidents.
 
+### Adding a site should mean adding an adapter
+
+Deferred, and recorded because today's configuration has two halves that must
+agree and nothing that makes them.
+
+Today:
+
+- The admin is told its frontends: `RAZZLE_DEFAULT_IFRAME_URL`.
+- Each frontend is told its CMS: `NUXT_PUBLIC_BACKEND_BASE_URL`,
+  `NEXT_PUBLIC_BACKEND_BASE_URL`, `VITE_API_BASE_URL`, and so on.
+- The proxy is found by CONVENTION: `AdapterHost` takes the frontend URL and
+  swaps the path for `/hydra-proxy.html`. That contradicts the consequence
+  above — the proxy URL is meant to be configuration.
+
+Half of the direction is already built. `ADAPTER_READY` carries `cmsBaseUrl`,
+and the admin adopts it as its `apiPath` (`bridge/client.js`). The admin already
+learns its CMS from the adapter rather than from its own settings.
+
+The other half: the adapter also announces its frontends. The frontend is the
+one party that knows both its own URL and its CMS, so it is the right source for
+both. Adding a site in the admin then becomes adding an adapter: the user enters
+ONE URL, the proxy's, and everything else arrives in the announcement.
+
+That one URL is not an arbitrary bootstrap. It is exactly the trust boundary the
+section above says the site owner must choose, so the configuration this spec
+already requires becomes the only configuration there is.
+
+Two constraints for when it is built:
+
+- **Bootstrapping.** Nothing can be announced before a proxy is loaded, so the
+  admin always needs the one URL. The UI is "add an adapter: its proxy URL",
+  not a form of frontends.
+- **Trust.** Announced frontends become iframes and `postMessage` peers. A
+  frontend vouched for by the proxy asks for no more trust than the proxy
+  already has, since the proxy holds the credential. The admin should still say
+  which origins it is about to frame, and refuse anything that is not https
+  outside development.
+
+It extends to "More than one backend" above without change: N adapters is N
+proxy URLs, each announcing its own frontends and CMS.
+
+Until then the env vars stay separate. The risk they carry is a frontend's pages
+and its proxy disagreeing about the CMS. The F7 example avoids that by reading
+the backend from one module (`src/js/cms.js`) in both; Nuxt and Next.js read a
+single config value in both places.
+
 ### What this retires
 
 - `access_token` passed in the iframe URL, then copied into `sessionStorage`.
