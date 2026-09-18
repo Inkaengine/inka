@@ -1,4 +1,11 @@
 /**
+ * Render canonical adapter results in the shape Plone's REST API returns.
+ *
+ * Lives in helpers, not in the admin, because two parties need it: the admin,
+ * whose Volto reducers parse this shape, and any FRONTEND that reads a
+ * non-Plone CMS through an adapter (see adapterReader.js) and wants to keep
+ * the renderers it already has, which were written against the same shape.
+ *
  * Render canonical adapter results in the shape Volto's reducers parse.
  *
  * The routing half of this pair turns Plone-shaped requests into canonical

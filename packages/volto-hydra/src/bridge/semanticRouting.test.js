@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BridgeApi } from './BridgeApi';
 import { routeToIntent } from './intentRouter';
-import { plonify } from './plonify';
+import { plonify } from '@volto-hydra/helpers';
 
 const semanticAdapter = () => ({ capabilities: ['content', 'search-filter'] });
 const passthroughAdapter = () => ({ capabilities: ['content', 'http-passthrough'] });

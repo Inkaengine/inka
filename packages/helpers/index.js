@@ -1,3 +1,8 @@
+// Canonical adapter results in Plone's REST shape — shared by the admin and by
+// frontends that read a CMS through an adapter.
+export { plonify, documentToPlone } from './plonify.js';
+import { plonify } from './plonify.js';
+
 /**
  * @volto-hydra/helpers
  *
@@ -959,6 +964,59 @@ export function ploneFetchItems({
       items,
       total: response.items_total ?? rawItems.length,
     };
+  };
+}
+
+/**
+ * Read a page through a CMS adapter, in the shape Plone's REST API returns.
+ *
+ * For a FRONTEND whose CMS is not Plone. A frontend renders from its CMS
+ * directly when it is not being edited — the adapter in the admin's proxy frame
+ * plays no part — and its renderers were written against Plone's shape. The
+ * adapter reads the CMS, plonify turns the canonical answer into that shape, and
+ * the renderers do not change.
+ *
+ * Takes an adapter INSTANCE, so helpers depends on no adapter package: a Plone
+ * frontend that fetches Plone itself never loads one. The credential is the
+ * frontend's own, given to the adapter it constructs — a published page needs
+ * none, a draft does.
+ */
+export async function adapterGetContent(adapter, path, { expand = [] } = {}) {
+  if (!adapter) throw new Error('adapterGetContent requires an adapter');
+  const doc = await adapter.dispatch('content.get', {
+    path,
+    ...(expand.length ? { expand } : {}),
+  });
+  return plonify('content.get', doc, { path });
+}
+
+/**
+ * The adapter-backed twin of ploneFetchItems: the same `fetchItems` contract
+ * for expandListingBlocks, answered by the adapter's querystringSearch.
+ *
+ * The intent takes no offset — Plone and WordPress honour `limit`, Drupal
+ * returns everything — so a page is asked for up to its end and sliced here.
+ * Nor does it take a context: adapters search from the site root, so a relative
+ * path criterion resolves from there, exactly as it does in the admin.
+ */
+export function adapterFetchItems({ adapter, extraCriteria = {} } = {}) {
+  if (!adapter) throw new Error('adapterFetchItems requires an adapter');
+
+  return async function fetchItems(block, { start, size }) {
+    const body = buildQuerystringSearchBody(
+      block.querystring,
+      { b_start: start, b_size: size },
+      extraCriteria,
+    );
+    const result = await adapter.dispatch('querystringSearch', {
+      query: body.query,
+      sortOn: body.sort_on,
+      sortOrder: body.sort_order,
+      limit: start + size,
+    });
+    const plone = plonify('querystringSearch', result, { path: '/' });
+    const items = plone.items.slice(start, start + size).map(normalizeCatalogImage);
+    return { items, total: plone.items_total };
   };
 }
 

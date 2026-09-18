@@ -23,7 +23,7 @@
  */
 
 import { routeToIntent } from './intentRouter';
-import { plonify } from './plonify';
+import { plonify } from '@volto-hydra/helpers';
 
 const METHODS = ['get', 'post', 'put', 'patch', 'del'];
 
