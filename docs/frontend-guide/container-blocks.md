@@ -361,6 +361,20 @@ A worked example, with the schema, the data and all four frontends: [Cookie Cons
 
 The reveal is driven from the sidebar, through the message that already existed for it: when the cursor lands in a sidebar field the admin sends `FOCUS_FIELD { blockId, fieldName, moveCaret: false }`. The bridge shows that field's place if it is hidden, and does nothing at all unless a `uid#field` handle advertises that exact field — so it is safe to send on every focus. There is deliberately **no fallback to the block's own handle**: most sidebar fields (an alignment, a link, any setting) have no element on the canvas and never will, so "no element" is the ordinary case rather than a hidden one, and falling back meant every sidebar focus clicked whatever handle the block or its ancestors published. A field's place, when it has none of its own, simply IS the block's — and selecting the block already reveals that, transitively. `moveCaret` defaults to **true** — the original meaning, "reveal it and put the cursor in it", which is what the admin sends when handing editing back (a LinkEditor closing). One message, two intents; not two messages.
 
+- **A form control as the handle — revealed by answering it.** A block that appears only when another question is answered — a form's conditional question, a search's answer — is revealed by giving that answer, so the handle goes on the control that gives it, and the bridge acts on it by what it is rather than clicking. An **`<option>`** is selected in its dropdown (and `input`/`change` fired on the `<select>`); an option has no box of its own, so it counts as on screen whenever its `<select>` is. A **checkbox or radio** is ticked — and one that is already ticked is left alone, because clicking a checkbox would untick it. A **text box** has no answer of its own, so it declares one: `data-block-selector-input="…"` is the value the bridge types in. A handle declaring a value is a field to fill, not a trigger, so a button beside it carrying the same uid stays the thing that is clicked. After filling, the bridge checks whether the block is now on screen: if it is — a conditional question appears the moment its question is answered — that is the reveal, and nothing is submitted. Only when filling alone did not reveal it, and there is no button to click, does the bridge submit the form: that is a search, whose answer arrives with the results.
+
+Each option is its own element, so one question can reveal a different block for each answer — put the handle on each `<option>` or radio, naming the blocks that answer unlocks:
+
+### Html
+
+```html
+<select name="topic">
+  <option value="billing" data-block-selector="billing-address">Billing</option>
+  <option value="other" data-block-selector="other-details">Other</option>
+</select>
+<input name="name" data-block-selector="name-chosen" data-block-selector-input="Ada">
+```
+
 - **A block drawn in two places** — put `data-block-uid` on the **content**, and `data-block-selector` on the trigger. A tab is the clearest case: its label lives on the button in the tab bar, its code in a panel that is hidden (or not rendered at all) unless that tab is active. If the button carried the uid, the bridge would see a visible element and conclude the block is on screen, so selecting an inactive tab from the sidebar would never reveal the code the author wants to edit. With the uid on the panel, the ordinary visibility check does the right thing, and `data-block-selector` on the button both reveals the tab and tells the bridge that a `data-edit-*` inside it edits *that* block, even though the uid element is elsewhere. Applies to any control that stands in for content it can show — tab buttons, thumbnail strips, step indicators.
 
 ## Table Mode
