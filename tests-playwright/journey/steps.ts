@@ -571,9 +571,20 @@ export async function auditCmsRequests(page: Page): Promise<void> {
  * that schema, so it cannot exist before the schema does.
  */
 export async function waitForEditorSchema(page: Page): Promise<void> {
+  // Addressed inside the page's own metadata form, not by accessible name.
+  //
+  // The first block is selected on load, and when it is an image — whose schema
+  // also has a `title` — two inputs claim id="field-title". Both labels then
+  // resolve to the page's input, which is announced as "Title Title", and the
+  // block's own title input gets no name at all. A name query failed on that
+  // while the schema had loaded perfectly well. That duplicate id is a real
+  // accessibility bug in its own right; this wait just must not depend on it.
+  //
+  // Attached, not visible: what proves the schema landed is that the field
+  // exists. Whether the page form is scrolled into view is a different question.
   await expect(
-    page.getByRole('textbox', { name: /^title$/i }).first(),
-  ).toBeVisible({ timeout: 30_000 });
+    page.locator('#sidebar-metadata #field-title'),
+  ).toBeAttached({ timeout: 30_000 });
 }
 
 /**
