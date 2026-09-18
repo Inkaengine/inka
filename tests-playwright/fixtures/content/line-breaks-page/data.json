@@ -1,0 +1,67 @@
+{
+  "@id": "http://localhost:8888/line-breaks-page",
+  "@type": "Document",
+  "UID": "line-breaks-page-uid",
+  "id": "line-breaks-page",
+  "title": "Line Breaks Page",
+  "description": "Slate line breaks (Shift+Enter): each must render as <br> in every frontend and read back unchanged.",
+  "blocks": {
+    "block-address": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Street\nTown\nPostcode"
+            }
+          ]
+        }
+      ]
+    },
+    "block-trailing": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Ends with a break\n"
+            }
+          ]
+        }
+      ]
+    },
+    "block-in-bold": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Before "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "bold\nline"
+                }
+              ]
+            },
+            {
+              "text": " after"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "block-address",
+      "block-trailing",
+      "block-in-bold"
+    ]
+  }
+}

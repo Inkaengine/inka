@@ -678,11 +678,11 @@ function renderChildren(children) {
             // <p data-edit-text="value">, stranding everything after it (a link)
             // outside the editable region, and a bare data-block-uid is read as a
             // block that never round-trips.
-            let content = escapeHtml(child.text || '');
+            let content = leafHtml(child.text || '');
             return `<span${leafStyles}>${content}</span>`;
         }
         if (child.text !== undefined) {
-            let content = escapeHtml(child.text || '');
+            let content = leafHtml(child.text || '');
 
             // Also handle old format (marks) for backward compatibility
             if (child.bold) content = `<span style="font-weight: bold">${content}</span>`;
@@ -710,6 +710,18 @@ function renderChildren(children) {
  * @param {Object} block - Text block data
  * @returns {string} HTML string
  */
+/**
+ * A slate text leaf as HTML. A "\n" in a leaf is a line break — the editor's
+ * Shift+Enter, which Volto stores as "\n" and draws as <br> — so it is drawn as
+ * <br> here too. A break at the very end needs a second <br> to show at all, just
+ * as it does in the editor; hydra reads that last one back as the browser's
+ * placeholder, so the value round-trips.
+ */
+function leafHtml(text) {
+    const html = escapeHtml(text).replace(/\n/g, '<br>');
+    return text.endsWith('\n') ? `${html}<br>` : html;
+}
+
 function renderTextBlock(block) {
     const text = block.text || '';
     // Mark as editable field - hydra.js will read this and set contenteditable="true"
