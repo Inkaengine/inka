@@ -11,7 +11,8 @@ import { PORTS, URLS } from './ports';
 import { FRONTEND_URLS, SANITY_PROJECTS } from './bridge/fixtures';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
-const { discoverBlocks, buildEmptyRegionCases } = require('./helpers/discover-blocks.cjs');
+const { discoverBlocks, buildEmptyRegionCases,
+  collectListingContainerIssues } = require('./helpers/discover-blocks.cjs');
 
 /**
  * Fetch the frontend's registered blocksConfig by loading mock-parent in a
@@ -330,6 +331,14 @@ async function globalSetup() {
     const emptyOutPath = path.resolve(__dirname, '../.discovered-empty-regions.json');
     fs.writeFileSync(emptyOutPath, JSON.stringify(emptyRegions, null, 2));
     console.log(`[SETUP] Wrote ${emptyRegions.length} empty-seeding container region(s) to ${emptyOutPath}`);
+
+    // Containers that ALLOW a listing but have no example holding one. The
+    // combination is its own rendering — the container decides what the
+    // listing's results become — so an example of each alone renders neither.
+    const listingIssues = collectListingContainerIssues(ecConfig, blocks);
+    const listingOutPath = path.resolve(__dirname, '../.discovered-listing-container-issues.json');
+    fs.writeFileSync(listingOutPath, JSON.stringify(listingIssues, null, 2));
+    console.log(`[SETUP] Wrote ${listingIssues.length} listing/container issue(s) to ${listingOutPath}`);
   }
 
   // Same --project logic playwright.config uses to decide which frontends to
