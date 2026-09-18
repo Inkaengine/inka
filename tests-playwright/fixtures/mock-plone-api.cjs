@@ -2338,7 +2338,9 @@ app.post('/@export', async (req, res) => {
     };
     const flow = (o) => `{ ${Object.entries(o).map(([k, v]) => `${k}: ${v}`).join(', ')} }`;
     const section = (key, map, used) => {
-      const lines = [...used].flatMap((t) => (map.has(t) ? map.get(t).split('\n') : []));
+      // Emit in the caller's declaration order (map insertion order), not the
+      // order blocks were encountered — so the rule list is stable across exports.
+      const lines = [...map.keys()].filter((t) => used.has(t)).flatMap((t) => map.get(t).split('\n'));
       return lines.length ? `${key}: |\n${lines.map((l) => `  ${l}`).join('\n')}` : '';
     };
 
@@ -2361,11 +2363,58 @@ app.post('/@export', async (req, res) => {
       return entry;
     };
     const childrenByParent = {};
+    const folderish = new Set();
     for (const k of Object.keys(contentDirMap)) {
+      const d = loadRawContentFromDisk(k);
+      if (d && (d.is_folderish || d['@type'] === 'Plone Site')) folderish.add(k);
       if (k === '/') continue;
       const parent = k.replace(/\/[^/]+$/, '') || '/';
       (childrenByParent[parent] || (childrenByParent[parent] = [])).push(k);
     }
+
+    // Reverse the mount's link/media resolution: the served blocks carry absolute
+    // paths (the mount rewrote `./x.md` → `/docs/x` at load), but the source — and
+    // the export — should carry the authored RELATIVE `.md`/media links, so a
+    // re-export barely diffs. Inverse of resolveMarkdownLink/resolveMediaUrl.
+    const relFrom = (baseSegs, targetSegs) => {
+      let i = 0;
+      while (i < baseSegs.length && i < targetSegs.length && baseSegs[i] === targetSegs[i]) i++;
+      return [...baseSegs.slice(i).map(() => '..'), ...targetSegs.slice(i)];
+    };
+    const unresolve = (url, baseSegs, m, media) => {
+      if (!url || /^(https?:|mailto:|data:|#)/.test(url)) return url;
+      const [target, ...an] = url.split('#');
+      const anchor = an.length ? `#${an.join('#')}` : '';
+      const pfx = m.mountPath;
+      let treePath;
+      if (pfx !== '/') {
+        if (target !== pfx && !target.startsWith(`${pfx}/`)) return url; // another mount / external
+        treePath = target.slice(pfx.length) || '/';
+      } else {
+        if (!target.startsWith('/')) return url;
+        treePath = target;
+      }
+      const targetSegs = treePath.split('/').filter(Boolean);
+      let parts = relFrom(baseSegs, targetSegs);
+      if (!media) {
+        const served = (pfx !== '/' ? pfx : '') + (treePath === '/' ? '' : treePath) || '/';
+        if (folderish.has(served)) parts.push('index.md');
+        else if (parts.length) parts[parts.length - 1] += '.md';
+        else parts = ['index.md'];
+      } else if (!parts.length) {
+        return url;
+      }
+      let rel = parts.join('/');
+      if (!rel.startsWith('..')) rel = `./${rel}`;
+      return `${rel}${anchor}`;
+    };
+    const unresolveBlocks = (node, baseSegs, m) => {
+      if (Array.isArray(node)) { node.forEach((n) => unresolveBlocks(n, baseSegs, m)); return; }
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'link' && node.data && typeof node.data.url === 'string') node.data.url = unresolve(node.data.url, baseSegs, m, false);
+      if ((node['@type'] === 'image' || node['@type'] === 'video') && typeof node.url === 'string') node.url = unresolve(node.url, baseSegs, m, true);
+      for (const v of Object.values(node)) unresolveBlocks(v, baseSegs, m);
+    };
 
     const matchedMap = splitByType(prototypes.matched || '');
     const taggedMap = splitByType(prototypes.tagged || '');
@@ -2376,7 +2425,7 @@ app.post('/@export', async (req, res) => {
 
     // The markdown file for one served item (frontmatter + body). Folders carry
     // the reconstructed order:/blobs: — this is an EXPORT, so nothing is stripped.
-    const emitFile = (c, p) => {
+    const emitFile = (c, p, m) => {
       const meta = Object.fromEntries(Object.entries(c).filter(([k]) => !SERVER_STATE.has(k)));
       const kids = (childrenByParent[p] || []).map((k) => loadRawContentFromDisk(k)).filter(Boolean);
       const childPages = kids.filter((d) => !isBlobItem(d))
@@ -2388,10 +2437,16 @@ app.post('/@export', async (req, res) => {
         blobItems.length ? YAML.stringify({ blobs: blobItems.map(blobEntry) }).trim() : '',
       ].filter(Boolean).join('\n');
       if (c.blocks && c.blocks_layout?.items?.length) {
-        const { markdown, assignments } = emitPage(protos, { blocks: c.blocks, blocks_layout: c.blocks_layout });
+        // The page's own directory (relative to the mount), for relative links.
+        const rel = m.mountPath === '/' ? (p === '/' ? '' : p.replace(/^\//, '')) : p.replace(m.mountPath, '').replace(/^\//, '');
+        const baseSegs = (folderish.has(p) ? rel : rel.replace(/\/?[^/]*$/, '')).split('/').filter(Boolean);
+        const blocks = structuredClone(c.blocks);
+        unresolveBlocks(blocks, baseSegs, m);
+        const { markdown } = emitPage(protos, { blocks, blocks_layout: c.blocks_layout });
         const used = collectTypes(c.blocks);
-        const asg = `blocks-assignments:\n${assignments.map((a) => `  - ${flow(a)}`).join('\n')}`;
-        const fmBody = [front, asg, section('blocks-matched', matchedMap, used), section('blocks-tagged', taggedMap, used)]
+        // No blocks-assignments: decode auto-mints uids when they're absent, and
+        // the current sources omit them — writing them back would churn every file.
+        const fmBody = [front, section('blocks-matched', matchedMap, used), section('blocks-tagged', taggedMap, used)]
           .filter(Boolean).join('\n');
         const body = c.title ? markdown.replace(/^# *$/m, () => `# ${c.title}`) : markdown;
         return `---\n${fmBody}\n---\n\n${body}\n`;
@@ -2438,7 +2493,7 @@ app.post('/@export', async (req, res) => {
         const folderish = c.is_folderish || (childrenByParent[p] || []).length > 0;
         const dest = path.join(treeRoot, rel === '' ? 'index.md' : (folderish ? `${rel}/index.md` : `${rel}.md`));
         fs.mkdirSync(path.dirname(dest), { recursive: true });
-        fs.writeFileSync(dest, emitFile(c, p));
+        fs.writeFileSync(dest, emitFile(c, p, m));
       }
       const tarPath = path.join(stagingMd, 'export.tar.gz');
       const members = fs.readdirSync(stagingMd).filter((x) => x !== 'export.tar.gz');
