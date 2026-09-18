@@ -467,7 +467,12 @@ test.describe('Navigation and URL Handling', () => {
     // Get the current iframe src (should be path-based: test-frontend host/test-page)
     const iframeElement = page.locator('#previewIframe');
     const srcBefore = await iframeElement.getAttribute('src');
-    expect(srcBefore).toContain(`${URLS.testFrontend}${TEST_DATA_PREFIX}/test-page`);
+    // The admin's configured frontend host is localhost in CI and 127.0.0.1
+    // locally; what this test cares about is the path-based URL on that frontend.
+    const before = new URL(srcBefore!);
+    expect(['localhost', '127.0.0.1']).toContain(before.hostname);
+    expect(before.port).toBe(String(PORTS.testFrontend));
+    expect(before.pathname).toBe(`${TEST_DATA_PREFIX}/test-page`);
     expect(srcBefore).not.toContain('#');
 
     // Open frontend switcher panel

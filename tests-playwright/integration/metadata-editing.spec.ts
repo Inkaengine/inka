@@ -252,35 +252,29 @@ test.describe('Page Metadata Editing', () => {
     const outline = page.locator('.volto-hydra-block-outline');
     await expect(outline).toBeVisible({ timeout: 5000 });
 
-    // Get initial outline position
-    const initialOutlineBox = await outline.boundingBox();
-    expect(initialOutlineBox).toBeTruthy();
-
-    // Get initial preview image position relative to iframe
-    const initialImageBox = await previewImage.boundingBox();
-    expect(initialImageBox).toBeTruthy();
+    // How far the outline's top is from the image's top, in page coordinates.
+    // Tracking means this stays ~0. Polled rather than read once: the outline
+    // appears before the admin has finished laying out around the selection
+    // (sidebar opening), so a single early read measures a layout shift, not
+    // the outline's tracking.
+    const offset = async () => {
+      const o = await outline.boundingBox();
+      const i = await previewImage.boundingBox();
+      if (!o || !i) return Number.POSITIVE_INFINITY;
+      return Math.abs(o.y - i.y);
+    };
+    await expect.poll(offset, { timeout: 5000 }).toBeLessThan(10);
+    const imageYBefore = (await previewImage.boundingBox())!.y;
 
     // Scroll down in the iframe
     await iframe.locator('body').evaluate((body) => {
       body.ownerDocument.defaultView?.scrollBy(0, 100);
     });
 
-    // Wait for scroll to complete and outline to update
-    await page.waitForTimeout(300);
-
-    // Get new positions after scroll
-    const newOutlineBox = await outline.boundingBox();
-    const newImageBox = await previewImage.boundingBox();
-
-    expect(newOutlineBox).toBeTruthy();
-    expect(newImageBox).toBeTruthy();
-
-    // The outline should have moved with the image (both should move up by ~100px)
-    // Allow some tolerance for timing
-    const outlineMovement = initialOutlineBox!.y - newOutlineBox!.y;
-    const imageMovement = initialImageBox!.y - newImageBox!.y;
-
-    // Both should have moved approximately the same amount
-    expect(Math.abs(outlineMovement - imageMovement)).toBeLessThan(10);
+    // The image really moved, and the outline followed it.
+    await expect
+      .poll(async () => imageYBefore - (await previewImage.boundingBox())!.y, { timeout: 5000 })
+      .toBeGreaterThan(50);
+    await expect.poll(offset, { timeout: 5000 }).toBeLessThan(10);
   });
 });
