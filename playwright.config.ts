@@ -18,6 +18,8 @@ const needsAstro = projectArg?.includes('astro');
 // Example frontends — opt-in only (not started unless explicitly requested)
 const needsNextjs = projectArg?.includes('nextjs');
 const needsF7 = projectArg?.includes('f7');
+// Quick Start starter apps — opt-in only, same rationale as the example frontends.
+const needsVanilla = projectArg?.includes('vanilla');
 
 /**
  * Playwright Test configuration for Volto Hydra tests.
@@ -181,6 +183,19 @@ export default defineConfig({
     {
       name: 'astro',
       testDir: 'tests-playwright/bridge',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+        permissions: ['clipboard-read', 'clipboard-write'],
+        storageState: 'tests-playwright/.generated/storage-svelte.json',
+      },
+    },
+    // Quick Start vanilla starter — runs the exact docs/quickstart/vanilla snippet
+    // (opt-in via --project=vanilla). Only quickstart-*.spec.ts runs here.
+    {
+      name: 'vanilla',
+      testDir: 'tests-playwright/bridge',
+      testMatch: /quickstart-.*\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 720 },
@@ -469,6 +484,19 @@ export default defineConfig({
       timeout: 120 * 1000,
       reuseExistingServer: true,
       cwd: path.join(process.cwd(), 'docs/examples/test-astro'),
+      stdout: 'pipe' as const,
+      stderr: 'pipe' as const,
+    }] : []),
+    // Quick Start vanilla starter — a vite server rooted at docs/quickstart/vanilla,
+    // aliasing the bridge specifier to source. SPA fallback serves index.html for
+    // the editor iframe's content path (/_test_data/test-page).
+    ...(needsVanilla ? [{
+      name: 'Quick Start Vanilla',
+      command: `npx vite --port ${PORTS.vanillaDoc} --strictPort --config ${path.join(process.cwd(), 'docs/quickstart/vanilla/vite.config.mjs')}`,
+      url: URLS.vanillaDoc,
+      timeout: 60 * 1000,
+      reuseExistingServer: true,
+      cwd: path.join(process.cwd(), 'docs/quickstart/vanilla'),
       stdout: 'pipe' as const,
       stderr: 'pipe' as const,
     }] : []),

@@ -32,6 +32,7 @@ export const FRONTEND_URLS: Record<string, string> = {
   nextjs: URLS.nextjs,
   f7: URLS.f7,
   astro: URLS.astroDoc,
+  vanilla: URLS.vanillaDoc,
 };
 
 export function getFrontendUrl(projectName: string): string | undefined {

@@ -21,6 +21,7 @@ env:
   HYDRA_NEXTJS_PORT: 3007
   HYDRA_F7_PORT: 3008
   HYDRA_ASTRO_DOC_PORT: 3009
+  HYDRA_VANILLA_DOC_PORT: 3010
 
 jobs:
   # ── Build Volto and upload artifact ──────────────────────────────────────
@@ -604,6 +605,7 @@ jobs:
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/hydra-nextjs && pnpm run start:test &
           cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:8888 npx vite --port 3008 --strictPort --config vite.config.test.mjs &
+          npx vite --port 3010 --strictPort --config docs/quickstart/vanilla/vite.config.mjs &
           sleep 3
       - name: Wait for servers
         run: |
@@ -611,7 +613,7 @@ jobs:
           # attempts and carried on, so a dead frontend reached the tests as 140
           # identical 30s timeouts ("no [data-block-uid] visible") and burned the
           # job's whole 45min budget — the symptom looked like 140 bugs.
-          for port in 8888 8889 3007 3008; do
+          for port in 8888 8889 3007 3008 3010; do
             echo "Waiting for port $port..."
             ready=""
             for i in {1..30}; do
@@ -625,7 +627,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=nextjs --project=nextjs-firefox --project=f7 --reporter=github,list,html
+        run: pnpm exec playwright test --project=nextjs --project=nextjs-firefox --project=f7 --project=vanilla --reporter=github,list,html
         env:
           CI: true
           NO_WEBSERVER: true
