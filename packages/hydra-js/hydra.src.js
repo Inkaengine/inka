@@ -7830,6 +7830,56 @@ export class Bridge {
    *   isContentReady to detect rendered changes like link URL updates.
    *   When false (default), include all metadata from metadataMap.
    */
+  /**
+   * An element's text with its line breaks: each <br> is "\n", except the
+   * browser's end-of-line placeholder (see isPlaceholderBr). textContent would
+   * drop every one of them.
+   */
+  textWithBreaks(el) {
+    let out = '';
+    const walk = (node) => {
+      for (const c of node.childNodes) {
+        if (c.nodeType === Node.TEXT_NODE) out += c.textContent || '';
+        else if (c.nodeType === Node.ELEMENT_NODE) {
+          if (c.tagName === 'BR') {
+            if (!this.isPlaceholderBr(c)) out += '\n';
+          } else walk(c);
+        }
+      }
+    };
+    walk(el);
+    return out;
+  }
+
+  /**
+   * Whether a <br> is the browser's end-of-line placeholder rather than a break.
+   *
+   * A contenteditable line cannot end in a bare break: an empty paragraph is
+   * `<p><br></p>`, and a break at the very end needs `<br><br>` to show. So a
+   * <br> with nothing but empty text after it, up to the end of its line, is
+   * the placeholder. "Its line" looks through inline wrappers — a break inside
+   * `<strong>…<br></strong>more` is real, because "more" follows it.
+   */
+  isPlaceholderBr(br) {
+    const INLINE = new Set([
+      'A', 'ABBR', 'B', 'CODE', 'DEL', 'EM', 'I', 'MARK', 'S', 'SMALL', 'SPAN',
+      'STRONG', 'SUB', 'SUP', 'U',
+    ]);
+    let node = br;
+    while (node) {
+      for (let n = node.nextSibling; n; n = n.nextSibling) {
+        const empty =
+          n.nodeType === Node.TEXT_NODE &&
+          this.stripZeroWidthSpaces(n.textContent || '') === '';
+        if (!empty) return false;
+      }
+      const parent = node.parentElement;
+      if (!parent || !INLINE.has(parent.tagName)) return true;
+      node = parent;
+    }
+    return true;
+  }
+
   domNodeToSlate(el, metadataMap, matchMetadataFromDom = false) {
     const nodeId = el.getAttribute('data-node-id');
     const fullMeta = (nodeId && metadataMap[nodeId]) || {};
@@ -7850,6 +7900,16 @@ export class Bridge {
         const text = this.stripZeroWidthSpaces(raw);
         children.push({ text });
       } else if (child.nodeType === Node.ELEMENT_NODE) {
+        // A <br> is a line break: "\n" in the text leaf, Volto's own form (its
+        // editor inserts '\n' on Shift+Enter and renders it as <br/>). Read as
+        // its textContent it came back "", so the break vanished — while the
+        // single-node reader, via innerText, kept it. The exception is the
+        // browser's placeholder at the end of a line, which the single-node
+        // reader also drops (it strips one trailing "\n").
+        if (child.tagName === 'BR') {
+          if (!this.isPlaceholderBr(child)) children.push({ text: '\n' });
+          continue;
+        }
         const childNodeId = child.getAttribute('data-node-id');
         if (childNodeId && isValidNodeId(childNodeId)) {
           children.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom));
@@ -7872,8 +7932,10 @@ export class Bridge {
         } else {
           // Element without valid nodeId (e.g. Vue wrapper span, Next.js leaf span)
           // — treat its text content as a text node, including empty text which
-          // Slate requires around inline elements like strong/link
-          const text = this.stripZeroWidthSpaces(child.textContent || '');
+          // Slate requires around inline elements like strong/link. Read through
+          // textWithBreaks, not textContent: a frontend draws a leaf's line
+          // breaks as <br> INSIDE this wrapper, and textContent drops them.
+          const text = this.stripZeroWidthSpaces(this.textWithBreaks(child));
           children.push({ text });
         }
       }
