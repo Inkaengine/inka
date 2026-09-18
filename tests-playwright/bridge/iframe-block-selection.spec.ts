@@ -28,12 +28,11 @@ import { URLS } from '../ports';
 
 // Which frontend the mock parent frames.
 //
-// mock-parent.html resolves its frontend as `?frontend=` → `window._frontendOrigin`
-// → its own origin. A beforeEach that re-navigates without the parameter
-// therefore tests whatever the JOB happens to have injected: the mock renderer
-// locally (nothing injected) and the job's own frontend in CI. That is not a
-// choice, it is a coin toss, and it read as a bridge failure in the nextjs/f7
-// job while passing everywhere else. Say which frontend the test means.
+// mock-parent.html resolves its frontend as `?frontend=` → its own origin. A
+// beforeEach that re-navigates without the parameter tests whichever frontend
+// that default happens to be, which once differed between local runs and the
+// nextjs/f7 job and read as a bridge failure there. Say which frontend the
+// test means.
 const parentUrl = (frontend: string, path: string) =>
   `${URLS.testFrontend}/mock-parent.html?frontend=${encodeURIComponent(frontend)}` +
   `&api_path=${encodeURIComponent(`${URLS.mockApi}${path}`)}`;

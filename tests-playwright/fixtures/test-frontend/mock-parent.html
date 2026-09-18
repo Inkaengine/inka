@@ -125,14 +125,14 @@
     import { mergeTemplatesIntoPage } from '/merge-templates.js';
 
     // Configure iframe frontend from ?frontend= URL param. The default is the
-    // origin THIS page is served from — vite injects it (see vite.config.js), and
-    // it is also just window.location.origin, since the mock parent and the test
-    // frontend are the same server. It used to be a literal localhost:8889, so a
-    // run on an overridden port (HYDRA_TEST_FRONTEND_PORT) framed a dead server
-    // unless the caller remembered ?frontend=.
+    // origin THIS page is served from: the mock parent and the test frontend are
+    // the same server. Not an injected origin — that spelled the host
+    // `localhost`, so a parent opened on 127.0.0.1 framed a cross-origin copy of
+    // itself and every test reading window.parent hit a SecurityError. (Before
+    // that it was a literal localhost:8889, which framed a dead server on an
+    // overridden port.)
     const params = new URLSearchParams(window.location.search);
-    const frontendOrigin =
-      params.get('frontend') || window._frontendOrigin || window.location.origin;
+    const frontendOrigin = params.get('frontend') || window.location.origin;
     const contentName = params.get('content'); // e.g., 'examples' loads /examples.json
     const apiPath = params.get('api_path'); // e.g., '/block/toc-block' loads from API
     const adminOrigin = window.location.origin;
