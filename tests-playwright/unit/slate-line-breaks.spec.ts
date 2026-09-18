@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { createRequire } from 'module';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+const require = createRequire(import.meta.url);
 const { paragraphShapeOf } = require('../helpers/discover-blocks.cjs');
 
 /**
