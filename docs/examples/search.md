@@ -48,7 +48,7 @@ A search interface with faceted filtering. Contains a child listing block for re
 
 <block type="image">
 
-![The search example block being edited in Volto Hydra](/docs/images/search-edit.png)
+![The search example block being edited in Inka](/docs/images/search-edit.png)
 
 </block>
 

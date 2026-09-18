@@ -5,7 +5,7 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: Hydra works with any frontend, including ones that have no client-side
+description: Inka works with any frontend, including ones that have no client-side
 effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
@@ -42,7 +42,7 @@ blocks-tagged: |
 
 # Server-rendered frontends
 
-Hydra works with any frontend, including ones that have no client-side reactivity at all — pure server-rendered frameworks like **Astro**, **PHP**, **Django**, **Rails**, **Laravel**, **Symfony**, **Go html/template**. The bridge ships a built-in pattern for these: one config option on `initBridge` and one small endpoint on your server.
+Inka works with any frontend, including ones that have no client-side reactivity at all — pure server-rendered frameworks like **Astro**, **PHP**, **Django**, **Rails**, **Laravel**, **Symfony**, **Go html/template**. The bridge ships a built-in pattern for these: one config option on `initBridge` and one small endpoint on your server.
 
 ## When you need this
 
@@ -96,7 +96,7 @@ For the bridge to swap `[data-block-uid=X].outerHTML` reliably, every block's **
 
 The recommended pattern: write a `BlockRenderer` (or equivalent) wrapper in your templating language that puts the `<div data-block-uid={id}>` around every block before dispatching to the block's own template. Then block authors don't think about it — the wrapper IS the contract.
 
-That dispatch must also handle `@type: "empty"` — the placeholder Hydra seeds into any container region with no `defaultBlockType` and more than one `allowedBlocks` — by rendering an empty, selectable slot (with its `data-block-uid`) rather than erroring. See [Empty Blocks](./container-blocks.md#empty-blocks).
+That dispatch must also handle `@type: "empty"` — the placeholder Inka seeds into any container region with no `defaultBlockType` and more than one `allowedBlocks` — by rendering an empty, selectable slot (with its `data-block-uid`) rather than erroring. See [Empty Blocks](./container-blocks.md#empty-blocks).
 
 ## Worked example: Astro
 
@@ -104,7 +104,7 @@ That dispatch must also handle `@type: "empty"` — the placeholder Hydra seeds 
 
 ```js
 // src/main.js (bridge bootstrap, runs in the iframe child)
-import { initBridge } from '@volto-hydra/hydra-js';
+import { initBridge } from '@hydra-js/hydra.js';
 
 initBridge({
   page: { schema: { properties: { blocks_layout: { allowedBlocks: [...] } } } },
@@ -172,7 +172,7 @@ function findBlockById(formData, blockId) {
 }
 ```
 
-The full working example lives at [\`docs/examples/test-astro/\`](https://github.com/collective/volto-hydra/tree/main/docs/examples/test-astro) with block components in [\`docs/examples/examples/astro/\`](https://github.com/collective/volto-hydra/tree/main/docs/examples/examples/astro).
+The full working example lives at [\`docs/examples/test-astro/\`](https://github.com/Inkaengine/inka/tree/main/docs/examples/test-astro) with block components in [\`docs/examples/examples/astro/\`](https://github.com/Inkaengine/inka/tree/main/docs/examples/examples/astro).
 
 ## Worked example: PHP
 

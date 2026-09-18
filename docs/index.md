@@ -69,10 +69,10 @@ Inka ships as a blank slate: your components are your blocks, and you decide wha
 
 The fastest way to feel what Inka does is to log into the hosted demo and edit a real page against a real frontend.
 
-<block type="slate" data-json='{"value":[{"type":"p","children":[{"text":"Open <https://hydra.pretagov.com>, log in, then:"}]}]}' />
+<block type="slate" data-json='{"value":[{"type":"p","children":[{"text":"Open <https://admin.inka.sh>, log in, then:"}]}]}' />
 
 - Open user preferences (bottom-left).
 - Pick one of the preset frontends, or paste in your own frontend URL.
 - Edit any page — every change updates the live preview.
 
-See [Build a frontend › Deployment patterns](./frontend-guide/build-a-frontend.md#deployment-patterns), or to run Inka locally see the **Run Locally** section of the [project README](https://github.com/collective/volto-hydra#run-locally).
+See [Build a frontend › Deployment patterns](./frontend-guide/build-a-frontend.md#deployment-patterns), or to run Inka locally see the **Run Locally** section of the [project README](https://github.com/Inkaengine/inka#run-locally).

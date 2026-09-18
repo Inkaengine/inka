@@ -36,7 +36,7 @@ blocks-matched: |
 
 Add data attributes to your rendered HTML to enable progressively richer visual editing:
 
-- **\`data-block-uid="blockId"\`** — Click-to-select blocks. Hydra.js adds click handlers and shows a blue outline and Quanta toolbar on selected blocks.
+- **\`data-block-uid="blockId"\`** — Click-to-select blocks. hydra.js adds click handlers and shows a blue outline and Quanta toolbar on selected blocks.
 - **\`data-edit-text="fieldName"\`** — Inline text editing. For simple text, click and type directly. For rich text (slate widget), select text to apply formatting via the Quanta toolbar.
 - **\`data-edit-media="fieldName"\`** — Visual media uploading. Editors can upload, pick or drag-and-drop images directly onto the element.
 - **\`data-edit-link="fieldName"\`** — Link editing. Click behaviour is replaced with a link picker to select content, enter an external URL, or open the link.
@@ -97,11 +97,11 @@ Render optional fields **data-driven**: no data, no element. Don't render an emp
 {block.image && <img data-edit-media="image" src={block.image} />}
 ```
 
-Plain truthiness is enough — you never need `.length` or a null-safe walk. Hydra normalises a field the editor has cleared (widgets write `[]`, which is truthy) to absent before your renderer sees it.
+Plain truthiness is enough — you never need `.length` or a null-safe walk. Inka normalises a field the editor has cleared (widgets write `[]`, which is truthy) to absent before your renderer sees it.
 
-To fill an empty field from the canvas, the editor selects the block and presses **reveal optional fields** in the Quanta toolbar. Hydra feeds your renderer a placeholder value for each empty field, so your own `&&` guard produces the element and it becomes editable. The placeholder exists only in the data handed to your renderer: it is never stored, so fields left unfilled leave no trace in saved content and render nothing in view. Your renderer needs no code for this.
+To fill an empty field from the canvas, the editor selects the block and presses **reveal optional fields** in the Quanta toolbar. Inka feeds your renderer a placeholder value for each empty field, so your own `&&` guard produces the element and it becomes editable. The placeholder exists only in the data handed to your renderer: it is never stored, so fields left unfilled leave no trace in saved content and render nothing in view. Your renderer needs no code for this.
 
-Reveal is best-effort. Hydra offers any field whose type could be edited inline, which it cannot always tell apart from a field you keep in the sidebar (alt text and css classes are strings too). Fields you don't render inline simply don't appear — the editor fills those from the sidebar as usual.
+Reveal is best-effort. Inka offers any field whose type could be edited inline, which it cannot always tell apart from a field you keep in the sidebar (alt text and css classes are strings too). Fields you don't render inline simply don't appear — the editor fills those from the sidebar as usual.
 
 Reveal replaces a per-block boolean only where "has data" and "should render" are the same thing. When they genuinely differ — the author has content but wants it hidden, or a field should appear only in certain configurations — add your own field and drive it with [\`fieldRules\`](./custom-blocks.md#schema-enhancers).
 
@@ -189,7 +189,7 @@ Or using comment syntax:
 
 `data-block-readonly` is *your* call — use it when your frontend wants to lock a block for its own reasons (a teaser mirroring another page, a listing item).
 
-You do **not** need it for template content. Hydra already knows which blocks a template marks read-only from the block data and enforces that itself, so your renderer doesn't need to detect template blocks or mark them.
+You do **not** need it for template content. Inka already knows which blocks a template marks read-only from the block data and enforces that itself, so your renderer doesn't need to detect template blocks or mark them.
 
 ## Renderer Node-ID Rules
 
@@ -240,7 +240,7 @@ Contrast this with the wrapper rule above: a wrapper that holds real content car
 
 A slate field's `value` is an array, but it always holds exactly **one top-level node** — a single paragraph, heading, list, or blockquote. Inline content (bold, links, …) lives in that node's `children`.
 
-Editing can transiently produce more than one top-level node — pasting multiple paragraphs, pressing Enter, or a Backspace that demotes a list item to a paragraph (`[ul, p]`). Hydra normalizes that immediately:
+Editing can transiently produce more than one top-level node — pasting multiple paragraphs, pressing Enter, or a Backspace that demotes a list item to a paragraph (`[ul, p]`). Inka normalizes that immediately:
 
 - **Split** — when the field is the `value` of a `slate` block, each extra
 

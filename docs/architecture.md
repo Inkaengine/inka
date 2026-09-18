@@ -154,7 +154,7 @@ What we deliberately did NOT shadow: `UniversalLink`'s fallback `href` when an i
 
 The steps for creating an Inka-compatible frontend are the same across frameworks: catch-all route → fetch page from Plone REST API → render blocks recursively → add `data-block-uid` and `data-edit-*` attributes on editable elements → load `hydra.js` only inside the admin iframe.
 
-See [Build a frontend](./frontend-guide/build-a-frontend.md) for the full step-by-step guide, or the example frontends: [Nuxt.js](https://github.com/collective/volto-hydra/tree/main/examples/nuxt-blog-starter), [Next.js](https://github.com/collective/volto-hydra/tree/main/examples/hydra-nextjs), [F7-Vue](https://github.com/collective/volto-hydra/tree/main/examples/hydra-vue-f7).
+See [Build a frontend](./frontend-guide/build-a-frontend.md) for the full step-by-step guide, or the example frontends: [Nuxt.js](https://github.com/Inkaengine/inka/tree/main/examples/nuxt-blog-starter), [Next.js](https://github.com/Inkaengine/inka/tree/main/examples/hydra-nextjs), [F7-Vue](https://github.com/Inkaengine/inka/tree/main/examples/hydra-vue-f7).
 
 ## Layers of adoption
 

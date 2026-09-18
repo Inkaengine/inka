@@ -43,7 +43,7 @@ A horizontal rule used to visually divide sections of content. Supports an align
 
 <block type="image">
 
-![The separator example block being edited in Volto Hydra](/docs/images/separator-edit.png)
+![The separator example block being edited in Inka](/docs/images/separator-edit.png)
 
 </block>
 

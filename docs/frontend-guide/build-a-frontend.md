@@ -40,9 +40,9 @@ blocks-matched: |
 
 The actual code you write will depend on the framework you choose. You can look at these examples to help you:
 
-- [Nuxt.js](https://github.com/collective/volto-hydra/tree/main/examples/nuxt-blog-starter)
-- [Next.js](https://github.com/collective/volto-hydra/tree/main/examples/hydra-nextjs)
-- [F7-Vue](https://github.com/collective/volto-hydra/tree/main/examples/hydra-vue-f7)
+- [Nuxt.js](https://github.com/Inkaengine/inka/tree/main/examples/nuxt-blog-starter)
+- [Next.js](https://github.com/Inkaengine/inka/tree/main/examples/hydra-nextjs)
+- [F7-Vue](https://github.com/Inkaengine/inka/tree/main/examples/hydra-vue-f7)
 
 <block type="callout" variation="note">
 
@@ -176,7 +176,7 @@ any non-heading target).
 
 Inka harvests these per block on render as `{ id, name, level }` and stores them in the block's data, so the object browser offers them as `path#pricing` link targets — as a nested list reflecting the page's structure. Both attributes must survive into your **published** render for the anchor to resolve at runtime — Inka only reads them in edit mode.
 
-**Level is optional / automatic.** If you use plain `data-linkable-id` on an element that is *itself* an `h1`–`h6`, Inka infers the level from the tag — so tagging every heading with `data-linkable-id` still yields a hierarchy for free. Precedence is: explicit `data-linkable-h{n}` > the element's heading tag > none (a level-less leaf). Given the flat, document-ordered anchor list, `buildAnchorTree` (in `@volto-hydra/hydra-js`) turns the levels into a nested contents tree; no levels means a flat list.
+**Level is optional / automatic.** If you use plain `data-linkable-id` on an element that is *itself* an `h1`–`h6`, Inka infers the level from the tag — so tagging every heading with `data-linkable-id` still yields a hierarchy for free. Precedence is: explicit `data-linkable-h{n}` > the element's heading tag > none (a level-less leaf). Given the flat, document-ordered anchor list, `buildAnchorTree` (in `@hydra-js/hydra.js`) turns the levels into a nested contents tree; no levels means a flat list.
 
 It's your choice which elements are linkable — a common pattern is to tag every heading, deriving its `id` from a slug of the heading text. If you want a heading to be linkable *while it's being edited* (before save), keep its `id`/`data-linkable-id` current as the text changes — e.g. a small `input` listener that re-slugifies the heading. Inka harvests anchors both on render **and** when inline edits flush, merging them into the edit form's `block._linkableAnchors` so a freshly-typed heading becomes linkable on the page being edited without saving first; other pages use their last saved anchors.
 
@@ -186,7 +186,7 @@ To build something *from* the anchors — an in-page navigation ("On this page")
 
 \> One consequence: text typed into an *existing* heading updates the nav on the next > render (when you blur the block), not on every keystroke — inline text edits don't > re-render the frontend until they're flushed. Adding or removing headings updates it > immediately.
 
-If your anchors carry levels, pair the derived list with `buildAnchorTree(anchors)` (from `@volto-hydra/hydra-js`) to render a nested contents list; no levels means a flat list.
+If your anchors carry levels, pair the derived list with `buildAnchorTree(anchors)` (from `@hydra-js/hydra.js`) to render a nested contents list; no levels means a flat list.
 
 ## The steps
 
@@ -301,6 +301,6 @@ The default Inka demo uses exactly the SSG / SSR pattern above:
 
 - **Production** — [SSG on Netlify](https://hydra-nuxt-flowbrite.netlify.app/). All pages statically generated, images optimized, fast globally.
 - **Editing** — same Nuxt codebase deployed as SPA to a different Netlify URL. Only loaded inside Inka's iframe.
-- **Inka + Plone** — deployed to [fly.io](https://hydra.pretagov.com) with scale-to-zero. Cost is free or minimal since it only runs during editing.
+- **Inka + Plone** — deployed to [fly.io](https://admin.inka.sh) with scale-to-zero. Cost is free or minimal since it only runs during editing.
 
 For most frameworks, switching between SSG / SSR and SPA is just a config toggle, so you get the best of both worlds with minimal effort.

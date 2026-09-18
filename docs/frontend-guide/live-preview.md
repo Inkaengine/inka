@@ -5,7 +5,7 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: To make your site editable with Hydra you load hydra.js in your
+description: To make your site editable with Inka you load hydra.js in your
   frontend and call initBridge(). This sets up a two-way communication channel
   that handles authentication, page navigation, and live content updates.
 effective: 2025-01-01T00:00:00
@@ -35,7 +35,7 @@ blocks-matched: |
 
 # Live Preview
 
-To make your site editable with Hydra you load hydra.js in your frontend and call `initBridge()`. This sets up a two-way communication channel that handles authentication, page navigation, and live content updates.
+To make your site editable with Inka you load hydra.js in your frontend and call `initBridge()`. This sets up a two-way communication channel that handles authentication, page navigation, and live content updates.
 
 <block type="separator" />
 
@@ -64,7 +64,7 @@ Either hashbang (`/#!/path`) or normal (`/path`) style paths are supported.
 
 ## A Simple Page Renderer
 
-Iterate `blocks_layout.items` and render each block by type. Add `data-block-uid` so Hydra knows which block the user clicked.
+Iterate `blocks_layout.items` and render each block by type. Add `data-block-uid` so Inka knows which block the user clicked.
 
 ### Javascript
 

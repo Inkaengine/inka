@@ -71,7 +71,7 @@ Then start the admin, which is configured to talk to the mock API, and open a pa
 pnpm start:test
 ```
 
-The admin renders the page through whichever frontend you select and updates the live preview as you edit — the same round trip a real editor gets, backed by your local Markdown. (The test ports are supplied by the project's make target and CI configuration; the [test suite README](https://github.com/collective/volto-hydra/tree/main/tests-playwright) covers the full harness.)
+The admin renders the page through whichever frontend you select and updates the live preview as you edit — the same round trip a real editor gets, backed by your local Markdown. (The test ports are supplied by the project's make target and CI configuration; the [test suite README](https://github.com/Inkaengine/inka/tree/main/tests-playwright) covers the full harness.)
 
 ## Testing with the block sanity test
 

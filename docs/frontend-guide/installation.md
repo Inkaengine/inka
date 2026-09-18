@@ -30,7 +30,7 @@ Adding Inka to a frontend is a small script and a few HTML attributes — there 
 
 ## Prerequisites
 
-- A running Inka admin and content backend for editors to log into (the hosted demo at <https://hydra.pretagov.com> works while you develop).
+- A running Inka admin and content backend for editors to log into (the hosted demo at <https://admin.inka.sh> works while you develop).
 - A frontend that renders your content — any framework, or none. The bridge only runs when the page is opened inside the admin's edit iframe.
 
 ## Load hydra.js

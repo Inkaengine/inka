@@ -174,7 +174,7 @@ To keep the admin's edit component for one block — a picker or upload UI a sch
 
 - **\`onEditChange(formData)\`** — callback invoked with the new form data whenever the editor changes anything. See [Live Preview › Setting Up the Bridge](./live-preview.md#setting-up-the-bridge).
 - **\`pathToApiPath(path)\`** — function transforming a frontend path to the API/admin path on `PATH_CHANGE` messages. Use when your frontend embeds state (paging, filters) in URL segments that don't exist on the CMS side. See [Listings › Path Transformation](./listings.md#path-transformation-pathtoapipath).
-- **\`voltoConfig\`** — passes additional Volto config (non-block settings) through to the admin. Future home for things like slate formats ([TODO #109](https://github.com/collective/volto-hydra/issues/109)) and toolbar actions.
+- **\`voltoConfig\`** — passes additional Volto config (non-block settings) through to the admin. Future home for things like slate formats ([TODO #109](https://github.com/Inkaengine/inka/issues/109)) and toolbar actions.
 - **\`debug\`** — `true` enables verbose console logging in the bridge. Default `false`.
 
 ### Returns
@@ -851,7 +851,7 @@ The saved `fieldMapping` is read at render time by `expandListingBlocks` — no 
 
 ## HTML Paste Support (TODO)
 
-When the editor pastes rich HTML into the page, Hydra will eventually be able to recognise it as a custom block by matching against a CSS selector mapping. The proposed shape:
+When the editor pastes rich HTML into the page, Inka will eventually be able to recognise it as a custom block by matching against a CSS selector mapping. The proposed shape:
 
 ### Javascript
 
