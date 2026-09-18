@@ -1726,11 +1726,23 @@ function reloadMount(mount) {
 }
 
 /** Import the ESM loaders once, hold them, and load every markdown mount. */
-/** Import the prototype engine once (for /@export markdown), independent of
- *  whether any markdown mounts are configured. */
-async function initEngine() {
-  const { emitPage, parsePrototypes } = await import('../../lib/prototype-mapping.mjs');
-  engine = { emitPage, parsePrototypes };
+/**
+ * The prototype engine, imported the first time `/@export` asks for markdown.
+ *
+ * LAZY on purpose. This pulls in the whole markdown toolchain — unified, the
+ * remark plugins, yaml — and those are dependencies of THIS repo, not of the
+ * frontends that vendor it and run this mock server against their own install.
+ * Importing it at startup meant a consumer whose tests never touch markdown
+ * still died on ERR_MODULE_NOT_FOUND before serving a single request, and the
+ * failure looked like "the mock API would not start", not like a missing
+ * dependency of a feature they do not use.
+ */
+async function getEngine() {
+  if (!engine) {
+    const { emitPage, parsePrototypes } = await import('../../lib/prototype-mapping.mjs');
+    engine = { emitPage, parsePrototypes };
+  }
+  return engine;
 }
 
 async function initMarkdownMounts() {
@@ -1780,7 +1792,7 @@ initContentDirMap();
 // Markdown mounts need a dynamic import, so loading them is async. Anything
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
-ready = Promise.all([initMarkdownMounts(), initEngine()]);
+ready = initMarkdownMounts();
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
@@ -2267,7 +2279,7 @@ app.post('/@export', async (req, res) => {
   const { format = 'json', prototypes = {} } = req.body || {};
 
   if (format === 'markdown') {
-    const { emitPage, parsePrototypes } = engine;
+    const { emitPage, parsePrototypes } = await getEngine();
     const protos = [
       ...parsePrototypes(prototypes.matched || ''),
       ...parsePrototypes(prototypes.tagged || '', { explicit: true }),
