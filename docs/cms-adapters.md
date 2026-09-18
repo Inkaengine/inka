@@ -52,26 +52,19 @@ blocks-tagged: |
 
 The admin you edit in never talks to your CMS. Your frontend does.
 
-An **adapter** is a small class, living in your frontend, that answers the admin's
-requests against whatever CMS you actually run. The admin sends intents like
-`content.get` and `content.update`; the adapter turns them into that CMS's own
-API calls. Nothing in the admin knows which CMS answered.
+An **adapter** is a small class, living in your frontend, that answers the admin's requests against whatever CMS you actually run. The admin sends intents like `content.get` and `content.update`; the adapter turns them into that CMS's own API calls. Nothing in the admin knows which CMS answered.
 
-That inversion buys two things. The admin holds no CMS credentials — the session
-lives in your frontend's origin, where your users already sign in. And support
-for a new CMS is one class you write, not a fork of the editor.
+That inversion buys two things. The admin holds no CMS credentials — the session lives in your frontend's origin, where your users already sign in. And support for a new CMS is one class you write, not a fork of the editor.
 
 <block type="callout" variation="note">
 
-Adapters ship for Plone, WordPress and Drupal. The admin is byte-identical
-across all three: what changes is which adapter your frontend hands the bridge.
+Adapters ship for Plone, WordPress and Drupal. The admin is byte-identical across all three: what changes is which adapter your frontend hands the bridge.
 
 </block>
 
 ## Install an adapter
 
-Install the package for your CMS. `@volto-hydra/hydra-types` is optional and
-carries the TypeScript definitions.
+Install the package for your CMS. `@volto-hydra/hydra-types` is optional and carries the TypeScript definitions.
 
 ### Bash
 
@@ -81,9 +74,7 @@ npm install @volto-hydra/hydra-adapters-plone
 # or @volto-hydra/hydra-adapters-drupal
 ```
 
-Then hand it to `initBridge` alongside your existing options. This is the same
-`initBridge` call from [Build a frontend](./build-a-frontend.md) — the adapter is
-one more option on it.
+Then hand it to `initBridge` alongside your existing options. This is the same `initBridge` call from [Build a frontend](./build-a-frontend.md) — the adapter is one more option on it.
 
 ### Js
 
@@ -121,24 +112,15 @@ new DrupalAdapter({ cmsBaseUrl, credentials, bundle });
 
 ## What editors notice
 
-**Signing in happens in your frontend, not the admin.** The adapter owns the
-session, so the admin has no login form of its own to offer. If the adapter has
-no credential it raises an `auth-required` event and your frontend decides what
-to show — its own login screen, an OAuth popup, whatever you already use.
+**Signing in happens in your frontend, not the admin.** The adapter owns the session, so the admin has no login form of its own to offer. If the adapter has no credential it raises an `auth-required` event and your frontend decides what to show — its own login screen, an OAuth popup, whatever you already use.
 
-**Logging out ends the real session.** The admin's logout button reaches the
-adapter as `auth.logout`. Clearing only the admin's own state would be the
-dangerous half of a logout: the editor sees an empty toolbar while the credential
-that reaches the CMS is still live.
+**Logging out ends the real session.** The admin's logout button reaches the adapter as `auth.logout`. Clearing only the admin's own state would be the dangerous half of a logout: the editor sees an empty toolbar while the credential that reaches the CMS is still live.
 
-**Buttons appear only when the CMS can back them.** The admin gates its UI on
-what the adapter declares, so a CMS without workflow shows no publish menu rather
-than a button that fails.
+**Buttons appear only when the CMS can back them.** The admin gates its UI on what the adapter declares, so a CMS without workflow shows no publish menu rather than a button that fails.
 
 ## Write a custom adapter
 
-An adapter is any object with this shape. In TypeScript it is the `HydraAdapter`
-interface from `@volto-hydra/hydra-types`.
+An adapter is any object with this shape. In TypeScript it is the `HydraAdapter` interface from `@volto-hydra/hydra-types`.
 
 ### Js
 
@@ -153,19 +135,12 @@ interface from `@volto-hydra/hydra-types`.
 }
 ```
 
-Extend `BaseAdapter` rather than starting from the interface. It implements
-everything except `dispatch`, and what it gives you is the part that is tedious
-to get right:
+Extend `BaseAdapter` rather than starting from the interface. It implements everything except `dispatch`, and what it gives you is the part that is tedious to get right:
 
-- **Read retention and in-flight sharing.** Identical reads are answered once and
-  shared, then held until your next write. On the Drupal journey that took CMS
-  requests from 190 to 83.
-- **Invalidation on write.** Writing intents clear the retained reads, so a save
-  is never followed by a stale answer.
-- **One retry on 401.** A session refreshed in another tab recovers silently; a
-  second failure raises `auth-required` and rethrows.
-- **Context expansion.** The admin may ask for a bundle of related reads along
-  with a document; `BaseAdapter` issues them concurrently.
+- **Read retention and in-flight sharing.** Identical reads are answered once and shared, then held until your next write. On the Drupal journey that took CMS requests from 190 to 83.
+- **Invalidation on write.** Writing intents clear the retained reads, so a save is never followed by a stale answer.
+- **One retry on 401.** A session refreshed in another tab recovers silently; a second failure raises `auth-required` and rethrows.
+- **Context expansion.** The admin may ask for a bundle of related reads along with a document; `BaseAdapter` issues them concurrently.
 
 ### Js
 
@@ -204,19 +179,13 @@ export class MyCmsAdapter extends BaseAdapter {
 
 ### Declare only what you have
 
-`capabilities` is a promise the admin plans its UI around. Claiming one you
-cannot serve is worse than omitting it: the admin renders the control, the call
-fails, and the editor sees a dead button. Omit it and the control never appears.
+`capabilities` is a promise the admin plans its UI around. Claiming one you cannot serve is worse than omitting it: the admin renders the control, the call fails, and the editor sees a dead button. Omit it and the control never appears.
 
-`http-passthrough` is the exception worth understanding. It says "this CMS speaks
-Plone's REST dialect", and the admin then forwards its requests verbatim instead
-of translating them to intents. Only claim it if that is true.
+`http-passthrough` is the exception worth understanding. It says "this CMS speaks Plone's REST dialect", and the admin then forwards its requests verbatim instead of translating them to intents. Only claim it if that is true.
 
 ### Fail loudly
 
-Throw `AdapterError` with a code. Returning an empty result for something you
-cannot do is the one failure mode that cannot be diagnosed later: the admin
-renders "nothing here" and nobody learns why.
+Throw `AdapterError` with a code. Returning an empty result for something you cannot do is the one failure mode that cannot be diagnosed later: the admin renders "nothing here" and nobody learns why.
 
 ### Js
 
@@ -229,13 +198,9 @@ throw new AdapterError('my-cms: no workflow on this content', {
 
 ## Prove it with the contract suite
 
-Adapters are held to one shared suite rather than per-CMS tests. Every target
-seeds itself from the same fixture and the assertions refer to that seed, so a
-test that needs a CMS-specific value to pass has found a leak in the abstraction.
+Adapters are held to one shared suite rather than per-CMS tests. Every target seeds itself from the same fixture and the assertions refer to that seed, so a test that needs a CMS-specific value to pass has found a leak in the abstraction.
 
-Register a target that boots your CMS, seeds it and exposes your adapter, then
-run the suite against it. A capability you do not declare must be *rejected*, and
-the suite checks that too.
+Register a target that boots your CMS, seeds it and exposes your adapter, then run the suite against it. A capability you do not declare must be *rejected*, and the suite checks that too.
 
 ### Bash
 
@@ -243,9 +208,7 @@ the suite checks that too.
 ADAPTER_TARGET=my-cms npx vitest run --config vitest.adapters.config.mjs
 ```
 
-The suite covers content CRUD, listings, search, navigation, breadcrumbs,
-schemas, vocabularies, references, assets, workflow, moves, auth and expansion.
-Getting it green is what "supports this CMS" means here.
+The suite covers content CRUD, listings, search, navigation, breadcrumbs, schemas, vocabularies, references, assets, workflow, moves, auth and expansion. Getting it green is what "supports this CMS" means here.
 
 ## Reference
 
