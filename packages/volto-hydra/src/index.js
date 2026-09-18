@@ -82,6 +82,7 @@ import columnAfterSVG from '@plone/volto/icons/column-after.svg';
 import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
 import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
+import { slateValueField } from './utils/slateValueField';
 import { BRIDGE_EXPANDERS } from './bridge/expanders';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
 
@@ -410,21 +411,13 @@ config.settings.additionalToolbarComponents = {
           ...(blockTab?.fieldsets?.slice(1) || []),
         ],
         properties: {
-          // Default lives HERE, on the field, not only in the initialValue
-          // hook above. initialValue is called by _applyBlockInitialValue,
-          // which only the add-block flow runs; every other way a slate block
-          // comes into being — ensureEmptyBlockIfEmpty seeding an empty
-          // container, initialBlocks for a new page, a template slot — goes
-          // through applyBlockDefaults, which reads schema defaults. Without
-          // this a slate block could exist with no value, and the frontend
-          // would render its empty-state placeholder with no addressable slate
-          // node, which disables selection sync for the block.
-          value: {
-            title: 'Body',
-            widget: 'slate',
+          // Defaulted on the field so every creation path gets a body — but
+          // only for a block without one; see slateValueField for why.
+          value: slateValueField({
+            data: props?.formData || props?.data,
             placeholder,
-            default: config.settings.slate.defaultValue(),
-          },
+            defaultValue: config.settings.slate.defaultValue,
+          }),
           ...(blockTab?.properties || {}),
           // Permanent fragment id for a heading block. Frontends render it as
           // the heading's id, so links and tables of contents survive the
