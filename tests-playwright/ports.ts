@@ -90,7 +90,15 @@ export const PORTS = {
  */
 export const URLS = {
   mockApi: `http://localhost:${PORTS.mockApi}`,
-  testFrontend: `http://localhost:${PORTS.testFrontend}`,
+  // 127.0.0.1, not localhost.
+  //
+  // WordPress refuses `localhost` as an application-password success_url — its
+  // SSRF guard rejects the host, and authorize-application.php 500s rather than
+  // declining cleanly. The sign-in flow redirects back to this origin, so the
+  // frontend has to be addressed as something the CMS will accept. The CMS
+  // mocks already use 127.0.0.1, so this is also the more consistent choice.
+  testFrontend: `http://127.0.0.1:${PORTS.testFrontend}`,
+  plonSeeded: `http://127.0.0.1:${PORTS.plonSeeded}`,
   mockParent: `http://localhost:${PORTS.mockParent}`,
   voltoSsr: `http://localhost:${PORTS.voltoSsr}`,
   voltoWebpack: `http://localhost:${PORTS.voltoWebpack}`,

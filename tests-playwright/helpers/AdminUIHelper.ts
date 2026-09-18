@@ -13,6 +13,17 @@ import { randomUUID } from 'node:crypto';
 // mock-api session — the mock keys session content by the Bearer token.
 export const TEST_AUTH_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6NDEwMjQ0NDgwMH0.fake-signature';
 
+/**
+ * How long to wait for a NAMED object-browser row.
+ *
+ * Every wait here is for a specific row the caller is about to act on, never
+ * for "the listing changed" — the previous folder's rows stay in the DOM until
+ * the new response replaces them, so waiting on mere presence can be satisfied
+ * by stale content. Matching on the row you want lets Playwright retry through
+ * that window. 10s is what the existing object-browser specs use.
+ */
+const OB_LISTING_TIMEOUT = 10_000;
+
 export class AdminUIHelper {
   // Per-test auth token. The mock API keys its session content store by
   // the Bearer token (getSessionId), so a shared token collapses every
@@ -5867,8 +5878,12 @@ export class AdminUIHelper {
     await homeBreadcrumb.waitFor({ state: 'visible', timeout: 2000 });
     await homeBreadcrumb.click();
 
-    // Wait for the listing to update by checking for list items
-    await expect(objectBrowser.locator('li[role="listitem"]').first()).toBeVisible({ timeout: 5000 });
+    // Wait for a REAL row, not the loading placeholder, and allow for a slow
+    // CMS: WordPress answers in about a second per request, so 5s covered the
+    // mock servers but not a real backend.
+    await expect(
+      objectBrowser.locator('.object-listing li:not(.ob-loading-indicator)').first(),
+    ).toBeVisible({ timeout: OB_LISTING_TIMEOUT });
   }
 
   /**
@@ -5907,7 +5922,10 @@ export class AdminUIHelper {
     await this.waitForObjectBrowserLevel();
     const folderItem = this.page.locator('.object-listing li').filter({ hasText: folderName });
 
-    const found = await folderItem.first().waitFor({ state: 'visible', timeout: 500 })
+    // Give the listing time to arrive before deciding the folder is absent.
+    // At 500ms a slow CMS reliably "lost" a folder that was simply still
+    // loading, which sent the walk-up fallback below off to another level.
+    const found = await folderItem.first().waitFor({ state: 'visible', timeout: OB_LISTING_TIMEOUT })
       .then(() => true)
       .catch(() => false);
 
@@ -5939,7 +5957,7 @@ export class AdminUIHelper {
     }
 
     // Try to find and click the folder; if still not found, we're already inside it
-    const nowFound = await folderItem.first().waitFor({ state: 'visible', timeout: 5000 })
+    const nowFound = await folderItem.first().waitFor({ state: 'visible', timeout: OB_LISTING_TIMEOUT })
       .then(() => true)
       .catch(() => false);
 
@@ -5962,10 +5980,23 @@ export class AdminUIHelper {
    * @param itemName - The name of the item to select (e.g., "Test Image 1" or /test-image-1/i)
    */
   async objectBrowserSelectItem(_objectBrowser: Locator, itemName: string | RegExp): Promise<void> {
-    const item = this.page.locator('.object-listing li').filter({ hasText: itemName });
+    const item = this.page.locator('.object-listing li:not(.ob-loading-indicator)').filter({ hasText: itemName });
 
-    // Give the initial @search (componentDidMount) time to populate the listing.
-    const itemQuickFound = await item.first().waitFor({ state: 'visible', timeout: 1500 })
+    // Wait the FULL budget for the row before concluding it is not here.
+    //
+    // The walk-up below navigates away and closes the browser, so running it
+    // early throws away the folder the caller just navigated to. A 1.5s probe
+    // did exactly that on WordPress: the listing was still in flight, the
+    // fallback clicked a breadcrumb, the browser unmounted, and the response
+    // arrived into a dead component — which read as "the CMS never returned
+    // the target".
+    //
+    // Waiting on the loading indicator instead does NOT work: it only renders
+    // when the listing has no items at all, and during a navigation the
+    // previous folder's rows are still there.
+    const itemQuickFound = await item
+      .first()
+      .waitFor({ state: 'visible', timeout: OB_LISTING_TIMEOUT })
       .then(() => true)
       .catch(() => false);
 
