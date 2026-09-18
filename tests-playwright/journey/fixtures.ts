@@ -21,6 +21,15 @@ const FIXTURES: Record<
      * nowhere to go.
      */
     moveTarget?: string;
+    /**
+     * A PUBLISHED page and a DRAFT, for the view-mode preview. In view mode the
+     * frontend fetches the page itself, straight from its CMS, rather than
+     * being handed it over the bridge — so this is where a frontend that only
+     * knows how to read Plone shows nothing for a WordPress or Drupal site, and
+     * where a draft needs the frontend's own credential.
+     */
+    published: { path: string; title: string; text: string };
+    draft: { path: string; title: string };
   }
 > = {
   // Plone's mock serves the site's own test tree; the others seed the shared
@@ -38,6 +47,8 @@ const FIXTURES: Record<
     withImage: '/docs/what-editors-will-experience/links-and-media',
     // Already a folder, so the move destination is the same place.
     moveTarget: '/_test_data/context-navigation-forced-folder',
+    published: { path: '/_test_data/test-page', title: 'Test Page', text: 'This is a test paragraph' },
+    draft: { path: '/_test_data/draft-page', title: 'Draft Page' },
   },
   // The target must be a CHILD of the root — the journey picks it out of the
   // root's own listing, so a sibling like /about can never appear there.
@@ -55,6 +66,8 @@ const FIXTURES: Record<
     lastEditedLabel: 'Modification date',
     withImage: '/with-image',
       moveTarget: '/archive',
+    published: { path: '/news/first-post', title: 'First Post', text: 'Hello' },
+    draft: { path: '/news/draft-post', title: 'Draft Post' },
   },
   'journey-drupal': {
     root: '/news',
@@ -66,6 +79,8 @@ const FIXTURES: Record<
     // against a real CMS, and neither is the thing under test.
     withImage: '/with-image',
       moveTarget: '/archive',
+    published: { path: '/news/first-post', title: 'First Post', text: 'Hello' },
+    draft: { path: '/news/draft-post', title: 'Draft Post' },
   },
   'journey-wordpress': {
     root: '/news',
@@ -73,6 +88,8 @@ const FIXTURES: Record<
     lastEditedLabel: 'Last edited',
     withImage: '/with-image',
       moveTarget: '/archive',
+    published: { path: '/news/first-post', title: 'First Post', text: 'Hello' },
+    draft: { path: '/news/draft-post', title: 'Draft Post' },
   },
 };
 

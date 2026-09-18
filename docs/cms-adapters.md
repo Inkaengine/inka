@@ -113,6 +113,28 @@ new WordPressAdapter({ cmsBaseUrl, nonce, credentials, postType });
 new DrupalAdapter({ cmsBaseUrl, credentials, bundle });
 ```
 
+## Rendering a site that is not on Plone
+
+The adapter is only for editing. Your frontend renders straight from its CMS, as it does on the public site, and inside the admin's view mode it does the same: the admin sends the page over the bridge only while editing. So a frontend needs a way to read its own CMS.
+
+If your renderers were written against Plone's REST shape — every example here was — the adapter packages double as a read library. Construct the adapter for your CMS and read through `@volto-hydra/helpers`, which returns the Plone shape your renderers already consume:
+
+### Js
+
+```js
+import { adapterGetContent, adapterFetchItems } from '@volto-hydra/helpers';
+import { WordPressAdapter } from '@volto-hydra/hydra-adapters-wordpress';
+
+const adapter = new WordPressAdapter({ cmsBaseUrl, credentials });
+
+const content = await adapterGetContent(adapter, path, { expand: ['navigation'] });
+const fetchItems = adapterFetchItems({ adapter }); // same contract as ploneFetchItems
+```
+
+The credential is the frontend's own. A published page needs none; showing a draft in the preview needs one for your CMS, because the admin's session is not something WordPress or Drupal would accept.
+
+A Plone frontend needs none of this and can keep fetching Plone directly.
+
 ## What editors notice
 
 **Signing in happens in your frontend, not the admin.** The adapter owns the session, so the admin has no login form of its own to offer. If the adapter has no credential it raises an `auth-required` event and your frontend decides what to show — its own login screen, an OAuth popup, whatever you already use.

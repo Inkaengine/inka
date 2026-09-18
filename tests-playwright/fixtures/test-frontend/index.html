@@ -149,13 +149,39 @@
         // point of the inversion is that the ADMIN does not know or care —
         // it is the frontend that owns the adapter, so switching CMS is a
         // frontend concern and nothing in Volto changes.
-        function buildAdapter() {
+        //
+        // A frontend's CMS is its own configuration. Here it is ?adapter= and
+        // ?cms=, because one fixture serves every CMS in the suite; the admin
+        // carries both onto the preview URL, since it builds that from the
+        // frontend URL. A Plone frontend reads Plone directly; anything else
+        // reads through its adapter (helpers' adapterGetContent), keeping the
+        // renderers, which were written against Plone's shape.
+        function frontendCms() {
             const params = new URLSearchParams(window.location.search);
-            const which = params.get('adapter') || 'plone';
-            const cmsBaseUrl = params.get('cms') || window._apiOrigin;
+            return {
+                which: params.get('adapter') || 'plone',
+                base: params.get('cms') || window._apiOrigin,
+            };
+        }
+        let cmsAdapterInstance = null;
+        function cmsAdapter() {
+            cmsAdapterInstance ??= buildAdapter();
+            return cmsAdapterInstance;
+        }
+        function buildAdapter() {
+            const { which, base: cmsBaseUrl } = frontendCms();
             switch (which) {
-                case 'wordpress':
-                    return new WordPressAdapter({ cmsBaseUrl });
+                case 'wordpress': {
+                    // The frontend's OWN credential, not the admin's: the admin's
+                    // token is Plone-shaped and means nothing to WordPress. Minted
+                    // by the sign-in (journey-wordpress-setup) into this origin's
+                    // storage. A published page needs none; a draft does.
+                    const stored = localStorage.getItem(`hydra_credentials:wordpress:${cmsBaseUrl}`);
+                    return new WordPressAdapter({
+                        cmsBaseUrl,
+                        ...(stored ? { credentials: JSON.parse(stored) } : {}),
+                    });
+                }
                 case 'drupal':
                     return new DrupalAdapter({
                         cmsBaseUrl,
@@ -170,7 +196,7 @@
                     throw new Error(`Unknown adapter '${which}'`);
             }
         }
-        import { expandListingBlocks, staticBlocks, ploneFetchItems, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
+        import { expandListingBlocks, staticBlocks, ploneFetchItems, adapterFetchItems, adapterGetContent, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
         // Expose staticBlocks so the renderer's expandItems can window static
         // (non-listing) container children with combined paging, hand-in-hand with
         // expandListingBlocks — the two abstract object_list/blocks_layout and paging.
@@ -258,7 +284,10 @@
             const extraCriteria = getSearchCriteriaFromUrl();
             tfLog('extraCriteria from URL:', JSON.stringify(extraCriteria), 'search:', window.location.search);
             window._searchCriteria = extraCriteria; // Store for form handlers
-            const fetchItems = ploneFetchItems({ apiUrl: window._apiOrigin, contextPath, extraCriteria });
+            const cms = frontendCms();
+            const fetchItems = cms.which === 'plone'
+                ? ploneFetchItems({ apiUrl: cms.base, contextPath, extraCriteria })
+                : adapterFetchItems({ adapter: cmsAdapter(), extraCriteria });
             // Example listing-variant fetchers (see packages/helpers/index.js).
             const exampleFetchers = {
                 relatedItemsListing: relatedItemsFetcher({ apiUrl: window._apiOrigin, contextPath }),
@@ -275,7 +304,9 @@
                 // from the PARENT folder (not the current page) so the current
                 // page isn't dropped as the query's excluded "self".
                 const fi = contextOverride
-                    ? ploneFetchItems({ apiUrl: window._apiOrigin, contextPath: contextOverride, extraCriteria })
+                    ? (cms.which === 'plone'
+                        ? ploneFetchItems({ apiUrl: cms.base, contextPath: contextOverride, extraCriteria })
+                        : adapterFetchItems({ adapter: cmsAdapter(), extraCriteria }))
                     : fetchItems;
                 // Forward `seen` so a listing run continues the SAME page window
                 // that a preceding staticBlocks run started — combined paging over a
@@ -453,8 +484,19 @@
                 if (token) {
                     fetchHeaders['Authorization'] = `Bearer ${token}`;
                 }
-                const response = await fetch(`${window._apiOrigin}/++api++${contentPath}?expand=navigation`, { headers: fetchHeaders });
-                let content = await response.json();
+                // The frontend reads its CMS itself here, in view mode as in edit
+                // (edit then overlays what the admin sends). It used to read
+                // window._apiOrigin whatever ?cms= said, so a second Plone site
+                // rendered nothing, and a WordPress or Drupal page 404'd against
+                // the Plone mock.
+                const pageCms = frontendCms();
+                let content;
+                if (pageCms.which === 'plone') {
+                    const response = await fetch(`${pageCms.base}/++api++${contentPath}?expand=navigation`, { headers: fetchHeaders });
+                    content = await response.json();
+                } else {
+                    content = await adapterGetContent(cmsAdapter(), contentPath, { expand: ['navigation'] });
+                }
 
                 // Helper to load templates
                 const loadTemplate = async (templateId) => {
@@ -503,12 +545,14 @@
                     // Show top-level items; only expand children for the current folder
                     const currentPath = contentPath.replace(/\/$/, '');
                     navElement.innerHTML = navItems.map(item => {
-                        const path = new URL(item['@id']).pathname;
+                        // Relative to the page's origin, so a bare-path @id (what an adapter
+                        // gives, via plonify) parses as well as Plone's absolute one.
+                        const path = new URL(item['@id'], window.location.origin).pathname;
                         const children = item.items || [];
                         const isCurrent = currentPath === path || currentPath.startsWith(path + '/');
                         if (children.length > 0 && isCurrent) {
                             const childLinks = children.map(child =>
-                                `<a href="${new URL(child['@id']).pathname}">${child.title}</a>`
+                                `<a href="${new URL(child['@id'], window.location.origin).pathname}">${child.title}</a>`
                             ).join('');
                             return `<a href="${path}">${item.title}</a> ${childLinks}`;
                         }
