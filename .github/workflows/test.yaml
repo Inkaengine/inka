@@ -90,6 +90,12 @@ jobs:
           # suffix so the switch lands on a rendered page, not a blank one.
           RAZZLE_DEFAULT_IFRAME_URL: "Test frontend|http://localhost:8889,Nuxt blog|http://localhost:3003,http://localhost:3004,http://localhost:3005,http://localhost:3006,http://localhost:3007,F7 Mobile|http://localhost:3008/#!"
           VOLTOCONFIG: ${{ github.workspace }}/volto.config.js
+          # Also inlined at build time, so it has to be set HERE: the jobs that
+          # download this bundle can set it in their own env and it changes
+          # nothing. Without it the admin suites ran every test on the legacy
+          # direct-fetch path — 893 passed, and none of them went through an
+          # adapter; only the three auth tests that assert the bridge noticed.
+          RAZZLE_USE_BRIDGE_BACKEND: 'true'
       - name: Upload Volto build
         uses: actions/upload-artifact@v4
         with:
@@ -149,7 +155,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
@@ -302,7 +308,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
@@ -511,7 +517,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+          # Its own key: this job installs Chromium only, and it finishes before
+          # the build-gated jobs start. Sharing their key saved a Chromium-only
+          # cache they then restored as a hit, skipped installing, and had no Firefox.
+          key: ${{ runner.os }}-playwright-chromium-v1-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
@@ -580,7 +589,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
@@ -678,7 +687,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
@@ -805,7 +814,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
@@ -908,7 +917,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
