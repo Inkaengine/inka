@@ -387,9 +387,20 @@ export async function revealBlock(iframe: FrameLocator, blockUid: string): Promi
   // pager is still on its way. Poll until the reveal takes hold, up to a generous
   // deadline: a genuinely unrevealable block just returns false the whole time
   // (bounded, no spin), while a slow pager gets the seconds it needs to appear.
+  //
+  // The wait is only for a block that is NOT IN THE PAGE yet — that is the case
+  // above: an off-page child whose pager has not mounted. A block that IS in the
+  // page but hidden, with nothing that reveals it (a conditional form field
+  // waiting on another answer), gets one probe and no wait: the bridge's answer
+  // cannot change, and twelve seconds of asking again blew a 20s test budget
+  // on every such block while proving nothing.
   let clicked = false;
-  const revealDeadline = Date.now() + 12000;
-  for (let attempt = 0; !clicked && Date.now() < revealDeadline; attempt++) {
+  const revealDeadline = Date.now() + (exists ? 0 : 12000);
+  for (
+    let attempt = 0;
+    !clicked && (attempt === 0 || Date.now() < revealDeadline);
+    attempt++
+  ) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
     clicked = await iframe
       .locator('body')
