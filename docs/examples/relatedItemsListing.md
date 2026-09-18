@@ -47,7 +47,7 @@ Renders the current page's related items relation field (default relatedItems). 
 
 <fields slotId="rendering">
 
-This block has no bespoke renderer. Add its fetcher to your fetchItems map (keyed by @type) and expandListingBlocks expands it in any region you render — the same seam that powers [listings](../listings.md) and other collection blocks. See [Custom Blocks](../custom-blocks.md) to define the block type. Only the fetcher below is block-specific.
+This block has no bespoke renderer. Add its fetcher to your fetchItems map (keyed by @type) and expandListingBlocks expands it in any region you render — the same seam that powers [listings](../frontend-guide/listings.md) and other collection blocks. See [Custom Blocks](../frontend-guide/custom-blocks.md) to define the block type. Only the fetcher below is block-specific.
 
 ### Fetcher
 

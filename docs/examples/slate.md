@@ -55,7 +55,7 @@ Rich text block powered by the Slate editor. Supports paragraphs, headings, list
 
 <block type="image">
 
-![The slate example block being edited in Volto Hydra](/docs/images/slate-edit.png)
+![The slate example block being edited in Inka](/docs/images/slate-edit.png)
 
 </block>
 
@@ -103,7 +103,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <block type="callout" variation="note" slotId="rendering">
 
-The Astro examples below omit `data-block-uid` on the block's root element because `BlockRenderer.astro` wraps every block in `<div data-block-uid={uid}>`. See [Server-rendered frontends](../server-rendered-frontends.md) for why.
+The Astro examples below omit `data-block-uid` on the block's root element because `BlockRenderer.astro` wraps every block in `<div data-block-uid={uid}>`. See [Server-rendered frontends](../frontend-guide/server-rendered-frontends.md) for why.
 
 </block>
 

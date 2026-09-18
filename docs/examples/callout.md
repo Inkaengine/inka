@@ -46,7 +46,7 @@ This is a **custom** block — register it via `initBridge`. The level is the bl
 
 <block type="callout" variation="note">
 
-This is a **note** — the default level. The body takes normal markdown: `code`, [links](../live-preview.md), and multiple paragraphs.
+This is a **note** — the default level. The body takes normal markdown: `code`, [links](../frontend-guide/live-preview.md), and multiple paragraphs.
 
 </block>
 

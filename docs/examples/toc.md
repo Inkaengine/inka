@@ -48,7 +48,7 @@ Renders a table of contents generated from heading blocks on the current page. I
 
 <block type="image">
 
-![The toc example block being edited in Volto Hydra](/docs/images/toc-edit.png)
+![The toc example block being edited in Inka](/docs/images/toc-edit.png)
 
 </block>
 

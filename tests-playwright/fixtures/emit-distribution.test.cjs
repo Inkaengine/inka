@@ -84,6 +84,33 @@ describe('writeDistribution (in-memory -> exportimport)', () => {
     fs.rmSync(stage, { recursive: true, force: true });
   });
 
+  it('with allowMissingBlobs, skips a bytes-less blob instead of throwing', () => {
+    // A PR sanity check (export --check) runs on a fresh checkout where the
+    // git-ignored generated doc screenshots do not exist. It validates structure
+    // only and discards the tar, so a missing generated blob must warn+skip, not
+    // fail the export. The default (no flag) still throws — see the test above.
+    const stage = mkStage();
+    const png = path.join(stage, 'present.png');
+    fs.writeFileSync(png, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const items = [
+      { urlPath: '/', data: { '@type': 'Plone Site', UID: 'plone_site_root', id: 'Plone' } },
+      { urlPath: '/gone', data: { '@type': 'Image', UID: 'u-gone', id: 'gone.png',
+          image: { blob_path: 'gone.png', filename: 'gone.png' } } },
+      { urlPath: '/here', data: { '@type': 'Image', UID: 'u-here', id: 'here.png',
+          image: { blob_path: 'here.png', filename: 'here.png' } } },
+    ];
+    const blobSourceOf = (urlPath) => (urlPath === '/here' ? png : '/no/such/file.png');
+
+    const meta = writeDistribution(stage, items, { blobSourceOf, allowMissingBlobs: true });
+    const c = path.join(stage, 'content');
+
+    // Both items' data.json still written; only the present blob's bytes land.
+    assert.ok(fs.existsSync(path.join(c, 'gone/data.json')), 'missing-blob item still emitted');
+    assert.ok(fs.existsSync(path.join(c, 'here/image/here.png')), 'present blob copied');
+    assert.deepEqual([...meta._blob_files_], ['here/image/here.png'], 'only the present blob listed');
+    fs.rmSync(stage, { recursive: true, force: true });
+  });
+
   it('prefers a real sibling file over the default when given a source dir', () => {
     const stage = mkStage();
     const src = path.join(stage, 'src'); fs.mkdirSync(src);

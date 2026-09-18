@@ -1,0 +1,12 @@
+{
+  "name": "quickstart-astro",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:test": "astro dev"
+  },
+  "dependencies": {
+    "astro": "^5.13.0",
+    "@astrojs/node": "^9.2.0"
+  }
+}

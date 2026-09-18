@@ -23,7 +23,7 @@ blocks-matched: |
 blobs:
   - file: hydra-demo.mp4
     uid: docs-static-hydra-demo-001
-    title: Hydra demo (homepage hero)
+    title: Inka demo (homepage hero)
     description: Homepage hero loop showing live editing, formatting, drag-and-drop,
       container selection, and the frontend switcher.
 ---

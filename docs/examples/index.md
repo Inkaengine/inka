@@ -5,8 +5,8 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: "Block reference: schema, JSON, and rendered examples for every
-  block type Volto Hydra ships."
+description: Example blocks to spark ideas. Inka ships as a blank slate — these
+  are things you can build with your own components, not a fixed library.
 effective: null
 exclude_from_nav: false
 expires: null
@@ -20,6 +20,7 @@ subjects: []
 title: Examples
 blocks-matched: |
   <block type="title" _="${h1}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
 order:
   - accordion
   - button
@@ -56,5 +57,7 @@ exclude:
 ---
 
 # Examples
+
+Inka ships as a blank slate — it has no built-in block library. Your components become your blocks. These are example blocks to show what's possible and give you ideas, each with its schema, JSON, and a rendered result. Treat them as a starting point, not a fixed set.
 
 <block type="listing" headlineTag="h2" variation="summary" data-json='{"querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.relativePath","v":"."},{"i":"portal_type","o":"plone.app.querystring.operation.selection.none","v":["Image","File"]},{"i":"exclude_from_nav","o":"plone.app.querystring.operation.boolean.isFalse","v":""}],"sort_on":"getObjPositionInParent","depth":1},"fieldMapping":{"@id":"href","title":"title","description":"description","image":"image"}}' />
