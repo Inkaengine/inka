@@ -17,12 +17,19 @@ test.describe('Authentication and Access Control', () => {
     await helper.login();
     await page.goto(helper.contentUrl('/test-page'));
 
-    // Either the proxy already holds a credential (the fixture passes one as
-    // ?access_token=) or its sign-in panel is showing. Both are the adapter
-    // owning auth; what must NOT happen is the admin having a CMS session of
-    // its own.
-    const proxy = page.frameLocator('#hydraProxyFrame');
-    await expect(proxy.locator('#cms')).not.toBeEmpty({ timeout: 30000 });
+    // The session belongs to an adapter hosted in the frontend's proxy frame:
+    // it must be connected and have announced itself. What must NOT happen is
+    // the admin having a CMS session of its own.
+    //
+    // Asserted through hydra's announcement, not through anything the proxy
+    // page renders — the test fixture's proxy draws a sign-in panel, a real
+    // frontend's (Nuxt, Next.js, F7) draws nothing, and both are right.
+    await expect
+      .poll(async () => (await helper.proxyAdapterState()).connected, {
+        message: 'the proxy frame never connected an adapter',
+        timeout: 30000,
+      })
+      .toBe(true);
 
     // And the admin is usable, which is the only thing an editor cares about.
     const personalTools = page.getByRole('button', { name: 'Personal tools' });
@@ -220,12 +227,18 @@ test.describe('Authentication and Access Control', () => {
 
     await helper.logout();
 
-    // The adapter's session is gone: the proxy frame falls back to offering
-    // sign-in, which is where signing back in happens.
-    const proxy = page.frameLocator('#hydraProxyFrame');
-    await expect(
-      proxy.getByRole('button', { name: 'Sign in' }),
-    ).toBeVisible({ timeout: 15000 });
+    // The adapter's session is gone: the proxy frame comes back announcing an
+    // adapter with nobody signed in. Read from hydra's announcement rather than
+    // from a "Sign in" button, which only the test fixture's proxy draws.
+    await expect
+      .poll(async () => {
+        const state = await helper.proxyAdapterState();
+        return state.connected && state.user === null;
+      }, {
+        message: 'after logout the proxy still announced a signed-in user',
+        timeout: 15000,
+      })
+      .toBe(true);
 
     // And the admin kept nothing that could revive it.
     const cookies = await page.context().cookies();

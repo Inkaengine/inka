@@ -5279,6 +5279,47 @@ export class AdminUIHelper {
    *
    * @throws Error if logout UI elements cannot be found
    */
+  /**
+   * What the proxy frame's adapter has announced to the admin: whether it is
+   * connected, which adapter it is, and who (if anyone) is signed in.
+   *
+   * Read from hydra's own bridge (`window.__hydraBridge`, set by connectProxy),
+   * not from anything the proxy page renders. The test fixture's proxy draws a
+   * sign-in panel; a real frontend's proxy — Nuxt, Next.js, F7 — draws nothing,
+   * because its Plone adapter takes the admin's token. The announcement is the
+   * part every frontend has in common.
+   */
+  async proxyAdapterState(): Promise<{
+    connected: boolean;
+    adapter: string | null;
+    user: unknown;
+  }> {
+    const notConnected = { connected: false, adapter: null, user: null };
+    const handle = await this.page.locator('#hydraProxyFrame').elementHandle();
+    const frame = await handle?.contentFrame();
+    if (!frame) return notConnected;
+    try {
+      return await frame.evaluate(() => {
+        const bridge = (window as any).__hydraBridge;
+        const announced = bridge?.adapterReadyMessage;
+        return {
+          connected: Boolean(bridge?.isProxy && announced),
+          adapter: announced?.name ?? null,
+          user: announced?.user ?? null,
+        };
+      });
+    } catch (err) {
+      // The proxy reloads when the session changes — logging out re-mounts it
+      // without the token — and a frame mid-navigation has no bridge yet. That
+      // is a real "not connected", so report it and let the caller's poll ask
+      // again. Anything else is a genuine failure.
+      if (/Execution context was destroyed|Frame was detached/.test(String(err))) {
+        return notConnected;
+      }
+      throw err;
+    }
+  }
+
   async logout(): Promise<void> {
     // Look for PersonalTools button in the left toolbar
     // The button has class="user" and id="toolbar-personal"
