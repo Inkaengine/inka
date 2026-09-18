@@ -71,7 +71,7 @@
          alt="Hero image" />
     <h1 v-if="block.heading" class="hero-heading text-3xl font-bold mb-2">{{ block.heading }}</h1>
     <p v-if="block.subheading" class="hero-subheading text-xl text-gray-600 mb-4">{{ block.subheading }}</p>
-    <div v-if="block.description" class="hero-description mb-4" data-edit-text="description">
+    <div v-if="!isEmptySlate(block.description)" class="hero-description mb-4" data-edit-text="description">
       <RichText v-for="node in block.description" :key="node" :node="node" />
     </div>
     <!-- Button - uses class for selectors. One element hosts TWO fields
@@ -961,7 +961,7 @@
 <script setup>
 import { ref, reactive, watch, watchEffect, nextTick, computed, toRefs, inject, onMounted, unref } from 'vue';
 import { isEditMode } from '@hydra-js/hydra.js';
-import { staticBlocks, expandTemplatesSync } from '@hydra-js/helpers';
+import { staticBlocks, expandTemplatesSync, isEmptySlate } from '@hydra-js/helpers';
 import RichText from './richtext.vue';
 
 // Inject page-level context for nested components

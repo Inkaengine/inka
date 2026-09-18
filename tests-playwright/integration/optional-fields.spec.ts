@@ -207,6 +207,47 @@ test.describe('Optional fields — reveal toggle (#296)', () => {
     ).toHaveCount(0);
   });
 
+  test('a revealed slate field is typed into through its own empty paragraph', async ({ page }) => {
+    // A slate field is never absent: with no schema default it holds one empty
+    // paragraph, which the bridge gives a nodeId like any other. Reveal fills
+    // THAT paragraph rather than inventing one, so the element the renderer draws
+    // carries a data-node-id and the first keystroke maps back into the value.
+    // Without the node there is nothing to map to, and the bridge raises its
+    // "missing data-node-id" warning instead of taking the text.
+    const nodeIdErrors: string[] = [];
+    page.on('console', (m) => {
+      if (m.type() === 'error' && m.text().includes('missing data-node-id')) {
+        nodeIdErrors.push(m.text());
+      }
+    });
+
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/optional-fields-page');
+    const iframe = helper.getIframe();
+
+    await helper.clickBlockInIframe('hero-empty');
+    await page.locator('.optional-fields-toggle').click();
+
+    const description = iframe.locator('[data-block-uid="hero-empty"] [data-edit-text="description"]');
+    await expect(description).toHaveCount(1);
+    await expect(
+      description,
+      'the revealed paragraph is the field\'s own default one, so it carries its node id',
+    ).toHaveAttribute('data-node-id', /.+/);
+
+    await helper.enterEditMode('hero-empty', 'description');
+    await description.pressSequentially('Roads closed', { delay: 25 });
+    await expect(description).toHaveText('Roads closed');
+    expect(nodeIdErrors, 'typing into the revealed slate field must not lose its node').toEqual([]);
+
+    await helper.saveContent();
+    await expect(
+      iframe.locator('.hero-block').filter({ hasText: 'Roads closed' }).locator('.hero-description'),
+      'the typed text is saved as the description and shown in view',
+    ).toHaveText('Roads closed', { timeout: 10000 });
+  });
+
   test('a populated field emptied while editing keeps its element', async ({ page }) => {
     // "No data ⇒ no element" would otherwise make a field a trapdoor: delete the
     // last character and the element the caret sits in stops existing.

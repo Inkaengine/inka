@@ -140,3 +140,77 @@ describe('applySchemaDefaultsToBlock — object-nested defaults', () => {
     expect(out.content.id).toBe('X1');
   });
 });
+
+/**
+ * A slate field defaults to one empty paragraph, as if its schema said so.
+ *
+ * Slate edits NODES, and the caret lives in one: the renderer marks each node
+ * with its `data-node-id`, and that is how a keystroke on the canvas is mapped
+ * back into the value. A slate field with no value has no node, so a renderer
+ * that draws the empty field for the author to type into draws a bare element
+ * with no id — the first keystroke lands in nothing Slate knows about and the
+ * bridge raises "missing data-node-id". The case that found it: adding a global
+ * alert into its template slot and typing its message.
+ *
+ * An empty paragraph is to a slate field what `''` is to a string — the empty
+ * value of its type — so it is the default whenever the schema names none.
+ */
+describe('applySchemaDefaultsToBlock — a slate field defaults to an empty paragraph', () => {
+  const EMPTY_PARAGRAPH = [{ type: 'p', children: [{ text: '' }] }];
+  const schema = {
+    properties: {
+      title: { type: 'string' },
+      content: { type: 'array', widget: 'slate' },
+      summary: { widget: 'slate' },
+      lead: {
+        widget: 'slate',
+        default: [{ type: 'h2', children: [{ text: 'Lead' }] }],
+      },
+      tags: { type: 'array' },
+    },
+  };
+
+  test.each([
+    ['applySchemaDefaultsToBlock', (b, s) => applySchemaDefaultsToBlock(b, s)],
+    [
+      'applySchemaDefaultsToBlockWithContext',
+      (b, s) => applySchemaDefaultsToBlockWithContext(b, s, {}),
+    ],
+  ])('%s gives an absent slate field one empty paragraph', (_, apply) => {
+    const out = apply({ '@type': 'alert' }, schema);
+    expect(out.content).toEqual(EMPTY_PARAGRAPH);
+    expect(out.summary).toEqual(EMPTY_PARAGRAPH);
+  });
+
+  test('a slate value emptied to [] is given the empty paragraph back', () => {
+    const out = applySchemaDefaultsToBlock({ content: [] }, schema);
+    expect(out.content).toEqual(EMPTY_PARAGRAPH);
+  });
+
+  test('a declared default still wins', () => {
+    const out = applySchemaDefaultsToBlock({}, schema);
+    expect(out.lead).toEqual([{ type: 'h2', children: [{ text: 'Lead' }] }]);
+  });
+
+  test('written content is left alone, and the block returned by identity', () => {
+    const block = {
+      content: [{ type: 'p', children: [{ text: 'Roads closed' }] }],
+      summary: EMPTY_PARAGRAPH,
+      lead: [{ type: 'p', children: [{ text: 'x' }] }],
+    };
+    expect(applySchemaDefaultsToBlock(block, schema)).toBe(block);
+  });
+
+  test('only slate gets it — other fields with no default stay absent', () => {
+    const out = applySchemaDefaultsToBlock({}, schema);
+    expect(out).not.toHaveProperty('title');
+    expect(out).not.toHaveProperty('tags');
+  });
+
+  test('every block gets its own paragraph, not one shared between them', () => {
+    const a = applySchemaDefaultsToBlock({}, schema);
+    const b = applySchemaDefaultsToBlock({}, schema);
+    expect(a.content).not.toBe(b.content);
+    expect(a.content[0]).not.toBe(b.content[0]);
+  });
+});
