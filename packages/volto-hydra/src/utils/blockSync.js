@@ -3480,7 +3480,14 @@ export function deleteBlocks(formData, blockPathMap, blockIds, options = {}) {
     );
     out = deleteBlockFromContainer(out, map, blockId, containerConfig);
     map = buildBlockPathMap(out, blocksConfig, intl);
-    emptiedContainers.push(containerConfig);
+    // Say which slot the block leaves empty. If this empties the region, the
+    // placeholder re-seeded there stands in for that slot — and the re-seed can't
+    // know it, it sees only a region with nothing in it.
+    emptiedContainers.push(
+      blockData?.slotId
+        ? { ...containerConfig, vacatedSlotId: blockData.slotId }
+        : containerConfig,
+    );
     deleted.push(blockId);
   }
   const settled = settleBlockStructure(out, map, { emptiedContainers }, options);
