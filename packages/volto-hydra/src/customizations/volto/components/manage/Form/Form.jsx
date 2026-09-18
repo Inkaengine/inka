@@ -1141,7 +1141,31 @@ class Form extends Component {
 
 const FormIntl = injectIntl(Form, { forwardRef: true });
 
+/**
+ * A form mounts only once it has something to edit.
+ *
+ * Volto's Edit renders the form as soon as the user MAY edit — it gates on the
+ * `edit` action alone and trusts SSR to have loaded the content first. A bridge
+ * session strips the server-side prefetch, so nothing orders the two: on Drupal,
+ * whose actions arrive by their own request, LIST_ACTIONS landed before
+ * GET_CONTENT and the constructor read hasOwnProperty on a null formData,
+ * taking the whole editor down with it.
+ *
+ * Rendering nothing until the content arrives is not a stand-in value: there is
+ * no form to show without the thing it edits. The add form always passes an
+ * object, so this only ever holds back an edit whose content is still loading.
+ */
+const withFormData = (WrappedComponent) => {
+  const WithFormData = React.forwardRef((props, ref) =>
+    props.formData ? <WrappedComponent {...props} ref={ref} /> : null,
+  );
+  WithFormData.displayName = 'WithFormData(Form)';
+  return WithFormData;
+};
+
 export default compose(
+  // Outermost, so the draft HOC and the store binding do not mount early either.
+  withFormData,
   connect(
     (state, props) => ({
       content: state.content.data,
