@@ -19,16 +19,24 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { getFrontendUrl } from './fixtures';
 import { URLS } from '../ports';
 
-// The quickstart frontends this spec runs on. Extend as frameworks are added
-// (nuxt, svelte, …), each with the same card fixture and switch-render.
-const QUICKSTART_PROJECTS = new Set(['vanilla']);
+// The quickstart frontends this spec runs on, each with the route its app serves
+// the snippet at (undefined = mock-parent's default path). vanilla is a dedicated
+// blank app served at any path; nuxt reuses the blog starter, which serves the
+// snippet at its own /quickstart-card route (so content_path points the iframe
+// there while the card fixture still supplies the data).
+const QUICKSTART_FRONTENDS: Record<string, { contentPath?: string }> = {
+  vanilla: {},
+  nuxt: { contentPath: '/quickstart-card' },
+};
+const QUICKSTART_PROJECTS = new Set(Object.keys(QUICKSTART_FRONTENDS));
 
 const CARD = 'card-1';   // rendered editable by the app
 const OTHER = 'other-1'; // a non-card block the app shows as JSON — still selectable
 
-const parentUrl = (frontend: string) =>
+const parentUrl = (frontend: string, contentPath?: string) =>
   `${URLS.testFrontend}/mock-parent.html?content=card` +
-  `&frontend=${encodeURIComponent(frontend)}`;
+  `&frontend=${encodeURIComponent(frontend)}` +
+  (contentPath ? `&content_path=${encodeURIComponent(contentPath)}` : '');
 
 // The uid the bridge reports as selected, read from the frontend document.
 const selectedUid = (helper: AdminUIHelper) =>
@@ -55,7 +63,7 @@ test.describe('Quick Start starter: selecting a block in edit mode', () => {
     const frontend = getFrontendUrl(testInfo.project.name);
     expect(frontend, `no frontend URL for project ${testInfo.project.name}`).toBeTruthy();
 
-    await page.goto(parentUrl(frontend!));
+    await page.goto(parentUrl(frontend!, QUICKSTART_FRONTENDS[testInfo.project.name].contentPath));
     await helper.waitForIframeReady();
     await helper
       .getIframe()

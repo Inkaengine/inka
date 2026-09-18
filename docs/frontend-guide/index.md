@@ -53,7 +53,7 @@ Add Inka to a page in your framework. Each tab is a real, working starter — th
 
 ### Nuxt.js
 
-```{literalinclude} ../quickstart/nuxt/page.vue
+```{literalinclude} ../../examples/nuxt-blog-starter/pages/quickstart-card.vue
 :language: vue
 ```
 
