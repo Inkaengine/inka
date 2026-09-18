@@ -2374,12 +2374,9 @@ app.post('/@export', async (req, res) => {
       ...parsePrototypes(prototypes.tagged || '', { explicit: true }),
     ];
 
-    const out = {};
-    for (const p of Object.keys(contentDirMap)) {
-      const c = loadRawContentFromDisk(p);
-      if (!c || isBlobItem(c)) continue;
-      // Page meta: everything the frontmatter carries (SERVER_STATE — parent,
-      // position, blocks/blocks_layout, etc. — is derived, not authored).
+    // The markdown file for one served item (frontmatter + body). Folders carry
+    // the reconstructed order:/blobs: — this is an EXPORT, so nothing is stripped.
+    const emitFile = (c, p) => {
       const meta = Object.fromEntries(Object.entries(c).filter(([k]) => !SERVER_STATE.has(k)));
       const kids = (childrenByParent[p] || []).map((k) => loadRawContentFromDisk(k)).filter(Boolean);
       const childPages = kids.filter((d) => !isBlobItem(d))
@@ -2396,15 +2393,63 @@ app.post('/@export', async (req, res) => {
         const asg = `blocks-assignments:\n${assignments.map((a) => `  - ${flow(a)}`).join('\n')}`;
         const fmBody = [front, asg, section('blocks-matched', matchedMap, used), section('blocks-tagged', taggedMap, used)]
           .filter(Boolean).join('\n');
-        // Fill the title block's empty `# ` with the page title (emit-only; the
-        // title block is match-only, so decode reads `title` from frontmatter).
         const body = c.title ? markdown.replace(/^# *$/m, () => `# ${c.title}`) : markdown;
-        out[p] = `---\n${fmBody}\n---\n\n${body}\n`;
-      } else {
-        out[p] = `---\n${front}\n---\n`;
+        return `---\n${fmBody}\n---\n\n${body}\n`;
       }
+      return `---\n${front}\n---\n`;
+    };
+
+    // The most-specific mount owns a path ('/' nominally owns everything).
+    const ownerMount = (u) => CONTENT_MOUNTS
+      .filter((m) => m.mountPath === '/' || u === m.mountPath || u.startsWith(`${m.mountPath}/`))
+      .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
+    const relOf = (m, u) => (m.mountPath === '/' ? (u === '/' ? '' : u.replace(/^\//, ''))
+      : u.replace(m.mountPath, '').replace(/^\//, ''));
+
+    // Build the whole tree in a staging dir, then tar it — same shape as
+    // format:json. Each mount's tree lands under its source-dir basename
+    // (docs/, site/) so extracting the archive replaces the sources in place.
+    const stagingMd = fs.mkdtempSync(path.join(os.tmpdir(), 'plone-export-md-'));
+    try {
+      for (const m of CONTENT_MOUNTS) {
+        const treeRoot = path.join(stagingMd, path.basename(m.dirPath));
+        const igSrc = path.join(m.dirPath, '.blockmdignore');
+        if (fs.existsSync(igSrc)) {
+          fs.mkdirSync(treeRoot, { recursive: true });
+          fs.copyFileSync(igSrc, path.join(treeRoot, '.blockmdignore'));
+        }
+      }
+      for (const p of Object.keys(contentDirMap)) {
+        const c = loadRawContentFromDisk(p);
+        if (!c) continue;
+        const m = ownerMount(p);
+        if (!m) continue;
+        const treeRoot = path.join(stagingMd, path.basename(m.dirPath));
+        const rel = relOf(m, p);
+        if (isBlobItem(c)) {
+          // Copy the blob's bytes next to its parent folder's index.md.
+          const src = markdownBlobs.get(p);
+          const field = c[BLOB_FIELD[c['@type']]];
+          const file = field.filename || path.basename(field.blob_path);
+          const dest = path.join(treeRoot, rel.replace(/\/[^/]*$/, ''), file);
+          if (src && fs.existsSync(src)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(src, dest); }
+          continue;
+        }
+        const folderish = c.is_folderish || (childrenByParent[p] || []).length > 0;
+        const dest = path.join(treeRoot, rel === '' ? 'index.md' : (folderish ? `${rel}/index.md` : `${rel}.md`));
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, emitFile(c, p));
+      }
+      const tarPath = path.join(stagingMd, 'export.tar.gz');
+      const members = fs.readdirSync(stagingMd).filter((x) => x !== 'export.tar.gz');
+      execFileSync('tar', ['-czf', tarPath, '-C', stagingMd, ...members]);
+      const buf = fs.readFileSync(tarPath);
+      res.set('Content-Type', 'application/gzip');
+      res.set('Content-Disposition', 'attachment; filename="export-markdown.tar.gz"');
+      return res.send(buf);
+    } finally {
+      fs.rmSync(stagingMd, { recursive: true, force: true });
     }
-    return res.json(out);
   }
 
   if (format !== 'json') {
