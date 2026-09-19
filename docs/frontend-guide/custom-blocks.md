@@ -245,6 +245,8 @@ Child block types (like `slide` above) must be defined at the top level of `bloc
 - Set `disableCustomSidebarEditForm: true` to use only the schema form in the sidebar (no custom edit component)
 - Use `fieldsets` in the schema to organize fields into tabs
 
+**A \`widget: 'slate'\` field always has a node.** With no `default` in its schema it defaults to one empty paragraph, `[{ type: 'p', children: [{ text: '' }] }]`, so a renderer always has a node to draw and the author a node to type into. Hide an optional slate field with `isEmptySlate`, not truthiness — see [Visual Editing › Optional Fields](./visual-editing.md#optional-fields--empty-means-absent).
+
 **A \`widget: 'slate'\` field holds one top-level node.** A slate field — like `description` on the `slide` above — stores a single paragraph, heading, or list, not a document of several. Pasting or typing multiple paragraphs into it flattens them back into one node; only the built-in `slate` *block* splits multi-node content into separate blocks. Design slate fields for single-node content, and use a `blocks_layout`/`object_list` of `slate` blocks when you need several. See [Visual Editing › One top-level node per slate field](./visual-editing.md#one-top-level-node-per-slate-field).
 
 **Worked example:** [Heading Block](../examples/heading.md) — roughly the smallest custom block there is: one field, one annotation.

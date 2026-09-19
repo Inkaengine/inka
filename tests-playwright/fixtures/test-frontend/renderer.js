@@ -20,6 +20,27 @@
 // Global render counter for testing re-render behavior
 window.hydraRenderCount = window.hydraRenderCount || 0;
 
+/**
+ * True when a slate value holds nothing an author wrote — the copy a frontend
+ * without a bundler keeps of `isEmptySlate` from @volto-hydra/helpers.
+ *
+ * A slate field is never absent: the editor gives it one empty paragraph. So an
+ * optional slate field is hidden by this check, not by truthiness, which a
+ * one-node array always passes. Reveal fills that paragraph with a zero-width
+ * space, which is content here, so a revealed field shows.
+ */
+function isEmptySlate(value) {
+    if (value === undefined || value === null) return true;
+    if (!Array.isArray(value)) {
+        throw new TypeError(`isEmptySlate expects a slate value (an array), got ${typeof value}`);
+    }
+    if (value.length === 0) return true;
+    if (value.length > 1) return false;
+    const [node] = value;
+    return node?.type === 'p' && Array.isArray(node.children)
+        && node.children.every((c) => typeof c.text === 'string' && c.text === '');
+}
+
 
 // Test-frontend log with run ID prefix (matches hydra.js log pattern)
 function tfLog(...args) {
@@ -768,10 +789,10 @@ function renderHeroBlock(block) {
     const buttonText = block.buttonText || '';
     const buttonLink = getLinkUrl(block.buttonLink);
     const imageSrc = getImageUrl(block.image);
-    // Data-driven: no data ⇒ no element (issue #296). Do NOT substitute an empty
-    // paragraph — that renders an editable element for a field with no content and
-    // leaks an empty <p> into view markup.
-    const description = block.description || [];
+    // Data-driven: no content ⇒ no element (issue #296). A slate field always
+    // holds a paragraph, so "no content" is isEmptySlate, not truthiness —
+    // rendering the empty paragraph would leak an empty <p> into view markup.
+    const description = isEmptySlate(block.description) ? [] : block.description;
 
     // Render subheading as textarea (preserve newlines)
     const subheadingHtml = subheading.replace(/\n/g, '<br>');
@@ -832,16 +853,17 @@ function renderHeroBlockClean(block) {
     const buttonText = block.buttonText || '';
     const buttonLink = getLinkUrl(block.buttonLink);
     const imageSrc = getImageUrl(block.image);
-    // Data-driven: no data ⇒ no element (issue #296).
-    const description = block.description || [];
+    // Data-driven: no content ⇒ no element (issue #296) — isEmptySlate, since a
+    // slate field always holds at least an empty paragraph.
+    const description = isEmptySlate(block.description) ? [] : block.description;
 
     // Render subheading as textarea (preserve newlines)
     const subheadingHtml = subheading.replace(/\n/g, '<br>');
 
     // Render description - still needs node IDs for slate editing.
     // Data-driven, in edit mode too (issue #296): no data ⇒ no element. Reveal
-    // is the bridge's job — TOGGLE_OPTIONAL_FIELDS seeds a sentinel value so
-    // this very `description.length` rule fires — and it only works while the
+    // is the bridge's job — TOGGLE_OPTIONAL_FIELDS fills the empty paragraph with
+    // a zero-width space so this very isEmptySlate rule lets it through — and it only works while the
     // renderer keeps telling the truth about what the block holds.
     let descriptionHtml = '';
     description.forEach((node) => {

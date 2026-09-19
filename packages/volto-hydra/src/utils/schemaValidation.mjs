@@ -95,13 +95,46 @@ export function isValidValue(value, fieldDef) {
 }
 
 /**
+ * A slate field's value when its schema names no `default`: one empty
+ * paragraph — the empty value of a slate field, as `''` is of a string.
+ *
+ * Slate edits nodes and the caret lives in one; the renderer marks each with a
+ * `data-node-id` so a keystroke on the canvas maps back into the value. With no
+ * value there is no node, so an empty field the author is meant to type into
+ * has nowhere to put the first keystroke. A fresh array each call: a default
+ * shared between blocks would be one value edited from all of them.
+ */
+function isSlateField(fieldDef) {
+  return fieldDef.widget === 'slate' || fieldDef.type === 'slate';
+}
+
+function implicitDefault(fieldDef) {
+  if (isSlateField(fieldDef)) return () => [{ type: 'p', children: [{ text: '' }] }];
+  return undefined;
+}
+
+/**
+ * Whether a field has no value, so its default applies. `[]` counts for slate
+ * only: it is what a slate widget leaves when cleared, and no node to type in is
+ * the same problem as no value. For any other array `[]` is an answer.
+ */
+function needsDefault(currentValue, fieldDef) {
+  if (currentValue === undefined || currentValue === null) return true;
+  if (Array.isArray(currentValue)) {
+    return currentValue.length === 0 && isSlateField(fieldDef);
+  }
+  return typeof currentValue === 'object' && Object.keys(currentValue).length === 0;
+}
+
+/**
  * Apply schema defaults to a block.
  *
  * Two passes:
  *   1. For each field, if `isValidValue(currentValue, fieldDef)` is false,
  *      null it. (This is the strip that surprises content authors.)
- *   2. For each field where the schema has a `default` and the current
- *      value is empty (undefined, null, or {}), apply the default.
+ *   2. For each field where the schema has a `default` (a slate field always
+ *      has one — see implicitDefault) and the current value is empty
+ *      (undefined, null, {}, or a slate `[]`), apply the default.
  *
  * Returns the original blockData reference (not a copy) when nothing was
  * modified — callers rely on this to detect no-op updates cheaply.
@@ -147,20 +180,11 @@ export function applySchemaDefaultsToBlock(blockData, schema) {
   // Second pass: apply defaults to empty/null fields
   for (const [fieldName, fieldDef] of Object.entries(schema.properties)) {
     if (fieldDef.widget === 'object') continue; // handled by recursion above
-    if (fieldDef.default === undefined) continue;
+    const implicit = fieldDef.default === undefined ? implicitDefault(fieldDef) : undefined;
+    if (fieldDef.default === undefined && !implicit) continue;
 
-    const currentValue = newData[fieldName];
-
-    // Check if current value is "empty" (needs default)
-    const needsDefault =
-      currentValue === undefined ||
-      currentValue === null ||
-      (typeof currentValue === 'object' &&
-        !Array.isArray(currentValue) &&
-        Object.keys(currentValue).length === 0);
-
-    if (needsDefault) {
-      newData[fieldName] = fieldDef.default;
+    if (needsDefault(newData[fieldName], fieldDef)) {
+      newData[fieldName] = implicit ? implicit() : fieldDef.default;
       modified = true;
     }
   }
@@ -209,21 +233,15 @@ export function applySchemaDefaultsToBlockWithContext(blockData, schema, context
 
   for (const [fieldName, fieldDef] of Object.entries(schema.properties)) {
     if (fieldDef.widget === 'object') continue; // handled by recursion above
-    if (fieldDef.default === undefined) continue;
+    const implicit = fieldDef.default === undefined ? implicitDefault(fieldDef) : undefined;
+    if (fieldDef.default === undefined && !implicit) continue;
 
-    const currentValue = newData[fieldName];
-
-    const needsDefault =
-      currentValue === undefined ||
-      currentValue === null ||
-      (typeof currentValue === 'object' &&
-        !Array.isArray(currentValue) &&
-        Object.keys(currentValue).length === 0);
-
-    if (needsDefault) {
-      const defaultValue = typeof fieldDef.default === 'function'
-        ? fieldDef.default(context)
-        : fieldDef.default;
+    if (needsDefault(newData[fieldName], fieldDef)) {
+      const defaultValue = implicit
+        ? implicit()
+        : typeof fieldDef.default === 'function'
+          ? fieldDef.default(context)
+          : fieldDef.default;
 
       if (defaultValue !== undefined) {
         newData[fieldName] = defaultValue;

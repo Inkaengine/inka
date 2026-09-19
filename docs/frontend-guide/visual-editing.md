@@ -99,7 +99,19 @@ Render optional fields **data-driven**: no data, no element. Don't render an emp
 
 Plain truthiness is enough — you never need `.length` or a null-safe walk. Inka normalises a field the editor has cleared (widgets write `[]`, which is truthy) to absent before your renderer sees it.
 
-To fill an empty field from the canvas, the editor selects the block and presses **reveal optional fields** in the Quanta toolbar. Inka feeds your renderer a placeholder value for each empty field, so your own `&&` guard produces the element and it becomes editable. The placeholder exists only in the data handed to your renderer: it is never stored, so fields left unfilled leave no trace in saved content and render nothing in view. Your renderer needs no code for this.
+**Slate fields are the exception: they are never absent.** Every slate field holds at least one empty paragraph — it is the field's default when the schema names none, as `''` is a string's. Slate edits nodes and the caret lives in one, so an empty field the author types into needs a node for its `data-node-id`. Truthiness always passes a one-paragraph array, so hide an optional slate field with `isEmptySlate` from `@volto-hydra/helpers`:
+
+### Jsx
+
+```jsx
+import { isEmptySlate } from '@volto-hydra/helpers';
+
+{!isEmptySlate(block.summary) && <div data-edit-text="summary">{renderSlate(block.summary)}</div>}
+```
+
+A slate field your block always shows needs no check at all — render its nodes, and the empty paragraph is what the author types into.
+
+To fill an empty field from the canvas, the editor selects the block and presses **reveal optional fields** in the Quanta toolbar. Inka feeds your renderer a placeholder value for each empty field, so your own `&&` guard (or `isEmptySlate` check) produces the element and it becomes editable. For a slate field the placeholder is its own empty paragraph holding a zero-width space, so it keeps its `data-node-id`. The placeholder exists only in the data handed to your renderer: it is never stored, so fields left unfilled leave no trace in saved content and render nothing in view. Your renderer needs no code for this.
 
 Reveal is best-effort. Inka offers any field whose type could be edited inline, which it cannot always tell apart from a field you keep in the sidebar (alt text and css classes are strings too). Fields you don't render inline simply don't appear — the editor fills those from the sidebar as usual.
 

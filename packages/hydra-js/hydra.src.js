@@ -20,6 +20,7 @@ import {
   isTextOnlyBlockChange,
   findBlockInForm,
   slateNodesText,
+  isEmptySlate,
   getAtPath,
   ensureMutablePath,
   getFieldValue,
@@ -11664,9 +11665,10 @@ export class Bridge {
 
     return Object.entries(properties)
       .filter(([fieldName, fieldDef]) => {
+        const fieldType = this.getFieldType(blockUid, fieldName);
         // Has an inline affordance at all. Returns undefined for select /
         // boolean / number, so sidebar-only fields drop out for free.
-        if (!this._revealSentinelFor(fieldDef, this.getFieldType(blockUid, fieldName))) {
+        if (!this._revealSentinelFor(fieldDef, fieldType)) {
           return false;
         }
         // A REQUIRED field is rendered unconditionally by the frontend (a value
@@ -11676,6 +11678,9 @@ export class Bridge {
         // ever IS missing an element, that's a renderer bug for the dev-warning
         // to shout about — not something reveal should paper over.
         if (schema.required?.includes(fieldName)) return false;
+        // A slate field is never absent — it defaults to one empty paragraph —
+        // so its empty is that paragraph, the same test a renderer hides it by.
+        if (isSlateFieldType(fieldType)) return isEmptySlate(block[fieldName]);
         return isEmpty(block[fieldName]);
       })
       .map(([fieldName]) => fieldName);
@@ -11757,11 +11762,17 @@ export class Bridge {
       // written over real content.
       for (const fieldName of this.revealableFields(blockUid)) {
         const fieldDef = properties[fieldName];
-        const sentinel = this._revealSentinelFor(
-          fieldDef,
-          this.getFieldType(blockUid, fieldName),
-        );
+        const fieldType = this.getFieldType(blockUid, fieldName);
+        let sentinel = this._revealSentinelFor(fieldDef, fieldType);
         if (sentinel === undefined) continue;
+        // A slate field's empty paragraph is already there, with the nodeId the
+        // bridge gave it. Reveal fills THAT paragraph rather than inventing one,
+        // so the element the renderer draws carries a data-node-id and typing
+        // into it maps back into the value.
+        const stored = source[fieldName];
+        if (isSlateFieldType(fieldType) && Array.isArray(stored) && stored.length === 1) {
+          sentinel = [{ ...stored[0], children: [{ text: Bridge.REVEAL_ZWS }] }];
+        }
         if (!projected) projected = JSON.parse(JSON.stringify(formData));
         let target = projected;
         for (const key of pathInfo.path) target = target?.[key];
