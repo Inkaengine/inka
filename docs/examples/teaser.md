@@ -48,15 +48,15 @@ A content preview card that links to another page. Selecting a target page via t
 
 <block type="image">
 
-![The teaser example block being edited in Inka](/docs/images/teaser-edit.png)
+![The teaser example block being edited in Inka](../images/teaser-edit.png)
 
 </block>
 
-<fields title="Headline H2" data-json='{"href":[{"@id":"/docs/examples/content-types/page"}]}'>
+<fields title="Headline H2" data-json='{"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Title":"Page","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","title":"Page","head_title":null,"getRemoteUrl":null,"hasPreviewImage":true,"image_field":"preview_image"}]}'>
 
 <fields head_title="Head title">
 
-<block type="teaser" styles:align="center" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
+<block type="teaser" data-json='{"styles":{"align":"center"},"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
 
 <fields data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea."}'>
 
@@ -68,7 +68,7 @@ A content preview card that links to another page. Selecting a target page via t
 
 </fields>
 
-<block type="teaser" styles:align="center" styles:backgroundColor="grey" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
+<block type="teaser" data-json='{"styles":{"align":"center","backgroundColor":"grey"},"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
 
 <fields data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea."}'>
 
@@ -80,7 +80,7 @@ A content preview card that links to another page. Selecting a target page via t
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-teaser">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-teaser" data-json='{"fixed":false,"readOnly":false}'>
 
 <block type="codeExample" slotId="schema">
 

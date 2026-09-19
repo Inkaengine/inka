@@ -31,16 +31,6 @@ blocks-matched: |
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
-blocks-tagged: |
-  <block type="slateTable">
-    <region name="table.rows">
-      <block type="row">
-        <region name="cells">
-          <block type="cell" value="${td/slate}" />
-        </region>
-      </block>
-    </region>
-  </block>
 ---
 
 # Content as Markdown

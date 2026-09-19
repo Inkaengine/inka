@@ -19,9 +19,6 @@ review_state: published
 rights: ""
 subjects: []
 title: Content Types
-blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-  <block type="title" _="${h1}" />
 order:
   - copy_of_event
   - copy_of_news-item
@@ -55,6 +52,7 @@ blobs:
     exclude_from_nav: false
   - file: image-light.jpg
     uid: eec82559bf3242a6be4d43bc2096f399
+    id: image-light.jpg
     title: Image - Light
     description: >-
       
@@ -64,6 +62,9 @@ blobs:
       Plone automatically delivers the images in the best scaling, so there is
       no need to scale images down manually.
     exclude_from_nav: false
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
 ---
 
 # Content Types

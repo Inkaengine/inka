@@ -39,15 +39,15 @@ A multi-field form with configurable field types, validation, and email submissi
 
 <block type="image">
 
-![The form example block being edited in Inka](/docs/images/form-edit.png)
+![The form example block being edited in Inka](../images/form-edit.png)
 
 </block>
 
-<block type="form" default_from="noreply@plone.org" title="A simple form" default_to="admin@example.com" default_subject="New form submission" captcha="honeypot" data-json='{"lastChange":1710238630312,"remove_data_after_days":-1,"send_email":true,"show_cancel":false,"store":true,"subblocks":[{"field_id":"1709833577467","field_type":"text","id":"1709833577467","label":"Name","required":true},{"field_id":"1709833592544","field_type":"from","id":"1709833592544","label":"Email","required":false,"use_as_bcc":false,"use_as_reply_to":false},{"field_id":"1709833604677","field_type":"textarea","id":"1709833604677","label":"Message","required":false},{"field_id":"1709833616406","field_type":"multiple_choice","id":"1709833616406","input_values":["Red","Green","Blue"],"label":"Select field","required":false}]}' />
+<block type="form" data-json='{"default_from":"noreply@plone.org","title":"A simple form","default_to":"admin@example.com","default_subject":"New form submission","captcha":"honeypot","lastChange":1710238630312,"remove_data_after_days":-1,"send_email":true,"show_cancel":false,"store":true,"subblocks":[{"field_id":"1709833577467","field_type":"text","id":"1709833577467","label":"Name","required":true},{"field_id":"1709833592544","field_type":"from","id":"1709833592544","label":"Email","required":false,"use_as_bcc":false,"use_as_reply_to":false},{"field_id":"1709833604677","field_type":"textarea","id":"1709833604677","label":"Message","required":false},{"field_id":"1709833616406","field_type":"multiple_choice","id":"1709833616406","input_values":["Red","Green","Blue"],"label":"Select field","required":false}]}' />
 
 <block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-form">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-form" data-json='{"fixed":false,"readOnly":false}'>
 
 <block type="codeExample" slotId="schema">
 

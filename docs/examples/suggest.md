@@ -35,7 +35,7 @@ A question whose answer is completed from a vocabulary the author picked.
 
 <block type="suggest" label="Topic" suggestFrom="plone.app.vocabularies.Keywords" value="" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-suggest">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-suggest" data-json='{"fixed":false,"readOnly":false}'>
 
 <block type="codeExample" slotId="schema">
 

@@ -56,10 +56,10 @@ blocks-matched: |
 
 </block>
 
-<block type="eventMetadata" slotId="event-metadata" />
+<block type="eventMetadata" data-json='{"slotId":"event-metadata","readOnly":false}' />
 
 </fields>
 
-<block type="slate" slotId="content" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
+<block type="slate" data-json='{"slotId":"content","value":[{"children":[{"text":""}],"type":"p"}],"fixed":false,"readOnly":false}' />
 
 </fields>

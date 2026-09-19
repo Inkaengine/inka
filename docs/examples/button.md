@@ -45,7 +45,7 @@ A call-to-action button with an editable label and link.
 
 <block type="image">
 
-![The button example block being edited in Inka](/docs/images/button-edit.png)
+![The button example block being edited in Inka](../images/button-edit.png)
 
 </block>
 
@@ -237,7 +237,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-button">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-button" data-json='{"fixed":false,"readOnly":false}'>
 
 <block type="codeExample" slotId="schema">
 

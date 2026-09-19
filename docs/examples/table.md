@@ -54,7 +54,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 <block type="image">
 
-![The table example block being edited in Inka](/docs/images/table-edit.png)
+![The table example block being edited in Inka](../images/table-edit.png)
 
 </block>
 
@@ -112,7 +112,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-table">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-table" data-json='{"fixed":false,"readOnly":false}'>
 
 <block type="codeExample" slotId="schema">
 

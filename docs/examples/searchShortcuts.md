@@ -39,7 +39,7 @@ Renders a set of values as links into a faceted search — a "tag cloud" of shor
 
 <block type="searchShortcuts" index="Subject" searchUrl="/search" variation="default" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts" data-json='{"fixed":false,"readOnly":false}'>
 
 <block type="codeExample" slotId="schema">
 

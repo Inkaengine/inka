@@ -40,6 +40,8 @@ blocks-matched: |
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
+blocks-tagged: |
+  <block type="introduction" value="${p,h*/slate}" />
 ---
 
 # Table of Contents
@@ -48,7 +50,7 @@ Renders a table of contents generated from heading blocks on the current page. I
 
 <block type="image">
 
-![The toc example block being edited in Inka](/docs/images/toc-edit.png)
+![The toc example block being edited in Inka](../images/toc-edit.png)
 
 </block>
 
@@ -56,9 +58,13 @@ Renders a table of contents generated from heading blocks on the current page. I
 
 ---
 
-<block type="image" align="wide" copyright_and_sources="Copyright: unsplash.com" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="/docs/examples/content-types/image-dark" styles:size:noprefix="large" />
+<block type="image" align="wide" copyright_and_sources="Copyright: unsplash.com" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="./content-types/image-dark" styles:size:noprefix="large" />
 
-<block type="introduction" data-json='{"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. "}],"type":"p"}]}' />
+<block type="introduction">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.&#x20;
+
+</block>
 
 ---
 
@@ -98,7 +104,7 @@ Text can be **bold** or *italic*.
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-toc">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-toc" data-json='{"fixed":false,"readOnly":false}'>
 
 <block type="codeExample" slotId="schema">
 

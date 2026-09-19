@@ -48,19 +48,19 @@ A search interface with faceted filtering. Contains a child listing block for re
 
 <block type="image">
 
-![The search example block being edited in Inka](/docs/images/search-edit.png)
+![The search example block being edited in Inka](../images/search-edit.png)
 
 </block>
 
 <fields data-json='{"query":{"b_size":"4","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/"}],"sort_on":"effective","sort_order":"descending"},"showSearchInput":true,"showSortOn":true,"showTotalResults":true}'>
 
-<block type="search" headline="Search with Facets" listingBodyTemplate="summary" facetsTitle="Filter by" data-json='{"facets":[{"@id":"facet-type","type":"checkboxFacet","title":"Content Type","field":{"value":"portal_type","label":"Type"},"multiple":true,"hidden":false},{"@id":"facet-subject","type":"checkboxFacet","title":"Tags","field":{"value":"Subject","label":"Tags"},"multiple":true,"hidden":false}],"blocks":{"facet-listing":{"@type":"listing","variation":"summary","querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/"}],"sort_on":"effective","sort_order":"descending"}}},"blocks_layout":{"listing":["facet-listing"]}}' />
+<block type="search" data-json='{"headline":"Search with Facets","listingBodyTemplate":"summary","facetsTitle":"Filter by","facets":[{"@id":"facet-type","type":"checkboxFacet","title":"Content Type","field":{"value":"portal_type","label":"Type"},"multiple":true,"hidden":false},{"@id":"facet-subject","type":"checkboxFacet","title":"Tags","field":{"value":"Subject","label":"Tags"},"multiple":true,"hidden":false}],"blocks":{"facet-listing":{"@type":"listing","variation":"summary","querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/"}],"sort_on":"effective","sort_order":"descending"}}},"blocks_layout":{"listing":["facet-listing"]}}' />
 
-<block type="search" headline="Simple Search" data-json='{"blocks":{"simple-listing":{"@type":"listing","variation":"default","querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/"}],"sort_on":"effective","sort_order":"descending"}}},"blocks_layout":{"listing":["simple-listing"]}}' />
+<block type="search" data-json='{"headline":"Simple Search","blocks":{"simple-listing":{"@type":"listing","variation":"default","querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/"}],"sort_on":"effective","sort_order":"descending"}}},"blocks_layout":{"listing":["simple-listing"]}}' />
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-search">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-search" data-json='{"fixed":false,"readOnly":false}'>
 
 <block type="codeExample" slotId="schema">
 

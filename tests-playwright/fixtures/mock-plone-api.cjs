@@ -193,6 +193,7 @@ const MARKDOWN_BLOB_MIME = {
 };
 const markdownItems = new Map();   // url path -> raw content
 const markdownBlobs = new Map();   // url path -> absolute blob file
+const markdownOrder = new Map();   // folder url path -> authored child order (curated)
 let ready = Promise.resolve();
 // The prototype engine, imported once for the /@export endpoint's markdown mode.
 let engine = null; // { emitPage, parsePrototypes }
@@ -1689,8 +1690,12 @@ function loadMarkdownMount(mount) {
   const { mountPath, dirPath } = mount;
   // Pass the mountPath as the link prefix so hand-authored .md cross-links resolve
   // to the served @ids (a /docs mount serves its tree under /docs, not at root).
-  const { items, blobFiles, folderForm } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor });
+  const { items, blobFiles, folderForm, order } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor });
   const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
+  // The authored `order:` is a CURATED list (it may deliberately omit asset
+  // folders like images/static). Keep it so a re-export writes it back verbatim
+  // instead of regenerating a full order that pulls those folders into the nav.
+  if (order) for (const [p, list] of order) markdownOrder.set(urlFor(p), list);
   for (const [p, item] of items) {
     const urlPath = urlFor(p);
     item['@id'] = urlPath;
@@ -2447,7 +2452,10 @@ app.post('/@export', async (req, res) => {
       const blobItems = kids.filter(isBlobItem);
       const front = [
         YAML.stringify(meta).trim(),
-        childPages.length ? YAML.stringify({ order: childPages.map((d) => d.id) }).trim() : '',
+        // Prefer the AUTHORED order (curated — may omit asset folders); only
+        // synthesise one from the child scan for a folder that never had it.
+        (markdownOrder.get(p) || (childPages.length ? childPages.map((d) => d.id) : null))
+          ? YAML.stringify({ order: markdownOrder.get(p) || childPages.map((d) => d.id) }).trim() : '',
         blobItems.length ? YAML.stringify({ blobs: blobItems.map(blobEntry) }).trim() : '',
       ].filter(Boolean).join('\n');
       if (c.blocks && c.blocks_layout?.items?.length) {

@@ -28,6 +28,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="button" title="${p/text}" href="${p/link}" />
   <block type="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />
+  <block type="introduction" value="${p,h*/slate}" />
   <block type="slateTable">
     <region name="table.rows">
       <block type="row">
@@ -50,15 +51,15 @@ blocks-tagged: |
 
 <block type="gridBlock">
 
-<block type="teaser" description="For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid." title="Teaser Title (H2, 30/36px)" styles:align="left" data-json='{"head_title":null,"href":[{"@id":"/docs/examples/content-types"}]}' />
+<block type="teaser" data-json='{"description":"For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid.","title":"Teaser Title (H2, 30/36px)","styles":{"align":"left"},"head_title":null,"href":[{"@id":"/docs/examples/content-types","@type":"Document","Title":"Content Types","Description":"This section has a sample of content types available in this site.","title":"Content Types","head_title":null,"getRemoteUrl":null,"hasPreviewImage":false,"image_field":""}]}' />
 
 </block>
 
 <block type="gridBlock">
 
-<block type="teaser" head_title="Teaser Headtitle (DIV, 14/18px)" title="Teaser Title (H3, 24/30px)" styles:align="left" data-json='{"href":[{"@id":"/docs/examples/content-types"}]}' />
+<block type="teaser" data-json='{"head_title":"Teaser Headtitle (DIV, 14/18px)","title":"Teaser Title (H3, 24/30px)","styles":{"align":"left"},"href":[{"@id":"/docs/examples/content-types","@type":"Document","Title":"Content Types","Description":"This section has a sample of content types available in this site.","title":"Content Types","head_title":null,"getRemoteUrl":null,"hasPreviewImage":false,"image_field":""}]}' />
 
-<block type="teaser" description="Paragraph (p, 18px/24px). This section has a sample of content types available in this site." head_title="Teaser Headtitle (DIV, 14/18px)" title="Teaser Title (H3, 24/30px)" styles:align="left" data-json='{"href":[{"@id":"/docs/examples/content-types"}]}' />
+<block type="teaser" data-json='{"description":"Paragraph (p, 18px/24px). This section has a sample of content types available in this site.","head_title":"Teaser Headtitle (DIV, 14/18px)","title":"Teaser Title (H3, 24/30px)","styles":{"align":"left"},"href":[{"@id":"/docs/examples/content-types","@type":"Document","Title":"Content Types","Description":"This section has a sample of content types available in this site.","title":"Content Types","head_title":null,"getRemoteUrl":null,"hasPreviewImage":false,"image_field":""}]}' />
 
 </block>
 
@@ -82,13 +83,17 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
 
-<block type="introduction" data-json='{"value":[{"children":[{"text":"Text Heading H2 (H2, 36/48px)"}],"type":"h2"}]}' />
+<block type="introduction">
+
+## Text Heading H2 (H2, 36/48px)
+
+</block>
 
 Paragraph text (p, 24/33px) -> Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
 
-<block type="listing" block="875e2811-edb6-4842-8cc0-246fa1be6f58" headline="Heading (H2, 33/42px)" headlineTag="h2" variation="default" data-json='{"query":[],"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["File","Document"]}],"sort_on":"effective","sort_order":"descending","sort_order_boolean":"descending"}}' />
+<block type="listing" data-json='{"block":"875e2811-edb6-4842-8cc0-246fa1be6f58","headline":"Heading (H2, 33/42px)","headlineTag":"h2","variation":"default","query":[],"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["File","Document"]}],"sort_on":"effective","sort_order":"descending","sort_order_boolean":"descending"}}' />
 
-<block type="image" align="center" image_field="image" size="l" title="Caption Title (14/18px). Image" url="/docs/examples/content-types/image-dark" data-json='{"allow_image_download":false,"description":"Caption Description (14/18px). The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<block type="image" data-json='{"align":"center","image_field":"image","size":"l","title":"Caption Title (14/18px). Image","url":"./image-dark","allow_image_download":false,"description":"Caption Description (14/18px). The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
 
 <block type="button" inneralign="left" title="Button text (button, 18/24px)" />
 
@@ -96,7 +101,7 @@ Paragraph text (p, 24/33px) -> Lorem ipsum dolor sit amet, consetetur sadipscing
 
 <block type="gridBlock" data-json='{"items":[{"@type":"slate","plaintext":"Text Heading (H3, 24/30px)","value":[{"children":[{"text":"Text Heading (H3, 24/30px)"}],"type":"h2"}]},{"@type":"slate","value":[{"children":[{"text":"Paragraph Text (p, 18/24px)"}],"type":"p"}],"plaintext":"Paragraph Text (p, 18/24px)"},{"@type":"slate","plaintext":"Text Heading (H3, 24/30px)","value":[{"children":[{"text":"Text Heading (H3, 24/30px)"}],"type":"h2"}]},{"@type":"slate","value":[{"children":[{"text":"Paragraph Text (p, 18/24px)"}],"type":"p"}],"plaintext":"Paragraph Text (p, 18/24px)"}]}' />
 
-<block type="toc" variation="default" data-json='{"levels":["h2","h3"]}' />
+<block type="toc" data-json='{"variation":"default","levels":["h2","h3"]}' />
 
 <block type="slateTable" table.celled table.fixed>
 
