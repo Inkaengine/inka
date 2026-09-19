@@ -231,10 +231,13 @@ test.describe('Optional fields — reveal toggle (#296)', () => {
 
     const description = iframe.locator('[data-block-uid="hero-empty"] [data-edit-text="description"]');
     await expect(description).toHaveCount(1);
+    // The node id is on the paragraph's element: the field element itself (the
+    // mock renders `<p data-edit-text data-node-id>`) or inside it (Nuxt wraps
+    // the paragraphs in a `<div data-edit-text>`). Either is the node-id rule.
     await expect(
-      description,
+      description.locator('xpath=self::*[@data-node-id] | .//*[@data-node-id]'),
       'the revealed paragraph is the field\'s own default one, so it carries its node id',
-    ).toHaveAttribute('data-node-id', /.+/);
+    ).toHaveCount(1);
 
     await helper.enterEditMode('hero-empty', 'description');
     await description.pressSequentially('Roads closed', { delay: 25 });
