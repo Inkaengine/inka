@@ -1689,13 +1689,15 @@ function loadMarkdownMount(mount) {
   const { mountPath, dirPath } = mount;
   // Pass the mountPath as the link prefix so hand-authored .md cross-links resolve
   // to the served @ids (a /docs mount serves its tree under /docs, not at root).
-  const { items, blobFiles } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor });
+  const { items, blobFiles, folderForm } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor });
   const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
   for (const [p, item] of items) {
     const urlPath = urlFor(p);
     item['@id'] = urlPath;
     markdownItems.set(urlPath, item);
-    contentDirMap[urlPath] = { dirPath, markdown: true };
+    // `folder` records the AUTHORED file form (X/index.md vs X.md) so a
+    // re-export writes the source back in the same shape.
+    contentDirMap[urlPath] = { dirPath, markdown: true, folder: folderForm && folderForm.has(p) };
     if (item.UID) {
       uidToPathMap[item.UID] = urlPath;
       if (item.getObjPositionInParent !== undefined) uidPositionMap[item.UID] = item.getObjPositionInParent;
@@ -2363,13 +2365,25 @@ app.post('/@export', async (req, res) => {
       return entry;
     };
     const childrenByParent = {};
-    const folderish = new Set();
     for (const k of Object.keys(contentDirMap)) {
-      const d = loadRawContentFromDisk(k);
-      if (d && (d.is_folderish || d['@type'] === 'Plone Site')) folderish.add(k);
       if (k === '/') continue;
       const parent = k.replace(/\/[^/]+$/, '') || '/';
       (childrenByParent[parent] || (childrenByParent[parent] = [])).push(k);
+    }
+    // Write a page as a FOLDER (`X/index.md`) exactly when it was AUTHORED that
+    // way — the markdown mount recorded the source form (contentDirMap[k].folder).
+    // A page authored flat (`X.md`) stays flat even if is_folderish; a folder
+    // landing stays a folder even with no child pages. A flat page that GAINED
+    // children still needs a folder to hold them. A JSON mount has no `folder`
+    // flag, so it falls back to is_folderish (its historic behaviour).
+    const folderish = new Set();
+    for (const k of Object.keys(contentDirMap)) {
+      const info = contentDirMap[k];
+      const d = loadRawContentFromDisk(k) || {};
+      const authored = info && info.markdown
+        ? (info.folder || (childrenByParent[k] || []).length > 0)
+        : d.is_folderish;
+      if (authored || d['@type'] === 'Plone Site') folderish.add(k);
     }
 
     // Reverse the mount's link/media resolution: the served blocks carry absolute
@@ -2508,8 +2522,11 @@ app.post('/@export', async (req, res) => {
           for (const v of Object.values(node)) copyFieldBlobs(v);
         };
         copyFieldBlobs(c);
-        const folderish = c.is_folderish || (childrenByParent[p] || []).length > 0;
-        const dest = path.join(treeRoot, rel === '' ? 'index.md' : (folderish ? `${rel}/index.md` : `${rel}.md`));
+        const info = contentDirMap[p];
+        const isFolder = info && info.markdown
+          ? (info.folder || (childrenByParent[p] || []).length > 0)
+          : (c.is_folderish || (childrenByParent[p] || []).length > 0);
+        const dest = path.join(treeRoot, rel === '' ? 'index.md' : (isFolder ? `${rel}/index.md` : `${rel}.md`));
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, emitFile(c, p, m));
       }
