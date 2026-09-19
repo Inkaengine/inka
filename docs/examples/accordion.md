@@ -56,7 +56,7 @@ A collapsible panel group. Each panel is an object\_list item with a title and a
 
 <block type="image">
 
-![The accordion example block being edited in Volto Hydra](/docs/images/accordion-edit.png)
+![The accordion example block being edited in Inka](/docs/images/accordion-edit.png)
 
 </block>
 

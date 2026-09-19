@@ -1,6 +1,7 @@
 import {
   buildQuerystringSearchBody,
   getFieldTypeString,
+  isEmptySlate,
   isPlainStringFieldType,
   isSlateFieldType,
   isTextareaFieldType,
@@ -450,5 +451,47 @@ describe('getFieldTypeString — a field with no declared type is a string', () 
     expect(getFieldTypeString({ type: 'array', widget: 'select' })).toBe('array:select');
     expect(getFieldTypeString({ type: 'boolean' })).toBe('boolean');
     expect(getFieldTypeString({})).toBe('string');
+  });
+});
+
+/**
+ * A slate value always has a top node — the editor gives every slate field one
+ * empty paragraph by default — so "nothing written" is that paragraph, not an
+ * absent value. A renderer hiding an optional slate field asks this instead of
+ * plain truthiness, which a one-node array always passes.
+ */
+describe('isEmptySlate', () => {
+  test('the default empty paragraph is empty', () => {
+    expect(isEmptySlate([{ type: 'p', children: [{ text: '' }] }])).toBe(true);
+  });
+
+  test('an empty paragraph carrying its node id is still empty', () => {
+    expect(isEmptySlate([{ type: 'p', nodeId: 0, children: [{ text: '' }] }])).toBe(true);
+  });
+
+  test('absent, null and [] are empty — content saved before the default', () => {
+    expect(isEmptySlate(undefined)).toBe(true);
+    expect(isEmptySlate(null)).toBe(true);
+    expect(isEmptySlate([])).toBe(true);
+  });
+
+  test('any text is content', () => {
+    expect(isEmptySlate([{ type: 'p', children: [{ text: 'Roads closed' }] }])).toBe(false);
+  });
+
+  test('text inside an inline element is content', () => {
+    expect(
+      isEmptySlate([
+        { type: 'p', children: [{ text: '' }, { type: 'link', children: [{ text: 'x' }] }, { text: '' }] },
+      ]),
+    ).toBe(false);
+  });
+
+  test('a zero-width space is content — it is what reveal renders so the field shows', () => {
+    expect(isEmptySlate([{ type: 'p', children: [{ text: '​' }] }])).toBe(false);
+  });
+
+  test('a textless element that stands for something (an image, a rule) is content', () => {
+    expect(isEmptySlate([{ type: 'img', url: '/a.png', children: [{ text: '' }] }])).toBe(false);
   });
 });

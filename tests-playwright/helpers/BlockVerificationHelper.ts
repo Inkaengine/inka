@@ -12,6 +12,7 @@ import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/tes
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage';
 import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
+import { isEmptySlate } from '../../packages/helpers/index.js';
 
 export interface SubBlock {
   id: string;
@@ -387,9 +388,20 @@ export async function revealBlock(iframe: FrameLocator, blockUid: string): Promi
   // pager is still on its way. Poll until the reveal takes hold, up to a generous
   // deadline: a genuinely unrevealable block just returns false the whole time
   // (bounded, no spin), while a slow pager gets the seconds it needs to appear.
+  //
+  // The wait is only for a block that is NOT IN THE PAGE yet — that is the case
+  // above: an off-page child whose pager has not mounted. A block that IS in the
+  // page but hidden, with nothing that reveals it (a conditional form field
+  // waiting on another answer), gets one probe and no wait: the bridge's answer
+  // cannot change, and twelve seconds of asking again blew a 20s test budget
+  // on every such block while proving nothing.
   let clicked = false;
-  const revealDeadline = Date.now() + 12000;
-  for (let attempt = 0; !clicked && Date.now() < revealDeadline; attempt++) {
+  const revealDeadline = Date.now() + (exists ? 0 : 12000);
+  for (
+    let attempt = 0;
+    !clicked && (attempt === 0 || Date.now() < revealDeadline);
+    attempt++
+  ) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
     clicked = await iframe
       .locator('body')
@@ -918,10 +930,10 @@ export async function checkSlateAnnotations(
     slateFields = Object.entries(blockSchema.properties)
       .filter(([, prop]) => (prop as Record<string, unknown>)?.widget === 'slate')
       .map(([field]) => field);
-    slateHasValue = (field) => {
-      const v = blockData[field];
-      return Array.isArray(v) && v.length > 0;
-    };
+    // A slate field always holds a node — the editor defaults it to one empty
+    // paragraph — so "no value" is that paragraph, not an absent key. A
+    // renderer hides it (isEmptySlate), so there is nothing to round-trip.
+    slateHasValue = (field) => !isEmptySlate(blockData[field]);
   } else {
     slateFields = findSlateFields(blockData);
     slateHasValue = () => true;

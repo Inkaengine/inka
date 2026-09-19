@@ -1,53 +1,42 @@
 <!-- index.html -->
 <div id="content"></div>
 <script type="module">
-  import { initBridge } from 'hydra-js'
+  import { initBridge } from '@hydra-js/hydra.js'
 
-  let editing = false
+  const editing = window.name.startsWith('hydra')
 
-  // Only init bridge when loaded inside the editor
-  if (window.name.startsWith('hydra')) {
-    editing = true
+  if (editing) {
+    // In the editor: declare the one block we render richly, and re-render on every edit.
     initBridge({
-      // Register custom block types with their field schemas
-      blocks: {
-        card: { blockSchema: { properties: {
-          image: { widget: 'image' },
-          title: { type: 'string' },
-          description: { type: 'string' },
-          link: { widget: 'url' },
-        }}}
-      },
-      // Receive live updates as editor changes content
-      onEditChange: renderPage
+      blocks: { card: { blockSchema: { properties: {
+        image: { widget: 'image' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+        link: { widget: 'url' },
+      } } } },
+      onEditChange: render,
     })
   } else {
-    const res = await fetch(`/++api++${location.pathname}`)
-    renderPage(await res.json())
+    // On the live site: fetch this page and render once.
+    render(await (await fetch(`/++api++${location.pathname}`)).json())
   }
 
-  function renderPage(page) {
-    const el = document.getElementById('content')
-    el.innerHTML = page.blocks_layout.items.map(id => {
-      const b = page.blocks[id]
-      return `
-        <!-- data-block-uid: makes block selectable, draggable, and editable -->
-        <div ${editing ? `data-block-uid="${id}"` : ''}>
-          <!-- data-edit-link: click to edit link URL in sidebar -->
-          <a href="${b.link}"
-             ${editing ? 'data-edit-link="link"' : ''}>
-            <!-- data-edit-media: click to pick/upload image in sidebar -->
-            <img src="${b.image}"
-                 ${editing ? 'data-edit-media="image"' : ''} />
-            <!-- data-edit-text: edit text directly in the preview -->
-            <h3 ${editing ? 'data-edit-text="title"' : ''}>
-              ${b.title}
-            </h3>
-            <p ${editing ? 'data-edit-text="description"' : ''}>
-              ${b.description}
-            </p>
-          </a>
-        </div>`
-    }).join('')
+  function render(page) {
+    document.getElementById('content').innerHTML =
+      page.blocks_layout.items.map((id) => {
+        const block = page.blocks[id]
+        const uid = editing ? ` data-block-uid="${id}"` : ''
+        // The card block is rendered editable; anything else is shown as raw JSON.
+        if (block['@type'] !== 'card')
+          return `<pre${uid}>${JSON.stringify(block, null, 2)}</pre>`
+        return `
+          <div${uid}>
+            <a href="${block.link}"${editing ? ' data-edit-link="link"' : ''}>
+              <img src="${block.image}"${editing ? ' data-edit-media="image"' : ''} />
+              <h3${editing ? ' data-edit-text="title"' : ''}>${block.title}</h3>
+              <p${editing ? ' data-edit-text="description"' : ''}>${block.description}</p>
+            </a>
+          </div>`
+      }).join('')
   }
 </script>
