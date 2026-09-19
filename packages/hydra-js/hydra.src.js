@@ -14819,7 +14819,17 @@ if (typeof window !== 'undefined' && window.self !== window.top) {
  * so it is sent once the adapter's own init() has settled.
  */
 function registerAdapter(bridge, options, adminOrigin) {
-  const cmsBaseUrl = options.cmsBaseUrl ?? window.location.origin;
+  // Required, not defaulted. The old default was window.location.origin — the
+  // FRONTEND — which is the CMS only when the CMS serves the site; for any
+  // headless frontend it aimed the adapter at the site itself, and the
+  // mistake surfaced much later as 404s from the wrong server.
+  const { cmsBaseUrl } = options;
+  if (!cmsBaseUrl) {
+    throw new Error(
+      '[hydra] an adapter needs options.cmsBaseUrl: the CMS it serves, ' +
+        'which is not necessarily this page\'s origin',
+    );
+  }
   const adapter = options.adapter;
 
   bridge.rpc.serve(adapter);
