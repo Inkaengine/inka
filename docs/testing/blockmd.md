@@ -159,6 +159,18 @@ An attribute's type comes from how it is written, with no schema involved:
 - a double-quoted value, `title="Hi ${1/text}"`, is a string (so any references inside it survive)
 - a single-quoted `data='{ … }'` carries raw JSON object fields verbatim
 
+## Dict fields
+
+A block field whose value is a flat dictionary — a block's `styles`, or any custom block's object field — is written as one namespaced attribute per entry, `field:key=value`, rather than a JSON blob.
+
+### Markdown
+
+```markdown
+<block type="teaser" styles:align="left" styles:backgroundColor="grey" />
+```
+
+The name is split on the **first** colon, so a key that itself contains a colon rides in the key untouched — `styles:size:noprefix="medium"` decodes to `{ styles: { "size:noprefix": "medium" } }`. Each value is typed like any other attribute, so `styles:noLine=false` is a boolean and `styles:span=2` a number. An empty dict writes nothing, and a value that is itself nested or a list can't flatten, so that block falls to the `data='{…}'` form instead. This is generic — nothing about it is specific to `styles`; it is simply the readable rung between a bare attribute and a JSON blob for any dictionary.
+
 ## The fallback chain
 
 Every block is written in the cheapest form that still reproduces it, stepping down only as needed: bare Markdown, then a light `<block>` tag, then a clean body with a `<fields>` tag, and finally a self-closing tag carrying `data='{…}'`. The last form always works, because it holds the block's full data, so nothing is ever lost — an irregular block simply falls further down the chain. Equality along the way is judged by meaning, ignoring derived or empty values, so a clean block is never pushed down the chain over incidental noise.
