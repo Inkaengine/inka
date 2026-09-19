@@ -702,10 +702,17 @@ export class AdminUIHelper {
       await clickTarget.waitFor({ state: 'visible', timeout: 5000 });
       await this.demoStep(clickTarget);
       await clickTarget.click();
+    } else if ((await blockLocator.count()) === 1) {
+      // One element: its centre, as it always was.
+      await block.scrollIntoViewIfNeeded();
+      await block.waitFor({ state: 'visible', timeout: 5000 });
+      await this.demoStep(block);
+      await block.click();
     } else {
-      // Where a click SELECTS the block — not blindly the centre of its first
-      // element, which for a block of several elements can be a link the editor
-      // lets navigate (see selectablePoint). The centre is still tried first.
+      // Several elements share the uid, and the first in the DOM need not be
+      // one a click selects — a script-built banner's centre can be a link
+      // that takes the editor off the page. Click where a click selects (see
+      // selectablePoint); the centre of the first element is still tried first.
       await blockLocator.filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 5000 });
       const point = await block.evaluate(selectablePoint, blockId);
       if (!point) {
