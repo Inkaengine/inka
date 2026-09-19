@@ -367,7 +367,7 @@ export default defineConfig({
         viewport: { width: 1280, height: 720 },
         permissions: ['clipboard-read', 'clipboard-write'],
         // The saved session, including the proxy origin's stored credential.
-        storageState: 'tests-playwright/fixtures/storage-authed-wordpress.json',
+        storageState: 'tests-playwright/.generated/storage-authed-wordpress.json',
       },
     },
 

@@ -17,7 +17,10 @@ import { auditCmsRequests, signIn } from './steps';
  * here is that origin's localStorage, not a cookie. Later specs load it and
  * the proxy comes up already authenticated — the sign-in panel never appears.
  */
-const STATE = 'tests-playwright/fixtures/storage-authed-wordpress.json';
+// Generated every run (the setup project always runs first), so git-ignored
+// with the other generated storage states — a committed copy was rewritten by
+// every local run.
+const STATE = 'tests-playwright/.generated/storage-authed-wordpress.json';
 
 setup('sign in to WordPress once', async ({ page }, testInfo) => {
   setup.setTimeout(300_000);
