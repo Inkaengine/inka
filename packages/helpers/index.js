@@ -1267,17 +1267,17 @@ export function getFieldTypeString(field) {
 
 /**
  * Check if a field type indicates a Slate field.
- * Handles both old format ('slate') and new format ('array:slate', 'object:richtext').
+ * Handles both old format ('slate') and new format ('array:slate'). A `richtext`
+ * widget is HTML, not slate, so it is deliberately NOT matched here.
  * @param {string} fieldType - Field type string
  * @returns {boolean}
  */
 export function isSlateFieldType(fieldType) {
   if (!fieldType) return false;
-  return (
-    fieldType === 'slate' ||
-    fieldType.includes(':slate') ||
-    fieldType.includes(':richtext')
-  );
+  // A `richtext` widget stores HTML ({data, content-type, encoding}), NOT slate,
+  // so it is NOT inline-editable in the bridge — do not treat `:richtext` as a
+  // slate field.
+  return fieldType === 'slate' || fieldType.includes(':slate');
 }
 
 /**
@@ -1575,6 +1575,34 @@ export function slateNodesText(nodes) {
     else if (Array.isArray(n.children)) out += slateNodesText(n.children);
   }
   return out;
+}
+
+/**
+ * True when a slate value holds nothing an author wrote.
+ *
+ * Every slate field has a top node — the editor defaults one to a single empty
+ * paragraph — so "nothing written" is that paragraph, not an absent value, and
+ * a one-node array always passes a plain truthiness check. A renderer hiding an
+ * optional slate field asks this instead: `!isEmptySlate(block.summary) && …`.
+ *
+ * Empty means: absent (content saved before the default), `[]`, or one `p`
+ * whose children are all text leaves with no text. Anything else is content —
+ * a heading, an image, an inline element, or the zero-width space reveal
+ * renders precisely so the field shows.
+ */
+export function isEmptySlate(value) {
+  if (value === undefined || value === null) return true;
+  if (!Array.isArray(value)) {
+    throw new TypeError(`isEmptySlate expects a slate value (an array), got ${typeof value}`);
+  }
+  if (value.length === 0) return true;
+  if (value.length > 1) return false;
+  const [node] = value;
+  return (
+    node?.type === 'p' &&
+    Array.isArray(node.children) &&
+    node.children.every((c) => typeof c.text === 'string' && c.text === '')
+  );
 }
 
 function _slateNodeDiffersOnlyInText(p, n) {

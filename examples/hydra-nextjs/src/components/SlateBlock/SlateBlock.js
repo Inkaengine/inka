@@ -15,6 +15,19 @@ function serializeSlateJSON(value) {
 }
 
 /**
+ * A leaf's text with its line breaks: "\n" is Shift+Enter in the editor, drawn as
+ * <br>. A break at the very end needs a second <br> to show, as it does there.
+ */
+function lineBreaks(text) {
+  const [first, ...rest] = text.split("\n");
+  return [
+    first,
+    ...rest.flatMap((line, i) => [<br key={`br${i}`} />, line]),
+    text.endsWith("\n") ? <br key="trailing" /> : null,
+  ];
+}
+
+/**
  * Recursively serializes a single Slate node into a JSX element
  * @param {Object} node - The Slate node object
  * @returns {JSX.Element} - The JSX representation of the node
@@ -30,7 +43,7 @@ function serializeNode(node) {
     const nodeIdProps = node.nodeId != null ? { "data-node-id": `${node.nodeId}` } : {};
     return node.text !== "" ? (
       <span key={uid} {...nodeIdProps}>
-        {node.text}
+        {lineBreaks(node.text)}
       </span>
     ) : (
       <span key={uid} {...nodeIdProps}>

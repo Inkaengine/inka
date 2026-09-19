@@ -49,7 +49,7 @@ Displays the page's title and description as a styled header. The introduction b
 
 <block type="image">
 
-![The introduction example block being edited in Volto Hydra](/docs/images/introduction-edit.png)
+![The introduction example block being edited in Inka](/docs/images/introduction-edit.png)
 
 </block>
 

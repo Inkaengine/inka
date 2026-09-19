@@ -20,6 +20,27 @@
 // Global render counter for testing re-render behavior
 window.hydraRenderCount = window.hydraRenderCount || 0;
 
+/**
+ * True when a slate value holds nothing an author wrote — the copy a frontend
+ * without a bundler keeps of `isEmptySlate` from @volto-hydra/helpers.
+ *
+ * A slate field is never absent: the editor gives it one empty paragraph. So an
+ * optional slate field is hidden by this check, not by truthiness, which a
+ * one-node array always passes. Reveal fills that paragraph with a zero-width
+ * space, which is content here, so a revealed field shows.
+ */
+function isEmptySlate(value) {
+    if (value === undefined || value === null) return true;
+    if (!Array.isArray(value)) {
+        throw new TypeError(`isEmptySlate expects a slate value (an array), got ${typeof value}`);
+    }
+    if (value.length === 0) return true;
+    if (value.length > 1) return false;
+    const [node] = value;
+    return node?.type === 'p' && Array.isArray(node.children)
+        && node.children.every((c) => typeof c.text === 'string' && c.text === '');
+}
+
 
 // Test-frontend log with run ID prefix (matches hydra.js log pattern)
 function tfLog(...args) {
@@ -684,11 +705,11 @@ function renderChildren(children) {
             // <p data-edit-text="value">, stranding everything after it (a link)
             // outside the editable region, and a bare data-block-uid is read as a
             // block that never round-trips.
-            let content = escapeHtml(child.text || '');
+            let content = leafHtml(child.text || '');
             return `<span${leafStyles}>${content}</span>`;
         }
         if (child.text !== undefined) {
-            let content = escapeHtml(child.text || '');
+            let content = leafHtml(child.text || '');
 
             // Also handle old format (marks) for backward compatibility
             if (child.bold) content = `<span style="font-weight: bold">${content}</span>`;
@@ -716,6 +737,18 @@ function renderChildren(children) {
  * @param {Object} block - Text block data
  * @returns {string} HTML string
  */
+/**
+ * A slate text leaf as HTML. A "\n" in a leaf is a line break — the editor's
+ * Shift+Enter, which Volto stores as "\n" and draws as <br> — so it is drawn as
+ * <br> here too. A break at the very end needs a second <br> to show at all, just
+ * as it does in the editor; hydra reads that last one back as the browser's
+ * placeholder, so the value round-trips.
+ */
+function leafHtml(text) {
+    const html = escapeHtml(text).replace(/\n/g, '<br>');
+    return text.endsWith('\n') ? `${html}<br>` : html;
+}
+
 function renderTextBlock(block) {
     const text = block.text || '';
     // Mark as editable field - hydra.js will read this and set contenteditable="true"
@@ -774,10 +807,10 @@ function renderHeroBlock(block) {
     const buttonText = block.buttonText || '';
     const buttonLink = getLinkUrl(block.buttonLink);
     const imageSrc = getImageUrl(block.image);
-    // Data-driven: no data ⇒ no element (issue #296). Do NOT substitute an empty
-    // paragraph — that renders an editable element for a field with no content and
-    // leaks an empty <p> into view markup.
-    const description = block.description || [];
+    // Data-driven: no content ⇒ no element (issue #296). A slate field always
+    // holds a paragraph, so "no content" is isEmptySlate, not truthiness —
+    // rendering the empty paragraph would leak an empty <p> into view markup.
+    const description = isEmptySlate(block.description) ? [] : block.description;
 
     // Render subheading as textarea (preserve newlines)
     const subheadingHtml = subheading.replace(/\n/g, '<br>');
@@ -838,16 +871,17 @@ function renderHeroBlockClean(block) {
     const buttonText = block.buttonText || '';
     const buttonLink = getLinkUrl(block.buttonLink);
     const imageSrc = getImageUrl(block.image);
-    // Data-driven: no data ⇒ no element (issue #296).
-    const description = block.description || [];
+    // Data-driven: no content ⇒ no element (issue #296) — isEmptySlate, since a
+    // slate field always holds at least an empty paragraph.
+    const description = isEmptySlate(block.description) ? [] : block.description;
 
     // Render subheading as textarea (preserve newlines)
     const subheadingHtml = subheading.replace(/\n/g, '<br>');
 
     // Render description - still needs node IDs for slate editing.
     // Data-driven, in edit mode too (issue #296): no data ⇒ no element. Reveal
-    // is the bridge's job — TOGGLE_OPTIONAL_FIELDS seeds a sentinel value so
-    // this very `description.length` rule fires — and it only works while the
+    // is the bridge's job — TOGGLE_OPTIONAL_FIELDS fills the empty paragraph with
+    // a zero-width space so this very isEmptySlate rule lets it through — and it only works while the
     // renderer keeps telling the truth about what the block holds.
     let descriptionHtml = '';
     description.forEach((node) => {

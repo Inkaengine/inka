@@ -20,6 +20,7 @@ import {
   isTextOnlyBlockChange,
   findBlockInForm,
   slateNodesText,
+  isEmptySlate,
   getAtPath,
   ensureMutablePath,
   getFieldValue,
@@ -552,9 +553,9 @@ export class Bridge {
     // Parse attribute=value or attribute=value(selector) patterns
     // Supports multiple values for the same attribute (e.g., multiple edit-text)
     const attrs = {};
-    // Match: word-name=value(selector) or word-name=value or word-name (boolean)
-    // Value can contain paths like /page-name
-    const attrRegex = /([\w-]+)(?:=([^(\s]+)(?:\(([^)]+)\))?)?/g;
+    // Match: word-name=value(selector), word-name=value, word-name(selector)
+    // (target) or word-name (boolean). Value can contain paths like /page-name
+    const attrRegex = /([\w-]+)(?:=([^(\s]+))?(?:\(([^)]+)\))?/g;
     let match;
     while ((match = attrRegex.exec(content)) !== null) {
       const [, name, value, selector] = match;
@@ -596,15 +597,32 @@ export class Bridge {
       const parsed = this.parseHydraComment(text);
       if (!parsed) continue;
 
-      // Find the next element sibling (skip text nodes)
-      let nextElement = comment.nextSibling;
-      while (nextElement && nextElement.nodeType !== Node.ELEMENT_NODE) {
-        nextElement = nextElement.nextSibling;
-      }
+      // The element the comment annotates. `target(<selector>)` names it
+      // anywhere in the document — for markup a third-party script builds
+      // somewhere you never render (a cookie banner appended to <body>), where
+      // nothing you write can sit above it. Otherwise it is the next element.
+      let nextElement;
+      const target = parsed.attrs.target?.[0]?.selector;
+      if (target) {
+        nextElement = document.querySelector(target);
+        if (!nextElement) {
+          // Not built yet: a script-built element can arrive after this pass.
+          // Comments are re-materialised whenever the DOM settles, so the next
+          // pass annotates it — nothing to report.
+          log('materializeHydraComments: target not in the page yet:', target);
+          continue;
+        }
+      } else {
+        // Find the next element sibling (skip text nodes)
+        nextElement = comment.nextSibling;
+        while (nextElement && nextElement.nodeType !== Node.ELEMENT_NODE) {
+          nextElement = nextElement.nextSibling;
+        }
 
-      if (!nextElement) {
-        console.error('[hydra] Comment syntax found but no next element sibling:', text);
-        continue;
+        if (!nextElement) {
+          console.error('[hydra] Comment syntax found but no next element sibling:', text);
+          continue;
+        }
       }
 
       // Which block this comment belongs to. Both declaration styles are legal and
@@ -920,6 +938,46 @@ export class Bridge {
       (tokens || []).map((t) => Bridge.uidFromSelectorToken(t)).filter(Boolean),
     );
     return uids.size === 1 ? [...uids][0] : undefined;
+  }
+
+  /**
+   * Where a reveal handle is SEEN. An `<option>` has no box of its own — a
+   * browser reports no client rects for it while its dropdown is closed — so it
+   * reads as hidden and was never picked. It is on screen exactly when its
+   * `<select>` is.
+   */
+  static revealSurface(el) {
+    return (el?.tagName === 'OPTION' && el.closest('select')) || el;
+  }
+
+  /**
+   * Reveal through a form control by ANSWERING it, as a person would, rather
+   * than clicking it. Returns true when it handled the element.
+   *
+   * - `<option>`: select it in its dropdown (a click on an option does
+   *   nothing) and fire input/change on the select.
+   * - checkbox / radio: tick it — and leave an already-ticked one alone. A
+   *   click TOGGLES a checkbox, so revealing through a ticked one unticked it
+   *   and hid the block being revealed.
+   *
+   * Anything else (a button, a tab, a link) is still clicked by the caller.
+   */
+  static answerRevealHandle(el) {
+    if (el?.tagName === 'OPTION') {
+      const select = el.closest('select');
+      if (!select) return false;
+      if (!el.selected) {
+        el.selected = true;
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      return true;
+    }
+    if (el?.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
+      if (!el.checked) el.click();
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -7876,6 +7934,56 @@ export class Bridge {
    *   isContentReady to detect rendered changes like link URL updates.
    *   When false (default), include all metadata from metadataMap.
    */
+  /**
+   * An element's text with its line breaks: each <br> is "\n", except the
+   * browser's end-of-line placeholder (see isPlaceholderBr). textContent would
+   * drop every one of them.
+   */
+  textWithBreaks(el) {
+    let out = '';
+    const walk = (node) => {
+      for (const c of node.childNodes) {
+        if (c.nodeType === Node.TEXT_NODE) out += c.textContent || '';
+        else if (c.nodeType === Node.ELEMENT_NODE) {
+          if (c.tagName === 'BR') {
+            if (!this.isPlaceholderBr(c)) out += '\n';
+          } else walk(c);
+        }
+      }
+    };
+    walk(el);
+    return out;
+  }
+
+  /**
+   * Whether a <br> is the browser's end-of-line placeholder rather than a break.
+   *
+   * A contenteditable line cannot end in a bare break: an empty paragraph is
+   * `<p><br></p>`, and a break at the very end needs `<br><br>` to show. So a
+   * <br> with nothing but empty text after it, up to the end of its line, is
+   * the placeholder. "Its line" looks through inline wrappers — a break inside
+   * `<strong>…<br></strong>more` is real, because "more" follows it.
+   */
+  isPlaceholderBr(br) {
+    const INLINE = new Set([
+      'A', 'ABBR', 'B', 'CODE', 'DEL', 'EM', 'I', 'MARK', 'S', 'SMALL', 'SPAN',
+      'STRONG', 'SUB', 'SUP', 'U',
+    ]);
+    let node = br;
+    while (node) {
+      for (let n = node.nextSibling; n; n = n.nextSibling) {
+        const empty =
+          n.nodeType === Node.TEXT_NODE &&
+          this.stripZeroWidthSpaces(n.textContent || '') === '';
+        if (!empty) return false;
+      }
+      const parent = node.parentElement;
+      if (!parent || !INLINE.has(parent.tagName)) return true;
+      node = parent;
+    }
+    return true;
+  }
+
   domNodeToSlate(el, metadataMap, matchMetadataFromDom = false) {
     const nodeId = el.getAttribute('data-node-id');
     const fullMeta = (nodeId && metadataMap[nodeId]) || {};
@@ -7896,6 +8004,16 @@ export class Bridge {
         const text = this.stripZeroWidthSpaces(raw);
         children.push({ text });
       } else if (child.nodeType === Node.ELEMENT_NODE) {
+        // A <br> is a line break: "\n" in the text leaf, Volto's own form (its
+        // editor inserts '\n' on Shift+Enter and renders it as <br/>). Read as
+        // its textContent it came back "", so the break vanished — while the
+        // single-node reader, via innerText, kept it. The exception is the
+        // browser's placeholder at the end of a line, which the single-node
+        // reader also drops (it strips one trailing "\n").
+        if (child.tagName === 'BR') {
+          if (!this.isPlaceholderBr(child)) children.push({ text: '\n' });
+          continue;
+        }
         const childNodeId = child.getAttribute('data-node-id');
         if (childNodeId && isValidNodeId(childNodeId)) {
           children.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom));
@@ -7918,8 +8036,10 @@ export class Bridge {
         } else {
           // Element without valid nodeId (e.g. Vue wrapper span, Next.js leaf span)
           // — treat its text content as a text node, including empty text which
-          // Slate requires around inline elements like strong/link
-          const text = this.stripZeroWidthSpaces(child.textContent || '');
+          // Slate requires around inline elements like strong/link. Read through
+          // textWithBreaks, not textContent: a frontend draws a leaf's line
+          // breaks as <br> INSIDE this wrapper, and textContent drops them.
+          const text = this.stripZeroWidthSpaces(this.textWithBreaks(child));
           children.push({ text });
         }
       }
@@ -11670,9 +11790,10 @@ export class Bridge {
 
     return Object.entries(properties)
       .filter(([fieldName, fieldDef]) => {
+        const fieldType = this.getFieldType(blockUid, fieldName);
         // Has an inline affordance at all. Returns undefined for select /
         // boolean / number, so sidebar-only fields drop out for free.
-        if (!this._revealSentinelFor(fieldDef, this.getFieldType(blockUid, fieldName))) {
+        if (!this._revealSentinelFor(fieldDef, fieldType)) {
           return false;
         }
         // A REQUIRED field is rendered unconditionally by the frontend (a value
@@ -11682,6 +11803,9 @@ export class Bridge {
         // ever IS missing an element, that's a renderer bug for the dev-warning
         // to shout about — not something reveal should paper over.
         if (schema.required?.includes(fieldName)) return false;
+        // A slate field is never absent — it defaults to one empty paragraph —
+        // so its empty is that paragraph, the same test a renderer hides it by.
+        if (isSlateFieldType(fieldType)) return isEmptySlate(block[fieldName]);
         return isEmpty(block[fieldName]);
       })
       .map(([fieldName]) => fieldName);
@@ -11763,11 +11887,17 @@ export class Bridge {
       // written over real content.
       for (const fieldName of this.revealableFields(blockUid)) {
         const fieldDef = properties[fieldName];
-        const sentinel = this._revealSentinelFor(
-          fieldDef,
-          this.getFieldType(blockUid, fieldName),
-        );
+        const fieldType = this.getFieldType(blockUid, fieldName);
+        let sentinel = this._revealSentinelFor(fieldDef, fieldType);
         if (sentinel === undefined) continue;
+        // A slate field's empty paragraph is already there, with the nodeId the
+        // bridge gave it. Reveal fills THAT paragraph rather than inventing one,
+        // so the element the renderer draws carries a data-node-id and typing
+        // into it maps back into the value.
+        const stored = source[fieldName];
+        if (isSlateFieldType(fieldType) && Array.isArray(stored) && stored.length === 1) {
+          sentinel = [{ ...stored[0], children: [{ text: Bridge.REVEAL_ZWS }] }];
+        }
         if (!projected) projected = JSON.parse(JSON.stringify(formData));
         let target = projected;
         for (const key of pathInfo.path) target = target?.[key];
@@ -12281,7 +12411,7 @@ export class Bridge {
     // reachable; if none is, fall through to the ancestor walk and open from the
     // outside in, and these become usable on a later pass.
     const directSelector =
-      candidates.find((el) => !this.isElementHidden(el)) || null;
+      candidates.find((el) => !this.isElementHidden(Bridge.revealSurface(el))) || null;
     if (directCandidate && !directSelector) {
       log(`tryMakeBlockVisible: handle for ${targetUid} is itself hidden, opening its ancestors first`);
     }
@@ -12382,6 +12512,16 @@ export class Bridge {
       // +1/-1 walk because that walk needs the target element to exist, and the
       // whole point of this branch is that it does not yet.
       const filled = this.fillDeclaredInputs(targetUid);
+      // Filling may be the whole reveal: a form's conditional question appears
+      // the moment the question it depends on is answered. Submitting then
+      // would send a contact form out from under an author in the editor.
+      // Submit only when filling alone did not bring the block into view — the
+      // search case, where the answer arrives with the query's results.
+      const revealed = this.queryBlockElement(targetUid);
+      if (revealed && !this.isElementHidden(revealed)) {
+        log(`tryMakeBlockVisible: filling ${targetUid}'s declared input revealed it`);
+        return true;
+      }
       const form = filled[filled.length - 1]?.closest('form');
       if (!form) {
         log(`tryMakeBlockVisible: declared inputs for ${targetUid} but no form to submit`);
@@ -12548,6 +12688,8 @@ export class Bridge {
       log(`tryMakeBlockVisible: opened <details> via summary`);
     } else if (expandedAttr === 'true') {
       log(`tryMakeBlockVisible: target trigger already expanded, skipping click`);
+    } else if (Bridge.answerRevealHandle(clickedSelector)) {
+      log(`tryMakeBlockVisible: answered ${clickedSelector.tagName.toLowerCase()} handle`);
     } else {
       clickedSelector.click();
       log(`tryMakeBlockVisible: click() called`);
@@ -13595,7 +13737,8 @@ export class Bridge {
 
   /**
    * Check if a field type string indicates a slate field
-   * Formats: "array:slate", ":slate", "array:richtext", ":richtext"
+   * Formats: "array:slate", ":slate". A `richtext` widget is HTML, not slate,
+   * and is not inline-editable in the bridge, so it is not matched here.
    * @param {string} fieldType - The field type string
    * @returns {boolean} True if the field is a slate field
    */

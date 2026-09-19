@@ -45,7 +45,7 @@ A call-to-action button with an editable label and link.
 
 <block type="image">
 
-![The button example block being edited in Volto Hydra](/docs/images/button-edit.png)
+![The button example block being edited in Inka](/docs/images/button-edit.png)
 
 </block>
 

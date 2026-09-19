@@ -48,7 +48,7 @@ A content preview card that links to another page. Selecting a target page via t
 
 <block type="image">
 
-![The teaser example block being edited in Volto Hydra](/docs/images/teaser-edit.png)
+![The teaser example block being edited in Inka](/docs/images/teaser-edit.png)
 
 </block>
 

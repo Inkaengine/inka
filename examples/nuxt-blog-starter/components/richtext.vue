@@ -10,7 +10,7 @@
   <ol v-else-if="node.type === 'ol'" class="list-decimal list-inside mx-4" :data-node-id="node.nodeId"
     >{{ node.text }}<RichText v-for="child in subs" :key="child.nodeId" :node="child"
   /></ol>
-  <template v-else-if="!node.type">{{ node.text }}</template>
+  <template v-else-if="!node.type"><!-- "\n" is a line break (Shift+Enter in the editor), drawn as <br>; a break at the very end needs a second <br> to show. --><template v-for="(line, i) in node.text.split('\n')" :key="i"><br v-if="i" />{{ line }}</template><br v-if="node.text.endsWith('\n')" /></template>
   <blockquote v-else-if="node.type === 'blockquote'"
     class="border-l-4 border-gray-300 pl-4 py-2 my-4 italic text-gray-600"
     :data-node-id="node.nodeId"

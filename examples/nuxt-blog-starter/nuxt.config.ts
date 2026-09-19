@@ -1,6 +1,7 @@
 import mkcert from 'vite-plugin-mkcert'
 import { fileURLToPath } from 'url'
-import { dirname, resolve } from 'path'
+import { dirname, resolve, join } from 'path'
+import { existsSync } from 'fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const hydraJsPath = resolve(__dirname, '../../packages/hydra-js')
@@ -15,6 +16,14 @@ const fixturesPath = resolve(__dirname, '../../tests-playwright/fixtures')
 // deref in onEditChange that reads as "the frontend never rendered".
 const MOCK_API_ORIGIN = `http://localhost:${process.env.HYDRA_MOCK_API_PORT || 8888}`;
 const ADMIN_ORIGIN = `http://localhost:${process.env.HYDRA_VOLTO_SSR_PORT || 3001}`;
+
+// The PUBLIC deploy's backend (the builder sets NUXT_TEST_BACKEND). The image
+// provider (ipxStatic) fetches source images from here at BUILD time, so it must
+// match the API the prerender pulls content from — a hardcoded host means the
+// build fetches /docs/images/*/@@images/* from the WRONG backend and every doc
+// image 404s, failing the prerender. Fallback is the historical default.
+const PUBLIC_BACKEND = process.env.NUXT_TEST_BACKEND || 'https://hydra-api.pretagov.com';
+const PUBLIC_BACKEND_HOST = new URL(PUBLIC_BACKEND).host;
 
 export default defineNuxtConfig({
   nitro: {
@@ -31,6 +40,17 @@ export default defineNuxtConfig({
       // instance, so 2 keeps the build faster than serial without
       // overwhelming a cold instance.
       concurrency: 2,
+      // IPX build cache: skip re-rendering /_ipx image variants already on disk
+      // in the persistent cache dir, so unchanged images aren't re-baked. The
+      // builder mounts a Fly volume and sets NUXT_IPX_CACHE_DIR; run-build.sh
+      // restores the skipped files into the output afterward. Only active when
+      // NUXT_IPX_CACHE_DIR is set (the builder) — dev/test generate every
+      // variant normally. (An image replaced in place keeps its source-URL /_ipx
+      // key, so it stays cached until IPX_CACHE_CLEAR=1 forces a re-bake.)
+      ignore: process.env.NUXT_IPX_CACHE_DIR
+        ? [(path: string) => path.startsWith('/_ipx/')
+            && existsSync(join(process.env.NUXT_IPX_CACHE_DIR as string, path))]
+        : undefined,
     },
   },
   app: {
@@ -152,8 +172,13 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       image_alias: '_plone_', // needed so we don't use image alias when no SSR
-      backendBaseUrl: 'https://hydra-api.pretagov.com',
-      adminUrl: 'https://hydra.pretagov.com',
+      // The PUBLIC SSG build (`pnpm run generate`, default env) bakes these into
+      // the client bundle, so they must be the deploy's real backend — NOT a
+      // hardcoded host. The builder sets NUXT_TEST_BACKEND (the API the
+      // prerender also fetches from, see netlify-build.sh) and NUXT_ADMIN_URL.
+      // The hydra.pretagov.com fallbacks are only for a plain local build.
+      backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://hydra-api.pretagov.com',
+      adminUrl: process.env.NUXT_ADMIN_URL || 'https://hydra.pretagov.com',
     },
   },
   css: ['/assets/css/main.css'],
@@ -170,10 +195,12 @@ export default defineNuxtConfig({
   // },
   image: {
     provider: 'ipx',
-    domains: ['hydra-api.pretagov.com','hydra.pretagov.com'],
+    // The backend host must be allow-listed AND the `_plone_` alias must point at
+    // it, or ipxStatic can't fetch the source doc images at build time.
+    domains: [PUBLIC_BACKEND_HOST, 'hydra-api.pretagov.com', 'hydra.pretagov.com'],
     alias: {
-      '_plone_': "https://hydra-api.pretagov.com"
-    }
+      '_plone_': PUBLIC_BACKEND,
+    },
   },
   experimental: {
       payloadExtraction: false

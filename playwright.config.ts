@@ -26,6 +26,10 @@ const needsAstro = projectArg?.includes('astro');
 // Example frontends — opt-in only (not started unless explicitly requested)
 const needsNextjs = projectArg?.includes('nextjs');
 const needsF7 = projectArg?.includes('f7');
+// Quick Start starter apps — opt-in only, same rationale as the example frontends.
+const needsVanilla = projectArg?.includes('vanilla');
+const needsSvelteQs = projectArg?.includes('svelte-qs');
+const needsAstroQs = projectArg?.includes('astro-qs');
 // The journey runs the same spec against each CMS; only the requested one is
 // started, because booting all three costs minutes for no benefit.
 const needsDrupal = projectArg?.includes('journey-drupal');
@@ -238,6 +242,41 @@ export default defineConfig({
     {
       name: 'astro',
       testDir: 'tests-playwright/bridge',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+        permissions: ['clipboard-read', 'clipboard-write'],
+        storageState: 'tests-playwright/.generated/storage-svelte.json',
+      },
+    },
+    // Quick Start starters — each runs the exact docs/quickstart/<fw> snippet
+    // (opt-in). Only quickstart-*.spec.ts runs on these dedicated blank apps.
+    {
+      name: 'vanilla',
+      testDir: 'tests-playwright/bridge',
+      testMatch: /quickstart-.*\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+        permissions: ['clipboard-read', 'clipboard-write'],
+        storageState: 'tests-playwright/.generated/storage-svelte.json',
+      },
+    },
+    {
+      name: 'svelte-qs',
+      testDir: 'tests-playwright/bridge',
+      testMatch: /quickstart-.*\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+        permissions: ['clipboard-read', 'clipboard-write'],
+        storageState: 'tests-playwright/.generated/storage-svelte.json',
+      },
+    },
+    {
+      name: 'astro-qs',
+      testDir: 'tests-playwright/bridge',
+      testMatch: /quickstart-.*\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 720 },
@@ -672,6 +711,42 @@ export default defineConfig({
       timeout: 120 * 1000,
       reuseExistingServer: true,
       cwd: path.join(process.cwd(), 'docs/examples/test-astro'),
+      stdout: 'pipe' as const,
+      stderr: 'pipe' as const,
+    }] : []),
+    // Quick Start vanilla starter — a vite server rooted at docs/quickstart/vanilla,
+    // aliasing the bridge specifier to source. SPA fallback serves index.html for
+    // the editor iframe's content path (/_test_data/test-page).
+    ...(needsVanilla ? [{
+      name: 'Quick Start Vanilla',
+      command: `npx vite --port ${PORTS.vanillaDoc} --strictPort --config ${path.join(process.cwd(), 'docs/quickstart/vanilla/vite.config.mjs')}`,
+      url: URLS.vanillaDoc,
+      timeout: 60 * 1000,
+      reuseExistingServer: true,
+      cwd: path.join(process.cwd(), 'docs/quickstart/vanilla'),
+      stdout: 'pipe' as const,
+      stderr: 'pipe' as const,
+    }] : []),
+    // Quick Start Svelte 5 starter — a vite server rooted at docs/quickstart/svelte.
+    ...(needsSvelteQs ? [{
+      name: 'Quick Start Svelte',
+      command: `npx vite --port ${PORTS.svelteQs} --strictPort`,
+      url: URLS.svelteQs,
+      timeout: 60 * 1000,
+      reuseExistingServer: true,
+      cwd: path.join(process.cwd(), 'docs/quickstart/svelte'),
+      stdout: 'pipe' as const,
+      stderr: 'pipe' as const,
+    }] : []),
+    // Quick Start Astro starter — server-render (node adapter); astro dev serves
+    // the catch-all page + the /api/render endpoint. 120s for the first run.
+    ...(needsAstroQs ? [{
+      name: 'Quick Start Astro',
+      command: `npx astro dev --port ${PORTS.astroQs}`,
+      url: URLS.astroQs,
+      timeout: 120 * 1000,
+      reuseExistingServer: true,
+      cwd: path.join(process.cwd(), 'docs/quickstart/astro'),
       stdout: 'pipe' as const,
       stderr: 'pipe' as const,
     }] : []),

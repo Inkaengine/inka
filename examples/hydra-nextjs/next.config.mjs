@@ -19,6 +19,12 @@ const nextConfig = {
       __dirname,
       '../../packages/hydra-js/hydra.src.js',
     );
+    // The Quick Start page imports the published specifier the docs show,
+    // `@hydra-js/hydra.js`; resolve it to the same workspace source.
+    config.resolve.alias['@hydra-js/hydra.js'] = path.resolve(
+      __dirname,
+      '../../packages/hydra-js/hydra.src.js',
+    );
     config.resolve.alias['#utils/helpers'] = path.resolve(
       __dirname,
       '../../packages/helpers/index.js',

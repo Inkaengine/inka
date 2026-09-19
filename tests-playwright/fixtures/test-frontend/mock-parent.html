@@ -135,6 +135,11 @@
     const frontendOrigin = params.get('frontend') || window.location.origin;
     const contentName = params.get('content'); // e.g., 'examples' loads /examples.json
     const apiPath = params.get('api_path'); // e.g., '/block/toc-block' loads from API
+    // Frame the iframe at a specific frontend route independent of where the
+    // content comes from. A ?content= fixture otherwise always frames the default
+    // path; the quickstart nuxt starter serves its snippet at its own route, so
+    // the test needs to point the iframe there while still loading card.json.
+    const contentPathParam = params.get('content_path');
     const adminOrigin = window.location.origin;
 
     // Derive API origin from api_path param if present, otherwise default
@@ -148,7 +153,7 @@
 
     // Derive content path from api_path (e.g. "http://localhost:8891/blog" → "/blog")
     // Falls back to /_test_data/test-page for hydra's own test content
-    const contentPath = apiPath ? new URL(apiPath).pathname : '/_test_data/test-page';
+    const contentPath = contentPathParam || (apiPath ? new URL(apiPath).pathname : '/_test_data/test-page');
 
     // Create iframe dynamically so name is set BEFORE the browsing context is created.
     // Setting iframe.name after the element is in the DOM doesn't propagate to contentWindow.name.

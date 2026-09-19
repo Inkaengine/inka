@@ -1493,7 +1493,8 @@ export function reportDisallowedSlateNodes(formData, blockPathMap, blocksConfig,
     // Types nothing renders. Judged against the LIVE registry when the addon has
     // injected it — inside the editor it always has.
     for (const [field, def] of Object.entries(schema.properties || {})) {
-      if (def?.widget !== 'slate' && def?.widget !== 'slate_richtext') continue;
+      // Only `slate` fields hold slate; a `richtext` widget is HTML, not slate.
+      if (def?.widget !== 'slate') continue;
       for (const u of undefinedSlateTypes(blockData[field], rules, vocabulary)) {
         report.push({ blockId, field, path: u.path, from: u.type, to: null, kind: 'undefined-type' });
       }
@@ -3479,7 +3480,14 @@ export function deleteBlocks(formData, blockPathMap, blockIds, options = {}) {
     );
     out = deleteBlockFromContainer(out, map, blockId, containerConfig);
     map = buildBlockPathMap(out, blocksConfig, intl);
-    emptiedContainers.push(containerConfig);
+    // Say which slot the block leaves empty. If this empties the region, the
+    // placeholder re-seeded there stands in for that slot — and the re-seed can't
+    // know it, it sees only a region with nothing in it.
+    emptiedContainers.push(
+      blockData?.slotId
+        ? { ...containerConfig, vacatedSlotId: blockData.slotId }
+        : containerConfig,
+    );
     deleted.push(blockId);
   }
   const settled = settleBlockStructure(out, map, { emptiedContainers }, options);

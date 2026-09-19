@@ -378,6 +378,28 @@ function richnessScore(blockData) {
  *  - Text leaves (have `text`) must not also have `children` or `type`.
  *  - Leaf-only nodes at root level (text without element wrapper) are invalid.
  */
+/**
+ * Whether a text leaf holds content that should have been separate elements.
+ *
+ * A single "\n" is NOT that: it is a line break, and Volto's own editor stores
+ * one exactly so — Shift+Enter is editor.insertText('\n'), rendered as <br/>.
+ * This rule used to reject every newline, which failed a legitimate line break
+ * along with the content it was aimed at. What it is aimed at is paragraphs or
+ * bullets pasted into a single leaf, which break inline-editing boundaries: a
+ * blank line, or lines that start like list items.
+ *
+ * @param {string} text
+ * @returns {string|null} what the leaf holds, or null when it is fine
+ */
+function paragraphShapeOf(text) {
+  if (typeof text !== 'string' || !text.includes('\n')) return null;
+  if (/\n[ \t]*\n/.test(text)) return 'a paragraph break (blank line)';
+  const LIST_ITEM = /^[ \t]*(?:[-*+\u2022]|\d+[.)])\s/;
+  const lines = text.split('\n');
+  if (lines.filter((l) => LIST_ITEM.test(l)).length >= 2) return 'list items';
+  return null;
+}
+
 function validateSlateNode(node, pathStr, issues) {
   if (!node || typeof node !== 'object' || Array.isArray(node)) {
     issues.push(`${pathStr}: non-object slate node (${typeof node})`);
@@ -394,12 +416,10 @@ function validateSlateNode(node, pathStr, issues) {
     }
   } else if (hasText) {
     if (hasType) issues.push(`${pathStr}: text leaf must not have \`type\``);
-    // Newlines inside a text leaf mean under-structured content — multi-
-    // paragraph or bulleted content stuffed into one text node instead of
-    // proper slate elements. Breaks inline editing boundaries.
-    if (typeof node.text === 'string' && node.text.includes('\n')) {
+    const shape = paragraphShapeOf(node.text);
+    if (shape) {
       const preview = node.text.replace(/\n/g, '\\n').slice(0, 80);
-      issues.push(`${pathStr}: text leaf contains newline(s) — split into separate slate elements ("${preview}${node.text.length > 80 ? '…' : ''}")`);
+      issues.push(`${pathStr}: text leaf contains ${shape} — split into separate slate elements ("${preview}${node.text.length > 80 ? '…' : ''}")`);
     }
   } else {
     issues.push(`${pathStr}: node has neither \`children\` nor \`text\``);
@@ -1760,6 +1780,7 @@ async function discoverBlocks(
 }
 
 module.exports = {
+  paragraphShapeOf,
   // Exported so the content validator asks the same question this does — a
   // second list of "fields that are not schema fields" would drift, and the
   // drift would show up as a validator shouting about `slotId` on every block.
