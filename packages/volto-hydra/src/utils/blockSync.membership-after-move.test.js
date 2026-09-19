@@ -142,3 +142,71 @@ describe('a moved block takes the membership of where it lands', () => {
     expect(moved.slotId).toBeUndefined();
   });
 });
+
+/**
+ * A moved CONTAINER brings its children, and they belong where it lands too.
+ *
+ * A well-formed template carries templateId on EVERY block, nested ones included
+ * (dropOrphanNested: the merge drops a nested block without one as malformed).
+ * Membership was re-derived for the moved block alone, so a container dragged
+ * from the page into a template arrived with children that had none: NSW's
+ * footer, where a grid dragged into the unlocked footer became a menu column,
+ * and committing saved the column with none of its links. A block ADDED into a
+ * template never hit this — a new block has no children.
+ */
+describe("a moved container's children follow its membership", () => {
+  const config = {
+    ...blocksConfig,
+    _page: {
+      id: '_page',
+      schema: () => ({
+        properties: { items: { widget: 'blocks_layout', allowedBlocks: ['slate', 'grid'] } },
+      }),
+    },
+    grid: {
+      id: 'grid',
+      blockSchema: {
+        properties: { blocks_layout: { widget: 'blocks_layout', allowedBlocks: ['slate'] } },
+      },
+    },
+  };
+  const grid = (children, extra = {}) => ({
+    '@type': 'grid',
+    blocks: children,
+    blocks_layout: { items: Object.keys(children) },
+    ...extra,
+  });
+  const runWith = (formData, options = {}) =>
+    applyMembershipAfterMove(formData, buildBlockPathMap(formData, config, intl), 'moved', {
+      blocksConfig: config,
+      intl,
+      ...options,
+    });
+
+  test('moved INTO a template instance, its children join it too', () => {
+    const before = pageWith(['top', 'tpl-a', 'moved', 'tpl-b', 'bottom'], grid({
+      c1: { '@type': 'slate' },
+      c2: { '@type': 'slate' },
+    }));
+    const after = runWith(before);
+    const joined = after.blocks.moved;
+    expect(joined.templateInstanceId).toBe('i1');
+    for (const id of ['c1', 'c2']) {
+      expect(joined.blocks[id], id).toMatchObject({
+        templateId: joined.templateId,
+        templateInstanceId: 'i1',
+      });
+    }
+  });
+
+  test('moved OUT of a template instance, its children leave it too', () => {
+    const before = pageWith(['moved', 'top', 'tpl-a', 'tpl-b', 'bottom'], grid(
+      { c1: { '@type': 'slate', templateId: 't', templateInstanceId: 'i1' } },
+      { templateId: 't', templateInstanceId: 'i1', slotId: 'body' },
+    ));
+    const after = runWith(before);
+    expect(after.blocks.moved.templateInstanceId).toBeUndefined();
+    expect(after.blocks.moved.blocks.c1.templateInstanceId).toBeUndefined();
+    expect(after.blocks.moved.blocks.c1.templateId).toBeUndefined();
+  });
+});
