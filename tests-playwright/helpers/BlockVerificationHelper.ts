@@ -12,6 +12,7 @@ import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/tes
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage';
 import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
+import { isEmptySlate } from '../../packages/helpers/index.js';
 
 export interface SubBlock {
   id: string;
@@ -929,10 +930,10 @@ export async function checkSlateAnnotations(
     slateFields = Object.entries(blockSchema.properties)
       .filter(([, prop]) => (prop as Record<string, unknown>)?.widget === 'slate')
       .map(([field]) => field);
-    slateHasValue = (field) => {
-      const v = blockData[field];
-      return Array.isArray(v) && v.length > 0;
-    };
+    // A slate field always holds a node — the editor defaults it to one empty
+    // paragraph — so "no value" is that paragraph, not an absent key. A
+    // renderer hides it (isEmptySlate), so there is nothing to round-trip.
+    slateHasValue = (field) => !isEmptySlate(blockData[field]);
   } else {
     slateFields = findSlateFields(blockData);
     slateHasValue = () => true;
