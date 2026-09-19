@@ -355,3 +355,78 @@ describe('forced empty layout is empty but LOCKED until the template is unlocked
     ).toBe(true);
   });
 });
+
+/**
+ * Removing a forced region's ONLY member keeps the slot it held.
+ *
+ * The NSW site announcement is one fixed block in slot `alert0`. Unlock it,
+ * remove the alert, and the region re-seeds an `empty` placeholder so there is
+ * something to click and add into. The placeholder kept the template membership
+ * (the tests above check that) but not the slot: it had no slotId, and a block
+ * converted from it in place — "add a global alert" — inherited none either. A
+ * template block with no slotId is dropped by forced-layout expansion, so the
+ * alert an author added was never the one rendered: its fields stayed
+ * uneditable and typing into it went nowhere.
+ *
+ * The re-seed is not where the slot can be known — it sees only a region with
+ * nothing in it. The delete does: it is told which block left, and that block's
+ * slot is the one the placeholder now stands in for.
+ */
+describe('removing the only member of a forced region keeps its slot', () => {
+  const template = {
+    '@id': '/templates/site-announcement',
+    '@type': 'Document',
+    // As the real template stores it: one fixed, read-only member in slot alert0.
+    blocks: {
+      alert0: { '@type': 'globalAlert', slotId: 'alert0', fixed: true, readOnly: true },
+    },
+    blocks_layout: { items: ['alert0'] },
+  };
+  const cfg = makeCfg({ allowedBlocks: ['globalAlert'], defaultBlockType: 'empty' });
+
+  async function pageWithAnnouncement() {
+    const page = {
+      '@type': 'Document',
+      blocks: { a: { '@type': 'slate' } },
+      blocks_layout: { items: ['a'], announcement: [] },
+    };
+    let n = 0;
+    const { merged } = await mergeTemplatesIntoPage(page, {
+      loadTemplate: async () => template,
+      pageBlocksFields: {
+        items: {},
+        announcement: { allowedLayouts: ['/templates/site-announcement'] },
+      },
+      uuidGenerator: () => `ann-${(n += 1)}`,
+      blocksConfig: cfg,
+      intl,
+    });
+    const alertId = merged.blocks_layout.announcement[0];
+    return { merged, alertId, alert: merged.blocks[alertId] };
+  }
+
+  test('the placeholder that replaces it carries its slotId', async () => {
+    const { merged, alertId, alert } = await pageWithAnnouncement();
+    expect(alert.slotId, 'precondition: the merged alert is in slot alert0').toBe('alert0');
+    const { formData: after } = deleteBlocks(
+      merged,
+      buildBlockPathMap(merged, cfg, intl),
+      [alertId],
+      {
+        blocksConfig: cfg,
+        intl,
+        uuidGenerator: () => 're-seed',
+        templateEditMode: [alert.templateInstanceId],
+      },
+    );
+    const region = after.blocks_layout.announcement;
+    expect(region, 'the forced region was emptied into nothing').toHaveLength(1);
+    const placeholder = after.blocks[region[0]];
+    expect(placeholder['@type']).toBe('empty');
+    expect(
+      placeholder.slotId,
+      'the placeholder stands in for alert0 — without its slot, a block added in its place is dropped',
+    ).toBe('alert0');
+    expect(placeholder.templateId, 'still the announcement template').toBe(alert.templateId);
+  });
+});

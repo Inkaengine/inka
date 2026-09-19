@@ -2312,6 +2312,14 @@ export function ensureEmptyBlockIfEmpty(
       { inheritFixed: true },
     );
   }
+  // Re-seeded because the region's LAST member was removed: the placeholder
+  // stands in for the slot that member held. Without it, a block added in its
+  // place — converted from the placeholder — is a template member in no slot,
+  // which forced-layout expansion drops (the NSW announcement: remove its alert,
+  // add a new one, and the new one never rendered as editable).
+  if (containerConfig.vacatedSlotId && blockData.templateInstanceId) {
+    blockData = { ...blockData, slotId: containerConfig.vacatedSlotId };
+  }
   const blocksObj = { ...parentBlock.blocks, [newBlockId]: blockData };
   const updatedParentBlock = setContainerItems(
     parentBlock,
