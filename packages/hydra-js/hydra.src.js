@@ -517,9 +517,9 @@ export class Bridge {
     // Parse attribute=value or attribute=value(selector) patterns
     // Supports multiple values for the same attribute (e.g., multiple edit-text)
     const attrs = {};
-    // Match: word-name=value(selector) or word-name=value or word-name (boolean)
-    // Value can contain paths like /page-name
-    const attrRegex = /([\w-]+)(?:=([^(\s]+)(?:\(([^)]+)\))?)?/g;
+    // Match: word-name=value(selector), word-name=value, word-name(selector)
+    // (target) or word-name (boolean). Value can contain paths like /page-name
+    const attrRegex = /([\w-]+)(?:=([^(\s]+))?(?:\(([^)]+)\))?/g;
     let match;
     while ((match = attrRegex.exec(content)) !== null) {
       const [, name, value, selector] = match;
@@ -561,15 +561,32 @@ export class Bridge {
       const parsed = this.parseHydraComment(text);
       if (!parsed) continue;
 
-      // Find the next element sibling (skip text nodes)
-      let nextElement = comment.nextSibling;
-      while (nextElement && nextElement.nodeType !== Node.ELEMENT_NODE) {
-        nextElement = nextElement.nextSibling;
-      }
+      // The element the comment annotates. `target(<selector>)` names it
+      // anywhere in the document — for markup a third-party script builds
+      // somewhere you never render (a cookie banner appended to <body>), where
+      // nothing you write can sit above it. Otherwise it is the next element.
+      let nextElement;
+      const target = parsed.attrs.target?.[0]?.selector;
+      if (target) {
+        nextElement = document.querySelector(target);
+        if (!nextElement) {
+          // Not built yet: a script-built element can arrive after this pass.
+          // Comments are re-materialised whenever the DOM settles, so the next
+          // pass annotates it — nothing to report.
+          log('materializeHydraComments: target not in the page yet:', target);
+          continue;
+        }
+      } else {
+        // Find the next element sibling (skip text nodes)
+        nextElement = comment.nextSibling;
+        while (nextElement && nextElement.nodeType !== Node.ELEMENT_NODE) {
+          nextElement = nextElement.nextSibling;
+        }
 
-      if (!nextElement) {
-        console.error('[hydra] Comment syntax found but no next element sibling:', text);
-        continue;
+        if (!nextElement) {
+          console.error('[hydra] Comment syntax found but no next element sibling:', text);
+          continue;
+        }
       }
 
       // Which block this comment belongs to. Both declaration styles are legal and

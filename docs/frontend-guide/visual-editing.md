@@ -83,8 +83,34 @@ If you can't modify the markup (e.g., using a 3rd party component library), use 
 - Attributes with selectors target child elements: `edit-text=title(.card-title)`
 - Closing `<!-- /hydra -->` marks end of scope
 - Self-closing `<!-- hydra block-uid=xxx /-->` applies only to next sibling element
+- `target(<selector>)` annotates an element found anywhere in the page instead of the next one — see [Annotating markup a script builds](#annotating-markup-a-script-builds)
 
-Supported attributes: `block-uid`, `block-readonly`, `edit-text`, `edit-link`, `edit-media`, `block-add`
+Supported attributes: `block-uid`, `block-readonly`, `edit-text`, `edit-link`, `edit-media`, `block-add`, `block-selector`, `block-container`, `linkable-id`, `linkable-h1` … `linkable-h6`, and `target`. Each maps to its `data-` attribute (`edit-text` → `data-edit-text`); an attribute already present on the element is left as it is.
+
+### Annotating markup a script builds
+
+Some markup is built by a third-party script, somewhere your renderer never writes — a cookie banner a design system appends to the end of `<body>`, say. There is no place in your own markup to put a comment directly above it. `target(<selector>)` names the element instead:
+
+### Html
+
+```html
+<!-- In your block's own markup (edit mode) -->
+<div data-block-uid="consent-1">
+  <!-- hydra target(.cookie-banner) block-uid=consent-1 /-->
+  …
+</div>
+
+<!-- Built by the script, at the end of <body> -->
+<div class="cookie-banner">
+  <p><span data-edit-text="message" data-node-id="0">We use cookies…</span></p>
+</div>
+```
+
+- The comment can sit anywhere in the page — in your block's own markup is the natural place, since that is what you render.
+- `target(<selector>)` is looked up across the whole document; the first match is the element annotated. The other attributes apply to it, and their own selectors search inside it, exactly as they would for the next element.
+- A target not in the page yet is not an error: comments are applied again whenever the page's DOM settles, so a script that builds the element a moment later — or rebuilds it — gets it annotated then.
+- `block-uid` on the target makes it **part of that block**: the block is now several elements sharing one uid, and its selection outline covers all of them. Use it when the script-built element really is part of the block, as a banner showing the block's message is.
+- A slate field inside still needs its `data-node-id`s — comments cannot supply those, so render them in whatever markup you *do* hand the script (above, the `<span>` inside the banner's `<p>`).
 
 ## Optional Fields — empty means absent
 
