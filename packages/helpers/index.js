@@ -1021,27 +1021,49 @@ export function adapterFetchItems({ adapter, extraCriteria = {} } = {}) {
 }
 
 /**
+ * Which CMS an example fetcher reads: Plone directly at `apiUrl`, or any CMS
+ * through an `adapter` (answers plonified, like adapterFetchItems). Exactly one —
+ * given both, there is no telling which site the block would render from.
+ */
+function _requireOneSource(name, apiUrl, adapter) {
+  if (!apiUrl === !adapter) {
+    throw new Error(`${name} requires exactly one of apiUrl or adapter`);
+  }
+}
+
+/** The context page, in Plone's shape, from whichever source the fetcher has. */
+async function _readContext({ apiUrl, adapter, contextPath }) {
+  if (adapter) return adapterGetContent(adapter, contextPath);
+  const res = await fetch(`${apiUrl}${contextPath}/++api++`, {
+    headers: _getAuthHeaders(),
+  });
+  return res.json();
+}
+
+/**
  * Fetcher for the Related Items example block: renders the CURRENT page's
  * relation field (default `relatedItems`). Reads the context content and pages
  * its relation summaries — no catalog query. A `fetchItems` value for
  * `expandListingBlocks`, same contract as `ploneFetchItems`.
+ *
+ * `apiUrl` reads Plone directly; `adapter` reads any CMS through its adapter.
  */
-export function relatedItemsFetcher({ apiUrl, contextPath = '/' } = {}) {
-  if (!apiUrl) throw new Error('relatedItemsFetcher requires apiUrl');
+export function relatedItemsFetcher({ apiUrl, adapter, contextPath = '/' } = {}) {
+  _requireOneSource('relatedItemsFetcher', apiUrl, adapter);
   return async function fetchItems(block, { start, size }) {
     const field = block.relationField || 'relatedItems';
-    const headers = _getAuthHeaders();
-    const res = await fetch(`${apiUrl}${contextPath}/++api++`, { headers });
-    const content = await res.json();
+    const content = await _readContext({ apiUrl, adapter, contextPath });
     const all = Array.isArray(content?.[field]) ? content[field] : [];
     const items = size ? all.slice(start, start + size) : [];
     return { items, total: all.length };
   };
 }
 
-// Catalog index → vocabulary of its unique values (site-wide mode). Extend as
-// needed; falls back to a same-named vocabulary.
-const SEARCH_SHORTCUT_INDEX_VOCAB = {
+// Plone's catalog index → the vocabulary of its unique values (site-wide mode).
+// The default when reading Plone directly; any other CMS names its vocabularies
+// its own way, so a caller using an adapter passes `vocabularies`. An index with
+// no entry falls back to a same-named vocabulary.
+const PLONE_SEARCH_SHORTCUT_VOCABULARIES = {
   Subject: 'plone.app.vocabularies.Keywords',
 };
 
@@ -1053,24 +1075,35 @@ const SEARCH_SHORTCUT_INDEX_VOCAB = {
  *
  * A linked `pageField` ⇒ THIS page's values of that field; no `pageField` ⇒ all
  * unique values of the index, site-wide (from the index's vocabulary).
+ *
+ * `apiUrl` reads Plone directly; `adapter` reads any CMS through its adapter,
+ * with `vocabularies` mapping an index to that CMS's vocabulary name.
  */
-export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
-  if (!apiUrl) throw new Error('searchShortcutsFetcher requires apiUrl');
+export function searchShortcutsFetcher({
+  apiUrl,
+  adapter,
+  contextPath = '/',
+  vocabularies = adapter ? {} : PLONE_SEARCH_SHORTCUT_VOCABULARIES,
+} = {}) {
+  _requireOneSource('searchShortcutsFetcher', apiUrl, adapter);
   return async function fetchItems(block, { start, size }) {
     const index = block.index || 'Subject';
     const searchUrl = block.searchUrl || '';
-    const headers = _getAuthHeaders();
 
     let values;
     if (block.pageField) {
-      const res = await fetch(`${apiUrl}${contextPath}/++api++`, { headers });
-      const content = await res.json();
+      const content = await _readContext({ apiUrl, adapter, contextPath });
       const v = content?.[block.pageField];
       values = Array.isArray(v) ? v : v == null ? [] : [v];
     } else {
-      const vocab = SEARCH_SHORTCUT_INDEX_VOCAB[index] || index;
-      const res = await fetch(`${apiUrl}/++api++/@vocabularies/${vocab}`, { headers });
-      const data = await res.json();
+      const vocab = vocabularies[index] || index;
+      const data = adapter
+        ? await adapter.dispatch('vocabulary.get', { name: vocab })
+        : await (
+            await fetch(`${apiUrl}/++api++/@vocabularies/${vocab}`, {
+              headers: _getAuthHeaders(),
+            })
+          ).json();
       values = (data?.items || []).map((t) => t.token);
     }
 

@@ -131,6 +131,17 @@ const content = await adapterGetContent(adapter, path, { expand: ['navigation'] 
 const fetchItems = adapterFetchItems({ adapter }); // same contract as ploneFetchItems
 ```
 
+The example listing variants take the adapter too. Pass `adapter` where a Plone frontend passes `apiUrl`, and name your CMS's vocabularies for Search Shortcuts:
+
+### Js
+
+```js
+import { relatedItemsFetcher, searchShortcutsFetcher } from '@volto-hydra/helpers';
+
+const relatedItems = relatedItemsFetcher({ adapter, contextPath });
+const searchShortcuts = searchShortcutsFetcher({ adapter, contextPath, vocabularies: { Subject: 'tags' } });
+```
+
 The credential is the frontend's own. A published page needs none; showing a draft in the preview needs one for your CMS, because the admin's session is not something WordPress or Drupal would accept.
 
 A Plone frontend needs none of this and can keep fetching Plone directly.

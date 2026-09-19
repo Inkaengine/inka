@@ -289,9 +289,15 @@
                 ? ploneFetchItems({ apiUrl: cms.base, contextPath, extraCriteria })
                 : adapterFetchItems({ adapter: cmsAdapter(), extraCriteria });
             // Example listing-variant fetchers (see packages/helpers/index.js).
+            // They read the SAME CMS the page renders from: Plone directly, any
+            // other CMS through its adapter — whose keyword vocabulary is its
+            // own `tags`, not Plone's plone.app.vocabularies.Keywords.
+            const exampleSource = cms.which === 'plone'
+                ? { apiUrl: cms.base }
+                : { adapter: cmsAdapter(), vocabularies: { Subject: 'tags' } };
             const exampleFetchers = {
-                relatedItemsListing: relatedItemsFetcher({ apiUrl: window._apiOrigin, contextPath }),
-                searchShortcuts: searchShortcutsFetcher({ apiUrl: window._apiOrigin, contextPath }),
+                relatedItemsListing: relatedItemsFetcher({ ...exampleSource, contextPath }),
+                searchShortcuts: searchShortcutsFetcher({ ...exampleSource, contextPath }),
                 rssFeed: rssFetcher(),
             };
 

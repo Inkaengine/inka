@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { adapterGetContent, adapterFetchItems } from './index.js';
+import {
+  adapterGetContent,
+  adapterFetchItems,
+  relatedItemsFetcher,
+  searchShortcutsFetcher,
+} from './index.js';
 
 /**
  * Reading a CMS through an adapter, for a FRONTEND.
@@ -109,5 +114,80 @@ describe('adapterFetchItems', () => {
 
   it('refuses to be built without an adapter', () => {
     expect(() => adapterFetchItems({})).toThrow(/adapter/);
+  });
+});
+
+/**
+ * The example listing variants read the CMS too. With only an apiUrl they
+ * could only ever read Plone, so on WordPress or Drupal a Related Items or
+ * Search Shortcuts block rendered from the wrong server. Given an adapter they
+ * read through it, like adapterFetchItems.
+ */
+describe('relatedItemsFetcher with an adapter', () => {
+  it("pages the context page's relation field, read through the adapter", async () => {
+    const page = doc('/news/first-post', 'First Post');
+    page.fields.relatedItems = [
+      { '@id': '/a', title: 'A' },
+      { '@id': '/b', title: 'B' },
+      { '@id': '/c', title: 'C' },
+    ];
+    const adapter = fakeAdapter({ 'content.get': page });
+
+    const fetchItems = relatedItemsFetcher({ adapter, contextPath: '/news/first-post' });
+    const { items, total } = await fetchItems({}, { start: 1, size: 1 });
+
+    expect(adapter.dispatch).toHaveBeenCalledWith('content.get', { path: '/news/first-post' });
+    expect(items.map((i) => i.title)).toEqual(['B']);
+    expect(total).toBe(3);
+  });
+
+  it('refuses both an apiUrl and an adapter — which CMS would it read?', () => {
+    expect(() =>
+      relatedItemsFetcher({ apiUrl: 'http://cms', adapter: fakeAdapter({}) }),
+    ).toThrow(/exactly one/);
+  });
+});
+
+describe('searchShortcutsFetcher with an adapter', () => {
+  it("links each of the CMS vocabulary's terms into the search, by the CMS's own vocabulary name", async () => {
+    const adapter = fakeAdapter({
+      'vocabulary.get': {
+        items: [
+          { token: 'news', title: 'News' },
+          { token: 'events', title: 'Events' },
+        ],
+        total: 2,
+      },
+    });
+
+    const fetchItems = searchShortcutsFetcher({
+      adapter,
+      vocabularies: { Subject: 'tags' },
+    });
+    const { items, total } = await fetchItems(
+      { index: 'Subject', searchUrl: '/search' },
+      { start: 0, size: 10 },
+    );
+
+    expect(adapter.dispatch).toHaveBeenCalledWith('vocabulary.get', { name: 'tags' });
+    expect(items.map((i) => i['@id'])).toEqual([
+      '/search?facet.Subject=news',
+      '/search?facet.Subject=events',
+    ]);
+    expect(total).toBe(2);
+  });
+
+  it("uses the context page's own values when the block links a page field", async () => {
+    const page = doc('/p', 'P');
+    page.fields.subjects = ['red', 'blue'];
+    const adapter = fakeAdapter({ 'content.get': page });
+
+    const fetchItems = searchShortcutsFetcher({ adapter, contextPath: '/p' });
+    const { items } = await fetchItems(
+      { index: 'Subject', pageField: 'subjects', searchUrl: '/search' },
+      { start: 0, size: 10 },
+    );
+
+    expect(items.map((i) => i.title)).toEqual(['red', 'blue']);
   });
 });
