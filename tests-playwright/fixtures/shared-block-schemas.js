@@ -468,6 +468,23 @@ export const sharedBlocksConfig = {
             required: [],
         },
     },
+    // An accordion panel — the typed item of accordion's `panels` object_list
+    // (restricted, like tab inside codeExample / socialLink inside socialLinks).
+    // A panel is a title plus a content area (`items` blocks_layout).
+    panel: {
+        id: 'panel',
+        title: 'Panel',
+        group: 'common',
+        restricted: true, // Only used inside accordion's typed object_list
+        blockSchema: {
+            fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'items'] }],
+            properties: {
+                title: { title: 'Title', type: 'string' },
+                items: { title: 'Content', widget: 'blocks_layout', defaultBlockType: 'slate' },
+            },
+            required: [],
+        },
+    },
     // Accordion block — panels as object_list items, each with title + content blocks
     accordion: {
         id: 'accordion',
@@ -1970,6 +1987,19 @@ export const sharedBlocksConfig = {
             },
           },
         },
+        required: [],
+      },
+    },
+    // A single social link — the typed item of socialLinks' `links` object_list
+    // (restricted, like tab inside codeExample). Its `url` is a plain string.
+    socialLink: {
+      id: 'socialLink',
+      title: 'Social link',
+      group: 'common',
+      restricted: true, // Only used inside socialLinks' typed object_list
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['url'] }],
+        properties: { url: { title: 'URL', widget: 'url' } },
         required: [],
       },
     },
