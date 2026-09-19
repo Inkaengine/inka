@@ -716,10 +716,7 @@ export class AdminUIHelper {
       await blockLocator.filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 5000 });
       const point = await block.evaluate(selectablePoint, blockId);
       if (!point) {
-        throw new Error(
-          `clickBlockInIframe: nowhere on block ${blockId} selects it — every spot is a ` +
-            'link the editor lets navigate, a reveal handle, a button or a form control',
-        );
+        throw new Error(`clickBlockInIframe: no element of block ${blockId} has a box to click`);
       }
       const clickTarget = blockLocator.nth(point.index);
       await this.demoStep(clickTarget);

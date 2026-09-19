@@ -16,8 +16,9 @@
  * The element itself may be any of those (a block that IS a link), and a nested
  * block under the spot is fine — the caller selects the parent from a child.
  * Candidate spots run from the centre outwards, so a block whose centre is fine
- * is clicked where it always was. Returns null when no spot on any of the
- * block's elements qualifies, so the caller can fail loudly.
+ * is clicked where it always was. With nowhere better, it is still clicked: the
+ * centre of its first element with a box, exactly as before. Null only when the
+ * block has no element with a box at all.
  *
  * SELF-CONTAINED: passed to Playwright's `locator.evaluate` and run in the page,
  * so it may not reference anything outside its own body. `anchor` is any element
@@ -31,11 +32,22 @@ export function selectablePoint(
   const ACTS = '[data-linkable-allow], [data-block-selector], button, input, select, textarea';
   const FRACTIONS = [0.5, 0.25, 0.75, 0.1, 0.9];
   const elements = Array.from(doc.querySelectorAll(`[data-block-uid="${uid}"]`));
+  let first: { index: number; x: number; y: number; clientX: number; clientY: number } | null =
+    null;
   for (let index = 0; index < elements.length; index += 1) {
     const el = elements[index];
     el.scrollIntoView({ block: 'center', inline: 'center' });
     const box = el.getBoundingClientRect();
     if (box.width === 0 || box.height === 0) continue;
+    if (!first) {
+      first = {
+        index,
+        x: box.width / 2,
+        y: box.height / 2,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2,
+      };
+    }
     for (const fy of FRACTIONS) {
       for (const fx of FRACTIONS) {
         const x = box.width * fx;
@@ -50,5 +62,6 @@ export function selectablePoint(
       }
     }
   }
-  return null;
+  if (first) elements[first.index].scrollIntoView({ block: 'center', inline: 'center' });
+  return first;
 }

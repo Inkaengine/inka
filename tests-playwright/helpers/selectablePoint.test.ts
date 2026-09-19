@@ -107,11 +107,22 @@ describe('selectablePoint', () => {
     expect(selectablePoint(document.body, 'b')).toEqual({ index: 0, x: 50, y: 20, clientX: 60, clientY: 40 });
   });
 
-  test('null when nowhere on the block selects it — the caller fails loudly', () => {
+  test("with nowhere better, the first element's centre is still clicked", () => {
+    // A block made entirely of links (a listing whose items are its elements)
+    // is selected by clicking one of them — as it always has been.
+    document.body.innerHTML = `
+      <a class="item1" href="/a" data-linkable-allow data-block-uid="listing">A</a>
+      <a class="item2" href="/b" data-linkable-allow data-block-uid="listing">B</a>`;
+    region(document.querySelector('.item1')!, { left: 0, top: 0, width: 100, height: 40 });
+    region(document.querySelector('.item2')!, { left: 0, top: 50, width: 100, height: 40 });
+    expect(selectablePoint(document.body, 'listing')).toMatchObject({ index: 0, clientX: 50, clientY: 20 });
+  });
+
+  test('with nowhere better inside the block, its centre is still clicked', () => {
     document.body.innerHTML = `<div class="b" data-block-uid="b"><button>all button</button></div>`;
     const b = document.querySelector('.b')!;
     region(b, { left: 0, top: 0, width: 100, height: 100 });
     region(b.querySelector('button')!, { left: 0, top: 0, width: 100, height: 100 });
-    expect(selectablePoint(document.body, 'b')).toBeNull();
+    expect(selectablePoint(document.body, 'b')).toMatchObject({ index: 0, clientX: 50, clientY: 50 });
   });
 });
