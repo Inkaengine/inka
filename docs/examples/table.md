@@ -82,7 +82,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </block>
 
-<fields data-json='{"styles":{"backgroundColor":"grey"}}'>
+<fields styles:backgroundColor="grey">
 
 <block type="heading" alignment="left" heading="Basic Table" tag="h2" />
 

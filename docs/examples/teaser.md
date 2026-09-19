@@ -56,25 +56,25 @@ A content preview card that links to another page. Selecting a target page via t
 
 <fields head_title="Head title">
 
-<block type="teaser" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.","styles":{"align":"center"}}' />
+<block type="teaser" styles:align="center" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
 
 <fields data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea."}'>
 
-<block type="teaser" data-json='{"styles":{"align":"left"}}' />
+<block type="teaser" styles:align="left" />
 
-<block type="teaser" data-json='{"styles":{"align":"right"}}' />
+<block type="teaser" styles:align="right" />
 
 </fields>
 
 </fields>
 
-<block type="teaser" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.","styles":{"align":"center","backgroundColor":"grey"}}' />
+<block type="teaser" styles:align="center" styles:backgroundColor="grey" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
 
 <fields data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea."}'>
 
-<block type="teaser" data-json='{"styles":{"align":"left","backgroundColor":"grey"}}' />
+<block type="teaser" styles:align="left" styles:backgroundColor="grey" />
 
-<block type="teaser" data-json='{"styles":{"align":"right","backgroundColor":"grey"}}' />
+<block type="teaser" styles:align="right" styles:backgroundColor="grey" />
 
 </fields>
 

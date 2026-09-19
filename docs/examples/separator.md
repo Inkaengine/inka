@@ -65,7 +65,7 @@ A horizontal rule used to visually divide sections of content. Supports an align
 
 ---
 
-<fields data-json='{"styles":{"align":"center"}}' />
+<fields styles:align="center" />
 
 </block>
 
@@ -75,11 +75,11 @@ A horizontal rule used to visually divide sections of content. Supports an align
 
 ---
 
-<fields data-json='{"styles":{"align":"center"}}' />
+<fields styles:align="center" />
 
 </block>
 
-<block type="image" align="right" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="/docs/examples/content-types/image-dark" data-json='{"styles":{"size:noprefix":"large"}}' />
+<block type="image" align="right" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="/docs/examples/content-types/image-dark" styles:size:noprefix="large" />
 
 ## Text Heading H2
 
@@ -89,11 +89,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields data-json='{"styles":{"align":"left"}}' />
+<fields styles:align="left" />
 
 </block>
 
-<block type="image" align="left" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="m" title="Title Image" url="/docs/examples/content-types/image-dark" data-json='{"styles":{"size:noprefix":"medium"}}' />
+<block type="image" align="left" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="m" title="Title Image" url="/docs/examples/content-types/image-dark" styles:size:noprefix="medium" />
 
 ### Text Heading H3
 
@@ -103,11 +103,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields data-json='{"styles":{"align":"left"}}' />
+<fields styles:align="left" />
 
 </block>
 
-<block type="image" align="left" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="s" title="Title Image" url="/docs/examples/content-types/image-dark" data-json='{"styles":{"size:noprefix":"small"}}' />
+<block type="image" align="left" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="s" title="Title Image" url="/docs/examples/content-types/image-dark" styles:size:noprefix="small" />
 
 ### Text Heading H3
 

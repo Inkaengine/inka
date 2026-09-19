@@ -56,7 +56,7 @@ Renders a table of contents generated from heading blocks on the current page. I
 
 ---
 
-<block type="image" align="wide" copyright_and_sources="Copyright: unsplash.com" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="/docs/examples/content-types/image-dark" data-json='{"styles":{"size:noprefix":"large"}}' />
+<block type="image" align="wide" copyright_and_sources="Copyright: unsplash.com" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="/docs/examples/content-types/image-dark" styles:size:noprefix="large" />
 
 <block type="introduction" data-json='{"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. "}],"type":"p"}]}' />
 
@@ -94,7 +94,7 @@ Text can be **bold** or *italic*.
 
 ---
 
-<fields data-json='{"styles":{"align":"left"}}' />
+<fields styles:align="left" />
 
 </block>
 

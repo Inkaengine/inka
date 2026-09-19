@@ -58,7 +58,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields data-json='{"styles":{"align":"left"}}' />
+<fields styles:align="left" />
 
 </block>
 

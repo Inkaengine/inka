@@ -40,77 +40,77 @@ blocks-tagged: |
 
 ## Block Title
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}],"preview_image":[],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}],"preview_image":[]}' />
 
 </block>
 
 <block type="gridBlock">
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
-
-</block>
-
-<block type="gridBlock">
-
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu. ","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
-
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
-
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
 </block>
 
 <block type="gridBlock">
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu. ","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
-
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
 </block>
 
-<fields data-json='{"styles":{"backgroundColor":"grey"}}'>
+<block type="gridBlock">
+
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
+
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
+
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
+
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
+
+</block>
+
+<fields styles:backgroundColor="grey">
 
 <block type="gridBlock">
 
 ## Block Title
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
 </block>
 
 <block type="gridBlock">
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
-
-</block>
-
-<block type="gridBlock">
-
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu. ","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
-
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu. ","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
-
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu. ","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
 </block>
 
 <block type="gridBlock">
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu. ","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu. ","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu. ","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
-<block type="teaser" head_title="Head title" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}],"styles":{"align":"left"}}' />
+</block>
+
+<block type="gridBlock">
+
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
+
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
+
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
+
+<block type="teaser" head_title="Head title" title="Teaser Title H2" styles:align="left" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.","href":[{"@id":"/docs/examples/content-types/page"}]}' />
 
 </block>
 

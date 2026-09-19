@@ -60,13 +60,13 @@ Displays a list of content items from a query. The listing block fetches items f
 
 <fields block="24280e07-e962-4414-8ee5-cdaf58ca5f35" data-json='{"query":[]}'>
 
-<block type="listing" headline="Listing: Default" variation="default" data-json='{"querystring":{"b_size":"4","limit":"10","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"styles":{"backgroundColor":"transparent"}}' />
+<block type="listing" headline="Listing: Default" variation="default" styles:backgroundColor="transparent" data-json='{"querystring":{"b_size":"4","limit":"10","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}}' />
 
-<block type="listing" headline="Listing: Summary" variation="summary" data-json='{"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"styles":{"backgroundColor":"grey"}}' />
+<block type="listing" headline="Listing: Summary" variation="summary" styles:backgroundColor="grey" data-json='{"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}}' />
 
 </fields>
 
-<block type="gridBlock" headline="Listing: Grid (Teaser)" data-json='{"styles":{"backgroundColor":"transparent"},"items":[{"@type":"listing","querystring":{"limit":"6","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"variation":"teaser"}]}' />
+<block type="gridBlock" headline="Listing: Grid (Teaser)" styles:backgroundColor="transparent" data-json='{"items":[{"@type":"listing","querystring":{"limit":"6","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"variation":"teaser"}]}' />
 
 <block type="slider" headline="Listing: Image Slider" data-json='{"autoplayDelay":4000,"autoplayEnabled":false,"autoplayJump":false,"slides":[{"@type":"listing","fieldMapping":{"@id":"href","title":"alt","image":"url"},"querystring":{"query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Image"]}],"sort_order":"ascending"},"variation":"image"}]}' />
 

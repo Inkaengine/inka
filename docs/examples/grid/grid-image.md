@@ -75,7 +75,7 @@ blocks-tagged: |
 
 </block>
 
-<fields data-json='{"styles":{"backgroundColor":"grey"}}'>
+<fields styles:backgroundColor="grey">
 
 <block type="gridBlock">
 

@@ -55,15 +55,15 @@ A prominent content section with a background image, overlay, title, rich text b
 
 <fields title="Highlight-Block" cta_title="Button" image="/docs/examples/content-types/example-image.jpg/@@images/image" data-json='{"description":[{"children":[{"text":"Lorem ipsum dolor sit amet, "},{"children":[{"text":"consetetur sadipscing"}],"data":{"url":"/docs/examples/button"},"type":"link"},{"text":" elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt."}],"type":"p"}],"cta_link":[{"@id":"/docs/examples/content-types/page"}]}'>
 
-<block type="highlight" data-json='{"styles":{"descriptionColor":"highlight-custom-color-1"}}' />
+<block type="highlight" styles:descriptionColor="highlight-custom-color-1" />
 
-<block type="highlight" data-json='{"styles":{"descriptionColor":"highlight-custom-color-2"}}' />
+<block type="highlight" styles:descriptionColor="highlight-custom-color-2" />
 
-<block type="highlight" data-json='{"styles":{"descriptionColor":"highlight-custom-color-3"}}' />
+<block type="highlight" styles:descriptionColor="highlight-custom-color-3" />
 
-<block type="highlight" data-json='{"styles":{"descriptionColor":"highlight-custom-color-4"}}' />
+<block type="highlight" styles:descriptionColor="highlight-custom-color-4" />
 
-<block type="highlight" data-json='{"styles":{"descriptionColor":"highlight-custom-color-5"}}' />
+<block type="highlight" styles:descriptionColor="highlight-custom-color-5" />
 
 </fields>
 
