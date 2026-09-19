@@ -52,7 +52,7 @@ A content preview card that links to another page. Selecting a target page via t
 
 </block>
 
-<fields title="Headline H2" data-json='{"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","Title":"Page","getRemoteUrl":null,"hasPreviewImage":true,"head_title":null,"image_field":"preview_image","title":"Page"}]}'>
+<fields title="Headline H2" data-json='{"href":[{"@id":"/docs/examples/content-types/page"}]}'>
 
 <fields head_title="Head title">
 

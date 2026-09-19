@@ -50,15 +50,15 @@ blocks-tagged: |
 
 <block type="gridBlock">
 
-<block type="teaser" description="For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid." title="Teaser Title (H2, 30/36px)" data-json='{"head_title":null,"href":[{"@id":"/docs/examples/content-types","@type":"Document","Description":"This section has a sample of content types available in this site.","Title":"Content Types","getRemoteUrl":null,"hasPreviewImage":null,"head_title":null,"image_field":"image","title":"Content Types"}],"styles":{"align":"left"}}' />
+<block type="teaser" description="For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid." title="Teaser Title (H2, 30/36px)" data-json='{"head_title":null,"href":[{"@id":"/docs/examples/content-types"}],"styles":{"align":"left"}}' />
 
 </block>
 
 <block type="gridBlock">
 
-<block type="teaser" head_title="Teaser Headtitle (DIV, 14/18px)" title="Teaser Title (H3, 24/30px)" data-json='{"href":[{"@id":"/docs/examples/content-types","@type":"Document","Description":"This section has a sample of content types available in this site.","Title":"Content Types","getRemoteUrl":null,"hasPreviewImage":null,"head_title":null,"image_field":"image","title":"Content Types"}],"styles":{"align":"left"}}' />
+<block type="teaser" head_title="Teaser Headtitle (DIV, 14/18px)" title="Teaser Title (H3, 24/30px)" data-json='{"href":[{"@id":"/docs/examples/content-types"}],"styles":{"align":"left"}}' />
 
-<block type="teaser" description="Paragraph (p, 18px/24px). This section has a sample of content types available in this site." head_title="Teaser Headtitle (DIV, 14/18px)" title="Teaser Title (H3, 24/30px)" data-json='{"href":[{"@id":"/docs/examples/content-types","@type":"Document","Description":"This section has a sample of content types available in this site.","Title":"Content Types","getRemoteUrl":null,"hasPreviewImage":null,"head_title":null,"image_field":"image","title":"Content Types"}],"styles":{"align":"left"}}' />
+<block type="teaser" description="Paragraph (p, 18px/24px). This section has a sample of content types available in this site." head_title="Teaser Headtitle (DIV, 14/18px)" title="Teaser Title (H3, 24/30px)" data-json='{"href":[{"@id":"/docs/examples/content-types"}],"styles":{"align":"left"}}' />
 
 </block>
 
