@@ -173,3 +173,28 @@
   border-color: #2b7bc0;
   color: #2b7bc0;
 }
+
+/* The compared language's pane: selectable, so the sidebar can show its
+   fields, and visibly the one that is NOT being edited. */
+.preview-panes.translating > .source-preview-pane {
+  width: 50%;
+  height: 100vh;
+  cursor: pointer;
+}
+.preview-panes.translating > .source-preview-pane > iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-right: 1px solid #ddd;
+  /* Read-only: there to read, not to click into — which also lets the click
+     reach the pane, so it can be selected. */
+  pointer-events: none;
+}
+.preview-panes.translating > .source-preview-pane.selected > iframe {
+  border-right: 2px solid #2b7bc0;
+}
+.compare-language-fields {
+  padding: 0.5em 1em;
+  border-bottom: 1px solid #ddd;
+  background: #f7f9fb;
+}

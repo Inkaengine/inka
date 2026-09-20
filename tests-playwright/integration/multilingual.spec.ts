@@ -163,6 +163,30 @@ test.describe('Multilingual editing', () => {
     );
   });
 
+  test('selecting the other language shows its fields, read only', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/about/edit`);
+    const compare = page.locator('.compare-languages');
+    await expect(compare).toBeVisible({ timeout: 20000 });
+    await compare.getByRole('button', { name: 'de' }).click();
+
+    // One sidebar, two panes — the same bargain Volto strikes with its two
+    // forms: whichever you select is the one the sidebar belongs to.
+    const fields = page.locator('.compare-language-fields');
+    await expect(fields, 'the sidebar starts on the page being edited').toHaveCount(0);
+
+    await page.locator('.source-preview-pane').click();
+    await expect(fields, "selecting the other language shows that page's fields").toBeVisible();
+    await expect(fields).toContainText('Über uns');
+
+    // Working in the page being edited takes the sidebar back.
+    await helper.getIframe().locator('[data-block-uid]').first().click();
+    await expect(fields).toHaveCount(0);
+  });
+
   test('a container says when the blocks inside it are still untranslated', async ({
     page,
   }) => {

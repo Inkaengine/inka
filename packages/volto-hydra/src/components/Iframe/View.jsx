@@ -1,5 +1,6 @@
 import { addUrlParams } from '../../utils/iframeUrl';
 import ViewPane from './ViewPane';
+import { ReadOnlyForm } from '../Sidebar/ReadOnlyForm';
 import { untranslatedBlockIds } from '@volto-hydra/helpers';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { isEqual } from 'lodash';
@@ -889,6 +890,11 @@ const Iframe = (props) => {
   );
   const [compareLanguage, setCompareLanguage] = useState(null);
   const [compareContent, setCompareContent] = useState(null);
+  // Which pane the sidebar belongs to. Volto does the same with two forms and
+  // one sidebar: selecting a form makes the sidebar its own. Selecting the
+  // compared language shows ITS fields, read-only — there is one page being
+  // edited here, and it is not that one.
+  const [selectedPane, setSelectedPane] = useState('edit');
 
   useEffect(() => {
     const translation = translations.find((t) => t.language === compareLanguage);
@@ -3306,6 +3312,9 @@ const Iframe = (props) => {
           break;
 
         case 'BLOCK_SELECTED': {
+          // Working in the page being edited hands the sidebar back to it —
+          // the counterpart of clicking the compared pane.
+          setSelectedPane('edit');
           // Update block UI state and selection atomically
           // Selection is included in BLOCK_SELECTED to prevent race conditions
 
@@ -5393,13 +5402,14 @@ const Iframe = (props) => {
                   : 'compare-language'
               }
               aria-pressed={compareLanguage === translation.language}
-              onClick={() =>
+              onClick={() => {
+                setSelectedPane('edit');
                 setCompareLanguage(
                   compareLanguage === translation.language
                     ? null
                     : translation.language,
-                )
-              }
+                );
+              }}
             >
               {translation.language}
             </button>
@@ -5416,15 +5426,31 @@ const Iframe = (props) => {
               it. Read-only — no bridge, no editing chrome — beside the draft,
               which is the pane the editor works in. */}
           {comparePreviewUrl && (
-            <ViewPane
-              id="translationSourceIframe"
-              title={`This page in ${compareLanguage}`}
-              src={comparePreviewUrl}
-              // Pushed, not fetched: the same way the compare view shows a
-              // version. The pane renders the document we hand it.
-              content={compareContent}
-              className="source-preview"
-            />
+            // The pane is inert (its iframe takes no pointer events), so a
+            // click lands here — which is how it gets selected.
+            <div
+              className={
+                selectedPane === 'compare'
+                  ? 'source-preview-pane selected'
+                  : 'source-preview-pane'
+              }
+              onClick={() => setSelectedPane('compare')}
+              onKeyDown={(e) => e.key === 'Enter' && setSelectedPane('compare')}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selectedPane === 'compare'}
+              aria-label={`Show the fields of this page in ${compareLanguage}`}
+            >
+              <ViewPane
+                id="translationSourceIframe"
+                title={`This page in ${compareLanguage}`}
+                src={comparePreviewUrl}
+                // Pushed, not fetched: the same way the compare view shows a
+                // version. The pane renders the document we hand it.
+                content={compareContent}
+                className="source-preview"
+              />
+            </div>
           )}
           <iframe
             key={`${isEditMode ? 'edit' : 'view'}-${u}`}
@@ -6278,6 +6304,26 @@ const Iframe = (props) => {
             </button>
             );
           })()}
+
+      {/* The compared language's own fields, read-only, while its pane is the
+          selected one. Volto shows them by making the sidebar follow whichever
+          form was clicked; here the panes are frontends, so the fields come
+          from the document the pane was given. */}
+      {selectedPane === 'compare' &&
+        compareContent &&
+        props.schema &&
+        typeof document !== 'undefined' &&
+        document.getElementById('sidebar') &&
+        createPortal(
+          <div className="compare-language-fields" data-testid="compare-language-fields">
+            <ReadOnlyForm
+              schema={props.schema}
+              formData={compareContent}
+              title={`${compareContent.title || ''} (${compareLanguage})`}
+            />
+          </div>,
+          document.getElementById('sidebar'),
+        )}
 
       {/* Hierarchical sidebar widgets */}
       {/* Use properties (Redux) for formData - it's always up-to-date after onChangeFormData */}
