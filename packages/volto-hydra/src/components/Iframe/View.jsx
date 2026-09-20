@@ -1,7 +1,11 @@
 import { addUrlParams } from '../../utils/iframeUrl';
 import ViewPane from './ViewPane';
 import { ReadOnlyForm } from '../Sidebar/ReadOnlyForm';
-import { untranslatedBlockIds, withAllBlocksReadOnly } from '@volto-hydra/helpers';
+import {
+  counterpartBlockId,
+  untranslatedBlockIds,
+  withAllBlocksReadOnly,
+} from '@volto-hydra/helpers';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { isEqual } from 'lodash';
 import { v4 as uuid } from 'uuid';
@@ -728,11 +732,6 @@ const Iframe = (props) => {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [popperElement, setPopperElement] = useState(null);
   const [referenceElement, setReferenceElement] = useState(null);
-  // Latest-ref of the same element: the message handler is registered once and
-  // closes over its first value, but it has to know which frame is THIS
-  // canvas's at the moment a message arrives.
-  const referenceElementRef = useRef(null);
-  referenceElementRef.current = referenceElement;
   const [blockUI, setBlockUI] = useState(null); // { blockUid, rect, focusedFieldName }
   const [mouseActivityCounter, setMouseActivityCounter] = useState(0); // incremented on MOUSE_ACTIVITY from iframe
   const [selectionMode, setSelectionMode] = useState(false); // true when in touch selection mode
@@ -2284,16 +2283,20 @@ const Iframe = (props) => {
       if (event.origin !== initialUrlOrigin) {
         return;
       }
-      // Only this canvas's own frame. The handler is on `window`, so every
-      // mounted canvas hears every preview — and during a route change two are
-      // mounted at once. The outgoing one was answering the incoming one's
-      // INIT and, seeing a path that did not match the admin's, navigating the
-      // admin to it: a translation's pinned preview dragged the editor out of
-      // the form it was filling in. ViewPane has always checked this.
-      const ownWindow = referenceElementRef.current?.contentWindow;
-      if (ownWindow && event.source !== ownWindow) {
-        return;
+      // Everything but the compared-language pane, which has its own handler
+      // and its own read-only page. Both frames are on the frontend's origin
+      // and both post here, so without this the editor would act on the other
+      // page's messages — selecting its blocks, moving them.
+      //
+      // Narrow on purpose: an earlier version demanded the message come from
+      // THIS canvas's own frame, and rejected real ones (a MOVE_BLOCKS from
+      // the preview) whenever the element's contentWindow was not the one the
+      // ref happened to hold.
+      if (typeof document !== 'undefined') {
+        const comparePane = document.getElementById('translationSourceIframe');
+        if (comparePane && event.source === comparePane.contentWindow) return;
       }
+
       // Store the actual iframe origin from the first message we receive
       if (!iframeOriginRef.current) {
         iframeOriginRef.current = event.origin;
@@ -5463,6 +5466,19 @@ const Iframe = (props) => {
                   ? 'source-preview-pane selected'
                   : 'source-preview-pane'
               }
+              // Which block of the other language is being shown: the
+              // counterpart of the one selected next door, or nothing when the
+              // selected block was added after the copy.
+              data-showing-block={
+                (compareContent && selectedBlock
+                  ? counterpartBlockId(
+                      properties?.blocks,
+                      selectedBlock,
+                      compareContent?.blocks,
+                      buildIdFieldMap(config.blocks.blocksConfig, intl),
+                    )
+                  : null) || ''
+              }
               onClick={() => setSelectedPane('compare')}
               onKeyDown={(e) => e.key === 'Enter' && setSelectedPane('compare')}
               role="button"
@@ -5479,7 +5495,30 @@ const Iframe = (props) => {
                 content={compareReadOnlyContent}
                 className="source-preview"
                 selectable
+                // The same block, in the other language — paired by
+                // `@canonical`, which the copy recorded. A block added since
+                // the copy has no counterpart, and nothing lights up: that is
+                // itself worth seeing, because the block is new.
+                showBlock={
+                  compareContent && selectedBlock
+                    ? counterpartBlockId(
+                        properties?.blocks,
+                        selectedBlock,
+                        compareContent?.blocks,
+                        buildIdFieldMap(config.blocks.blocksConfig, intl),
+                      )
+                    : null
+                }
                 onSelectBlock={(uid) => {
+                  // Only when the editor is actually IN that pane. The pane
+                  // also echoes back the selection we drive into it from the
+                  // page being edited, and that must not take the sidebar.
+                  if (
+                    typeof document !== 'undefined' &&
+                    document.activeElement?.id !== 'translationSourceIframe'
+                  ) {
+                    return;
+                  }
                   setSelectedPane('compare');
                   setCompareSelectedBlock(uid);
                 }}
