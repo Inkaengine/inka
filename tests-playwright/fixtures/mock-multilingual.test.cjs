@@ -218,6 +218,54 @@ describe('creating a translation', () => {
   });
 });
 
+describe('a language is a tree of its own', () => {
+  it('roots navigation at the language folder, not the site', async () => {
+    // plone.app.multilingual gives each language root folder its own navroot,
+    // which is what stops a menu listing the site in two languages at once.
+    const { data } = await json('/en/about?expand=navroot');
+    assert.ok(
+      data['@components'].navroot.navroot['@id'].endsWith('/en'),
+      `expected /en as the navroot, got ${data['@components'].navroot.navroot['@id']}`,
+    );
+  });
+
+  it('offers a language its OWN pages in the menu', async () => {
+    const { data } = await json('/en/about?expand=navigation');
+    const titles = data['@components'].navigation.items.map((i) => i.title);
+    assert.deepEqual(titles.sort(), ['About us', 'Services']);
+
+    const german = await json('/de/ueber-uns?expand=navigation');
+    assert.deepEqual(
+      german.data['@components'].navigation.items.map((i) => i.title).sort(),
+      ['Dienstleistungen', 'Über uns'],
+    );
+  });
+
+  it('leaves a single-language site rooted where it always was', async () => {
+    // The rest of the suite shares this server: outside a language folder
+    // nothing changes.
+    const { data } = await json('/_test_data/test-page?expand=navroot,navigation');
+    assert.equal(
+      new URL(data['@components'].navroot.navroot['@id']).pathname,
+      '/',
+    );
+    const titles = data['@components'].navigation.items.map((i) => i.title);
+    assert.ok(titles.includes('Test Data'), `expected the site menu, got ${titles}`);
+  });
+
+  it('searches within one language, not across all of them', async () => {
+    const { data } = await json(
+      '/@search?path.query=/en&path.depth=1&metadata_fields=language',
+    );
+    const paths = data.items.map((i) => new URL(i['@id']).pathname);
+    assert.ok(paths.length > 0, 'the English tree has pages');
+    assert.ok(
+      paths.every((p) => p.startsWith('/en/')),
+      `expected only English pages, got ${paths}`,
+    );
+  });
+});
+
 describe('@site features.multilingual', () => {
   it('is off by default, so the rest of the suite is a single-language site', async () => {
     const { data } = await json('/@site');

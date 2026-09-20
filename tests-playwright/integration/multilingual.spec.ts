@@ -214,6 +214,12 @@ test.describe('Multilingual editing', () => {
     const german = page.frameLocator('#translationSourceIframe');
     const block = german.locator('[data-block-uid]').filter({ hasText: 'Über uns' }).last();
     await expect(block).toBeVisible({ timeout: 20000 });
+    // Wait for the pane's bridge to have finished its handshake before
+    // clicking: node ids are stamped when the admin's data arrives, and until
+    // they are there a click selects nothing.
+    await expect(german.locator('[data-node-id]').first()).toBeAttached({
+      timeout: 20000,
+    });
     await block.click();
 
     // The sidebar shows what was picked, by its type — a block, not the page.
@@ -353,6 +359,35 @@ test.describe('Multilingual editing', () => {
     ).toBeVisible({ timeout: 10000 });
     // Both teasers, counted — the marker is a roll-up, not a flag.
     await expect(marker.first()).toHaveAttribute('data-nested-count', '2');
+  });
+
+  test('a language shows its own menu, not the whole site in two languages', async ({
+    page,
+  }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/about`);
+    await helper.waitForIframeReady();
+    // Every frontend builds its menu its own way, so this asks the navigation
+    // landmarks rather than one frontend's markup.
+    const menus = async () =>
+      (
+        await helper
+          .getIframe()
+          .locator('nav')
+          .evaluateAll((navs) => navs.map((n) => n.textContent || ''))
+      ).join(' ');
+
+    // The English tree, and only it: a language root folder is the navigation
+    // root for everything inside it, which is what keeps one site's two
+    // languages out of each other's menus.
+    await expect.poll(menus, { timeout: 15000 }).toContain('Services');
+    expect(
+      await menus(),
+      'the German pages belong to the German menu',
+    ).not.toContain('Dienstleistungen');
   });
 
   test('the frontend offers the page in its other language, and following it moves the admin', async ({

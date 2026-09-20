@@ -822,6 +822,31 @@ function resolveContentReference(reference, sessionId) {
   );
 }
 
+/**
+ * The language root folder a path lives under, or null.
+ *
+ * plone.app.multilingual puts each language in its own top-level folder and
+ * makes that folder the NAVIGATION ROOT for everything inside it — which is
+ * what stops a menu, a breadcrumb trail or a search listing the site in two
+ * languages at once. A path outside any of them (a single-language site, or a
+ * shared folder) has no language root and is rooted at the site, as before.
+ */
+function languageRootFor(urlPath, sessionId) {
+  const first = String(urlPath || '/').split('/').filter(Boolean)[0];
+  if (!first) return null;
+  const candidate = `/${first}`;
+  const folder = rawContentForComponents(candidate, sessionId);
+  if (!folder || folder.is_folderish === false) return null;
+  // A language root folder is a top-level folder that IS a language: /en whose
+  // own language is `en`. Asked of the content rather than of the site's
+  // configured list, because the folders are the fact — a session that has not
+  // asked for a multilingual site still sees /en as /en's tree, and an
+  // ordinary folder like /_test_data (no language of its own) is never one.
+  const language =
+    typeof folder.language === 'object' ? folder.language?.token : folder.language;
+  return language === first ? candidate : null;
+}
+
 /** sessionId -> { multilingual, languages } */
 const sessionSiteFeatures = {};
 /** sessionId -> { [path]: groupId | null } — null is "unlinked in this session" */
@@ -1107,10 +1132,14 @@ function buildActionsComponent(cleanPath, baseUrl, sessionId) {
 
 function buildNavigationComponent(cleanPath, baseUrl, sessionId) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  // Rooted at the navroot: the site, or the language folder for a page inside
+  // one. A menu that ignored this would offer every page of every language.
+  const languageRoot = languageRootFor(cleanPath, sessionId);
   return {
     '@id': `${fullUrl}/@navigation`,
-    // Always rooted at site root — top-level items with nested children
-    items: getRootNavigationItems(sessionId),
+    items: languageRoot
+      ? getNavigationItems(languageRoot, 2, undefined, sessionId)
+      : getRootNavigationItems(sessionId),
   };
 }
 
@@ -1307,8 +1336,23 @@ function getSharing(cleanPath, sessionId) {
   };
 }
 
-function buildNavrootComponent(cleanPath, baseUrl) {
+function buildNavrootComponent(cleanPath, baseUrl, sessionId) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  // Inside a language, the language folder is the root.
+  const languageRoot = languageRootFor(cleanPath, sessionId);
+  if (languageRoot) {
+    const folder = loadRawContentFromDisk(languageRoot) || {};
+    return {
+      '@id': `${fullUrl}/@navroot`,
+      navroot: {
+        '@id': `${baseUrl}${languageRoot}`,
+        '@type': folder['@type'] || 'Folder',
+        title: folder.title || languageRoot.slice(1),
+        ...(folder.description ? { description: folder.description } : {}),
+        language: languageField(folder.language),
+      },
+    };
+  }
   // The navigation root is the SITE ROOT object, so serialise its real title and
   // description — Plone does, and a frontend is entitled to read the site's name
   // out of the response it already has rather than fetching the root itself.
@@ -1353,7 +1397,7 @@ function generateComponents(urlPath, baseUrl, sessionId) {
     // layer up: the two paths this file exists to keep identical drifted
     // again, and only the one nothing reads was fixed.
     navigation: buildNavigationComponent(cleanPath, baseUrl, sessionId),
-    navroot: buildNavrootComponent(cleanPath, baseUrl),
+    navroot: buildNavrootComponent(cleanPath, baseUrl, sessionId),
     types: buildTypesComponent(),
     // Always built, never always sent: enrichContent only includes a component
     // the request expanded, and Volto's api middleware drops the
@@ -3782,7 +3826,7 @@ app.get(/.*\/@navigation$/, (req, res) => {
 
 app.get(/.*\/@navroot$/, (req, res) => {
   const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@navroot$/, '') || '/').replace(/\/+$/, '') || '/';
-  res.json(buildNavrootComponent(cleanPath, `http://localhost:${PORT}`));
+  res.json(buildNavrootComponent(cleanPath, `http://localhost:${PORT}`, getSessionId(req)));
 });
 
 /**
@@ -4178,7 +4222,18 @@ app.get('*/@search', (req, res) => {
   } else if (pathDepth === '1') {
     // Get immediate children of the search path (used by ObjectBrowser)
     // Unlike navigation, search returns ALL content types (including Images, Files)
-    const normalizedSearch = (searchPath === '' || searchPath === '/') ? '/' : searchPath;
+    // `path.query` names the folder to search, as Plone's catalog takes it;
+    // without it the search is rooted at the request's own path. Ignoring it
+    // meant a search told to look inside one language answered with the whole
+    // site.
+    const askedPath = pathQuery
+      ? (String(pathQuery).startsWith('http')
+          ? new URL(String(pathQuery)).pathname
+          : String(pathQuery)
+        ).replace(/\/$/, '') || '/'
+      : null;
+    const contextPath = (searchPath === '' || searchPath === '/') ? '/' : searchPath;
+    const normalizedSearch = askedPath || contextPath;
     const searchDepth = normalizedSearch === '/' ? 0 : normalizedSearch.split('/').filter(Boolean).length;
 
     // Direct children, from disk AND from anything this session created or
