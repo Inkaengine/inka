@@ -1,4 +1,6 @@
 import { addUrlParams } from '../../utils/iframeUrl';
+import ViewPane from './ViewPane';
+import { untranslatedBlockIds } from '@volto-hydra/helpers';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { isEqual } from 'lodash';
 import { v4 as uuid } from 'uuid';
@@ -724,6 +726,11 @@ const Iframe = (props) => {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [popperElement, setPopperElement] = useState(null);
   const [referenceElement, setReferenceElement] = useState(null);
+  // Latest-ref of the same element: the message handler is registered once and
+  // closes over its first value, but it has to know which frame is THIS
+  // canvas's at the moment a message arrives.
+  const referenceElementRef = useRef(null);
+  referenceElementRef.current = referenceElement;
   const [blockUI, setBlockUI] = useState(null); // { blockUid, rect, focusedFieldName }
   const [mouseActivityCounter, setMouseActivityCounter] = useState(0); // incremented on MOUSE_ACTIVITY from iframe
   const [selectionMode, setSelectionMode] = useState(false); // true when in touch selection mode
@@ -868,6 +875,68 @@ const Iframe = (props) => {
   // Combined state for iframe data - formData, selection, requestId, and transformAction updated atomically
   // This ensures toolbar sees all together in the same render
   const intl = useIntl();
+
+  // Comparing languages while editing.
+  //
+  // Inka has no specialist create view — a translation is created and then
+  // edited, like everything else — so this is where a translator works: the
+  // page in another language on one side, the one being written on the other.
+  // Volto calls the same thing "compare languages"; it lives on the edit
+  // screen there too.
+  const translations = useMemo(
+    () => properties?.['@components']?.translations?.items || [],
+    [properties],
+  );
+  const [compareLanguage, setCompareLanguage] = useState(null);
+  const [compareContent, setCompareContent] = useState(null);
+
+  useEffect(() => {
+    const translation = translations.find((t) => t.language === compareLanguage);
+    if (!translation) {
+      setCompareContent(null);
+      return;
+    }
+    let cancelled = false;
+    new Api()
+      .get(flattenToAppURL(translation['@id']))
+      .then((content) => {
+        if (!cancelled) setCompareContent(content);
+      })
+      .catch(() => {
+        // The other language is a convenience, not the page being edited: if it
+        // cannot be read, the pane simply does not open.
+        if (!cancelled) setCompareContent(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [compareLanguage, translations]);
+
+  const comparePreviewUrl = useMemo(() => {
+    const translation = translations.find((t) => t.language === compareLanguage);
+    return translation
+      ? addUrlParams(
+          u,
+          { access_token: token || '', _edit: 'false' },
+          flattenToAppURL(translation['@id']),
+        )
+      : null;
+  }, [translations, compareLanguage, u, token]);
+
+  // Which blocks still read as the language they were copied from. Answerable
+  // only against that other language, so it follows the comparison.
+  const untranslatedIds = useMemo(
+    () =>
+      compareContent
+        ? untranslatedBlockIds(
+            properties?.blocks,
+            compareContent?.blocks,
+            buildIdFieldMap(config.blocks.blocksConfig, intl),
+          )
+        : [],
+    [compareContent, properties?.blocks, intl],
+  );
+
 
   // Initialize with properties so we have data from first render
   //
@@ -2186,6 +2255,16 @@ const Iframe = (props) => {
     const initialUrlOrigin = iframeSrc && new URL(iframeSrc).origin;
     const messageHandler = (event) => {
       if (event.origin !== initialUrlOrigin) {
+        return;
+      }
+      // Only this canvas's own frame. The handler is on `window`, so every
+      // mounted canvas hears every preview — and during a route change two are
+      // mounted at once. The outgoing one was answering the incoming one's
+      // INIT and, seeing a path that did not match the admin's, navigating the
+      // admin to it: a translation's pinned preview dragged the editor out of
+      // the form it was filling in. ViewPane has always checked this.
+      const ownWindow = referenceElementRef.current?.contentWindow;
+      if (ownWindow && event.source !== ownWindow) {
         return;
       }
       // Store the actual iframe origin from the first message we receive
@@ -5298,18 +5377,67 @@ const Iframe = (props) => {
           Key on mode + frontend URL ensures iframe remounts when switching edit/view
           or switching frontends (avoids beforeunload dialog from old iframe),
           but persists during SPA navigation within the same mode */}
+      {/* Comparing languages: pick the language to read alongside. Only offered
+          when the page HAS another language — on a single-language site
+          nothing here renders at all. */}
+      {isEditMode && translations.length > 0 && (
+        <div className="compare-languages" data-testid="compare-languages">
+          <span>Compare with</span>
+          {translations.map((translation) => (
+            <button
+              key={translation.language}
+              type="button"
+              className={
+                compareLanguage === translation.language
+                  ? 'compare-language active'
+                  : 'compare-language'
+              }
+              aria-pressed={compareLanguage === translation.language}
+              onClick={() =>
+                setCompareLanguage(
+                  compareLanguage === translation.language
+                    ? null
+                    : translation.language,
+                )
+              }
+            >
+              {translation.language}
+            </button>
+          ))}
+        </div>
+      )}
       {iframeSrc && (
-        <iframe
-          key={`${isEditMode ? 'edit' : 'view'}-${u}`}
-          id="previewIframe"
-          name={iframeName}
-          title="Preview"
-          src={iframeSrc}
-          ref={setReferenceElement}
-          allow="clipboard-read; clipboard-write"
-          suppressHydrationWarning
-          style={iframeMaxWidth ? { maxWidth: iframeMaxWidth } : undefined}
-        />
+        <div
+          className={
+            comparePreviewUrl ? 'preview-panes translating' : 'preview-panes'
+          }
+        >
+          {/* Translating: the page being translated FROM, as the site renders
+              it. Read-only — no bridge, no editing chrome — beside the draft,
+              which is the pane the editor works in. */}
+          {comparePreviewUrl && (
+            <ViewPane
+              id="translationSourceIframe"
+              title={`This page in ${compareLanguage}`}
+              src={comparePreviewUrl}
+              // Pushed, not fetched: the same way the compare view shows a
+              // version. The pane renders the document we hand it.
+              content={compareContent}
+              className="source-preview"
+            />
+          )}
+          <iframe
+            key={`${isEditMode ? 'edit' : 'view'}-${u}`}
+            id="previewIframe"
+            name={iframeName}
+            title="Preview"
+            src={iframeSrc}
+            ref={setReferenceElement}
+            allow="clipboard-read; clipboard-write"
+            suppressHydrationWarning
+            style={iframeMaxWidth ? { maxWidth: iframeMaxWidth } : undefined}
+          />
+        </div>
       )}
 
       {/* Multi-block selection outlines — individual outline per selected block */}
@@ -6158,6 +6286,7 @@ const Iframe = (props) => {
         selectedBlock={selectedBlock}
         multiSelected={multiSelected}
         blocksErrors={blocksErrors}
+        untranslatedIds={untranslatedIds}
         formData={properties}
         blockPathMap={iframeSyncState.blockPathMap}
         templatePermissions={templateCacheRef.current}

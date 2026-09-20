@@ -22,7 +22,7 @@ import {
   stripBlockPathMapForPostMessage,
 } from '../../utils/blockPath';
 
-const ViewPane = ({ title, src, content, style }) => {
+const ViewPane = ({ id, title, src, content, style, className }) => {
   const ref = useRef(null);
   const intl = useIntl();
   const [frameLoaded, setFrameLoaded] = useState(false);
@@ -66,6 +66,8 @@ const ViewPane = ({ title, src, content, style }) => {
   return (
     <iframe
       ref={ref}
+      id={id}
+      className={className}
       title={title}
       name={iframeName}
       onLoad={() => setFrameLoaded(true)}

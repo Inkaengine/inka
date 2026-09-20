@@ -111,3 +111,65 @@
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+
+/* The preview canvas. One pane normally; two while translating, so the page
+   being translated from sits beside the one being written. */
+.preview-panes {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+}
+.preview-panes.translating > iframe {
+  width: 50%;
+  height: 100vh;
+  border: none;
+}
+.preview-panes.translating > .source-preview {
+  border-right: 1px solid #ddd;
+  /* Read-only: it is there to read, not to click into. */
+  pointer-events: none;
+}
+
+/* What the blocks inside a collapsed blind need: a dot, coloured by how loud
+   it is. Errors stop a save; an untranslated copy is work still to do. */
+.nested-status {
+  /* inline-block, or the width and height below do nothing at all */
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 0.5em;
+  flex: none;
+}
+.nested-status--error {
+  background: #c02b2b;
+}
+.nested-status--warning {
+  background: #e0a800;
+}
+.nested-status--untranslated {
+  background: #2b7bc0;
+}
+
+/* Choosing a language to read beside the one being edited. */
+.compare-languages {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.25em 0.75em;
+  border-bottom: 1px solid #ddd;
+  font-size: 0.85em;
+  color: #666;
+}
+.compare-language {
+  padding: 0.15em 0.6em;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.compare-language.active {
+  border-color: #2b7bc0;
+  color: #2b7bc0;
+}
