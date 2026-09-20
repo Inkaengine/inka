@@ -2486,13 +2486,17 @@ app.post('/@export', async (req, res) => {
     const relOf = (m, u) => (m.mountPath === '/' ? (u === '/' ? '' : u.replace(/^\//, ''))
       : u.replace(m.mountPath, '').replace(/^\//, ''));
 
-    // Build the whole tree in a staging dir, then tar it — same shape as
-    // format:json. Each mount's tree lands under its source-dir basename
-    // (docs/, site/) so extracting the archive replaces the sources in place.
+    // Build ONE unified tree, keyed by URL path — real Plone has no "mounts"
+    // (that is a mock-only split of the source), so the export must not encode
+    // them: root content sits at the archive root, a `/docs` child folder under
+    // `docs/`. The CALLER re-separates the tree into our source mounts afterwards.
     const stagingMd = fs.mkdtempSync(path.join(os.tmpdir(), 'plone-export-md-'));
+    // A mount's subtree lands at its URL path ('' for the root mount, 'docs' for
+    // /docs) — NOT its source-dir basename.
+    const treeRootOf = (m) => path.join(stagingMd, m.mountPath === '/' ? '' : m.mountPath.replace(/^\//, ''));
     try {
       for (const m of CONTENT_MOUNTS) {
-        const treeRoot = path.join(stagingMd, path.basename(m.dirPath));
+        const treeRoot = treeRootOf(m);
         const igSrc = path.join(m.dirPath, '.blockmdignore');
         if (fs.existsSync(igSrc)) {
           fs.mkdirSync(treeRoot, { recursive: true });
@@ -2504,7 +2508,7 @@ app.post('/@export', async (req, res) => {
         if (!c) continue;
         const m = ownerMount(p);
         if (!m) continue;
-        const treeRoot = path.join(stagingMd, path.basename(m.dirPath));
+        const treeRoot = treeRootOf(m);
         const rel = relOf(m, p);
         if (isBlobItem(c)) {
           // Copy the blob's bytes next to its parent folder's index.md.
@@ -2540,6 +2544,19 @@ app.post('/@export', async (req, res) => {
         const dest = path.join(treeRoot, rel === '' ? 'index.md' : (isFolder ? `${rel}/index.md` : `${rel}.md`));
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, emitFile(c, p, m));
+      }
+      // The non-content distribution JSON (redirects, relations, translations,
+      // portlets, discussions, principals) at the root — the same siblings the
+      // exportimport (format:json) export ships, so the markdown archive is a
+      // COMPLETE distribution, not just content. Sourced from any mount that
+      // carries them (one level up from its content dir), else minimal defaults.
+      const siblingsFrom = CONTENT_MOUNTS
+        .map((m) => path.join(m.dirPath, '..'))
+        .filter((d) => DISTRIBUTION_SIBLINGS.some((s) => fs.existsSync(path.join(d, s))));
+      for (const sib of DISTRIBUTION_SIBLINGS) {
+        const from = siblingsFrom.map((d) => path.join(d, sib)).find((p) => fs.existsSync(p));
+        if (from) fs.copyFileSync(from, path.join(stagingMd, sib));
+        else fs.writeFileSync(path.join(stagingMd, sib), JSON.stringify(SIBLING_DEFAULTS[sib], null, 2) + '\n');
       }
       const zipPath = path.join(stagingMd, 'export-markdown.zip');
       const members = fs.readdirSync(stagingMd);
