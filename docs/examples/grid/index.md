@@ -40,17 +40,16 @@ blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p/text}" />
+  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p/text}" />
+      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
     </region>
   </block>
 ---
@@ -65,11 +64,23 @@ A responsive grid that lays out child blocks in equal-width cells. The block use
 
 <block type="gridBlock">
 
-<block type="teaser" data-json='{"title":"Design","description":"We craft beautiful interfaces that users love.","href":[{"@id":"/docs/architecture","@type":"Document","Title":"How Inka Works","Description":"Instead of combining editing and rendering into one framework and codebase, these are separated and during editing a two way communication channel is opened across an iframe so that the editing UI is no longer part of the frontend code. Instead a small JS file called hydra.js is included in your frontend during editing that handles the iframe bridge communication to Inka which is running in the same browser window.","title":"How Inka Works","head_title":null,"getRemoteUrl":null,"hasPreviewImage":false,"image_field":""}]}' />
+<block type="teaser">
+
+### [Design](/docs/architecture)
+
+We craft beautiful interfaces that users love.
+
+</block>
 
 <block type="image" url="https://placehold.co/600x400" alt="Placeholder" />
 
-<block type="teaser" data-json='{"title":"Learn More","description":"Explore the full documentation.","href":[{"@id":"/docs","@type":"Document","Title":"Docs","Description":"A design-system-first page-builder toolkit. Guides for building a frontend, editing content, testing, adapters, and compliance.","title":"Docs","head_title":null,"getRemoteUrl":null,"hasPreviewImage":false,"image_field":""}]}' />
+<block type="teaser">
+
+### [Learn More](/docs)
+
+Explore the full documentation.
+
+</block>
 
 </block>
 

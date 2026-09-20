@@ -98,7 +98,7 @@ Selectors pick *which* node, by position or by label rather than by CSS (CSS can
 - `[Summary]` — scoped to the section under a `## Summary` heading, by label text
 - `[Summary][2]` — chained: the second, within that section
 
-A trailing `?` marks a reference **optional** — matched when the node is present, skipped when it is absent (an optional subtitle, an image with no title string).
+A trailing `?` marks a reference **optional**: the node it names may be *absent* — the reference matches when the node is present and is skipped when it is not (an image with or without a caption paragraph, a teaser with or without a kicker or a description). Because the node is genuinely optional, **one prototype covers both the present and the absent case** — you do not write a second prototype for the shorter shape. A node is only optional when *every* reference to it is `?`; `url="${img/src}"` keeps the image node required even alongside `alt="${img?/alt}"`. (Separately, `?` on an accessor that reads a present node also tolerates a missing *part*, e.g. `${img?/title}` when the image has no title string.)
 
 The node kinds a reference can target are the familiar Markdown ones: `p`, `h1`–`h6` (or `h` relative, `h*` for any), `img`, `a`, `ul`, `ol`, `li`, `blockquote`, `pre` (a fenced code block), `hr`, `table`, a lone-bold `strong` or lone-italic `em` paragraph, and a `dl` / `dt` / `dd` definition list.
 
