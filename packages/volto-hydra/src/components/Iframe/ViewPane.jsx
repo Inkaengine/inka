@@ -22,8 +22,26 @@ import {
   stripBlockPathMapForPostMessage,
 } from '../../utils/blockPath';
 
-const ViewPane = ({ id, title, src, content, style, className }) => {
+const ViewPane = ({
+  id,
+  title,
+  src,
+  content,
+  style,
+  className,
+  // A pane whose blocks may be SELECTED — to look at them — but never
+  // changed. Not a third kind of frame: it is an ordinary editing one, and
+  // every block of the content it is given is read-only, which is what stops
+  // the bridge collecting a single editable field. See withAllBlocksReadOnly.
+  selectable = false,
+  onSelectBlock,
+}) => {
   const ref = useRef(null);
+  // Latest-ref, so the push effect never re-runs just for a new closure — it
+  // would re-push the content, and the frame would announce its selection
+  // again.
+  const onSelectBlockRef = useRef(onSelectBlock);
+  onSelectBlockRef.current = onSelectBlock;
   const intl = useIntl();
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -31,7 +49,7 @@ const ViewPane = ({ id, title, src, content, style, className }) => {
 
   const adminOrigin =
     typeof window !== 'undefined' ? window.location.origin : '';
-  const iframeName = `hydra-view:${adminOrigin}`;
+  const iframeName = `${selectable ? 'hydra-edit' : 'hydra-view'}:${adminOrigin}`;
 
   useEffect(() => {
     if (!content) return undefined;
@@ -39,13 +57,32 @@ const ViewPane = ({ id, title, src, content, style, className }) => {
       const blockPathMap = stripBlockPathMapForPostMessage(
         buildBlockPathMap(content, config.blocks.blocksConfig, intl),
       );
+      // INITIAL_DATA, not FORM_DATA: only INITIAL_DATA completes the
+      // handshake. The bridge marks itself initialised there — "block
+      // selection is now allowed" — and stops retrying its INIT. A pane fed
+      // FORM_DATA alone rendered the content but stayed forever
+      // un-acknowledged: it retried INIT for the life of the page, showed the
+      // bridge diagnostic, and reported nothing the editor clicked.
       ref.current?.contentWindow?.postMessage(
-        { type: 'FORM_DATA', data: content, blockPathMap },
+        {
+          type: 'INITIAL_DATA',
+          data: content,
+          blockPathMap,
+          slateConfig: {
+            hotkeys: config.settings.slate?.hotkeys || {},
+            toolbarButtons: config.settings.slate?.toolbarButtons || [],
+          },
+        },
         '*',
       );
     };
     const onMessage = (event) => {
       if (event.source !== ref.current?.contentWindow) return;
+      if (event.data?.type === 'BLOCK_SELECTED') {
+        // `blockUid`, which is what the bridge calls it.
+        onSelectBlockRef.current?.(event.data.blockUid);
+        return;
+      }
       if (event.data?.type !== 'INIT') return;
       push();
     };

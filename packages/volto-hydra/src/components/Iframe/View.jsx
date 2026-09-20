@@ -1,7 +1,7 @@
 import { addUrlParams } from '../../utils/iframeUrl';
 import ViewPane from './ViewPane';
 import { ReadOnlyForm } from '../Sidebar/ReadOnlyForm';
-import { untranslatedBlockIds } from '@volto-hydra/helpers';
+import { untranslatedBlockIds, withAllBlocksReadOnly } from '@volto-hydra/helpers';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { isEqual } from 'lodash';
 import { v4 as uuid } from 'uuid';
@@ -262,6 +262,7 @@ import slateTransforms from '../../utils/slateTransforms';
 // as applyFormat was replaced by SLATE_TRANSFORM_REQUEST handling
 import OpenObjectBrowser from './OpenObjectBrowser';
 import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
+import { getBlockTypeSchema } from '../../utils/blockPath';
 import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
@@ -918,12 +919,32 @@ const Iframe = (props) => {
     };
   }, [compareLanguage, translations]);
 
+  // What the pane is given: the compared page with every block read-only, so
+  // it can be read and inspected but not changed. Read-only is a property of a
+  // block, so "a page nobody may edit" needs no new kind of frame.
+  const compareReadOnlyContent = useMemo(
+    () =>
+      compareContent
+        ? {
+            ...compareContent,
+            blocks: withAllBlocksReadOnly(
+              compareContent.blocks,
+              buildIdFieldMap(config.blocks.blocksConfig, intl),
+            ),
+          }
+        : null,
+    [compareContent, intl],
+  );
+  const [compareSelectedBlock, setCompareSelectedBlock] = useState(null);
+
   const comparePreviewUrl = useMemo(() => {
     const translation = translations.find((t) => t.language === compareLanguage);
     return translation
       ? addUrlParams(
           u,
-          { access_token: token || '', _edit: 'false' },
+          // An editing frame, so its blocks can be selected and inspected.
+          // What makes it read-only is the CONTENT it is given.
+          { access_token: token || '', _edit: 'true' },
           flattenToAppURL(translation['@id']),
         )
       : null;
@@ -3312,9 +3333,17 @@ const Iframe = (props) => {
           break;
 
         case 'BLOCK_SELECTED': {
-          // Working in the page being edited hands the sidebar back to it —
-          // the counterpart of clicking the compared pane.
-          setSelectedPane('edit');
+          // Back to the page being edited when the editor is WORKING IN it. A
+          // selection announced while the other pane holds focus is this page
+          // re-announcing itself on a re-render, and must not snatch the
+          // sidebar back. Focus is ASKED for: moving between two frames fires
+          // no event in this document.
+          if (
+            typeof document === 'undefined' ||
+            document.activeElement?.id !== 'translationSourceIframe'
+          ) {
+            setSelectedPane('edit');
+          }
           // Update block UI state and selection atomically
           // Selection is included in BLOCK_SELECTED to prevent race conditions
 
@@ -5447,8 +5476,13 @@ const Iframe = (props) => {
                 src={comparePreviewUrl}
                 // Pushed, not fetched: the same way the compare view shows a
                 // version. The pane renders the document we hand it.
-                content={compareContent}
+                content={compareReadOnlyContent}
                 className="source-preview"
+                selectable
+                onSelectBlock={(uid) => {
+                  setSelectedPane('compare');
+                  setCompareSelectedBlock(uid);
+                }}
               />
             </div>
           )}
@@ -6316,11 +6350,34 @@ const Iframe = (props) => {
         document.getElementById('sidebar') &&
         createPortal(
           <div className="compare-language-fields" data-testid="compare-language-fields">
-            <ReadOnlyForm
-              schema={props.schema}
-              formData={compareContent}
-              title={`${compareContent.title || ''} (${compareLanguage})`}
-            />
+            {(() => {
+              // A block if one was picked in that pane, the page otherwise —
+              // the same choice the sidebar makes for the page being edited.
+              const picked = compareSelectedBlock
+                ? getBlockById(
+                    compareContent,
+                    buildBlockPathMap(compareContent, config.blocks.blocksConfig, intl),
+                    compareSelectedBlock,
+                  )
+                : null;
+              return picked ? (
+                <ReadOnlyForm
+                  schema={getBlockTypeSchema(
+                    picked['@type'],
+                    intl,
+                    config.blocks.blocksConfig,
+                  )}
+                  formData={picked}
+                  title={`${picked['@type']} (${compareLanguage})`}
+                />
+              ) : (
+                <ReadOnlyForm
+                  schema={props.schema}
+                  formData={compareContent}
+                  title={`${compareContent.title || ''} (${compareLanguage})`}
+                />
+              );
+            })()}
           </div>,
           document.getElementById('sidebar'),
         )}

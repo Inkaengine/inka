@@ -156,11 +156,14 @@ test.describe('Multilingual editing', () => {
       page.frameLocator('#translationSourceIframe').locator('body'),
       'the German page is there to translate from',
     ).toContainText('Wir bauen Dinge auf Deutsch.', { timeout: 20000 });
+    // Both panes are editing frames. What makes the compared one read-only is
+    // its CONTENT — every block in it is marked read-only — so the bridge
+    // collects no editable field and there is nothing to type into.
     await expect(page.locator('#previewIframe')).toHaveAttribute('src', /_edit=true/);
-    await expect(page.locator('#translationSourceIframe')).toHaveAttribute(
-      'src',
-      /_edit=false/,
-    );
+    await expect(
+      page.frameLocator('#translationSourceIframe').locator('[contenteditable="true"]'),
+      'nothing in the compared page may be typed into',
+    ).toHaveCount(0);
   });
 
   test('selecting the other language shows its fields, read only', async ({ page }) => {
@@ -178,13 +181,49 @@ test.describe('Multilingual editing', () => {
     const fields = page.locator('.compare-language-fields');
     await expect(fields, 'the sidebar starts on the page being edited').toHaveCount(0);
 
-    await page.locator('.source-preview-pane').click();
-    await expect(fields, "selecting the other language shows that page's fields").toBeVisible();
-    await expect(fields).toContainText('Über uns');
+    // Clicking a block in the other language selects it there — the pane is an
+    // editing frame whose blocks are all read-only — and the sidebar shows
+    // that block, read-only.
+    await page
+      .frameLocator('#translationSourceIframe')
+      .locator('[data-block-uid]')
+      .filter({ hasText: 'Über uns' })
+      .last()
+      .click();
+    await expect(fields, "the sidebar follows the pane that was clicked").toBeVisible({
+      timeout: 15000,
+    });
 
     // Working in the page being edited takes the sidebar back.
     await helper.getIframe().locator('[data-block-uid]').first().click();
     await expect(fields).toHaveCount(0);
+  });
+
+  test('a block in the other language can be inspected, but not changed', async ({
+    page,
+  }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/about/edit`);
+    const compare = page.locator('.compare-languages');
+    await expect(compare).toBeVisible({ timeout: 20000 });
+    await compare.getByRole('button', { name: 'de' }).click();
+
+    const german = page.frameLocator('#translationSourceIframe');
+    const block = german.locator('[data-block-uid]').filter({ hasText: 'Über uns' }).last();
+    await expect(block).toBeVisible({ timeout: 20000 });
+    await block.click();
+
+    // The sidebar shows what was picked, by its type — a block, not the page.
+    const fields = page.locator('.compare-language-fields');
+    await expect(fields).toBeVisible({ timeout: 15000 });
+    await expect(fields).toContainText(/\(de\)/);
+
+    // Inspectable, not editable: the bridge collects no editable field for a
+    // read-only block, so nothing in that pane can be typed into.
+    await expect(german.locator('[contenteditable="true"]')).toHaveCount(0);
   });
 
   test('a container says when the blocks inside it are still untranslated', async ({

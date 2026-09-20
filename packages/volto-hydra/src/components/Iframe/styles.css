@@ -126,8 +126,6 @@
 }
 .preview-panes.translating > .source-preview {
   border-right: 1px solid #ddd;
-  /* Read-only: it is there to read, not to click into. */
-  pointer-events: none;
 }
 
 /* What the blocks inside a collapsed blind need: a dot, coloured by how loud
@@ -186,9 +184,6 @@
   height: 100%;
   border: none;
   border-right: 1px solid #ddd;
-  /* Read-only: there to read, not to click into — which also lets the click
-     reach the pane, so it can be selected. */
-  pointer-events: none;
 }
 .preview-panes.translating > .source-preview-pane.selected > iframe {
   border-right: 2px solid #2b7bc0;
