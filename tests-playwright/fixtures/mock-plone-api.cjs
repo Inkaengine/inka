@@ -2448,18 +2448,24 @@ app.post('/@export', async (req, res) => {
     // The markdown file for one served item (frontmatter + body). Folders carry
     // the reconstructed order:/blobs: — this is an EXPORT, so nothing is stripped.
     const emitFile = (c, p, m) => {
-      // Trim edge whitespace on frontmatter string values. A leading/trailing
-      // newline forces a YAML BLOCK scalar (`>-`/`|-`), and the `yaml` package
-      // formats block scalars DIFFERENTLY across major versions (v1 vs v2) — so
-      // an unpinned/hoisting-dependent `yaml` makes the frontmatter emit differ
-      // between environments (the round-trip gate caught exactly this). A plain
-      // scalar is version-stable, and edge whitespace on a metadata string is
-      // meaningless inconsistent data anyway.
-      const meta = Object.fromEntries(
-        Object.entries(c)
-          .filter(([k]) => !SERVER_STATE.has(k))
-          .map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]),
-      );
+      // Trim edge whitespace on EVERY frontmatter string, top-level and nested
+      // (a `contents:`/`blobs:` child's description). A leading/trailing newline
+      // forces a YAML FOLDED block scalar (`>-`), and the `yaml` package folds
+      // DIFFERENTLY across major versions (v1 vs v2) — so an unpinned/
+      // hoisting-dependent `yaml` makes the frontmatter emit differ between
+      // environments (the round-trip gate caught exactly this). A plain scalar
+      // is byte-identical across versions, and edge whitespace on a metadata
+      // string is meaningless inconsistent data anyway. (blocks/blocks_layout are
+      // in SERVER_STATE, so block content is never reached here.)
+      const deepTrim = (v) => (
+        typeof v === 'string' ? v.trim()
+          : Array.isArray(v) ? v.map(deepTrim)
+            : (v && typeof v === 'object')
+              ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepTrim(x)]))
+              : v);
+      const meta = deepTrim(Object.fromEntries(
+        Object.entries(c).filter(([k]) => !SERVER_STATE.has(k)),
+      ));
       const kids = (childrenByParent[p] || []).map((k) => loadRawContentFromDisk(k)).filter(Boolean);
       const childPages = kids.filter((d) => !isBlobItem(d))
         .sort((a, b) => (uidPositionMap[a.UID] ?? 0) - (uidPositionMap[b.UID] ?? 0));
@@ -2470,7 +2476,7 @@ app.post('/@export', async (req, res) => {
         // synthesise one from the child scan for a folder that never had it.
         (markdownOrder.get(p) || (childPages.length ? childPages.map((d) => d.id) : null))
           ? YAML.stringify({ order: markdownOrder.get(p) || childPages.map((d) => d.id) }).trim() : '',
-        blobItems.length ? YAML.stringify({ blobs: blobItems.map(blobEntry) }).trim() : '',
+        blobItems.length ? YAML.stringify(deepTrim({ blobs: blobItems.map(blobEntry) })).trim() : '',
       ].filter(Boolean).join('\n');
       if (c.blocks && c.blocks_layout?.items?.length) {
         // The page's own directory (relative to the mount), for relative links.

@@ -41,10 +41,8 @@ blobs:
     uid: 970ec24c76784c66a06d8c8d8b6522b2
     id: image-dark
     title: Image
-    description: >-
-      
-      The Image content type can be used to upload an image in various formats
-      (JPG, GIF, PNG, SVG). The uploaded image should always have a high
+    description: The Image content type can be used to upload an image in various
+      formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high
       resolution so that it can be used flexibly, for example as a banner image.
       Plone automatically delivers the images in the best scaling, so there is
       no need to scale images down manually.
@@ -54,10 +52,8 @@ blobs:
     uid: eec82559bf3242a6be4d43bc2096f399
     id: image-light.jpg
     title: Image - Light
-    description: >-
-      
-      The Image content type can be used to upload an image in various formats
-      (JPG, GIF, PNG, SVG). The uploaded image should always have a high
+    description: The Image content type can be used to upload an image in various
+      formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high
       resolution so that it can be used flexibly, for example as a banner image.
       Plone automatically delivers the images in the best scaling, so there is
       no need to scale images down manually.
