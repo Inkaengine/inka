@@ -57,29 +57,32 @@ const ViewPane = ({
 
   useEffect(() => {
     if (!content) return undefined;
-    const push = () => {
+    // The canvas's protocol, which the bridge is written against: INITIAL_DATA
+    // once to complete the handshake — it is there that the bridge marks
+    // itself initialised ("block selection is now allowed") and stops retrying
+    // its INIT — and FORM_DATA for the content after that. Sending
+    // INITIAL_DATA for every push instead left the compare-versions panes
+    // showing the same page twice.
+    let handshaken = false;
+    const push = ({ handshake = !handshaken } = {}) => {
       const blockPathMap = stripBlockPathMapForPostMessage(
         buildBlockPathMap(content, config.blocks.blocksConfig, intl),
       );
-      // INITIAL_DATA, not FORM_DATA: only INITIAL_DATA completes the
-      // handshake. The bridge marks itself initialised there — "block
-      // selection is now allowed" — and stops retrying its INIT. A pane fed
-      // FORM_DATA alone rendered the content but stayed forever
-      // un-acknowledged: it retried INIT for the life of the page, showed the
-      // bridge diagnostic, and reported nothing the editor clicked.
-      ref.current?.contentWindow?.postMessage(
-        {
-          type: 'INITIAL_DATA',
-          data: content,
-          blockPathMap,
-          slateConfig: {
-            hotkeys: config.settings.slate?.hotkeys || {},
-            toolbarButtons: config.settings.slate?.toolbarButtons || [],
-          },
-        },
-        '*',
-      );
+      const message = !handshake
+        ? { type: 'FORM_DATA', data: content, blockPathMap }
+        : {
+            type: 'INITIAL_DATA',
+            data: content,
+            blockPathMap,
+            slateConfig: {
+              hotkeys: config.settings.slate?.hotkeys || {},
+              toolbarButtons: config.settings.slate?.toolbarButtons || [],
+            },
+          };
+      if (handshake) handshaken = true;
+      ref.current?.contentWindow?.postMessage(message, '*');
     };
+
     const onMessage = (event) => {
       if (event.source !== ref.current?.contentWindow) return;
       if (event.data?.type === 'BLOCK_SELECTED') {
@@ -88,7 +91,10 @@ const ViewPane = ({
         return;
       }
       if (event.data?.type !== 'INIT') return;
-      push();
+      // INIT proves the bridge is listening, so THIS is the push that must
+      // carry the handshake — an earlier nudge may have been sent into a frame
+      // that was not ready and simply vanished.
+      push({ handshake: true });
     };
     window.addEventListener('message', onMessage);
     let timers = [];
