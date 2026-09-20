@@ -246,6 +246,73 @@ test.describe('Multilingual editing', () => {
     }
   });
 
+  test('a saved translation renders, and leaves the original alone', async ({
+    page,
+  }) => {
+    // The test above proves the copy is CORRECT in the API. It never looks at
+    // the page, so a copy that saved cleanly and rendered as nothing — a block
+    // whose uid the frontend can't resolve, a container whose children were
+    // copied into the wrong field — would pass it. A translation nobody can
+    // read is not a translation.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    await page
+      .locator('#page-manage-translations tbody tr', { hasText: /deutsch/i })
+      .locator('a[href$="/create-translation"]')
+      .click();
+    await expect(page).toHaveURL(/\/de\/add\?type=/, { timeout: 15000 });
+    await page.locator('#page-add #field-title').fill('Dienstleistungen');
+    await page.locator('#toolbar-save').click();
+    await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+
+    // Viewed, not edited: the saved page as a reader gets it. Asserted on the
+    // rendered text rather than any one frontend's markup, since every frontend
+    // runs this spec.
+    await page.goto(`${helper.adminUrl}/de/dienstleistungen`);
+    await helper.waitForIframeReady();
+    // Which page is on screen, stated — the block text below is copied, so it
+    // reads the same on the English original and would pass there too.
+    await expect(page.locator('#previewIframe')).toHaveAttribute(
+      'src',
+      /\/de\/dienstleistungen/,
+    );
+    const iframe = helper.getIframe();
+    await expect(iframe.locator('body'), 'the title that was typed').toContainText(
+      'Dienstleistungen',
+      { timeout: 15000 },
+    );
+    // The copied blocks, including the two NESTED in the grid — the ones whose
+    // ids were rewritten on the way over, and so the ones a broken copy loses.
+    // Still in English: a fresh translation is work to do, not work done.
+    await expect(iframe.locator('body'), 'a top-level block came across').toContainText(
+      'What we do, in English.',
+    );
+    await expect(iframe.locator('body'), 'the grid came across').toContainText(
+      'What we do',
+    );
+    for (const nested of ['We design in English.', 'We build in English.']) {
+      await expect(iframe.locator('body'), 'a nested block came across').toContainText(
+        nested,
+      );
+    }
+
+    // And the page it was translated FROM is untouched — same blocks, same
+    // title. Copying by reference would have shown up here.
+    const english = await (
+      await page.request.get(`${URLS.mockApi}/en/services`, {
+        headers: {
+          Authorization: `Bearer ${helper.authToken}`,
+          Accept: 'application/json',
+        },
+      })
+    ).json();
+    expect(english.title).toBe('Services');
+    expect(english.language?.token ?? english.language).toBe('en');
+  });
 
   test('editing a page can show it in another language, side by side', async ({
     page,
@@ -297,8 +364,14 @@ test.describe('Multilingual editing', () => {
     // Clicking a block in the other language selects it there — the pane is an
     // editing frame whose blocks are all read-only — and the sidebar shows
     // that block, read-only.
-    await page
-      .frameLocator('#translationSourceIframe')
+    const german = page.frameLocator('#translationSourceIframe');
+    // Wait for the pane's bridge to have finished its handshake before
+    // clicking: node ids are stamped when the admin's data arrives, and until
+    // they are there a click selects nothing.
+    await expect(german.locator('[data-node-id]').first()).toBeAttached({
+      timeout: 20000,
+    });
+    await german
       .locator('[data-block-uid]')
       .filter({ hasText: 'Über uns' })
       .last()
@@ -555,6 +628,78 @@ test.describe('Multilingual editing', () => {
     );
   });
 
+  test('translating the copy saves, and the original keeps its own words', async ({
+    page,
+  }) => {
+    // Creating a translation is half the job: the copy arrives in the language
+    // it came from, and the point is to type over it. Nothing so far edits a
+    // translation at all, so a copy that saved and rendered but could not be
+    // EDITED — blocks whose uids the bridge cannot address, a save that wrote
+    // back over the original — would pass every test above.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    await page
+      .locator('#page-manage-translations tbody tr', { hasText: /deutsch/i })
+      .locator('a[href$="/create-translation"]')
+      .click();
+    await expect(page).toHaveURL(/\/de\/add\?type=/, { timeout: 15000 });
+    await page.locator('#page-add #field-title').fill('Dienstleistungen');
+    await page.locator('#toolbar-save').click();
+    await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+
+    const read = async (path: string) =>
+      (
+        await page.request.get(`${URLS.mockApi}${path}`, {
+          headers: {
+            Authorization: `Bearer ${helper.authToken}`,
+            Accept: 'application/json',
+          },
+        })
+      ).json();
+
+    // The copied paragraph, by the text it still carries from the original.
+    const german = await read('/de/dienstleistungen');
+    const slateId = Object.keys(german.blocks).find(
+      (id) =>
+        german.blocks[id]['@type'] === 'slate' &&
+        JSON.stringify(german.blocks[id].value ?? '').includes(
+          'What we do, in English.',
+        ),
+    );
+    expect(slateId, 'the copied paragraph is there to translate').toBeTruthy();
+
+    await helper.waitForIframeReady();
+    await helper.editBlockTextInIframe(slateId!, 'Was wir machen, auf Deutsch.');
+    await page.locator('#toolbar-save').click();
+    await expect(page).toHaveURL(/\/de\/dienstleistungen$/, { timeout: 20000 });
+
+    // What was typed is what was saved.
+    await expect
+      .poll(
+        async () =>
+          JSON.stringify((await read('/de/dienstleistungen')).blocks[slateId!].value),
+        { timeout: 15000 },
+      )
+      .toContain('Was wir machen, auf Deutsch.');
+
+    // And it reads that way on the page, not just in the API.
+    await helper.waitForIframeReady();
+    await expect(helper.getIframe().locator('body')).toContainText(
+      'Was wir machen, auf Deutsch.',
+      { timeout: 15000 },
+    );
+
+    // The English page is untouched — the copy has ids of its own, so typing
+    // into it cannot reach back. This is what `@canonical` being a REFERENCE
+    // rather than a shared uid buys.
+    const english = await read('/en/services');
+    expect(JSON.stringify(english.blocks)).toContain('What we do, in English.');
+    expect(JSON.stringify(english.blocks)).not.toContain('Was wir machen');
+  });
 
   test('a shared field is inherited on a translation, and owned by the default language', async ({
     page,
