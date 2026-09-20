@@ -1357,23 +1357,16 @@ export async function verifyBlockRendering(
       }
       await expect(loc).toBeAttached({ timeout: 5000 });
       // Content gated behind a reveal control — an accordion header, a tab, a
-      // carousel nav — is display:none until revealed. That's by design: the
-      // editor reveals it when the admin selects the nested block, and hydra.js
-      // does so by clicking the element whose [data-block-selector] references
-      // that block's uid. Mirror that here so a legitimately-collapsed block is
-      // verified in its revealed state instead of being falsely failed for being
-      // hidden by design. (data-block-selector holds a space-separated uid list,
-      // hence the ~= match.)
+      // carousel nav, the answer a conditional question waits on — is hidden
+      // until revealed. That's by design: the editor reveals it when the admin
+      // selects the nested block, so verify it in its revealed state rather than
+      // failing it for being hidden. Ask the BRIDGE to reveal it (revealBlock),
+      // the way the editor does — not a Playwright click on the handle. That
+      // second implementation drifted: a handle can be an <option>, which the
+      // bridge SELECTS in its dropdown and Playwright never considers visible,
+      // so the click waited out the whole test.
       if (!(await loc.isVisible())) {
-        const revealer = iframe
-          .locator(`[data-block-selector~="${id}"]`)
-          .first();
-        if ((await revealer.count()) > 0) {
-          await revealer.click();
-          await loc
-            .waitFor({ state: 'visible', timeout: 2000 })
-            .catch(() => {});
-        }
+        await revealBlock(iframe, id);
       }
       if (await loc.isVisible()) {
         anyVisible = true;
