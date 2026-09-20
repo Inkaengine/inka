@@ -40,7 +40,7 @@
 import { getInjectedBlocksConfig, getSlateStyleGlobals, getSlateVocabulary } from './injectedVoltoConfig.js';
 import { normalizeSlateFields, undefinedSlateTypes } from '../../../hydra-js/slateStyles.js';
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
-  deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue } from './blockPath.js';
+  deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
 import { addableSiblingTypes, buildBlockPathMap } from '../../../hydra-js/buildBlockPathMap.js';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
@@ -3354,11 +3354,59 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
     blocksConfig,
     intl,
   });
+  // The block's CONTENTS go where it went. A well-formed template carries
+  // templateId on every block, nested ones included (the merge drops a nested
+  // block without one as malformed), so a container that joined a template
+  // brings its children into it, and one that left takes them out.
+  const withContents = withDescendantMembership(
+    updatedBlockData,
+    originalBlockData.templateInstanceId ?? null,
+  );
   // Compare against originalBlockData, not the (possibly membership-stripped)
   // copy — otherwise a stripped block whose recompute is a no-op is never
   // written back, and the stored block keeps its stale source membership.
-  if (updatedBlockData === originalBlockData) return formData;
-  return updateBlockById(formData, blockPathMap, blockId, updatedBlockData);
+  if (withContents === originalBlockData) return formData;
+  return updateBlockById(formData, blockPathMap, blockId, withContents);
+}
+
+/**
+ * Give a moved block's descendants the membership the block now has.
+ *
+ * Only descendants that went with the block — no membership, or the block's
+ * previous instance (`fromInstanceId`). A descendant belonging to another
+ * template instance (a template nested inside) keeps its own. Joining makes
+ * them template content (fixed, like a block ADDED into a template —
+ * inheritTemplateMembership inheritFixed); leaving makes them page content.
+ * Returns `block` itself when nothing changed.
+ */
+function withDescendantMembership(block, fromInstanceId) {
+  if (!block?.blocks || typeof block.blocks !== 'object') return block;
+  const joined = !!block.templateInstanceId;
+  let changed = false;
+  const blocks = {};
+  for (const [id, child] of Object.entries(block.blocks)) {
+    let next = child;
+    const own = child?.templateInstanceId ?? null;
+    if (child && (own === null || own === fromInstanceId)) {
+      if (joined) {
+        next = inheritTemplateMembership(child, block, { inheritFixed: true });
+      } else if (own !== null || child.templateId) {
+        const {
+          templateId: _t,
+          templateInstanceId: _i,
+          slotId: _s,
+          fixed: _f,
+          readOnly: _r,
+          ...rest
+        } = child;
+        next = rest;
+      }
+    }
+    next = withDescendantMembership(next, fromInstanceId);
+    if (next !== child) changed = true;
+    blocks[id] = next;
+  }
+  return changed ? { ...block, blocks } : block;
 }
 
 /**
@@ -3480,7 +3528,14 @@ export function deleteBlocks(formData, blockPathMap, blockIds, options = {}) {
     );
     out = deleteBlockFromContainer(out, map, blockId, containerConfig);
     map = buildBlockPathMap(out, blocksConfig, intl);
-    emptiedContainers.push(containerConfig);
+    // Say which slot the block leaves empty. If this empties the region, the
+    // placeholder re-seeded there stands in for that slot — and the re-seed can't
+    // know it, it sees only a region with nothing in it.
+    emptiedContainers.push(
+      blockData?.slotId
+        ? { ...containerConfig, vacatedSlotId: blockData.slotId }
+        : containerConfig,
+    );
     deleted.push(blockId);
   }
   const settled = settleBlockStructure(out, map, { emptiedContainers }, options);

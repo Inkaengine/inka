@@ -7,7 +7,9 @@
  * for the same purpose — different syntax, same result.
  *
  * Three cases match the bridge's slate transform output:
- *   - text leaf: just its text content
+ *   - text leaf: its text, with each "\n" — a line break, Shift+Enter in the
+ *     editor — drawn as <br>. A break at the very end needs a second <br> to
+ *     show, as it does in the editor.
  *   - link: <a href="..." data-node-id="...">
  *   - any other element: <Tag data-node-id="...">  (h1/p/em/strong/...)
  *
@@ -20,7 +22,7 @@ const { node } = Astro.props;
 const Tag = node?.type;
 ---
 {node?.text !== undefined ? (
-  node.text
+  <Fragment>{node.text.split('\n').map((line: string, i: number) => <Fragment>{i > 0 && <br />}{line}</Fragment>)}{node.text.endsWith('\n') && <br />}</Fragment>
 ) : node?.type === 'link' ? (
   <a href={node.data?.url} data-node-id={node.nodeId}>
     {(node.children || []).map((c: any) => <Self node={c} />)}

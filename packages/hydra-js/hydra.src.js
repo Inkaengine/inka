@@ -20,6 +20,7 @@ import {
   isTextOnlyBlockChange,
   findBlockInForm,
   slateNodesText,
+  isEmptySlate,
   getAtPath,
   ensureMutablePath,
   getFieldValue,
@@ -150,6 +151,20 @@ const isValidNodeId = (id) => id && /^\d+(\.\d+)*$/.test(id);
 
 // How many nested closed containers a reveal will open before giving up.
 const MAX_REVEAL_DEPTH = 5;
+
+// What counts as the control a reveal handle activates — see
+// Bridge.activationTarget. A link needs an href to be one; a bare <a> is text.
+const CONTROL_TAGS = new Set([
+  'BUTTON',
+  'SUMMARY',
+  'A',
+  'INPUT',
+  'SELECT',
+  'TEXTAREA',
+  'OPTION',
+  'LABEL',
+]);
+const CONTROL_SELECTOR = 'button, summary, a[href], [role="button"]';
 
 /**
  * Virtual block UID for page-level fields (title, description, preview_image, etc.)
@@ -516,9 +531,9 @@ export class Bridge {
     // Parse attribute=value or attribute=value(selector) patterns
     // Supports multiple values for the same attribute (e.g., multiple edit-text)
     const attrs = {};
-    // Match: word-name=value(selector) or word-name=value or word-name (boolean)
-    // Value can contain paths like /page-name
-    const attrRegex = /([\w-]+)(?:=([^(\s]+)(?:\(([^)]+)\))?)?/g;
+    // Match: word-name=value(selector), word-name=value, word-name(selector)
+    // (target) or word-name (boolean). Value can contain paths like /page-name
+    const attrRegex = /([\w-]+)(?:=([^(\s]+))?(?:\(([^)]+)\))?/g;
     let match;
     while ((match = attrRegex.exec(content)) !== null) {
       const [, name, value, selector] = match;
@@ -560,15 +575,32 @@ export class Bridge {
       const parsed = this.parseHydraComment(text);
       if (!parsed) continue;
 
-      // Find the next element sibling (skip text nodes)
-      let nextElement = comment.nextSibling;
-      while (nextElement && nextElement.nodeType !== Node.ELEMENT_NODE) {
-        nextElement = nextElement.nextSibling;
-      }
+      // The element the comment annotates. `target(<selector>)` names it
+      // anywhere in the document — for markup a third-party script builds
+      // somewhere you never render (a cookie banner appended to <body>), where
+      // nothing you write can sit above it. Otherwise it is the next element.
+      let nextElement;
+      const target = parsed.attrs.target?.[0]?.selector;
+      if (target) {
+        nextElement = document.querySelector(target);
+        if (!nextElement) {
+          // Not built yet: a script-built element can arrive after this pass.
+          // Comments are re-materialised whenever the DOM settles, so the next
+          // pass annotates it — nothing to report.
+          log('materializeHydraComments: target not in the page yet:', target);
+          continue;
+        }
+      } else {
+        // Find the next element sibling (skip text nodes)
+        nextElement = comment.nextSibling;
+        while (nextElement && nextElement.nodeType !== Node.ELEMENT_NODE) {
+          nextElement = nextElement.nextSibling;
+        }
 
-      if (!nextElement) {
-        console.error('[hydra] Comment syntax found but no next element sibling:', text);
-        continue;
+        if (!nextElement) {
+          console.error('[hydra] Comment syntax found but no next element sibling:', text);
+          continue;
+        }
       }
 
       // Which block this comment belongs to. Both declaration styles are legal and
@@ -894,6 +926,33 @@ export class Bridge {
    */
   static revealSurface(el) {
     return (el?.tagName === 'OPTION' && el.closest('select')) || el;
+  }
+
+  /**
+   * Where activating a reveal handle actually LANDS.
+   *
+   * A frontend annotates the element it renders. A design system's script then
+   * often turns that element into a shell around the control it builds for
+   * itself: the NSW accordion empties its `.nsw-accordion__title`, puts a
+   * `<button>` inside it, and binds both the toggle and `aria-expanded` to that
+   * button. A person clicking the title hits the button — the event starts
+   * there and bubbles outward — but `shell.click()` starts at the shell and
+   * never reaches the button's listener, so the panel stayed shut and
+   * everything inside it was unreachable from the sidebar.
+   *
+   * Only a shell holding exactly ONE control resolves: that click can only have
+   * meant that control. A handle that is a control itself, or that holds
+   * several (a card with two links, a pager with both arrows), is activated as
+   * it always was — guessing which of them the author meant would be worse than
+   * clicking what they annotated.
+   */
+  static activationTarget(el) {
+    if (!el?.querySelectorAll) return el;
+    if (CONTROL_TAGS.has(el.tagName) || el.getAttribute('role') === 'button') {
+      return el;
+    }
+    const controls = [...el.querySelectorAll(CONTROL_SELECTOR)];
+    return controls.length === 1 ? controls[0] : el;
   }
 
   /**
@@ -7870,6 +7929,56 @@ export class Bridge {
    *   isContentReady to detect rendered changes like link URL updates.
    *   When false (default), include all metadata from metadataMap.
    */
+  /**
+   * An element's text with its line breaks: each <br> is "\n", except the
+   * browser's end-of-line placeholder (see isPlaceholderBr). textContent would
+   * drop every one of them.
+   */
+  textWithBreaks(el) {
+    let out = '';
+    const walk = (node) => {
+      for (const c of node.childNodes) {
+        if (c.nodeType === Node.TEXT_NODE) out += c.textContent || '';
+        else if (c.nodeType === Node.ELEMENT_NODE) {
+          if (c.tagName === 'BR') {
+            if (!this.isPlaceholderBr(c)) out += '\n';
+          } else walk(c);
+        }
+      }
+    };
+    walk(el);
+    return out;
+  }
+
+  /**
+   * Whether a <br> is the browser's end-of-line placeholder rather than a break.
+   *
+   * A contenteditable line cannot end in a bare break: an empty paragraph is
+   * `<p><br></p>`, and a break at the very end needs `<br><br>` to show. So a
+   * <br> with nothing but empty text after it, up to the end of its line, is
+   * the placeholder. "Its line" looks through inline wrappers — a break inside
+   * `<strong>…<br></strong>more` is real, because "more" follows it.
+   */
+  isPlaceholderBr(br) {
+    const INLINE = new Set([
+      'A', 'ABBR', 'B', 'CODE', 'DEL', 'EM', 'I', 'MARK', 'S', 'SMALL', 'SPAN',
+      'STRONG', 'SUB', 'SUP', 'U',
+    ]);
+    let node = br;
+    while (node) {
+      for (let n = node.nextSibling; n; n = n.nextSibling) {
+        const empty =
+          n.nodeType === Node.TEXT_NODE &&
+          this.stripZeroWidthSpaces(n.textContent || '') === '';
+        if (!empty) return false;
+      }
+      const parent = node.parentElement;
+      if (!parent || !INLINE.has(parent.tagName)) return true;
+      node = parent;
+    }
+    return true;
+  }
+
   domNodeToSlate(el, metadataMap, matchMetadataFromDom = false) {
     const nodeId = el.getAttribute('data-node-id');
     const fullMeta = (nodeId && metadataMap[nodeId]) || {};
@@ -7890,6 +7999,16 @@ export class Bridge {
         const text = this.stripZeroWidthSpaces(raw);
         children.push({ text });
       } else if (child.nodeType === Node.ELEMENT_NODE) {
+        // A <br> is a line break: "\n" in the text leaf, Volto's own form (its
+        // editor inserts '\n' on Shift+Enter and renders it as <br/>). Read as
+        // its textContent it came back "", so the break vanished — while the
+        // single-node reader, via innerText, kept it. The exception is the
+        // browser's placeholder at the end of a line, which the single-node
+        // reader also drops (it strips one trailing "\n").
+        if (child.tagName === 'BR') {
+          if (!this.isPlaceholderBr(child)) children.push({ text: '\n' });
+          continue;
+        }
         const childNodeId = child.getAttribute('data-node-id');
         if (childNodeId && isValidNodeId(childNodeId)) {
           children.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom));
@@ -7912,8 +8031,10 @@ export class Bridge {
         } else {
           // Element without valid nodeId (e.g. Vue wrapper span, Next.js leaf span)
           // — treat its text content as a text node, including empty text which
-          // Slate requires around inline elements like strong/link
-          const text = this.stripZeroWidthSpaces(child.textContent || '');
+          // Slate requires around inline elements like strong/link. Read through
+          // textWithBreaks, not textContent: a frontend draws a leaf's line
+          // breaks as <br> INSIDE this wrapper, and textContent drops them.
+          const text = this.stripZeroWidthSpaces(this.textWithBreaks(child));
           children.push({ text });
         }
       }
@@ -11664,9 +11785,10 @@ export class Bridge {
 
     return Object.entries(properties)
       .filter(([fieldName, fieldDef]) => {
+        const fieldType = this.getFieldType(blockUid, fieldName);
         // Has an inline affordance at all. Returns undefined for select /
         // boolean / number, so sidebar-only fields drop out for free.
-        if (!this._revealSentinelFor(fieldDef, this.getFieldType(blockUid, fieldName))) {
+        if (!this._revealSentinelFor(fieldDef, fieldType)) {
           return false;
         }
         // A REQUIRED field is rendered unconditionally by the frontend (a value
@@ -11676,6 +11798,9 @@ export class Bridge {
         // ever IS missing an element, that's a renderer bug for the dev-warning
         // to shout about — not something reveal should paper over.
         if (schema.required?.includes(fieldName)) return false;
+        // A slate field is never absent — it defaults to one empty paragraph —
+        // so its empty is that paragraph, the same test a renderer hides it by.
+        if (isSlateFieldType(fieldType)) return isEmptySlate(block[fieldName]);
         return isEmpty(block[fieldName]);
       })
       .map(([fieldName]) => fieldName);
@@ -11757,11 +11882,17 @@ export class Bridge {
       // written over real content.
       for (const fieldName of this.revealableFields(blockUid)) {
         const fieldDef = properties[fieldName];
-        const sentinel = this._revealSentinelFor(
-          fieldDef,
-          this.getFieldType(blockUid, fieldName),
-        );
+        const fieldType = this.getFieldType(blockUid, fieldName);
+        let sentinel = this._revealSentinelFor(fieldDef, fieldType);
         if (sentinel === undefined) continue;
+        // A slate field's empty paragraph is already there, with the nodeId the
+        // bridge gave it. Reveal fills THAT paragraph rather than inventing one,
+        // so the element the renderer draws carries a data-node-id and typing
+        // into it maps back into the value.
+        const stored = source[fieldName];
+        if (isSlateFieldType(fieldType) && Array.isArray(stored) && stored.length === 1) {
+          sentinel = [{ ...stored[0], children: [{ text: Bridge.REVEAL_ZWS }] }];
+        }
         if (!projected) projected = JSON.parse(JSON.stringify(formData));
         let target = projected;
         for (const key of pathInfo.path) target = target?.[key];
@@ -12542,20 +12673,25 @@ export class Bridge {
     // until a frontend opts in.
     this.fillDeclaredInputs(targetUid);
 
+    // Act on the control, not on the shell a design system wrapped around it:
+    // the state to read (`aria-expanded`) and the listener to fire both live on
+    // the control it built. See Bridge.activationTarget.
+    const activate = Bridge.activationTarget(clickedSelector);
+    if (activate !== clickedSelector) {
+      log(`tryMakeBlockVisible: activating the <${activate.tagName.toLowerCase()}> inside the handle`);
+    }
     const summaryDetails =
-      clickedSelector.tagName === 'SUMMARY'
-        ? clickedSelector.closest('details')
-        : null;
-    const expandedAttr = clickedSelector.getAttribute('aria-expanded');
+      activate.tagName === 'SUMMARY' ? activate.closest('details') : null;
+    const expandedAttr = activate.getAttribute('aria-expanded');
     if (summaryDetails) {
       summaryDetails.open = true;
       log(`tryMakeBlockVisible: opened <details> via summary`);
     } else if (expandedAttr === 'true') {
       log(`tryMakeBlockVisible: target trigger already expanded, skipping click`);
-    } else if (Bridge.answerRevealHandle(clickedSelector)) {
-      log(`tryMakeBlockVisible: answered ${clickedSelector.tagName.toLowerCase()} handle`);
+    } else if (Bridge.answerRevealHandle(activate)) {
+      log(`tryMakeBlockVisible: answered ${activate.tagName.toLowerCase()} handle`);
     } else {
-      clickedSelector.click();
+      activate.click();
       log(`tryMakeBlockVisible: click() called`);
     }
 
