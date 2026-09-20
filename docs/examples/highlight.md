@@ -5,10 +5,8 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The highlight block allows you to highlight and tease a single piece of
-  content. The content is displayed with a large image and a title and
+description: The highlight block allows you to highlight and tease a single
+  piece of content. The content is displayed with a large image and a title and
   description in a banderole.
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false

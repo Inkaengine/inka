@@ -5,11 +5,9 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The button block shows a button for which a link (internal or external) can be
-  stored. The button can be displayed left, right or center and have a
-  background color.
+description: The button block shows a button for which a link (internal or
+  external) can be stored. The button can be displayed left, right or center and
+  have a background color.
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
