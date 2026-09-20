@@ -213,11 +213,14 @@ const uidPositionMap = {};
  * @param {Object} req - Express request
  * @returns {string} Session ID (defaults to '_default' for unauthenticated requests)
  */
+/** Renewed token -> the session id its state lives under. */
+const sessionAliases = {};
+
 function getSessionId(req) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
-    return `token:${token}`;
+    return sessionIdentity(`token:${token}`);
   }
   // Unauthenticated requests use default session (no persistence)
   return '_default';
@@ -273,18 +276,24 @@ function generateAuthToken(username = 'admin') {
  */
 function migrateSession(fromToken, toToken) {
   if (!fromToken || fromToken === toToken) return;
-  const from = `token:${fromToken}`;
-  const to = `token:${toToken}`;
-  for (const store of [
-    sessionContent,
-    sessionBlobs,
-    sessionDeletions,
-    sessionOrder,
-    sessionSharing,
-    sessionWorkingCopies,
-  ]) {
-    if (store[from] !== undefined) store[to] = store[from];
+  // The renewed token becomes another NAME for the same session rather than a
+  // copy of it. Copying each store meant a store that was still empty at
+  // renewal time got no entry, so anything written afterwards landed under one
+  // name and was read back under the other — the session's translations, and
+  // whether its site is multilingual, both went missing that way. One identity
+  // has no such gap, and needs nothing added to it when a new store appears.
+  sessionAliases[`token:${toToken}`] = sessionIdentity(`token:${fromToken}`);
+}
+
+/** Follow a session id through any renewals to the identity holding its state. */
+function sessionIdentity(sessionId) {
+  const seen = new Set();
+  let id = sessionId;
+  while (sessionAliases[id] && !seen.has(id)) {
+    seen.add(id);
+    id = sessionAliases[id];
   }
+  return id;
 }
 
 // Middleware
@@ -746,6 +755,159 @@ function rawContentForComponents(urlPath, sessionId) {
   return inSession || loadRawContentFromDisk(urlPath);
 }
 
+/* ── Multilingual, as plone.app.multilingual serves it ───────────────────────
+ *
+ * A translation GROUP holds one item per language; being "translations of each
+ * other" is membership of the same group, which is why linking is symmetric and
+ * needs no per-item list. Fixtures declare a group in frontmatter
+ * (`translation-group`); linking and unlinking at runtime are session state,
+ * like every other write this mock accepts.
+ */
+
+// The site's own languages. Env-configurable like every other site setting
+// here; a session may widen it (see /@mock-site-features).
+const DEFAULT_LANGUAGE = process.env.MOCK_SITE_DEFAULT_LANGUAGE || 'en';
+
+function availableLanguages(sessionId) {
+  const session = sessionId ? siteFeaturesFor(sessionId).languages : null;
+  if (session) return session;
+  return (process.env.MOCK_SITE_LANGUAGES || DEFAULT_LANGUAGE)
+    .split(',')
+    .map((lang) => lang.trim())
+    .filter(Boolean);
+}
+
+/**
+ * A title turned into an id, as plone.i18n's normalizer does it: lowercase,
+ * accents folded to their base letter, anything else a hyphen. Plone derives
+ * the id from the title whenever the client does not send one — Volto's add
+ * form never does — so a created page lands at a readable path instead of
+ * `untitled-document-<timestamp>`.
+ */
+function normalizeId(title) {
+  if (!title) return '';
+  return String(title)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/gi, 'ss')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 100);
+}
+
+// Plone serialises `language` as a vocabulary term. Titles are the language's
+// own name, as Plone's vocabulary gives it.
+const LANGUAGE_TITLES = { en: 'English', de: 'Deutsch', fr: 'Français', it: 'Italiano' };
+
+function languageField(token) {
+  const code = token && token !== '##DEFAULT##' ? token : DEFAULT_LANGUAGE;
+  return { token: code, title: LANGUAGE_TITLES[code] || code };
+}
+
+/**
+ * A reference to content — a path, a full URL on this server, or a UID — as the
+ * path it names, or null.
+ */
+function resolveContentReference(reference, sessionId) {
+  if (!reference) return null;
+  const ref = String(reference);
+  const asPath = (ref.startsWith('http') ? new URL(ref).pathname : ref).replace(/\/$/, '');
+  if (asPath.startsWith('/') && rawContentForComponents(asPath, sessionId)) return asPath;
+  if (uidToPathMap[ref]) return uidToPathMap[ref];
+  return (
+    allContentPaths(sessionId).find(
+      (p) => rawContentForComponents(p, sessionId)?.UID === ref,
+    ) || null
+  );
+}
+
+/** sessionId -> { multilingual, languages } */
+const sessionSiteFeatures = {};
+/** sessionId -> { [path]: groupId | null } — null is "unlinked in this session" */
+const sessionTranslationGroups = {};
+
+function siteFeaturesFor(sessionId) {
+  return sessionSiteFeatures[sessionId] || { multilingual: false, languages: null };
+}
+
+function translationGroupOf(urlPath, sessionId) {
+  const overlay = sessionId ? sessionTranslationGroups[sessionId] : undefined;
+  if (overlay && Object.prototype.hasOwnProperty.call(overlay, urlPath)) {
+    return overlay[urlPath];
+  }
+  const raw = rawContentForComponents(urlPath, sessionId);
+  return raw?.['translation-group'] || null;
+}
+
+function setTranslationGroup(sessionId, urlPath, group) {
+  if (!sessionTranslationGroups[sessionId]) sessionTranslationGroups[sessionId] = {};
+  sessionTranslationGroups[sessionId][urlPath] = group;
+}
+
+function languageOf(urlPath, sessionId) {
+  const raw = rawContentForComponents(urlPath, sessionId);
+  if (raw?.language) {
+    return typeof raw.language === 'string' ? raw.language : raw.language.token;
+  }
+  // Fall back to the language root folder the item sits in: an item created in
+  // /de is German whether or not the creator said so.
+  const root = urlPath.split('/').filter(Boolean)[0];
+  return availableLanguages().includes(root) ? root : DEFAULT_LANGUAGE;
+}
+
+/** Every content path this session can see — disk plus its own writes. */
+function allContentPaths(sessionId) {
+  const sessionPaths = sessionId ? Object.keys(sessionContent[sessionId] || {}) : [];
+  return [...new Set([...Object.keys(contentDirMap), ...sessionPaths])].filter(
+    (p) => !(sessionId && sessionDeletions[sessionId]?.has(p)),
+  );
+}
+
+/** The other members of this item's translation group. */
+function translationsOf(urlPath, baseUrl, sessionId) {
+  const group = translationGroupOf(urlPath, sessionId);
+  if (!group) return [];
+  return allContentPaths(sessionId)
+    .filter((p) => p !== urlPath && translationGroupOf(p, sessionId) === group)
+    .map((p) => ({
+      '@id': `${baseUrl}${p}`,
+      language: languageOf(p, sessionId),
+      title: rawContentForComponents(p, sessionId)?.title || p.split('/').pop(),
+    }))
+    .sort((a, b) => a.language.localeCompare(b.language));
+}
+
+function buildTranslationsComponent(cleanPath, baseUrl, sessionId) {
+  const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  return {
+    '@id': `${fullUrl}/@translations`,
+    items: translationsOf(cleanPath, baseUrl, sessionId),
+    // The language root folder this item lives under, which is what Plone
+    // reports as the root of the translation's tree.
+    root: `${baseUrl}/${languageOf(cleanPath, sessionId)}`,
+  };
+}
+
+/**
+ * Where a translation of `urlPath` into `targetLanguage` belongs.
+ *
+ * Plone answers with the nearest ancestor that HAS a translation in the target
+ * language, so a translated section keeps its shape. The language root folder
+ * is the last such ancestor, and the answer for a page directly beneath it.
+ */
+function translationLocation(urlPath, targetLanguage, baseUrl, sessionId) {
+  const parts = urlPath.split('/').filter(Boolean);
+  for (let i = parts.length - 1; i > 0; i -= 1) {
+    const ancestor = '/' + parts.slice(0, i).join('/');
+    const match = translationsOf(ancestor, baseUrl, sessionId).find(
+      (t) => t.language === targetLanguage,
+    );
+    if (match) return match['@id'];
+  }
+  return `${baseUrl}/${targetLanguage}`;
+}
+
 function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth, sessionId) {
   const hasPreviewImage = !!(rawContent.preview_image || rawContent['@type'] === 'Image');
   const children = (remainingDepth > 0 && rawContent.is_folderish !== false)
@@ -1193,6 +1355,10 @@ function generateComponents(urlPath, baseUrl, sessionId) {
     navigation: buildNavigationComponent(cleanPath, baseUrl, sessionId),
     navroot: buildNavrootComponent(cleanPath, baseUrl),
     types: buildTypesComponent(),
+    // Always built, never always sent: enrichContent only includes a component
+    // the request expanded, and Volto's api middleware drops the
+    // `translations` expander entirely on a site that is not multilingual.
+    translations: buildTranslationsComponent(cleanPath, baseUrl, sessionId),
     workflow: buildWorkflowComponent(cleanPath, baseUrl),
   };
 }
@@ -1475,7 +1641,7 @@ function getFolderChildItems(folderPath, baseUrl) {
  * middleware to add ?expand= which the request handler then expands.
  */
 function stubComponents(fullUrl) {
-  const ids = ['actions', 'aliases', 'breadcrumbs', 'contextnavigation', 'navigation', 'navroot', 'types', 'workflow'];
+  const ids = ['actions', 'aliases', 'breadcrumbs', 'contextnavigation', 'navigation', 'navroot', 'translations', 'types', 'workflow'];
   const stubs = {};
   for (const k of ids) {
     stubs[k] = { '@id': `${fullUrl}/@${k}` };
@@ -1537,6 +1703,14 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId) {
     'modified': transformed.modified || '2025-01-01T12:00:00+00:00',
     'lock': transformed.lock || { 'locked': false, 'stealable': true },
     'parent': parent,
+    // Plone serialises `language` as a vocabulary term, never the bare code a
+    // fixture writes — and Volto reads `content.language.token` throughout its
+    // multilingual views.
+    'language': languageField(
+      typeof transformed.language === 'object' && transformed.language
+        ? transformed.language.token
+        : transformed.language || languageOf(cleanPath, sessionId),
+    ),
     'items': childItems,
     'items_total': childItems.length,
     '@components': expandComponents(stubComponents(fullUrl), expandList, urlPath, baseUrl, sessionId),
@@ -2496,7 +2670,7 @@ app.post('/*', (req, res, next) => {
     // serialize through enrichContent so the response carries
     // @components / is_folderish / parent / items / etc., same as a
     // GET on the same path would.
-    const id = body.id || `untitled-document-${Date.now()}`;
+    const id = body.id || normalizeId(body.title) || `untitled-document-${Date.now()}`;
     const docPath = `${parentPath === '/' ? '' : parentPath}/${id}`.replace(/\/+/g, '/');
     const now = new Date().toISOString();
     const baseUrl = `http://localhost:${PORT}`;
@@ -2511,10 +2685,32 @@ app.post('/*', (req, res, next) => {
       modified: now,
       effective: now,
       review_state: 'published',
+      // A translation is created with the language it is FOR, and Volto sends
+      // it; without this the new page would report the language of whatever
+      // folder it happened to land in.
+      ...(body.language ? { language: body.language } : {}),
     };
 
     const sessionId = getSessionId(req);
     setSessionContent(sessionId, docPath, rawDoc);
+
+    // `translation_of` is how plone.app.multilingual creates a page already
+    // linked: the new item joins the original's translation group, so neither
+    // side needs a second request to know about the other.
+    if (body.translation_of) {
+      // Volto sends the ORIGINAL'S PATH here (Add.jsx passes
+      // flattenToAppURL(content['@id'])), while plone.app.multilingual's own
+      // examples use a UID. Accept either rather than only the one this mock
+      // found convenient.
+      const originalPath = resolveContentReference(body.translation_of, sessionId);
+      if (originalPath) {
+        const group =
+          translationGroupOf(originalPath, sessionId)
+          || `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setTranslationGroup(sessionId, originalPath, group);
+        setTranslationGroup(sessionId, docPath, group);
+      }
+    }
 
     if (process.env.DEBUG) {
       console.log(`Created Document: ${docPath}${sessionId ? ` (session: ${sessionId})` : ''}`);
@@ -2919,10 +3115,130 @@ app.get('/@site', (req, res) => {
     // languages. Env-driven so this stays configurable WITHOUT editing this
     // (submodule) file per run; guarded by our repo's translate specs so a
     // submodule resync that drops it is caught.
-    'plone.available_languages': (process.env.MOCK_SITE_LANGUAGES || 'en')
-      .split(',')
-      .map((lang) => lang.trim())
-      .filter(Boolean),
+    'plone.available_languages': availableLanguages(getSessionId(req)),
+    // What Volto gates every multilingual behaviour on: its `/` redirect, the
+    // `translations` expander it adds to content GETs, and the toolbar's
+    // Manage Translations entry. Per SESSION, so a multilingual spec gets a
+    // multilingual site while the rest of the suite — which shares this
+    // server, in parallel — goes on seeing the single-language one it was
+    // written against.
+    features: { multilingual: siteFeaturesFor(getSessionId(req)).multilingual },
+  });
+});
+
+/**
+ * POST /@mock-site-features  {multilingual, languages}
+ *
+ * Mock-only, and named so nobody mistakes it for Plone: a real site turns
+ * multilingual by installing plone.app.multilingual, which a test cannot do.
+ * Scoped to the caller's session — see the `features` note above.
+ */
+app.post('/@mock-site-features', (req, res) => {
+  const sessionId = getSessionId(req);
+  const { multilingual, languages } = req.body || {};
+  sessionSiteFeatures[sessionId] = {
+    multilingual: !!multilingual,
+    languages: Array.isArray(languages) && languages.length ? languages : null,
+  };
+  res.json(sessionSiteFeatures[sessionId]);
+});
+
+/**
+ * The @translations endpoints (plone.app.multilingual).
+ *
+ * GET    lists the group's other languages.
+ * POST   {id}        links an existing item into this item's group.
+ * DELETE {language}  drops that language out of the group.
+ *
+ * A link is symmetric because both sides end up in one group, so neither
+ * response has to carry the other's list.
+ */
+const translationsPath = (req) =>
+  (req.path.replace('/++api++', '').replace(/\/?@translations$/, '') || '/').replace(/\/+$/, '') || '/';
+
+app.get(/.*\/@translations$/, (req, res) => {
+  const cleanPath = translationsPath(req);
+  res.json(buildTranslationsComponent(cleanPath, `http://localhost:${PORT}`, getSessionId(req)));
+});
+
+app.post(/.*\/@translations$/, (req, res) => {
+  const cleanPath = translationsPath(req);
+  const sessionId = getSessionId(req);
+  const target = String(req.body?.id || '');
+  if (!target) {
+    return res.status(400).json({
+      error: { type: 'BadRequest', message: 'Property "id" is required' },
+    });
+  }
+  // Volto sends whatever the object browser gave it: a path, or a full URL on
+  // this server.
+  const targetPath = resolveContentReference(target, sessionId);
+  if (!targetPath) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `No content at ${target}` },
+    });
+  }
+  if (languageOf(targetPath, sessionId) === languageOf(cleanPath, sessionId)) {
+    return res.status(400).json({
+      error: {
+        type: 'BadRequest',
+        message: 'Both objects are in the same language',
+      },
+    });
+  }
+  // Join whichever group already exists, so linking a third language to either
+  // side of a pair joins the pair rather than splitting it.
+  const group =
+    translationGroupOf(cleanPath, sessionId) ||
+    translationGroupOf(targetPath, sessionId) ||
+    `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  setTranslationGroup(sessionId, cleanPath, group);
+  setTranslationGroup(sessionId, targetPath, group);
+  res.status(201).json(
+    buildTranslationsComponent(cleanPath, `http://localhost:${PORT}`, getSessionId(req)),
+  );
+});
+
+app.delete(/.*\/@translations$/, (req, res) => {
+  const cleanPath = translationsPath(req);
+  const sessionId = getSessionId(req);
+  const language = req.body?.language;
+  const baseUrl = `http://localhost:${PORT}`;
+  const match = translationsOf(cleanPath, baseUrl, sessionId).find(
+    (t) => t.language === language,
+  );
+  if (!match) {
+    return res.status(404).json({
+      error: {
+        type: 'NotFound',
+        message: `No translation in ${language} to unlink`,
+      },
+    });
+  }
+  // The item asked about leaves the group; the rest of the group stays
+  // together, which is what Plone does when you unlink one language.
+  setTranslationGroup(sessionId, new URL(match['@id']).pathname, null);
+  res.status(204).send();
+});
+
+/**
+ * GET /path/@translation-locator?target_language=de
+ * Where a translation of this item belongs.
+ */
+app.get(/.*\/@translation-locator$/, (req, res) => {
+  const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@translation-locator$/, '') || '/')
+    .replace(/\/+$/, '') || '/';
+  const target = req.query.target_language;
+  if (!target) {
+    return res.status(400).json({
+      error: {
+        type: 'BadRequest',
+        message: 'Property "target_language" is required',
+      },
+    });
+  }
+  res.json({
+    '@id': translationLocation(cleanPath, String(target), `http://localhost:${PORT}`, getSessionId(req)),
   });
 });
 
