@@ -49,6 +49,15 @@ describe('counterpartBlockId', () => {
     expect(counterpartBlockId(german, 'fresh', english)).toBeNull();
   });
 
+  it('has no answer when the block it came from is gone', () => {
+    // The original was deleted since the copy was made: the copy still points
+    // at it, and that pointer now names nothing. Saying "no counterpart" is
+    // the truthful answer — the alternative is asking the other pane to show a
+    // block that is not there.
+    const withoutT1 = { grid: english.grid };
+    expect(counterpartBlockId(german, 't1de', withoutT1)).toBeNull();
+  });
+
   it('has no answer for a block that is not there at all', () => {
     expect(counterpartBlockId(german, 'nonsense', english)).toBeNull();
   });

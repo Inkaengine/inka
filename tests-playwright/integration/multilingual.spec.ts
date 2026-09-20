@@ -249,35 +249,63 @@ test.describe('Multilingual editing', () => {
     await expect(compare).toBeVisible({ timeout: 20000 });
     await compare.getByRole('button', { name: 'en' }).click();
 
-    // Select a block in the page being edited.
-    const teaser = helper
-      .getIframe()
-      .locator('[data-block-uid]')
-      .filter({ hasText: 'We design in English.' })
-      .last();
-    await expect(teaser).toBeVisible({ timeout: 20000 });
-    await teaser.click();
-    const selectedUid = await teaser.getAttribute('data-block-uid');
-
-    const pane = page.locator('.source-preview-pane');
+    // Pick the block by id, not by what it looks like: each frontend renders
+    // this page its own way, and the test is about the pairing.
     const token = helper.authToken;
     const german = await (
       await page.request.get(`${URLS.mockApi}/de/dienstleistungen`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       })
     ).json();
-    const canonicalOfSelected = (() => {
-      const grid: any = Object.values(german.blocks).find(
-        (b: any) => b['@type'] === 'gridBlock',
-      );
-      return grid.blocks[selectedUid!]?.['@canonical'];
-    })();
-    // Polled, not read once: selection settles a beat after the click, and
-    // until it does the pane is still showing the previous block's
-    // counterpart.
+    const grid: any = Object.values(german.blocks).find(
+      (b: any) => b['@type'] === 'gridBlock',
+    );
+    const [teaserUid] = grid.blocks_layout.items as string[];
+    const canonicalOfSelected = grid.blocks[teaserUid]['@canonical'];
+    expect(canonicalOfSelected, 'the copy records where it came from').toBeTruthy();
+
+    const teaser = helper.getIframe().locator(`[data-block-uid="${teaserUid}"]`).first();
+    await expect(teaser).toBeVisible({ timeout: 20000 });
+    await teaser.click();
+
+    // The other pane shows the block this one was copied from. Polled, and
+    // generously: selection settles a beat after the click, and a frontend in
+    // dev can take its time.
+    const pane = page.locator('.source-preview-pane');
     await expect
-      .poll(async () => pane.getAttribute('data-showing-block'), { timeout: 15000 })
+      .poll(async () => pane.getAttribute('data-showing-block'), { timeout: 30000 })
       .toBe(canonicalOfSelected);
+  });
+
+  test('a block with no counterpart in the other language says so', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    // /en/about and /de/ueber-uns were LINKED, not copied from one another, so
+    // no block of either records where it came from — there is no pairing to
+    // follow. The same happens to a block added after a copy, or one whose
+    // original has since been deleted.
+    await page.goto(`${helper.adminUrl}/en/about/edit`);
+    const compare = page.locator('.compare-languages');
+    await expect(compare).toBeVisible({ timeout: 20000 });
+    await compare.getByRole('button', { name: 'de' }).click();
+
+    await helper
+      .getIframe()
+      .locator('[data-block-uid]')
+      .filter({ hasText: 'We build things in English.' })
+      .last()
+      .click();
+
+    await expect(
+      page.locator('.compare-no-counterpart'),
+      'the editor is told, rather than left with a pane that looks broken',
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.source-preview-pane')).toHaveAttribute(
+      'data-showing-block',
+      '',
+    );
   });
 
   test('a container says when the blocks inside it are still untranslated', async ({

@@ -936,6 +936,23 @@ const Iframe = (props) => {
   );
   const [compareSelectedBlock, setCompareSelectedBlock] = useState(null);
 
+  // The block next door that corresponds to the selected one. Null when there
+  // is none: the block was added after the copy, the one it came from has been
+  // deleted since, or the two pages were linked rather than copied and share
+  // no pairing at all.
+  const counterpartOfSelected = useMemo(
+    () =>
+      compareContent && selectedBlock
+        ? counterpartBlockId(
+            properties?.blocks,
+            selectedBlock,
+            compareContent?.blocks,
+            buildIdFieldMap(config.blocks.blocksConfig, intl),
+          )
+        : null,
+    [compareContent, selectedBlock, properties?.blocks, intl],
+  );
+
   const comparePreviewUrl = useMemo(() => {
     const translation = translations.find((t) => t.language === compareLanguage);
     return translation
@@ -5424,6 +5441,11 @@ const Iframe = (props) => {
       {isEditMode && translations.length > 0 && (
         <div className="compare-languages" data-testid="compare-languages">
           <span>Compare with</span>
+          {compareLanguage && selectedBlock && !counterpartOfSelected && (
+            <span className="compare-no-counterpart" data-testid="no-counterpart">
+              {`This block has no counterpart in ${compareLanguage}`}
+            </span>
+          )}
           {translations.map((translation) => (
             <button
               key={translation.language}
@@ -5469,16 +5491,7 @@ const Iframe = (props) => {
               // Which block of the other language is being shown: the
               // counterpart of the one selected next door, or nothing when the
               // selected block was added after the copy.
-              data-showing-block={
-                (compareContent && selectedBlock
-                  ? counterpartBlockId(
-                      properties?.blocks,
-                      selectedBlock,
-                      compareContent?.blocks,
-                      buildIdFieldMap(config.blocks.blocksConfig, intl),
-                    )
-                  : null) || ''
-              }
+              data-showing-block={counterpartOfSelected || ''}
               onClick={() => setSelectedPane('compare')}
               onKeyDown={(e) => e.key === 'Enter' && setSelectedPane('compare')}
               role="button"
@@ -5499,16 +5512,7 @@ const Iframe = (props) => {
                 // `@canonical`, which the copy recorded. A block added since
                 // the copy has no counterpart, and nothing lights up: that is
                 // itself worth seeing, because the block is new.
-                showBlock={
-                  compareContent && selectedBlock
-                    ? counterpartBlockId(
-                        properties?.blocks,
-                        selectedBlock,
-                        compareContent?.blocks,
-                        buildIdFieldMap(config.blocks.blocksConfig, intl),
-                      )
-                    : null
-                }
+                showBlock={counterpartOfSelected}
                 onSelectBlock={(uid) => {
                   // Only when the editor is actually IN that pane. The pane
                   // also echoes back the selection we drive into it from the

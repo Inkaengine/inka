@@ -193,3 +193,11 @@
   border-bottom: 1px solid #ddd;
   background: #f7f9fb;
 }
+
+/* Said out loud, because the other pane going quiet looks like a fault:
+   this block is not paired with anything in the language beside it. */
+.compare-no-counterpart {
+  margin-left: auto;
+  color: #8a6d3b;
+  font-style: italic;
+}
