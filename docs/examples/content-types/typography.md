@@ -103,7 +103,15 @@ Paragraph text (p, 24/33px) -> Lorem ipsum dolor sit amet, consetetur sadipscing
 
 <block type="listing" data-json='{"block":"875e2811-edb6-4842-8cc0-246fa1be6f58","headline":"Heading (H2, 33/42px)","headlineTag":"h2","variation":"default","query":[],"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["File","Document"]}],"sort_on":"effective","sort_order":"descending","sort_order_boolean":"descending"}}' />
 
-<block type="image" data-json='{"align":"center","image_field":"image","size":"l","title":"Caption Title (14/18px). Image","url":"./image-dark","allow_image_download":false,"description":"Caption Description (14/18px). The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<block type="image">
+
+Caption Description (14/18px). The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](./image-dark "Caption Title (14/18px). Image")
+
+<fields image_field="image" />
+
+</block>
 
 <block type="button" inneralign="left" title="Button text (button, 18/24px)" />
 

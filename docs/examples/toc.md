@@ -58,7 +58,15 @@ Renders a table of contents generated from heading blocks on the current page. I
 
 ---
 
-<block type="image" align="wide" copyright_and_sources="Copyright: unsplash.com" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="./content-types/image-dark" styles:size:noprefix="large" />
+<block type="image">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./content-types/image-dark "Title Image")
+
+<fields align="wide" copyright_and_sources="Copyright: unsplash.com" styles:size:noprefix="large" />
+
+</block>
 
 <block type="introduction">
 

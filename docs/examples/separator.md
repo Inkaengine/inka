@@ -75,7 +75,9 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="image" align="center" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="./content-types/image-dark" />
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./content-types/image-dark "Title Image")
 
 <block type="separator">
 
@@ -85,7 +87,15 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="image" align="right" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="./content-types/image-dark" styles:size:noprefix="large" />
+<block type="image">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./content-types/image-dark "Title Image")
+
+<fields align="right" styles:size:noprefix="large" />
+
+</block>
 
 ## Text Heading H2
 
@@ -99,7 +109,15 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="image" align="left" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="m" title="Title Image" url="./content-types/image-dark" styles:size:noprefix="medium" />
+<block type="image">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./content-types/image-dark "Title Image")
+
+<fields align="left" size="m" styles:size:noprefix="medium" />
+
+</block>
 
 ### Text Heading H3
 
@@ -113,7 +131,15 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="image" align="left" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="s" title="Title Image" url="./content-types/image-dark" styles:size:noprefix="small" />
+<block type="image">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./content-types/image-dark "Title Image")
+
+<fields align="left" size="s" styles:size:noprefix="small" />
+
+</block>
 
 ### Text Heading H3
 
