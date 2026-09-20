@@ -1982,6 +1982,42 @@ function cloneBlockForTranslation(block, oldId, uuidGenerator, idFieldMap) {
   return cloned;
 }
 
+/**
+ * The same blocks, every one of them read-only — at every depth.
+ *
+ * Not a new kind of frame: read-only is already a property of a BLOCK, which
+ * hydra.js honours by collecting no editable fields for it and the sidebar by
+ * showing its settings as text. A page that may be read but not changed — a
+ * compared language, an old version — is that property applied to all of it.
+ *
+ * @param {Object} blocks
+ * @param {Object} [idFieldMap] - which fields hold children, per block type
+ * @returns {Object} a copy; the original is untouched
+ */
+export function withAllBlocksReadOnly(blocks, idFieldMap = null) {
+  const out = {};
+  for (const [id, block] of Object.entries(blocks || {})) {
+    out[id] = markBlockReadOnly(block, idFieldMap);
+  }
+  return out;
+}
+
+function markBlockReadOnly(block, idFieldMap) {
+  const marked = { ...block, readOnly: true };
+  for (const field of getChildFields(marked, idFieldMap, { allObjectLists: true })) {
+    const children = [];
+    for (const { id, block: child } of getChildBlockEntries(block, field)) {
+      children.push({ id, block: markBlockReadOnly(child, idFieldMap) });
+    }
+    if (!field.isObjectList) {
+      // Regions share one map; rebuild it rather than mutating the original's.
+      marked.blocks = { ...marked.blocks };
+    }
+    setChildBlockEntries(marked, field, children);
+  }
+  return marked;
+}
+
 // How loud each status is. A container holding both an error and an
 // untranslated copy shows the error: one stops a save, the other is work still
 // to do.
