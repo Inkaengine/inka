@@ -226,6 +226,60 @@ test.describe('Multilingual editing', () => {
     await expect(german.locator('[contenteditable="true"]')).toHaveCount(0);
   });
 
+  test('selecting a block shows the same block in the other language', async ({
+    page,
+  }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    // A translation made here, so its blocks are copies that record where they
+    // came from — the pairing Volto writes and never reads.
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    await page
+      .locator('#page-manage-translations tbody tr', { hasText: /deutsch/i })
+      .locator('a[href$="/create-translation"]')
+      .click();
+    await page.locator('#page-add #field-title').fill('Dienstleistungen');
+    await page.locator('#toolbar-save').click();
+    await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+
+    const compare = page.locator('.compare-languages');
+    await expect(compare).toBeVisible({ timeout: 20000 });
+    await compare.getByRole('button', { name: 'en' }).click();
+
+    // Select a block in the page being edited.
+    const teaser = helper
+      .getIframe()
+      .locator('[data-block-uid]')
+      .filter({ hasText: 'We design in English.' })
+      .last();
+    await expect(teaser).toBeVisible({ timeout: 20000 });
+    await teaser.click();
+    const selectedUid = await teaser.getAttribute('data-block-uid');
+
+    const pane = page.locator('.source-preview-pane');
+    const token = helper.authToken;
+    const german = await (
+      await page.request.get(`${URLS.mockApi}/de/dienstleistungen`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      })
+    ).json();
+    const canonicalOfSelected = (() => {
+      const grid: any = Object.values(german.blocks).find(
+        (b: any) => b['@type'] === 'gridBlock',
+      );
+      return grid.blocks[selectedUid!]?.['@canonical'];
+    })();
+    // Polled, not read once: selection settles a beat after the click, and
+    // until it does the pane is still showing the previous block's
+    // counterpart.
+    await expect
+      .poll(async () => pane.getAttribute('data-showing-block'), { timeout: 15000 })
+      .toBe(canonicalOfSelected);
+  });
+
   test('a container says when the blocks inside it are still untranslated', async ({
     page,
   }) => {

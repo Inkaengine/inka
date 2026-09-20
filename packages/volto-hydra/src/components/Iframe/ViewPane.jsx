@@ -35,6 +35,10 @@ const ViewPane = ({
   // the bridge collecting a single editable field. See withAllBlocksReadOnly.
   selectable = false,
   onSelectBlock,
+  // Show this block: the counterpart of whatever is selected next door. The
+  // bridge scrolls it into view as part of selecting it, which is what makes
+  // the two panes follow each other.
+  showBlock = null,
 }) => {
   const ref = useRef(null);
   // Latest-ref, so the push effect never re-runs just for a new closure — it
@@ -98,6 +102,14 @@ const ViewPane = ({
       window.removeEventListener('message', onMessage);
     };
   }, [content, frameLoaded, intl]);
+
+  useEffect(() => {
+    if (!selectable || !frameLoaded) return;
+    ref.current?.contentWindow?.postMessage(
+      { type: 'SELECT_BLOCK', uid: showBlock, method: 'select' },
+      '*',
+    );
+  }, [showBlock, selectable, frameLoaded]);
 
   if (!mounted) return null;
   return (

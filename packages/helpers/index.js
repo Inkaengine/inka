@@ -1983,6 +1983,65 @@ function cloneBlockForTranslation(block, oldId, uuidGenerator, idFieldMap) {
 }
 
 /**
+ * The same block, in the other language.
+ *
+ * A translation's blocks are copies, and each records `@canonical`: the id of
+ * the block it came from. That is the whole pairing — and it reads both ways,
+ * because either the page you are looking at is the copy, or the one beside it
+ * is. Volto writes this and never reads it; here it is what lets a selection,
+ * or a scroll, mean the same thing on both sides.
+ *
+ * A block added after the copy has no counterpart, and gets null: worth saying
+ * plainly, because it tells the translator the block is new.
+ *
+ * @param {Object} blocks - the page the block is on (any depth)
+ * @param {string} blockId - the block in question
+ * @param {Object} otherBlocks - the page beside it
+ * @param {Object} [idFieldMap] - which fields hold children, per block type
+ * @returns {string|null}
+ */
+export function counterpartBlockId(blocks, blockId, otherBlocks, idFieldMap = null) {
+  const here = findBlockAnywhere(blocks, blockId, idFieldMap);
+  if (!here) return null;
+
+  // This page is the copy: it says where it came from.
+  const canonical = here['@canonical'];
+  if (canonical && findBlockAnywhere(otherBlocks, canonical, idFieldMap)) {
+    return canonical;
+  }
+
+  // Or the page beside it is the copy, and one of its blocks came from this.
+  let found = null;
+  walkBlocks(otherBlocks, idFieldMap, (id, block) => {
+    if (!found && block?.['@canonical'] === blockId) found = id;
+  });
+  return found;
+}
+
+/** A block by id, wherever it is nested. */
+function findBlockAnywhere(blocks, blockId, idFieldMap) {
+  let found = null;
+  walkBlocks(blocks, idFieldMap, (id, block) => {
+    if (!found && id === blockId) found = block;
+  });
+  return found;
+}
+
+/** Every block of a page, at every depth, through the container API. */
+function walkBlocks(blocks, idFieldMap, visit) {
+  for (const [id, block] of Object.entries(blocks || {})) {
+    visit(id, block);
+    for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+      const nested = {};
+      for (const entry of getChildBlockEntries(block, field)) {
+        nested[entry.id] = entry.block;
+      }
+      walkBlocks(nested, idFieldMap, visit);
+    }
+  }
+}
+
+/**
  * The same blocks, every one of them read-only — at every depth.
  *
  * Not a new kind of frame: read-only is already a property of a BLOCK, which
