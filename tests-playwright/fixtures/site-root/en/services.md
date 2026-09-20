@@ -7,6 +7,9 @@ description: Services
 review_state: published
 is_folderish: false
 language: en
+subjects:
+  - design
+  - build
 effective: 2025-01-01T00:00:00
 blocks-matched: |
   <block type="slate" value="${p,h*/slate}" />

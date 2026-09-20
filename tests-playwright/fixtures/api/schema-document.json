@@ -56,6 +56,9 @@
         "vocabulary": {
           "@id": "plone.app.vocabularies.Keywords"
         }
+      },
+      "multilingual_options": {
+        "language_independent": true
       }
     }
   },
@@ -69,6 +72,13 @@
       "fields": [
         "title",
         "description"
+      ]
+    },
+    {
+      "id": "categorization",
+      "title": "Categorization",
+      "fields": [
+        "subjects"
       ]
     }
   ],

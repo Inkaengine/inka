@@ -47,7 +47,11 @@ import {
 import { v4 as uuid } from 'uuid';
 import { toast } from 'react-toastify';
 import { stripEmptyBlocks, ensureAllContainersHaveBlocks } from '../../../../../utils/blockPath';
-import { stripFixedInsideSlots } from '@volto-hydra/helpers';
+import {
+  stripFixedInsideSlots,
+  inheritedLanguageFields,
+  withFieldsReadOnly,
+} from '@volto-hydra/helpers';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
 import {
@@ -64,9 +68,36 @@ import config from '@plone/volto/registry';
 import withSaveAsDraft from '@plone/volto/helpers/Utils/withSaveAsDraft';
 import SlotRenderer from '@plone/volto/components/theme/SlotRenderer/SlotRenderer';
 import Iframe from '../../../../../components/Iframe/View';
+import { ReadOnlyField } from '../../../../../components/Sidebar/ReadOnlyForm';
 import { validateTemplatePlaceholders } from '../../../../../utils/formDataValidation';
 import { validateBlocksAgainstSchemas } from '../../../../../utils/validateBlocks';
 import './styles.css';
+
+/**
+ * A field, or its value where the field may be seen but not changed.
+ *
+ * HYDRA: `readOnly` is Inka's word for this already — a BLOCK carries it, and
+ * the sidebar answers by rendering its values as text rather than a disabled
+ * form, because a disabled form is only as locked as its least careful widget
+ * (Volto's object browser renders a typeable input for an empty field whatever
+ * `isDisabled` says). This is that same flag on a FIELD, answered the same way:
+ * the value, not a control.
+ *
+ * What needs it: a language-independent field on a translation, which inherits
+ * the canonical's value, so an input would offer a second home for it. Volto's
+ * own answer there is CSS — `pointer-events: none` and `opacity: 0.3`, under
+ * the comment `Fake "disabled" field` — which leaves the input focusable by
+ * keyboard and posted on save.
+ *
+ * Decided before the widget lookup deliberately: `widgets.id` would otherwise
+ * claim a field like `subjects` first, whatever the schema asked for.
+ */
+const FormField = (props) =>
+  props.readOnly ? (
+    <ReadOnlyField id={props.id} schema={props} value={props.value} />
+  ) : (
+    <Field {...props} />
+  );
 
 /**
  * Form container class.
@@ -824,7 +855,20 @@ class Form extends Component {
     }
     const navRoot = this._stableNavRoot;
     const formData = this.state.formData;
-    const schema = this.removeBlocksLayoutFields(originalSchema);
+    // HYDRA: a language-independent field is ONE value shared by a translation
+    // group, so it has one home — the page in the site's default language. On a
+    // translation it is shown, not asked for again, the same way the add form
+    // shows it while the translation is being created. (Volto marks these
+    // fields only on that add form and lets every translation type into them
+    // afterwards, which offers a home per language.)
+    const schema = withFieldsReadOnly(
+      this.removeBlocksLayoutFields(originalSchema),
+      inheritedLanguageFields(
+        originalSchema,
+        this.props.content,
+        this.props.defaultLanguage,
+      ),
+    );
     const Container =
       config.getComponent({ name: 'Container' }).component || SemanticContainer;
 
@@ -940,7 +984,7 @@ class Form extends Component {
                             >
                               <Segment className="attached">
                                 {map(fieldset.fields, (field, index) => (
-                                  <Field
+                                  <FormField
                                     {...schema.properties[field]}
                                     id={field}
                                     fieldSet={fieldset.title.toLowerCase()}
@@ -1023,7 +1067,7 @@ class Form extends Component {
                           </Message>
                         ),
                         ...map(item.fields, (field, index) => (
-                          <Field
+                          <FormField
                             {...schema.properties[field]}
                             id={field}
                             formData={formData}
@@ -1078,7 +1122,7 @@ class Form extends Component {
                     />
                   )}
                   {map(schema.fieldsets[0].fields, (field) => (
-                    <Field
+                    <FormField
                       {...schema.properties[field]}
                       id={field}
                       value={formData?.[field]}
@@ -1145,6 +1189,8 @@ export default compose(
   connect(
     (state, props) => ({
       content: state.content.data,
+      // Where a language-independent value lives: the site's default language.
+      defaultLanguage: state.site?.data?.['plone.default_language'],
       globalData: state.form?.global,
       uiState: state.form?.ui,
       metadataFieldsets: state.sidebar?.metadataFieldsets,

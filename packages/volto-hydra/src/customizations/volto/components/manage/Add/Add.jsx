@@ -28,7 +28,10 @@ import Toast from '@plone/volto/components/manage/Toast/Toast';
 import { Form } from '@plone/volto/components/manage/Form';
 
 import { getBaseUrl, flattenToAppURL } from '@plone/volto/helpers/Url/Url';
-import { cloneBlocksForTranslation } from '@volto-hydra/helpers';
+import {
+  cloneBlocksForTranslation,
+  withFieldsReadOnly,
+} from '@volto-hydra/helpers';
 import { buildIdFieldMap } from '../../../../../utils/blockPath';
 import {
   getBlocksFieldname,
@@ -351,15 +354,28 @@ class Add extends Component {
         }
       }
 
+      const languageIndependentFields = translationObject
+        ? getLanguageIndependentFields(this.props.schema)
+        : [];
+
       const lifData = () => {
         const data = {};
-        if (translationObject) {
-          getLanguageIndependentFields(this.props.schema).forEach(
-            (lif) => (data[lif] = translationObject[lif]),
-          );
-        }
+        languageIndependentFields.forEach(
+          (lif) => (data[lif] = translationObject[lif]),
+        );
         return data;
       };
+
+      // HYDRA: a language-independent field is the SAME value in every
+      // language, so the translation inherits it — shown, so the translator
+      // knows what the tags are, but not editable, because there is one place
+      // that value lives. Volto only fades these with CSS and still posts
+      // whatever the input holds; `readOnly` — the same flag a locked block
+      // carries — means the form renders the value instead of a control.
+      const formSchema = withFieldsReadOnly(
+        this.props.schema,
+        languageIndependentFields,
+      );
 
       const pageAdd = (
         <div id="page-add">
@@ -374,7 +390,7 @@ class Add extends Component {
             navRoot={
               this.props.content?.['@components']?.navroot?.navroot || {}
             }
-            schema={this.props.schema}
+            schema={formSchema}
             type={this.props.type}
             formData={
               this.props.location?.state?.initialFormData || {

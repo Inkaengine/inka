@@ -2077,6 +2077,73 @@ function markBlockReadOnly(block, idFieldMap) {
   return marked;
 }
 
+/**
+ * The same schema, with the named fields shown but not editable.
+ *
+ * `readOnly` is already the word for this: a BLOCK carries it (see
+ * isBlockReadonly, withAllBlocksReadOnly) and the sidebar answers by rendering
+ * its values as text rather than a disabled form. This is the same flag one
+ * level down, on a field — the translation inherits the canonical's tags, so
+ * asking for them again would offer two homes for one value.
+ *
+ * Not `mode: 'readonly'`, though Volto's Field reads `mode` for `hidden`:
+ * `mode` is already overloaded per widget (object_browser reads it as
+ * link/image/multiple), so a read-only object_browser field could not have said
+ * both.
+ *
+ * @param {Object} schema - a Volto schema (fieldsets / properties / required)
+ * @param {string[]} fieldIds - the fields to show read-only
+ * @returns {Object} a copy; the original is untouched
+ */
+export function withFieldsReadOnly(schema, fieldIds) {
+  if (!schema || !fieldIds?.length) return schema;
+  const properties = { ...schema.properties };
+  for (const id of fieldIds) {
+    // A field the schema doesn't have is not ours to invent.
+    if (!properties[id]) continue;
+    properties[id] = { ...properties[id], readOnly: true };
+  }
+  return { ...schema, properties };
+}
+
+/**
+ * Which of a page's fields are inherited from the language it was translated
+ * from, rather than owned by the page itself.
+ *
+ * A language-independent field is ONE value shared by a translation group, so
+ * it needs one home: the page in the site's default language. Its translations
+ * show the value and send the editor there. Volto marks these fields only while
+ * a translation is being created — its `babel-view` class is set in Add.jsx and
+ * nowhere else — and leaves them editable on every translation afterwards,
+ * which is as many homes as there are languages.
+ *
+ * A page in another language that is nobody's translation inherits nothing: it
+ * owns its own value.
+ *
+ * @param {Object} schema - the content type's schema
+ * @param {Object} content - the page (language, @components.translations)
+ * @param {string} defaultLanguage - the site's default language
+ * @returns {string[]} field ids, empty when this page owns everything
+ */
+export function inheritedLanguageFields(schema, content, defaultLanguage) {
+  if (!schema?.properties || !content || !defaultLanguage) return [];
+
+  const language =
+    typeof content.language === 'object'
+      ? content.language?.token
+      : content.language;
+  if (!language || language === defaultLanguage) return [];
+
+  // No translations expander means a single-language site, and an empty one
+  // means a page that stands alone — neither inherits from anything.
+  const translations = content['@components']?.translations?.items;
+  if (!translations?.length) return [];
+
+  return Object.entries(schema.properties)
+    .filter(([, def]) => def?.multilingual_options?.language_independent)
+    .map(([id]) => id);
+}
+
 // How loud each status is. A container holding both an error and an
 // untranslated copy shows the error: one stops a save, the other is work still
 // to do.

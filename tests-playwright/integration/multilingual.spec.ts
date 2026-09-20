@@ -128,6 +128,61 @@ test.describe('Multilingual editing', () => {
       .toBe(0);
   });
 
+  test('a language-independent field is inherited, not asked for again', async ({
+    page,
+  }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    await page
+      .locator('#page-manage-translations tbody tr', { hasText: /deutsch/i })
+      .locator('a[href$="/create-translation"]')
+      .click();
+    await expect(page).toHaveURL(/\/de\/add\?type=/, { timeout: 15000 });
+
+    // Tags are the same in every language, so the schema says so and the form
+    // inherits them: the translator SEES the canonical's tags, and has nothing
+    // to type — read-only here means the value is rendered, not an input that
+    // is merely faded (which is all Volto's `pointer-events: none` does).
+    await page
+      .locator('#page-add .formtabs .item', { hasText: 'Categorization' })
+      .click();
+    const tags = page.locator('#page-add .field-wrapper-subjects');
+    await expect(
+      tags,
+      'the field is marked as one the translation inherits',
+    ).toHaveClass(/language-independent-field/, { timeout: 15000 });
+    await expect(tags, "the canonical's tags, carried over").toContainText(
+      'design',
+    );
+    await expect(tags).toContainText('build');
+    await expect(
+      tags.locator('input, textarea, [contenteditable="true"]'),
+      'nothing to type into: there is one home for this value',
+    ).toHaveCount(0);
+
+    await page
+      .locator('#page-add .formtabs .item', { hasText: 'Default' })
+      .click();
+    await page.locator('#page-add #field-title').fill('Dienstleistungen');
+    await page.locator('#toolbar-save').click();
+    await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+
+    // And the value came across without anyone typing it.
+    const german = await (
+      await page.request.get(`${URLS.mockApi}/de/dienstleistungen`, {
+        headers: {
+          Authorization: `Bearer ${helper.authToken}`,
+          Accept: 'application/json',
+        },
+      })
+    ).json();
+    expect(german.subjects?.sort()).toEqual(['build', 'design']);
+  });
+
   test('translating a page creates it linked, and lands in the editor', async ({
     page,
   }) => {
@@ -190,6 +245,7 @@ test.describe('Multilingual editing', () => {
       expect(sourceGrid.childIds).toContain(copy.grid.blocks[childId]['@canonical']);
     }
   });
+
 
   test('editing a page can show it in another language, side by side', async ({
     page,
@@ -497,5 +553,42 @@ test.describe('Multilingual editing', () => {
       'href',
       '/de',
     );
+  });
+
+
+  test('a shared field is inherited on a translation, and owned by the default language', async ({
+    page,
+  }) => {
+    // The add form shows a language-independent field as inherited. It is the
+    // same value afterwards — one value for the whole translation group — so
+    // the edit form has to say the same thing, or the editor gets a second
+    // place to type it that quietly disagrees with the first.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/de/ueber-uns/edit`);
+    await helper.openSidebarTab('Page');
+    const germanTags = page.locator('#sidebar-metadata .field-wrapper-subjects');
+    await expect(germanTags, 'the translation inherits the tags').toHaveClass(
+      /language-independent-field/,
+      { timeout: 20000 },
+    );
+    await expect(germanTags).toContainText('design');
+    await expect(
+      germanTags.locator('input, textarea'),
+      'nothing to type into on a translation',
+    ).toHaveCount(0);
+
+    // The page in the site's default language is where that value lives, so
+    // there it is an ordinary field.
+    await page.goto(`${helper.adminUrl}/en/about/edit`);
+    await helper.openSidebarTab('Page');
+    const englishTags = page.locator('#sidebar-metadata .field-wrapper-subjects');
+    await expect(
+      englishTags.locator('input').first(),
+      'the default language owns it, and can change it',
+    ).toBeVisible({ timeout: 20000 });
+    await expect(englishTags).not.toHaveClass(/readonly-field/);
   });
 });
