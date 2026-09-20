@@ -38,6 +38,8 @@ import ReadOnlyForm from './ReadOnlyForm';
 import { getBlockById, updateBlockById, getResolvedSchema, getCommonAncestor } from '../../utils/blockPath';
 import { HydraSchemaProvider } from '../../context';
 import { getConvertibleTypes, convertBlockType, findTypeField } from '../../utils/blockSync';
+import { nestedStatus } from '@volto-hydra/helpers';
+import { buildIdFieldMap } from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isBlockReadonly } from '@volto-hydra/helpers';
 import { flattenToAppURL } from '@plone/volto/helpers';
@@ -171,8 +173,26 @@ const getFilteredBlockSchema = (blockType, intl, blockPathMap, blockId, blockDat
 // dependency-free ./templateSettingsSchema module so it can be unit-tested without the
 // React/Volto component tree. Imported at the top of this file.
 
+/** What the marker says out loud. */
+function nestedStatusLabel({ status, count }) {
+  const what =
+    status === 'error'
+      ? 'could not be saved'
+      : status === 'warning'
+        ? 'need attention'
+        : 'are not translated yet';
+  const what1 =
+    status === 'error'
+      ? 'could not be saved'
+      : status === 'warning'
+        ? 'needs attention'
+        : 'is not translated yet';
+  return count === 1 ? `1 block inside ${what1}` : `${count} blocks inside ${what}`;
+}
+
 const ParentBlockSection = ({
   blocksErrors = {},
+  untranslatedIds,
   blockId,
   blockType,
   blockData,
@@ -195,6 +215,24 @@ const ParentBlockSection = ({
 }) => {
   // Get intl from context if not passed (needed for getTemplateInstanceSchema)
   const contextIntl = useIntl();
+  // Errors are per block id already; untranslated copies are worked out by the
+  // form (it is the page that knows what it was translated from).
+  const nested = React.useMemo(
+    () =>
+      nestedStatus(blockData, {
+        statuses: {
+          ...Object.fromEntries(
+            Object.keys(blocksErrors || {}).map((id) => [id, 'error']),
+          ),
+          ...(untranslatedIds || []).reduce(
+            (acc, id) => ({ ...acc, [id]: 'untranslated' }),
+            {},
+          ),
+        },
+        idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, intl || contextIntl),
+      }),
+    [blockData, blocksErrors, untranslatedIds, intl, contextIntl],
+  );
   // Store current block data in liveBlockDataRef on every render
   // This ensures child schemaEnhancers can see parent's current data
   if (liveBlockDataRef && blockData) {
@@ -289,6 +327,20 @@ const ParentBlockSection = ({
           >
             {title}
           </button>
+          {/* What the blocks INSIDE need. A blind is collapsed, so a teaser
+              three levels down that refuses to save — or still holds the
+              language it was copied from — is invisible until someone goes
+              looking. One marker, whatever the reason: the status it shows is
+              the worst one under it. */}
+          {nested && (
+            <span
+              className={`nested-status nested-status--${nested.status}`}
+              data-nested-status={nested.status}
+              data-nested-count={nested.count}
+              title={nestedStatusLabel(nested)}
+              aria-label={nestedStatusLabel(nested)}
+            />
+          )}
         </div>
         <div className="block-actions-menu" style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
           {/* Toolbar action buttons (e.g., add row/column for tables) */}
@@ -647,6 +699,7 @@ const ParentBlockSection = ({
  * Renders the parent chain for the selected block with settings forms
  */
 const ParentBlocksWidget = ({
+  untranslatedIds,
   selectedBlock,
   multiSelected = [],
   // blockId → { field: [messages] }, from the last refused save. Volto's
@@ -853,6 +906,7 @@ const ParentBlocksWidget = ({
               <ParentBlockSection
                 key={parentId}
                 blocksErrors={blocksErrors}
+                untranslatedIds={untranslatedIds}
                 blockId={parentId}
                 blockType={parentType}
                 blockData={parentData}
@@ -880,6 +934,7 @@ const ParentBlocksWidget = ({
           <ParentBlockSection
             key={selectedBlock}
             blocksErrors={blocksErrors}
+            untranslatedIds={untranslatedIds}
             blockId={selectedBlock}
             blockType={currentBlockType}
             blockData={currentBlockData}
