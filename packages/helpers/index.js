@@ -1908,6 +1908,234 @@ export function cloneBlockFilteringNested(block, uuidGenerator) {
 }
 
 /**
+ * Copy a page's blocks for a translation: every block, at every depth, under a
+ * new id.
+ *
+ * Volto's own copy walks blocks_layout and renames what it finds there. That
+ * leaves a container's children with the ids they had, so one uid names a block
+ * on two pages at once — and everything that addresses a block by uid
+ * (selection, inline editing, the bridge) has no way to tell which page is
+ * meant. Children are reached here through the SAME container API the editor
+ * uses everywhere else, so regions and object_list children are both covered,
+ * however deep they nest.
+ *
+ * Each copy records `@canonical`: the id of the block it came from. That is the
+ * only link back to the original, and what lets a translator be shown which
+ * blocks still hold the source language.
+ *
+ * @param {Object} blocks - The original page's blocks
+ * @param {Array} layout - The original page's blocks_layout items
+ * @param {Function} uuidGenerator - Function to generate UUIDs
+ * @returns {{blocks: Object, layout: Array}} The copy
+ */
+export function cloneBlocksForTranslation(
+  blocks,
+  layout,
+  uuidGenerator = generateUUID,
+  idFieldMap = null,
+) {
+  const newBlocks = {};
+  const newLayout = [];
+
+  for (const oldId of layout || []) {
+    const block = blocks?.[oldId];
+    if (!block) continue;
+    const newId = uuidGenerator();
+    newLayout.push(newId);
+    newBlocks[newId] = cloneBlockForTranslation(
+      block,
+      oldId,
+      uuidGenerator,
+      idFieldMap,
+    );
+  }
+
+  return { blocks: newBlocks, layout: newLayout };
+}
+
+/** One block and everything under it, copied under new ids. */
+function cloneBlockForTranslation(block, oldId, uuidGenerator, idFieldMap) {
+  const cloned = { ...block, '@canonical': oldId };
+
+  const fields = getChildFields(cloned, idFieldMap, { allObjectLists: true });
+  if (fields.length === 0) return cloned;
+
+  // Regions share one `blocks` map, so it is rebuilt once; object_list fields
+  // are independent arrays, rewritten per field.
+  if (fields.some((f) => !f.isObjectList)) {
+    cloned.blocks = {};
+    cloned.blocks_layout = {};
+  }
+
+  for (const field of fields) {
+    const copies = [];
+    // Read from the ORIGINAL: `cloned.blocks` may already have been reset.
+    for (const { id, block: child } of getChildBlockEntries(block, field)) {
+      copies.push({
+        id: uuidGenerator(),
+        block: cloneBlockForTranslation(child, id, uuidGenerator, idFieldMap),
+      });
+    }
+    setChildBlockEntries(cloned, field, copies);
+  }
+
+  return cloned;
+}
+
+// How loud each status is. A container holding both an error and an
+// untranslated copy shows the error: one stops a save, the other is work still
+// to do.
+const NESTED_STATUS_SEVERITY = { error: 3, warning: 2, untranslated: 1 };
+
+/**
+ * What the blocks INSIDE this one need, if anything.
+ *
+ * A container's blind in the sidebar is collapsed, so whatever is wrong three
+ * levels down is invisible until the editor goes looking. Given a status per
+ * block id — a refused save, a copy still in the language it came from — this
+ * answers "does anything in here need attention?" over every descendant,
+ * through the same container API the editor addresses blocks with.
+ *
+ * Deliberately NOT about the block itself: a blind speaks for what it hides.
+ *
+ * @param {Object} block - the container to look inside
+ * @param {Object} options.statuses - { [blockId]: 'error' | 'warning' | 'untranslated' }
+ * @param {Object} [options.idFieldMap] - which fields hold children, per type
+ * @returns {{status: string, count: number}|null}
+ */
+export function nestedStatus(block, { statuses = {}, idFieldMap = null } = {}) {
+  let worst = null;
+  let count = 0;
+
+  const walk = (node) => {
+    for (const field of getChildFields(node, idFieldMap, { allObjectLists: true })) {
+      for (const { id, block: child } of getChildBlockEntries(node, field)) {
+        const status = statuses[id];
+        if (status) {
+          count += 1;
+          if (
+            !worst ||
+            (NESTED_STATUS_SEVERITY[status] || 0) >
+              (NESTED_STATUS_SEVERITY[worst] || 0)
+          ) {
+            worst = status;
+          }
+        }
+        walk(child);
+      }
+    }
+  };
+  walk(block);
+
+  return worst ? { status: worst, count } : null;
+}
+
+/**
+ * Which blocks of a translation still read as the page they were copied from.
+ *
+ * A copy carries `@canonical`, the id of the block it came from. Comparing the
+ * two — everything but the identity keys — says whether anyone has touched it
+ * since. That is as close to "not translated yet" as the data allows, and it
+ * needs no new field: a translator who retypes the same words in the same
+ * language is, after all, not wrong to be told nothing has changed.
+ *
+ * @param {Object} blocks - the translation's blocks (any depth)
+ * @param {Object} sourceBlocks - the original's blocks (any depth)
+ * @param {Object} [idFieldMap] - which fields hold children, per type
+ * @returns {Array<string>} ids, outermost first
+ */
+export function untranslatedBlockIds(blocks, sourceBlocks, idFieldMap = null) {
+  const sourceById = {};
+  const indexSource = (map) => {
+    for (const [id, block] of Object.entries(map || {})) {
+      sourceById[id] = block;
+      for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+        const nested = {};
+        for (const entry of getChildBlockEntries(block, field)) {
+          nested[entry.id] = entry.block;
+        }
+        indexSource(nested);
+      }
+    }
+  };
+  indexSource(sourceBlocks);
+
+  const untranslated = [];
+  const visit = (map) => {
+    for (const [id, block] of Object.entries(map || {})) {
+      const canonical = block?.['@canonical'];
+      const source = canonical ? sourceById[canonical] : null;
+      if (source && sameBlockContent(block, source, idFieldMap)) {
+        untranslated.push(id);
+      }
+      for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+        const nested = {};
+        for (const entry of getChildBlockEntries(block, field)) {
+          nested[entry.id] = entry.block;
+        }
+        visit(nested);
+      }
+    }
+  };
+  visit(blocks);
+
+  return untranslated;
+}
+
+/**
+ * Two blocks, compared on the WORDS in them.
+ *
+ * Not on the whole object: a block in the editor has been through schema
+ * defaults and url resolution, and the original it was copied from has not, so
+ * comparing everything reports differences that no translator made. Text is
+ * what a translation changes, and what its absence means.
+ */
+function sameBlockContent(a, b, idFieldMap) {
+  return blockText(a, idFieldMap) === blockText(b, idFieldMap);
+}
+
+// Strings a block carries that are not words anyone translates: where it
+// points, how it looks, which variant it is. Styling in particular is set by
+// selecting a block in the sidebar, which would otherwise make simply LOOKING
+// at a copy count as translating it.
+const NON_TEXT_KEYS = new Set([
+  'styles',
+  'href',
+  'url',
+  'src',
+  'link',
+  'preview_image',
+  'image',
+  'variation',
+  'align',
+  'size',
+]);
+
+/** The words an editor types into this block — not its children's. */
+function blockText(block, idFieldMap) {
+  const childFields = new Set(
+    getChildFields(block, idFieldMap, { allObjectLists: true }).map((f) => f.region),
+  );
+  const parts = [];
+  for (const [key, value] of Object.entries(block || {})) {
+    // Identity and structure, not words.
+    if (key.startsWith('@') || key === 'block') continue;
+    if (key === 'blocks' || key === 'blocks_layout') continue;
+    if (childFields.has(key) || NON_TEXT_KEYS.has(key)) continue;
+    if (typeof value === 'string') {
+      parts.push(`${key}=${value}`);
+    } else if (
+      Array.isArray(value) &&
+      value.some((node) => node && typeof node === 'object' && 'children' in node)
+    ) {
+      // A slate value: an array of nodes whose text is what was typed.
+      parts.push(`${key}=${slateNodesText(value)}`);
+    }
+  }
+  return parts.sort().join('\u0000');
+}
+
+/**
  * Insert snippet blocks at a specific position.
  * - Clones snippet blocks with new IDs
  * - Adds template fields (templateId, templateInstanceId, slotId)
@@ -2198,7 +2426,7 @@ export function getChildBlockEntries(parentBlock, descriptor = {}) {
  * @param {Object} block - the container block
  * @returns {Array<{ region?: string, isObjectList?: boolean, regionPath?: string[] }>}
  */
-export function getChildFields(block, idFieldMap = null) {
+export function getChildFields(block, idFieldMap = null, options = {}) {
   const fields = [];
   if (block?.blocks && isBlocksMap(block.blocks)) {
     for (const [region] of blocksLayoutRegions(block.blocks_layout)) {
@@ -2213,7 +2441,14 @@ export function getChildFields(block, idFieldMap = null) {
   // is required whenever a template contains an object_list keyed by anything but `@id`.
   const typeIds = block?.['@type'] ? idFieldMap?.[block['@type']] : null;
   for (const [key, val] of Object.entries(block || {})) {
-    if (Array.isArray(val) && val.length > 0 && val[0]?.templateId) {
+    if (!Array.isArray(val) || val.length === 0) continue;
+    // `templateId` marks a template's own children, which is all the insertion
+    // path cares about. `allObjectLists` is for callers copying a WHOLE page —
+    // a translation — where every child counts, template or not; the fields
+    // that hold them are the ones the idFieldMap names for this type.
+    const isTemplateList = !!val[0]?.templateId;
+    const isDeclaredList = !!(options.allObjectLists && typeIds?.[key]);
+    if (isTemplateList || isDeclaredList) {
       fields.push({
         isObjectList: true,
         region: key, // top-level array field; regionPath defaults to []
