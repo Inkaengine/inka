@@ -206,6 +206,33 @@ describe('creating a translation', () => {
     );
   });
 
+  it('keeps the fields it was sent, not just the ones it expected', async () => {
+    // A language-independent field is carried over by the add form rather than
+    // typed again, so nothing in the UI would notice the create silently
+    // dropping it: the form showed the inherited tags, the POST carried them,
+    // and reading the page back said there were none. Plone stores whatever the
+    // type's schema has, and so does this.
+    const token = 'carry-fields-token';
+    const created = await json('/de', {
+      method: 'POST',
+      token,
+      body: {
+        '@type': 'Document',
+        title: 'Dienstleistungen',
+        subjects: ['design', 'build'],
+      },
+    });
+    assert.equal(created.status, 201);
+    assert.deepEqual(created.data.subjects, ['design', 'build']);
+
+    const back = await json('/de/dienstleistungen', { token });
+    assert.deepEqual(
+      back.data.subjects,
+      ['design', 'build'],
+      'the field survived the round trip, not just the create response',
+    );
+  });
+
   it('derives the id from the title, as Plone does when none is sent', async () => {
     const token = 'id-from-title-token';
     const created = await json('/de', {
@@ -262,6 +289,27 @@ describe('a language is a tree of its own', () => {
     assert.ok(
       paths.every((p) => p.startsWith('/en/')),
       `expected only English pages, got ${paths}`,
+    );
+  });
+});
+
+describe('language-independent fields', () => {
+  it('says which fields a translation inherits rather than translates', async () => {
+    // Plone marks a field language-independent in its schema, and
+    // plone.restapi serialises that as multilingual_options. Volto reads it to
+    // copy the value from the original instead of asking for a translation of
+    // it, and to show the field as inherited. Tags are the classic case: the
+    // same tag means the same thing in every language.
+    const { status, data } = await json('/@types/Document');
+    assert.equal(status, 200);
+    assert.equal(
+      data.properties.subjects?.multilingual_options?.language_independent,
+      true,
+    );
+    assert.notEqual(
+      data.properties.title?.multilingual_options?.language_independent,
+      true,
+      'a title is translated, not inherited',
     );
   });
 });

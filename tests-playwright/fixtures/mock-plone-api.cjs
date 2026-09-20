@@ -2718,9 +2718,22 @@ app.post('/*', (req, res, next) => {
     const docPath = `${parentPath === '/' ? '' : parentPath}/${id}`.replace(/\/+/g, '/');
     const now = new Date().toISOString();
     const baseUrl = `http://localhost:${PORT}`;
+    // Plone stores every field the type's schema has. This kept a hand-picked
+    // few and dropped the rest without a word, so a field the editor filled in
+    // — or a language-independent one the translation inherited — looked saved
+    // and was gone on the next read. Keep what was sent; `@static_behaviors`
+    // and `translation_of` are instructions to the create, not content.
+    const {
+      '@type': _type,
+      '@static_behaviors': _behaviors,
+      translation_of: _translationOf,
+      id: _id,
+      ...posted
+    } = body;
     const rawDoc = {
       '@type': 'Document',
       id,
+      ...posted,
       title: body.title || id,
       description: body.description || '',
       blocks: body.blocks || {},
