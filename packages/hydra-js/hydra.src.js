@@ -152,6 +152,20 @@ const isValidNodeId = (id) => id && /^\d+(\.\d+)*$/.test(id);
 // How many nested closed containers a reveal will open before giving up.
 const MAX_REVEAL_DEPTH = 5;
 
+// What counts as the control a reveal handle activates — see
+// Bridge.activationTarget. A link needs an href to be one; a bare <a> is text.
+const CONTROL_TAGS = new Set([
+  'BUTTON',
+  'SUMMARY',
+  'A',
+  'INPUT',
+  'SELECT',
+  'TEXTAREA',
+  'OPTION',
+  'LABEL',
+]);
+const CONTROL_SELECTOR = 'button, summary, a[href], [role="button"]';
+
 /**
  * Virtual block UID for page-level fields (title, description, preview_image, etc.)
  * Used to distinguish "page field selected" from "nothing selected" (null)
@@ -912,6 +926,33 @@ export class Bridge {
    */
   static revealSurface(el) {
     return (el?.tagName === 'OPTION' && el.closest('select')) || el;
+  }
+
+  /**
+   * Where activating a reveal handle actually LANDS.
+   *
+   * A frontend annotates the element it renders. A design system's script then
+   * often turns that element into a shell around the control it builds for
+   * itself: the NSW accordion empties its `.nsw-accordion__title`, puts a
+   * `<button>` inside it, and binds both the toggle and `aria-expanded` to that
+   * button. A person clicking the title hits the button — the event starts
+   * there and bubbles outward — but `shell.click()` starts at the shell and
+   * never reaches the button's listener, so the panel stayed shut and
+   * everything inside it was unreachable from the sidebar.
+   *
+   * Only a shell holding exactly ONE control resolves: that click can only have
+   * meant that control. A handle that is a control itself, or that holds
+   * several (a card with two links, a pager with both arrows), is activated as
+   * it always was — guessing which of them the author meant would be worse than
+   * clicking what they annotated.
+   */
+  static activationTarget(el) {
+    if (!el?.querySelectorAll) return el;
+    if (CONTROL_TAGS.has(el.tagName) || el.getAttribute('role') === 'button') {
+      return el;
+    }
+    const controls = [...el.querySelectorAll(CONTROL_SELECTOR)];
+    return controls.length === 1 ? controls[0] : el;
   }
 
   /**
@@ -12632,20 +12673,25 @@ export class Bridge {
     // until a frontend opts in.
     this.fillDeclaredInputs(targetUid);
 
+    // Act on the control, not on the shell a design system wrapped around it:
+    // the state to read (`aria-expanded`) and the listener to fire both live on
+    // the control it built. See Bridge.activationTarget.
+    const activate = Bridge.activationTarget(clickedSelector);
+    if (activate !== clickedSelector) {
+      log(`tryMakeBlockVisible: activating the <${activate.tagName.toLowerCase()}> inside the handle`);
+    }
     const summaryDetails =
-      clickedSelector.tagName === 'SUMMARY'
-        ? clickedSelector.closest('details')
-        : null;
-    const expandedAttr = clickedSelector.getAttribute('aria-expanded');
+      activate.tagName === 'SUMMARY' ? activate.closest('details') : null;
+    const expandedAttr = activate.getAttribute('aria-expanded');
     if (summaryDetails) {
       summaryDetails.open = true;
       log(`tryMakeBlockVisible: opened <details> via summary`);
     } else if (expandedAttr === 'true') {
       log(`tryMakeBlockVisible: target trigger already expanded, skipping click`);
-    } else if (Bridge.answerRevealHandle(clickedSelector)) {
-      log(`tryMakeBlockVisible: answered ${clickedSelector.tagName.toLowerCase()} handle`);
+    } else if (Bridge.answerRevealHandle(activate)) {
+      log(`tryMakeBlockVisible: answered ${activate.tagName.toLowerCase()} handle`);
     } else {
-      clickedSelector.click();
+      activate.click();
       log(`tryMakeBlockVisible: click() called`);
     }
 
