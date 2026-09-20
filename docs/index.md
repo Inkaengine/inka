@@ -20,14 +20,6 @@ review_state: published
 rights: ""
 subjects: []
 title: Docs
-blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-  <block type="callout">
-    <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-    </region>
-  </block>
-  <block type="title" _="${h1}" />
 order:
   - architecture
   - frontend-guide
@@ -36,24 +28,20 @@ order:
   - adapters
   - testing
   - examples
-exclude:
-  - content
-  - _build
-  - _static
-  - _myst
-  - blocks
-  - quickstart
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
 ---
 
-# Inka Documentation
+# Docs
 
 Inka ships as a blank slate: your components are your blocks, and you decide what editors can build. The docs are a set of guides by audience — build a frontend, edit content, test it, connect a content store, and put compliance checks in front of editors.
 
-<block type="video" align="full" url="./static/hydra-demo.mp4" data-json='{"autoplay":true,"loop":true,"muted":true,"controls":false}' />
+<block type="video" data-json='{"align":"full","url":"./static/hydra-demo.mp4","autoplay":true,"loop":true,"muted":true,"controls":false}' />
 
 ## The guides
 
-<block type="listing" headlineTag="h2" variation="summary" data-json='{"querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.relativePath","v":".::1"},{"i":"exclude_from_nav","o":"plone.app.querystring.operation.boolean.isFalse","v":""}],"sort_on":"getObjPositionInParent","depth":1},"fieldMapping":{"@id":"href","title":"title","description":"description","image":"image"}}' />
+<block type="listing" data-json='{"headlineTag":"h2","variation":"summary","querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.relativePath","v":".::1"},{"i":"exclude_from_nav","o":"plone.app.querystring.operation.boolean.isFalse","v":""}],"sort_on":"getObjPositionInParent","depth":1},"fieldMapping":{"@id":"href","title":"title","description":"description","image":"image"}}' />
 
 ## Why Inka?
 

@@ -29,19 +29,58 @@ blocks-matched: |
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
+blocks-tagged: |
+  <block type="columns">
+    <region name="columns" widget="blocks_layout">
+      <block type="column">
+        <region name="items" widget="blocks_layout" />
+      </block>
+    </region>
+  </block>
 ---
 
 # Grid Block
 
 A horizontal multi-column container. The block has one slot — columns — restricted to column children, capped at four. Each column is itself a container holding any of its allowed inner block types (slate, image, …).
 
-<block type="columns" data-json='{"title":"Our Services","blocks":{"col-1":{"@type":"column","title":"Design","blocks":{"text-1":{"@type":"slate","value":[{"type":"p","children":[{"text":"We craft beautiful interfaces."}]}]}},"blocks_layout":{"items":["text-1"]}},"col-2":{"@type":"column","title":"Engineering","blocks":{"text-2":{"@type":"slate","value":[{"type":"p","children":[{"text":"We build robust systems."}]}]}},"blocks_layout":{"items":["text-2"]}}},"blocks_layout":{"columns":["col-1","col-2"]}}' />
+<block type="columns" title="Our Services">
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-columns">
+<block type="column" title="Design">
 
-<block type="codeExample" slotId="schema" source="columns" format="schema" />
+We craft beautiful interfaces.
 
-<block type="codeExample" slotId="json-data" source="columns" format="json" />
+</block>
+
+<block type="column" title="Engineering">
+
+We build robust systems.
+
+</block>
+
+</block>
+
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-columns" data-json='{"fixed":false,"readOnly":false}'>
+
+<block type="codeExample" slotId="schema">
+
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: columns
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./columns.md
+:block: columns
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

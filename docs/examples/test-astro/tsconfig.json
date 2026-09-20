@@ -5,7 +5,7 @@
     "paths": {
       "$hydra": ["../../packages/hydra-js/hydra.src.js"],
       "$examples/*": ["../examples/astro/*"],
-      "$schemas": ["../block-definitions.json"]
+      "$schemas": ["../../../tests-playwright/fixtures/shared-block-schemas.js"]
     }
   }
 }

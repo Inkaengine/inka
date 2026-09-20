@@ -31,16 +31,6 @@ blocks-matched: |
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
-blocks-tagged: |
-  <block type="slateTable">
-    <region name="table.rows">
-      <block type="row">
-        <region name="cells">
-          <block type="cell" value="${td/slate}" />
-        </region>
-      </block>
-    </region>
-  </block>
 ---
 
 # Content as Markdown
@@ -108,7 +98,7 @@ Selectors pick *which* node, by position or by label rather than by CSS (CSS can
 - `[Summary]` — scoped to the section under a `## Summary` heading, by label text
 - `[Summary][2]` — chained: the second, within that section
 
-A trailing `?` marks a reference **optional** — matched when the node is present, skipped when it is absent (an optional subtitle, an image with no title string).
+A trailing `?` marks a reference **optional**: the node it names may be *absent* — the reference matches when the node is present and is skipped when it is not (an image with or without a caption paragraph, a teaser with or without a kicker or a description). Because the node is genuinely optional, **one prototype covers both the present and the absent case** — you do not write a second prototype for the shorter shape. A node is only optional when *every* reference to it is `?`; `url="${img/src}"` keeps the image node required even alongside `alt="${img?/alt}"`. (Separately, `?` on an accessor that reads a present node also tolerates a missing *part*, e.g. `${img?/title}` when the image has no title string.)
 
 The node kinds a reference can target are the familiar Markdown ones: `p`, `h1`–`h6` (or `h` relative, `h*` for any), `img`, `a`, `ul`, `ol`, `li`, `blockquote`, `pre` (a fenced code block), `hr`, `table`, a lone-bold `strong` or lone-italic `em` paragraph, and a `dl` / `dt` / `dd` definition list.
 
@@ -158,6 +148,18 @@ An attribute's type comes from how it is written, with no schema involved:
 - an unquoted value, `size=3`, is coerced — number, boolean, null, or JSON
 - a double-quoted value, `title="Hi ${1/text}"`, is a string (so any references inside it survive)
 - a single-quoted `data='{ … }'` carries raw JSON object fields verbatim
+
+## Dict fields
+
+A block field whose value is a flat dictionary — a block's `styles`, or any custom block's object field — is written as one namespaced attribute per entry, `field:key=value`, rather than a JSON blob.
+
+### Markdown
+
+```markdown
+<block type="teaser" styles:align="left" styles:backgroundColor="grey" />
+```
+
+The name is split on the **first** colon, so a key that itself contains a colon rides in the key untouched — `styles:size:noprefix="medium"` decodes to `{ styles: { "size:noprefix": "medium" } }`. Each value is typed like any other attribute, so `styles:noLine=false` is a boolean and `styles:span=2` a number. An empty dict writes nothing, and a value that is itself nested or a list can't flatten, so that block falls to the `data='{…}'` form instead. This is generic — nothing about it is specific to `styles`; it is simply the readable rung between a bare attribute and a JSON blob for any dictionary.
 
 ## The fallback chain
 

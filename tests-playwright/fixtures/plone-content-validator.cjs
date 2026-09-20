@@ -565,6 +565,21 @@ function imageDimensions(file) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:slate but its value is ${shape(v)} — a slate field must be a bare array of nodes (a {value:[…]} wrapper or richtext value has leaked in)`);
         } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
+        } else if (def.widget === 'object_list' && Array.isArray(v)) {
+          // Every object_list item must carry its type in the field the schema
+          // names — `def.typeField`, defaulting to `@type` (the same key the
+          // decode stamps and the region declares). object_list items are block
+          // instances (they get a @uid, are selectable/editable), and a block
+          // without a @type can't be discovered/rendered. A decode or author
+          // that drops it (the bug that made `tab` read as "no editable example",
+          // and that left socialLinks' links untyped) is caught here in seconds
+          // instead of 17 minutes into the bridge suite.
+          const typeKey = def.typeField || '@type';
+          v.forEach((item, i) => {
+            if (item && typeof item === 'object' && item[typeKey] == null) {
+              errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — an object_list item is a block and must carry its type`);
+            }
+          });
         }
       }
     }

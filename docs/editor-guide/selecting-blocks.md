@@ -23,20 +23,19 @@ subjects: []
 title: Selecting blocks
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-  <block type="callout">
-    <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-    </region>
-  </block>
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
 blocks-tagged: |
+  <block type="callout">
+    <region name="items" widget="blocks_layout">
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+    </region>
+  </block>
   <block type="slateTable">
     <region name="table.rows">
       <block type="row">
@@ -61,7 +60,7 @@ Click on a block in the preview. If the frontend marks any of its fields as inli
 - The Quanta toolbar appears above the block (formatting, convert-to, delete, etc.).
 - The sidebar switches to that block's settings.
 
-![Slate paragraph in text mode — cursor in the field, sidebar showing block's settings.](/docs/images/block-selected.png)
+![Slate paragraph in text mode — cursor in the field, sidebar showing block's settings.](../images/block-selected.png)
 
 ## Block mode
 
@@ -76,7 +75,7 @@ Press `Escape` again to **deselect** (or go up to the parent container if this b
 
 <block type="image">
 
-![Same paragraph in block mode — full blue border, no cursor.](/docs/images/block-mode.png)
+![Same paragraph in block mode — full blue border, no cursor.](../images/block-mode.png)
 
 </block>
 
@@ -102,7 +101,7 @@ While multiple blocks are selected:
 - The Quanta toolbar dropdown offers actions that apply to all (e.g. "Wrap in...", see [Containers](./containers.md)).
 - The sidebar shows the count and lists each selected block by type.
 
-![Two adjacent paragraphs multi-selected — combined bounding box, sidebar shows "2 selected", toolbar shows count badge.](/docs/images/multi-select.png)
+![Two adjacent paragraphs multi-selected — combined bounding box, sidebar shows "2 selected", toolbar shows count badge.](../images/multi-select.png)
 
 <block type="callout" variation="tip">
 
@@ -131,7 +130,7 @@ When a block is selected, the sidebar shows the **chain of parent containers** f
 
 Click any `‹` arrow to **navigate up** to that level. This does the same thing as pressing `Escape` repeatedly, but visibly — you can see what each parent is named, jump several levels in one click, and edit the parent's own settings (alignment, padding, …) inline without leaving the current selection.
 
-<block type="image" url="/docs/images/parent-chain.png" align="center" size="l" data-json='{"alt":"Sidebar showing parent chain for a slate inside a column inside columns. Three sections each with a `‹` arrow: Columns (\"My Columns Section\"), Column (\"Left Column\"), Text (current, body field shown)."}' />
+<block type="image" data-json='{"url":"../images/parent-chain.png","align":"center","size":"l","alt":"Sidebar showing parent chain for a slate inside a column inside columns. Three sections each with a `‹` arrow: Columns (\"My Columns Section\"), Column (\"Left Column\"), Text (current, body field shown)."}' />
 
 This works for any depth — nested columns, slider with templated children, accordion inside a section inside the page. The chain reflects the real DOM hierarchy.
 
@@ -154,7 +153,7 @@ Slides                    [+]
 
 If the container has multiple blocks fields (e.g. a header field and a body field), each appears as a separate section with its own children list and add button.
 
-<block type="image" url="/docs/images/children-list.png" align="center" size="l" data-json='{"alt":"Sidebar with a search container selected, showing two children-list sections — Facets (with three facet rows) and Results Listing (with one Listing row). Each row has a `⋮⋮` drag handle and a `>` drill-in arrow; each section has a `+` add button."}' />
+<block type="image" data-json='{"url":"../images/children-list.png","align":"center","size":"l","alt":"Sidebar with a search container selected, showing two children-list sections — Facets (with three facet rows) and Results Listing (with one Listing row). Each row has a `⋮⋮` drag handle and a `>` drill-in arrow; each section has a `+` add button."}' />
 
 ### Picking from the outline (for paged containers)
 

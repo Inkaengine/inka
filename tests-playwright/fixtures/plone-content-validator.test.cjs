@@ -1225,3 +1225,63 @@ describe('checkBlockSchemas()', () => {
     assert.deepEqual(r.errors, []);
   });
 });
+
+describe('checkIntegrity() — object_list items must carry their type', () => {
+  // Schema-driven: an object_list field's items are block instances (they get a
+  // @uid, are selectable/editable), so each must carry a type in the field the
+  // schema names. Absent a schema this can't be known, so the check runs only
+  // when a schemaFor is supplied. Regression guard for the `tab`/socialLinks
+  // "no editable example" bug the bridge suite caught 17 minutes in.
+  const accordionSchema = (t) =>
+    t === 'accordion' ? { properties: { panels: { widget: 'object_list' } } } : null;
+
+  const pageWithAccordion = (panels) => ({
+    '@id': '/page-a', '@type': 'Document', id: 'page-a',
+    UID: 'pageauid1234567', parent: { '@id': '/' },
+    blocks: { acc: { '@type': 'accordion', panels } },
+    blocks_layout: { items: ['acc'] },
+  });
+
+  it('FLAGS a data-json object_list item that dropped its @type', () => {
+    const { root, contentDir } = buildFixture({
+      pageA: pageWithAccordion([{ '@type': 'panel', title: 'ok' }, { title: 'no type' }]),
+    });
+    const r = checkIntegrity(contentDir, { schemaFor: accordionSchema });
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('object_list field "panels" item 1') && e.includes('missing its type field "@type"')),
+      r.errors.join('\n'),
+    );
+    // item 0 carries @type — only item 1 is reported.
+    assert.ok(!r.errors.some((e) => e.includes('panels" item 0')), r.errors.join('\n'));
+  });
+
+  it('PASSES when every object_list item carries its @type', () => {
+    const { root, contentDir } = buildFixture({
+      pageA: pageWithAccordion([{ '@type': 'panel', title: 'a' }, { '@type': 'panel', title: 'b' }]),
+    });
+    const r = checkIntegrity(contentDir, { schemaFor: accordionSchema });
+    cleanup(root);
+    assert.ok(!r.errors.some((e) => e.includes('missing its type field')), r.errors.join('\n'));
+  });
+
+  it('honors the schema-named typeField (not a hardcoded @type)', () => {
+    // A field can name where the type lives; the check reads THAT key.
+    const schemaFor = (t) =>
+      t === 'facetgroup' ? { properties: { facets: { widget: 'object_list', typeField: 'type' } } } : null;
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: { fg: { '@type': 'facetgroup', facets: [{ label: 'no type key' }] } },
+        blocks_layout: { items: ['fg'] },
+      },
+    });
+    const r = checkIntegrity(contentDir, { schemaFor });
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('facets" item 0') && e.includes('missing its type field "type"')),
+      r.errors.join('\n'),
+    );
+  });
+});

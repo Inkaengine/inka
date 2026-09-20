@@ -28,7 +28,7 @@ export default defineConfig({
         '$hydra': path.resolve(__dirname, '../../../packages/hydra-js/hydra.src.js'),
         '$helpers': path.resolve(__dirname, '../../../packages/helpers/index.js'),
         '$examples': path.resolve(__dirname, '../examples/astro'),
-        '$schemas': path.resolve(__dirname, '../block-definitions.json'),
+        '$schemas': path.resolve(__dirname, '../../../tests-playwright/fixtures/shared-block-schemas.js'),
       },
     },
   },

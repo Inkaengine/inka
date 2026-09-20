@@ -14,6 +14,8 @@ rights: ""
 subjects:
   - frontend
 title: Installation
+id: installation
+is_folderish: false
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />

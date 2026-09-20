@@ -35,11 +35,28 @@ A question whose answer is completed from a vocabulary the author picked.
 
 <block type="suggest" label="Topic" suggestFrom="plone.app.vocabularies.Keywords" value="" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-suggest">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-suggest" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="suggest" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="suggest" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: suggest
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./suggest.md
+:block: suggest
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

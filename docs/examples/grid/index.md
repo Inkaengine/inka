@@ -31,36 +31,81 @@ subjects:
   - blocks
   - containers
 title: Grid
-blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
-    <region name="tabs" widget="object_list">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
-    </region>
-  </block>
 order:
   - grid-image
   - listing
   - teaser
   - text
+blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
+  <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block type="codeExample">
+    <region name="tabs" widget="object_list">
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+blocks-tagged: |
+  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
+  <block type="gridBlock" headline="${h/text}">
+    <region name="items" widget="blocks_layout">
+      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
+    </region>
+  </block>
 ---
 
 # Grid
 
 A responsive grid that lays out child blocks in equal-width cells. The block uses Volto's standard shared-blocks shape — blocks is the dict of children, blocks\_layout.items is their order — and constrains the allowed types via allowedBlocks.
 
-<block type="listing" block="616b625c-b79f-4881-8536-b67a9e401a7d" headlineTag="h2" variation="default" data-json='{"query":[]}' />
+<block type="listing" data-json='{"block":"616b625c-b79f-4881-8536-b67a9e401a7d","headlineTag":"h2","variation":"default","query":[]}' />
 
 <block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
 
-<block type="gridBlock" data-json='{"blocks":{"cell-1":{"@type":"teaser","title":"Design","description":"We craft beautiful interfaces that users love.","href":[{"@id":"/docs/architecture"}]},"cell-2":{"@type":"image","url":"https://placehold.co/600x400","alt":"Placeholder"},"cell-3":{"@type":"teaser","title":"Learn More","description":"Explore the full documentation.","href":[{"@id":"/docs"}]}},"blocks_layout":{"items":["cell-1","cell-2","cell-3"]}}' />
+<block type="gridBlock">
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-grid">
+<block type="teaser">
 
-<block type="codeExample" slotId="schema" source="gridBlock" format="schema" />
+### [Design](/docs/architecture)
 
-<block type="codeExample" slotId="json-data" source="gridBlock" format="json" />
+We craft beautiful interfaces that users love.
+
+</block>
+
+<block type="image" url="https://placehold.co/600x400" alt="Placeholder" />
+
+<block type="teaser">
+
+### [Learn More](/docs)
+
+Explore the full documentation.
+
+</block>
+
+</block>
+
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-grid" data-json='{"fixed":false,"readOnly":false}'>
+
+<block type="codeExample" slotId="schema">
+
+### Schema
+
+```{literalinclude} ../../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: gridBlock
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./index.md
+:block: gridBlock
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

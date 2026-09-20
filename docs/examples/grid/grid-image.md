@@ -26,11 +26,10 @@ title: Grid-image block
 blocks-matched: |
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" description="${p/text}" />
+      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
     </region>
   </block>
 ---
@@ -41,77 +40,237 @@ blocks-tagged: |
 
 ## Block Title
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
 
 </block>
 
 <block type="gridBlock">
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<block type="image">
 
-<block type="image" align="center" image_field="image" size="l" title="Image - Light" url="/docs/examples/content-types/image-light.jpg" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-light.jpg "Image - Light")
+
+<fields image_field="image" />
+
+</block>
 
 </block>
 
 <block type="gridBlock">
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<block type="image">
 
-<block type="image" align="center" image_field="image" size="l" title="Image - Light" url="/docs/examples/content-types/image-light.jpg" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-light.jpg "Image - Light")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
 
 </block>
 
 <block type="gridBlock">
 
-<block type="image" align="center" image_field="image" size="l" title="Image - Light" url="/docs/examples/content-types/image-light.jpg" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<block type="image">
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+![](../content-types/image-light.jpg "Image - Light")
 
-<block type="image" align="center" image_field="image" size="l" title="Image - Light" url="/docs/examples/content-types/image-light.jpg" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<fields image_field="image" />
 
 </block>
 
-<fields data-json='{"styles":{"backgroundColor":"grey"}}'>
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-light.jpg "Image - Light")
+
+<fields image_field="image" />
+
+</block>
+
+</block>
+
+<fields styles:backgroundColor="grey">
 
 <block type="gridBlock">
 
 ## Block Title
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
 
 </block>
 
 <block type="gridBlock">
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<block type="image">
 
-<block type="image" align="center" image_field="image" size="l" title="Image - Light" url="/docs/examples/content-types/image-light.jpg" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-light.jpg "Image - Light")
+
+<fields image_field="image" />
+
+</block>
 
 </block>
 
 <block type="gridBlock">
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<block type="image">
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
 
 </block>
 
 <block type="gridBlock">
 
-<block type="image" align="center" image_field="image" size="l" title="Image - Light" url="/docs/examples/content-types/image-light.jpg" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<block type="image">
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
-<block type="image" align="center" image_field="image" size="l" title="Image" url="/docs/examples/content-types/image-dark" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+![](../content-types/image-light.jpg "Image - Light")
 
-<block type="image" align="center" image_field="image" size="l" title="Image - Light" url="/docs/examples/content-types/image-light.jpg" data-json='{"description":" The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually."}' />
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-dark "Image")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](../content-types/image-light.jpg "Image - Light")
+
+<fields image_field="image" />
+
+</block>
 
 </block>
 

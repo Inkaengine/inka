@@ -193,6 +193,7 @@ const MARKDOWN_BLOB_MIME = {
 };
 const markdownItems = new Map();   // url path -> raw content
 const markdownBlobs = new Map();   // url path -> absolute blob file
+const markdownOrder = new Map();   // folder url path -> authored child order (curated)
 let ready = Promise.resolve();
 // The prototype engine, imported once for the /@export endpoint's markdown mode.
 let engine = null; // { emitPage, parsePrototypes }
@@ -1689,13 +1690,19 @@ function loadMarkdownMount(mount) {
   const { mountPath, dirPath } = mount;
   // Pass the mountPath as the link prefix so hand-authored .md cross-links resolve
   // to the served @ids (a /docs mount serves its tree under /docs, not at root).
-  const { items, blobFiles } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor });
+  const { items, blobFiles, folderForm, order } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor });
   const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
+  // The authored `order:` is a CURATED list (it may deliberately omit asset
+  // folders like images/static). Keep it so a re-export writes it back verbatim
+  // instead of regenerating a full order that pulls those folders into the nav.
+  if (order) for (const [p, list] of order) markdownOrder.set(urlFor(p), list);
   for (const [p, item] of items) {
     const urlPath = urlFor(p);
     item['@id'] = urlPath;
     markdownItems.set(urlPath, item);
-    contentDirMap[urlPath] = { dirPath, markdown: true };
+    // `folder` records the AUTHORED file form (X/index.md vs X.md) so a
+    // re-export writes the source back in the same shape.
+    contentDirMap[urlPath] = { dirPath, markdown: true, folder: folderForm && folderForm.has(p) };
     if (item.UID) {
       uidToPathMap[item.UID] = urlPath;
       if (item.getObjPositionInParent !== undefined) uidPositionMap[item.UID] = item.getObjPositionInParent;
@@ -2277,19 +2284,22 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
 
 /**
  * Export the whole content tree (mock-API extra feature). The real Plone
- * @@export-content answers with a gzipped tar of the plone.exportimport tree
- * (data.json + __metadata__.json + siblings + blob files), so `format: 'json'`
- * responds the same way — a deployable distribution, byte-for-byte importable —
- * emitted from the IN-MEMORY served content across every content-source mount
- * (JSON or markdown alike, since markdown mounts have no exportimport tree on
- * disk), and validated before it ships.
- * `format: 'markdown'` runs each block-bearing item through the prototype engine
- * and returns a { "/path": markdown } map; the CALLER supplies the prototypes in
- * the body (`{ matched, tagged }` declaration text) so the mock API needs no
- * format config of its own.
+ * Mirrors plone.exportimport's real `@export` REST service (Plone 6.2+): it
+ * answers with a ZIP (`application/zip`) of the exportimport tree — data.json +
+ * __metadata__.json + siblings + blob files — so `format: 'json'` (the default,
+ * and the only shape real Plone offers) responds the same way: a deployable
+ * distribution, byte-for-byte importable, emitted from the IN-MEMORY served
+ * content across every content-source mount (JSON or markdown alike, since
+ * markdown mounts have no exportimport tree on disk), and validated before it
+ * ships.
+ * `format: 'markdown'` is OUR extension on top: it runs each block-bearing item
+ * through the prototype engine and returns the same ZIP container holding the
+ * markdown trees instead of exportimport JSON; the CALLER supplies the
+ * prototypes in the body (`{ matched, tagged }` declaration text) so the mock
+ * API needs no format config of its own.
  *   POST /@export  { format: 'json'|'markdown', prototypes?: { matched, tagged } }
- *     json     -> application/gzip  (export.tar.gz: content/**, siblings)
- *     markdown -> { "/path": markdown string, ... }
+ *     json     -> application/zip  (export.zip: content/**, siblings)
+ *     markdown -> application/zip  (export-markdown.zip: docs/**, site/** trees)
  */
 app.post('/@export', async (req, res) => {
   await ready;
@@ -2297,17 +2307,268 @@ app.post('/@export', async (req, res) => {
 
   if (format === 'markdown') {
     const { emitPage, parsePrototypes } = await getEngine();
+    const YAML = (await import('yaml')).default;
+    const { SERVER_STATE } = await import('../../lib/blockmd.mjs');
+    const { BLOB_FIELD, blobDefaults } = await import('../../lib/markdown-mount.mjs');
+
+    // The CALLER supplies the readability rules; this endpoint writes each page
+    // as a WHOLE, self-contained file — frontmatter (page meta + assignments +
+    // the rules that page used) + a clean body — so "export the site and put it
+    // back" is just: POST here, write the strings to disk. Split the caller's
+    // rule text by block type so each file carries only the rules it needs.
+    const splitByType = (text) => {
+      const map = new Map();
+      let cur = null, depth = 0;
+      for (const line of (text || '').split('\n')) {
+        const opens = (line.match(/<block\b/g) || []).length;
+        const selfs = (line.match(/<block\b[^>]*\/>/g) || []).length;
+        const closes = (line.match(/<\/block>/g) || []).length;
+        const net = (opens - selfs) - closes;
+        if (!cur) {
+          const m = /<block\s+type="([^"]+)"/.exec(line);
+          if (!m) continue;
+          cur = { type: m[1], lines: [line] }; depth = net;
+        } else { cur.lines.push(line); depth += net; }
+        if (cur && depth <= 0) {
+          const prev = map.get(cur.type);
+          map.set(cur.type, prev ? `${prev}\n${cur.lines.join('\n')}` : cur.lines.join('\n'));
+          cur = null; depth = 0;
+        }
+      }
+      return map;
+    };
+    const collectTypes = (blocks, out = new Set()) => {
+      for (const b of Object.values(blocks || {})) {
+        if (!b || typeof b !== 'object') continue;
+        if (b['@type']) out.add(b['@type']);
+        if (b.blocks) collectTypes(b.blocks, out);
+        for (const v of Object.values(b)) if (Array.isArray(v)) for (const it of v) if (it && it.blocks) collectTypes(it.blocks, out);
+      }
+      return out;
+    };
+    const flow = (o) => `{ ${Object.entries(o).map(([k, v]) => `${k}: ${v}`).join(', ')} }`;
+    const section = (key, map, used) => {
+      // Emit in the caller's declaration order (map insertion order), not the
+      // order blocks were encountered — so the rule list is stable across exports.
+      const lines = [...map.keys()].filter((t) => used.has(t)).flatMap((t) => map.get(t).split('\n'));
+      return lines.length ? `${key}: |\n${lines.map((l) => `  ${l}`).join('\n')}` : '';
+    };
+
+    // A blob (Image/File) is carried in its parent folder's `blobs:`, never
+    // emitted as its own page. Reconstruct the two folder-level facts the mount
+    // derives from tree position — child `order:` and `blobs:` — from the served
+    // tree, so folders round-trip too.
+    const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif']);
+    const typeForFile = (f) => (IMAGE_EXT.has(path.extname(f).toLowerCase()) ? 'Image' : 'File');
+    const isBlobItem = (d) => !!(d && BLOB_FIELD[d['@type']] && d[BLOB_FIELD[d['@type']]] && d[BLOB_FIELD[d['@type']]].blob_path);
+    const blobEntry = (d) => {
+      const field = d[BLOB_FIELD[d['@type']]];
+      const file = field.filename || path.basename(field.blob_path);
+      const entry = { file, uid: d.UID };
+      if (d.id !== file.replace(/\.[^.]+$/, '')) entry.id = d.id;
+      if (d['@type'] !== typeForFile(file)) entry.type = d['@type'];
+      for (const [k, v] of Object.entries(blobDefaults(d['@type'], field.filename))) {
+        if (d[k] !== undefined && JSON.stringify(d[k]) !== JSON.stringify(v)) entry[k] = d[k];
+      }
+      return entry;
+    };
+    const childrenByParent = {};
+    for (const k of Object.keys(contentDirMap)) {
+      if (k === '/') continue;
+      const parent = k.replace(/\/[^/]+$/, '') || '/';
+      (childrenByParent[parent] || (childrenByParent[parent] = [])).push(k);
+    }
+    // Write a page as a FOLDER (`X/index.md`) exactly when it was AUTHORED that
+    // way — the markdown mount recorded the source form (contentDirMap[k].folder).
+    // A page authored flat (`X.md`) stays flat even if is_folderish; a folder
+    // landing stays a folder even with no child pages. A flat page that GAINED
+    // children still needs a folder to hold them. A JSON mount has no `folder`
+    // flag, so it falls back to is_folderish (its historic behaviour).
+    const folderish = new Set();
+    for (const k of Object.keys(contentDirMap)) {
+      const info = contentDirMap[k];
+      const d = loadRawContentFromDisk(k) || {};
+      const authored = info && info.markdown
+        ? (info.folder || (childrenByParent[k] || []).length > 0)
+        : d.is_folderish;
+      if (authored || d['@type'] === 'Plone Site') folderish.add(k);
+    }
+
+    // Reverse the mount's link/media resolution: the served blocks carry absolute
+    // paths (the mount rewrote `./x.md` → `/docs/x` at load), but the source — and
+    // the export — should carry the authored RELATIVE `.md`/media links, so a
+    // re-export barely diffs. Inverse of resolveMarkdownLink/resolveMediaUrl.
+    const relFrom = (baseSegs, targetSegs) => {
+      let i = 0;
+      while (i < baseSegs.length && i < targetSegs.length && baseSegs[i] === targetSegs[i]) i++;
+      return [...baseSegs.slice(i).map(() => '..'), ...targetSegs.slice(i)];
+    };
+    const unresolve = (url, baseSegs, m, media) => {
+      if (!url || /^(https?:|mailto:|data:|#)/.test(url)) return url;
+      const [target, ...an] = url.split('#');
+      const anchor = an.length ? `#${an.join('#')}` : '';
+      const pfx = m.mountPath;
+      let treePath;
+      if (pfx !== '/') {
+        if (target !== pfx && !target.startsWith(`${pfx}/`)) return url; // another mount / external
+        treePath = target.slice(pfx.length) || '/';
+      } else {
+        if (!target.startsWith('/')) return url;
+        treePath = target;
+      }
+      const targetSegs = treePath.split('/').filter(Boolean);
+      let parts = relFrom(baseSegs, targetSegs);
+      if (!media) {
+        const served = (pfx !== '/' ? pfx : '') + (treePath === '/' ? '' : treePath) || '/';
+        if (folderish.has(served)) parts.push('index.md');
+        else if (parts.length) parts[parts.length - 1] += '.md';
+        else parts = ['index.md'];
+      } else if (!parts.length) {
+        return url;
+      }
+      let rel = parts.join('/');
+      if (!rel.startsWith('..')) rel = `./${rel}`;
+      return `${rel}${anchor}`;
+    };
+    const unresolveBlocks = (node, baseSegs, m) => {
+      if (Array.isArray(node)) { node.forEach((n) => unresolveBlocks(n, baseSegs, m)); return; }
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'link' && node.data && typeof node.data.url === 'string') node.data.url = unresolve(node.data.url, baseSegs, m, false);
+      if ((node['@type'] === 'image' || node['@type'] === 'video') && typeof node.url === 'string') node.url = unresolve(node.url, baseSegs, m, true);
+      for (const v of Object.values(node)) unresolveBlocks(v, baseSegs, m);
+    };
+
+    const matchedMap = splitByType(prototypes.matched || '');
+    const taggedMap = splitByType(prototypes.tagged || '');
     const protos = [
       ...parsePrototypes(prototypes.matched || ''),
       ...parsePrototypes(prototypes.tagged || '', { explicit: true }),
     ];
-    const out = {};
-    for (const p of Object.keys(contentDirMap)) {
-      const c = loadRawContentFromDisk(p);
-      if (!c || !c.blocks) continue; // only block-bearing content items get a body
-      out[p] = emitPage(protos, { blocks: c.blocks, blocks_layout: c.blocks_layout }).markdown;
+
+    // The markdown file for one served item (frontmatter + body). Folders carry
+    // the reconstructed order:/blobs: — this is an EXPORT, so nothing is stripped.
+    const emitFile = (c, p, m) => {
+      const meta = Object.fromEntries(Object.entries(c).filter(([k]) => !SERVER_STATE.has(k)));
+      const kids = (childrenByParent[p] || []).map((k) => loadRawContentFromDisk(k)).filter(Boolean);
+      const childPages = kids.filter((d) => !isBlobItem(d))
+        .sort((a, b) => (uidPositionMap[a.UID] ?? 0) - (uidPositionMap[b.UID] ?? 0));
+      const blobItems = kids.filter(isBlobItem);
+      const front = [
+        YAML.stringify(meta).trim(),
+        // Prefer the AUTHORED order (curated — may omit asset folders); only
+        // synthesise one from the child scan for a folder that never had it.
+        (markdownOrder.get(p) || (childPages.length ? childPages.map((d) => d.id) : null))
+          ? YAML.stringify({ order: markdownOrder.get(p) || childPages.map((d) => d.id) }).trim() : '',
+        blobItems.length ? YAML.stringify({ blobs: blobItems.map(blobEntry) }).trim() : '',
+      ].filter(Boolean).join('\n');
+      if (c.blocks && c.blocks_layout?.items?.length) {
+        // The page's own directory (relative to the mount), for relative links.
+        const rel = m.mountPath === '/' ? (p === '/' ? '' : p.replace(/^\//, '')) : p.replace(m.mountPath, '').replace(/^\//, '');
+        const baseSegs = (folderish.has(p) ? rel : rel.replace(/\/?[^/]*$/, '')).split('/').filter(Boolean);
+        const blocks = structuredClone(c.blocks);
+        unresolveBlocks(blocks, baseSegs, m);
+        const { markdown } = emitPage(protos, { blocks, blocks_layout: c.blocks_layout });
+        const used = collectTypes(c.blocks);
+        // No blocks-assignments: decode auto-mints uids when they're absent, and
+        // the current sources omit them — writing them back would churn every file.
+        const fmBody = [front, section('blocks-matched', matchedMap, used), section('blocks-tagged', taggedMap, used)]
+          .filter(Boolean).join('\n');
+        const body = c.title ? markdown.replace(/^# *$/m, () => `# ${c.title}`) : markdown;
+        return `---\n${fmBody}\n---\n\n${body}\n`;
+      }
+      return `---\n${front}\n---\n`;
+    };
+
+    // The most-specific mount owns a path ('/' nominally owns everything).
+    const ownerMount = (u) => CONTENT_MOUNTS
+      .filter((m) => m.mountPath === '/' || u === m.mountPath || u.startsWith(`${m.mountPath}/`))
+      .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
+    const relOf = (m, u) => (m.mountPath === '/' ? (u === '/' ? '' : u.replace(/^\//, ''))
+      : u.replace(m.mountPath, '').replace(/^\//, ''));
+
+    // Build ONE unified tree, keyed by URL path — real Plone has no "mounts"
+    // (that is a mock-only split of the source), so the export must not encode
+    // them: root content sits at the archive root, a `/docs` child folder under
+    // `docs/`. The CALLER re-separates the tree into our source mounts afterwards.
+    const stagingMd = fs.mkdtempSync(path.join(os.tmpdir(), 'plone-export-md-'));
+    // A mount's subtree lands at its URL path ('' for the root mount, 'docs' for
+    // /docs) — NOT its source-dir basename.
+    const treeRootOf = (m) => path.join(stagingMd, m.mountPath === '/' ? '' : m.mountPath.replace(/^\//, ''));
+    try {
+      for (const m of CONTENT_MOUNTS) {
+        const treeRoot = treeRootOf(m);
+        const igSrc = path.join(m.dirPath, '.blockmdignore');
+        if (fs.existsSync(igSrc)) {
+          fs.mkdirSync(treeRoot, { recursive: true });
+          fs.copyFileSync(igSrc, path.join(treeRoot, '.blockmdignore'));
+        }
+      }
+      for (const p of Object.keys(contentDirMap)) {
+        const c = loadRawContentFromDisk(p);
+        if (!c) continue;
+        const m = ownerMount(p);
+        if (!m) continue;
+        const treeRoot = treeRootOf(m);
+        const rel = relOf(m, p);
+        if (isBlobItem(c)) {
+          // Copy the blob's bytes next to its parent folder's index.md.
+          const src = markdownBlobs.get(p);
+          const field = c[BLOB_FIELD[c['@type']]];
+          const file = field.filename || path.basename(field.blob_path);
+          // The blob sits next to its parent folder's index.md; a root-level blob
+          // (rel with no slash) has parent '' — not itself.
+          const parentDir = rel.includes('/') ? rel.replace(/\/[^/]*$/, '') : '';
+          const dest = path.join(treeRoot, parentDir, file);
+          if (src && fs.existsSync(src)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(src, dest); }
+          continue;
+        }
+        // A page (not an Image/File object) may still carry blob FIELDS — a lead
+        // image, a file field. Same shape (a value with a blob_path); the bytes
+        // live at that tree-relative blob_path. Copy every one so the archive is
+        // self-contained and re-mountable.
+        const copyFieldBlobs = (node) => {
+          if (Array.isArray(node)) { node.forEach(copyFieldBlobs); return; }
+          if (!node || typeof node !== 'object') return;
+          if (typeof node.blob_path === 'string') {
+            const bsrc = path.join(m.dirPath, node.blob_path);
+            const bdest = path.join(treeRoot, node.blob_path);
+            if (fs.existsSync(bsrc)) { fs.mkdirSync(path.dirname(bdest), { recursive: true }); fs.copyFileSync(bsrc, bdest); }
+          }
+          for (const v of Object.values(node)) copyFieldBlobs(v);
+        };
+        copyFieldBlobs(c);
+        const info = contentDirMap[p];
+        const isFolder = info && info.markdown
+          ? (info.folder || (childrenByParent[p] || []).length > 0)
+          : (c.is_folderish || (childrenByParent[p] || []).length > 0);
+        const dest = path.join(treeRoot, rel === '' ? 'index.md' : (isFolder ? `${rel}/index.md` : `${rel}.md`));
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, emitFile(c, p, m));
+      }
+      // The non-content distribution JSON (redirects, relations, translations,
+      // portlets, discussions, principals) at the root — the same siblings the
+      // exportimport (format:json) export ships, so the markdown archive is a
+      // COMPLETE distribution, not just content. Sourced from any mount that
+      // carries them (one level up from its content dir), else minimal defaults.
+      const siblingsFrom = CONTENT_MOUNTS
+        .map((m) => path.join(m.dirPath, '..'))
+        .filter((d) => DISTRIBUTION_SIBLINGS.some((s) => fs.existsSync(path.join(d, s))));
+      for (const sib of DISTRIBUTION_SIBLINGS) {
+        const from = siblingsFrom.map((d) => path.join(d, sib)).find((p) => fs.existsSync(p));
+        if (from) fs.copyFileSync(from, path.join(stagingMd, sib));
+        else fs.writeFileSync(path.join(stagingMd, sib), JSON.stringify(SIBLING_DEFAULTS[sib], null, 2) + '\n');
+      }
+      const zipPath = path.join(stagingMd, 'export-markdown.zip');
+      const members = fs.readdirSync(stagingMd);
+      // A ZIP container, like real plone.exportimport @export (not a gzip tar).
+      execFileSync('zip', ['-r', '-q', '-X', zipPath, ...members], { cwd: stagingMd });
+      const buf = fs.readFileSync(zipPath);
+      res.set('Content-Type', 'application/zip');
+      res.set('Content-Disposition', 'attachment; filename="export-markdown.zip"');
+      return res.send(buf);
+    } finally {
+      fs.rmSync(stagingMd, { recursive: true, force: true });
     }
-    return res.json(out);
   }
 
   if (format !== 'json') {
@@ -2331,13 +2592,14 @@ app.post('/@export', async (req, res) => {
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
     }
-    const tarPath = path.join(staging, 'export.tar.gz');
-    // Tar the tree relative to `staging` so paths are content/... and siblings.
+    const zipPath = path.join(staging, 'export.zip');
+    // Zip the tree relative to `staging` so entries are content/... and siblings,
+    // matching real plone.exportimport @export (application/zip).
     const members = ['content', ...DISTRIBUTION_SIBLINGS.filter((s) => fs.existsSync(path.join(staging, s)))];
-    execFileSync('tar', ['-czf', tarPath, '-C', staging, ...members]);
-    const buf = fs.readFileSync(tarPath);
-    res.set('Content-Type', 'application/gzip');
-    res.set('Content-Disposition', 'attachment; filename="export.tar.gz"');
+    execFileSync('zip', ['-r', '-q', '-X', zipPath, ...members], { cwd: staging });
+    const buf = fs.readFileSync(zipPath);
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', 'attachment; filename="export.zip"');
     return res.send(buf);
   } finally {
     fs.rmSync(staging, { recursive: true, force: true });
