@@ -71,6 +71,63 @@ test.describe('Multilingual editing', () => {
     ).toBeVisible();
   });
 
+  test('an existing page can be linked as a translation, and unlinked again', async ({
+    page,
+  }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    // /de/dienstleistungen exists already and is nobody's translation: the
+    // other way a pair comes about, when both pages were written separately.
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    const row = page.locator('#page-manage-translations tbody tr', {
+      hasText: /deutsch|german/i,
+    });
+    await expect(row).toBeVisible({ timeout: 15000 });
+
+    await row.getByRole('button', { name: /link/i }).click();
+    const browser = await helper.waitForObjectBrowser();
+    await helper.objectBrowserNavigateToFolder(browser, /Deutsch/);
+    await page
+      .locator('.object-listing li')
+      .filter({ hasText: /Dienstleistungen/ })
+      .first()
+      .click();
+
+    // Linked, both ways — the point of a translation group.
+    const token = helper.authToken;
+    const translations = async (path: string) =>
+      (
+        await page.request.get(`${URLS.mockApi}${path}/@translations`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        })
+      ).json();
+    await expect
+      .poll(async () => (await translations('/en/services')).items.map((i: any) => i.language), {
+        timeout: 20000,
+      })
+      .toEqual(['de']);
+    expect((await translations('/de/dienstleistungen')).items[0].language).toBe('en');
+
+    // And unlinked again, from the same table — re-entered through the
+    // toolbar, because a fresh load of this view races Volto's own site
+    // features (see the note at the top of this file).
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    const linkedRow = page.locator('#page-manage-translations tbody tr', {
+      hasText: /deutsch|german/i,
+    });
+    await expect(linkedRow).toContainText('/de/dienstleistungen', { timeout: 15000 });
+    await linkedRow.getByRole('button', { name: /unlink/i }).click();
+    await expect
+      .poll(async () => (await translations('/en/services')).items.length, {
+        timeout: 20000,
+      })
+      .toBe(0);
+  });
+
   test('translating a page creates it linked, and lands in the editor', async ({
     page,
   }) => {
