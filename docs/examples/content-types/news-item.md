@@ -177,7 +177,7 @@ Der Inhaltstyp Bild kann verwendet werden um ein Bild in verschiedenen Formate (
 
 ![](./image-light.jpg "Image - Light")
 
-<fields align="left" image_field="image" size="m" styles:size:noprefix="medium" />
+<fields align="left" size="m" image_field="image" styles:size:noprefix="medium" />
 
 </block>
 
@@ -191,7 +191,7 @@ Der Inhaltstyp Bild kann verwendet werden um ein Bild in verschiedenen Formate (
 
 ![](./image-light.jpg "Image - Light")
 
-<fields align="right" image_field="image" size="m" styles:size:noprefix="medium" />
+<fields align="right" size="m" image_field="image" styles:size:noprefix="medium" />
 
 </block>
 
@@ -213,7 +213,7 @@ Der Inhaltstyp Bild kann verwendet werden um ein Bild in verschiedenen Formate (
 
 ![](./image-light.jpg "Image - Light")
 
-<fields align="left" image_field="image" size="s" styles:size:noprefix="small" />
+<fields align="left" size="s" image_field="image" styles:size:noprefix="small" />
 
 </block>
 
@@ -231,7 +231,7 @@ Der Inhaltstyp Bild kann verwendet werden um ein Bild in verschiedenen Formate (
 
 ![](./image-light.jpg "Image - Light")
 
-<fields align="right" image_field="image" size="s" styles:size:noprefix="small" />
+<fields align="right" size="s" image_field="image" styles:size:noprefix="small" />
 
 </block>
 
