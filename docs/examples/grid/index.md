@@ -47,10 +47,10 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />
+  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p/text}" />
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" description="${p/text}" />
+      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p/text}" />
     </region>
   </block>
 ---

@@ -27,7 +27,7 @@ blocks-matched: |
   <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
   <block type="button" title="${p/text}" href="${p/link}" />
-  <block type="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />
+  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p/text}" />
   <block type="introduction" value="${p,h*/slate}" />
   <block type="slateTable">
     <region name="table.rows">
@@ -40,7 +40,7 @@ blocks-tagged: |
   </block>
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" description="${p/text}" />
+      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p/text}" />
     </region>
   </block>
 ---
@@ -59,7 +59,17 @@ blocks-tagged: |
 
 <block type="teaser" data-json='{"head_title":"Teaser Headtitle (DIV, 14/18px)","title":"Teaser Title (H3, 24/30px)","styles":{"align":"left"},"href":[{"@id":"/docs/examples/content-types","@type":"Document","Title":"Content Types","Description":"This section has a sample of content types available in this site.","title":"Content Types","head_title":null,"getRemoteUrl":null,"hasPreviewImage":false,"image_field":""}]}' />
 
-<block type="teaser" data-json='{"description":"Paragraph (p, 18px/24px). This section has a sample of content types available in this site.","head_title":"Teaser Headtitle (DIV, 14/18px)","title":"Teaser Title (H3, 24/30px)","styles":{"align":"left"},"href":[{"@id":"/docs/examples/content-types","@type":"Document","Title":"Content Types","Description":"This section has a sample of content types available in this site.","title":"Content Types","head_title":null,"getRemoteUrl":null,"hasPreviewImage":false,"image_field":""}]}' />
+<block type="teaser">
+
+### [Teaser Title (H3, 24/30px)](/docs/examples/content-types)
+
+**Teaser Headtitle (DIV, 14/18px)**
+
+Paragraph (p, 18px/24px). This section has a sample of content types available in this site.
+
+<fields styles:align="left" />
+
+</block>
 
 </block>
 

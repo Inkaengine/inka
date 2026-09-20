@@ -33,7 +33,7 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />
+  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p/text}" />
   <block type="slateTable">
     <region name="table.rows">
       <block type="row">
