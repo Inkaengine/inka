@@ -419,22 +419,22 @@ const HAVE_ASSETS = fs.existsSync(path.resolve(__dirname, '../../docs/images/acc
   && fs.existsSync(path.resolve(__dirname, '../../docs/static/hydra-demo.mp4'));
 
 describe('/@export (tree export, json | markdown)', { skip: HAVE_ASSETS ? false : 'generated doc assets absent — run `pnpm docs:assets` first' }, () => {
-  it('exports json as a gzipped tar distribution that validates clean', async () => {
+  it('exports json as a zip distribution that validates clean', async () => {
     const res = await fetch(`${baseUrl}/@export`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ format: 'json' }),
     });
     assert.equal(res.status, 200, 'export succeeded');
-    // Same wire format as Plone's @@export-content: a gzipped tar.
-    assert.equal(res.headers.get('content-type'), 'application/gzip');
+    // Same wire format as real plone.exportimport @export: a ZIP.
+    assert.equal(res.headers.get('content-type'), 'application/zip');
     const buf = Buffer.from(await res.arrayBuffer());
-    assert.equal(buf[0], 0x1f); assert.equal(buf[1], 0x8b); // gzip magic
+    assert.equal(buf[0], 0x50); assert.equal(buf[1], 0x4b); // zip magic "PK"
 
     // Extract it and confirm it's a real, importable distribution.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-test-'));
     try {
-      fs.writeFileSync(path.join(dir, 'export.tar.gz'), buf);
-      execFileSync('tar', ['-xzf', 'export.tar.gz', '-C', dir], { cwd: dir });
+      fs.writeFileSync(path.join(dir, 'export.zip'), buf);
+      execFileSync('unzip', ['-q', '-o', 'export.zip'], { cwd: dir });
       const meta = JSON.parse(fs.readFileSync(path.join(dir, 'content/__metadata__.json'), 'utf8'));
       assert.ok(meta._data_files_.length > 0, 'distribution lists data files');
       assert.ok(fs.existsSync(path.join(dir, 'content', meta._data_files_[0])), 'first data file present');
@@ -461,11 +461,24 @@ describe('/@export (tree export, json | markdown)', { skip: HAVE_ASSETS ? false 
       }),
     });
     assert.equal(res.status, 200);
-    const data = await res.json();
-    // block-bearing items come back as markdown strings
-    const md = Object.values(data).find((v) => typeof v === 'string' && v.length);
-    assert.equal(typeof md, 'string');
-    assert.ok(md.length > 0, 'produced markdown');
+    // Our markdown extension returns the same ZIP container as real Plone's
+    // @export, holding the emitted markdown trees instead of exportimport JSON.
+    assert.equal(res.headers.get('content-type'), 'application/zip');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-md-test-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'e.zip'), Buffer.from(await res.arrayBuffer()));
+      execFileSync('unzip', ['-q', '-o', 'e.zip'], { cwd: dir });
+      const mdFiles = [];
+      const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p); else if (e.name.endsWith('.md')) mdFiles.push(p);
+      });
+      walk(dir);
+      assert.ok(mdFiles.length > 0, 'zip contains markdown files');
+      assert.ok(fs.readFileSync(mdFiles[0], 'utf8').length > 0, 'markdown file has content');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('rejects an unknown format', async () => {

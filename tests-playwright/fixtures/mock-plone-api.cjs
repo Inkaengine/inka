@@ -2284,19 +2284,22 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
 
 /**
  * Export the whole content tree (mock-API extra feature). The real Plone
- * @@export-content answers with a gzipped tar of the plone.exportimport tree
- * (data.json + __metadata__.json + siblings + blob files), so `format: 'json'`
- * responds the same way — a deployable distribution, byte-for-byte importable —
- * emitted from the IN-MEMORY served content across every content-source mount
- * (JSON or markdown alike, since markdown mounts have no exportimport tree on
- * disk), and validated before it ships.
- * `format: 'markdown'` runs each block-bearing item through the prototype engine
- * and returns a { "/path": markdown } map; the CALLER supplies the prototypes in
- * the body (`{ matched, tagged }` declaration text) so the mock API needs no
- * format config of its own.
+ * Mirrors plone.exportimport's real `@export` REST service (Plone 6.2+): it
+ * answers with a ZIP (`application/zip`) of the exportimport tree — data.json +
+ * __metadata__.json + siblings + blob files — so `format: 'json'` (the default,
+ * and the only shape real Plone offers) responds the same way: a deployable
+ * distribution, byte-for-byte importable, emitted from the IN-MEMORY served
+ * content across every content-source mount (JSON or markdown alike, since
+ * markdown mounts have no exportimport tree on disk), and validated before it
+ * ships.
+ * `format: 'markdown'` is OUR extension on top: it runs each block-bearing item
+ * through the prototype engine and returns the same ZIP container holding the
+ * markdown trees instead of exportimport JSON; the CALLER supplies the
+ * prototypes in the body (`{ matched, tagged }` declaration text) so the mock
+ * API needs no format config of its own.
  *   POST /@export  { format: 'json'|'markdown', prototypes?: { matched, tagged } }
- *     json     -> application/gzip  (export.tar.gz: content/**, siblings)
- *     markdown -> { "/path": markdown string, ... }
+ *     json     -> application/zip  (export.zip: content/**, siblings)
+ *     markdown -> application/zip  (export-markdown.zip: docs/**, site/** trees)
  */
 app.post('/@export', async (req, res) => {
   await ready;
@@ -2538,12 +2541,13 @@ app.post('/@export', async (req, res) => {
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, emitFile(c, p, m));
       }
-      const tarPath = path.join(stagingMd, 'export.tar.gz');
-      const members = fs.readdirSync(stagingMd).filter((x) => x !== 'export.tar.gz');
-      execFileSync('tar', ['-czf', tarPath, '-C', stagingMd, ...members]);
-      const buf = fs.readFileSync(tarPath);
-      res.set('Content-Type', 'application/gzip');
-      res.set('Content-Disposition', 'attachment; filename="export-markdown.tar.gz"');
+      const zipPath = path.join(stagingMd, 'export-markdown.zip');
+      const members = fs.readdirSync(stagingMd);
+      // A ZIP container, like real plone.exportimport @export (not a gzip tar).
+      execFileSync('zip', ['-r', '-q', '-X', zipPath, ...members], { cwd: stagingMd });
+      const buf = fs.readFileSync(zipPath);
+      res.set('Content-Type', 'application/zip');
+      res.set('Content-Disposition', 'attachment; filename="export-markdown.zip"');
       return res.send(buf);
     } finally {
       fs.rmSync(stagingMd, { recursive: true, force: true });
@@ -2571,13 +2575,14 @@ app.post('/@export', async (req, res) => {
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
     }
-    const tarPath = path.join(staging, 'export.tar.gz');
-    // Tar the tree relative to `staging` so paths are content/... and siblings.
+    const zipPath = path.join(staging, 'export.zip');
+    // Zip the tree relative to `staging` so entries are content/... and siblings,
+    // matching real plone.exportimport @export (application/zip).
     const members = ['content', ...DISTRIBUTION_SIBLINGS.filter((s) => fs.existsSync(path.join(staging, s)))];
-    execFileSync('tar', ['-czf', tarPath, '-C', staging, ...members]);
-    const buf = fs.readFileSync(tarPath);
-    res.set('Content-Type', 'application/gzip');
-    res.set('Content-Disposition', 'attachment; filename="export.tar.gz"');
+    execFileSync('zip', ['-r', '-q', '-X', zipPath, ...members], { cwd: staging });
+    const buf = fs.readFileSync(zipPath);
+    res.set('Content-Type', 'application/zip');
+    res.set('Content-Disposition', 'attachment; filename="export.zip"');
     return res.send(buf);
   } finally {
     fs.rmSync(staging, { recursive: true, force: true });
