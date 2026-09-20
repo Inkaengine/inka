@@ -5,11 +5,9 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The image block allows images to be embedded in various display formats.
-  Images can be displayed in different sizes (100%, L, M, S) and aligned left,
-  right or center of the text flow.
+description: The image block allows images to be embedded in various display
+  formats. Images can be displayed in different sizes (100%, L, M, S) and
+  aligned left, right or center of the text flow.
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null

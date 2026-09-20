@@ -2448,7 +2448,18 @@ app.post('/@export', async (req, res) => {
     // The markdown file for one served item (frontmatter + body). Folders carry
     // the reconstructed order:/blobs: — this is an EXPORT, so nothing is stripped.
     const emitFile = (c, p, m) => {
-      const meta = Object.fromEntries(Object.entries(c).filter(([k]) => !SERVER_STATE.has(k)));
+      // Trim edge whitespace on frontmatter string values. A leading/trailing
+      // newline forces a YAML BLOCK scalar (`>-`/`|-`), and the `yaml` package
+      // formats block scalars DIFFERENTLY across major versions (v1 vs v2) — so
+      // an unpinned/hoisting-dependent `yaml` makes the frontmatter emit differ
+      // between environments (the round-trip gate caught exactly this). A plain
+      // scalar is version-stable, and edge whitespace on a metadata string is
+      // meaningless inconsistent data anyway.
+      const meta = Object.fromEntries(
+        Object.entries(c)
+          .filter(([k]) => !SERVER_STATE.has(k))
+          .map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]),
+      );
       const kids = (childrenByParent[p] || []).map((k) => loadRawContentFromDisk(k)).filter(Boolean);
       const childPages = kids.filter((d) => !isBlobItem(d))
         .sort((a, b) => (uidPositionMap[a.UID] ?? 0) - (uidPositionMap[b.UID] ?? 0));

@@ -5,10 +5,8 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The separator block allows blocks or groups of blocks to be visually separated
-  by a horizontal line.
+description: The separator block allows blocks or groups of blocks to be
+  visually separated by a horizontal line.
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null

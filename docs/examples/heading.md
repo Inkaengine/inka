@@ -5,10 +5,8 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The heading block allows you to display headings to group multiple blocks
-  under one topic.
+description: The heading block allows you to display headings to group multiple
+  blocks under one topic.
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
