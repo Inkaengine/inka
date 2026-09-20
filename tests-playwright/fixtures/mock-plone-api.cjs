@@ -3122,7 +3122,15 @@ app.get('/@site', (req, res) => {
     // multilingual site while the rest of the suite — which shares this
     // server, in parallel — goes on seeing the single-language one it was
     // written against.
-    features: { multilingual: siteFeaturesFor(getSessionId(req)).multilingual },
+    features: {
+      // A site configured with more than one language IS multilingual — that
+      // is what MOCK_SITE_LANGUAGES says. The per-session opt-in exists for
+      // the shared test server, where the default site has one language and
+      // every other spec expects it to stay that way.
+      multilingual:
+        siteFeaturesFor(getSessionId(req)).multilingual ||
+        availableLanguages().length > 1,
+    },
   });
 });
 
