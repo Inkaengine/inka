@@ -541,6 +541,12 @@ test.describe('Multilingual editing', () => {
       .filter({ hasText: 'We design in English.' })
       .last();
     await expect(teaser).toBeVisible({ timeout: 20000 });
+    // Rendered is not ready: until node ids are stamped the click selects
+    // nothing, no blind opens, and the marker this test is about never
+    // renders. Its two sibling tests wait for exactly this.
+    await expect(
+      helper.getIframe().locator('[data-node-id]').first(),
+    ).toBeAttached({ timeout: 20000 });
     await teaser.click();
 
     const marker = page
