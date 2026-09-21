@@ -3353,15 +3353,29 @@ const Iframe = (props) => {
           break;
 
         case 'BLOCK_SELECTED': {
-          // Back to the page being edited when the editor is WORKING IN it. A
-          // selection announced while the other pane holds focus is this page
-          // re-announcing itself on a re-render, and must not snatch the
-          // sidebar back. Focus is ASKED for: moving between two frames fires
-          // no event in this document.
-          if (
-            typeof document === 'undefined' ||
-            document.activeElement?.id !== 'translationSourceIframe'
-          ) {
+          // Back to the page being edited when the editor is WORKING IN it —
+          // and only then. This page also RE-ANNOUNCES its existing selection
+          // on a re-render, on scroll and on resize, and those must not snatch
+          // the sidebar back from the compared language.
+          //
+          // This used to ask whether the compare pane held focus. It never
+          // can: that pane's iframe takes no pointer events (the click lands
+          // on the wrapper, which is how the pane gets selected), so nothing
+          // inside it is ever `document.activeElement` and the guard was
+          // always true. Any re-announcement from this pane then took the
+          // sidebar back, a beat after the editor clicked the other one —
+          // which is why it only failed sometimes.
+          //
+          // Evidence of working in this pane instead: it has focus, or it is
+          // announcing a DIFFERENT block from the one already selected.
+          const editPaneHasFocus =
+            typeof document !== 'undefined' &&
+            document.activeElement?.id === 'previewIframe';
+          const isRepeatOfCurrentSelection =
+            event.data.blockUid === selectedBlock ||
+            event.data.src === 'scrollHandler' ||
+            event.data.src === 'resizeHandler';
+          if (editPaneHasFocus || !isRepeatOfCurrentSelection) {
             setSelectedPane('edit');
           }
           // Update block UI state and selection atomically
