@@ -5471,6 +5471,25 @@ const Iframe = (props) => {
               {`This block has no counterpart in ${compareLanguage}`}
             </span>
           )}
+          {/* Blocks the OTHER language has that this page never received —
+              added to it after this translation was made. They belong to no
+              blind here, because there is no block to hang them on: this page
+              is what is missing them. */}
+          {compareLanguage && translationStatuses.missing.length > 0 && (
+            <span className="compare-missing-blocks" data-testid="missing-blocks">
+              {translationStatuses.missing.length === 1
+                ? `1 block in ${compareLanguage} is not on this page`
+                : `${translationStatuses.missing.length} blocks in ${compareLanguage} are not on this page`}
+            </span>
+          )}
+          {/* Copies made before any of this existed, or by something else: we
+              do not know what they were translated from, so nothing is claimed
+              about them either way. */}
+          {compareLanguage && translationStatuses.unknown.length > 0 && (
+            <span className="compare-unknown-blocks" data-testid="unknown-blocks">
+              {`${translationStatuses.unknown.length} not checked`}
+            </span>
+          )}
           {translations.map((translation) => (
             <button
               key={translation.language}
