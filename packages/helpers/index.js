@@ -2402,6 +2402,111 @@ export function untranslatedBlockIds(blocks, sourceBlocks, idFieldMap = null) {
 }
 
 /**
+ * The same blocks, with the fingerprint moved forward for the ones the
+ * translator has just brought up to date.
+ *
+ * A stale marker that cannot be cleared is worse than no marker: translators
+ * learn to ignore it, and the ones that matter go unseen with it. So doing the
+ * work clears it — saving a block whose WORDS changed records the source it has
+ * now caught up with.
+ *
+ * The words, not the block: restyling one or swapping its image is no evidence
+ * anyone read the English that changed, and clearing the marker on that would
+ * lose the drift these fingerprints exist to catch. `fingerprintOf` is the same
+ * function used on the source — applied here to the translation, it answers
+ * "did anyone write in this block".
+ *
+ * Re-stamping every block with a `@canonical` instead would be cheaper and
+ * wrong: saving a page for any reason would silently clear staleness on blocks
+ * nobody looked at.
+ *
+ * @param {Object} blocks - the blocks about to be saved
+ * @param {Object} initialBlocks - the same page as it was loaded
+ * @param {Object} sourceBlocks - the blocks of the language it is translated from
+ * @param {Object} options
+ * @param {Function} options.fingerprintOf - (block, id, type) => string|null
+ * @param {Object} [options.idFieldMap] - which fields hold children, per type
+ * @returns {Object} a copy; the originals are untouched
+ */
+export function restampTranslatedBlocks(blocks, initialBlocks, sourceBlocks, options = {}) {
+  const { fingerprintOf, idFieldMap = null } = options;
+  if (!fingerprintOf) return blocks;
+
+  const sourceById = {};
+  const indexSource = (map) => {
+    for (const [id, block] of Object.entries(map || {})) {
+      sourceById[id] = block;
+      for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+        const nested = {};
+        for (const entry of getChildBlockEntries(block, field)) nested[entry.id] = entry.block;
+        indexSource(nested);
+      }
+    }
+  };
+  indexSource(sourceBlocks);
+
+  const initialById = {};
+  const indexInitial = (map) => {
+    for (const [id, block] of Object.entries(map || {})) {
+      initialById[id] = block;
+      for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+        const nested = {};
+        for (const entry of getChildBlockEntries(block, field)) nested[entry.id] = entry.block;
+        indexInitial(nested);
+      }
+    }
+  };
+  indexInitial(initialBlocks);
+
+  const safely = (block, id, type) => {
+    try {
+      return fingerprintOf(block, id, type);
+    } catch {
+      // A type with no schema: we cannot tell which fields are words, so we
+      // cannot tell whether anyone wrote any. Leave the block as it is.
+      return undefined;
+    }
+  };
+
+  const restampBlock = (block, id) => {
+    let out = block;
+    const canonical = block?.['@canonical'];
+    const source = canonical ? sourceById[canonical] : null;
+    if (source) {
+      const before = safely(initialById[id], id, getBlockType(block));
+      const after = safely(block, id, getBlockType(block));
+      const wordsChanged =
+        before !== undefined && after !== undefined && before !== after;
+      if (wordsChanged) {
+        const caughtUpWith = safely(source, canonical, getBlockType(source));
+        if (caughtUpWith) {
+          out = { ...block, '@translation': { ...block['@translation'], fingerprint: caughtUpWith } };
+        }
+      }
+    }
+
+    for (const field of getChildFields(out, idFieldMap, { allObjectLists: true })) {
+      const children = [];
+      for (const entry of getChildBlockEntries(block, field)) {
+        children.push({ id: entry.id, block: restampBlock(entry.block, entry.id) });
+      }
+      if (children.length) {
+        if (out === block) out = { ...block };
+        if (!field.isObjectList) out.blocks = { ...out.blocks };
+        setChildBlockEntries(out, field, children);
+      }
+    }
+    return out;
+  };
+
+  const result = {};
+  for (const [id, block] of Object.entries(blocks || {})) {
+    result[id] = restampBlock(block, id);
+  }
+  return result;
+}
+
+/**
  * What a translator needs to know about a translated page, without reading it
  * end to end or diffing anything.
  *

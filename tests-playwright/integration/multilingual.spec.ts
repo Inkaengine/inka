@@ -902,6 +902,90 @@ test.describe('Multilingual editing', () => {
     await expect(marker.first()).toHaveAttribute('data-nested-count', '1');
   });
 
+  test('bringing a block up to date moves its fingerprint forward', async ({
+    page,
+  }) => {
+    // The half that makes the markers usable. A stale marker nobody can clear
+    // is worse than none: translators learn to ignore it, and the ones that
+    // matter go unseen with it. Doing the work has to be what clears it — and
+    // the record of that has to be in the CONTENT, not just on screen.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    await page
+      .locator('#page-manage-translations tbody tr', { hasText: /deutsch/i })
+      .locator('a[href$="/create-translation"]')
+      .click();
+    await page.locator('#page-add #field-title').fill('Dienstleistungen');
+    await page.locator('#toolbar-save').click();
+    await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+
+    const auth = {
+      Authorization: `Bearer ${helper.authToken}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    };
+    const read = async (path: string) =>
+      (await page.request.get(`${URLS.mockApi}${path}`, { headers: auth })).json();
+    const slateOf = (doc: any) => {
+      const id = Object.keys(doc.blocks).find(
+        (key) =>
+          doc.blocks[key]['@type'] === 'slate' &&
+          JSON.stringify(doc.blocks[key].value ?? '').includes('What we do'),
+      );
+      return { id, block: id ? doc.blocks[id] : null };
+    };
+
+    const germanBefore = await read('/de/dienstleistungen');
+    const { id: slateUid, block: slateBefore } = slateOf(germanBefore);
+    expect(slateUid, 'the copied paragraph is there').toBeTruthy();
+    const fingerprintBefore = slateBefore['@translation'].fingerprint;
+    expect(fingerprintBefore, 'the copy recorded what it was made from').toBeTruthy();
+    const untouched: any = Object.values(germanBefore.blocks).find(
+      (b: any) => b['@type'] === 'gridBlock',
+    );
+    const untouchedFingerprint = untouched['@translation'].fingerprint;
+
+    // The English paragraph is rewritten, which is what makes the copy stale.
+    const english = await read('/en/services');
+    const { id: englishSlate } = slateOf(english);
+    english.blocks[englishSlate!].value = [
+      { type: 'p', children: [{ text: 'What we do, said differently.' }] },
+    ];
+    await page.request.patch(`${URLS.mockApi}/en/services`, {
+      headers: auth,
+      data: { blocks: english.blocks },
+    });
+
+    // The translator rewrites the German to match, on the page, and saves.
+    // Note there is no comparison open: catching up is recorded whether or not
+    // the editor happened to be reading the other language.
+    await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);
+    await helper.waitForIframeReady();
+    await helper.editBlockTextInIframe(slateUid!, 'Was wir machen, anders gesagt.');
+    await page.locator('#toolbar-save').click();
+    await expect(page).toHaveURL(/\/de\/dienstleistungen$/, { timeout: 20000 });
+
+    const germanAfter = await read('/de/dienstleistungen');
+    const { block: slateAfter } = slateOf(germanAfter);
+    expect(
+      slateAfter?.['@translation']?.fingerprint ??
+        germanAfter.blocks[slateUid!]['@translation'].fingerprint,
+      'the block that was rewritten records the English it has caught up with',
+    ).not.toBe(fingerprintBefore);
+
+    const untouchedAfter: any = Object.values(germanAfter.blocks).find(
+      (b: any) => b['@type'] === 'gridBlock',
+    );
+    expect(
+      untouchedAfter['@translation'].fingerprint,
+      'a block nobody touched keeps the fingerprint it had',
+    ).toBe(untouchedFingerprint);
+  });
+
   test('a shared field is inherited on a translation, and owned by the default language', async ({
     page,
   }) => {

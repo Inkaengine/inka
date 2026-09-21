@@ -51,7 +51,12 @@ import {
   stripFixedInsideSlots,
   inheritedLanguageFields,
   withFieldsReadOnly,
+  restampTranslatedBlocks,
+  sourceFingerprint,
 } from '@volto-hydra/helpers';
+import Api from '@plone/volto/helpers/Api/Api';
+import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
+import { buildIdFieldMap, getBlockTypeSchema } from '../../../../../utils/blockPath';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
 import {
@@ -474,6 +479,12 @@ class Form extends Component {
   componentDidMount() {
     this.setState({ isClient: true });
 
+    // The language this page was translated from, read ONCE when the page
+    // opens rather than on every save. Kept as the promise so a save that
+    // arrives before it lands waits for the same request instead of making a
+    // second one.
+    this.translationSourceRequest = this.requestTranslationSource();
+
     // Offer back anything autosaved from a previous visit to this page.
     if (this.props.schema) {
       this.props.checkSavedDraft(
@@ -720,7 +731,13 @@ class Form extends Component {
       // — that narrow path keeps its own (id-rewritten) data, as upstream does.
       // Deep-link anchors already ride in formData (merged in as they're
       // harvested), so there's nothing extra to fold in at save.
-      const pageFormData = finalizedFormData || this.state.formData;
+      let pageFormData = finalizedFormData || this.state.formData;
+      // A translator who rewrites a block has caught it up with the original,
+      // so the copy records the source it is now level with and the "the
+      // original changed" marker clears. Only the blocks whose WORDS changed:
+      // restyling one is no evidence anyone read the English that changed, and
+      // clearing the marker on that loses the drift it exists to catch.
+      pageFormData = await this.restampTranslation(pageFormData);
       if (this.props.isEditForm) {
         this.props.onSubmit(this.getOnlyFormModifiedValues(pageFormData));
       } else {
@@ -736,6 +753,64 @@ class Form extends Component {
       }
     }
   }
+
+  /**
+   * Move the translation fingerprints forward for blocks this save brought up
+   * to date. Costs one read of the source page — only on a translation, and
+   * only at save — which is what makes the markers clearable at all.
+   */
+  /**
+   * The page this one was translated from, or null when this is not a
+   * translation. Read on mount: the save path then costs nothing, and repeated
+   * saves of the same page cost nothing again.
+   */
+  requestTranslationSource = () => {
+    if (!this.props.isEditForm) return Promise.resolve(null);
+    const content = this.props.content;
+    const language =
+      typeof content?.language === 'object' ? content.language?.token : content?.language;
+    const defaultLanguage = this.props.defaultLanguage;
+    if (!language || !defaultLanguage || language === defaultLanguage) {
+      return Promise.resolve(null);
+    }
+    const translations = content?.['@components']?.translations?.items || [];
+    const origin = translations.find((item) => item.language === defaultLanguage);
+    if (!origin?.['@id']) return Promise.resolve(null);
+
+    return new Api()
+      .get(flattenToAppURL(origin['@id']))
+      .catch(() => {
+        // The original cannot be read. Saving the page matters more than
+        // moving a marker, so the save goes ahead and the blocks keep the
+        // fingerprints they had — staying flagged, which is the safe
+        // direction to be wrong in.
+        log('translation source could not be read; fingerprints left as they are');
+        return null;
+      });
+  };
+
+  restampTranslation = async (pageFormData) => {
+    const source = await (this.translationSourceRequest || Promise.resolve(null));
+    if (!source) return pageFormData;
+
+    const blocks = restampTranslatedBlocks(
+      pageFormData?.blocks,
+      this.state.initialFormData?.blocks,
+      source?.blocks,
+      {
+        idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
+        fingerprintOf: (block, id, type) => {
+          const schema = getBlockTypeSchema(
+            type,
+            this.props.intl,
+            config.blocks.blocksConfig,
+          );
+          return schema ? sourceFingerprint(block, schema) : null;
+        },
+      },
+    );
+    return { ...pageFormData, blocks };
+  };
 
   /**
    * getOnlyFormModifiedValues handler
