@@ -436,6 +436,7 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await helper.waitForIframeReady();
 
     const compare = page.locator('.compare-languages');
     await expect(compare).toBeVisible({ timeout: 20000 });
@@ -458,6 +459,13 @@ test.describe('Multilingual editing', () => {
 
     const teaser = helper.getIframe().locator(`[data-block-uid="${teaserUid}"]`).first();
     await expect(teaser).toBeVisible({ timeout: 20000 });
+    // Rendered is not ready: node ids are stamped when the admin's data
+    // arrives, and a click before that selects nothing — the compare pane then
+    // sits on whatever was selected when the page loaded, which is the title.
+    // The heavier the frontend, the more often the click lands first.
+    await expect(
+      helper.getIframe().locator('[data-node-id]').first(),
+    ).toBeAttached({ timeout: 20000 });
     await teaser.click();
 
     // The other pane shows the block this one was copied from. Polled, and
@@ -699,6 +707,111 @@ test.describe('Multilingual editing', () => {
     const english = await read('/en/services');
     expect(JSON.stringify(english.blocks)).toContain('What we do, in English.');
     expect(JSON.stringify(english.blocks)).not.toContain('Was wir machen');
+  });
+
+  test('a folder can be translated too, and lands on its view', async ({ page }) => {
+    // A site is not only pages. plone.app.multilingual translates whatever the
+    // type is, through the same create — `translation_of` and `language` — and
+    // everything above this test happens to be a Document. A folder has no
+    // blocks to copy and no visual editor to land in, which is exactly why it
+    // is worth walking: the paths that assume both are the ones that break.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/team`);
+    await fromMoreMenu(page, /manage translations/i);
+    const row = page.locator('#page-manage-translations tbody tr', {
+      hasText: /deutsch|german/i,
+    });
+    await expect(row, 'a folder offers its languages like anything else').toBeVisible({
+      timeout: 15000,
+    });
+    await row.locator('a[href$="/create-translation"]').click();
+    await expect(page).toHaveURL(/\/de\/add\?type=Folder/, { timeout: 15000 });
+
+    await page.locator('#page-add #field-title').fill('Mannschaft');
+    await page.locator('#toolbar-save').click();
+
+    // A type with no blocks has no canvas to edit, so it lands on its view —
+    // not /edit, which for a folder is Volto's flat form and not what the
+    // bridge drives.
+    await expect(page).toHaveURL(/\/de\/mannschaft$/, { timeout: 20000 });
+
+    const read = async (path: string) =>
+      (
+        await page.request.get(`${URLS.mockApi}${path}`, {
+          headers: {
+            Authorization: `Bearer ${helper.authToken}`,
+            Accept: 'application/json',
+          },
+        })
+      ).json();
+
+    // Linked and in German — the two things a create does for a translation,
+    // which the API did for Documents only until this test asked.
+    const group = await read('/en/team/@translations');
+    expect(group.items.map((i: { language: string }) => i.language)).toEqual(['de']);
+    expect(group.items[0]['@id']).toContain('/de/mannschaft');
+
+    const german = await read('/de/mannschaft');
+    expect(german['@type']).toBe('Folder');
+    expect(german.language?.token ?? german.language).toBe('de');
+  });
+
+  test('an image can be translated, and gets a file of its own', async ({ page }) => {
+    // A folder has nothing to upload; an image is the other shape of
+    // non-Document — a type whose whole point is a binary, where translating
+    // means a DIFFERENT file (German screenshot, German poster), not a copy of
+    // the same one.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/logo.jpg`);
+    await fromMoreMenu(page, /manage translations/i);
+    const row = page.locator('#page-manage-translations tbody tr', {
+      hasText: /deutsch|german/i,
+    });
+    await expect(row, 'an image offers its languages like a page').toBeVisible({
+      timeout: 15000,
+    });
+    await row.locator('a[href$="/create-translation"]').click();
+    await expect(page).toHaveURL(/\/de\/add\?type=Image/, { timeout: 15000 });
+
+    await page.locator('#page-add #field-title').fill('Logo (Deutsch)');
+    // A 1x1 PNG: the German image is its own file, not the English one.
+    await page.locator('#page-add input[type="file"]').setInputFiles({
+      name: 'logo-de.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xde, 0x00, 0x00, 0x00,
+        0x0c, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xff, 0xff, 0x3f,
+        0x00, 0x05, 0xfe, 0x02, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
+        0x44, 0xae, 0x42, 0x60, 0x82,
+      ]),
+    });
+    await page.locator('#toolbar-save').click();
+
+    // An image has no blocks, so like a folder it lands on its view — not the
+    // add form it came from, and not /edit.
+    await expect(page).not.toHaveURL(/\/add\b/, { timeout: 20000 });
+    await expect(page).toHaveURL(/\/de\/[^/?#]+$/);
+
+    const group = await (
+      await page.request.get(`${URLS.mockApi}/en/logo.jpg/@translations`, {
+        headers: {
+          Authorization: `Bearer ${helper.authToken}`,
+          Accept: 'application/json',
+        },
+      })
+    ).json();
+    expect(group.items.map((i: { language: string }) => i.language)).toEqual(['de']);
+    expect(group.items[0]['@id'], 'the German image is a separate item').toContain(
+      '/de/',
+    );
   });
 
   test('a shared field is inherited on a translation, and owned by the default language', async ({
