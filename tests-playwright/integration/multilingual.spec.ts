@@ -992,6 +992,57 @@ test.describe('Multilingual editing', () => {
     ).toBe(untouchedFingerprint);
   });
 
+  test('the markers do not wait for a comparison to be switched on', async ({
+    page,
+  }) => {
+    // A translator opening a German page wants to know what needs doing
+    // BEFORE deciding to read the English beside it. The answers come from the
+    // page this one was translated from, which the form already reads when the
+    // page opens — so nothing here needs the comparison pane.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    await page
+      .locator('#page-manage-translations tbody tr', { hasText: /deutsch/i })
+      .locator('a[href$="/create-translation"]')
+      .click();
+    await page.locator('#page-add #field-title').fill('Dienstleistungen');
+    await page.locator('#toolbar-save').click();
+    await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+
+    // Re-opened cold: no comparison, nothing clicked but the block itself.
+    await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);
+    await helper.waitForIframeReady();
+    await expect(
+      page.locator('.compare-language.active'),
+      'no comparison is open',
+    ).toHaveCount(0);
+
+    const teaser = helper
+      .getIframe()
+      .locator('[data-block-uid]')
+      .filter({ hasText: 'We design in English.' })
+      .last();
+    await expect(teaser).toBeVisible({ timeout: 20000 });
+    await expect(
+      helper.getIframe().locator('[data-node-id]').first(),
+    ).toBeAttached({ timeout: 20000 });
+    await teaser.click();
+
+    const marker = page
+      .locator('.parent-block-section')
+      .filter({ hasText: 'GridBlock' })
+      .locator('.nested-status[data-nested-status="untranslated"]');
+    await expect(
+      marker.first(),
+      'the copies are flagged without anyone opening the other language',
+    ).toBeVisible({ timeout: 10000 });
+    await expect(marker.first()).toHaveAttribute('data-nested-count', '2');
+  });
+
   test('a shared field is inherited on a translation, and owned by the default language', async ({
     page,
   }) => {

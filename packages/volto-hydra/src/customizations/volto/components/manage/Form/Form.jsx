@@ -484,6 +484,12 @@ class Form extends Component {
     // arrives before it lands waits for the same request instead of making a
     // second one.
     this.translationSourceRequest = this.requestTranslationSource();
+    // …and hand it to the canvas once it lands: the comparison pane and the
+    // per-block markers both want the same page, and one read serves all
+    // three.
+    this.translationSourceRequest.then((source) => {
+      if (source && !this.unmounted) this.setState({ translationSource: source });
+    });
 
     // Offer back anything autosaved from a previous visit to this page.
     if (this.props.schema) {
@@ -515,6 +521,7 @@ class Form extends Component {
    * @returns {undefined}
    */
   componentWillUnmount() {
+    this.unmounted = true;
     if (this.handleSaveShortcut) {
       document.removeEventListener('keydown', this.handleSaveShortcut);
     }
@@ -993,6 +1000,11 @@ class Form extends Component {
           </Container>
           <Iframe
             formData={formData}
+            // The language this page was translated from, read once when the
+            // page opened. The canvas uses it for the comparison pane (when
+            // that is the language being compared) and for the translation
+            // markers, which no longer wait for a comparison to be switched on.
+            translationSource={this.state.translationSource}
             // Per-block validation errors from the last refused save, so the
             // sidebar can mark the field. The toast names the block; this is
             // what shows the author WHICH field and why, where they fix it.

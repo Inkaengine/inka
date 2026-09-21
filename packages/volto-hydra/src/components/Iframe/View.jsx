@@ -897,10 +897,25 @@ const Iframe = (props) => {
   // edited here, and it is not that one.
   const [selectedPane, setSelectedPane] = useState('edit');
 
+  // The page this one was translated from, already read by the form when this
+  // page opened. Its own `language` says which it is, so nothing extra has to
+  // be passed to know when it is the one being compared.
+  const translationSource = props.translationSource;
+  const translationSourceLanguage =
+    typeof translationSource?.language === 'object'
+      ? translationSource.language?.token
+      : translationSource?.language;
+
   useEffect(() => {
     const translation = translations.find((t) => t.language === compareLanguage);
     if (!translation) {
       setCompareContent(null);
+      return;
+    }
+    // Comparing with the language this page was translated from — the usual
+    // case — needs no request: that page is already here.
+    if (compareLanguage && compareLanguage === translationSourceLanguage) {
+      setCompareContent(translationSource);
       return;
     }
     let cancelled = false;
@@ -917,7 +932,7 @@ const Iframe = (props) => {
     return () => {
       cancelled = true;
     };
-  }, [compareLanguage, translations]);
+  }, [compareLanguage, translations, translationSource, translationSourceLanguage]);
 
   // What the pane is given: the compared page with every block read-only, so
   // it can be read and inspected but not changed. Read-only is a property of a
@@ -978,8 +993,13 @@ const Iframe = (props) => {
   // per-block statuses below.
   const translationStatuses = useMemo(
     () =>
-      compareContent
-        ? translationStatus(properties?.blocks, compareContent?.blocks, {
+      // Against the page this one was TRANSLATED FROM, whether or not a
+      // comparison is open and whichever language it shows: `@canonical` points
+      // at that page's blocks, so it is the only page these answers can come
+      // from. Markers used to wait for a comparison to be switched on, which is
+      // not when a translator wants them.
+      translationSource
+        ? translationStatus(properties?.blocks, translationSource?.blocks, {
             idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, intl),
             fingerprintOf: (sourceBlock, id, type) =>
               sourceFingerprint(
@@ -988,7 +1008,7 @@ const Iframe = (props) => {
               ),
           })
         : { statuses: {}, missing: [], unknown: [] },
-    [compareContent, properties?.blocks, intl],
+    [translationSource, properties?.blocks, intl],
   );
 
 
@@ -5475,17 +5495,17 @@ const Iframe = (props) => {
               added to it after this translation was made. They belong to no
               blind here, because there is no block to hang them on: this page
               is what is missing them. */}
-          {compareLanguage && translationStatuses.missing.length > 0 && (
+          {translationStatuses.missing.length > 0 && (
             <span className="compare-missing-blocks" data-testid="missing-blocks">
               {translationStatuses.missing.length === 1
-                ? `1 block in ${compareLanguage} is not on this page`
-                : `${translationStatuses.missing.length} blocks in ${compareLanguage} are not on this page`}
+                ? `1 block in ${translationSourceLanguage} is not on this page`
+                : `${translationStatuses.missing.length} blocks in ${translationSourceLanguage} are not on this page`}
             </span>
           )}
           {/* Copies made before any of this existed, or by something else: we
               do not know what they were translated from, so nothing is claimed
               about them either way. */}
-          {compareLanguage && translationStatuses.unknown.length > 0 && (
+          {translationStatuses.unknown.length > 0 && (
             <span className="compare-unknown-blocks" data-testid="unknown-blocks">
               {`${translationStatuses.unknown.length} not checked`}
             </span>
