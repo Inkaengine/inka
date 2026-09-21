@@ -3581,6 +3581,12 @@ function getTypeSchema(typeName) {
           fields: ['title', 'description'],
         },
       ],
+      // Every Plone type says which layouts it has, and the admin's display
+      // menu reads it without a guard: `schema.layouts.filter(...)`. A schema
+      // without it throws inside the toolbar's More menu and takes the whole
+      // menu with it — Manage Translations included — with nothing on screen
+      // to say why. A folderish type gets the listing views.
+      layouts: ['listing_view', 'summary_view', 'tabular_view', 'album_view'],
     };
   }
 
