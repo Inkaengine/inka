@@ -814,6 +814,94 @@ test.describe('Multilingual editing', () => {
     );
   });
 
+  test('a container says when the ORIGINAL has changed since it was translated', async ({
+    page,
+  }) => {
+    // The other half of the same question. `untranslated` finds a copy nobody
+    // has touched, and goes quiet the moment German is typed — after that,
+    // nothing said the English had moved on, and a translator had to re-read
+    // the page to find out. The copy records a fingerprint of what it was made
+    // from, so the two can be compared without a diff.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    await page
+      .locator('#page-manage-translations tbody tr', { hasText: /deutsch/i })
+      .locator('a[href$="/create-translation"]')
+      .click();
+    await page.locator('#page-add #field-title').fill('Dienstleistungen');
+    await page.locator('#toolbar-save').click();
+    await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+
+    const auth = {
+      Authorization: `Bearer ${helper.authToken}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    };
+
+    // Translate the two copied teasers, so neither is "untranslated" any more
+    // and only the fingerprint can answer.
+    const german = await (
+      await page.request.get(`${URLS.mockApi}/de/dienstleistungen`, { headers: auth })
+    ).json();
+    const germanGrid: any = Object.values(german.blocks).find(
+      (b: any) => b['@type'] === 'gridBlock',
+    );
+    const germanTeasers = germanGrid.blocks_layout.items as string[];
+    for (const [i, uid] of germanTeasers.entries()) {
+      germanGrid.blocks[uid].title = `Deutscher Titel ${i + 1}`;
+      germanGrid.blocks[uid].description = `Deutsche Beschreibung ${i + 1}`;
+    }
+    await page.request.patch(`${URLS.mockApi}/de/dienstleistungen`, {
+      headers: auth,
+      data: { blocks: german.blocks },
+    });
+
+    // Now the ENGLISH changes: someone rewrites one teaser.
+    const english = await (
+      await page.request.get(`${URLS.mockApi}/en/services`, { headers: auth })
+    ).json();
+    const englishGrid: any = Object.values(english.blocks).find(
+      (b: any) => b['@type'] === 'gridBlock',
+    );
+    const [firstEnglishTeaser] = englishGrid.blocks_layout.items as string[];
+    englishGrid.blocks[firstEnglishTeaser].description =
+      'We design in English, but differently now.';
+    await page.request.patch(`${URLS.mockApi}/en/services`, {
+      headers: auth,
+      data: { blocks: english.blocks },
+    });
+
+    // Re-open the translation beside its original.
+    await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);
+    const compare = page.locator('.compare-languages');
+    await expect(compare).toBeVisible({ timeout: 20000 });
+    await compare.getByRole('button', { name: 'en' }).click();
+
+    await helper.waitForIframeReady();
+    const teaser = helper
+      .getIframe()
+      .locator('[data-block-uid]')
+      .filter({ hasText: 'Deutscher Titel' })
+      .last();
+    await expect(teaser).toBeVisible({ timeout: 20000 });
+    await teaser.click();
+
+    const marker = page
+      .locator('.parent-block-section')
+      .filter({ hasText: 'GridBlock' })
+      .locator('.nested-status[data-nested-status="stale"]');
+    await expect(
+      marker.first(),
+      "the container's blind marks that a block's original has changed",
+    ).toBeVisible({ timeout: 10000 });
+    // ONE of the two teasers was rewritten in English; the other is current.
+    await expect(marker.first()).toHaveAttribute('data-nested-count', '1');
+  });
+
   test('a shared field is inherited on a translation, and owned by the default language', async ({
     page,
   }) => {

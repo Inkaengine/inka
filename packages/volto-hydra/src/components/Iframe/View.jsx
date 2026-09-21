@@ -3,7 +3,8 @@ import ViewPane from './ViewPane';
 import { ReadOnlyForm } from '../Sidebar/ReadOnlyForm';
 import {
   counterpartBlockId,
-  untranslatedBlockIds,
+  translationStatus,
+  sourceFingerprint,
   withAllBlocksReadOnly,
 } from '@volto-hydra/helpers';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
@@ -966,17 +967,27 @@ const Iframe = (props) => {
       : null;
   }, [translations, compareLanguage, u, token]);
 
-  // Which blocks still read as the language they were copied from. Answerable
-  // only against that other language, so it follows the comparison.
-  const untranslatedIds = useMemo(
+  // What this translation needs: blocks that still read as the language they
+  // were copied from, and blocks whose SOURCE has changed since they were
+  // translated. Answerable only against that other language, so it follows the
+  // comparison.
+  //
+  // `missing` (a block the source has and this page never got) and `unknown`
+  // (no fingerprint recorded, or no schema for the type) come back too — they
+  // belong to the page, not to any block's blind, so they are not part of the
+  // per-block statuses below.
+  const translationStatuses = useMemo(
     () =>
       compareContent
-        ? untranslatedBlockIds(
-            properties?.blocks,
-            compareContent?.blocks,
-            buildIdFieldMap(config.blocks.blocksConfig, intl),
-          )
-        : [],
+        ? translationStatus(properties?.blocks, compareContent?.blocks, {
+            idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, intl),
+            fingerprintOf: (sourceBlock, id, type) =>
+              sourceFingerprint(
+                sourceBlock,
+                getBlockTypeSchema(type, intl, config.blocks.blocksConfig),
+              ),
+          })
+        : { statuses: {}, missing: [], unknown: [] },
     [compareContent, properties?.blocks, intl],
   );
 
@@ -6446,7 +6457,7 @@ const Iframe = (props) => {
         selectedBlock={selectedBlock}
         multiSelected={multiSelected}
         blocksErrors={blocksErrors}
-        untranslatedIds={untranslatedIds}
+        blockStatuses={translationStatuses.statuses}
         formData={properties}
         blockPathMap={iframeSyncState.blockPathMap}
         templatePermissions={templateCacheRef.current}

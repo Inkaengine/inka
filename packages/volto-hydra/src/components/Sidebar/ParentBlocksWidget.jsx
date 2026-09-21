@@ -174,25 +174,27 @@ const getFilteredBlockSchema = (blockType, intl, blockPathMap, blockId, blockDat
 // React/Volto component tree. Imported at the top of this file.
 
 /** What the marker says out loud. */
+const NESTED_STATUS_WORDING = {
+  error: ['could not be saved', 'could not be saved'],
+  warning: ['need attention', 'needs attention'],
+  untranslated: ['are not translated yet', 'is not translated yet'],
+  // Translated, then the original moved on: the words here are a revision
+  // behind, which is a different job from never having been translated.
+  stale: [
+    'were translated before the original changed',
+    'was translated before the original changed',
+  ],
+};
+
 function nestedStatusLabel({ status, count }) {
-  const what =
-    status === 'error'
-      ? 'could not be saved'
-      : status === 'warning'
-        ? 'need attention'
-        : 'are not translated yet';
-  const what1 =
-    status === 'error'
-      ? 'could not be saved'
-      : status === 'warning'
-        ? 'needs attention'
-        : 'is not translated yet';
-  return count === 1 ? `1 block inside ${what1}` : `${count} blocks inside ${what}`;
+  const [many, one] =
+    NESTED_STATUS_WORDING[status] || NESTED_STATUS_WORDING.untranslated;
+  return count === 1 ? `1 block inside ${one}` : `${count} blocks inside ${many}`;
 }
 
 const ParentBlockSection = ({
   blocksErrors = {},
-  untranslatedIds,
+  blockStatuses,
   blockId,
   blockType,
   blockData,
@@ -224,14 +226,14 @@ const ParentBlockSection = ({
           ...Object.fromEntries(
             Object.keys(blocksErrors || {}).map((id) => [id, 'error']),
           ),
-          ...(untranslatedIds || []).reduce(
-            (acc, id) => ({ ...acc, [id]: 'untranslated' }),
-            {},
-          ),
+          // Per-block translation status: untranslated (copied, never
+          // touched) or stale (its source changed since). Errors above win —
+          // one stops a save, these are work still to do.
+          ...(blockStatuses || {}),
         },
         idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, intl || contextIntl),
       }),
-    [blockData, blocksErrors, untranslatedIds, intl, contextIntl],
+    [blockData, blocksErrors, blockStatuses, intl, contextIntl],
   );
   // Store current block data in liveBlockDataRef on every render
   // This ensures child schemaEnhancers can see parent's current data
@@ -699,7 +701,7 @@ const ParentBlockSection = ({
  * Renders the parent chain for the selected block with settings forms
  */
 const ParentBlocksWidget = ({
-  untranslatedIds,
+  blockStatuses,
   selectedBlock,
   multiSelected = [],
   // blockId → { field: [messages] }, from the last refused save. Volto's
@@ -906,7 +908,7 @@ const ParentBlocksWidget = ({
               <ParentBlockSection
                 key={parentId}
                 blocksErrors={blocksErrors}
-                untranslatedIds={untranslatedIds}
+                blockStatuses={blockStatuses}
                 blockId={parentId}
                 blockType={parentType}
                 blockData={parentData}
@@ -934,7 +936,7 @@ const ParentBlocksWidget = ({
           <ParentBlockSection
             key={selectedBlock}
             blocksErrors={blocksErrors}
-            untranslatedIds={untranslatedIds}
+            blockStatuses={blockStatuses}
             blockId={selectedBlock}
             blockType={currentBlockType}
             blockData={currentBlockData}

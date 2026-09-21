@@ -31,8 +31,9 @@ import { getBaseUrl, flattenToAppURL } from '@plone/volto/helpers/Url/Url';
 import {
   cloneBlocksForTranslation,
   withFieldsReadOnly,
+  sourceFingerprint,
 } from '@volto-hydra/helpers';
-import { buildIdFieldMap } from '../../../../../utils/blockPath';
+import { buildIdFieldMap, getBlockTypeSchema } from '../../../../../utils/blockPath';
 import {
   getBlocksFieldname,
   getBlocksLayoutFieldname,
@@ -345,6 +346,18 @@ class Add extends Component {
           translationObject[blocksLayoutFieldname]?.items || [],
           uuid,
           buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
+          // What each copy was made FROM, so the editor can later be told which
+          // blocks the original has moved on from. A type with no schema here
+          // records nothing rather than a fingerprint over fields we cannot
+          // tell apart.
+          (sourceBlock, id, type) => {
+            const schema = getBlockTypeSchema(
+              type,
+              this.props.intl,
+              config.blocks.blocksConfig,
+            );
+            return schema ? sourceFingerprint(sourceBlock, schema) : null;
+          },
         );
         initialBlocks = copied.blocks;
         initialBlocksLayout = copied.layout;
