@@ -233,6 +233,39 @@ describe('creating a translation', () => {
     );
   });
 
+  it('ignores what the server computes, however the client sent it', async () => {
+    // Keeping the posted fields must not mean keeping ALL of them. Volto's add
+    // form carries `parent` in its form data, and on a translation that parent
+    // is the page being translated FROM — so storing it put the German page's
+    // parent at /en/services, which is where breadcrumbs, navigation and the
+    // navroot all read from.
+    const token = 'computed-fields-token';
+    await asMultilingual(token);
+
+    const created = await json('/de', {
+      method: 'POST',
+      token,
+      body: {
+        '@type': 'Document',
+        title: 'Dienstleistungen',
+        translation_of: '/en/services',
+        language: 'de',
+        parent: { '@id': '/en/services' },
+      },
+    });
+    assert.equal(created.status, 201);
+    assert.ok(
+      !created.data.parent['@id'].includes('/en/'),
+      `the parent is not the page it was translated from, got ${created.data.parent['@id']}`,
+    );
+
+    const back = await json('/de/dienstleistungen', { token });
+    assert.ok(
+      !back.data.parent['@id'].includes('/en/'),
+      `and still is not on the way back, got ${back.data.parent['@id']}`,
+    );
+  });
+
   it('derives the id from the title, as Plone does when none is sent', async () => {
     const token = 'id-from-title-token';
     const created = await json('/de', {
@@ -259,7 +292,7 @@ describe('a language is a tree of its own', () => {
   it('offers a language its OWN pages in the menu', async () => {
     const { data } = await json('/en/about?expand=navigation');
     const titles = data['@components'].navigation.items.map((i) => i.title);
-    assert.deepEqual(titles.sort(), ['About us', 'Services']);
+    assert.deepEqual(titles.sort(), ['About us', 'Services', 'Team']);
 
     const german = await json('/de/ueber-uns?expand=navigation');
     assert.deepEqual(
@@ -326,5 +359,118 @@ describe('@site features.multilingual', () => {
     const { data } = await json('/@site', { token });
     assert.equal(data.features.multilingual, true);
     assert.deepEqual(data['plone.available_languages'], ['en', 'de']);
+  });
+});
+
+describe('translating something that is not a page', () => {
+  // A site is not only Documents. plone.app.multilingual translates whatever
+  // the type is — a folder, an image, a file — and the create path is the same
+  // one: `translation_of` says which group to join, `language` says which
+  // language the new item is. A create that honours those for Documents alone
+  // saves the others unlinked and language-less, and says nothing about it.
+  for (const [type, body] of [
+    ['Folder', { title: 'Dienste' }],
+    ['Image', { title: 'Logo', image: { filename: 'logo.png', 'content-type': 'image/png' } }],
+    ['File', { title: 'Preisliste', file: { filename: 'preise.pdf' } }],
+  ]) {
+    it(`links a ${type} to the item it translates`, async () => {
+      const token = `translate-${type}-token`;
+      await asMultilingual(token);
+
+      // Something in English to translate: the same create path, untranslated.
+      const original = await json('/en', {
+        method: 'POST',
+        token,
+        body: { '@type': type, ...body },
+      });
+      assert.equal(original.status, 201);
+      const originalPath = new URL(original.data['@id']).pathname;
+
+      const translation = await json('/de', {
+        method: 'POST',
+        token,
+        body: {
+          '@type': type,
+          ...body,
+          translation_of: originalPath,
+          language: 'de',
+        },
+      });
+      assert.equal(translation.status, 201);
+      assert.equal(
+        typeof translation.data.language === 'object'
+          ? translation.data.language.token
+          : translation.data.language,
+        'de',
+        `a translated ${type} knows which language it is`,
+      );
+
+      const group = await json(`${originalPath}/@translations`, { token });
+      assert.equal(group.status, 200);
+      assert.deepEqual(
+        group.data.items.map((i) => i.language),
+        ['de'],
+        `the ${type} it was translated from lists it`,
+      );
+    });
+  }
+
+  it('gives a folder a path from its title, as it does a page', async () => {
+    const token = 'folder-id-token';
+    const created = await json('/de', {
+      method: 'POST',
+      token,
+      body: { '@type': 'Folder', title: 'Mannschaft' },
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.data.id, 'mannschaft');
+  });
+
+  it('refuses a translation_of that names nothing, rather than saving it loose', async () => {
+    // Silently dropping the link is the worst outcome: the editor is told the
+    // translation was created, and it belongs to no group.
+    const token = 'bad-translation-of-token';
+    await asMultilingual(token);
+
+    const { status } = await json('/de', {
+      method: 'POST',
+      token,
+      body: { '@type': 'Document', title: 'Waise', translation_of: '/en/nonesuch' },
+    });
+    assert.equal(status, 400);
+  });
+});
+
+describe('an image is content too', () => {
+  it('serves the English image, and can translate it', async () => {
+    // The fixture pair so far is pages. An image is the other thing a site is
+    // made of, and it translates the same way: a German image joins the
+    // English one's group, and is a separate file.
+    const token = 'image-translate-token';
+    await asMultilingual(token);
+
+    const original = await json('/en/logo.jpg', { token });
+    assert.equal(original.status, 200);
+    assert.equal(original.data['@type'], 'Image');
+
+    const created = await json('/de', {
+      method: 'POST',
+      token,
+      body: {
+        '@type': 'Image',
+        title: 'Logo',
+        image: { filename: 'logo-de.png', 'content-type': 'image/png' },
+        translation_of: '/en/logo.jpg',
+        language: 'de',
+      },
+    });
+    assert.equal(created.status, 201);
+
+    const group = await json('/en/logo.jpg/@translations', { token });
+    assert.deepEqual(
+      group.data.items.map((i) => i.language),
+      ['de'],
+      'the English image lists its German counterpart',
+    );
   });
 });

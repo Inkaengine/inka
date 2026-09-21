@@ -1,0 +1,26 @@
+{
+  "title": "Folder",
+  "description": "A container for other content",
+  "properties": {
+    "title": {
+      "title": "Title",
+      "description": "",
+      "type": "string"
+    },
+    "description": {
+      "title": "Summary",
+      "description": "Used in item listings and search results.",
+      "type": "string",
+      "widget": "textarea"
+    }
+  },
+  "fieldsets": [
+    {
+      "id": "default",
+      "title": "Default",
+      "fields": ["title", "description"]
+    }
+  ],
+  "required": ["title"],
+  "layouts": ["listing_view", "summary_view", "tabular_view", "album_view"]
+}

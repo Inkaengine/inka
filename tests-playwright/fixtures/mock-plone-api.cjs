@@ -1720,6 +1720,12 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId) {
       '@id': baseUrl + parent['@id']
     };
   } else if (!parent) {
+    // Every item with no stored parent reports the SITE ROOT as its parent,
+    // which is wrong for anything nested — /de/dienstleistungen is a child of
+    // /de. Deriving it from the path here is the obvious fix and it is not
+    // this one: it fails four of the compare-languages tests against the Nuxt
+    // frontend, so something downstream reads this. Left as it was, on
+    // purpose, with the gap stated rather than half-fixed.
     parent = {
       '@id': baseUrl,
       '@type': 'Plone Site',
@@ -2562,6 +2568,68 @@ app.post('/@export', async (req, res) => {
   }
 });
 
+/**
+ * The fields a create was SENT, minus the instructions to the create itself.
+ *
+ * Plone stores whatever the type's schema has. Hand-picking a few per type
+ * dropped the rest without a word, so a field the editor filled in looked saved
+ * and was gone on the next read.
+ */
+function postedFields(body) {
+  const {
+    // Instructions to the create, not content.
+    '@type': _type,
+    '@static_behaviors': _behaviors,
+    translation_of: _translationOf,
+    id: _id,
+    // Computed by the server, whatever a client sends. Volto's add form
+    // carries `parent` in its form data, and on a TRANSLATION that parent is
+    // the page being translated from — storing it would put the German page's
+    // parent at /en/services, which is where breadcrumbs, navigation and the
+    // navroot all read from.
+    parent: _parent,
+    '@id': _atId,
+    '@components': _components,
+    items: _items,
+    is_folderish: _isFolderish,
+    ...posted
+  } = body;
+  return posted;
+}
+
+/**
+ * The translation half of a create, for ANY type.
+ *
+ * plone.app.multilingual translates whatever the type is — a page, a folder, an
+ * image, a file — through this same pair: `language` says which language the
+ * new item is, `translation_of` which group it joins. Doing it inside the
+ * Document branch alone meant pages were linked and everything else was saved
+ * loose, in no language, behind a 201 that said it had worked.
+ *
+ * Returns null, or the reason it cannot be done: a `translation_of` naming
+ * nothing is refused rather than dropped, because the alternative is telling
+ * the editor their translation was created and leaving it in no group.
+ */
+function applyTranslationOnCreate(raw, body, path, sessionId) {
+  if (body.language) raw.language = body.language;
+  if (!body.translation_of) return null;
+
+  // Volto sends the ORIGINAL'S PATH (Add.jsx passes
+  // flattenToAppURL(content['@id'])), while plone.app.multilingual's own
+  // examples use a UID. Accept either rather than only the one this mock found
+  // convenient.
+  const originalPath = resolveContentReference(body.translation_of, sessionId);
+  if (!originalPath) {
+    return `translation_of: nothing found at ${body.translation_of}`;
+  }
+  const group =
+    translationGroupOf(originalPath, sessionId)
+    || `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  setTranslationGroup(sessionId, originalPath, group);
+  setTranslationGroup(sessionId, path, group);
+  return null;
+}
+
 app.post('/*', (req, res, next) => {
   // Skip special endpoints (already handled above or below)
   if (req.path.startsWith('/@') || req.path.includes('/@')) {
@@ -2602,6 +2670,7 @@ app.post('/*', (req, res, next) => {
 
     // Create the image content
     const imageContent = {
+      ...postedFields(body),
       '@id': `${API_ORIGIN}${imagePath}`,
       '@type': 'Image',
       'UID': `uid-${imageId}`,
@@ -2649,6 +2718,10 @@ app.post('/*', (req, res, next) => {
 
     // Store in session-specific storage (or global if no session)
     const sessionId = getSessionId(req);
+    const problem = applyTranslationOnCreate(imageContent, body, imagePath, sessionId);
+    if (problem) {
+      return res.status(400).json({ error: { type: 'BadRequest', message: problem } });
+    }
     setSessionContent(sessionId, imagePath, imageContent);
 
     // Keep the bytes so @@images can serve back the scale URLs this response
@@ -2679,6 +2752,7 @@ app.post('/*', (req, res, next) => {
         .replace(/^-+|-+$/g, '');
     const filePath = `${parentPath === '/' ? '' : parentPath}/${fileId}`.replace(/\/+/g, '/');
     const fileContent = {
+      ...postedFields(body),
       '@id': `${API_ORIGIN}${filePath}`,
       '@type': 'File',
       'UID': `uid-${fileId}`,
@@ -2695,6 +2769,10 @@ app.post('/*', (req, res, next) => {
     };
 
     const sessionId = getSessionId(req);
+    const problem = applyTranslationOnCreate(fileContent, body, filePath, sessionId);
+    if (problem) {
+      return res.status(400).json({ error: { type: 'BadRequest', message: problem } });
+    }
     setSessionContent(sessionId, filePath, fileContent);
 
     if (process.env.DEBUG) {
@@ -2718,22 +2796,10 @@ app.post('/*', (req, res, next) => {
     const docPath = `${parentPath === '/' ? '' : parentPath}/${id}`.replace(/\/+/g, '/');
     const now = new Date().toISOString();
     const baseUrl = `http://localhost:${PORT}`;
-    // Plone stores every field the type's schema has. This kept a hand-picked
-    // few and dropped the rest without a word, so a field the editor filled in
-    // — or a language-independent one the translation inherited — looked saved
-    // and was gone on the next read. Keep what was sent; `@static_behaviors`
-    // and `translation_of` are instructions to the create, not content.
-    const {
-      '@type': _type,
-      '@static_behaviors': _behaviors,
-      translation_of: _translationOf,
-      id: _id,
-      ...posted
-    } = body;
     const rawDoc = {
       '@type': 'Document',
       id,
-      ...posted,
+      ...postedFields(body),
       title: body.title || id,
       description: body.description || '',
       blocks: body.blocks || {},
@@ -2742,32 +2808,17 @@ app.post('/*', (req, res, next) => {
       modified: now,
       effective: now,
       review_state: 'published',
-      // A translation is created with the language it is FOR, and Volto sends
-      // it; without this the new page would report the language of whatever
-      // folder it happened to land in.
-      ...(body.language ? { language: body.language } : {}),
     };
 
     const sessionId = getSessionId(req);
-    setSessionContent(sessionId, docPath, rawDoc);
-
-    // `translation_of` is how plone.app.multilingual creates a page already
-    // linked: the new item joins the original's translation group, so neither
-    // side needs a second request to know about the other.
-    if (body.translation_of) {
-      // Volto sends the ORIGINAL'S PATH here (Add.jsx passes
-      // flattenToAppURL(content['@id'])), while plone.app.multilingual's own
-      // examples use a UID. Accept either rather than only the one this mock
-      // found convenient.
-      const originalPath = resolveContentReference(body.translation_of, sessionId);
-      if (originalPath) {
-        const group =
-          translationGroupOf(originalPath, sessionId)
-          || `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        setTranslationGroup(sessionId, originalPath, group);
-        setTranslationGroup(sessionId, docPath, group);
-      }
+    // A translation is created with the language it is FOR, and already linked
+    // to what it translates — neither side needs a second request to know about
+    // the other.
+    const problem = applyTranslationOnCreate(rawDoc, body, docPath, sessionId);
+    if (problem) {
+      return res.status(400).json({ error: { type: 'BadRequest', message: problem } });
     }
+    setSessionContent(sessionId, docPath, rawDoc);
 
     if (process.env.DEBUG) {
       console.log(`Created Document: ${docPath}${sessionId ? ` (session: ${sessionId})` : ''}`);
@@ -2782,13 +2833,17 @@ app.post('/*', (req, res, next) => {
     // volto.blocks behavior should land on the canonical view, not
     // /edit. Same response shape as Document so Volto can transition
     // off the POST response.
-    const id = body.id || `untitled-folder-${Date.now()}`;
+    // Plone derives an id from the title for any type, not for pages alone —
+    // a folder called "Mannschaft" lives at /mannschaft, which is the path
+    // every link to it will use.
+    const id = body.id || normalizeId(body.title) || `untitled-folder-${Date.now()}`;
     const folderPath = `${parentPath === '/' ? '' : parentPath}/${id}`.replace(/\/+/g, '/');
     const now = new Date().toISOString();
     const baseUrl = `http://localhost:${PORT}`;
     const rawFolder = {
       '@type': 'Folder',
       id,
+      ...postedFields(body),
       title: body.title || id,
       description: body.description || '',
       created: now,
@@ -2798,6 +2853,10 @@ app.post('/*', (req, res, next) => {
     };
 
     const sessionId = getSessionId(req);
+    const problem = applyTranslationOnCreate(rawFolder, body, folderPath, sessionId);
+    if (problem) {
+      return res.status(400).json({ error: { type: 'BadRequest', message: problem } });
+    }
     setSessionContent(sessionId, folderPath, rawFolder);
 
     if (process.env.DEBUG) {
