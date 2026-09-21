@@ -56,6 +56,14 @@ describe('nestedStatus', () => {
     ).toEqual({ status: 'error', count: 2 });
   });
 
+  it('ranks an untranslated block above one that is merely out of date', () => {
+    // What the reader gets decides: untranslated shows them English on a German
+    // page; stale shows them German that is a revision behind.
+    expect(
+      nestedStatus(page.grid, { statuses: { t1: 'stale', leaf: 'untranslated' } }),
+    ).toEqual({ status: 'untranslated', count: 2 });
+  });
+
   it('is about what is INSIDE — a block\'s own status is the blind\'s own business', () => {
     expect(nestedStatus(page.grid, { statuses: { grid: 'error' } })).toBeNull();
   });

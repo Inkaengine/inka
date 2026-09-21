@@ -137,3 +137,46 @@ describe('cloneBlocksForTranslation', () => {
     expect(original.grid['@canonical']).toBeUndefined();
   });
 });
+
+describe('what a copy records about its source', () => {
+  it('stamps the fingerprint of the block it was copied from, at every depth', () => {
+    // `@canonical` pairs a copy with its source; the fingerprint is what later
+    // says that source has CHANGED. Without it a translator has no way to know
+    // which blocks to revisit short of re-reading the page.
+    const source = {
+      grid: {
+        '@type': 'gridBlock',
+        headline: 'What we do',
+        blocks: { t1: { '@type': 'teaser', title: 'Design' } },
+        blocks_layout: { items: ['t1'] },
+      },
+    };
+    let n = 0;
+    const { blocks, layout } = cloneBlocksForTranslation(
+      source,
+      ['grid'],
+      () => `new-${(n += 1)}`,
+      null,
+      (block, id) => `fp-${id}`,
+    );
+
+    const grid = blocks[layout[0]];
+    expect(grid['@translation']).toEqual({ fingerprint: 'fp-grid' });
+    const childId = grid.blocks_layout.items[0];
+    expect(grid.blocks[childId]['@translation']).toEqual({ fingerprint: 'fp-t1' });
+  });
+
+  it('records nothing when it cannot fingerprint, rather than a wrong one', () => {
+    const source = { s1: { '@type': 'slate', value: [] } };
+    const { blocks, layout } = cloneBlocksForTranslation(
+      source,
+      ['s1'],
+      () => 'new-1',
+      null,
+      // A block type this frontend has no schema for.
+      () => null,
+    );
+    expect(blocks[layout[0]]['@canonical']).toBe('s1');
+    expect(blocks[layout[0]]['@translation']).toBeUndefined();
+  });
+});

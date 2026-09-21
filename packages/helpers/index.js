@@ -1933,6 +1933,7 @@ export function cloneBlocksForTranslation(
   layout,
   uuidGenerator = generateUUID,
   idFieldMap = null,
+  fingerprintOf = null,
 ) {
   const newBlocks = {};
   const newLayout = [];
@@ -1947,15 +1948,35 @@ export function cloneBlocksForTranslation(
       oldId,
       uuidGenerator,
       idFieldMap,
+      fingerprintOf,
     );
   }
 
   return { blocks: newBlocks, layout: newLayout };
 }
 
-/** One block and everything under it, copied under new ids. */
-function cloneBlockForTranslation(block, oldId, uuidGenerator, idFieldMap) {
+/**
+ * One block and everything under it, copied under new ids.
+ *
+ * Each copy records what it was made FROM: `@canonical`, the id of the source
+ * block, and a fingerprint of that block's translatable content. The
+ * fingerprint is what later says the source has CHANGED — `@canonical` alone
+ * pairs them, and comparing the words only finds a copy nobody has touched.
+ * Without a `fingerprintOf` the copy records no fingerprint and the page
+ * reports those blocks as unknown rather than pretending to know.
+ */
+function cloneBlockForTranslation(
+  block,
+  oldId,
+  uuidGenerator,
+  idFieldMap,
+  fingerprintOf = null,
+) {
   const cloned = { ...block, '@canonical': oldId };
+  if (fingerprintOf) {
+    const fingerprint = fingerprintOf(block, oldId, getBlockType(block));
+    if (fingerprint) cloned['@translation'] = { fingerprint };
+  }
 
   const fields = getChildFields(cloned, idFieldMap, { allObjectLists: true });
   if (fields.length === 0) return cloned;
@@ -1973,7 +1994,13 @@ function cloneBlockForTranslation(block, oldId, uuidGenerator, idFieldMap) {
     for (const { id, block: child } of getChildBlockEntries(block, field)) {
       copies.push({
         id: uuidGenerator(),
-        block: cloneBlockForTranslation(child, id, uuidGenerator, idFieldMap),
+        block: cloneBlockForTranslation(
+          child,
+          id,
+          uuidGenerator,
+          idFieldMap,
+          fingerprintOf,
+        ),
       });
     }
     setChildBlockEntries(cloned, field, copies);
@@ -2077,6 +2104,127 @@ function markBlockReadOnly(block, idFieldMap) {
   return marked;
 }
 
+// Fields that LOOK like text and are not prose: a link target, a token, a
+// date, a colour. Translating one breaks rendering rather than the sentence —
+// `variation: "summary"` becoming "Zusammenfassung" stops the block resolving —
+// and a change to one is no reason to re-read a translation.
+const NON_PROSE_WIDGETS = new Set([
+  'object_browser',
+  'url',
+  'email',
+  'date',
+  'datetime',
+  'time',
+  'color',
+  'icon',
+  'json',
+  'copyFromTargetField',
+]);
+
+// Fields that hold OTHER BLOCKS. They have fingerprints of their own.
+const CHILD_WIDGETS = new Set(['blocksid_list', 'object_list']);
+
+/**
+ * The fields of a block a translator would rewrite.
+ *
+ * The schema is the only thing that can say: a string field is prose, a link,
+ * an icon name or a variation id, and the value alone cannot tell you which.
+ * `isTextEditableFieldType` already answers "can this be typed into" for inline
+ * editing; translatable is that, minus what is shared between languages
+ * (`multilingual_options.language_independent`, the same flag a content type's
+ * fields use) and minus text-shaped fields that are not sentences.
+ *
+ * @param {Object} schema - the BLOCK TYPE's schema
+ * @returns {string[]} field ids, in schema order
+ */
+export function translatableFieldIds(schema) {
+  const properties = schema?.properties;
+  if (!properties) return [];
+  return Object.entries(properties)
+    .filter(([, def]) => {
+      if (!def) return false;
+      if (def.multilingual_options?.language_independent) return false;
+      if (CHILD_WIDGETS.has(def.widget)) return false;
+      if (NON_PROSE_WIDGETS.has(def.widget)) return false;
+      // A field with a fixed set of values holds a token, not a sentence.
+      if (def.choices || def.vocabulary) return false;
+      return isTextEditableFieldType(getFieldTypeString(def));
+    })
+    .map(([id]) => id);
+}
+
+/** Text as it MEANS, not as a round trip happens to have left it. */
+function normalizeText(value) {
+  return value.replace(/\r\n?/g, '\n').trim();
+}
+
+/**
+ * A value in one canonical form, so the same content always hashes the same.
+ * Object keys are sorted (insertion order survives neither a form nor JSON);
+ * array order is content and is kept.
+ */
+function canonicalize(value) {
+  if (typeof value === 'string') return normalizeText(value);
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
+    return out;
+  }
+  return value ?? null;
+}
+
+/** FNV-1a, twice, for a short stable hash. Change detection, not security. */
+function hashString(text) {
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    a = Math.imul(a ^ code, 0x01000193) >>> 0;
+    b = Math.imul(b ^ code, 0x811c9dc5) >>> 0;
+  }
+  return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+}
+
+/**
+ * A fingerprint of the SOURCE content a translation was written from.
+ *
+ * Stored on the translated block beside `@canonical`, it answers the question
+ * nothing else could: the source has changed since this was translated, so
+ * revisit it. `untranslatedBlockIds` only finds a copy nobody has touched, and
+ * says nothing once German has been typed.
+ *
+ * SHALLOW on purpose: a container's children carry their own fingerprints, so
+ * including them would mark the parent stale for a child's edit and the sidebar
+ * roll-up would count one edit twice.
+ *
+ * @param {Object} block - the SOURCE block
+ * @param {Object} schema - that block type's schema
+ * @returns {string} a stable hash of its translatable fields
+ * @throws when the schema is missing or has nothing translatable — without it
+ *   prose cannot be told from a variation id, and a guess marks blocks stale
+ *   for changes a translator does not care about
+ */
+export function sourceFingerprint(block, schema) {
+  if (!schema?.properties) {
+    throw new Error(
+      'sourceFingerprint: no schema for this block type — cannot tell which fields are translatable',
+    );
+  }
+  // A block with nothing to translate — a separator, an image, a spacer — is
+  // not an error and not unknown: it can never go stale, because no words in it
+  // can change. `null` says exactly that, and is distinct from the throw above,
+  // which means we do not know what this block type IS.
+  const fields = translatableFieldIds(schema);
+  if (!fields.length) return null;
+  const content = {};
+  for (const id of fields) {
+    if (block?.[id] === undefined) continue;
+    content[id] = canonicalize(block[id]);
+  }
+  return hashString(JSON.stringify(content));
+}
+
 /**
  * The same schema, with the named fields shown but not editable.
  *
@@ -2147,7 +2295,16 @@ export function inheritedLanguageFields(schema, content, defaultLanguage) {
 // How loud each status is. A container holding both an error and an
 // untranslated copy shows the error: one stops a save, the other is work still
 // to do.
-const NESTED_STATUS_SEVERITY = { error: 3, warning: 2, untranslated: 1 };
+//
+// Untranslated outranks stale because of what a READER gets: an untranslated
+// block shows them the wrong language outright, while a stale one shows their
+// own language a revision behind.
+const NESTED_STATUS_SEVERITY = {
+  error: 4,
+  warning: 3,
+  untranslated: 2,
+  stale: 1,
+};
 
 /**
  * What the blocks INSIDE this one need, if anything.
@@ -2242,6 +2399,110 @@ export function untranslatedBlockIds(blocks, sourceBlocks, idFieldMap = null) {
   visit(blocks);
 
   return untranslated;
+}
+
+/**
+ * What a translator needs to know about a translated page, without reading it
+ * end to end or diffing anything.
+ *
+ *   untranslated — copied and never touched (`sameBlockContent`, as before)
+ *   stale        — translated, but the SOURCE has changed since
+ *   missing      — the source has a block this page never received
+ *
+ * `@canonical` gives the pairing; the fingerprint recorded when the translation
+ * was written gives the change. Severity belongs to the caller — `nestedStatus`
+ * ranks these and rolls them up through containers for the sidebar blinds.
+ *
+ * A block whose fingerprint was never recorded is reported as `unknown`, not
+ * guessed at: claiming "stale" for every un-fingerprinted block would mark a
+ * whole page on the day this ships, and a marker that cries wolf gets ignored.
+ * A block type with no schema lands there too — the pass keeps going and names
+ * it, because one unknown type must not cost the page every other marker.
+ *
+ * @param {Object} blocks - the TRANSLATION's blocks
+ * @param {Object} sourceBlocks - the blocks it was translated from
+ * @param {Object} options
+ * @param {Object} options.schemas - block type → schema
+ * @param {Function} [options.fingerprintOf] - (block, id, type) => string
+ * @param {Object} [options.idFieldMap] - which fields hold children, per type
+ * @returns {{statuses: Object, missing: string[], unknown: string[]}}
+ */
+export function translationStatus(blocks, sourceBlocks, options = {}) {
+  const { schemas = {}, idFieldMap = null } = options;
+  const fingerprintOf =
+    options.fingerprintOf ||
+    ((block, id, type) => sourceFingerprint(block, schemas[type]));
+
+  const sourceById = {};
+  const indexSource = (map) => {
+    for (const [id, block] of Object.entries(map || {})) {
+      sourceById[id] = block;
+      for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+        const nested = {};
+        for (const entry of getChildBlockEntries(block, field)) {
+          nested[entry.id] = entry.block;
+        }
+        indexSource(nested);
+      }
+    }
+  };
+  indexSource(sourceBlocks);
+
+  const statuses = {};
+  const unknown = [];
+  const claimed = new Set();
+
+  const visit = (map) => {
+    for (const [id, block] of Object.entries(map || {})) {
+      const canonical = block?.['@canonical'];
+      const source = canonical ? sourceById[canonical] : null;
+      if (source) {
+        claimed.add(canonical);
+        if (sameBlockContent(block, source, idFieldMap)) {
+          statuses[id] = 'untranslated';
+        } else {
+          const recorded = block['@translation']?.fingerprint;
+          if (!recorded) {
+            // Nothing translatable in it means nothing to record, and nothing
+            // to be unknown about.
+            let translatable = true;
+            try {
+              translatable =
+                fingerprintOf(source, canonical, getBlockType(source)) !== null;
+            } catch {
+              translatable = true;
+            }
+            if (translatable) unknown.push(id);
+          } else {
+            let current;
+            try {
+              current = fingerprintOf(source, canonical, getBlockType(source));
+            } catch {
+              // No schema for this type: cannot tell prose from a token, so
+              // cannot tell whether the change matters. Say so and move on.
+              unknown.push(id);
+              current = undefined;
+            }
+            if (current !== undefined && current !== null && current !== recorded) {
+              statuses[id] = 'stale';
+            }
+          }
+        }
+      }
+      for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+        const nested = {};
+        for (const entry of getChildBlockEntries(block, field)) {
+          nested[entry.id] = entry.block;
+        }
+        visit(nested);
+      }
+    }
+  };
+  visit(blocks);
+
+  const missing = Object.keys(sourceById).filter((id) => !claimed.has(id));
+
+  return { statuses, missing, unknown };
 }
 
 /**
