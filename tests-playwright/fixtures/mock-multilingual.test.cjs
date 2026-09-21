@@ -474,3 +474,49 @@ describe('an image is content too', () => {
     );
   });
 });
+
+describe('the Language index', () => {
+  // How Plone actually keeps the languages apart. Language root folders and a
+  // navigation root per language separate what is BROWSED; the catalog's
+  // `Language` index separates what is FOUND — p.a.m. filters searches by
+  // language, and `Language=all` opts out. Scoping by path alone is not the
+  // same mechanism: it agrees only as long as every item sits under its own
+  // language folder, and says nothing about a search made from the site root.
+  it('answers a search in one language with that language only', async () => {
+    const token = 'language-index-token';
+    await asMultilingual(token);
+
+    const { status, data } = await json('/@search?Language=de&path.depth=2', {
+      token,
+    });
+    assert.equal(status, 200);
+    assert.ok(data.items.length > 0, 'there is German content to find');
+    // Searched from the SITE ROOT, so a path-scoped answer would have included
+    // the English tree: this is the index doing the work, not the path.
+    for (const item of data.items) {
+      assert.ok(
+        new URL(item['@id']).pathname.startsWith('/de'),
+        `${item['@id']} is not German`,
+      );
+    }
+  });
+
+  it('answers everything when asked for Language=all, as the catalog does', async () => {
+    const token = 'language-all-token';
+    await asMultilingual(token);
+
+    const scoped = await json('/@search?Language=de&path.depth=2', { token });
+    const all = await json('/@search?Language=all&path.depth=2', { token });
+    assert.ok(
+      all.data.items.length > scoped.data.items.length,
+      `all (${all.data.items.length}) must be more than one language (${scoped.data.items.length})`,
+    );
+  });
+
+  it('leaves a search alone when it does not ask about language', async () => {
+    // Every other spec in this suite is a single-language site searching
+    // without a Language term; it must keep getting what it always got.
+    const { data } = await json('/@search?path.depth=2');
+    assert.ok(data.items.length > 0);
+  });
+});

@@ -4403,6 +4403,26 @@ app.get('*/@search', (req, res) => {
       .map((content) => formatSearchItem(content, baseUrl));
   }
 
+  // The `Language` index, which is how Plone keeps the languages apart in the
+  // CATALOG — language root folders and a navigation root per language
+  // separate what is browsed; this separates what is found.
+  // plone.app.multilingual filters searches by language and takes
+  // `Language=all` to opt out. A search that says nothing about language is
+  // left alone: every single-language spec in this suite is one of those, and
+  // filtering them by a default would answer a question they never asked.
+  const languageQuery = req.query.Language;
+  if (languageQuery && languageQuery !== 'all') {
+    const wanted = Array.isArray(languageQuery) ? languageQuery : [languageQuery];
+    const sessionId = getSessionId(req);
+    items = items.filter((item) => {
+      // An INDEX, not a returned field: a brain is filtered on the language
+      // the object has, whatever metadata the result happens to carry —
+      // plone.restapi's search summaries do not include it.
+      const itemPath = String(item['@id'] || '').replace(baseUrl, '') || '/';
+      return wanted.includes(languageOf(itemPath, sessionId));
+    });
+  }
+
   // GET @search honours sort_on / sort_order, as the catalog does.
   //
   // It did not, so anything ordering a listing through this endpoint — the
