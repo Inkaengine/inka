@@ -366,7 +366,9 @@ const mainBlocksAllowedLayouts = computed(() => {
     return [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout'];
 });
 
-// Templates to eagerly pre-load (forced layouts that won't appear in page data)
+// Forced layouts, resolved by the backend alongside the page (expand.templates.extra).
+// They never appear in page data, so the backend can't discover them — these rules stay
+// here, in the frontend, and the backend only resolves what they name.
 const preloadTemplates = [
     '/templates/site-footer',
     ...(footerAllowedLayouts.value || []).filter(Boolean),
@@ -399,11 +401,12 @@ const inEditModeAtSetup =
     route.query._edit === 'true'
     || (typeof window !== 'undefined' && window.name?.startsWith('hydra-edit:'));
 
-// retrieve the data associated with an article
-// based on its slug (pre-loads templates for sync expansion)
-// reloadTemplates: while editing, always reload templates (the editor may be changing
-// one — never serve a cached copy). View/SSG reuses the shared template cache.
-const result = await ploneApi({ path, pages, preloadTemplates, reloadTemplates: inEditModeAtSetup });
+// retrieve the data associated with an article based on its slug, with every template it
+// needs (for sync expansion) in the same response.
+// ignoreTemplateErrors while editing: the admin merges templates in edit mode, so a
+// missing or broken template must not take the editing iframe down with it — the editor
+// has to be able to open the page to fix it. In view / SSG a template failure is fatal.
+const result = await ploneApi({ path, pages, preloadTemplates, ignoreTemplateErrors: inEditModeAtSetup });
 
 // Moved content: ploneApi detected the backend's 302 and resolved the
 // new frontend path. Issue a permanent redirect from the page setup

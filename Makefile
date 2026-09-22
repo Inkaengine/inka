@@ -215,6 +215,9 @@ export HYDRA_SVELTE_DOC_PORT ?= 3006
 export HYDRA_NEXTJS_PORT ?= 3007
 export HYDRA_F7_PORT ?= 3008
 export HYDRA_ASTRO_DOC_PORT ?= 3009
+export HYDRA_VANILLA_DOC_PORT ?= 3010
+export HYDRA_SVELTE_QS_PORT ?= 3011
+export HYDRA_ASTRO_QS_PORT ?= 3012
 
 .PHONY: hydra-test
 hydra-test: ## Run bridge/e2e tests. Playwright's webServer starts the mock API, Volto, and each frontend with the CORRECT env (NEXT_PUBLIC_BACKEND_BASE_URL=mock, ports) — never start them by hand. ARGS="tests-playwright/bridge/block-sanity.spec.ts --project=nuxt -g gridBlock"
