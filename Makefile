@@ -91,6 +91,21 @@ backend-docker-start:	## Starts a Docker-based backend for development
 	@echo "$(GREEN)==> Start Docker-based Plone Backend$(RESET)"
 	docker run -it --rm --name=backend -p 8080:8080 -e SITE=Plone -e CORS_ALLOW_ORIGIN='*' $(DOCKER_IMAGE)
 
+.PHONY: backend-start
+backend-start: ## Starts the Plone backend with the templates addon mounted (see backend/)
+	@echo "$(GREEN)==> Start Plone backend with the Inka templates addon$(RESET)"
+	docker compose -f backend/docker-compose.yml up
+
+.PHONY: backend-stop
+backend-stop: ## Stops the addon backend
+	docker compose -f backend/docker-compose.yml down
+
+.PHONY: test-conformance
+test-conformance: ## Diff the mock API against a real Plone (needs backend-docker-start)
+	@echo "$(GREEN)==> Diff mock API against real Plone$(RESET)"
+	HYDRA_MOCK_API_PORT=$${HYDRA_MOCK_API_PORT:-8888} \
+		pnpm exec playwright test --config=playwright-conformance.config.ts
+
 ## Storybook
 .PHONY: storybook-start
 storybook-start: ## Start Storybook server on port 6006
