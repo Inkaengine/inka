@@ -149,6 +149,53 @@ class TestTemplatesExtra:
         assert [e["templateId"] for e in body["errors"]] == ["/templates/nope"]
 
 
+class TestTemplatesPermissions:
+    """Templates are served with the REQUESTER's permissions, never elevated.
+
+    The endpoint must not become a way round security: a template the user could not GET
+    directly must not come back through @templates either. It must also not take the page
+    down with it — an inaccessible template is reported like a missing one.
+    """
+
+    def test_page_read_survives_a_template_the_user_cannot_view(
+        self, anon_session, published_page_with_private_template
+    ):
+        response = anon_session.get("/a-page?expand=templates")
+        assert response.status_code == 200, (
+            "one inaccessible template must not fail the whole page read"
+        )
+
+    def test_inaccessible_template_is_named_not_served(
+        self, anon_session, published_page_with_private_template, site_footer
+    ):
+        response = anon_session.get("/a-page?expand=templates")
+        body = response.json()["@components"]["templates"]
+        key = f"resolveuid/{site_footer.UID()}"
+        assert key not in body["templates"], "a private template must not be served"
+        assert [e["templateId"] for e in body["errors"]] == [key]
+
+    def test_extra_cannot_reach_a_private_template(
+        self, anon_session, published_page_with_private_template
+    ):
+        """`extra` takes an arbitrary path from the query string — it must not be a way
+        to read content the requester cannot see."""
+        response = anon_session.get(
+            "/a-page/@templates?expand.templates.extra=/templates/site-footer"
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert "/templates/site-footer" not in body["templates"]
+        assert "/templates/site-footer" in [e["templateId"] for e in body["errors"]]
+
+    def test_the_manager_still_gets_the_private_template(
+        self, api_session, published_page_with_private_template, site_footer
+    ):
+        response = api_session.get("/a-page?expand=templates")
+        body = response.json()["@components"]["templates"]
+        assert f"resolveuid/{site_footer.UID()}" in body["templates"]
+        assert "errors" not in body
+
+
 class TestTemplatesErrors:
     """A missing template is reported, never raised."""
 

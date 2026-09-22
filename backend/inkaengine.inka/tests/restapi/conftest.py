@@ -131,3 +131,24 @@ def plain_page(portal):
 def api_session(request_factory):
     """An authenticated REST API session (pytest-plone closes it for us)."""
     return request_factory(role="Manager")
+
+
+@pytest.fixture
+def anon_session(request_factory):
+    """An anonymous REST API session — a public site visitor."""
+    return request_factory(role="Anonymous")
+
+
+@pytest.fixture
+def published_page_with_private_template(page_using_template, site_footer):
+    """A published page that references a template anonymous users cannot view.
+
+    A realistic setup, not an edge case: editors keep templates in a /templates folder
+    that is never published, while the pages using them are.
+    """
+    if api.content.get_state(site_footer) != "private":
+        api.content.transition(obj=site_footer, to_state="private")
+    if api.content.get_state(page_using_template) != "published":
+        api.content.transition(obj=page_using_template, to_state="published")
+    transaction.commit()
+    return page_using_template

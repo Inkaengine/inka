@@ -9,6 +9,7 @@ could be settled cheaply against the real merge before any Python existed.
 """
 
 from plone import api
+from plone.app.uuid.utils import uuidToObject
 from plone.restapi.interfaces import ISerializeToJson
 from zope.component import getMultiAdapter
 
@@ -55,13 +56,20 @@ def resolve_template_object(portal, template_id):
 
     Accepts the three spellings above. A uid is resolved through the catalog, a path
     through portal traversal.
+
+    Deliberately performs NO permission check — both lookups are unrestricted, and the
+    caller checks View once, uniformly (see resolve_templates). The uid lookup used to go
+    through api.content.get, which ends in restrictedTraverse and RAISES Unauthorized
+    itself: a private template then failed the whole page read with a 401 before the
+    caller's check could report it. Locating unrestricted and checking explicitly is the
+    pattern uuidToObject's own docstring asks for.
     """
     if not isinstance(template_id, str) or not template_id:
         return None
 
     uid_match = RESOLVEUID_RE.search(template_id)
     if uid_match:
-        return api.content.get(UID=uid_match.group(1))
+        return uuidToObject(uid_match.group(1), unrestricted=True)
 
     path = template_id
     if path.startswith("http"):
@@ -132,6 +140,23 @@ def resolve_templates(portal, request, page_content, extra_ids=()):
                     {
                         "templateId": template_id,
                         "error": f"not found: {template_id}",
+                    }
+                )
+                continue
+
+            # Serve templates with the REQUESTER's permissions, never elevated.
+            # resolve_template_object locates objects without a security check (a uid
+            # lookup, an unrestricted traverse), so without this the serializer raises
+            # Unauthorized mid-response — which fails the WHOLE page read with a 401
+            # whenever a published page uses a template the visitor cannot view (the
+            # common case of an unpublished /templates folder). Reported like a missing
+            # template instead. "unauthorized" rather than "not found" so a developer
+            # sees why; it reveals no more than a direct GET of the template would.
+            if not api.user.has_permission("View", obj=obj):
+                errors.append(
+                    {
+                        "templateId": template_id,
+                        "error": f"unauthorized: {template_id}",
                     }
                 )
                 continue

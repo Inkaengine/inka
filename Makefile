@@ -100,6 +100,11 @@ backend-start: ## Starts the Plone backend with the templates addon mounted (see
 backend-stop: ## Stops the addon backend
 	docker compose -f backend/docker-compose.yml down
 
+.PHONY: backend-clean
+backend-clean: ## Stops the addon backend and DELETES its database (fresh site next start)
+	@echo "$(RED)==> Removing the backend database — content will be lost$(RESET)"
+	docker compose -f backend/docker-compose.yml down -v
+
 .PHONY: test-conformance
 test-conformance: ## Diff the mock API against a real Plone (needs backend-docker-start)
 	@echo "$(GREEN)==> Diff mock API against real Plone$(RESET)"
