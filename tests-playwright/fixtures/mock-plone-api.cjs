@@ -1326,9 +1326,14 @@ function resolveTemplates(pageContent, extraIds, sessionId, baseUrl) {
     const next = [];
     for (const templateId of pending) {
       if (templates[templateId] || errors.some((e) => e.templateId === templateId)) continue;
+      // Errors name the id AS REQUESTED — the string the frontend has to match up — and
+      // an unknown uid is just "not found", like any other missing template. Matches the
+      // inkaengine.inka addon (checked by the conformance suite); this used to report the
+      // resolved path, or "unresolvable template id" for an unknown uid.
+      const notFound = { templateId, error: `not found: ${templateId}` };
       const tplPath = templateIdToPath(templateId);
       if (!tplPath) {
-        errors.push({ templateId, error: 'unresolvable template id' });
+        errors.push(notFound);
         continue;
       }
       // Enriched, like any other read: the template's own blocks get the same
@@ -1336,10 +1341,13 @@ function resolveTemplates(pageContent, extraIds, sessionId, baseUrl) {
       // template content through exactly the same path as page content.
       const content = getContent(tplPath, sessionId, []);
       if (!content) {
-        errors.push({ templateId, error: `not found: ${tplPath}` });
+        errors.push(notFound);
         continue;
       }
-      templates[templateId] = content;
+      // Minus its own @components: those are links nobody asked for, and the addon omits
+      // them (on Plone, expanding them re-enters @templates and recurses).
+      const { '@components': _ownComponents, ...entry } = content;
+      templates[templateId] = entry;
       // A template may reference further templates; follow those too. Guard on the
       // resolved PATH so two spellings of one template are walked once.
       if (!visitedPaths.has(tplPath)) {

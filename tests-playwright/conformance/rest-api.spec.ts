@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 /**
  * Every endpoint the mock implements, diffed against the same endpoint on a real Plone.
@@ -185,26 +188,275 @@ test.describe('expand.<component>.<param>', () => {
   });
 });
 
-test.describe('@templates', () => {
-  test('is not yet served by Plone', async ({ request }) => {
-    // The addon does not exist yet. This is the port's tripwire: when Plone starts
-    // answering @templates, this test FAILS, and the diff below becomes a real shape
-    // comparison instead of a not-implemented marker.
-    const res = await request.get(`${PLONE_URL}/++api++/@templates`, {
+/**
+ * @templates — the mock's reference implementation, diffed against the inkaengine.inka
+ * addon running on a real Plone (`make backend-start`; the stock image has no addon).
+ *
+ * Unlike the endpoints above, this one CAN be compared on identical content: the mock's
+ * stored fixtures (a page and the template it uses) are copied into Plone before these
+ * tests run, so both servers answer for the same page and the same template.
+ *
+ * What is compared is what the MERGE consumes, not byte equality. The two servers spell
+ * one template reference differently — the mock rewrites a stored `resolveuid/<uid>` to a
+ * path when it serves content, Plone serves it as stored — so the key SETS of `templates`
+ * legitimately differ. What must hold on both is the invariant the merge depends on:
+ * every templateId a page serves is a key in `templates`.
+ *
+ * The mock has no permission model, so the "unauthorized" behaviour (a template the
+ * requester cannot view is reported, not served) is tested only in the addon's own suite.
+ */
+
+// The mock's fixtures, read AS STORED — before the mock's read-time rewriting — which is
+// the form Plone stores too.
+const FIXTURES = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'fixtures',
+  'content',
+);
+const TEMPLATE_FIXTURE = path.join(FIXTURES, 'templates', 'test-layout', 'data.json');
+const PAGE_FIXTURE = path.join(FIXTURES, 'template-test-page', 'data.json');
+const FIXTURE_TEMPLATE_UID = 'test-layout-template-uid';
+
+// Where each server holds the pair.
+const SEED = '/inka-conformance';
+const PLONE = { page: `${SEED}/template-test-page`, template: `${SEED}/test-layout` };
+const MOCK = {
+  page: '/_test_data/template-test-page',
+  template: '/_test_data/templates/test-layout',
+};
+
+async function ploneCall(request: any, method: string, apiPath: string, data?: object) {
+  return request.fetch(`${PLONE_URL}/++api++${apiPath}`, {
+    method,
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${ploneToken}`,
+    },
+    ...(data ? { data } : {}),
+  });
+}
+
+/** GET a pair of paths — one per server, since the seeded content lives at different paths. */
+async function pair(request: any, plonePath: string, mockPath: string) {
+  const [plone, mock] = await Promise.all([
+    request.get(`${PLONE_URL}/++api++${plonePath}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${ploneToken}` },
-    });
+    }),
+    request.get(`${MOCK_URL}/++api++${mockPath}`, { headers: { Accept: 'application/json' } }),
+  ]);
+  return {
+    plone: { status: plone.status(), body: plone.ok() ? await plone.json() : null },
+    mock: { status: mock.status(), body: mock.ok() ? await mock.json() : null },
+  };
+}
+
+/** The @templates component off an expanded page read, per server. */
+async function expandedPair(request: any, extra?: { plone: string; mock: string }) {
+  const q = (p: string) =>
+    `?expand=templates${p ? `&expand.templates.extra=${encodeURIComponent(p)}` : ''}`;
+  const { plone, mock } = await pair(
+    request,
+    `${PLONE.page}${q(extra?.plone ?? '')}`,
+    `${MOCK.page}${q(extra?.mock ?? '')}`,
+  );
+  expect(plone.status, 'Plone page read').toBe(200);
+  expect(mock.status, 'mock page read').toBe(200);
+  return {
+    plone: { page: plone.body, templates: plone.body['@components'].templates },
+    mock: { page: mock.body, templates: mock.body['@components'].templates },
+  };
+}
+
+/** Every templateId a served page carries, at any depth. */
+function servedTemplateIds(value: unknown, found = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) value.forEach((v) => servedTemplateIds(v, found));
+  else if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.templateId === 'string') found.add(obj.templateId);
+    Object.values(obj).forEach((v) => servedTemplateIds(v, found));
+  }
+  return found;
+}
+
+test.describe('@templates', () => {
+  test.beforeAll(async ({ request }) => {
+    const probe = await ploneCall(request, 'GET', '/@templates');
     expect(
-      res.ok(),
-      'Plone now serves @templates — replace this test with a shape diff against the mock',
-    ).toBeFalsy();
+      probe.ok(),
+      `Plone does not serve @templates (HTTP ${probe.status()}) — the inkaengine.inka addon ` +
+        'is not installed. Start the backend with `make backend-start`, not ' +
+        '`make backend-docker-start`.',
+    ).toBeTruthy();
+
+    // Start clean: a previous run that died before afterAll leaves its seed behind.
+    await ploneCall(request, 'DELETE', SEED);
+    const folder = await ploneCall(request, 'POST', '/', {
+      '@type': 'Document',
+      id: SEED.slice(1),
+      title: 'Inka conformance seed',
+    });
+    expect(folder.status(), 'create seed folder').toBe(201);
+
+    // The template first, empty: its UID is Plone's to assign, and the fixture's blocks
+    // reference the fixture's UID — so the blocks go in once the real one is known.
+    const templateData = JSON.parse(fs.readFileSync(TEMPLATE_FIXTURE, 'utf8'));
+    const created = await ploneCall(request, 'POST', SEED, {
+      '@type': 'Document',
+      id: 'test-layout',
+      title: templateData.title,
+    });
+    expect(created.status(), 'create template').toBe(201);
+    const ploneUid: string = (await created.json()).UID;
+    const rewriteUid = (value: object) =>
+      JSON.parse(JSON.stringify(value).split(FIXTURE_TEMPLATE_UID).join(ploneUid));
+
+    const patched = await ploneCall(request, 'PATCH', PLONE.template, {
+      blocks: rewriteUid(templateData.blocks),
+      blocks_layout: templateData.blocks_layout,
+    });
+    expect(patched.status(), 'fill template blocks').toBe(204);
+
+    const pageData = JSON.parse(fs.readFileSync(PAGE_FIXTURE, 'utf8'));
+    const page = await ploneCall(request, 'POST', SEED, {
+      '@type': 'Document',
+      id: 'template-test-page',
+      title: pageData.title,
+      blocks: rewriteUid(pageData.blocks),
+      blocks_layout: pageData.blocks_layout,
+    });
+    expect(page.status(), 'create page').toBe(201);
   });
 
-  test('the mock serves the contract the addon must satisfy', async ({ request }) => {
-    const res = await request.get(`${MOCK_URL}/++api++/@templates`, {
-      headers: { Accept: 'application/json' },
+  test.afterAll(async ({ request }) => {
+    await ploneCall(request, 'DELETE', SEED);
+  });
+
+  test('is an @id stub unless expanded', async ({ request }) => {
+    const { plone, mock } = await pair(request, PLONE.page, MOCK.page);
+    for (const [side, body] of [['plone', plone.body], ['mock', mock.body]] as const) {
+      const stub = body['@components'].templates;
+      expect(Object.keys(stub), `${side}: unexpanded templates`).toEqual(['@id']);
+      expect(stub['@id'], `${side}: stub @id`).toMatch(/\/@templates$/);
+    }
+  });
+
+  test('the expanded component has the same keys', async ({ request }) => {
+    const { plone, mock } = await expandedPair(request);
+    expect(Object.keys(mock.templates).sort()).toEqual(Object.keys(plone.templates).sort());
+  });
+
+  test('every templateId the page serves is a key in templates', async ({ request }) => {
+    // THE invariant: the merge looks each template up by the literal string on the block.
+    // Checked per server because the two spell references differently (see above).
+    const { plone, mock } = await expandedPair(request);
+    for (const [side, s] of [['plone', plone], ['mock', mock]] as const) {
+      const ids = servedTemplateIds(s.page.blocks);
+      expect(ids.size, `${side}: the page references a template`).toBeGreaterThan(0);
+      for (const id of ids) {
+        expect(Object.keys(s.templates.templates), `${side}: lookup of ${id}`).toContain(id);
+      }
+    }
+  });
+
+  test('a template entry has the shape the merge reads', async ({ request }) => {
+    const { plone, mock } = await expandedPair(request);
+    const entryOf = (t: any) => Object.values(t.templates)[0] as any;
+    const p = entryOf(plone.templates);
+    const m = entryOf(mock.templates);
+    // Entry-level: only what the merge and a renderer read. The full content-GET shape
+    // is diffed (and currently differs) under "content GET" above — not repeated here.
+    for (const key of ['@id', '@type', 'UID', 'title', 'blocks', 'blocks_layout']) {
+      expect(p, `Plone entry has ${key}`).toHaveProperty([key]);
+      expect(m, `mock entry has ${key}`).toHaveProperty([key]);
+    }
+    expect(m.blocks_layout).toEqual(p.blocks_layout);
+    expect(Object.keys(m.blocks).sort()).toEqual(Object.keys(p.blocks).sort());
+    for (const id of Object.keys(p.blocks)) {
+      expect(shapeOf(m.blocks[id], 4), `block ${id}`).toEqual(shapeOf(p.blocks[id], 4));
+    }
+  });
+
+  test('a template entry does not carry its own @components', async ({ request }) => {
+    // A template's own components are links nobody asked for — and on Plone, expanding
+    // them re-enters @templates and recurses. The addon serializes without them.
+    const { plone, mock } = await expandedPair(request);
+    for (const [side, s] of [['plone', plone], ['mock', mock]] as const) {
+      for (const [key, entry] of Object.entries<any>(s.templates.templates)) {
+        expect(entry, `${side}: ${key}`).not.toHaveProperty(['@components']);
+      }
+    }
+  });
+
+  test('extra resolves a template the page does not reference', async ({ request }) => {
+    const r = await pair(
+      request,
+      `/@templates?expand.templates.extra=${PLONE.template}`,
+      `/@templates?expand.templates.extra=${MOCK.template}`,
+    );
+    // Contains, not equals: the test-layout fixture references ITSELF in its own blocks,
+    // so resolving it also follows that self-reference. Plone serves it as resolveuid
+    // (a second key); the mock serves it as the path (the same key). Both are correct.
+    expect(Object.keys(r.plone.body.templates)).toContain(PLONE.template);
+    expect(Object.keys(r.mock.body.templates)).toContain(MOCK.template);
+    expect(r.plone.body.errors).toBeUndefined();
+    expect(r.mock.body.errors).toBeUndefined();
+  });
+
+  test('a template reached two ways is keyed under both, identically', async ({
+    request,
+  }) => {
+    const { plone, mock } = await expandedPair(request, {
+      plone: PLONE.template,
+      mock: MOCK.template,
     });
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
-    expect(Object.keys(body).sort()).toEqual(['@id', 'idFieldMap', 'templates']);
+    for (const [side, s, tplPath] of [
+      ['plone', plone, PLONE.template],
+      ['mock', mock, MOCK.template],
+    ] as const) {
+      const keys = Object.keys(s.templates.templates);
+      expect(keys, `${side}: path spelling`).toContain(tplPath);
+      const uidKey = keys.find((k) => k.startsWith('resolveuid/'));
+      expect(uidKey, `${side}: uid spelling`).toBeDefined();
+      expect(s.templates.templates[uidKey!], `${side}: same template`).toEqual(
+        s.templates.templates[tplPath],
+      );
+    }
+  });
+
+  for (const missing of ['/templates/does-not-exist', 'resolveuid/no-such-uid']) {
+    test(`a missing template is reported the same way (${missing})`, async ({ request }) => {
+      const { plone, mock } = await expandedPair(request, { plone: missing, mock: missing });
+      expect(shapeOf(mock.templates.errors, 3)).toEqual(shapeOf(plone.templates.errors, 3));
+      for (const [side, s] of [['plone', plone], ['mock', mock]] as const) {
+        // The error names the id AS REQUESTED — the string the frontend has to match up.
+        expect(s.templates.errors, side).toEqual([
+          { templateId: missing, error: `not found: ${missing}` },
+        ]);
+        expect(
+          Object.keys(s.templates.templates).length,
+          `${side}: the rest are still served`,
+        ).toBeGreaterThan(0);
+      }
+    });
+  }
+
+  test('idFieldMap agrees', async ({ request }) => {
+    // The mock DERIVES this from the block schemas; the addon hardcodes it, having no
+    // registry of frontend block schemas to read. So this is the tripwire for the static
+    // map going stale: when a block gains a non-@id object_list, the mock's map grows,
+    // this fails, and the addon's build_id_field_map needs the same entry.
+    const { plone, mock } = await expandedPair(request);
+    expect(plone.templates.idFieldMap).toEqual(mock.templates.idFieldMap);
+  });
+
+  test('the @templates route matches the inline expansion', async ({ request }) => {
+    const inline = await expandedPair(request);
+    const route = await pair(request, `${PLONE.page}/@templates`, `${MOCK.page}/@templates`);
+    for (const side of ['plone', 'mock'] as const) {
+      expect(route[side].body.templates, side).toEqual(inline[side].templates.templates);
+      expect(route[side].body.idFieldMap, side).toEqual(inline[side].templates.idFieldMap);
+    }
   });
 });
