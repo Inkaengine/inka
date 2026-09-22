@@ -1,0 +1,44 @@
+# Plone backend for developing the Inka templates addon.
+#
+# Mounts this directory into the container and pip-installs the addon editable at boot,
+# so Python is edited locally and picked up by restarting the container — no image
+# rebuild per change.
+#
+#     make backend-start      # this file
+#     make test-conformance    # diff the mock against it
+#
+# Distinct from `make backend-docker-start`, which runs the stock plone/server-dev:6 with
+# no addon — that one is for checking the mock against vanilla Plone.
+services:
+  backend:
+    image: plone/server-dev:6
+    ports:
+      - "8080:8080"
+    environment:
+      SITE: Plone
+      CORS_ALLOW_ORIGIN: "*"
+      # Load the addon's ZCML and run its GenericSetup profile when the site is created.
+      ADDON_NAME: "${ADDON_NAME:-inkaengine.inka}"
+      PLONE_ADDONS: "${ADDON_NAME:-inkaengine.inka}"
+    volumes:
+      # The addon source, editable inside the container.
+      - ./inkaengine.inka:/addon
+      # Keep the ZODB across restarts so content created while trialling survives. Delete
+      # the volume to start from a clean site.
+      - inka-plone-data:/data
+    # pip-install the addon before starting Plone. Skipped when ADDON_NAME is unset, so
+    # this compose file works before the package is scaffolded — the container comes up as
+    # plain Plone rather than failing.
+    command: >
+      sh -c '
+        if [ -n "$$ADDON_NAME" ] && [ -f /addon/setup.py -o -f /addon/pyproject.toml ]; then
+          echo "==> pip install -e /addon ($$ADDON_NAME)";
+          pip install -e /addon || exit 1;
+        else
+          echo "==> no addon to install (set ADDON_NAME once scaffolded); starting plain Plone";
+        fi;
+        exec start
+      '
+
+volumes:
+  inka-plone-data:
