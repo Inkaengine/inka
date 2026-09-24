@@ -103,10 +103,18 @@ backend-stop: ## Stops the addon backend
 .PHONY: backend-clean
 backend-clean: ## Stops the addon backend and DELETES its database (fresh site next start)
 	@echo "$(RED)==> Removing the backend database — content will be lost$(RESET)"
-	docker compose -f backend/docker-compose.yml down -v
+	docker compose -f backend/docker-compose.yml down
+	# Only the database: `down -v` would also drop the pip cache, and the next start would
+	# re-download ~200 packages for nothing.
+	docker volume rm -f backend_inka-plone-data
+
+.PHONY: backend-seed
+backend-seed: ## Loads the shared template fixtures into the addon backend (run on a fresh site)
+	@echo "$(GREEN)==> Seed the Plone backend with the shared template fixtures$(RESET)"
+	bash backend/seed.sh
 
 .PHONY: test-conformance
-test-conformance: ## Diff the mock API against a real Plone (needs backend-docker-start)
+test-conformance: ## Diff the mock API against a real Plone (needs backend-start: @templates needs the addon)
 	@echo "$(GREEN)==> Diff mock API against real Plone$(RESET)"
 	HYDRA_MOCK_API_PORT=$${HYDRA_MOCK_API_PORT:-8888} \
 		pnpm exec playwright test --config=playwright-conformance.config.ts
