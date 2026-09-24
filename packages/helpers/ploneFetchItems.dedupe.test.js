@@ -18,7 +18,7 @@ beforeEach(() => {
     calls.push({ url, body: init.body, auth: init.headers.Authorization });
     // Resolve on a later tick so concurrent callers really do overlap.
     await new Promise((r) => setTimeout(r, 10));
-    return { json: async () => ({ items: [{ '@id': '/a', title: 'A' }], items_total: 1 }) };
+    return { ok: true, status: 200, json: async () => ({ items: [{ '@id': '/a', title: 'A' }], items_total: 1 }) };
   });
 });
 afterEach(() => {

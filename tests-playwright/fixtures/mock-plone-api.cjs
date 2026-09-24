@@ -585,6 +585,71 @@ function getPlaceholderImageScales(title, fieldName = 'image') {
  * title/description/id. (Plone uses ZCText word-prefix indexing; we
  * tokenize on `\W+` and check `startsWith`, which is close enough.)
  */
+const TEXT_CONTAINS = 'plone.app.querystring.operation.string.contains';
+const TEXT_SEARCH = 'plone.app.querystring.operation.string.search';
+const TEXT_OPERATORS = {
+  [TEXT_CONTAINS]: {
+    'title': 'Contains',
+    'widget': null,
+    'operation': TEXT_CONTAINS,
+  },
+  [TEXT_SEARCH]: {
+    'title': 'Search',
+    'widget': 'StringWidget',
+    'operation': 'plone.app.querystring.queryparser._search',
+  },
+};
+
+/**
+ * The SearchableText operations this "site" has. `string.search` is not core
+ * Plone: it comes from pretagov's plone.app.querystring fork (raw, un-munged
+ * terms for collective.elasticsearch), as run by lecc.nsw.gov.au. Stock 6.2
+ * (plone.app.querystring 3.0.0, demo.plone.org) has only `contains`.
+ * MOCK_QUERYSTRING_SEARCH=1 makes the mock the fork. Read per request, so the
+ * mock's own tests can exercise both in one process.
+ */
+function searchableTextOperations() {
+  return process.env.MOCK_QUERYSTRING_SEARCH === '1'
+    ? [TEXT_CONTAINS, TEXT_SEARCH]
+    : [TEXT_CONTAINS];
+}
+
+/**
+ * The fork's `string.search`: the term reaches the catalog UN-munged, so
+ * ZCTextIndex operators keep their meaning — `OR` between alternatives, `AND`
+ * (or plain adjacency) within one, a quoted phrase as a phrase, and a prefix
+ * match only where the reader typed `*`. Contrast `contains`, whose munging
+ * turns every word into a required prefix (matchSearchableText below).
+ */
+function matchRawSearch(searchTerm, item) {
+  const text = [item.title, item.description, item.id]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  const tokens = text.split(/\W+/).filter(Boolean);
+  const matchesAlternative = (alt) => {
+    const phrases = [...alt.matchAll(/"([^"]+)"/g)].map((m) => m[1].toLowerCase());
+    const words = alt
+      .replace(/"[^"]+"/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w && w.toUpperCase() !== 'AND')
+      .map((w) => w.toLowerCase());
+    return (
+      phrases.every((ph) => text.includes(ph)) &&
+      words.every((w) =>
+        w.endsWith('*')
+          ? tokens.some((t) => t.startsWith(w.slice(0, -1)))
+          : tokens.includes(w),
+      )
+    );
+  };
+  return (searchTerm || '')
+    .split(/\s+OR\s+/i)
+    .map((alt) => alt.trim())
+    .filter(Boolean)
+    .some(matchesAlternative);
+}
+
 function matchSearchableText(searchTerm, item) {
   const term = (searchTerm || '').replace(/\*+$/g, '').trim().toLowerCase();
   if (!term) return true;
@@ -3150,16 +3215,10 @@ app.get('*/@querystring', (req, res) => {
         'group': 'Text',
         'enabled': true,
         'sortable': false,
-        'operations': [
-          'plone.app.querystring.operation.string.contains',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.string.contains': {
-            'title': 'Contains',
-            'widget': null,
-            'operation': 'plone.app.querystring.operation.string.contains',
-          },
-        },
+        'operations': searchableTextOperations(),
+        'operators': Object.fromEntries(
+          searchableTextOperations().map((op) => [op, TEXT_OPERATORS[op]]),
+        ),
       },
     },
     'sortable_indexes': {
@@ -3783,6 +3842,19 @@ app.post('*/@querystring-search', (req, res) => {
   const { query = [], sort_on, sort_order, b_start = 0, b_size = 10, limit } = req.body;
   console.log('[MOCK-API] @querystring-search query:', JSON.stringify(query));
 
+  // An operation the site does not have is a 400, as in Plone — never a
+  // silent match-everything. See searchableTextOperations.
+  const unsupported = query.find(
+    (c) =>
+      c.i === 'SearchableText' && !searchableTextOperations().includes(c.o),
+  );
+  if (unsupported) {
+    return res.status(400).json({
+      message: 'Invalid query.',
+      type: 'BadRequest',
+    });
+  }
+
   // Extract the "root" path from the path criteria so depth (below) can
   // compute "how far below root is this item". Real Plone applies depth
   // relative to each path criterion; for our use we only support one path
@@ -3935,14 +4007,14 @@ app.post('*/@querystring-search', (req, res) => {
       (operation.includes('string.contains') ||
         operation.includes('string.search'))
     ) {
-      // Full-text search across title/description/id. Mirrors Plone 6.2's
-      // plone.app.querystring 3.0.0 wildcard-prefix behavior — each word in
-      // the search term must prefix-match a word token in one of those fields.
-      // Both `string.contains` (Standard) and `string.search` (Advanced,
-      // queryType=search) resolve to a SearchableText full-text match; the
-      // block's queryType picks the operation, and both filter here.
+      // Full-text search across title/description/id. `contains` mirrors
+      // Plone 6.2's plone.app.querystring 3.0.0 munging — each word must
+      // prefix-match a word token. `search` exists only in fork mode (see
+      // searchableTextOperations; stock mode 400s it above) and keeps the raw
+      // term's operators (matchRawSearch).
       if (value) {
-        allItems = allItems.filter((item) => matchSearchableText(value, item));
+        const matches = operation === TEXT_SEARCH ? matchRawSearch : matchSearchableText;
+        allItems = allItems.filter((item) => matches(value, item));
       }
     } else if (index === 'Title' && operation.includes('string.contains')) {
       // The Title index is its own catalog index, distinct from SearchableText.
