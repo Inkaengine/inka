@@ -2979,7 +2979,15 @@ function fillContainerInto(stamped, tplBlock, templateState, options) {
  * Recursively scans data for templateId references, loads them,
  * then scans loaded templates for more references until all are loaded.
  *
- * @param {Object} data - Page data to scan for template references
+ * Templates the page response already carries are used, not requested again. A backend
+ * with the @templates addon returns them inside the page response when it is fetched with
+ * `?expand=templates` (plus `&expand.templates.extra=<ids>` for forced layouts the page
+ * does not reference): `data['@components'].templates` then holds `templates` (id ->
+ * template) and, for any that failed, `errors`. Those are taken as loaded / failed, and
+ * `loadTemplate` is only called for what is still missing. Without the addon — no
+ * component, or just its unexpanded `@id` stub — every template is fetched as before.
+ *
+ * @param {Object} data - Page data to scan for template references (the whole response, @components included)
  * @param {Function} loadTemplate - Async function: (templateId) => Promise<templateData>
  * @param {Object} preloadedTemplates - Already-loaded templates: { templateId: templateData }. Caller owns the cache.
  * @param {Array} extraTemplateIds - Additional template IDs to fetch (e.g. forced layouts not referenced in page data)
@@ -2995,6 +3003,26 @@ export async function loadTemplates(
   const templates = { ...preloadedTemplates };
   const loaded = new Set(Object.keys(preloadedTemplates));
   const failed = new Map();
+
+  // Templates the response already carries (the @templates component). Taken in over the
+  // caller's cache — they arrived with this very response, so they are the freshest copy —
+  // and written back to it, like any template this function fetches.
+  const component = data?.['@components']?.templates;
+  if (component?.templates) {
+    for (const [id, template] of Object.entries(component.templates)) {
+      templates[id] = template;
+      preloadedTemplates[id] = template;
+      loaded.add(id);
+    }
+  }
+  // Ones the backend already failed to resolve (missing, or not viewable by this user):
+  // asking again would fail the same way, one request later. Recorded as an Error, the
+  // same shape as a failed fetch, so callers see one kind of error.
+  for (const { templateId, error } of component?.errors || []) {
+    if (templateId && !loaded.has(templateId)) {
+      failed.set(templateId, error instanceof Error ? error : new Error(String(error)));
+    }
+  }
 
   // Helper to scan an object for templateId references
   function collectTemplateIds(obj, visited = new Set()) {

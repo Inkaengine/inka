@@ -11,7 +11,6 @@
 
 [![PyPI - Plone Versions](https://img.shields.io/pypi/frameworkversions/plone/inkaengine.inka)](https://pypi.org/project/inkaengine.inka/)
 
-[![CI](https://github.com/Inkaengine/inkaengine.inka/actions/workflows/main.yml/badge.svg)](https://github.com/Inkaengine/inkaengine.inka/actions/workflows/main.yml)
 ![Code Style](https://img.shields.io/badge/Code%20Style-Black-000000)
 
 [![GitHub contributors](https://img.shields.io/github/contributors/Inkaengine/inkaengine.inka)](https://github.com/Inkaengine/inkaengine.inka)

@@ -6,7 +6,7 @@ API let the shape be tried against the real merge before any Python existed:
     tests-playwright/fixtures/mock-plone-api.cjs                  reference implementation
     tests-playwright/fixtures/templates-component.test.cjs        response shape
     tests-playwright/fixtures/templates-component-merge.test.cjs  the merge consuming it
-    tests-playwright/conformance/rest-api.spec.ts                 diff against real Plone
+    tests-playwright/conformance/templates-endpoint.spec.ts       diff against real Plone
 
 These tests restate that contract in Python, against the SAME template fixtures (imported
 as a plone.exportimport distribution — see conftest.py). Three rules carry the weight:

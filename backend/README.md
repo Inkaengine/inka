@@ -21,7 +21,7 @@ Settled against the mock API first, then implemented here and diffed against it:
 | Response shape | `tests-playwright/fixtures/templates-component.test.cjs` |
 | The merge actually consuming it | `tests-playwright/fixtures/templates-component-merge.test.cjs` |
 | Reference implementation | `@templates` in `tests-playwright/fixtures/mock-plone-api.cjs` |
-| Diff against real Plone | `tests-playwright/conformance/rest-api.spec.ts` |
+| Diff against real Plone | `tests-playwright/conformance/templates-endpoint.spec.ts` |
 
 ```json
 {
@@ -153,12 +153,17 @@ curl -s -H 'Accept: application/json' "$API/@templates?expand.templates.extra=/t
 curl -s -H 'Accept: application/json' "$API/?expand=templates&expand.templates.extra=/templates/site-footer"
 ```
 
-In the example, any template failure in view mode or during the SSG build is a 500 with the
-real message. Point it at a Plone **without** the addon and every page fails with "The backend
-did not return the @templates component. Install the inkaengine.inka addon…". Without this
-change it would fail later with a misleading "not found in pre-loaded templates". In edit
-mode a template failure is logged and ignored instead, because the admin does the merging
-there.
+In the example:
+
+- **A page the backend doesn't have is a 404.** Before, it rendered with no data and failed as
+  a 500 with the misleading "not found in pre-loaded templates".
+- **A template that fails to load** (missing, or private to an anonymous visitor) is a 500
+  with the real message in view mode and during the SSG build. In edit mode it's logged and
+  ignored, because the admin does the merging there.
+- **Against a Plone without the addon, it still works.** The shared `loadTemplates` helper
+  uses the templates the response carries, and fetches whatever is missing one at a time.
+  Without the addon that's every template, which is the old behaviour. Nothing breaks; it's
+  just slower.
 
 ### Without Plone: against the mock API
 

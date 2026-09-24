@@ -1,4 +1,5 @@
 import { getAccessToken } from '@hydra-js/hydra.js';
+import { loadTemplates } from '@hydra-js/helpers';
 
 export default async function ploneApi({
   path,
@@ -33,14 +34,11 @@ export default async function ploneApi({
     api = `${runtimeConfig.public.backendBaseUrl}/++api++/${api}`;
   }
   if (!query) {
-    // The page and every template it needs arrive in ONE request: `templates` is the
-    // @templates component (the inkaengine.inka addon), which resolves the page's
-    // template references — and theirs, recursively — on the server.
-    //
-    // This replaced fetching each template from here, which discovered nested
-    // references only after the parent arrived and needed a cross-render cache, an
-    // in-flight dedupe and a per-fetch abort to survive the SSG prerender (it hit a cold
-    // API ~179x for the same forced footer).
+    // Ask for every template the page needs in the same response: `templates` is the
+    // @templates component (the inkaengine.inka addon), which resolves the page's template
+    // references — and theirs, recursively — on the server. loadTemplates (below) uses
+    // what comes back and only fetches what is missing, so a backend without the addon,
+    // which ignores this expansion, still works: templates are then fetched one by one.
     const extra = preloadTemplates.filter(Boolean);
     api =
       `${api}?expand=breadcrumbs,navroot,navigation,templates&expand.navigation.depth=2` +
@@ -63,11 +61,30 @@ export default async function ploneApi({
   // redirect can't be issued from the ofetch interceptor (it won't propagate
   // as an SSR redirect).
   let redirectTarget = null;
-  // A template failure recorded by `transform`, re-thrown once useFetch returns. It has
-  // to be carried out: an error thrown INSIDE transform does not propagate — useFetch
-  // parks it in its `error` ref and leaves `data` at its default, so the page rendered
-  // anyway and failed far away with the misleading "not found in pre-loaded templates".
+  // Failures recorded inside useFetch's callbacks, re-thrown once it returns. They have to
+  // be carried out: an error thrown INSIDE `transform` does not propagate — useFetch parks
+  // it in its `error` ref and leaves `data` at its default — and a failed page read left
+  // the page to render with no data at all. Either way the page then failed far away,
+  // with the misleading "not found in pre-loaded templates" (a missing page became a 500).
   let templateFailure = null;
+  let pageFailure = null;
+  // Fetch one template by id — only for templates the page response did not already
+  // carry (see loadTemplates). No cache or de-duplication: with the addon installed this
+  // is rarely called at all.
+  const loadTemplate = async (templateId) => {
+    // templateId may be a path or a full URL — normalise to path
+    const tplPath = templateId.startsWith('http')
+      ? new URL(templateId).pathname
+      : `/${templateId.replace(/^\//, '')}`;
+    const response = await fetch(`${runtimeConfig.public.backendBaseUrl}/++api++${tplPath}`, {
+      headers,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch template ${templateId}: HTTP ${response.status}`);
+    }
+    return response.json();
+  };
+
   const toFrontendPath = (u) => u
     .replace(runtimeConfig.public.backendBaseUrl, '')
     .replace('/++api++', '')
@@ -95,10 +112,16 @@ export default async function ploneApi({
     },
     onResponseError({ request, response, options }) {
       const error = response._data;
-      showError({
+      const failure = {
         statusCode: response.status,
-        statusMessage: `${error.type}: ${error.message}`,
-      });
+        statusMessage: error?.type ? `${error.type}: ${error.message}` : response.statusText,
+      };
+      if (query) {
+        // A listing query that fails leaves the page itself standing.
+        showError(failure);
+      } else {
+        pageFailure = failure;
+      }
       return {
         title: response.statusText,
         '@components': { navigation: { items: [] } },
@@ -109,20 +132,21 @@ export default async function ploneApi({
       if (query) {
         return data;
       } else {
+        // Before @components is stripped: loadTemplates reads the templates the response
+        // already carries from it, and fetches only the rest (nested references, and the
+        // forced layouts in preloadTemplates if the backend did not resolve them).
+        const { templates, errors } = await loadTemplates(
+          data,
+          loadTemplate,
+          {},
+          preloadTemplates,
+        );
         const comp = data['@components'];
         delete data['@components'];
 
-        // A backend without the addon ignores an unknown `expand=templates` rather than
-        // erroring, so a missing component means a missing addon — say so, instead of
-        // letting every template lookup fail later as "not found in pre-loaded templates".
-        const component = comp?.templates;
-        const errors = component?.errors || [];
-        const failure = !component?.templates
-          ? 'The backend did not return the @templates component. Install the ' +
-            'inkaengine.inka addon on the Plone backend (see backend/README.md).'
-          : errors.length
-            ? `Failed to load templates: ${errors.map((e) => `${e.templateId}: ${e.error}`).join('; ')}`
-            : null;
+        const failure = errors.length
+          ? `Failed to load templates: ${errors.map((e) => `${e.templateId}: ${e.error?.message || e.error}`).join('; ')}`
+          : null;
         if (failure) {
           // Default: don't swallow. A failed template fails the render with the real
           // error, instead of dropping the template and 500-ing far away with a
@@ -133,7 +157,6 @@ export default async function ploneApi({
           }
           console.warn('[ploneApi] Ignoring template failure:', failure);
         }
-        const templates = component?.templates || {};
 
         return {
           page: data,
@@ -146,6 +169,10 @@ export default async function ploneApi({
     },
   });
 
+  if (pageFailure) {
+    // The backend's own status (a missing page is a 404), before any template expansion runs.
+    throw createError({ ...pageFailure, fatal: true });
+  }
   if (templateFailure) {
     throw createError({ statusCode: 500, message: templateFailure, fatal: true });
   }
