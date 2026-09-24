@@ -137,6 +137,35 @@ describe('mock API content validation', () => {
     assert.match(run.stderr, /path not in content: \/no-such-page/);
   });
 
+  it("does not judge a consumer's blocks by hydra's test schemas", () => {
+    // hydra's shared-block-schemas describe ITS test frontend. A frontend that
+    // mounts its own content has its own `hero` — here one whose description is
+    // plain text, where hydra's test hero declares a slate field.
+    const run = loadAndAwaitReady(`/:${jsonMount({
+      blocks: { h: { '@type': 'hero', description: 'plain text' } },
+      blocks_layout: { items: ['h'] },
+    })}`);
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+  });
+
+  it("judges content shipped in this checkout by hydra's schemas", () => {
+    // The same block, mounted from inside hydra, IS hydra's test content.
+    const dir = fs.mkdtempSync(path.join(__dirname, '.content-check-'));
+    try {
+      fs.mkdirSync(path.join(dir, 'page'));
+      fs.writeFileSync(path.join(dir, 'page', 'data.json'), JSON.stringify({
+        '@id': '/page', '@type': 'Document', UID: 'owned-page', id: 'page', title: 'Page',
+        blocks: { h: { '@type': 'hero', description: 'plain text' } },
+        blocks_layout: { items: ['h'] },
+      }));
+      const run = loadAndAwaitReady(`/:${dir}`);
+      assert.equal(run.status, 3, run.stderr.slice(-2000));
+      assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('a problem the mount declares in expected-errors.json does not stop it', () => {
     // A fixture that is broken ON PURPOSE (it tests how the frontend copes).
     const dir = jsonMount(teaserTo('/no-such-page'));

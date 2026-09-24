@@ -1826,7 +1826,7 @@ function validateServedContent() {
     if (data == null) throw new Error(`content-check: ${urlPath} is registered but has no content`);
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
-  errors.push(...checkIntegrity(source, { schemaFor: blockSchemaFor }).errors);
+  errors.push(...checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent }).errors);
   return withoutExpectedErrors(errors.map((m) => m.trim()));
 }
 
@@ -1858,6 +1858,21 @@ function withoutExpectedErrors(errors) {
     }
   }
   return remaining;
+}
+
+/**
+ * shared-block-schemas describe hydra's OWN test frontend, so they judge only
+ * content that ships in this checkout (the docs, the fixtures, the site root).
+ * A frontend mounting its own content has its own schemas — its `hero` is not
+ * this `hero` — so its blocks get the structural checks, not these shapes.
+ */
+const HYDRA_ROOT = path.resolve(__dirname, '..', '..');
+function hydraSchemaForOwnContent(type, urlPath) {
+  const mount = CONTENT_MOUNTS
+    .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(m.mountPath + '/'))
+    .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
+  const owned = path.resolve(mount.dirPath).startsWith(HYDRA_ROOT + path.sep);
+  return owned ? blockSchemaFor(type) : null;
 }
 
 function reportContentErrors(errors) {
