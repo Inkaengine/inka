@@ -19,18 +19,27 @@ const criterion = (body, i) => body.query.find((q) => q.i === i);
 const criteria = (body, i) => body.query.filter((q) => q.i === i);
 
 describe('buildQuerystringSearchBody — core body', () => {
-  test('no queryConfig → default relativePath "." + folder-order sort', () => {
+  test('no queryConfig → the folder\'s own items (".::1") + folder-order sort', () => {
+    // Volto's listing with no criteria shows the folder's CONTENTS — its
+    // direct children. `.` alone is the whole subtree: the LECC "Information in
+    // other languages" page listed 25 items (every language's sub-pages)
+    // against the source's 7 languages, and three languages fell off the page.
     const body = buildQuerystringSearchBody(undefined, {}, {});
     expect(criterion(body, 'path')).toEqual({
       i: 'path',
       o: 'plone.app.querystring.operation.string.relativePath',
-      v: '.',
+      v: '.::1',
     });
     expect(body.sort_on).toBe('getObjPositionInParent');
     expect(body.sort_order).toBe('ascending');
     expect(body.b_start).toBe(0);
     expect(body.b_size).toBe(10);
     expect(body.metadata_fields).toBe('_all');
+  });
+
+  test('an empty query with its own depth keeps that depth', () => {
+    const body = buildQuerystringSearchBody({ query: [], depth: 2 }, {}, {});
+    expect(criterion(body, 'path').v).toBe('.::2');
   });
 
   test('a configured query is cloned (not mutated) and gets effective-desc default sort', () => {

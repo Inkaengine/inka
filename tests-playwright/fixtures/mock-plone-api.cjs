@@ -111,32 +111,10 @@ function getAllRedirects() {
 // The ESM loaders (readTree, checkIntegrity) are imported once at startup and
 // held so a mount can be reloaded SYNCHRONOUSLY (on a watcher change or a cache
 // miss) without re-awaiting a dynamic import.
-//
-// Declared HERE, above the startup validation that reads it. A `let` read
-// before its declaration throws, so with it further down, any mount that is an
-// exportimport tree (has __metadata__.json) killed the server at load with
-// "Cannot access 'mdRuntime' before initialization". It is still null when the
-// validation runs — the loaders arrive asynchronously, later — which is what
-// that code already expects.
 let mdRuntime = null;
 
-// Validate each mounted content tree at startup. Errors are loud (listed)
-// but non-fatal — tests using the mock API still start. Set
-// SKIP_CONTENT_VALIDATION=true to suppress entirely.
-if (process.env.SKIP_CONTENT_VALIDATION !== 'true') {
-  const { validate, checkIntegrity, formatReport } = require('./plone-content-validator.cjs');
-  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    if (!fs.existsSync(path.join(dirPath, '__metadata__.json'))) continue;
-    const v = validate(dirPath);
-    const c = checkIntegrity(dirPath, { schemaFor: mdRuntime && mdRuntime.schemaFor });
-    const problems = v.errors.length + v.warnings.length + c.errors.length + c.warnings.length;
-    if (problems > 0) {
-      console.log(`[content-check] ${mountPath} -> ${dirPath}`);
-      if (v.errors.length || v.warnings.length) console.log(formatReport('validate', v));
-      if (c.errors.length || c.warnings.length) console.log(formatReport('check', c));
-    }
-  }
-}
+// Content validation runs once every mount is loaded — see validateServedContent,
+// awaited as part of `ready`.
 
 // Session-based transient content storage for uploads
 // Uploads are stored per-session so they don't appear for other users
@@ -585,6 +563,71 @@ function getPlaceholderImageScales(title, fieldName = 'image') {
  * title/description/id. (Plone uses ZCText word-prefix indexing; we
  * tokenize on `\W+` and check `startsWith`, which is close enough.)
  */
+const TEXT_CONTAINS = 'plone.app.querystring.operation.string.contains';
+const TEXT_SEARCH = 'plone.app.querystring.operation.string.search';
+const TEXT_OPERATORS = {
+  [TEXT_CONTAINS]: {
+    'title': 'Contains',
+    'widget': null,
+    'operation': TEXT_CONTAINS,
+  },
+  [TEXT_SEARCH]: {
+    'title': 'Search',
+    'widget': 'StringWidget',
+    'operation': 'plone.app.querystring.queryparser._search',
+  },
+};
+
+/**
+ * The SearchableText operations this "site" has. `string.search` is not core
+ * Plone: it comes from pretagov's plone.app.querystring fork (raw, un-munged
+ * terms for collective.elasticsearch), as run by lecc.nsw.gov.au. Stock 6.2
+ * (plone.app.querystring 3.0.0, demo.plone.org) has only `contains`.
+ * MOCK_QUERYSTRING_SEARCH=1 makes the mock the fork. Read per request, so the
+ * mock's own tests can exercise both in one process.
+ */
+function searchableTextOperations() {
+  return process.env.MOCK_QUERYSTRING_SEARCH === '1'
+    ? [TEXT_CONTAINS, TEXT_SEARCH]
+    : [TEXT_CONTAINS];
+}
+
+/**
+ * The fork's `string.search`: the term reaches the catalog UN-munged, so
+ * ZCTextIndex operators keep their meaning — `OR` between alternatives, `AND`
+ * (or plain adjacency) within one, a quoted phrase as a phrase, and a prefix
+ * match only where the reader typed `*`. Contrast `contains`, whose munging
+ * turns every word into a required prefix (matchSearchableText below).
+ */
+function matchRawSearch(searchTerm, item) {
+  const text = [item.title, item.description, item.id]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  const tokens = text.split(/\W+/).filter(Boolean);
+  const matchesAlternative = (alt) => {
+    const phrases = [...alt.matchAll(/"([^"]+)"/g)].map((m) => m[1].toLowerCase());
+    const words = alt
+      .replace(/"[^"]+"/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w && w.toUpperCase() !== 'AND')
+      .map((w) => w.toLowerCase());
+    return (
+      phrases.every((ph) => text.includes(ph)) &&
+      words.every((w) =>
+        w.endsWith('*')
+          ? tokens.some((t) => t.startsWith(w.slice(0, -1)))
+          : tokens.includes(w),
+      )
+    );
+  };
+  return (searchTerm || '')
+    .split(/\s+OR\s+/i)
+    .map((alt) => alt.trim())
+    .filter(Boolean)
+    .some(matchesAlternative);
+}
+
 function matchSearchableText(searchTerm, item) {
   const term = (searchTerm || '').replace(/\*+$/g, '').trim().toLowerCase();
   if (!term) return true;
@@ -673,6 +716,48 @@ function formatSearchItem(content, baseUrl) {
  * @param {string} urlPath - The URL path to load content for
  * @returns {Object|null} The raw content object or null if not found
  */
+/**
+ * Give an item's internal path references the prefix its mount gave the items.
+ *
+ * Content mounted under a prefix (`/_test_data`) was authored for a site whose
+ * root it was: it links `/another-page` and points image fields at
+ * `/dev/blocks/x/photo.svg`, and under the mount those name nothing — the items
+ * are at `/_test_data/another-page`. A real site has one root, so its
+ * references resolve. Rewritten only when the path as written does NOT resolve
+ * and the mounted one DOES (the part before any `/@@view` is what is checked),
+ * so a reference that works today never moves and one that names nothing
+ * anywhere is left as authored.
+ */
+function mountInternalRefs(content, urlPath) {
+  // The LONGEST mount that holds this path — not mountFor's first match, which
+  // assumes the most specific mount is listed first: the docs repo lists `/`
+  // first (`/:dist,/_test_data:fixtures`), and every item then looked unmounted.
+  const prefix = CONTENT_MOUNTS.map((m) => m.mountPath)
+    .filter((m) => m !== '/' && (urlPath === m || urlPath.startsWith(m + '/')))
+    .sort((a, b) => b.length - a.length)[0];
+  if (!prefix) return content;
+  // The item's own @id is its identity, not a reference — only it is skipped.
+  // An @id inside a field (`href: [{"@id": "/test-page"}]`, the shape Plone
+  // stores a link in) is a reference like any other.
+  const walk = (value, top = false) => {
+    if (typeof value === 'string') {
+      if (!value.startsWith('/') || value.startsWith('//') || value.startsWith(prefix + '/')) return value;
+      const [pathPart] = value.split('/@@');
+      const clean = pathPart.replace(/\/$/, '');
+      if (contentDirMap[clean] || !contentDirMap[prefix + clean]) return value;
+      return prefix + value;
+    }
+    if (Array.isArray(value)) return value.map((v) => walk(v));
+    if (value && typeof value === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(value)) out[k] = top && k === '@id' ? v : walk(v);
+      return out;
+    }
+    return value;
+  };
+  return walk(content, true);
+}
+
 function loadRawContentFromDisk(urlPath) {
   // Read from the loaded caches: a markdown item, or a JSON data.json on disk.
   // Markdown is a whole-tree cache; JSON is read per-path here.
@@ -681,12 +766,16 @@ function loadRawContentFromDisk(urlPath) {
     const dirInfo = contentDirMap[urlPath];
     if (dirInfo && !dirInfo.markdown) {
       const dataPath = path.join(dirInfo.dirPath, 'data.json');
-      if (fs.existsSync(dataPath)) return JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+      if (fs.existsSync(dataPath)) {
+        return mountInternalRefs(JSON.parse(fs.readFileSync(dataPath, 'utf-8')), urlPath);
+      }
     }
     for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
       const relativePath = mountPath === '/' ? urlPath : urlPath.replace(mountPath, '');
       const dataPath = path.join(dirPath, relativePath.replace(/^\//, ''), 'data.json');
-      if (fs.existsSync(dataPath)) return JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+      if (fs.existsSync(dataPath)) {
+        return mountInternalRefs(JSON.parse(fs.readFileSync(dataPath, 'utf-8')), urlPath);
+      }
     }
     return null;
   };
@@ -1959,28 +2048,109 @@ function loadMarkdownMount(mount) {
   console.log(`Registered ${items.size} markdown items from ${dirPath} at ${mountPath}`);
 }
 
-/** Validate the WHOLE markdown tree at once, via the SAME validator the JSON
- *  mounts use (plone-content-validator) -- markdown and JSON decode to the same
- *  content shape, so one validation path serves both. It runs after every
- *  markdown mount is loaded (not per-mount): a /docs page's cross-link to the
- *  site root '/' or '/images/*' is only resolvable once the '/' mount is in, so
- *  a per-mount check would cry false positives on the mount that loads first.
- *  Loud but non-fatal, so a --watch restart or reload surfaces a real problem
- *  while developing rather than at test time. */
-function validateMarkdownContent() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
-  const source = [...markdownItems].map(([rel, data]) => ({ rel, data }));
-  const { errors } = mdRuntime.checkIntegrity(source, { schemaFor: mdRuntime.schemaFor });
-  if (errors.length) {
-    console.log(`[content-check] ${errors.length} problem(s) in markdown content:`);
-    for (const m of errors.slice(0, 30)) console.log(`  ${m}`);
+/**
+ * Validate the site this mock SERVES — every mount, JSON and markdown, as one
+ * content tree — with the same validator the deploy gate and the
+ * `plone-content` CLI use. Returns the error list.
+ *
+ * Whole-site, not per-mount: a /docs page's link to '/' or a fixture's image in
+ * another mount only resolves once every mount is in. Each item is checked as
+ * served (after mountInternalRefs), keyed by the path the mock serves it at.
+ * Mounts that are exportimport trees (have __metadata__.json) also get the
+ * export-shape check, since they are what gets imported into a real Plone.
+ */
+function validateServedContent() {
+  const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+  const errors = [];
+  for (const { dirPath } of CONTENT_MOUNTS) {
+    if (!isMarkdownMount({ dirPath }) && fs.existsSync(path.join(dirPath, '__metadata__.json'))) {
+      errors.push(...validate(dirPath).errors);
+    }
   }
+  const paths = new Set([...markdownItems.keys(), ...Object.keys(contentDirMap)]);
+  const source = [...paths].map((urlPath) => {
+    const data = loadRawContentFromDisk(urlPath);
+    if (data == null) throw new Error(`content-check: ${urlPath} is registered but has no content`);
+    return { rel: urlPath, data: { ...data, '@id': urlPath } };
+  });
+  errors.push(...checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent }).errors);
+  return withoutExpectedErrors(errors.map((m) => m.trim()));
+}
+
+/**
+ * A fixture that is broken ON PURPOSE — it exists to show how a frontend copes
+ * with that content — is declared in its mount's `expected-errors.json`:
+ *
+ *   { "/image-scales-test": ["url: path not in content: /image-scales-test/test-image.png"] }
+ *
+ * keyed by the item's path within the mount, each entry a substring of the one
+ * problem it excuses. An entry excuses only the problems it matches on that
+ * item, and an entry that matches nothing is an error in its own right, so a
+ * declaration cannot outlive the breakage it describes.
+ */
+function withoutExpectedErrors(errors) {
+  const remaining = [...errors];
+  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
+    const file = path.join(dirPath, 'expected-errors.json');
+    if (!fs.existsSync(file)) continue;
+    for (const [rel, expected] of Object.entries(JSON.parse(fs.readFileSync(file, 'utf-8')))) {
+      const itemPath = mountPath === '/' ? rel : mountPath + (rel === '/' ? '' : rel);
+      for (const text of expected) {
+        const hits = remaining.filter((m) => m.startsWith(`${itemPath}: `) && m.includes(text));
+        if (!hits.length) {
+          remaining.push(`${itemPath}: expected-errors.json expects "${text}", which no longer occurs — remove it from ${file}`);
+        }
+        for (const m of hits) remaining.splice(remaining.indexOf(m), 1);
+      }
+    }
+  }
+  return remaining;
+}
+
+/**
+ * shared-block-schemas describe hydra's OWN test frontend, so they judge only
+ * content that ships in this checkout (the docs, the fixtures, the site root).
+ * A frontend mounting its own content has its own schemas — its `hero` is not
+ * this `hero` — so its blocks get the structural checks, not these shapes.
+ */
+const HYDRA_ROOT = path.resolve(__dirname, '..', '..');
+function hydraSchemaForOwnContent(type, urlPath) {
+  const mount = CONTENT_MOUNTS
+    .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(m.mountPath + '/'))
+    .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
+  const owned = path.resolve(mount.dirPath).startsWith(HYDRA_ROOT + path.sep);
+  return owned ? blockSchemaFor(type) : null;
+}
+
+function reportContentErrors(errors) {
+  console.error(`[content-check] ${errors.length} problem(s) in the served content:`);
+  for (const m of errors) console.error(`  ${m}`);
+}
+
+/** Startup: invalid content is fatal — tests must not run against a site that
+ *  would not import, or that links to nothing. SKIP_CONTENT_VALIDATION=true is
+ *  the explicit way out. */
+function assertServedContentValid() {
+  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
+  const errors = validateServedContent();
+  if (errors.length) {
+    reportContentErrors(errors);
+    throw new Error(`${errors.length} content problem(s) — fix the content (listed above) or set SKIP_CONTENT_VALIDATION=true`);
+  }
+}
+
+/** A reload (watcher or cache miss) only reports: one bad edit mid-session
+ *  should not take the dev server down. The next start is the gate. */
+function reportServedContentProblems() {
+  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
+  const errors = validateServedContent();
+  if (errors.length) reportContentErrors(errors);
 }
 
 /** Reload one mount, format-agnostically -- the ContentSource.reload() seam that
  *  both the watcher and the cache-miss path call, so neither is JSON-specific. */
 function reloadMount(mount) {
-  if (isMarkdownMount(mount)) { loadMarkdownMount(mount); validateMarkdownContent(); return; }
+  if (isMarkdownMount(mount)) { loadMarkdownMount(mount); return; }
   if (mount.mountPath !== '/' && fs.existsSync(path.join(mount.dirPath, 'data.json'))) {
     contentDirMap[mount.mountPath] = { dirPath: mount.dirPath, dirName: path.basename(mount.dirPath) };
   }
@@ -2010,20 +2180,21 @@ async function getEngine() {
 async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
   if (!mounts.length) return;
-  const { readTree, schemaRegistryFromBlockDefinitions } = await import('../../lib/markdown-mount.mjs');
-  // One validator for both mounts: the JSON tree and the markdown tree decode to
-  // the same content shape, so markdown validates through plone-content-validator
-  // too (checkIntegrity accepts the in-memory [{rel, data}] form).
+  const { readTree } = await import('../../lib/markdown-mount.mjs');
   const { checkIntegrity } = require('./plone-content-validator.cjs');
-  // schemaFor lets a `<block type="codeExample" source= format="schema">` show the
-  // real block schema — from shared-block-schemas (the complete registry the
-  // frontends register from, every block type) — so a doc's schema view can't
-  // drift from what renders. ESM, so dynamic import from this CJS module.
-  const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
-  const schemaFor = schemaRegistryFromBlockDefinitions(sharedBlocksConfig);
-  mdRuntime = { readTree, checkIntegrity, schemaFor };
+  mdRuntime = { readTree, checkIntegrity, schemaFor: blockSchemaFor };
   for (const mount of mounts) loadMarkdownMount(mount);
-  validateMarkdownContent();
+}
+
+/** The block schemas content is checked against, and that a markdown
+ *  `<block type="codeExample" format="schema">` shows — shared-block-schemas,
+ *  the complete registry the frontends register from, so neither can drift from
+ *  what renders. A type it does not know is not schema-checked. Imported here,
+ *  not via markdown-mount, so a JSON-only consumer needs no markdown toolchain. */
+let blockSchemaFor = null;
+async function loadBlockSchemas() {
+  const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
+  blockSchemaFor = (type) => sharedBlocksConfig[type]?.blockSchema;
 }
 
 // Scan content directories on startup (content loaded on-demand)
@@ -2054,7 +2225,7 @@ initContentDirMap();
 // Markdown mounts need a dynamic import, so loading them is async. Anything
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
-ready = initMarkdownMounts();
+ready = loadBlockSchemas().then(initMarkdownMounts).then(assertServedContentValid);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
@@ -2072,6 +2243,7 @@ function setupContentWatchers() {
       // Reload every mount through the format-agnostic seam -- markdown trees
       // reload and re-validate too, not just the JSON contentDirMap.
       for (const mount of CONTENT_MOUNTS) reloadMount(mount);
+      reportServedContentProblems();
     }, debounceMs);
   };
   for (const { dirPath } of CONTENT_MOUNTS) {
@@ -2851,7 +3023,7 @@ app.post('/@export', async (req, res) => {
     const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
     const contentDir = path.join(staging, 'content');
     const v = validate(contentDir, { allowMissingBlobs });
-    const c = checkIntegrity(contentDir, { schemaFor: mdRuntime && mdRuntime.schemaFor, allowMissingBlobs });
+    const c = checkIntegrity(contentDir, { schemaFor: blockSchemaFor, allowMissingBlobs });
     const errors = [...v.errors, ...c.errors];
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
@@ -3397,16 +3569,10 @@ app.get('*/@querystring', (req, res) => {
         'group': 'Text',
         'enabled': true,
         'sortable': false,
-        'operations': [
-          'plone.app.querystring.operation.string.contains',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.string.contains': {
-            'title': 'Contains',
-            'widget': null,
-            'operation': 'plone.app.querystring.operation.string.contains',
-          },
-        },
+        'operations': searchableTextOperations(),
+        'operators': Object.fromEntries(
+          searchableTextOperations().map((op) => [op, TEXT_OPERATORS[op]]),
+        ),
       },
     },
     'sortable_indexes': {
@@ -4074,6 +4240,19 @@ app.post('*/@querystring-search', (req, res) => {
   const { query = [], sort_on, sort_order, b_start = 0, b_size = 10, limit } = req.body;
   console.log('[MOCK-API] @querystring-search query:', JSON.stringify(query));
 
+  // An operation the site does not have is a 400, as in Plone — never a
+  // silent match-everything. See searchableTextOperations.
+  const unsupported = query.find(
+    (c) =>
+      c.i === 'SearchableText' && !searchableTextOperations().includes(c.o),
+  );
+  if (unsupported) {
+    return res.status(400).json({
+      message: 'Invalid query.',
+      type: 'BadRequest',
+    });
+  }
+
   // Extract the "root" path from the path criteria so depth (below) can
   // compute "how far below root is this item". Real Plone applies depth
   // relative to each path criterion; for our use we only support one path
@@ -4226,14 +4405,14 @@ app.post('*/@querystring-search', (req, res) => {
       (operation.includes('string.contains') ||
         operation.includes('string.search'))
     ) {
-      // Full-text search across title/description/id. Mirrors Plone 6.2's
-      // plone.app.querystring 3.0.0 wildcard-prefix behavior — each word in
-      // the search term must prefix-match a word token in one of those fields.
-      // Both `string.contains` (Standard) and `string.search` (Advanced,
-      // queryType=search) resolve to a SearchableText full-text match; the
-      // block's queryType picks the operation, and both filter here.
+      // Full-text search across title/description/id. `contains` mirrors
+      // Plone 6.2's plone.app.querystring 3.0.0 munging — each word must
+      // prefix-match a word token. `search` exists only in fork mode (see
+      // searchableTextOperations; stock mode 400s it above) and keeps the raw
+      // term's operators (matchRawSearch).
       if (value) {
-        allItems = allItems.filter((item) => matchSearchableText(value, item));
+        const matches = operation === TEXT_SEARCH ? matchRawSearch : matchSearchableText;
+        allItems = allItems.filter((item) => matches(value, item));
       }
     } else if (index === 'Title' && operation.includes('string.contains')) {
       // The Title index is its own catalog index, distinct from SearchableText.
@@ -5446,6 +5625,10 @@ app.patch('*', (req, res) => {
 // Start server only when run directly (not when require()'d)
 let server;
 if (require.main === module) {
+  ready.catch((err) => {
+    console.error(`[content-check] ${err.message}`);
+    process.exit(1);
+  });
   server = app.listen(PORT, () => {
     console.log(`Mock Plone API server running on http://localhost:${PORT}`);
     console.log(`Health endpoint: http://localhost:${PORT}/health`);

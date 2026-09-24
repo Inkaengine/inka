@@ -76,6 +76,12 @@ jobs:
         # match, navigation, folder ordering). Was not previously wired
         # into CI even though the test file existed.
         run: pnpm test:api
+      - name: Check the served test content
+        # Every mount the mock serves (docs, /_test_data fixtures, site root),
+        # validated as one site. The mock refuses to start on the same errors;
+        # checking here fails the build in seconds, naming the content, instead
+        # of every test job timing out waiting for a server that exited.
+        run: pnpm check:content
       - name: Build Volto for production
         run: pnpm build
         env:
@@ -629,7 +635,7 @@ jobs:
               sleep 2
             done
             if [ -z "$ready" ]; then
-              echo "::error::No server on port $port after 60s — check the Start servers step"
+              echo "::error::No server on port $port after 90s — check the Start servers step"
               exit 1
             fi
           done
