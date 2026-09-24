@@ -278,6 +278,7 @@ class Form extends Component {
 
     // Ref for Iframe to provide template save function
     this.saveTemplatesRef = { current: null };
+    this.flushEditsRef = { current: null };
   }
 
   /**
@@ -569,16 +570,19 @@ class Form extends Component {
    * @returns {undefined}
    */
   async onSubmit(event) {
-    // formData for validation + the template-save pre-pass. Read here (pre-flush)
-    // exactly as upstream does — saveTemplatesRef flushes the iframe's pending
-    // inline edits itself and, when it returns nothing, Form re-reads its own
-    // POST-flush state for the PATCH (see below). Anchors are merged at the PATCH
-    // site, not here, so a just-typed edit saved before the debounce isn't lost.
-    const formData = this.state.formData;
-
     if (event) {
       event.preventDefault();
     }
+
+    // Flush the iframe's pending inline edits FIRST: text typed on the canvas
+    // reaches formData after a debounce, so a required field typed and saved
+    // straight away would otherwise be validated as empty and the save refused.
+    if (this.flushEditsRef.current) {
+      await this.flushEditsRef.current();
+    }
+    // formData for validation + the template-save pre-pass, read post-flush.
+    // Anchors are merged at the PATCH site, not here.
+    const formData = this.state.formData;
 
     const errors = this.props.schema
       ? FormValidation.validateFieldsPerFieldset({
@@ -900,6 +904,7 @@ class Form extends Component {
             location={this.props.location}
             token={this.props.token}
             saveTemplatesRef={this.saveTemplatesRef}
+            flushEditsRef={this.flushEditsRef}
           />
           {/* BlocksForm removed - Hydra uses Iframe for block editing */}
           {this.state.isClient &&
