@@ -23,6 +23,7 @@
     },
     "default-slot": {
       "@type": "slate",
+      "fixed": false,
       "templateId": "resolveuid/header-footer-layout-uid",
       "templateInstanceId": "header-footer-def-instance",
       "slotId": "default",

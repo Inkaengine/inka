@@ -19,6 +19,7 @@
       "@type": "codeExample",
       "tabs": [
         {
+          "@type": "tab",
           "@id": "tab-1",
           "label": "JavaScript",
           "language": "javascript",
@@ -30,18 +31,21 @@
       "@type": "codeExample",
       "tabs": [
         {
+          "@type": "tab",
           "@id": "tab-js",
           "label": "JavaScript",
           "language": "javascript",
           "code": "const x = 1;\nconst y = 2;\nconsole.log(x + y);"
         },
         {
+          "@type": "tab",
           "@id": "tab-py",
           "label": "Python",
           "language": "python",
           "code": "x = 1\ny = 2\nprint(x + y)"
         },
         {
+          "@type": "tab",
           "@id": "tab-bash",
           "label": "Bash",
           "language": "bash",

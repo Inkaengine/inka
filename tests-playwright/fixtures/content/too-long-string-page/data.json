@@ -21,6 +21,7 @@
       "@type": "slider",
       "slides": [
         {
+          "@type": "slide",
           "@id": "slide-1",
           "title": "A slide",
           "description": "Body",

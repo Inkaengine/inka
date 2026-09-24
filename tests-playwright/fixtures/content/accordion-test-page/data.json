@@ -20,6 +20,7 @@
       "@type": "accordion",
       "panels": [
         {
+          "@type": "panel",
           "@id": "panel-1",
           "title": "Accordion Header Text",
           "blocks": {
@@ -37,6 +38,7 @@
           "blocks_layout": {"items": ["content-text-1", "content-text-2"]}
         },
         {
+          "@type": "panel",
           "@id": "panel-2",
           "title": "Second Panel Header",
           "blocks": {
