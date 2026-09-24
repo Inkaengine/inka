@@ -489,3 +489,94 @@ describe('/@export (tree export, json | markdown)', { skip: HAVE_ASSETS ? false 
     assert.equal(res.status, 400);
   });
 });
+
+// Which SearchableText operations the backend has — and the mock must be
+// honest about it. `string.search` (raw, un-munged terms for elastic) is NOT
+// core Plone: it comes from pretagov's plone.app.querystring fork, which a site
+// like lecc.nsw.gov.au runs. Stock Plone 6.2 (plone.app.querystring 3.0.0,
+// demo.plone.org) offers only `contains` and answers anything else with
+// 400 "Invalid query.". The mock used to accept `string.search` while
+// advertising only `contains`, so a frontend that sent it passed every test
+// here and returned nothing on a real 6.2 site.
+//
+// Stock is the default. MOCK_QUERYSTRING_SEARCH=1 is the fork; it is read per
+// request so both can be tested in one process.
+const CONTAINS = 'plone.app.querystring.operation.string.contains';
+const SEARCH = 'plone.app.querystring.operation.string.search';
+
+async function textOperations() {
+  const res = await fetch(`${baseUrl}/@querystring`, {
+    headers: { Accept: 'application/json' },
+  });
+  return (await res.json()).indexes.SearchableText.operations;
+}
+
+async function textSearch(op, term) {
+  return fetch(`${baseUrl}/@querystring-search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      query: [{ i: 'SearchableText', o: op, v: term }],
+      b_size: 1000,
+    }),
+  });
+}
+
+const ids = (data) => data.items.map((i) => i['@id']).sort();
+
+describe('SearchableText operations: stock Plone 6.2 (default)', () => {
+  it('advertises only contains', async () => {
+    assert.deepEqual(await textOperations(), [CONTAINS]);
+  });
+
+  it('rejects string.search the way Plone does', async () => {
+    const res = await textSearch(SEARCH, 'accordion');
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).message, 'Invalid query.');
+  });
+});
+
+describe('SearchableText operations: the pretagov fork (MOCK_QUERYSTRING_SEARCH=1)', () => {
+  before(() => {
+    process.env.MOCK_QUERYSTRING_SEARCH = '1';
+  });
+  after(() => {
+    delete process.env.MOCK_QUERYSTRING_SEARCH;
+  });
+
+  it('advertises contains and search, as lecc.nsw.gov.au does', async () => {
+    assert.deepEqual(await textOperations(), [CONTAINS, SEARCH]);
+  });
+
+  it('search passes OR through: the union of both terms', async () => {
+    // Each side through the SAME raw operation: `contains` would also match
+    // "accordions"/"tables" by its automatic prefix, which raw search only
+    // does when the reader types `*`.
+    const a = ids(await (await textSearch(SEARCH, 'accordion')).json());
+    const b = ids(await (await textSearch(SEARCH, 'table')).json());
+    assert.ok(a.length && b.length, 'fixture must hold both terms');
+    const union = [...new Set([...a, ...b])].sort();
+    assert.ok(union.length > a.length && union.length > b.length);
+
+    const res = await textSearch(SEARCH, 'accordion OR table');
+    assert.equal(res.status, 200);
+    assert.deepEqual(ids(await res.json()), union);
+  });
+
+  it('search prefixes only where the reader typed *', async () => {
+    const exact = ids(await (await textSearch(SEARCH, 'accordion')).json());
+    const prefixed = ids(await (await textSearch(SEARCH, 'accordion*')).json());
+    assert.ok(prefixed.length > exact.length);
+  });
+
+  it('contains still munges: OR is not an operator there', async () => {
+    const union = [
+      ...new Set([
+        ...ids(await (await textSearch(CONTAINS, 'accordion')).json()),
+        ...ids(await (await textSearch(CONTAINS, 'table')).json()),
+      ]),
+    ].sort();
+    const res = await textSearch(CONTAINS, 'accordion OR table');
+    assert.notDeepEqual(ids(await res.json()), union);
+  });
+});

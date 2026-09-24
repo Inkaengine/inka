@@ -890,7 +890,16 @@ async function fetchQuerystringSearch(url, headers, payload) {
   if (running) return running;
   const started = (async () => {
     const res = await fetch(url, { method: 'POST', headers, body: payload });
-    return res.json();
+    const data = await res.json();
+    // An error answer has no `items`, and read as data it is an empty page:
+    // a stock Plone 6.2 rejecting an operation it lacks (400 "Invalid query.")
+    // showed "No results found" for every search, with nothing logged.
+    if (!res.ok) {
+      throw new Error(
+        `@querystring-search ${url} answered ${res.status}: ${data?.message ?? ''}`,
+      );
+    }
+    return data;
   })().finally(() => {
     inFlightSearches.delete(key);
   });
