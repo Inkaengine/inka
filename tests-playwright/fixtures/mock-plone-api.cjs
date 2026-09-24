@@ -2315,7 +2315,7 @@ function getContent(urlPath, sessionId, expandList = [], expandParams = {}) {
 
   // Fall back to generated site root
   if (urlPath === '/') {
-    return getSiteRoot();
+    return getSiteRoot(expandList, sessionId, expandParams);
   }
 
   return null;
