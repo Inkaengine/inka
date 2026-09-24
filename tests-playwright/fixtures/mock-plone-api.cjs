@@ -1982,27 +1982,40 @@ function scanContentDir(contentDirPath, mountPath) {
 
 /**
  * Generate site root content (not from disk)
+ *
+ * Expand-aware like every other read (enrichContent): named components expanded, the
+ * rest @id stubs. It used to serialise generateComponents() whole, and that map holds
+ * `templates` as a lazy thunk, which JSON.stringify silently drops — so the synthesised
+ * root was the one page `?expand=templates` never answered, and a frontend fell back to
+ * fetching its forced layouts one by one without anything saying so.
  */
-function getSiteRoot() {
+function getSiteRoot(expandList = [], sessionId, expandParams = {}) {
   const baseUrl = `http://localhost:${PORT}`;
   return {
     '@id': baseUrl + '/',
     '@type': 'Plone Site',
-    'id': 'Plone',
-    'title': 'Plone Site',
-    'description': '',
-    'items': [],
-    'items_total': 0,
-    'is_folderish': true,
-    'blocks': {},
-    'blocks_layout': { 'items': [] },
-    '@components': generateComponents('/', baseUrl),
-    'can_manage_portlets': true,
-    'can_view': true,
-    'can_edit': true,
-    'can_delete': true,
-    'can_add': true,
-    'can_list_contents': true
+    id: 'Plone',
+    title: 'Plone Site',
+    description: '',
+    items: [],
+    items_total: 0,
+    is_folderish: true,
+    blocks: {},
+    blocks_layout: { items: [] },
+    '@components': expandComponents(
+      stubComponents(baseUrl),
+      expandList,
+      '/',
+      baseUrl,
+      sessionId,
+      expandParams,
+    ),
+    can_manage_portlets: true,
+    can_view: true,
+    can_edit: true,
+    can_delete: true,
+    can_add: true,
+    can_list_contents: true,
   };
 }
 
