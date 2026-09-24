@@ -100,9 +100,7 @@ class TestTemplatesExtra:
         templates = response.json()["@components"]["templates"]["templates"]
         assert "/templates/site-footer" in templates
 
-    def test_accepts_several_comma_separated(
-        self, api_session, plain_page, templates
-    ):
+    def test_accepts_several_comma_separated(self, api_session, plain_page, templates):
         response = api_session.get(
             "/plain?expand=templates&expand.templates.extra="
             "/templates/site-footer,/templates/event-view"
@@ -205,7 +203,9 @@ class TestTemplatesErrors:
         response = api_session.get(
             "/a-page?expand=templates&expand.templates.extra=/templates/nope"
         )
-        assert response.status_code == 200, "one missing template must not fail the read"
+        assert response.status_code == 200, (
+            "one missing template must not fail the read"
+        )
         templates = response.json()["@components"]["templates"]
         errors = templates.get("errors", [])
         assert len(errors) == 1

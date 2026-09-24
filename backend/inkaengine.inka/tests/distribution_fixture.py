@@ -80,9 +80,7 @@ def _trim_to_templates(content_dir: Path):
     for key in ("ordering", "local_roles", "default_page", "relations"):
         value = metadata.get(key)
         if isinstance(value, dict):
-            metadata[key] = {
-                k: v for k, v in value.items() if "templates" in k
-            }
+            metadata[key] = {k: v for k, v in value.items() if "templates" in k}
 
     metadata_path.write_text(json.dumps(metadata, indent=2))
 

@@ -42,9 +42,7 @@ class Templates:
             "blocks": getattr(self.context, "blocks", None) or {},
             "blocks_layout": getattr(self.context, "blocks_layout", None) or {},
         }
-        templates, errors = resolve_templates(
-            portal, self.request, page_content, extra
-        )
+        templates, errors = resolve_templates(portal, self.request, page_content, extra)
 
         result["templates"]["templates"] = templates
         result["templates"]["idFieldMap"] = build_id_field_map()

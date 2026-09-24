@@ -136,12 +136,10 @@ def resolve_templates(portal, request, page_content, extra_ids=()):
 
             obj = resolve_template_object(portal, template_id)
             if obj is None:
-                errors.append(
-                    {
-                        "templateId": template_id,
-                        "error": f"not found: {template_id}",
-                    }
-                )
+                errors.append({
+                    "templateId": template_id,
+                    "error": f"not found: {template_id}",
+                })
                 continue
 
             # Serve templates with the REQUESTER's permissions, never elevated.
@@ -153,12 +151,10 @@ def resolve_templates(portal, request, page_content, extra_ids=()):
             # template instead. "unauthorized" rather than "not found" so a developer
             # sees why; it reveals no more than a direct GET of the template would.
             if not api.user.has_permission("View", obj=obj):
-                errors.append(
-                    {
-                        "templateId": template_id,
-                        "error": f"unauthorized: {template_id}",
-                    }
-                )
+                errors.append({
+                    "templateId": template_id,
+                    "error": f"unauthorized: {template_id}",
+                })
                 continue
 
             data = serialize_template(obj, request)

@@ -12,10 +12,10 @@
   <!-- The standalone route, served by the same adapter. -->
   <plone:service
       method="GET"
-      for="zope.interface.Interface"
       factory=".get.TemplatesGet"
-      name="@templates"
+      for="zope.interface.Interface"
       permission="zope2.View"
+      name="@templates"
       />
 
 </configure>
