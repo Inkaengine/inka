@@ -738,6 +738,45 @@ function formatSearchItem(content, baseUrl) {
  * @param {string} urlPath - The URL path to load content for
  * @returns {Object|null} The raw content object or null if not found
  */
+/**
+ * Give an item's internal path references the prefix its mount gave the items.
+ *
+ * Content mounted under a prefix (`/_test_data`) was authored for a site whose
+ * root it was: it links `/another-page` and points image fields at
+ * `/dev/blocks/x/photo.svg`, and under the mount those name nothing — the items
+ * are at `/_test_data/another-page`. A real site has one root, so its
+ * references resolve. Rewritten only when the path as written does NOT resolve
+ * and the mounted one DOES (the part before any `/@@view` is what is checked),
+ * so a reference that works today never moves and one that names nothing
+ * anywhere is left as authored.
+ */
+function mountInternalRefs(content, urlPath) {
+  // The LONGEST mount that holds this path — not mountFor's first match, which
+  // assumes the most specific mount is listed first: the docs repo lists `/`
+  // first (`/:dist,/_test_data:fixtures`), and every item then looked unmounted.
+  const prefix = CONTENT_MOUNTS.map((m) => m.mountPath)
+    .filter((m) => m !== '/' && (urlPath === m || urlPath.startsWith(m + '/')))
+    .sort((a, b) => b.length - a.length)[0];
+  if (!prefix) return content;
+  const walk = (value) => {
+    if (typeof value === 'string') {
+      if (!value.startsWith('/') || value.startsWith('//') || value.startsWith(prefix + '/')) return value;
+      const [pathPart] = value.split('/@@');
+      const clean = pathPart.replace(/\/$/, '');
+      if (contentDirMap[clean] || !contentDirMap[prefix + clean]) return value;
+      return prefix + value;
+    }
+    if (Array.isArray(value)) return value.map(walk);
+    if (value && typeof value === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(value)) out[k] = k === '@id' ? v : walk(v);
+      return out;
+    }
+    return value;
+  };
+  return walk(content);
+}
+
 function loadRawContentFromDisk(urlPath) {
   // Read from the loaded caches: a markdown item, or a JSON data.json on disk.
   // Markdown is a whole-tree cache; JSON is read per-path here.
@@ -746,12 +785,16 @@ function loadRawContentFromDisk(urlPath) {
     const dirInfo = contentDirMap[urlPath];
     if (dirInfo && !dirInfo.markdown) {
       const dataPath = path.join(dirInfo.dirPath, 'data.json');
-      if (fs.existsSync(dataPath)) return JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+      if (fs.existsSync(dataPath)) {
+        return mountInternalRefs(JSON.parse(fs.readFileSync(dataPath, 'utf-8')), urlPath);
+      }
     }
     for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
       const relativePath = mountPath === '/' ? urlPath : urlPath.replace(mountPath, '');
       const dataPath = path.join(dirPath, relativePath.replace(/^\//, ''), 'data.json');
-      if (fs.existsSync(dataPath)) return JSON.parse(fs.readFileSync(dataPath, 'utf-8'));
+      if (fs.existsSync(dataPath)) {
+        return mountInternalRefs(JSON.parse(fs.readFileSync(dataPath, 'utf-8')), urlPath);
+      }
     }
     return null;
   };
