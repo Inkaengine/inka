@@ -580,3 +580,31 @@ describe('SearchableText operations: the pretagov fork (MOCK_QUERYSTRING_SEARCH=
     assert.notDeepEqual(ids(await res.json()), union);
   });
 });
+
+// Content mounted under a prefix (`/_test_data`) keeps its internal path
+// references as authored — `/image-scales-test/test-image.png` — which name
+// nothing on this site: the item is at `/_test_data/image-scales-test/...`. A
+// real site has one root, so its references resolve; the mount has to give
+// them the prefix its items got. Only a reference that does NOT resolve as
+// written and DOES under the mount is changed, so nothing that works today
+// moves. (nsw-dds-nextjs mounts its fixtures at /_test_data in the docs repo;
+// a content block whose pictogram is fetched server-side 500'd there.)
+describe('internal references under a prefix mount', () => {
+  const get = async (p) =>
+    (await fetch(`${baseUrl}${p}`, { headers: { Accept: 'application/json' } })).text();
+
+  it('a reference to another mounted item gets the mount prefix', async () => {
+    // showcase-page links `/another-page`, which exists only as
+    // /_test_data/another-page.
+    const text = await get('/_test_data/showcase-page');
+    assert.ok(text.includes('"/_test_data/another-page"'), 'the link should resolve under the mount');
+    assert.ok(!text.includes('"/another-page"'), 'the unmounted path should be gone');
+  });
+
+  it('a reference that names nothing under the mount either is left alone', async () => {
+    // image-scales-test points at a test-image.png that exists nowhere: there
+    // is no right answer to give it, so it stays as authored.
+    const text = await get('/_test_data/image-scales-test');
+    assert.ok(text.includes('"/image-scales-test/test-image.png"'));
+  });
+});
