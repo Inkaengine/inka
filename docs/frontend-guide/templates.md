@@ -226,7 +226,7 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 
 <block type="callout" variation="important">
 
-**A forced layout (`allowedLayouts`) under `expandTemplatesSync` must be pre-loaded.** It isn't referenced from page data, so `loadTemplates` won't auto-scan it. The async `expandTemplates` fetches it on demand, but the **sync** `expandTemplatesSync` (recommended for SSR / Vue computed) needs it already in `templates` — pass its id explicitly: `loadTemplates(data, loadTemplate, cache, ['/templates/footer-layout'])`. Otherwise you'll hit `Template "…" not found in pre-loaded templates`.
+**A forced layout (`allowedLayouts`) under `expandTemplatesSync` must be pre-loaded.** It isn't referenced from page data, so `loadTemplates` won't auto-scan it. The async `expandTemplates` fetches it on demand, but the **sync** `expandTemplatesSync` (recommended for SSR / Vue computed) needs it already in `templates` — pass its id explicitly: `loadTemplates(data, loadTemplate, cache, ['/templates/footer-layout'])`. Otherwise you'll hit `Template "…" not found in pre-loaded templates`. With the backend addon, also name it in `expand.templates.extra` so it arrives with the page (see "Fetching templates with the page" below).
 
 </block>
 
@@ -249,7 +249,7 @@ const loadTemplate = async (id) =>
 const templateState = {};
 
 // Sync approach: pre-fetch templates, use in computed properties
-const templates = await loadTemplates(pageData, loadTemplate);
+const { templates } = await loadTemplates(pageData, loadTemplate);
 const items = expandTemplatesSync(layout, {
     blocks, templateState, templates,
 });
@@ -274,6 +274,34 @@ Options:
 - **\`templates\`**: (sync only) Pre-fetched map of templateId -> template data
 - **\`loadTemplate(id)\`**: (async only) Function to fetch template content
 - **\`allowedLayouts\`**: Force a layout when container has no template applied
+
+## Fetching templates with the page
+
+With the `inkaengine.inka` backend addon installed (`backend/` in the Inka repository), Plone returns every template a page needs in the same response as the page. Add `templates` to `expand`, and name any forced layouts in `expand.templates.extra`: they aren't referenced from the page, so the backend can't find them on its own. Then pass the whole response, `@components` included, to `loadTemplates`. It uses the templates that came back and only fetches what's missing.
+
+### Javascript
+
+```javascript
+const forcedLayouts = ['/templates/site-footer'];
+
+const response = await fetch(
+    `${apiBase}/++api++${path}?expand=templates` +
+    `&expand.templates.extra=${encodeURIComponent(forcedLayouts.join(','))}`,
+    { headers: { Accept: 'application/json' } },
+);
+const pageData = await response.json();
+
+// Reads pageData['@components'].templates: no request per template.
+const { templates, errors } = await loadTemplates(
+    pageData, loadTemplate, {}, forcedLayouts,
+);
+```
+
+- **Name forced layouts in both places:** in `expand.templates.extra`, so the backend returns them, and as `loadTemplates`' fourth argument, so they're still fetched from a backend without the addon.
+- **Without the addon it still works.** Plone ignores `expand=templates`, and `loadTemplates` fetches each template one at a time, as before. It's slower, not broken.
+- **A template the backend couldn't return** (missing, or one the visitor isn't allowed to view) is listed in `errors` and isn't requested again.
+- **The same component carries `idFieldMap`** (`pageData['@components'].templates.idFieldMap`): the object\_list id fields described above, ready to pass to `expandTemplatesSync`.
+- **Only list the layouts your rules actually force in view mode.** Every template named in `extra` is included in every page response it's added to.
 
 ## How the Merge Works
 

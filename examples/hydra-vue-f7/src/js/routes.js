@@ -30,7 +30,11 @@ var routes = [
         headers = {'Authorization': 'Bearer '+token};
       };
       const apiBase = import.meta.env.VITE_API_BASE_URL || "https://hydra-api.pretagov.com";
-      const api = `${apiBase}/++api++${path}?expand=breadcrumbs,navroot,navigation&expand.navigation.depth=2`;
+      // `templates` asks a backend with the inkaengine.inka addon to return every template
+      // the page needs in this same response; loadTemplates (below) uses those and only
+      // fetches what is missing. A backend without the addon ignores it, and templates are
+      // fetched as before.
+      const api = `${apiBase}/++api++${path}?expand=breadcrumbs,navroot,navigation,templates&expand.navigation.depth=2`;
       axios.get(api, {headers}).then(async (response) => {
         const data = response.data;
 
