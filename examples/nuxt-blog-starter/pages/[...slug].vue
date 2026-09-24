@@ -373,8 +373,10 @@ const preloadTemplates = [
     '/templates/site-footer',
     ...(footerAllowedLayouts.value || []).filter(Boolean),
     ...(contextNavLayoutForced.value || []).filter(Boolean),
-    // Content-type forced layouts (not referenced in page data but applied by expandTemplatesSync)
-    ...Object.values(CONTENT_TYPE_LAYOUTS).flat(),
+    // Not CONTENT_TYPE_LAYOUTS: view mode never force-applies them (mainBlocksAllowedLayouts
+    // returns null for those types), and a page that uses one references it in its own
+    // blocks, so the backend already returns it with that page. Listing them here made
+    // every page's response carry every content-type layout.
 ];
 
 var path = [];
