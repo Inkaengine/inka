@@ -171,6 +171,25 @@ test.describe('Adding Blocks', () => {
     expect(newCount).toBe(initialCount + 1);
   });
 
+  test('a block whose id is a chooser button class is added by its label', async ({ page }) => {
+    // Every chooser button carries `ui basic icon button`, so the fixture's `button` block
+    // can't be told apart by its id: `button.button` matches the whole chooser. The accordion
+    // panel offers it.
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/accordion-test-page');
+    const accordion = helper.getIframe().locator('[data-block-uid="accordion-1"]');
+    await expect(accordion.locator('a.btn')).toHaveCount(0);
+
+    await helper.clickBlockInIframe('content-text-1');
+    await helper.clickAddBlockButton();
+    await helper.selectBlockType('button', { label: 'Button' });
+
+    // The fixture renders a button block as its link, labelled "Button" until given a label.
+    await expect(accordion.locator('a.btn')).toHaveText(['Button']);
+  });
+
   test('new block appears in iframe immediately', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 
