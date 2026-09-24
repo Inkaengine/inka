@@ -601,6 +601,20 @@ describe('internal references under a prefix mount', () => {
     assert.ok(!text.includes('"/another-page"'), 'the unmounted path should be gone');
   });
 
+  it('a link held as [{"@id": path}] gets the prefix too, the item\'s own @id does not move', async () => {
+    // container-test-page's teasers link `href: [{"@id": "/test-page"}]` — the
+    // shape Plone stores a link widget in. Only the ITEM's @id is its identity;
+    // an @id inside a field is a reference like any other.
+    const page = JSON.parse(await get('/_test_data/container-test-page'));
+    const hrefs = Object.values(page.blocks)
+      .flatMap((b) => Object.values(b.blocks || {}))
+      .filter((b) => b['@type'] === 'teaser')
+      .map((b) => b.href[0]['@id']);
+    assert.ok(hrefs.length > 0, 'fixture has teasers');
+    for (const href of hrefs) assert.match(href, /^\/_test_data\//, `unmounted teaser link ${href}`);
+    assert.equal(page['@id'].replace(/^http:\/\/[^/]+/, ''), '/_test_data/container-test-page');
+  });
+
   it('a reference that names nothing under the mount either is left alone', async () => {
     // image-scales-test points at a test-image.png that exists nowhere: there
     // is no right answer to give it, so it stays as authored.

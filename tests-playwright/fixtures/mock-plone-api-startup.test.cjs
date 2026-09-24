@@ -61,3 +61,145 @@ describe('mock API startup', () => {
     assert.equal(run.status, 0, `module failed to load:\n${run.stderr.slice(-2000)}`);
   });
 });
+
+/**
+ * A plain JSON mount (no __metadata__.json — how the test fixtures are laid
+ * out) holding one page, with `extra` merged into its data.
+ */
+function jsonMount(extra) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-validate-'));
+  fs.mkdirSync(path.join(dir, 'page'));
+  fs.writeFileSync(
+    path.join(dir, 'page', 'data.json'),
+    JSON.stringify({ '@id': '/page', '@type': 'Document', UID: `validate-${path.basename(dir)}`, id: 'page', title: 'Page', ...extra }),
+  );
+  return dir;
+}
+
+const teaserTo = (href) => ({
+  blocks: { t1: { '@type': 'teaser', href: [{ '@id': href }] } },
+  blocks_layout: { items: ['t1'] },
+});
+
+/** Wait for the module's `ready`, then report how it settled. */
+function loadAndAwaitReady(mounts, env = {}) {
+  return spawnSync(
+    process.execPath,
+    ['-e', `require(${JSON.stringify(MODULE)}).ready.then(
+      () => process.exit(0),
+      (e) => { console.error('READY REJECTED: ' + e.message); process.exit(3); })`],
+    {
+      env: { ...process.env, CONTENT_MOUNTS: mounts, SKIP_CONTENT_VALIDATION: '', ...env },
+      encoding: 'utf8',
+      timeout: 60_000,
+    },
+  );
+}
+
+describe('mock API content validation', () => {
+  it('refuses to become ready when served content links to nothing', () => {
+    const run = loadAndAwaitReady(`/:${jsonMount(teaserTo('/no-such-page'))}`);
+    assert.equal(run.status, 3, `expected ready to reject:\n${run.stdout.slice(-2000)}${run.stderr.slice(-2000)}`);
+    assert.match(run.stderr, /\/page: block t1 \(teaser\) href: path not in content: \/no-such-page/);
+  });
+
+  it('checks every mount, not only exportimport trees', () => {
+    // No __metadata__.json anywhere — the old startup check skipped these.
+    const run = loadAndAwaitReady(`/:${jsonMount(teaserTo('/gone'))}`);
+    assert.match(run.stderr, /path not in content: \/gone/);
+  });
+
+  it('resolves a link across mounts, as the served site does', () => {
+    const other = jsonMount({});
+    const run = loadAndAwaitReady(
+      `/other:${other},/:${jsonMount(teaserTo('/other/page'))}`,
+    );
+    assert.equal(run.status, 0, `valid cross-mount link rejected:\n${run.stderr.slice(-2000)}`);
+  });
+
+  it('becomes ready on clean content', () => {
+    const run = loadAndAwaitReady(`/:${jsonMount(teaserTo('/page'))}`);
+    assert.equal(run.status, 0, `clean content rejected:\n${run.stderr.slice(-2000)}`);
+  });
+
+  for (const server of ['mock-plone-api.cjs', 'mock-api-server.cjs']) it(`${server} exits non-zero on invalid content`, () => {
+    const run = spawnSync(process.execPath, [path.join(__dirname, server)], {
+      env: {
+        ...process.env,
+        CONTENT_MOUNTS: `/:${jsonMount(teaserTo('/no-such-page'))}`,
+        SKIP_CONTENT_VALIDATION: '',
+        PORT: '0',
+      },
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+    assert.equal(run.status, 1, `server kept running or exited ${run.status}:\n${run.stderr.slice(-2000)}`);
+    assert.match(run.stderr, /path not in content: \/no-such-page/);
+  });
+
+  it('a problem the mount declares in expected-errors.json does not stop it', () => {
+    // A fixture that is broken ON PURPOSE (it tests how the frontend copes).
+    const dir = jsonMount(teaserTo('/no-such-page'));
+    fs.writeFileSync(
+      path.join(dir, 'expected-errors.json'),
+      JSON.stringify({ '/page': ['href: path not in content: /no-such-page'] }),
+    );
+    const run = loadAndAwaitReady(`/mnt:${dir},/:${jsonMount({})}`);
+    assert.equal(run.status, 0, `declared problem rejected:\n${run.stderr.slice(-2000)}`);
+  });
+
+  it('a declared problem that no longer occurs is itself an error', () => {
+    const dir = jsonMount(teaserTo('/page'));
+    fs.writeFileSync(
+      path.join(dir, 'expected-errors.json'),
+      JSON.stringify({ '/page': ['href: path not in content: /no-such-page'] }),
+    );
+    const run = loadAndAwaitReady(`/:${dir}`);
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /\/page: expected-errors\.json expects "href: path not in content: \/no-such-page", which no longer occurs/);
+  });
+
+  it('a declared problem excuses only itself', () => {
+    const dir = jsonMount({
+      blocks: {
+        t1: { '@type': 'teaser', href: [{ '@id': '/no-such-page' }] },
+        t2: { '@type': 'teaser', href: [{ '@id': '/also-gone' }] },
+      },
+      blocks_layout: { items: ['t1', 't2'] },
+    });
+    fs.writeFileSync(
+      path.join(dir, 'expected-errors.json'),
+      JSON.stringify({ '/page': ['href: path not in content: /no-such-page'] }),
+    );
+    const run = loadAndAwaitReady(`/:${dir}`);
+    assert.equal(run.status, 3);
+    assert.match(run.stderr, /path not in content: \/also-gone/);
+    assert.doesNotMatch(run.stderr, /block t1 .*no-such-page/);
+  });
+
+  it('SKIP_CONTENT_VALIDATION=true still starts', () => {
+    const run = loadAndAwaitReady(`/:${jsonMount(teaserTo('/no-such-page'))}`, { SKIP_CONTENT_VALIDATION: 'true' });
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+  });
+});
+
+describe('plone-content served', () => {
+  const CLI = path.join(__dirname, '..', '..', 'bin', 'plone-content.cjs');
+  const served = (mounts) =>
+    spawnSync(process.execPath, [CLI, 'served'], {
+      env: { ...process.env, CONTENT_MOUNTS: mounts, SKIP_CONTENT_VALIDATION: '' },
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+
+  it('fails, listing the problems, on the site CONTENT_MOUNTS describes', () => {
+    const run = served(`/:${jsonMount(teaserTo('/no-such-page'))}`);
+    assert.equal(run.status, 1, run.stderr.slice(-2000));
+    assert.match(run.stderr, /path not in content: \/no-such-page/);
+  });
+
+  it('passes a clean site', () => {
+    const run = served(`/:${jsonMount(teaserTo('/page'))}`);
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+  });
+});

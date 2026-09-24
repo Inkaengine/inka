@@ -111,32 +111,10 @@ function getAllRedirects() {
 // The ESM loaders (readTree, checkIntegrity) are imported once at startup and
 // held so a mount can be reloaded SYNCHRONOUSLY (on a watcher change or a cache
 // miss) without re-awaiting a dynamic import.
-//
-// Declared HERE, above the startup validation that reads it. A `let` read
-// before its declaration throws, so with it further down, any mount that is an
-// exportimport tree (has __metadata__.json) killed the server at load with
-// "Cannot access 'mdRuntime' before initialization". It is still null when the
-// validation runs — the loaders arrive asynchronously, later — which is what
-// that code already expects.
 let mdRuntime = null;
 
-// Validate each mounted content tree at startup. Errors are loud (listed)
-// but non-fatal — tests using the mock API still start. Set
-// SKIP_CONTENT_VALIDATION=true to suppress entirely.
-if (process.env.SKIP_CONTENT_VALIDATION !== 'true') {
-  const { validate, checkIntegrity, formatReport } = require('./plone-content-validator.cjs');
-  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    if (!fs.existsSync(path.join(dirPath, '__metadata__.json'))) continue;
-    const v = validate(dirPath);
-    const c = checkIntegrity(dirPath, { schemaFor: mdRuntime && mdRuntime.schemaFor });
-    const problems = v.errors.length + v.warnings.length + c.errors.length + c.warnings.length;
-    if (problems > 0) {
-      console.log(`[content-check] ${mountPath} -> ${dirPath}`);
-      if (v.errors.length || v.warnings.length) console.log(formatReport('validate', v));
-      if (c.errors.length || c.warnings.length) console.log(formatReport('check', c));
-    }
-  }
-}
+// Content validation runs once every mount is loaded — see validateServedContent,
+// awaited as part of `ready`.
 
 // Session-based transient content storage for uploads
 // Uploads are stored per-session so they don't appear for other users
@@ -758,7 +736,10 @@ function mountInternalRefs(content, urlPath) {
     .filter((m) => m !== '/' && (urlPath === m || urlPath.startsWith(m + '/')))
     .sort((a, b) => b.length - a.length)[0];
   if (!prefix) return content;
-  const walk = (value) => {
+  // The item's own @id is its identity, not a reference — only it is skipped.
+  // An @id inside a field (`href: [{"@id": "/test-page"}]`, the shape Plone
+  // stores a link in) is a reference like any other.
+  const walk = (value, top = false) => {
     if (typeof value === 'string') {
       if (!value.startsWith('/') || value.startsWith('//') || value.startsWith(prefix + '/')) return value;
       const [pathPart] = value.split('/@@');
@@ -766,15 +747,15 @@ function mountInternalRefs(content, urlPath) {
       if (contentDirMap[clean] || !contentDirMap[prefix + clean]) return value;
       return prefix + value;
     }
-    if (Array.isArray(value)) return value.map(walk);
+    if (Array.isArray(value)) return value.map((v) => walk(v));
     if (value && typeof value === 'object') {
       const out = {};
-      for (const [k, v] of Object.entries(value)) out[k] = k === '@id' ? v : walk(v);
+      for (const [k, v] of Object.entries(value)) out[k] = top && k === '@id' ? v : walk(v);
       return out;
     }
     return value;
   };
-  return walk(content);
+  return walk(content, true);
 }
 
 function loadRawContentFromDisk(urlPath) {
@@ -1820,28 +1801,94 @@ function loadMarkdownMount(mount) {
   console.log(`Registered ${items.size} markdown items from ${dirPath} at ${mountPath}`);
 }
 
-/** Validate the WHOLE markdown tree at once, via the SAME validator the JSON
- *  mounts use (plone-content-validator) -- markdown and JSON decode to the same
- *  content shape, so one validation path serves both. It runs after every
- *  markdown mount is loaded (not per-mount): a /docs page's cross-link to the
- *  site root '/' or '/images/*' is only resolvable once the '/' mount is in, so
- *  a per-mount check would cry false positives on the mount that loads first.
- *  Loud but non-fatal, so a --watch restart or reload surfaces a real problem
- *  while developing rather than at test time. */
-function validateMarkdownContent() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
-  const source = [...markdownItems].map(([rel, data]) => ({ rel, data }));
-  const { errors } = mdRuntime.checkIntegrity(source, { schemaFor: mdRuntime.schemaFor });
-  if (errors.length) {
-    console.log(`[content-check] ${errors.length} problem(s) in markdown content:`);
-    for (const m of errors.slice(0, 30)) console.log(`  ${m}`);
+/**
+ * Validate the site this mock SERVES — every mount, JSON and markdown, as one
+ * content tree — with the same validator the deploy gate and the
+ * `plone-content` CLI use. Returns the error list.
+ *
+ * Whole-site, not per-mount: a /docs page's link to '/' or a fixture's image in
+ * another mount only resolves once every mount is in. Each item is checked as
+ * served (after mountInternalRefs), keyed by the path the mock serves it at.
+ * Mounts that are exportimport trees (have __metadata__.json) also get the
+ * export-shape check, since they are what gets imported into a real Plone.
+ */
+function validateServedContent() {
+  const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+  const errors = [];
+  for (const { dirPath } of CONTENT_MOUNTS) {
+    if (!isMarkdownMount({ dirPath }) && fs.existsSync(path.join(dirPath, '__metadata__.json'))) {
+      errors.push(...validate(dirPath).errors);
+    }
   }
+  const paths = new Set([...markdownItems.keys(), ...Object.keys(contentDirMap)]);
+  const source = [...paths].map((urlPath) => {
+    const data = loadRawContentFromDisk(urlPath);
+    if (data == null) throw new Error(`content-check: ${urlPath} is registered but has no content`);
+    return { rel: urlPath, data: { ...data, '@id': urlPath } };
+  });
+  errors.push(...checkIntegrity(source, { schemaFor: blockSchemaFor }).errors);
+  return withoutExpectedErrors(errors.map((m) => m.trim()));
+}
+
+/**
+ * A fixture that is broken ON PURPOSE — it exists to show how a frontend copes
+ * with that content — is declared in its mount's `expected-errors.json`:
+ *
+ *   { "/image-scales-test": ["url: path not in content: /image-scales-test/test-image.png"] }
+ *
+ * keyed by the item's path within the mount, each entry a substring of the one
+ * problem it excuses. An entry excuses only the problems it matches on that
+ * item, and an entry that matches nothing is an error in its own right, so a
+ * declaration cannot outlive the breakage it describes.
+ */
+function withoutExpectedErrors(errors) {
+  const remaining = [...errors];
+  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
+    const file = path.join(dirPath, 'expected-errors.json');
+    if (!fs.existsSync(file)) continue;
+    for (const [rel, expected] of Object.entries(JSON.parse(fs.readFileSync(file, 'utf-8')))) {
+      const itemPath = mountPath === '/' ? rel : mountPath + (rel === '/' ? '' : rel);
+      for (const text of expected) {
+        const hits = remaining.filter((m) => m.startsWith(`${itemPath}: `) && m.includes(text));
+        if (!hits.length) {
+          remaining.push(`${itemPath}: expected-errors.json expects "${text}", which no longer occurs — remove it from ${file}`);
+        }
+        for (const m of hits) remaining.splice(remaining.indexOf(m), 1);
+      }
+    }
+  }
+  return remaining;
+}
+
+function reportContentErrors(errors) {
+  console.error(`[content-check] ${errors.length} problem(s) in the served content:`);
+  for (const m of errors) console.error(`  ${m}`);
+}
+
+/** Startup: invalid content is fatal — tests must not run against a site that
+ *  would not import, or that links to nothing. SKIP_CONTENT_VALIDATION=true is
+ *  the explicit way out. */
+function assertServedContentValid() {
+  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
+  const errors = validateServedContent();
+  if (errors.length) {
+    reportContentErrors(errors);
+    throw new Error(`${errors.length} content problem(s) — fix the content (listed above) or set SKIP_CONTENT_VALIDATION=true`);
+  }
+}
+
+/** A reload (watcher or cache miss) only reports: one bad edit mid-session
+ *  should not take the dev server down. The next start is the gate. */
+function reportServedContentProblems() {
+  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
+  const errors = validateServedContent();
+  if (errors.length) reportContentErrors(errors);
 }
 
 /** Reload one mount, format-agnostically -- the ContentSource.reload() seam that
  *  both the watcher and the cache-miss path call, so neither is JSON-specific. */
 function reloadMount(mount) {
-  if (isMarkdownMount(mount)) { loadMarkdownMount(mount); validateMarkdownContent(); return; }
+  if (isMarkdownMount(mount)) { loadMarkdownMount(mount); return; }
   if (mount.mountPath !== '/' && fs.existsSync(path.join(mount.dirPath, 'data.json'))) {
     contentDirMap[mount.mountPath] = { dirPath: mount.dirPath, dirName: path.basename(mount.dirPath) };
   }
@@ -1871,20 +1918,21 @@ async function getEngine() {
 async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
   if (!mounts.length) return;
-  const { readTree, schemaRegistryFromBlockDefinitions } = await import('../../lib/markdown-mount.mjs');
-  // One validator for both mounts: the JSON tree and the markdown tree decode to
-  // the same content shape, so markdown validates through plone-content-validator
-  // too (checkIntegrity accepts the in-memory [{rel, data}] form).
+  const { readTree } = await import('../../lib/markdown-mount.mjs');
   const { checkIntegrity } = require('./plone-content-validator.cjs');
-  // schemaFor lets a `<block type="codeExample" source= format="schema">` show the
-  // real block schema — from shared-block-schemas (the complete registry the
-  // frontends register from, every block type) — so a doc's schema view can't
-  // drift from what renders. ESM, so dynamic import from this CJS module.
-  const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
-  const schemaFor = schemaRegistryFromBlockDefinitions(sharedBlocksConfig);
-  mdRuntime = { readTree, checkIntegrity, schemaFor };
+  mdRuntime = { readTree, checkIntegrity, schemaFor: blockSchemaFor };
   for (const mount of mounts) loadMarkdownMount(mount);
-  validateMarkdownContent();
+}
+
+/** The block schemas content is checked against, and that a markdown
+ *  `<block type="codeExample" format="schema">` shows — shared-block-schemas,
+ *  the complete registry the frontends register from, so neither can drift from
+ *  what renders. A type it does not know is not schema-checked. Imported here,
+ *  not via markdown-mount, so a JSON-only consumer needs no markdown toolchain. */
+let blockSchemaFor = null;
+async function loadBlockSchemas() {
+  const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
+  blockSchemaFor = (type) => sharedBlocksConfig[type]?.blockSchema;
 }
 
 // Scan content directories on startup (content loaded on-demand)
@@ -1915,7 +1963,7 @@ initContentDirMap();
 // Markdown mounts need a dynamic import, so loading them is async. Anything
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
-ready = initMarkdownMounts();
+ready = loadBlockSchemas().then(initMarkdownMounts).then(assertServedContentValid);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
@@ -1933,6 +1981,7 @@ function setupContentWatchers() {
       // Reload every mount through the format-agnostic seam -- markdown trees
       // reload and re-validate too, not just the JSON contentDirMap.
       for (const mount of CONTENT_MOUNTS) reloadMount(mount);
+      reportServedContentProblems();
     }, debounceMs);
   };
   for (const { dirPath } of CONTENT_MOUNTS) {
@@ -2712,7 +2761,7 @@ app.post('/@export', async (req, res) => {
     const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
     const contentDir = path.join(staging, 'content');
     const v = validate(contentDir, { allowMissingBlobs });
-    const c = checkIntegrity(contentDir, { schemaFor: mdRuntime && mdRuntime.schemaFor, allowMissingBlobs });
+    const c = checkIntegrity(contentDir, { schemaFor: blockSchemaFor, allowMissingBlobs });
     const errors = [...v.errors, ...c.errors];
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
@@ -5270,6 +5319,10 @@ app.patch('*', (req, res) => {
 // Start server only when run directly (not when require()'d)
 let server;
 if (require.main === module) {
+  ready.catch((err) => {
+    console.error(`[content-check] ${err.message}`);
+    process.exit(1);
+  });
   server = app.listen(PORT, () => {
     console.log(`Mock Plone API server running on http://localhost:${PORT}`);
     console.log(`Health endpoint: http://localhost:${PORT}/health`);
