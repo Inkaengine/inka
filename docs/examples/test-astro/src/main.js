@@ -20,7 +20,7 @@ const docBlocksConfig = sharedBlocksConfig;
 // so the shared block-definitions.json reaches the same DOM hooks.
 window.expandListingBlocks = expandListingBlocks;
 window.ploneFetchItems = ploneFetchItems;
-window._API_URL = 'http://localhost:8888';
+window._API_URL = __HYDRA_API_URL__; // from HYDRA_MOCK_API_PORT (astro.config.mjs)
 window._contentPath = (url) => contentPath(url, window._API_URL);
 
 window.bridge = initBridge({

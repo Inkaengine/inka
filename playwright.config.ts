@@ -503,7 +503,7 @@ export default defineConfig({
     // 120s timeout because the first run installs astro + @astrojs/node.
     ...(needsAstro ? [{
       name: 'Astro Frontend (Test)',
-      command: 'pnpm run dev:test',
+      command: `npx astro dev --port ${PORTS.astroDoc}`,
       url: URLS.astroDoc,
       timeout: 120 * 1000,
       reuseExistingServer: true,

@@ -28,13 +28,11 @@ import SummaryItemBlock from './SummaryItemBlock.astro';
 const { block } = Astro.props;
 const blockId = block?.['@uid'];
 
-// Resolve the API URL: in the doc-example dev/test setup the mock API
-// runs on port 8888. The browser side reads `window._API_URL` from
-// main.js; we mirror that default here for the node render path. A
-// future production setup would pull this from an env var or per-host
-// config — but the doc examples ship as a static demo so a literal is
-// fine.
-const apiUrl = process.env.HYDRA_API_URL || 'http://localhost:8888';
+// The API this page renders against: the browser side reads `window._API_URL`
+// (main.js); the node render path reads HYDRA_API_URL, which the test setup
+// sets from HYDRA_MOCK_API_PORT (astro.config.mjs).
+const apiUrl = process.env.HYDRA_API_URL;
+if (!apiUrl) throw new Error('HYDRA_API_URL must be set');
 
 let items = [];
 try {
@@ -50,7 +48,7 @@ try {
   // frontend-relative links. The bridge test asserts that no <a href>
   // points at another localhost origin (e.g. the API) — without this
   // step, `expandListingBlocks` returns the raw `@id` Plone hands back,
-  // which is an absolute http://localhost:8888/... URL. The svelte/vue
+  // which is an absolute URL on the API origin. The svelte/vue
   // versions get this same conversion via `window._contentPath` at
   // runtime; doing it server-side matches that behavior.
   items = (result?.items || []).map((item) => ({
