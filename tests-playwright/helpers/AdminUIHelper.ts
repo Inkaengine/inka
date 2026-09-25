@@ -3509,15 +3509,12 @@ export class AdminUIHelper {
   async openFieldsetAccordion(fieldsetTitle: string): Promise<void> {
     const sidebar = this.page.locator('#sidebar-properties');
 
-    // Find clickable element containing the fieldset title text
-    // Look for the title element that might have an image/icon next to it
-    const accordionTitle = sidebar.locator(`div:has-text("${fieldsetTitle}")`).first();
+    // The accordion's own title element — not the first div whose text
+    // contains the title, which is an ancestor and never carries `active`.
+    const accordionTitle = sidebar.locator('.accordion .title', { hasText: fieldsetTitle }).first();
 
     // Check if accordion content is already visible by looking for active class
-    const isActive = await accordionTitle.evaluate((el) => {
-      // Check if this accordion title's parent or the title itself has 'active' class
-      return el.classList.contains('active') || el.parentElement?.classList.contains('active');
-    });
+    const isActive = await this.fieldsetAccordionOpen(accordionTitle);
 
     // Only click if not already active/open
     if (!isActive) {
@@ -3533,14 +3530,12 @@ export class AdminUIHelper {
   async closeFieldsetAccordion(fieldsetTitle: string): Promise<void> {
     const sidebar = this.page.locator('#sidebar-properties');
 
-    // Find clickable element containing the fieldset title text
-    const accordionTitle = sidebar.locator(`div:has-text("${fieldsetTitle}")`).first();
+    // The accordion's own title element — not the first div whose text
+    // contains the title, which is an ancestor and never carries `active`.
+    const accordionTitle = sidebar.locator('.accordion .title', { hasText: fieldsetTitle }).first();
 
     // Check if accordion content is currently visible
-    const isActive = await accordionTitle.evaluate((el) => {
-      // Check if this accordion title's parent or the title itself has 'active' class
-      return el.classList.contains('active') || el.parentElement?.classList.contains('active');
-    });
+    const isActive = await this.fieldsetAccordionOpen(accordionTitle);
 
     // Only click if currently active/open
     if (isActive) {
@@ -3549,11 +3544,9 @@ export class AdminUIHelper {
     }
   }
 
-  /** Whether a sidebar fieldset accordion is open (its title, or the title's parent, is active). */
+  /** Whether a sidebar fieldset accordion is open: its title is active. */
   private fieldsetAccordionOpen(title: Locator): Promise<boolean> {
-    return title.evaluate(
-      (el) => el.classList.contains('active') || !!el.parentElement?.classList.contains('active'),
-    );
+    return title.evaluate((el) => el.classList.contains('active'));
   }
 
   /**
