@@ -49,7 +49,7 @@ export default function PageClient({ initialData, apiUrl }) {
             // found nothing, and skipped the region: no path map for the page's
             // own blocks and no template merge, so definition blocks never got
             // the instance id that makes them unlockable.
-            items: { title: 'Content', widget: 'blocks_layout', allowedBlocks: ['slate', 'image', 'video', 'teaser', 'title', 'description', 'introduction', 'leadimage', 'dateField', 'hero', 'columns', 'gridBlock', 'accordion', 'slider', 'listing', 'search', 'slateTable', 'heading', 'separator', 'button', 'highlight', 'maps', 'toc', 'form', 'codeExample', 'eventMetadata', 'socialLinks', 'suggest', 'contextNavigation'] },
+            items: { title: 'Content', widget: 'blocks_layout', allowedBlocks: ['slate', 'image', 'video', 'teaser', 'title', 'description', 'introduction', 'leadimage', 'dateField', 'hero', 'columns', 'gridBlock', 'accordion', 'slider', 'listing', 'search', 'slateTable', 'heading', 'separator', 'button', 'highlight', 'maps', 'toc', 'form', 'codeExample', 'eventMetadata', 'socialLinks', 'suggest', 'contextNavigation', 'section'] },
             // A second page region, like every example frontend's: blocks in
             // formData.blocks_layout.footer, drawn in the page footer.
             footer: { title: 'Footer', widget: 'blocks_layout', allowedBlocks: ['slate', 'image'] },
