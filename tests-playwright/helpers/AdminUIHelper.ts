@@ -916,33 +916,28 @@ export class AdminUIHelper {
       }
     }
 
+    // Step by the selection itself — which block the bridge has selected —
+    // not by what the sidebar or the outline show while they catch up (the
+    // sidebar is briefly empty as it switches; the outline trails a re-render).
+    const selectedUid = () =>
+      this.getIframe()
+        .locator('body')
+        .evaluate(() => (window as any).__hydraBridge?.selectedBlockUid ?? null);
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Check if target block is now selected
-      const result = await this.isBlockSelectedInIframe(targetBlockId);
-      if (result.ok) {
+      const selected = await selectedUid();
+      if (selected === targetBlockId) {
         await this.waitForBlockSelectedInAdmin(targetBlockId);
         return;
       }
 
-      // Find and click the LAST "‹ BlockType" parent navigation button in sidebar
-      // Clicking it closes that section and navigates up one level
+      // Up one level: the last "‹ BlockType" button in the sidebar.
       const parentButton = parentButtonLocator.last();
-      const buttonExists = (await parentButton.count()) > 0;
-
-      if (!buttonExists) {
-        const buttonTexts = await getParentButtonTexts();
-        throw new Error(
-          `Cannot navigate to block "${targetBlockId}": parent navigation buttons disappeared from sidebar. ` +
-          `Last known buttons: [${buttonTexts.join(', ')}]`
-        );
-      }
-
-      // One level up: the sidebar drops that level's section. Wait for it, not
-      // a guessed time — re-checking the selection before it has moved read the
-      // old one as "not there yet" and stepped up again, past the target.
-      const levels = await parentButtonLocator.count();
+      await expect(
+        parentButton,
+        `Cannot navigate to block "${targetBlockId}": no parent navigation button (selected: ${selected})`,
+      ).toBeVisible();
       await parentButton.click();
-      await expect.poll(() => parentButtonLocator.count()).toBeLessThan(levels);
+      await expect.poll(selectedUid).not.toBe(selected);
     }
 
     const buttonTexts = await getParentButtonTexts();
@@ -3780,10 +3775,34 @@ export class AdminUIHelper {
     // The add button has class volto-hydra-add-button and is appended to the selected block element
     const addButton = this.page.locator('.volto-hydra-add-button');
 
-    // Scroll add button into view - it may be outside viewport if block is at edge
-    await addButton.scrollIntoViewIfNeeded();
+    // The button sits over the iframe, positioned against the selected block —
+    // for a block drawn in two places (a tab: its label and its panel) that
+    // can be far from where the author was working, scrolled out of the
+    // canvas. Scrolling the admin page can't bring it back; scroll the canvas
+    // by however far it is out of view, as an author would, and wait for the
+    // bridge to re-place it.
+    await expect.poll(async () => {
+      const outBy = await this.addButtonOutOfCanvasBy(addButton);
+      if (outBy !== 0) {
+        await this.getIframe().locator('body').evaluate((_, dy) => window.scrollBy(0, dy), outBy);
+      }
+      return outBy;
+    }).toBe(0);
     await this.demoStep(addButton);
     await addButton.click({ timeout: 10000 });
+  }
+
+  /** How far (px) the add button lies above (negative) or below the canvas; 0 when in view. */
+  private async addButtonOutOfCanvasBy(addButton: Locator): Promise<number> {
+    const button = await addButton.boundingBox();
+    const canvas = await this.page.locator('#previewIframe').boundingBox();
+    if (!button || !canvas) return 0;
+    const margin = 20;
+    if (button.y < canvas.y) return button.y - canvas.y - margin;
+    if (button.y + button.height > canvas.y + canvas.height) {
+      return button.y + button.height - (canvas.y + canvas.height) + margin;
+    }
+    return 0;
   }
 
   /**
