@@ -818,12 +818,38 @@ function parseExpand(req) {
   return String(raw).split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function loadContentFromDisk(urlPath, expandList = [], sessionId) {
+/**
+ * A comma-separated query value as a list. Express hands back an array when a param is
+ * repeated (`?x=a&x=b`), so accept both spellings of "several values".
+ */
+function splitList(raw) {
+  if (raw === undefined || raw === null) return [];
+  const parts = Array.isArray(raw) ? raw : [raw];
+  return parts
+    .flatMap((p) => String(p).split(','))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The `expand.<component>.<param>` options that accompany ?expand=, passed through to the
+ * component builders. Plone spells component options this way (`expand.navigation.depth`);
+ * keeping the raw keys means a builder reads the same name Plone documents.
+ */
+function parseExpandParams(req) {
+  const out = {};
+  for (const [key, value] of Object.entries(req?.query || {})) {
+    if (key.startsWith('expand.')) out[key] = value;
+  }
+  return out;
+}
+
+function loadContentFromDisk(urlPath, expandList = [], sessionId, expandParams = {}) {
   const baseUrl = `http://localhost:${PORT}`;
   const content = loadRawContentFromDisk(urlPath);
   if (!content) return null;
 
-  return enrichContent(content, urlPath, baseUrl, expandList, sessionId);
+  return enrichContent(content, urlPath, baseUrl, expandList, sessionId, expandParams);
 }
 
 /**
@@ -1220,16 +1246,23 @@ function buildActionsComponent(cleanPath, baseUrl, sessionId) {
   };
 }
 
-function buildNavigationComponent(cleanPath, baseUrl, sessionId) {
+function buildNavigationComponent(cleanPath, baseUrl, sessionId, depth) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
   // Rooted at the navroot: the site, or the language folder for a page inside
   // one. A menu that ignored this would offer every page of every language.
   const languageRoot = languageRootFor(cleanPath, sessionId);
   return {
     '@id': `${fullUrl}/@navigation`,
-    items: languageRoot
-      ? getNavigationItems(languageRoot, 2, undefined, sessionId)
-      : getRootNavigationItems(sessionId),
+    // `depth` comes from `expand.navigation.depth`: real Plone honours it on the INLINE
+    // expansion too, and this builder used to hardcode 2 there — so the mock nested at
+    // depth=1, where Plone does not. The /@navigation route read the param and the
+    // expansion did not: the same two-paths-one-component drift this file keeps hitting.
+    items: getNavigationItems(
+      languageRoot || '/',
+      depth === undefined ? 2 : depth,
+      undefined,
+      sessionId,
+    ),
   };
 }
 
@@ -1467,13 +1500,170 @@ function buildTypesComponent() {
 }
 
 /**
+ * Collect every templateId referenced anywhere in a value, at any depth.
+ * Mirrors the frontend helper's collectTemplateIds: the reference may sit on a block, a
+ * nested container's child, or an object_list item, so this walks everything rather than
+ * assuming a shape.
+ */
+function collectTemplateIds(value, found = new Set(), seen = new Set()) {
+  if (!value || typeof value !== 'object') return found;
+  if (seen.has(value)) return found;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) collectTemplateIds(item, found, seen);
+    return found;
+  }
+  if (typeof value.templateId === 'string') found.add(value.templateId);
+  for (const v of Object.values(value)) collectTemplateIds(v, found, seen);
+  return found;
+}
+
+/**
+ * Normalise a templateId to the path this mock stores content under.
+ * A reference may be a `resolveuid/UID`, an absolute URL, or a plain path — all three
+ * appear in fixtures. resolveuid is resolved through the same uidToPath index the
+ * /resolveuid route uses, so a template addressed by uid and one addressed by path are
+ * the same entry.
+ */
+function templateIdToPath(templateId) {
+  if (!templateId || typeof templateId !== 'string') return null;
+  const uidMatch = templateId.match(/(?:^|\/)resolveuid\/([^/?#]+)$/);
+  if (uidMatch) {
+    let resolved = uidToPathMap[uidMatch[1]];
+    if (!resolved) {
+      // Same fallback resolveUidUrls uses: a template added after startup isn't in the
+      // index yet, so rescan before calling it missing.
+      initContentDirMap();
+      resolved = uidToPathMap[uidMatch[1]];
+    }
+    return resolved ? resolved.replace(/\/+$/, '') || '/' : null;
+  }
+  let p = templateId;
+  if (p.startsWith('http')) {
+    try { p = new URL(p).pathname; } catch { return null; }
+  }
+  p = p.replace('/++api++', '');
+  if (!p.startsWith('/')) p = `/${p}`;
+  return p.replace(/\/+$/, '') || '/';
+}
+
+/**
+ * Resolve a page's templates: everything referenced via templateId in the page, plus the
+ * `extra` ids the caller named, plus everything those reference in turn.
+ *
+ * `extra` exists because the FRONTEND owns the layout rules (which layout a News Item
+ * gets, which footer a section gets). A forced layout is never referenced from page
+ * content — that is exactly why the frontend had to pre-load it by hand — so the backend
+ * cannot discover it and must be told. The backend answers only the data question:
+ * "resolve these and everything they reference". No policy crosses the wire.
+ *
+ * Returns templates keyed by the SAME string the caller referenced, because that is what
+ * expandTemplatesSync looks up: a block carrying `resolveuid/abc` must find an entry at
+ * `resolveuid/abc`, not at the path it resolved to. One template reached by two spellings
+ * is emitted under both.
+ */
+function resolveTemplates(pageContent, extraIds, sessionId, baseUrl) {
+  const templates = {};
+  const errors = [];
+  const visitedPaths = new Set();
+  let pending = [
+    ...collectTemplateIds(pageContent),
+    ...(extraIds || []),
+  ];
+
+  while (pending.length > 0) {
+    const next = [];
+    for (const templateId of pending) {
+      if (templates[templateId] || errors.some((e) => e.templateId === templateId)) continue;
+      // Errors name the id AS REQUESTED — the string the frontend has to match up — and
+      // an unknown uid is just "not found", like any other missing template. Matches the
+      // inkaengine.inka addon, whose tests assert the same messages; this used to report the
+      // resolved path, or "unresolvable template id" for an unknown uid.
+      const notFound = { templateId, error: `not found: ${templateId}` };
+      const tplPath = templateIdToPath(templateId);
+      if (!tplPath) {
+        errors.push(notFound);
+        continue;
+      }
+      // Enriched, like any other read: the template's own blocks get the same
+      // resolveuid/image-scale/relation treatment the page does, so a frontend renders
+      // template content through exactly the same path as page content.
+      const content = getContent(tplPath, sessionId, []);
+      if (!content) {
+        errors.push(notFound);
+        continue;
+      }
+      // Minus its own @components: those are links nobody asked for, and the addon omits
+      // them (on Plone, expanding them re-enters @templates and recurses).
+      const { '@components': _ownComponents, ...entry } = content;
+      templates[templateId] = entry;
+      // A template may reference further templates; follow those too. Guard on the
+      // resolved PATH so two spellings of one template are walked once.
+      if (!visitedPaths.has(tplPath)) {
+        visitedPaths.add(tplPath);
+        for (const nested of collectTemplateIds(content)) {
+          if (!templates[nested]) next.push(nested);
+        }
+      }
+    }
+    pending = next;
+  }
+  return { templates, errors };
+}
+
+/**
+ * The @templates component: every template a page needs to render, resolved in one
+ * request.
+ *
+ * Without this a frontend fetches each template itself, discovers nested references only
+ * after the parent arrives, and serialises the walk — the N+1 that made the SSG prerender
+ * hit the API ~179x for the same forced footer and cold-hang. Here the walk happens
+ * server-side, where the content already is.
+ *
+ * Deliberately NOT included: allowedTemplates / allowedLayouts. Layouts are a design
+ * system's artifacts — a second frontend against this same content would use entirely
+ * different template paths — so the rules stay frontend-owned and arrive here only as
+ * `extra`.
+ */
+function buildTemplatesComponent(cleanPath, baseUrl, sessionId, extraIds = []) {
+  const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  // Read RAW: rawContentForComponents is the reader a @components builder may use
+  // (getContent attaches @components, so calling it here is a cycle). Only templateId
+  // references are needed from the page, and those are in the stored blocks.
+  const page = rawContentForComponents(cleanPath, sessionId);
+  const { templates, errors } = resolveTemplates(page, extraIds, sessionId, baseUrl);
+  return {
+    '@id': `${fullUrl}/@templates`,
+    templates,
+    // Named rather than thrown: one missing template must not fail the page read. The
+    // frontend decides whether a missing template is fatal — ploneApi already has
+    // `ignoreTemplateErrors` for exactly that call.
+    ...(errors.length > 0 ? { errors } : {}),
+  };
+}
+
+/**
  * Generate the FULL @components map (every entry expanded). The
  * expand-aware caller (enrichContent) decides which entries are included
  * vs left as @id stubs.
  */
-function generateComponents(urlPath, baseUrl, sessionId) {
+function generateComponents(urlPath, baseUrl, sessionId, params = {}) {
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
   return {
+    // Lazy, unlike its siblings: resolving templates walks the page's references and
+    // reads each template from disk, so building it for every GET would make unexpanded
+    // reads pay for a component nobody asked for. expandComponents calls the thunk only
+    // for a component actually named in ?expand=.
+    templates: () =>
+      buildTemplatesComponent(
+        cleanPath,
+        baseUrl,
+        sessionId,
+        // Plone spells component options `expand.<component>.<param>` — the same shape
+        // as `expand.navigation.depth`. Comma-separated, since a frontend forces several
+        // layouts (a page layout and a footer layout).
+        splitList(params['expand.templates.extra']),
+      ),
     // @actions has no session here on purpose: the adapter reads @actions
     // directly, and that route IS session-aware, so a working copy still
     // reports iterate_checkin.
@@ -1486,7 +1676,14 @@ function generateComponents(urlPath, baseUrl, sessionId) {
     // made session-aware and this path was not, which is the same bug one
     // layer up: the two paths this file exists to keep identical drifted
     // again, and only the one nothing reads was fixed.
-    navigation: buildNavigationComponent(cleanPath, baseUrl, sessionId),
+    navigation: buildNavigationComponent(
+      cleanPath,
+      baseUrl,
+      sessionId,
+      params['expand.navigation.depth'] !== undefined
+        ? parseInt(params['expand.navigation.depth'], 10)
+        : undefined,
+    ),
     navroot: buildNavrootComponent(cleanPath, baseUrl, sessionId),
     types: buildTypesComponent(),
     // Always built, never always sent: enrichContent only includes a component
@@ -1775,7 +1972,7 @@ function getFolderChildItems(folderPath, baseUrl) {
  * middleware to add ?expand= which the request handler then expands.
  */
 function stubComponents(fullUrl) {
-  const ids = ['actions', 'aliases', 'breadcrumbs', 'contextnavigation', 'navigation', 'navroot', 'translations', 'types', 'workflow'];
+  const ids = ['actions', 'aliases', 'breadcrumbs', 'contextnavigation', 'navigation', 'navroot', 'templates', 'translations', 'types', 'workflow'];
   const stubs = {};
   for (const k of ids) {
     stubs[k] = { '@id': `${fullUrl}/@${k}` };
@@ -1787,17 +1984,20 @@ function stubComponents(fullUrl) {
  * Replace stubs for the named components with their fully-expanded bodies.
  * `expandList` is parsed from ?expand= on the incoming request.
  */
-function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId) {
+function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId, params = {}) {
   if (!expandList || expandList.length === 0) return stubs;
-  const expanded = generateComponents(urlPath, baseUrl, sessionId);
+  const expanded = generateComponents(urlPath, baseUrl, sessionId, params);
   const out = { ...stubs };
   for (const name of expandList) {
-    if (expanded[name] !== undefined) out[name] = expanded[name];
+    if (expanded[name] === undefined) continue;
+    // A component may be a thunk (deferred because building it is expensive) — calling
+    // it only here is what keeps an unexpanded read from paying for it.
+    out[name] = typeof expanded[name] === 'function' ? expanded[name]() : expanded[name];
   }
   return out;
 }
 
-function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId) {
+function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, expandParams = {}) {
   // Always use urlPath for @id (includes mount prefix), normalize trailing slash
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
@@ -1853,7 +2053,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId) {
     ),
     'items': childItems,
     'items_total': childItems.length,
-    '@components': expandComponents(stubComponents(fullUrl), expandList, urlPath, baseUrl, sessionId),
+    '@components': expandComponents(stubComponents(fullUrl), expandList, urlPath, baseUrl, sessionId, expandParams),
     // Permissions - granted by default, but a fixture may set `_mockPermissions` to model
     // an unauthorized case (e.g. a templates folder the user can't add to, or a template
     // document the user can't modify). This mirrors Plone's per-object permission flags.
@@ -1959,27 +2159,40 @@ function scanContentDir(contentDirPath, mountPath) {
 
 /**
  * Generate site root content (not from disk)
+ *
+ * Expand-aware like every other read (enrichContent): named components expanded, the
+ * rest @id stubs. It used to serialise generateComponents() whole, and that map holds
+ * `templates` as a lazy thunk, which JSON.stringify silently drops — so the synthesised
+ * root was the one page `?expand=templates` never answered, and a frontend fell back to
+ * fetching its forced layouts one by one without anything saying so.
  */
-function getSiteRoot() {
+function getSiteRoot(expandList = [], sessionId, expandParams = {}) {
   const baseUrl = `http://localhost:${PORT}`;
   return {
     '@id': baseUrl + '/',
     '@type': 'Plone Site',
-    'id': 'Plone',
-    'title': 'Plone Site',
-    'description': '',
-    'items': [],
-    'items_total': 0,
-    'is_folderish': true,
-    'blocks': {},
-    'blocks_layout': { 'items': [] },
-    '@components': generateComponents('/', baseUrl),
-    'can_manage_portlets': true,
-    'can_view': true,
-    'can_edit': true,
-    'can_delete': true,
-    'can_add': true,
-    'can_list_contents': true
+    id: 'Plone',
+    title: 'Plone Site',
+    description: '',
+    items: [],
+    items_total: 0,
+    is_folderish: true,
+    blocks: {},
+    blocks_layout: { items: [] },
+    '@components': expandComponents(
+      stubComponents(baseUrl),
+      expandList,
+      '/',
+      baseUrl,
+      sessionId,
+      expandParams,
+    ),
+    can_manage_portlets: true,
+    can_view: true,
+    can_edit: true,
+    can_delete: true,
+    can_add: true,
+    can_list_contents: true,
   };
 }
 
@@ -2243,7 +2456,7 @@ setupContentWatchers();
  * @param {string} urlPath - Content path
  * @param {string} sessionId - Session ID for session-specific uploads
  */
-function getContent(urlPath, sessionId, expandList = []) {
+function getContent(urlPath, sessionId, expandList = [], expandParams = {}) {
   // A path deleted in this session is gone for this session, even if disk
   // content still backs it.
   if (sessionId && sessionDeletions[sessionId]?.has(urlPath)) {
@@ -2267,19 +2480,19 @@ function getContent(urlPath, sessionId, expandList = []) {
       // unconditionally so the read-time @components reflect the current
       // request's ?expand= choices, like Plone does.
       const baseUrl = `http://localhost:${PORT}`;
-      return enrichContent(stored, urlPath, baseUrl, expandList, sessionId);
+      return enrichContent(stored, urlPath, baseUrl, expandList, sessionId, expandParams);
     }
   }
 
   // Try disk first (distribution content may have a site root). The SESSION
   // still goes with it: the page may be untouched while a sibling was renamed
   // or hidden, and the menu on this page has to show that.
-  const diskContent = loadContentFromDisk(urlPath, expandList, sessionId);
+  const diskContent = loadContentFromDisk(urlPath, expandList, sessionId, expandParams);
   if (diskContent) return diskContent;
 
   // Fall back to generated site root
   if (urlPath === '/') {
-    return getSiteRoot();
+    return getSiteRoot(expandList, sessionId, expandParams);
   }
 
   return null;
@@ -3677,6 +3890,17 @@ app.get('/@site', (req, res) => {
     // (submodule) file per run; guarded by our repo's translate specs so a
     // submodule resync that drops it is caught.
     'plone.available_languages': availableLanguages(getSessionId(req)),
+    // The three below were missing until this was diffed against
+    // plone/server-dev:6. Values are the real server's defaults, not invented: a client
+    // reading `plone.allowed_sizes` to pick a scale would have got undefined here.
+    'plone.allowed_sizes': [
+      'icon 32:32', 'tile 64:64', 'thumb 128:128', 'mini 200:65536',
+      'preview 400:65536', 'teaser 600:65536', 'large 800:65536',
+      'larger 1000:65536', 'great 1200:65536', 'huge 1600:65536',
+      '2k 2000:65536', '4k 4000:65536',
+    ],
+    'plone.portal_timezone': process.env.MOCK_SITE_TIMEZONE || 'UTC',
+    'plone.robots_txt': 'User-agent: *\nDisallow: /\n',
     // What Volto gates every multilingual behaviour on: its `/` redirect, the
     // `translations` expander it adds to content GETs, and the toolbar's
     // Manage Translations entry. Per SESSION, so a multilingual spec gets a
@@ -4272,16 +4496,24 @@ app.get('/rss-stub', (req, res) => {
  *
  * Returns just Document for now; extend if a test needs Folder/News Item.
  */
+// `id` and `immediately_addable` are in Plone's @types entries (verified against
+// plone/server-dev:6) and were missing here — the same shape
+// this file keeps getting wrong by emitting what its callers happened to read rather than
+// what Plone serves. `immediately_addable` mirrors `addable` for these two ordinary types.
 function listAddableTypes() {
   return [
     {
       '@id': `http://localhost:${PORT}/@types/Document`,
+      id: 'Document',
       addable: true,
+      immediately_addable: true,
       title: 'Page',
     },
     {
       '@id': `http://localhost:${PORT}/@types/Folder`,
+      id: 'Folder',
       addable: true,
+      immediately_addable: true,
       title: 'Folder',
     },
   ];
@@ -4350,6 +4582,31 @@ app.get(/.*\/@navigation$/, (req, res) => {
 app.get(/.*\/@navroot$/, (req, res) => {
   const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@navroot$/, '') || '/').replace(/\/+$/, '') || '/';
   res.json(buildNavrootComponent(cleanPath, `http://localhost:${PORT}`, getSessionId(req)));
+});
+
+/**
+ * GET /<path>/@templates — the templates a page needs to render, resolved in one request.
+ *
+ * Reachable both here and inline via `?expand=templates`; a frontend fetching the page
+ * anyway should prefer the expansion, since that costs no extra round trip. Forced
+ * layouts are named with `?expand.templates.extra=/a,/b` on EITHER path — the same
+ * option spelling Plone uses for `expand.navigation.depth`, so the two paths take the
+ * same query and can't drift.
+ */
+// `.*` rather than `.*\/` so this also matches the SITE ROOT (`/++api++/@templates`),
+// which has templates like any other page. The sibling component routes above use the
+// stricter form and 404 at the root; that is pre-existing, and not worth repeating here.
+app.get(/.*@templates$/, (req, res) => {
+  const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@templates$/, '') || '/').replace(/\/+$/, '') || '/';
+  const baseUrl = `http://localhost:${PORT}`;
+  res.json(
+    buildTemplatesComponent(
+      cleanPath,
+      baseUrl,
+      getSessionId(req),
+      splitList(req.query['expand.templates.extra']),
+    ),
+  );
 });
 
 /**
@@ -5621,7 +5878,7 @@ app.get('*', (req, res, next) => {
   // Reload content from disk to pick up changes during development.
   // Pass ?expand= so @components matches what the client requested
   // (real Plone behaviour: stub by default, expand only what's listed).
-  const content = getContent(cleanPath, sessionId, parseExpand(req));
+  const content = getContent(cleanPath, sessionId, parseExpand(req), parseExpandParams(req));
 
   if (content) {
     // Filter actions based on authentication

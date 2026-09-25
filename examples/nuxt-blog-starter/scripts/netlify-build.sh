@@ -10,7 +10,7 @@ set -o pipefail
 # times. Non-fatal: warn and proceed if it never warms (the build's
 # own failOnError guard still catches a genuinely broken SSG).
 API_BASE="${NUXT_TEST_BACKEND:-https://hydra-api.pretagov.com}/++api++"
-EXPAND="expand=breadcrumbs,navroot,navigation&expand.navigation.depth=2"
+EXPAND="expand=breadcrumbs,navroot,navigation,templates&expand.navigation.depth=2"
 echo "=== Warming API: ${API_BASE} ==="
 warm_ok() {
   local out code secs

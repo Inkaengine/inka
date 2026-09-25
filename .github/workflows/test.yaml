@@ -100,6 +100,44 @@ jobs:
           path: build/
           retention-days: 1
 
+  # ── Plone backend addon (inkaengine.inka): the @templates endpoint ─────────
+  # The JS side of @templates (the mock's endpoint, the loadTemplates helper, the merge
+  # consuming it) runs in `build` above. This covers the Python addon that serves it on
+  # a real Plone.
+  test-backend-addon:
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        run: |
+          npm install -g corepack
+          corepack cache clean
+          corepack enable
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - name: Install dependencies
+        # The addon's tests run against the SAME template fixtures as the JS suites: the
+        # mock API exports them as a plone.exportimport distribution at test time, so the
+        # repo's node dependencies are needed. With CI set, a missing fixture fails the
+        # run instead of skipping the @templates tests.
+        run: |
+          pnpm dlx mrs-developer missdev --no-config --fetch-https
+          pnpm install --frozen-lockfile
+      - name: Use Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: 'backend/inkaengine.inka/.python-version'
+      - name: Install uv
+        # The addon's Makefile builds its virtualenv with uv (and mxdev, via uvx).
+        run: pip install uv
+      - name: Run addon tests (pytest)
+        working-directory: backend/inkaengine.inka
+        run: make test
+
   # ── Bridge + unit tests (no Volto needed) ────────────────────────────────
   test-bridge-unit:
     needs: build
