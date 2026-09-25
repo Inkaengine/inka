@@ -4839,6 +4839,8 @@ export class Bridge {
             // sets it, sending a stale [0,0] selection back to the admin.
             if (event.data.transformedSelection) {
               this.expectedSelectionFromAdmin = event.data.transformedSelection;
+              // A new placement: the previous one's restore no longer ends the hold.
+              this._restoredSelectionKey = null;
             }
             // skipRender: data didn't change (e.g. link cancel) — skip the
             // framework re-render but still run afterContentRender for
@@ -7829,9 +7831,12 @@ export class Bridge {
             this.eventBuffer = [];
           }
 
-          // Clear after a brief settling period to catch trailing selectionchanges
-          // from DOM attribute updates (contenteditable, nodeIds, etc.)
-          setTimeout(() => { this.expectedSelectionFromAdmin = null; }, 100);
+          // The restore's own selectionchange ends the hold on caret reports
+          // (see the selectionchange listener): record what it set. Not a timer
+          // — the selectionchanges come when they come, and a timer left over
+          // from one placement cleared the hold for the next (a stale caret
+          // reached the admin) or ran long (an author's caret move was dropped).
+          this._restoredSelectionKey = selectionRestored ? JSON.stringify(this.serializeSelection()) : null;
         }
 
         if (needsBlockSwitch && adminSelectedBlockUid) {
@@ -8350,6 +8355,12 @@ export class Bridge {
       ready: currentReady && targetReady,
       targetVisible: !!targetVisible,
     };
+  }
+
+  /** Stop holding back caret reports: the admin's caret placement is done. */
+  _endAdminCaretHold() {
+    this.expectedSelectionFromAdmin = null;
+    this._restoredSelectionKey = null;
   }
 
   /**
@@ -9215,11 +9226,19 @@ export class Bridge {
           // Check if this selection matches what Admin just sent us
           // If so, this is the result of restoring their selection - don't echo it back
           if (this.expectedSelectionFromAdmin) {
-            // Admin sent a selection to restore (via FORM_DATA transformedSelection).
-            // Suppress ALL selectionchanges while set — they're either the
-            // successful restore or re-render artifacts from DOM replacement.
-            // afterContentRender clears this after restoreSlateSelection completes.
-            log('selectionchange: expectedSelectionFromAdmin set, suppressing');
+            // The admin is placing the caret (a FORM_DATA transformedSelection).
+            // Every selectionchange until that placement is done is the
+            // frontend's re-render or the bridge's restore — not news to the
+            // admin, and reporting them sent it stale positions. The restore's
+            // own selectionchange (the selection it recorded) ends the hold;
+            // so does the author's next key or pointer press (below), for a
+            // restore that moved nothing and so fired none.
+            if (this._restoredSelectionKey && JSON.stringify(this.savedSelection) === this._restoredSelectionKey) {
+              log('selectionchange: the restore\'s own — admin placement done');
+              this._endAdminCaretHold();
+            } else {
+              log('selectionchange: admin placing the caret, suppressing');
+            }
             return;
           } else {
             log('selectionchange: no expectedSelectionFromAdmin, sending new selection');
@@ -9235,6 +9254,10 @@ export class Bridge {
         }
       };
       document.addEventListener('selectionchange', this.selectionChangeListener);
+      // The author acting ends any hold on caret reports: what they do next is news.
+      this.authorInputEndsCaretHold = () => this._endAdminCaretHold();
+      document.addEventListener('keydown', this.authorInputEndsCaretHold, true);
+      document.addEventListener('pointerdown', this.authorInputEndsCaretHold, true);
     }
 
     // Use double requestAnimationFrame to wait for ALL DOM updates including rendering editable fields

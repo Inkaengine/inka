@@ -209,6 +209,11 @@
         // Container renderers (like renderGridBlock) call window._expandListingBlocks for nested content
         async function renderContentWithListings(content) {
             const myGeneration = ++window._renderGeneration;
+            // Test hook: a slow frontend (one fetching data, a heavy framework).
+            // A test sets window.renderDelayMs to make each render land later.
+            if (window.renderDelayMs) {
+                await new Promise((resolve) => setTimeout(resolve, window.renderDelayMs));
+            }
 
             // ONE shared template-merge state for the WHOLE page render — created by the
             // page-load entry and NEVER reset mid-render. Every expand call (top-level,
