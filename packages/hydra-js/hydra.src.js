@@ -34,6 +34,48 @@ import { collectLinkableAnchors } from './linkableAnchors.js';
 import { isStyleAllowed } from './slateStyles.js';
 
 /**
+ * Has the frontend drawn the slate value it was given? `dom` is the DOM read
+ * back with zero-width spaces kept (readSlateValueFromDOM keepCaretTargets).
+ * Text is compared as the author sees it: zero-width spaces don't count. Except
+ * at `caretPath`, the leaf the admin is putting the caret in (a new
+ * prospective inline, the leaf a format is toggled off into): when that is only
+ * a zero-width space in `expected`, a text node must have been drawn for it —
+ * the caret goes into that node, and until it is there the bridge would make one
+ * of its own. Only there: elsewhere a frontend may never redraw one (after the
+ * author clears a field, the browser deletes the frontend's node, and the
+ * frontend writes into the detached node).
+ */
+export function renderedMatches(dom, expected, caretPath = null) {
+  const visible = (text) => text.replace(/[\u200B\uFEFF]/g, '').replace(/\u00A0/g, ' ');
+  const caretKey = caretPath ? caretPath.join('.') : null;
+  const match = (a, b, path) => {
+    if (Array.isArray(b)) {
+      return Array.isArray(a) && a.length === b.length
+        && b.every((item, i) => match(a[i], item, path === null ? [i] : [...path, i]));
+    }
+    if (b && typeof b === 'object') {
+      if (!a || typeof a !== 'object' || Array.isArray(a)) return false;
+      for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+        if (key === 'text' && typeof a.text === 'string' && typeof b.text === 'string') {
+          if (visible(a.text) !== visible(b.text)) return false;
+          const caretTargetOnly = b.text !== '' && visible(b.text) === '';
+          if (caretTargetOnly && a.text === '' && path.join('.') === caretKey) return false;
+          continue;
+        }
+        if (key === 'children') {
+          if (!match(a.children, b.children, path)) return false;
+          continue;
+        }
+        if (!match(a[key], b[key], path)) return false;
+      }
+      return true;
+    }
+    return a === b;
+  };
+  return match(dom, expected, null);
+}
+
+/**
  * A slate value with a zero-width space in every element that would otherwise
  * hold no text: an element whose children are all empty text leaves (an empty
  * paragraph, an empty inline) gets the character in its first leaf. Returns the
@@ -8087,7 +8129,13 @@ export class Bridge {
     return true;
   }
 
-  domNodeToSlate(el, metadataMap, matchMetadataFromDom = false) {
+  domNodeToSlate(el, metadataMap, matchMetadataFromDom = false, keepCaretTargets = false) {
+    // keepCaretTargets: keep the zero-width spaces — to ask whether the frontend
+    // has drawn the caret targets it was given (renderedMatches), not only
+    // what the author wrote.
+    const strip = (text) => (keepCaretTargets
+      ? (text || '').replace(/\u00A0/g, ' ')
+      : this.stripZeroWidthSpaces(text));
     const nodeId = el.getAttribute('data-node-id');
     const fullMeta = (nodeId && metadataMap[nodeId]) || {};
     let metadata;
@@ -8104,7 +8152,7 @@ export class Bridge {
     for (const child of el.childNodes) {
       if (child.nodeType === Node.TEXT_NODE) {
         const raw = child.textContent || '';
-        const text = this.stripZeroWidthSpaces(raw);
+        const text = strip(raw);
         children.push({ text });
       } else if (child.nodeType === Node.ELEMENT_NODE) {
         // A <br> is a line break: "\n" in the text leaf, Volto's own form (its
@@ -8119,7 +8167,7 @@ export class Bridge {
         }
         const childNodeId = child.getAttribute('data-node-id');
         if (childNodeId && isValidNodeId(childNodeId)) {
-          children.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom));
+          children.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets));
         } else if (
           child.getAttribute('contenteditable') === 'false' ||
           child.getAttribute('aria-hidden') === 'true'
@@ -8142,7 +8190,7 @@ export class Bridge {
           // Slate requires around inline elements like strong/link. Read through
           // textWithBreaks, not textContent: a frontend draws a leaf's line
           // breaks as <br> INSIDE this wrapper, and textContent drops them.
-          const text = this.stripZeroWidthSpaces(this.textWithBreaks(child));
+          const text = strip(this.textWithBreaks(child));
           children.push({ text });
         }
       }
@@ -8164,9 +8212,12 @@ export class Bridge {
     // and are not Slate content. We detect this by checking: if none of
     // the element children are inline (per the metadata), then any
     // whitespace-only text is just HTML formatting.
+    // Not inside an inline itself, though: there whitespace-only text is what
+    // the author typed (a space after toggling bold on).
     const inlineNodeIds = metadataMap._inlineNodeIds || new Set();
     const hasInlineChild = merged.some(c => c.nodeId && inlineNodeIds.has(c.nodeId));
-    if (!hasInlineChild) {
+    const isInlineItself = nodeId && inlineNodeIds.has(nodeId);
+    if (!hasInlineChild && !isInlineItself) {
       for (let i = merged.length - 1; i >= 0; i--) {
         if (merged[i].hasOwnProperty('text') && merged[i].text.trim() === '') {
           merged.splice(i, 1);
@@ -8215,7 +8266,7 @@ export class Bridge {
    * This is the single source of truth for DOM → Slate conversion.
    * Used by both handleTextChange and waitForContentReady.
    */
-  readSlateValueFromDOM(fieldEl, existingValue, { matchMetadataFromDom = false } = {}) {
+  readSlateValueFromDOM(fieldEl, existingValue, { matchMetadataFromDom = false, keepCaretTargets = false } = {}) {
     const metadataMap = this.buildNodeMetadataMap(existingValue);
 
     // Two valid DOM patterns:
@@ -8224,7 +8275,7 @@ export class Bridge {
     // Both produce the same Slate value.
     const fieldNodeId = fieldEl.getAttribute('data-node-id');
     if (fieldNodeId && isValidNodeId(fieldNodeId)) {
-      return [this.domNodeToSlate(fieldEl, metadataMap, matchMetadataFromDom)];
+      return [this.domNodeToSlate(fieldEl, metadataMap, matchMetadataFromDom, keepCaretTargets)];
     }
 
     const topNodes = [];
@@ -8232,7 +8283,7 @@ export class Bridge {
       if (child.nodeType === Node.ELEMENT_NODE) {
         const nodeId = child.getAttribute('data-node-id');
         if (nodeId && isValidNodeId(nodeId)) {
-          topNodes.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom));
+          topNodes.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets));
         }
       }
     }
@@ -8279,7 +8330,7 @@ export class Bridge {
         // Not in DOM — deleted (data gone) = ready, otherwise not rendered yet
         currentReady = !this.getBlockData(blockId);
       } else if (this.getBlockData(blockId)) {
-        currentReady = this.isContentReady(blockEl);
+        currentReady = this.isContentReady(blockEl, afterRenderOptions.transformedSelection);
       } else {
         currentReady = false; // In DOM but data gone — stale element
       }
@@ -8293,7 +8344,7 @@ export class Bridge {
 
     const newEl = this.queryBlockElement(newBlockId);
     const targetVisible = newEl && !this.isElementHidden(newEl);
-    const targetReady = targetVisible && this.isContentReady(newEl);
+    const targetReady = targetVisible && this.isContentReady(newEl, afterRenderOptions.transformedSelection);
 
     return {
       ready: currentReady && targetReady,
@@ -8301,7 +8352,21 @@ export class Bridge {
     };
   }
 
-  isContentReady(blockElement) {
+  /**
+   * The slate path of the leaf the admin is putting the caret in for this
+   * field — the render's own collapsed transformedSelection — or null. Passed
+   * with the render, not read from shared state: a FORM_DATA's selection must
+   * not be lost to (or confused with) the previous one's bookkeeping.
+   */
+  _caretPathFromAdmin(blockUid, fieldName, sel) {
+    if (!sel?.anchor || !sel?.focus) return null;
+    if (blockUid !== this.selectedBlockUid || fieldName !== this.focusedFieldName) return null;
+    const collapsed = sel.anchor.offset === sel.focus.offset
+      && JSON.stringify(sel.anchor.path) === JSON.stringify(sel.focus.path);
+    return collapsed ? sel.anchor.path : null;
+  }
+
+  isContentReady(blockElement, caretSelection = null) {
     const blockUid = blockElement.getAttribute('data-block-uid');
     const blockData = this.getBlockData(blockUid);
     if (!blockData) return true;
@@ -8314,11 +8379,19 @@ export class Bridge {
       if (this.fieldTypeIsSlate(fieldType)) {
         const slateValue = getFieldValue(blockData, fieldName);
         if (!slateValue || !Array.isArray(slateValue)) continue;
-        const domValue = this.readSlateValueFromDOM(fieldEl, slateValue, { matchMetadataFromDom: true });
-        if (!this._deepEqual(domValue, slateValue)) {
+        // Has the frontend drawn what it was given, caret targets included (see
+        // renderedMatches)? Comparing with zero-width spaces read away never
+        // matched a stored one (a prospective inline's), so every such render
+        // waited out the timeout; ignoring them entirely would call a render
+        // done before its caret targets were drawn.
+        const rendered = this._caretTargetsGiven?.has(`${blockUid}|${fieldName}`)
+          ? withCaretTargets(slateValue)
+          : slateValue;
+        const domValue = this.readSlateValueFromDOM(fieldEl, slateValue, { matchMetadataFromDom: true, keepCaretTargets: true });
+        if (!renderedMatches(domValue, rendered, this._caretPathFromAdmin(blockUid, fieldName, caretSelection))) {
           log('isContentReady MISMATCH:', blockUid, fieldName, '+' + (this._renderStartTime ? (performance.now() - this._renderStartTime).toFixed(0) : '?') + 'ms');
           log('  DOM:', JSON.stringify(domValue)?.substring(0, 300));
-          log('  EXP:', JSON.stringify(slateValue)?.substring(0, 300));
+          log('  EXP:', JSON.stringify(rendered)?.substring(0, 300));
           log('  HTML:', fieldEl.innerHTML?.substring(0, 300));
           return false;
         }
@@ -8350,8 +8423,11 @@ export class Bridge {
       if (!fieldEl) continue;
 
       for (let retry = 0; retry < maxRetries; retry++) {
-        const domValue = this.readSlateValueFromDOM(fieldEl, slateValue);
-        if (this._deepEqual(domValue, slateValue)) {
+        const rendered = this._caretTargetsGiven?.has(`${blockUid}|${fieldName}`)
+          ? withCaretTargets(slateValue)
+          : slateValue;
+        const domValue = this.readSlateValueFromDOM(fieldEl, slateValue, { keepCaretTargets: true });
+        if (renderedMatches(domValue, rendered)) {
           log('waitForContentReady: MATCH on retry', retry, 'innerHTML:', fieldEl.innerHTML?.substring(0, 200));
           break;
         }

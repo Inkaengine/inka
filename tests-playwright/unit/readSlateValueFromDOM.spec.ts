@@ -647,6 +647,56 @@ test.describe('Bridge.readSlateValueFromDOM()', () => {
     expect(result[0].children[0].text).toBe('Real text');
   });
 
+  test('keepCaretTargets keeps the zero-width spaces', async () => {
+    // To ask "has the frontend drawn the caret targets it was given?"
+    // (renderedMatches), the zero-width spaces must be read as they are drawn.
+    const body = helper.getIframe().locator('body');
+    const result = await body.evaluate(() => {
+      const bridge = (window as any).bridge;
+      const container = document.createElement('div');
+      container.setAttribute('data-edit-text', 'value');
+      container.innerHTML =
+        '<p data-node-id="0">\uFEFFText<strong data-node-id="0.1"><span>\u200B</span></strong><span>\u200B</span></p>';
+      document.body.appendChild(container);
+      const existing = [{ type: 'p', nodeId: '0', children: [
+        { text: 'Text' },
+        { type: 'strong', nodeId: '0.1', children: [{ text: '\u200B' }] },
+        { text: '\u200B' },
+      ] }];
+      const kept = bridge.readSlateValueFromDOM(container, existing, { keepCaretTargets: true });
+      const plain = bridge.readSlateValueFromDOM(container, existing);
+      container.remove();
+      return { kept, plain };
+    });
+
+    expect(result.kept[0].children.map((c: any) => c.text ?? c.children[0].text)).toEqual(['\uFEFFText', '\u200B', '\u200B']);
+    expect(result.plain[0].children.map((c: any) => c.text ?? c.children[0].text)).toEqual(['Text', '', '']);
+  });
+
+  test('a space typed into a new bold inline is kept', async () => {
+    // Whitespace-only text between block elements is HTML indentation, not
+    // content — but inside an inline it is what the author typed (a space
+    // after toggling bold on, drawn as NBSP beside the caret's zero-width
+    // space). Dropping it emptied the inline in the model mid-typing.
+    const body = helper.getIframe().locator('body');
+    const result = await body.evaluate(() => {
+      const bridge = (window as any).bridge;
+      const container = document.createElement('div');
+      container.setAttribute('data-edit-text', 'value');
+      container.innerHTML = '<p data-node-id="0">Hello<strong data-node-id="0.1">\u200B\u00A0</strong></p>';
+      document.body.appendChild(container);
+      const result = bridge.readSlateValueFromDOM(container, [{ type: 'p', nodeId: '0', children: [
+        { text: 'Hello' },
+        { type: 'strong', nodeId: '0.1', children: [{ text: '\u200B' }] },
+        { text: '' },
+      ] }]);
+      container.remove();
+      return result;
+    });
+
+    expect(result[0].children[1].children).toEqual([{ text: ' ' }]);
+  });
+
   // ── Invalid nodeId handling ───────────────────────────────────────
 
   test('invalid data-node-id elements treated as text (Next.js pattern)', async () => {
