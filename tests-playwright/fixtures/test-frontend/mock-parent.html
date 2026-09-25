@@ -324,9 +324,14 @@
 
       // Get the text from first child (assuming simple structure for now)
       const textNode = paragraph.children[0];
-      // An empty leaf is still text: Ctrl+B in an empty paragraph formats what
-      // is typed next, as the admin does.
-      if (!textNode || typeof textNode.text !== 'string') {
+      // Ctrl+B with nothing selected in an EMPTY paragraph (its one leaf has no
+      // text) formats what is typed next, as the admin does. Only then: this
+      // mock reads the first leaf alone, so an empty first leaf in front of an
+      // inline (after a format) is not the paragraph's text, and formatting it
+      // would wipe what follows.
+      const emptyParagraph =
+        paragraph.children.length === 1 && textNode?.text === '' && start === end;
+      if (!textNode || (!textNode.text && !emptyParagraph)) {
         console.log('[MOCK_PARENT] applySlateTransform: early return (no textNode or no text)', { textNode: JSON.stringify(textNode) });
         return result;
       }
