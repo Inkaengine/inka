@@ -82,6 +82,57 @@ function collectFieldIds(schema) {
   return ids;
 }
 
+/**
+ * ONE field, as label + text.
+ *
+ * Both callers are the same idea at different scale: a whole form that may be
+ * read but not changed (a locked template, a compared language), and a single
+ * field in an otherwise editable form that has its value from somewhere else
+ * (a language-independent field on a translation). The shadowed Form renders
+ * this for a field whose schema says `readOnly`, the same flag a locked block
+ * carries.
+ */
+export function ReadOnlyField({ id, schema = {}, value }) {
+  const languageIndependent =
+    schema.multilingual_options?.language_independent;
+  return (
+    <div
+      className={[
+        `field-wrapper-${id}`,
+        'field',
+        'readonly-field',
+        // Same name Volto uses, so its icon/label styling still applies — but
+        // here the field is genuinely not editable, not faded with
+        // `pointer-events: none`.
+        languageIndependent ? 'language-independent-field' : null,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      // Compact: label + value on ONE line (no help/description text in read-only).
+      style={{ display: 'flex', gap: '8px', alignItems: 'baseline', padding: '4px 0', margin: 0 }}
+    >
+      <label
+        className="readonly-field-label"
+        style={{ fontSize: '0.85em', color: '#878f93', flexShrink: 0 }}
+      >
+        {schema.title || id}
+      </label>
+      <div
+        className="readonly-field-value"
+        style={{ flex: 1, textAlign: 'right', wordBreak: 'break-word' }}
+      >
+        {formatReadOnlyValue(schema, value)}
+      </div>
+    </div>
+  );
+}
+
+ReadOnlyField.propTypes = {
+  id: PropTypes.string.isRequired,
+  schema: PropTypes.object,
+  value: PropTypes.any,
+};
+
 export function ReadOnlyForm({ schema, formData, title }) {
   if (!schema) return null;
   const fieldIds = collectFieldIds(schema);
@@ -90,30 +141,14 @@ export function ReadOnlyForm({ schema, formData, title }) {
       {(title || schema.title) && (
         <h2 className="readonly-form-title">{title || schema.title}</h2>
       )}
-      {fieldIds.map((id) => {
-        const fieldSchema = schema.properties[id];
-        // Compact: label + value on ONE line (no help/description text in read-only).
-        return (
-          <div
-            key={id}
-            className={`field-wrapper-${id} field readonly-field`}
-            style={{ display: 'flex', gap: '8px', alignItems: 'baseline', padding: '4px 0', margin: 0 }}
-          >
-            <label
-              className="readonly-field-label"
-              style={{ fontSize: '0.85em', color: '#878f93', flexShrink: 0 }}
-            >
-              {fieldSchema.title || id}
-            </label>
-            <div
-              className="readonly-field-value"
-              style={{ flex: 1, textAlign: 'right', wordBreak: 'break-word' }}
-            >
-              {formatReadOnlyValue(fieldSchema, formData?.[id])}
-            </div>
-          </div>
-        );
-      })}
+      {fieldIds.map((id) => (
+        <ReadOnlyField
+          key={id}
+          id={id}
+          schema={schema.properties[id]}
+          value={formData?.[id]}
+        />
+      ))}
     </div>
   );
 }

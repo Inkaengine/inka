@@ -20,12 +20,20 @@
       "type": "object"
     }
   },
-  "required": ["title"],
+  "required": [
+    "title"
+  ],
   "fieldsets": [
     {
       "id": "default",
       "title": "Default",
-      "fields": ["title", "description"]
+      "fields": [
+        "title",
+        "description"
+      ]
     }
+  ],
+  "layouts": [
+    "newsitem_view"
   ]
 }

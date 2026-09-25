@@ -46,7 +46,11 @@ function docMarkdownFiles(dir, acc = []) {
 /** Asset paths (relative to docs/) the markdown references. */
 function required() {
   const wanted = new Set();
-  const re = /\/docs\/(images\/[a-z0-9-]+\.(?:png|jpg|jpeg|svg)|static\/[a-z0-9-]+\.(?:mp4|webm))/g;
+  // Pages write assets RELATIVE to themselves since blockmd (#372) —
+  // `../images/x.png`, `./static/hydra-demo.mp4` — as well as the old absolute
+  // `/docs/images/x.png`. Matching only the absolute form found none at all:
+  // the gate passed checking nothing, and a new screenshot was never made.
+  const re = /(?:\/docs\/|(?:\.\.?\/)+)(images\/[a-z0-9-]+\.(?:png|jpg|jpeg|svg)|static\/[a-z0-9-]+\.(?:mp4|webm))/g;
   for (const file of docMarkdownFiles(DOCS)) {
     for (const m of readFileSync(file, 'utf8').matchAll(re)) wanted.add(m[1]);
   }
