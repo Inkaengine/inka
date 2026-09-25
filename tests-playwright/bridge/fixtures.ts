@@ -126,16 +126,24 @@ export function rendersBold(field: Locator, text: string): Promise<boolean> {
   }, text);
 }
 
-/** The text nodes under a field that contain `text` — one, unless it is shown twice. */
-export function textNodesWith(field: Locator, text: string): Promise<string[]> {
+/**
+ * The text nodes under a field that contain `text` (the bridge's zero-width
+ * characters ignored) — one, unless it is shown twice. On a mismatch the
+ * assertion shows `all`, every text node's content, to tell a doubled text
+ * from one split across nodes.
+ */
+export function textNodesWith(field: Locator, text: string): Promise<{ found: string[]; all: string[] }> {
   return field.evaluate((el, t) => {
     const found: string[] = [];
+    const all: string[] = [];
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     let n;
     while ((n = walker.nextNode())) {
-      if (n.textContent?.includes(t)) found.push(n.textContent);
+      const raw = n.textContent || '';
+      all.push(JSON.stringify(raw));
+      if (raw.replace(/[\uFEFF\u200B]/g, '').replace(/\u00A0/g, ' ').includes(t)) found.push(raw);
     }
-    return found;
+    return { found, all };
   }, text);
 }
 

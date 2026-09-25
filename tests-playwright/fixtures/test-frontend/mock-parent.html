@@ -345,10 +345,14 @@
       if (start === end) {
         const before = originalText.substring(0, start);
         const after = originalText.substring(start);
-        // Slate normalization: text nodes must surround inline elements
+        // Slate normalization: text nodes must surround inline elements.
+        // The inline holds a zero-width space, as the admin's does
+        // (SyncedSlateToolbar / elementEditor utils): it keeps the empty inline
+        // from being normalized away, and gives the frontend a text node of its
+        // own inside it for the caret — the one the author types into.
         paragraph.children = [
           { text: before },
-          { type: format, children: [{ text: '' }] },
+          { type: format, children: [{ text: '\u200B' }] },
           { text: after },
         ];
         return result;

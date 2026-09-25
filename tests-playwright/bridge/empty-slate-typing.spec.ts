@@ -43,12 +43,12 @@ test.describe('Empty slate typing', () => {
             const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
             let t;
             while ((t = walker.nextNode())) {
-              if (t.textContent?.includes('﻿') && t.parentElement?.closest('[data-node-id]')) return true;
+              if (/[\uFEFF\u200B]/.test(t.textContent || '') && t.parentElement?.closest('[data-node-id]')) return true;
             }
             return false;
           }),
         {
-          message: 'bridge should park a ZWS caret target inside the node-id element before typing',
+          message: 'a zero-width caret target (the bridge\'s, or the frontend\'s from the render data) should sit inside the node-id element before typing',
           timeout: 5000,
         },
       )
@@ -94,7 +94,7 @@ test.describe('Empty slate typing', () => {
           const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
           let t;
           while ((t = walker.nextNode())) {
-            if (t.textContent?.includes('\uFEFF') && t.parentElement?.closest('[data-node-id]')) return true;
+            if (/[\uFEFF\u200B]/.test(t.textContent || '') && t.parentElement?.closest('[data-node-id]')) return true;
           }
           return false;
         }),
@@ -115,7 +115,10 @@ test.describe('Empty slate typing', () => {
 
     await sendAdminUpdate(page, helper, 'mock-block-1', 'Changed by the admin');
     expect(await visibleText(field)).toBe('Hello');
-    expect(await textNodesWith(field, 'Hello')).toHaveLength(1);
+    {
+      const nodes = await textNodesWith(field, 'Hello');
+      expect(nodes.found, `text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+    }
   });
 
   test('text typed after clearing a slate shows once after the next FORM_DATA', async ({
@@ -136,7 +139,10 @@ test.describe('Empty slate typing', () => {
 
     await sendAdminUpdate(page, helper, 'mock-empty-slate', 'Changed by the admin');
     expect(await visibleText(field)).toBe('Fresh');
-    expect(await textNodesWith(field, 'Fresh')).toHaveLength(1);
+    {
+      const nodes = await textNodesWith(field, 'Fresh');
+      expect(nodes.found, `text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+    }
   });
 
   test('bold typed into an empty slate shows once after the next FORM_DATA', async ({
@@ -153,11 +159,18 @@ test.describe('Empty slate typing', () => {
     await page.keyboard.press('ControlOrMeta+b');
     await page.keyboard.type('Bold');
     await expect.poll(() => visibleText(field)).toBe('Bold');
+    {
+      const nodes = await textNodesWith(field, 'Bold');
+      expect(nodes.found, `before the update, text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+    }
     await expect.poll(() => adminText(page, 'mock-empty-slate')).toBe('Bold');
 
     await sendAdminUpdate(page, helper, 'mock-block-1', 'Changed by the admin');
     expect(await visibleText(field)).toBe('Bold');
-    expect(await textNodesWith(field, 'Bold')).toHaveLength(1);
+    {
+      const nodes = await textNodesWith(field, 'Bold');
+      expect(nodes.found, `text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+    }
     expect(await rendersBold(field, 'Bold')).toBe(true);
   });
 
@@ -172,11 +185,18 @@ test.describe('Empty slate typing', () => {
     await page.keyboard.press('ControlOrMeta+b');
     await page.keyboard.type(' bold');
     await expect.poll(() => visibleText(field)).toBe(`${before} bold`);
+    {
+      const nodes = await textNodesWith(field, 'bold');
+      expect(nodes.found, `before the update, text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+    }
     await expect.poll(() => adminText(page, 'mock-block-1')).toBe(`${before} bold`);
 
     await sendAdminUpdate(page, helper, 'mock-empty-slate', 'Changed by the admin');
     expect(await visibleText(field)).toBe(`${before} bold`);
-    expect(await textNodesWith(field, 'bold')).toHaveLength(1);
+    {
+      const nodes = await textNodesWith(field, 'bold');
+      expect(nodes.found, `text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+    }
     expect(await rendersBold(field, 'bold')).toBe(true);
   });
 });
