@@ -906,24 +906,27 @@ test.describe('Enter Key to Add/Navigate', () => {
     // what actually signals the re-render completed. Without this, the negative assertions below
     // race the round-trip on slower CI: the deleted uid lingers in the DOM for a frame (the
     // "[ParentBlocksWidget] Block data undefined for block-1-uuid" log is that stale frame).
-    await expect(
-      iframe.locator(`main [data-block-uid]:not([data-block-uid="${blockId}"])`),
-    ).toBeVisible({ timeout: 15000 });
+    await expect
+      .poll(async () => (await helper.getBlockOrder()).filter((uid) => uid !== blockId), {
+        timeout: 15000,
+      })
+      .toHaveLength(1);
 
     // Now the original block is gone (page-level uses defaultBlockType 'slate', not 'empty')...
     await expect(iframe.locator(`[data-block-uid="${blockId}"]`)).not.toBeVisible({ timeout: 5000 });
 
-    // ...and main holds exactly the one new default block.
-    const mainBlocks = iframe.locator('main [data-block-uid]');
-    await expect(mainBlocks).toHaveCount(1, { timeout: 5000 });
+    // ...and the main content holds exactly the one new default block.
+    await expect.poll(() => helper.getBlockOrder(), { timeout: 5000 }).toHaveLength(1);
   });
 });
 
 test.describe('Allowed Blocks from Frontend', () => {
-  // These tests are specific to the mock frontend's allowedBlocks configuration
-  // The nuxt frontend has a different allowedBlocks list (includes video, excludes hero)
+  // These tests check the MOCK frontend's allowedBlocks configuration (no video,
+  // a custom block of its own). Every other frontend declares its own list — nuxt
+  // includes video and excludes hero, the Next.js example allows video — so they
+  // apply to the mock frontend only.
   test.beforeEach(async ({}, testInfo) => {
-    test.skip(testInfo.project.name.includes('nuxt'), 'Skipping on nuxt - tests mock frontend config');
+    test.skip(!testInfo.project.name.includes('mock'), 'tests the mock frontend\'s own allowedBlocks config');
   });
 
   test('block chooser hides blocks not in allowedBlocks list', async ({ page }) => {

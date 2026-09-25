@@ -3956,10 +3956,42 @@ export class AdminUIHelper {
    * Get all block IDs in order.
    * Returns an array of block UIDs, deduplicated (multi-element blocks count as one).
    * Uses evaluateAll for single browser round-trip instead of N sequential getAttribute calls.
-   * @param container - Container selector to scope the search (default: 'main' for main content)
+   *
+   * 'main' (the default) is the page's main content — every block, nested ones
+   * included, whose chain of parents reaches the page's `items` region, read from
+   * the bridge's own blockPathMap. Not a `main` selector: that assumed the frontend
+   * wraps its blocks in a <main>, and a frontend need not (the Next.js example
+   * doesn't). Any other value is a selector scoping the search, as before.
+   * @param container - 'main', or a container selector to scope the search
    */
   async getBlockOrder(container: string = 'main'): Promise<string[]> {
     const iframe = this.getIframe();
+    if (container === 'main') {
+      return await iframe.locator('[data-block-uid]').evaluateAll((elements) => {
+        // Before the bridge has its first data there are no blocks yet, as there
+        // were none in the DOM for the old selector; callers poll for a count.
+        const map = (window as any).__hydraBridge?.blockPathMap;
+        if (!map) return [];
+        const inMainContent = (uid: string) => {
+          let entry = map[uid];
+          for (let hops = 0; entry && hops < 100; hops++) {
+            if (entry.parentId === '_page') return entry.region === 'items';
+            entry = map[entry.parentId];
+          }
+          return false;
+        };
+        const seen = new Set<string>();
+        const blockIds: string[] = [];
+        for (const el of elements) {
+          const uid = el.getAttribute('data-block-uid');
+          if (uid && !seen.has(uid) && inMainContent(uid)) {
+            seen.add(uid);
+            blockIds.push(uid);
+          }
+        }
+        return blockIds;
+      });
+    }
     const selector = `${container} [data-block-uid]`;
     return await iframe.locator(selector).evaluateAll((elements) => {
       const seen = new Set<string>();
