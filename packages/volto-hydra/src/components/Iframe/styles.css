@@ -148,6 +148,11 @@
 .nested-status--untranslated {
   background: #2b7bc0;
 }
+/* Translated, then the original changed. It had no colour of its own, so the
+   marker was an empty 8px box: there, and invisible. */
+.nested-status--stale {
+  background: #7a4fc0;
+}
 
 /* Choosing a language to read beside the one being edited. */
 .compare-languages {
