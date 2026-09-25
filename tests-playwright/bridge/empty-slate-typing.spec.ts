@@ -249,4 +249,25 @@ test.describe('Empty slate typing', () => {
     expect(await rendersBold(field, 'bold')).toBe(true);
     expect(await rendersBold(field, 'normal')).toBe(false);
   });
+
+  test('bold toggled on and straight off keeps the caret for the next keys', async ({
+    helper,
+    page,
+  }) => {
+    // The second Ctrl+B follows the first at once, so its render is still to
+    // come when the first caret placement's bookkeeping is cleared. The bridge
+    // must still wait for THIS render before placing the caret: placed on the
+    // page as it was, the caret is lost when the frontend's render lands, and
+    // the next keys go nowhere.
+    const field = await helper.getEditorLocator('mock-block-1', 'value');
+    const before = await visibleText(field);
+    await field.click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('ControlOrMeta+b');
+    await page.keyboard.press('ControlOrMeta+b');
+    await page.keyboard.type('x');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe(`${before}x`);
+    await expect.poll(() => visibleText(field)).toBe(`${before}x`);
+    expect(await rendersBold(field, 'x')).toBe(false);
+  });
 });

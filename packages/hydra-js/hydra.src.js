@@ -8330,7 +8330,7 @@ export class Bridge {
         // Not in DOM — deleted (data gone) = ready, otherwise not rendered yet
         currentReady = !this.getBlockData(blockId);
       } else if (this.getBlockData(blockId)) {
-        currentReady = this.isContentReady(blockEl);
+        currentReady = this.isContentReady(blockEl, afterRenderOptions.transformedSelection);
       } else {
         currentReady = false; // In DOM but data gone — stale element
       }
@@ -8344,7 +8344,7 @@ export class Bridge {
 
     const newEl = this.queryBlockElement(newBlockId);
     const targetVisible = newEl && !this.isElementHidden(newEl);
-    const targetReady = targetVisible && this.isContentReady(newEl);
+    const targetReady = targetVisible && this.isContentReady(newEl, afterRenderOptions.transformedSelection);
 
     return {
       ready: currentReady && targetReady,
@@ -8354,10 +8354,11 @@ export class Bridge {
 
   /**
    * The slate path of the leaf the admin is putting the caret in for this
-   * field (its FORM_DATA's collapsed transformedSelection), or null.
+   * field — the render's own collapsed transformedSelection — or null. Passed
+   * with the render, not read from shared state: a FORM_DATA's selection must
+   * not be lost to (or confused with) the previous one's bookkeeping.
    */
-  _caretPathFromAdmin(blockUid, fieldName) {
-    const sel = this.expectedSelectionFromAdmin;
+  _caretPathFromAdmin(blockUid, fieldName, sel) {
     if (!sel?.anchor || !sel?.focus) return null;
     if (blockUid !== this.selectedBlockUid || fieldName !== this.focusedFieldName) return null;
     const collapsed = sel.anchor.offset === sel.focus.offset
@@ -8365,7 +8366,7 @@ export class Bridge {
     return collapsed ? sel.anchor.path : null;
   }
 
-  isContentReady(blockElement) {
+  isContentReady(blockElement, caretSelection = null) {
     const blockUid = blockElement.getAttribute('data-block-uid');
     const blockData = this.getBlockData(blockUid);
     if (!blockData) return true;
@@ -8387,7 +8388,7 @@ export class Bridge {
           ? withCaretTargets(slateValue)
           : slateValue;
         const domValue = this.readSlateValueFromDOM(fieldEl, slateValue, { matchMetadataFromDom: true, keepCaretTargets: true });
-        if (!renderedMatches(domValue, rendered, this._caretPathFromAdmin(blockUid, fieldName))) {
+        if (!renderedMatches(domValue, rendered, this._caretPathFromAdmin(blockUid, fieldName, caretSelection))) {
           log('isContentReady MISMATCH:', blockUid, fieldName, '+' + (this._renderStartTime ? (performance.now() - this._renderStartTime).toFixed(0) : '?') + 'ms');
           log('  DOM:', JSON.stringify(domValue)?.substring(0, 300));
           log('  EXP:', JSON.stringify(rendered)?.substring(0, 300));
@@ -8426,7 +8427,7 @@ export class Bridge {
           ? withCaretTargets(slateValue)
           : slateValue;
         const domValue = this.readSlateValueFromDOM(fieldEl, slateValue, { keepCaretTargets: true });
-        if (renderedMatches(domValue, rendered, this._caretPathFromAdmin(blockUid, fieldName))) {
+        if (renderedMatches(domValue, rendered)) {
           log('waitForContentReady: MATCH on retry', retry, 'innerHTML:', fieldEl.innerHTML?.substring(0, 200));
           break;
         }
