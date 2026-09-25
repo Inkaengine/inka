@@ -122,6 +122,28 @@ test.describe('Bridge.readSlateValueFromDOM()', () => {
     });
   });
 
+  test('the browser\'s end-of-line <br> placeholder is not a break, with a framework comment after it', async () => {
+    // An emptied contenteditable line gets a placeholder <br> from the browser;
+    // typing then lands before it. A comment is never content — Vue's templates
+    // leave them in the DOM — so it must not make the placeholder read as "\n".
+    // Built with innerHTML: testDomToSlate's whitespace-preserving parser has no
+    // comment support.
+    const body = helper.getIframe().locator('body');
+    const result = await body.evaluate(() => {
+      const wrap = document.createElement('div');
+      wrap.innerHTML =
+        '<div data-edit-text="value"><p data-node-id="0">Fresh<br><!-- a framework comment --></p></div>';
+      document.body.appendChild(wrap);
+      const field = wrap.firstElementChild!;
+      const value = (window as any).bridge.readSlateValueFromDOM(field, [
+        { type: 'p', nodeId: '0', children: [{ text: '' }] },
+      ]);
+      wrap.remove();
+      return value;
+    });
+    expect(result).toEqual([{ type: 'p', nodeId: '0', children: [{ text: 'Fresh' }] }]);
+  });
+
   test('both patterns produce identical result', async () => {
     const body = helper.getIframe().locator('body');
     const existing = [{ type: 'p', nodeId: '0', children: [

@@ -34,6 +34,76 @@ import { collectLinkableAnchors } from './linkableAnchors.js';
 import { isStyleAllowed } from './slateStyles.js';
 
 /**
+ * A slate value with a zero-width space in every element that would otherwise
+ * hold no text: an element whose children are all empty text leaves (an empty
+ * paragraph, an empty inline) gets the character in its first leaf. Returns the
+ * value itself when nothing needed filling.
+ *
+ * The caret needs a text node inside such an element, and a renderer draws none
+ * for an empty string (React renders `""` as no DOM node at all). If the bridge
+ * made that node itself, the frontend would not know about it: the author typed
+ * into it, and the frontend's next render added its own node beside it, so the
+ * text showed twice. Handed this, the frontend renders the node — the same
+ * character the admin already puts in an empty inline it creates.
+ */
+export function withCaretTargets(nodes) {
+  if (!Array.isArray(nodes)) return nodes;
+  let changed = false;
+  const out = nodes.map((node) => {
+    const children = node?.children;
+    if (!Array.isArray(children) || children.length === 0) return node;
+    if (children.every((c) => typeof c?.text === 'string' && c.text === '')) {
+      changed = true;
+      return { ...node, children: [{ ...children[0], text: '\u200B' }, ...children.slice(1)] };
+    }
+    const filled = withCaretTargets(children);
+    if (filled === children) return node;
+    changed = true;
+    return { ...node, children: filled };
+  });
+  return changed ? out : nodes;
+}
+
+/**
+ * The text node the frontend drew for an element's caret target: the descendant
+ * text node holding the zero-width space (withCaretTargets puts it in the render
+ * data exactly so it can be found), else the first descendant text node. Not
+ * simply the first child: a leaf may sit in a wrapper (a <span> per leaf), and a
+ * framework may put empty text nodes of its own around it (Vue's fragment
+ * anchors) — typing into one of those leaves the leaf's real node untouched, and
+ * the next render draws the text again beside it.
+ */
+/**
+ * The first text node after `element` in document order, within the nearest
+ * data-node-id element around it (its line) — the node drawn for the leaf that
+ * follows an inline, wherever the frontend wraps it. Empty text nodes are
+ * skipped: frameworks leave them as anchors (Vue fragments, Svelte blocks) and
+ * they are no leaf's text. Null when there is none.
+ */
+export function textNodeAfter(element) {
+  const line = element.parentElement?.closest('[data-node-id]') || element.parentElement;
+  if (!line) return null;
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    if (element.contains(node) || node.textContent.length === 0) continue;
+    if (element.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) return node;
+  }
+  return null;
+}
+
+export function caretTargetTextNode(element) {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let first = null;
+  let node;
+  while ((node = walker.nextNode())) {
+    if (/[\u200B\uFEFF]/.test(node.textContent)) return node;
+    if (!first) first = node;
+  }
+  return first;
+}
+
+/**
  * This IS a large file and it needs to be written in one file so for better understanding and
  * usage of this file in future, Below is the lineup of methods this class provides and also
  * making it easier for other to understand how each section works :)
@@ -347,6 +417,10 @@ export class Bridge {
     // ignored. (That's a configuration error; we don't try to merge the
     // semantics.)
     if (options.renderEndpoint) {
+      // Every render replaces the block's HTML with the server's, so no node the
+      // bridge made survives one — there is nothing for caret targets to fix,
+      // and a follow-up render would only swap the block again mid-edit.
+      this._rendersReplaceHtml = true;
       this._installRenderEndpoint(options.renderEndpoint, options.renderContainer || '#content');
     } else if (options.onEditChange) {
       this.onEditChange(options.onEditChange);
@@ -3146,22 +3220,39 @@ export class Bridge {
 
     if (!range.collapsed) range.deleteContents();
 
-    const textNode = document.createTextNode(insertionText);
-    range.insertNode(textNode);
+    // Type into the text node the caret is in: the frontend drew it (from the
+    // render data's zero-width space when the element was empty), so its next
+    // render updates the same node. A node of our own beside it would be one the
+    // frontend doesn't know about — it drew the text again next to it — and
+    // removing its node would leave it updating one that is gone. Only a caret
+    // that is not in a text node gets a new one.
+    let textNode;
+    let end;
+    if (range.startContainer.nodeType === Node.TEXT_NODE) {
+      textNode = range.startContainer;
+      textNode.insertData(range.startOffset, insertionText);
+      end = range.startOffset + insertionText.length;
+    } else {
+      textNode = document.createTextNode(insertionText);
+      range.insertNode(textNode);
+      end = textNode.length;
+    }
 
-    // Clean up adjacent ZWS/BOM nodes (left by restoreSlateSelection)
+    // Clean up the caret nodes restoreSlateSelection made (U+FEFF only). Never
+    // a U+200B node: that one is the frontend's, drawn from the admin's data or
+    // the render data.
     const parent = textNode.parentNode;
     if (parent) {
       for (const sibling of [...parent.childNodes]) {
         if (sibling !== textNode && sibling.nodeType === Node.TEXT_NODE &&
-            sibling.textContent.replace(/[\uFEFF\u200B]/g, '') === '') {
+            /^\uFEFF+$/.test(sibling.textContent)) {
           sibling.remove();
         }
       }
     }
 
     // Position cursor after inserted text
-    range.setStart(textNode, textNode.length);
+    range.setStart(textNode, end);
     range.collapse(true);
     sel.removeAllRanges();
     sel.addRange(range);
@@ -5876,6 +5967,17 @@ export class Bridge {
    * @param {Node} node - The DOM node to check
    * @returns {boolean} True if the node is on invalid whitespace
    */
+  /**
+   * Is `node` the text node drawn for the leaf right after an inline, holding
+   * the admin's zero-width space (its toggle-off caret target)?
+   */
+  _isLeafAfterInline(node) {
+    if (!node.textContent?.includes('\u200B')) return false;
+    const line = node.parentElement?.closest('[data-node-id]');
+    if (!line) return false;
+    return [...line.querySelectorAll('[data-node-id]')].some((el) => textNodeAfter(el) === node);
+  }
+
   isOnInvalidWhitespace(node) {
     if (!node) return false;
 
@@ -5939,11 +6041,14 @@ export class Bridge {
     }
 
     // BOM/ZWS-only text nodes inside wrapper elements without data-node-id
-    // are invalid. This catches nextjs BOM spans (<span>﻿</span>) inside a
-    // valid data-node-id ancestor. But ZWS nodes that are DIRECT children
-    // of a data-node-id element (cursor exit positioning) are valid.
+    // are invalid — a node the frontend drew beside the leaf's own. But ZWS
+    // nodes that are DIRECT children of a data-node-id element (cursor exit
+    // positioning) are valid, and so is the text node drawn for the leaf after
+    // an inline when it holds the zero-width space the admin gives it on
+    // toggling a format off — whatever the frontend wraps it in, that IS where
+    // the caret was put (moving it would put the next typed text in the inline).
     const visibleText = node.textContent?.replace(/[\uFEFF\u200B\s]/g, '');
-    if (visibleText === '' && node.parentElement && !node.parentElement.hasAttribute?.('data-node-id')) {
+    if (visibleText === '' && !this._isLeafAfterInline(node) && node.parentElement && !node.parentElement.hasAttribute?.('data-node-id')) {
       return true;
     }
 
@@ -7967,9 +8072,12 @@ export class Bridge {
     let node = br;
     while (node) {
       for (let n = node.nextSibling; n; n = n.nextSibling) {
+        // A comment is never content (Vue's templates leave them in the DOM),
+        // so it doesn't make the placeholder a break.
         const empty =
-          n.nodeType === Node.TEXT_NODE &&
-          this.stripZeroWidthSpaces(n.textContent || '') === '';
+          n.nodeType === Node.COMMENT_NODE ||
+          (n.nodeType === Node.TEXT_NODE &&
+            this.stripZeroWidthSpaces(n.textContent || '') === '');
         if (!empty) return false;
       }
       const parent = node.parentElement;
@@ -11318,14 +11426,8 @@ export class Bridge {
         // Redirect text into prospective inline
         e.preventDefault();
 
-        // Find the text node inside the inline
-        let inlineTextNode = null;
-        for (const child of prospectiveInline.childNodes) {
-          if (child.nodeType === Node.TEXT_NODE) {
-            inlineTextNode = child;
-            break;
-          }
-        }
+        // The inline's own text node (see caretTargetTextNode)
+        const inlineTextNode = caretTargetTextNode(prospectiveInline);
 
         if (inlineTextNode) {
           // Insert the character at the end of the inline's text
@@ -11518,6 +11620,17 @@ export class Bridge {
       // iframe; the echo guard in _maybeSendLinkableAnchors sends only when the
       // map changes.
       this._maybeSendLinkableAnchors();
+      // A slate field that has just appeared on the canvas empty gets its caret
+      // target on one more render (see _caretTargetsPending). Here, at DOM
+      // settle, because only now has the framework drawn it — an async renderer
+      // (React) commits after afterContentRender has run. A render in progress
+      // will patch the DOM and bring us back here. It can't repeat: the next
+      // projection sees the field and fills it.
+      if (!this._rendersReplaceHtml && !this._renderInProgress && this.onContentChangeCallback && this._caretTargetsPending()) {
+        log('caret targets pending at DOM settle, rendering again');
+        this._isEchoFormData = false;
+        this._executeRender(this.onContentChangeCallback);
+      }
       // Signal DOM settled — but only if no new mutations arrived during
       // this rAF callback. If new mutations come, the observer will fire
       // again and we'll wait for the next settlement.
@@ -11585,6 +11698,13 @@ export class Bridge {
               );
               if (addedTextNode) {
                 this.handleTextChange(targetElement, parent, addedTextNode);
+              } else if (Array.from(mutation.removedNodes).some((n) => n.nodeType === Node.TEXT_NODE)) {
+                // Text REMOVED with nothing added: deleting all of a paragraph's
+                // text, the browser sometimes removes the text node instead of
+                // emptying it (Ctrl+A, Backspace on the Vue frontends often
+                // does). The edit is real — read the field back all the same, or
+                // the deletion never reaches the admin.
+                this.handleTextChange(targetElement, parent, null);
               }
             }
           }
@@ -11837,6 +11957,46 @@ export class Bridge {
     if (this.onContentChangeCallback) this._executeRender(this.onContentChangeCallback);
   }
 
+  /**
+   * The block's own editable fields the frontend drew on its last render, by
+   * the names `data-edit-text` gives them. Page-level (`/title`) and parent
+   * (`../x`) paths belong to other blocks and are left out.
+   */
+  _editableFieldsOnCanvas(blockUid) {
+    // No DOM (a server render, a unit test): nothing is on a canvas.
+    if (typeof document === 'undefined') return [];
+    // A plain lookup, not queryBlockElement: that one materializes hydra
+    // comments when a block has no element, rewriting the DOM from what is only
+    // a read — and this runs at every DOM settle, for every block in the map.
+    const el = document.querySelector(`[data-block-uid="${CSS.escape(blockUid)}"]`);
+    if (!el) return [];
+    return Object.keys(this.getEditableFields(el)).filter(
+      (name) => !name.startsWith('/') && !name.startsWith('.'),
+    );
+  }
+
+  /**
+   * True when a slate field on the canvas needs caret targets the last render
+   * did not give it — a field whose element has just appeared (a new block, a
+   * first render). The projection only sees the DOM of the render before it, so
+   * such a field gets its zero-width space on the render after.
+   */
+  _caretTargetsPending() {
+    if (!this.blockPathMap) return false;
+    for (const blockUid of Object.keys(this.blockPathMap)) {
+      if (blockUid === '_schemas' || blockUid === '_page') continue;
+      const source = this.getBlockData(blockUid);
+      if (!source) continue;
+      for (const fieldName of this._editableFieldsOnCanvas(blockUid)) {
+        if (this._caretTargetsGiven?.has(`${blockUid}|${fieldName}`)) continue;
+        if (!isSlateFieldType(this.getFieldType(blockUid, fieldName))) continue;
+        const value = getFieldValue(source, fieldName);
+        if (withCaretTargets(value) !== value) return true;
+      }
+    }
+    return false;
+  }
+
   _projectForRender(formData) {
     if (!formData || !this.blockPathMap) return formData;
 
@@ -11845,6 +12005,9 @@ export class Bridge {
     const CONTAINER_WIDGETS = new Set(['blocks_layout', 'object_list']);
 
     let projected = null; // cloned lazily; most renders change nothing
+    // The fields given caret targets in THIS render — afterContentRender asks
+    // for another render when a field newly on the canvas still needs one.
+    this._caretTargetsGiven = new Set();
     for (const blockUid of Object.keys(this.blockPathMap)) {
       if (blockUid === '_schemas' || blockUid === '_page') continue;
       const schema = this.getBlockSchema(blockUid);
@@ -11865,6 +12028,26 @@ export class Bridge {
         let target = projected;
         for (const key of pathInfo.path) target = target?.[key];
         if (target) delete target[fieldName];
+      }
+
+      // Caret targets (see withCaretTargets): for each slate field this block
+      // is drawing an editable element for, an element with no text gets a
+      // zero-width space, so the text node the author types into is the
+      // frontend's own. Only fields already on the canvas, so a renderer's own
+      // "hide it when empty" rule decides as it always did. Never stored:
+      // this.formData keeps the empty leaf, and reading the DOM back strips it.
+      for (const fieldName of this._editableFieldsOnCanvas(blockUid)) {
+        if (!isSlateFieldType(this.getFieldType(blockUid, fieldName))) continue;
+        let target = projected;
+        if (target) for (const key of pathInfo.path) target = target?.[key];
+        const current = getFieldValue(target || source, fieldName);
+        const filled = withCaretTargets(current);
+        if (filled === current) continue;
+        if (!projected) projected = JSON.parse(JSON.stringify(formData));
+        target = projected;
+        for (const key of pathInfo.path) target = target?.[key];
+        if (target) this.setFieldValueByPath(target, fieldName, filled);
+        this._caretTargetsGiven.add(`${blockUid}|${fieldName}`);
       }
 
       // Reveal: seed a sentinel into each empty inline field of a revealed
@@ -13077,11 +13260,19 @@ export class Bridge {
             if (prevChild && prevChild.type && prevChild.nodeId) {
               const inlineElement = blockElement.querySelector(`[data-node-id="${prevChild.nodeId}"]`);
               if (inlineElement) {
-                // Check if there's already a text node after the inline element
-                const existingTextNode = inlineElement.nextSibling;
-                log('restoreSlateSelection: cursor exit check - inlineElement.nextSibling:', existingTextNode?.nodeType, 'text:', JSON.stringify(existingTextNode?.textContent));
-                if (existingTextNode && existingTextNode.nodeType === Node.TEXT_NODE) {
+                // The text node after the inline: the frontend's own, drawn from
+                // the leaf that follows it (holding a zero-width space when that
+                // leaf is empty — see withCaretTargets). It may sit in a wrapper
+                // (a <span> per leaf), so look past the inline in document order,
+                // not only at its next sibling.
+                const existingTextNode = textNodeAfter(inlineElement);
+                log('restoreSlateSelection: cursor exit check - text node after inline:', JSON.stringify(existingTextNode?.textContent));
+                if (existingTextNode) {
                   const existingText = existingTextNode.textContent.replace(/[\uFEFF\u200B]/g, '');
+                  if (existingText.length === 0) {
+                    log('restoreSlateSelection: cursor exit - caret into the leaf\'s own text node');
+                    return { node: existingTextNode, offset: existingTextNode.textContent.length };
+                  }
                   if (existingText.length > 0) {
                     // There's existing text - prepend ZWS to it and position after the ZWS
                     // This ensures typing modifies this text node rather than creating a new one
@@ -13106,12 +13297,23 @@ export class Bridge {
           if (targetElement && offset === 0) {
             const visibleText = targetElement.textContent.replace(/[\uFEFF\u200B]/g, '');
             if (visibleText === '') {
-              // Empty inline - add ZWS inside and position after it
+              // Track this as the active prospective inline (for handling Chrome's cursor-outside-anchor quirk)
+              this.prospectiveInlineElement = targetElement;
+              // The frontend's own text node, when it drew one — it does whenever
+              // the inline carries a zero-width space (the admin gives a new inline
+              // one, and the render data gives any empty element one). Type into
+              // THAT: a node of ours beside it is one the frontend doesn't know
+              // about, so typed text landed there and its next render drew the text
+              // again beside it.
+              const ownText = caretTargetTextNode(targetElement);
+              if (ownText) {
+                log('restoreSlateSelection: prospective formatting - caret into the inline\'s own text node:', result.nodeId);
+                return { node: ownText, offset: ownText.textContent.length };
+              }
+              // No text node at all - add a ZWS inside and position after it
               const zwsNode = document.createTextNode('\uFEFF');
               targetElement.appendChild(zwsNode);
               log('restoreSlateSelection: prospective formatting - created ZWS inside empty inline:', result.nodeId);
-              // Track this as the active prospective inline (for handling Chrome's cursor-outside-anchor quirk)
-              this.prospectiveInlineElement = targetElement;
               return { node: zwsNode, offset: 1 }; // Position after ZWS
             }
           }
@@ -13733,6 +13935,10 @@ export class Bridge {
     // the field's height stable across unfocused / focused / typing
     // without any host-CSS min-height override.
     field.toggleAttribute('data-empty', isEmpty);
+    // An empty slate field holds a zero-width space (the caret target — see
+    // withCaretTargets), which gives it a line of its own. The placeholder
+    // shares that line instead of adding a second (see the CSS).
+    field.toggleAttribute('data-empty-line', isEmpty && /[\u200B\uFEFF]/.test(field.textContent || ''));
   }
 
   /**
@@ -14591,6 +14797,13 @@ export class Bridge {
            field collapsed to 0px and became unclickable. */
         [data-edit-text][data-placeholder][data-empty]:has(br)::before {
           content: none;
+        }
+        /* An empty slate field holds a zero-width space, the caret target
+           (withCaretTargets): a line of its own, like the <br> above. Keep the
+           placeholder's hint but float it, so it sits on that line instead of
+           adding one above it — the field stays one line tall. */
+        [data-edit-text][data-placeholder][data-empty][data-empty-line]::before {
+          float: left;
         }
         /* Linkable field hover styles - indicate clickable link areas.
            Uses CSS outline (renders outside the box, ignores layout) so the
