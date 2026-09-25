@@ -324,7 +324,9 @@
 
       // Get the text from first child (assuming simple structure for now)
       const textNode = paragraph.children[0];
-      if (!textNode || !textNode.text) {
+      // An empty leaf is still text: Ctrl+B in an empty paragraph formats what
+      // is typed next, as the admin does.
+      if (!textNode || typeof textNode.text !== 'string') {
         console.log('[MOCK_PARENT] applySlateTransform: early return (no textNode or no text)', { textNode: JSON.stringify(textNode) });
         return result;
       }

@@ -13,7 +13,8 @@
  * f7), so the fix is proven wherever the bridge runs — not just the two
  * frontends the admin-integration slash-menu spec covers.
  */
-import { test, expect } from './fixtures';
+import type { Locator } from '@playwright/test';
+import { test, expect, adminText, rendersBold, sendAdminUpdate, textNodesWith, visibleText } from './fixtures';
 
 test.describe('Empty slate typing', () => {
   test('a character typed into an empty slate lands inside the node-id element', async ({
@@ -76,34 +77,17 @@ test.describe('Empty slate typing', () => {
       .toBe(true);
   });
 
-  test('text typed into an empty slate shows once after the next FORM_DATA', async ({
-    helper,
-    page,
-  }) => {
-    // The bridge parks its ZWS caret target in a text node the FRONTEND did not
-    // render (an empty leaf renders no text node in React), and the author's
-    // text is typed into it. Echoes of the edit are not re-rendered, so all
-    // looks right while typing. The admin's next FORM_DATA that changes
-    // anything re-renders the block: a frontend that keeps its DOM between
-    // renders (stable keys) adds its OWN text node for the same text beside the
-    // bridge's, and the field reads the text twice.
-    const block = await helper.clickBlockInIframe('mock-empty-slate', {
-      waitForToolbar: false,
-    });
-    const field = helper.getSlateField(block);
-    const visibleText = () =>
-      field.evaluate((el) => (el.textContent || '').replace(/[\uFEFF\u200B]/g, ''));
-    const textNodesWith = (text: string) =>
-      field.evaluate((el, t) => {
-        const found: string[] = [];
-        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-        let n;
-        while ((n = walker.nextNode())) {
-          if (n.textContent?.includes(t)) found.push(n.textContent);
-        }
-        return found;
-      }, text);
-    // Type once the bridge has parked its caret target (see the test above).
+  // Typed text must survive the admin's NEXT update. The bridge parks its
+  // caret target, or the browser puts the typed text, in a text node the
+  // FRONTEND did not render (React renders an empty leaf as no node at all).
+  // Echoes of the edit are not re-rendered, so everything looks right while
+  // typing; the admin's next FORM_DATA that changes anything re-renders the
+  // block, and a frontend that keeps its DOM between renders (stable keys) adds
+  // its OWN text node beside that one: the text shows twice. Each case starts
+  // from a state with no text node the frontend owns.
+
+  /** Wait until the bridge has parked its caret target inside the empty field. */
+  async function caretParked(field: Locator) {
     await expect
       .poll(() =>
         field.evaluate((el) => {
@@ -116,36 +100,83 @@ test.describe('Empty slate typing', () => {
         }),
       )
       .toBe(true);
-    await page.keyboard.type('Hello');
-    await expect.poll(visibleText).toBe('Hello');
-    expect(await textNodesWith('Hello')).toHaveLength(1);
+  }
 
-    // The admin holds the edit (the bridge sent it)…
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () => (window as any).mockParent.getBlock('mock-empty-slate')?.value?.[0]?.children?.[0]?.text,
-        ),
-      )
-      .toBe('Hello');
-    // …and sends its next FORM_DATA: the edit, plus a change to another block.
-    await page.evaluate(() => {
-      const mockParent = (window as any).mockParent;
-      const data = JSON.parse(JSON.stringify(mockParent.getFormData()));
-      data.blocks['mock-block-1'].value = [
-        { type: 'p', children: [{ text: 'Changed by the admin' }] },
-      ];
-      (document.getElementById('previewIframe') as HTMLIFrameElement).contentWindow!.postMessage(
-        { type: 'FORM_DATA', data, blockPathMap: mockParent.buildBlockPathMap() },
-        '*',
-      );
-    });
-    // The block re-rendered (the other block shows the admin's change)…
-    await expect(helper.getIframe().locator('[data-block-uid="mock-block-1"]')).toContainText(
-      'Changed by the admin',
-    );
-    // …and the typed text is there once.
-    await expect.poll(visibleText).toBe('Hello');
-    expect(await textNodesWith('Hello')).toHaveLength(1);
+  test('text typed into an empty slate shows once after the next FORM_DATA', async ({
+    helper,
+    page,
+  }) => {
+    const block = await helper.clickBlockInIframe('mock-empty-slate', { waitForToolbar: false });
+    const field = helper.getSlateField(block);
+    await caretParked(field);
+    await page.keyboard.type('Hello');
+    await expect.poll(() => visibleText(field)).toBe('Hello');
+    await expect.poll(() => adminText(page, 'mock-empty-slate')).toBe('Hello');
+
+    await sendAdminUpdate(page, helper, 'mock-block-1', 'Changed by the admin');
+    expect(await visibleText(field)).toBe('Hello');
+    expect(await textNodesWith(field, 'Hello')).toHaveLength(1);
+  });
+
+  test('text typed after clearing a slate shows once after the next FORM_DATA', async ({
+    helper,
+    page,
+  }) => {
+    // Clearing the paragraph can take its text node with it; the retyped text
+    // then goes into a node the frontend did not render.
+    const field = await helper.getEditorLocator('mock-block-1', 'value');
+    await field.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('Backspace');
+    await expect.poll(() => visibleText(field)).toBe('');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('');
+    await page.keyboard.type('Fresh');
+    await expect.poll(() => visibleText(field)).toBe('Fresh');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('Fresh');
+
+    await sendAdminUpdate(page, helper, 'mock-empty-slate', 'Changed by the admin');
+    expect(await visibleText(field)).toBe('Fresh');
+    expect(await textNodesWith(field, 'Fresh')).toHaveLength(1);
+  });
+
+  test('bold typed into an empty slate shows once after the next FORM_DATA', async ({
+    helper,
+    page,
+  }) => {
+    // Ctrl+B with nothing selected gives an empty bold inline; the bridge puts its
+    // own caret node in it (ensureZwsPosition), and the text is typed there.
+    // Bold is checked by how it renders (rendersBold), not by markup: each
+    // frontend chooses its own, and the mock's is deliberately non-standard.
+    const block = await helper.clickBlockInIframe('mock-empty-slate', { waitForToolbar: false });
+    const field = helper.getSlateField(block);
+    await caretParked(field);
+    await page.keyboard.press('ControlOrMeta+b');
+    await page.keyboard.type('Bold');
+    await expect.poll(() => visibleText(field)).toBe('Bold');
+    await expect.poll(() => adminText(page, 'mock-empty-slate')).toBe('Bold');
+
+    await sendAdminUpdate(page, helper, 'mock-block-1', 'Changed by the admin');
+    expect(await visibleText(field)).toBe('Bold');
+    expect(await textNodesWith(field, 'Bold')).toHaveLength(1);
+    expect(await rendersBold(field, 'Bold')).toBe(true);
+  });
+
+  test('bold typed at the end of a slate shows once after the next FORM_DATA', async ({
+    helper,
+    page,
+  }) => {
+    const field = await helper.getEditorLocator('mock-block-1', 'value');
+    const before = await visibleText(field);
+    await field.click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('ControlOrMeta+b');
+    await page.keyboard.type(' bold');
+    await expect.poll(() => visibleText(field)).toBe(`${before} bold`);
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe(`${before} bold`);
+
+    await sendAdminUpdate(page, helper, 'mock-empty-slate', 'Changed by the admin');
+    expect(await visibleText(field)).toBe(`${before} bold`);
+    expect(await textNodesWith(field, 'bold')).toHaveLength(1);
+    expect(await rendersBold(field, 'bold')).toBe(true);
   });
 });
