@@ -7,20 +7,12 @@ import BlocksList from "@/components/BlocksList";
 // Bundle the doc-blocks schema bundle so addNodeIdsToAllSlateFields can
 // see e.g. highlight.description as a slate widget — without this the
 // bridge skips assigning data-node-id to slate field nodes.
-import docPageDefinitions from "../../../../../docs/examples/block-definitions.json";
+// One registry for every frontend and the docs: the shared block-schemas file.
+// (Previously merged over a drifting docs/examples/block-definitions.json, which
+// made title/description/leadimage/dateField/eventMetadata render as "Not
+// implemented Block"; that copy is gone now.)
 import { sharedBlocksConfig } from "@test-fixtures/shared-block-schemas.js";
-const docBlocksConfig = {
-  ...Object.fromEntries(
-    Object.values(docPageDefinitions).flatMap((page) => Object.entries(page.blocks)),
-  ),
-  // One registry for every frontend. The doc bundle stays underneath because it
-  // is what generates the block reference pages, but the schemas a frontend
-  // publishes at INIT come from the shared file — the Nuxt example and the mock
-  // test frontend read the same one. Building a separate registry here is why
-  // title, description, leadimage, dateField and eventMetadata rendered as
-  // "Not implemented Block" in this example while working everywhere else.
-  ...sharedBlocksConfig,
-};
+const docBlocksConfig = sharedBlocksConfig;
 
 
 export default function PageClient({ initialData, apiUrl }) {

@@ -8,10 +8,12 @@ import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block
 // them BY that template — never a hardcoded list, so a new example page is
 // covered automatically and a dropped one can't hide. For each, prove the trio
 // is single-source: the "Schema" and "JSON" the reader sees are DERIVED by
-// `source=` selectors from the page's own live instance + the schema registry
-// (the same sharedBlocksConfig the frontends register from), not hand-copied —
-// so what's documented is what renders. Rendering itself is covered by
-// block-sanity; this locks in the single-source property, fast and browser-free.
+// `{literalinclude}` — JSON is a `:as: json` self-slice of the page's own block
+// instance; Schema is a `:jsobject:` slice of the block's definition in the one
+// shared registry (the same sharedBlocksConfig the frontends register from) —
+// not hand-copied, so what's documented is what renders. Rendering itself is
+// covered by block-sanity; this locks in the single-source property, fast and
+// browser-free.
 const TEMPLATE = '/templates/block-reference-layout';
 const DOCS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'docs');
 const schemaFor = schemaRegistryFromBlockDefinitions(sharedBlocksConfig);
@@ -41,29 +43,29 @@ describe('example pages are single-source (discovered by their template)', () =>
     }
   });
 
-  it('derives Schema from the registry via a `source`/`format=schema` selector (not hand-written)', () => {
+  it('derives JSON from the page\'s own live block instance (the thing that renders)', () => {
     for (const [id, page] of examplePages) {
-      const s = codeExamples(page, 'schema')[0];
-      expect(s.source, `${id}: schema slot must be a selector`).toBeTruthy();
-      expect(s.format).toBe('schema');
-      const schema = JSON.parse(s.tabs[0].code); // resolved by readTree; parses
-      expect(Object.keys(schema).length, `${id}: schema not empty`).toBeGreaterThan(0);
-      expect(schemaFor(s.source), `${id}: registry has a schema for ${s.source}`).toBeTruthy();
+      const j = codeExamples(page, 'json-data')[0];
+      const data = JSON.parse(j.tabs[0].code); // `:as: json` self-slice, resolved by readTree
+      // The self-slice decoded a block that lives on THIS page — its @type is a
+      // real block on the page, so the documented JSON is what renders.
+      expect(data['@type'], `${id}: documented instance has a @type`).toBeTruthy();
+      expect(Object.values(page.blocks).some((b) => b['@type'] === data['@type']),
+        `${id}: json is a live block on the page`).toBe(true);
     }
   });
 
-  it('derives JSON from the page\'s own live instance via `source`/`format=json` (the thing that renders)', () => {
+  it('derives Schema from the block\'s definition in the shared registry (not hand-written)', () => {
     for (const [id, page] of examplePages) {
-      const j = codeExamples(page, 'json-data')[0];
-      expect(j.source, `${id}: json slot must be a selector`).toBeTruthy();
-      expect(j.format).toBe('json');
-      const data = JSON.parse(j.tabs[0].code); // resolved from the live instance
-      // The selector points at a block on THIS page (uid or @type) — that block
-      // exists (readTree would have thrown otherwise) and its data has a @type.
-      expect(data['@type'], `${id}: documented instance has a @type`).toBeTruthy();
-      const byType = Object.values(page.blocks).some((b) => b['@type'] === j.source);
-      const byUid = !!page.blocks[j.source];
-      expect(byType || byUid, `${id}: source "${j.source}" resolves to a live block`).toBe(true);
+      const type = JSON.parse(codeExamples(page, 'json-data')[0].tabs[0].code)['@type'];
+      const code = codeExamples(page, 'schema')[0].tabs[0].code; // `:jsobject:` slice, resolved
+      // It is THIS block's definition, sliced from the one registry: the slice
+      // opens with the block key and carries its blockSchema, and the registry
+      // has a schema for the same type.
+      expect(code, `${id}: schema slot resolved`).toBeTruthy();
+      expect(code).toContain(`${type}: {`);
+      expect(code).toContain('blockSchema');
+      expect(schemaFor(type), `${id}: registry has a schema for ${type}`).toBeTruthy();
     }
   });
 });

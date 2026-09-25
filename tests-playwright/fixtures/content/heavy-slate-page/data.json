@@ -2843,6 +2843,7 @@
     },
     "tpl-heavy-header": {
       "@type": "slate",
+      "slotId": "header",
       "value": [
         {
           "type": "p",
@@ -2860,6 +2861,8 @@
     },
     "tpl-heavy-user-1": {
       "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
       "value": [
         {
           "type": "p",
@@ -2876,6 +2879,7 @@
     },
     "tpl-heavy-footer": {
       "@type": "slate",
+      "slotId": "footer",
       "value": [
         {
           "type": "p",

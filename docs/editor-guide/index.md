@@ -23,11 +23,17 @@ rights: ""
 subjects:
   - editing
 title: Editor Guide
+order:
+  - selecting-blocks
+  - editing-text
+  - links-and-media
+  - adding-and-moving-blocks
+  - containers
+  - templates-and-layouts
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
@@ -43,13 +49,6 @@ blocks-tagged: |
       </block>
     </region>
   </block>
-order:
-  - selecting-blocks
-  - editing-text
-  - links-and-media
-  - adding-and-moving-blocks
-  - containers
-  - templates-and-layouts
 ---
 
 # Editor Guide
@@ -98,7 +97,7 @@ A **Settings** button at the bottom of the panel manages the saved URLs (add, re
 
 <block type="image">
 
-![Frontend switcher panel — Viewport section with Mobile/Tablet/Desktop, Frontend section listing four saved frontends, Settings button at the bottom.](/docs/images/frontend-switcher.png)
+![Frontend switcher panel — Viewport section with Mobile/Tablet/Desktop, Frontend section listing four saved frontends, Settings button at the bottom.](../images/frontend-switcher.png)
 
 </block>
 
@@ -133,7 +132,7 @@ On narrow screens (≤767 px) the editor reshapes into a two-bar layout: the **Q
 
 <block type="image">
 
-![Mobile editing — Quanta toolbar pinned at the top with chevrons and format buttons, a slate block selected mid-screen with its selection outline, and the compact main toolbar at the bottom.](/docs/images/mobile-block-selected.png)
+![Mobile editing — Quanta toolbar pinned at the top with chevrons and format buttons, a slate block selected mid-screen with its selection outline, and the compact main toolbar at the bottom.](../images/mobile-block-selected.png)
 
 </block>
 
@@ -143,7 +142,7 @@ The `⋯` menu — and every other contextual chooser (block-type picker, fronte
 
 <block type="image">
 
-![Mobile ⋯ menu as a slide-up bottom sheet showing Settings, Make Template, Copy, Cut, Remove with a back arrow at the bottom-left and the canvas dimmed behind it.](/docs/images/mobile-dropdown-menu.png)
+![Mobile ⋯ menu as a slide-up bottom sheet showing Settings, Make Template, Copy, Cut, Remove with a back arrow at the bottom-left and the canvas dimmed behind it.](../images/mobile-dropdown-menu.png)
 
 </block>
 
@@ -153,7 +152,7 @@ A side panel is impossible on a 375 px screen. Instead, opening the sidebar (via
 
 <block type="image">
 
-![Mobile sidebar as a full-screen sheet showing the Page header with an X close button, the DEFAULT section open with Title and Summary fields, and the DATES section below.](/docs/images/mobile-sidebar-fullscreen.png)
+![Mobile sidebar as a full-screen sheet showing the Page header with an X close button, the DEFAULT section open with Title and Summary fields, and the DATES section below.](../images/mobile-sidebar-fullscreen.png)
 
 </block>
 
@@ -163,7 +162,7 @@ Phones don't have an `Escape` key. To walk back up out of a nested block (a teas
 
 <block type="image">
 
-![Mobile Quanta toolbar with a nested teaser selected — the ⬆ select-parent button is visible to the left of ⋯, and the teaser's grid parent is highlighted with a dashed selection outline.](/docs/images/mobile-select-parent.png)
+![Mobile Quanta toolbar with a nested teaser selected — the ⬆ select-parent button is visible to the left of ⋯, and the teaser's grid parent is highlighted with a dashed selection outline.](../images/mobile-select-parent.png)
 
 </block>
 

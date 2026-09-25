@@ -5,6 +5,24 @@
  * Single source of truth — prevents schema drift between frontends.
  */
 
+const calloutIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 5a1.25 1.25 0 110 2.5A1.25 1.25 0 0112 7zm1.5 10h-3v-1.5h.75V12h-.75v-1.5h2.25V15.5h.75V17z"/></svg>';
+const heroIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+const columnsIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="2" y="3" width="8" height="18" rx="1"/><rect x="14" y="3" width="8" height="18" rx="1"/></svg>';
+const columnIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1"/></svg>';
+const sectionIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>';
+const contextNavigationIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h14M3 12h10M3 18h14"/></svg>';
+const navItemIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 12h14m-6-6 6 6-6 6"/></svg>';
+const sliderIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="8" cy="18" r="1.5"/><circle cx="12" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg>';
+const slideIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>';
+const tabIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><rect x="3" y="3" width="7" height="4" rx="1"/></svg>';
+const accordionIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>';
+const codeExampleIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
+const teaserIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>';
+const formIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 4h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm0 4h10v2H4z"/></svg>';
+const highlightIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2l3 6 6 .75-4.5 4.25L18 20l-6-3-6 3 1.5-7L3 8.75 9 8z"/></svg>';
+
+// Block icons hoisted to named consts so a docs literalinclude of a block
+// definition reads `icon: <name>Icon`, not a wall of inline SVG.
 export const sharedBlocksConfig = {
     // A labelled admonition box (note / tip / warning / important). The level is
     // the block's `variation`; the body is a slate value. Mirrors the myst
@@ -13,7 +31,7 @@ export const sharedBlocksConfig = {
     callout: {
         id: 'callout',
         title: 'Callout',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 5a1.25 1.25 0 110 2.5A1.25 1.25 0 0112 7zm1.5 10h-3v-1.5h.75V12h-.75v-1.5h2.25V15.5h.75V17z"/></svg>',
+        icon: calloutIcon,
         group: 'text',
         // The body is a region of child blocks (a blocks_layout field named
         // `items`), so it holds real markdown — multiple paragraphs, lists, code —
@@ -85,7 +103,7 @@ export const sharedBlocksConfig = {
     hero: {
         id: 'hero',
         title: 'Hero',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>',
+        icon: heroIcon,
         group: 'common',
         mostUsed: true,
         blockSchema: {
@@ -152,7 +170,7 @@ export const sharedBlocksConfig = {
     columns: {
         id: 'columns',
         title: 'Columns',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="2" y="3" width="8" height="18" rx="1"/><rect x="14" y="3" width="8" height="18" rx="1"/></svg>',
+        icon: columnsIcon,
         group: 'common',
         // Ancestor restriction: no `columns` anywhere in a columns block's subtree,
         // even though a nested `column` cell otherwise allows it. Exercises
@@ -186,7 +204,7 @@ export const sharedBlocksConfig = {
     column: {
         id: 'column',
         title: 'Column',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1"/></svg>',
+        icon: columnIcon,
         group: 'common',
         blockSchema: {
             fieldsets: [
@@ -225,7 +243,7 @@ export const sharedBlocksConfig = {
     section: {
         id: 'section',
         title: 'Section',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>',
+        icon: sectionIcon,
         group: 'common',
         blockSchema: {
             fieldsets: [
@@ -246,7 +264,7 @@ export const sharedBlocksConfig = {
     contextNavigation: {
         id: 'contextNavigation',
         title: 'Context Navigation',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h14M3 12h10M3 18h14"/></svg>',
+        icon: contextNavigationIcon,
         group: 'common',
         blockSchema: {
             fieldsets: [
@@ -298,7 +316,7 @@ export const sharedBlocksConfig = {
     navItem: {
         id: 'navItem',
         title: 'Nav link',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 12h14m-6-6 6 6-6 6"/></svg>',
+        icon: navItemIcon,
         group: 'common',
         restricted: true,
         blockSchema: {
@@ -335,7 +353,7 @@ export const sharedBlocksConfig = {
     slider: {
         id: 'slider',
         title: 'Slider',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="8" cy="18" r="1.5"/><circle cx="12" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg>',
+        icon: sliderIcon,
         group: 'common',
         schemaEnhancer: {
             inheritSchemaFrom: {
@@ -389,7 +407,7 @@ export const sharedBlocksConfig = {
     slide: {
         id: 'slide',
         title: 'Slide',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>',
+        icon: slideIcon,
         group: 'common',
         mostUsed: true,
         restricted: true, // Only used inside slider's typed object_list
@@ -436,7 +454,7 @@ export const sharedBlocksConfig = {
     tab: {
         id: 'tab',
         title: 'Tab',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><rect x="3" y="3" width="7" height="4" rx="1"/></svg>',
+        icon: tabIcon,
         group: 'common',
         restricted: true, // Only used inside codeExample's typed object_list
         blockSchema: {
@@ -450,11 +468,28 @@ export const sharedBlocksConfig = {
             required: [],
         },
     },
+    // An accordion panel — the typed item of accordion's `panels` object_list
+    // (restricted, like tab inside codeExample / socialLink inside socialLinks).
+    // A panel is a title plus a content area (`items` blocks_layout).
+    panel: {
+        id: 'panel',
+        title: 'Panel',
+        group: 'common',
+        restricted: true, // Only used inside accordion's typed object_list
+        blockSchema: {
+            fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'items'] }],
+            properties: {
+                title: { title: 'Title', type: 'string' },
+                items: { title: 'Content', widget: 'blocks_layout', defaultBlockType: 'slate' },
+            },
+            required: [],
+        },
+    },
     // Accordion block — panels as object_list items, each with title + content blocks
     accordion: {
         id: 'accordion',
         title: 'Accordion',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>',
+        icon: accordionIcon,
         group: 'common',
         blockSchema: {
             properties: {
@@ -727,7 +762,7 @@ export const sharedBlocksConfig = {
     codeExample: {
         id: 'codeExample',
         title: 'Code Example',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+        icon: codeExampleIcon,
         group: 'common',
         blockSchema: {
             fieldsets: [
@@ -1055,7 +1090,7 @@ export const sharedBlocksConfig = {
             '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
         },
         title: 'Teaser',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>',
+        icon: teaserIcon,
         group: 'common',
         // Mirrors Volto's own teaser schema (core Teaser/schema.js), because a
         // fixture blockSchema WINS over the admin's. A PARTIAL copy is what
@@ -1172,7 +1207,7 @@ export const sharedBlocksConfig = {
     form: {
         id: 'form',
         title: 'Form',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 4h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm0 4h10v2H4z"/></svg>',
+        icon: formIcon,
         group: 'common',
         blockSchema: {
             fieldsets: [
@@ -1955,6 +1990,19 @@ export const sharedBlocksConfig = {
         required: [],
       },
     },
+    // A single social link — the typed item of socialLinks' `links` object_list
+    // (restricted, like tab inside codeExample). Its `url` is a plain string.
+    socialLink: {
+      id: 'socialLink',
+      title: 'Social link',
+      group: 'common',
+      restricted: true, // Only used inside socialLinks' typed object_list
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['url'] }],
+        properties: { url: { title: 'URL', widget: 'url' } },
+        required: [],
+      },
+    },
     // The placeholder a container seeds into an empty region. Registered so it
     // is not reported as unimplemented; it has nothing to edit.
     empty: {
@@ -1975,7 +2023,7 @@ export const sharedBlocksConfig = {
     highlight: {
         id: 'highlight',
         title: 'Highlight',
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2l3 6 6 .75-4.5 4.25L18 20l-6-3-6 3 1.5-7L3 8.75 9 8z"/></svg>',
+        icon: highlightIcon,
         group: 'common',
         blockSchema: {
             properties: {

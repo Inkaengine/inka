@@ -25,11 +25,6 @@ subjects:
 title: Templates & Layouts
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-  <block type="callout">
-    <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-    </region>
-  </block>
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
@@ -38,6 +33,11 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
+  <block type="callout">
+    <region name="items" widget="blocks_layout">
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+    </region>
+  </block>
   <block type="slateTable">
     <region name="table.rows">
       <block type="row">

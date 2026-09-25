@@ -176,12 +176,16 @@ export function buildQuerystringSearchBody(
     // Clone to avoid mutations
     query = [...queryConfig.query];
   } else {
-    // Default: relative path "." = current context's children
+    // Default: the context's CONTENTS — its direct children (`.::1`), which is
+    // what Volto shows for a listing with no criteria. `.` alone is the whole
+    // subtree: a converted LECC page listed 25 items (every language folder's
+    // sub-pages) where the source listed its 7 languages. A listing that sets
+    // its own `depth` keeps it (applied below).
     query = [
       {
         i: 'path',
         o: 'plone.app.querystring.operation.string.relativePath',
-        v: '.',
+        v: queryConfig?.depth !== undefined ? '.' : '.::1',
       },
     ];
   }
@@ -890,7 +894,16 @@ async function fetchQuerystringSearch(url, headers, payload) {
   if (running) return running;
   const started = (async () => {
     const res = await fetch(url, { method: 'POST', headers, body: payload });
-    return res.json();
+    const data = await res.json();
+    // An error answer has no `items`, and read as data it is an empty page:
+    // a stock Plone 6.2 rejecting an operation it lacks (400 "Invalid query.")
+    // showed "No results found" for every search, with nothing logged.
+    if (!res.ok) {
+      throw new Error(
+        `@querystring-search ${url} answered ${res.status}: ${data?.message ?? ''}`,
+      );
+    }
+    return data;
   })().finally(() => {
     inFlightSearches.delete(key);
   });

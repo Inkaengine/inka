@@ -35,13 +35,30 @@ A consent banner and a preferences dialog, written by one block. It is the worke
 
 ## Live example
 
-<block type="cookieConsent" analyticsPurpose="Counts visits and pages, so we can see what is worth improving. Never used to identify you." data-json='{"message":[{"type":"p","children":[{"text":"We use essential cookies to make this site work, and analytics cookies to see how it is used."}]}]}' />
+<block type="cookieConsent" data-json='{"analyticsPurpose":"Counts visits and pages, so we can see what is worth improving. Never used to identify you.","message":[{"type":"p","children":[{"text":"We use essential cookies to make this site work, and analytics cookies to see how it is used."}]}]}' />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="cookieConsent" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="cookieConsent" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: cookieConsent
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./cookie-consent.md
+:block: cookieConsent
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

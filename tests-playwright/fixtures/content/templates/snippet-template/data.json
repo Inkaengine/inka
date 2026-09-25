@@ -23,6 +23,7 @@
     },
     "snippet-content": {
       "@type": "slate",
+      "fixed": false,
       "templateId": "resolveuid/snippet-template-uid",
       "templateInstanceId": "snippet-def-instance",
       "slotId": "snippet-body",
