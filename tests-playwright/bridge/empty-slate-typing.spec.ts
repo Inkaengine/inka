@@ -219,4 +219,34 @@ test.describe('Empty slate typing', () => {
     }
     expect(await rendersBold(field, 'bold')).toBe(true);
   });
+
+  test('text typed after toggling bold off shows once after the next FORM_DATA', async ({
+    helper,
+    page,
+  }) => {
+    // Toggling bold off with the caret inside it moves the caret to the text
+    // leaf after the inline — empty at the end of a line, so the frontend drew no
+    // node for it, and the bridge made one (the cursor-exit case). Text typed
+    // there showed again beside it on the next render.
+    const field = await helper.getEditorLocator('mock-block-1', 'value');
+    const before = await visibleText(field);
+    await field.click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('ControlOrMeta+b');
+    await page.keyboard.type(' bold');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe(`${before} bold`);
+    await page.keyboard.press('ControlOrMeta+b');
+    await page.keyboard.type(' normal');
+    await expect.poll(() => visibleText(field)).toBe(`${before} bold normal`);
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe(`${before} bold normal`);
+
+    await sendAdminUpdate(page, helper, 'mock-empty-slate', 'Changed by the admin');
+    expect(await visibleText(field)).toBe(`${before} bold normal`);
+    {
+      const nodes = await textNodesWith(field, 'normal');
+      expect(nodes.found, `text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+    }
+    expect(await rendersBold(field, 'bold')).toBe(true);
+    expect(await rendersBold(field, 'normal')).toBe(false);
+  });
 });

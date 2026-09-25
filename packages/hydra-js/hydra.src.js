@@ -49,16 +49,27 @@ import { isStyleAllowed } from './slateStyles.js';
 export function withCaretTargets(nodes) {
   if (!Array.isArray(nodes)) return nodes;
   let changed = false;
+  const isEmptyLeaf = (c) => typeof c?.text === 'string' && c.text === '';
+  const isInline = (c) => !!c && typeof c.text !== 'string' && Array.isArray(c.children);
   const out = nodes.map((node) => {
     const children = node?.children;
     if (!Array.isArray(children) || children.length === 0) return node;
-    if (children.every((c) => typeof c?.text === 'string' && c.text === '')) {
+    if (children.every(isEmptyLeaf)) {
       changed = true;
       return { ...node, children: [{ ...children[0], text: '\u200B' }, ...children.slice(1)] };
     }
-    const filled = withCaretTargets(children);
-    if (filled === children) return node;
-    changed = true;
+    // An empty leaf beside an inline (Slate keeps one each side of it — the one
+    // after bold that has been toggled off, the one before bold at the start of
+    // a line) is where the caret goes, and draws no node either.
+    let kids = children.map((c, i) =>
+      isEmptyLeaf(c) && (isInline(children[i - 1]) || isInline(children[i + 1]))
+        ? { ...c, text: '\u200B' }
+        : c,
+    );
+    if (kids.some((c, i) => c !== children[i])) changed = true;
+    const filled = withCaretTargets(kids);
+    if (filled !== kids) changed = true;
+    else if (kids.every((c, i) => c === children[i])) return node;
     return { ...node, children: filled };
   });
   return changed ? out : nodes;
@@ -73,6 +84,25 @@ export function withCaretTargets(nodes) {
  * anchors) — typing into one of those leaves the leaf's real node untouched, and
  * the next render draws the text again beside it.
  */
+/**
+ * The first text node after `element` in document order, within the nearest
+ * data-node-id element around it (its line) — the node drawn for the leaf that
+ * follows an inline, wherever the frontend wraps it. Empty text nodes are
+ * skipped: frameworks leave them as anchors (Vue fragments, Svelte blocks) and
+ * they are no leaf's text. Null when there is none.
+ */
+export function textNodeAfter(element) {
+  const line = element.parentElement?.closest('[data-node-id]') || element.parentElement;
+  if (!line) return null;
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    if (element.contains(node) || node.textContent.length === 0) continue;
+    if (element.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) return node;
+  }
+  return null;
+}
+
 export function caretTargetTextNode(element) {
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
   let first = null;
@@ -6011,11 +6041,14 @@ export class Bridge {
     }
 
     // BOM/ZWS-only text nodes inside wrapper elements without data-node-id
-    // are invalid. This catches nextjs BOM spans (<span>﻿</span>) inside a
-    // valid data-node-id ancestor. But ZWS nodes that are DIRECT children
-    // of a data-node-id element (cursor exit positioning) are valid.
+    // are invalid — a node the frontend drew beside the leaf's own. But ZWS
+    // nodes that are DIRECT children of a data-node-id element (cursor exit
+    // positioning) are valid, and so is a leaf's own text node holding the
+    // zero-width space the render data gives an empty leaf (withCaretTargets),
+    // whatever the frontend wraps it in: that IS where the caret belongs.
     const visibleText = node.textContent?.replace(/[\uFEFF\u200B\s]/g, '');
-    if (visibleText === '' && node.parentElement && !node.parentElement.hasAttribute?.('data-node-id')) {
+    const isLeafCaretTarget = node.textContent?.includes('\u200B') && !!node.parentElement?.closest('[data-node-id]');
+    if (visibleText === '' && !isLeafCaretTarget && node.parentElement && !node.parentElement.hasAttribute?.('data-node-id')) {
       return true;
     }
 
@@ -13227,11 +13260,19 @@ export class Bridge {
             if (prevChild && prevChild.type && prevChild.nodeId) {
               const inlineElement = blockElement.querySelector(`[data-node-id="${prevChild.nodeId}"]`);
               if (inlineElement) {
-                // Check if there's already a text node after the inline element
-                const existingTextNode = inlineElement.nextSibling;
-                log('restoreSlateSelection: cursor exit check - inlineElement.nextSibling:', existingTextNode?.nodeType, 'text:', JSON.stringify(existingTextNode?.textContent));
-                if (existingTextNode && existingTextNode.nodeType === Node.TEXT_NODE) {
+                // The text node after the inline: the frontend's own, drawn from
+                // the leaf that follows it (holding a zero-width space when that
+                // leaf is empty — see withCaretTargets). It may sit in a wrapper
+                // (a <span> per leaf), so look past the inline in document order,
+                // not only at its next sibling.
+                const existingTextNode = textNodeAfter(inlineElement);
+                log('restoreSlateSelection: cursor exit check - text node after inline:', JSON.stringify(existingTextNode?.textContent));
+                if (existingTextNode) {
                   const existingText = existingTextNode.textContent.replace(/[\uFEFF\u200B]/g, '');
+                  if (existingText.length === 0) {
+                    log('restoreSlateSelection: cursor exit - caret into the leaf\'s own text node');
+                    return { node: existingTextNode, offset: existingTextNode.textContent.length };
+                  }
                   if (existingText.length > 0) {
                     // There's existing text - prepend ZWS to it and position after the ZWS
                     // This ensures typing modifies this text node rather than creating a new one
