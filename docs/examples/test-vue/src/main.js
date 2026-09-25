@@ -10,7 +10,7 @@ import App from './App.vue';
 window.expandListingBlocks = expandListingBlocks;
 window.expandTemplatesSync = expandTemplatesSync;
 window.ploneFetchItems = ploneFetchItems;
-window._API_URL = 'http://localhost:8888';
+window._API_URL = __HYDRA_API_URL__; // from HYDRA_MOCK_API_PORT (vite.config.js)
 window._contentPath = (url) => contentPath(url, window._API_URL);
 
 const state = reactive({ items: [], content: {} });
