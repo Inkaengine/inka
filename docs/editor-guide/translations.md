@@ -25,6 +25,7 @@ title: Translations
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
+  <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 ---
 
 # Translations
@@ -36,6 +37,12 @@ Each language is a tree of its own: the site has a folder per language (for exam
 ## Seeing a page's translations
 
 Open **Manage translations** from the toolbar's **More** menu. It lists every language the site has, and for each one either the translation of this page or a way to make one.
+
+<block type="image">
+
+![Manage translations for an English page with no German translation yet. The table lists each language; the Deutsch row offers a link to translate the page, and a Link button to pick an existing page.](../images/translations-manage.png)
+
+</block>
 
 ## Making a translation
 
@@ -52,6 +59,12 @@ Some fields are the same in every language — the page's tags, for example. The
 
 While editing a page that has a translation, the editor offers a button for each of the page's other languages. Choose one and it opens beside the page you are editing, drawn by the same frontend, so you can translate while reading the original.
 
+<block type="image">
+
+![A new German translation being edited, with its English original open beside it. A teaser is selected in the German page, and the same teaser is shown in the English pane.](../images/translations-side-by-side.png)
+
+</block>
+
 The other language is for reading only:
 
 - Selecting it shows its fields in the sidebar, read only.
@@ -67,5 +80,11 @@ A translation keeps a record of where each copied block came from, so Inka can t
 - **Out of date** — the original has changed since this block was translated.
 
 A container shows how many of the blocks inside it are untranslated or out of date, so you can find them without opening each one. You do not need the other language open to see these markers; they are there as soon as you open the page.
+
+<block type="image">
+
+![The sidebar section for a grid container on a new translation, marked with a count of 2 untranslated blocks inside it.](../images/translations-markers.png)
+
+</block>
 
 An out-of-date marker clears when you do the work: update the block to match the original and save. The record of that is kept in the page's content, so the marker stays cleared for everyone.

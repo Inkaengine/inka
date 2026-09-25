@@ -457,3 +457,82 @@ test.describe('Editor Guide screenshots', () => {
   });
 });
 
+
+/**
+ * Translations (editor-guide/translations.md). The same states the multilingual
+ * spec asserts — /en/services has no German translation yet, so there is one
+ * to make — reached the same way: from the toolbar, on a multilingual site.
+ */
+async function fromMoreMenu(page: import('@playwright/test').Page, entry: RegExp) {
+  await page.locator('#toolbar-body .more').click();
+  const link = page.getByRole('link', { name: entry });
+  await expect(link).toBeVisible({ timeout: 10000 });
+  await link.click();
+}
+
+test.describe('Editor Guide screenshots: translations', () => {
+  test('translations-manage — the page\'s languages, with translate and link', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    const table = page.locator('#page-manage-translations table');
+    await expect(
+      table.locator('tbody tr', { hasText: /deutsch/i }).locator('a[href$="/create-translation"]'),
+    ).toBeVisible({ timeout: 15000 });
+
+    const file = path.join(OUT_DIR, 'translations-manage.png');
+    await table.screenshot({ path: file });
+    console.log(`[screenshot] translations-manage -> ${path.relative(process.cwd(), file)}`);
+  });
+
+  test('translations-side-by-side + translations-markers — a new translation beside its original', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    // Translate /en/services: its blocks are copies nobody has translated yet.
+    await page.goto(`${helper.adminUrl}/en/services`);
+    await fromMoreMenu(page, /manage translations/i);
+    await page
+      .locator('#page-manage-translations tbody tr', { hasText: /deutsch/i })
+      .locator('a[href$="/create-translation"]')
+      .click();
+    await page.locator('#page-add #field-title').fill('Dienstleistungen');
+    await page.locator('#toolbar-save').click();
+    await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+
+    // Open the English original beside it and select a copied teaser.
+    const compare = page.locator('.compare-languages');
+    await expect(compare).toBeVisible({ timeout: 20000 });
+    await compare.getByRole('button', { name: 'en' }).click();
+    await expect(
+      page.frameLocator('#translationSourceIframe').locator('body'),
+    ).toContainText('We design in English.', { timeout: 20000 });
+    const teaser = helper
+      .getIframe()
+      .locator('[data-block-uid]')
+      .filter({ hasText: 'We design in English.' })
+      .last();
+    await expect(teaser).toBeVisible({ timeout: 20000 });
+    await expect(helper.getIframe().locator('[data-node-id]').first()).toBeAttached({ timeout: 20000 });
+    await teaser.click();
+
+    const marker = page
+      .locator('.parent-block-section')
+      .filter({ hasText: 'GridBlock' })
+      .locator('.nested-status[data-nested-status="untranslated"]');
+    await expect(marker.first()).toHaveAttribute('data-nested-count', '2', { timeout: 10000 });
+
+    await snap(page, 'translations-side-by-side');
+
+    // Tight on the container's section of the sidebar, where the marker is.
+    const section = page.locator('.parent-block-section').filter({ hasText: 'GridBlock' }).first();
+    await section.evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    const file = path.join(OUT_DIR, 'translations-markers.png');
+    await section.screenshot({ path: file });
+    console.log(`[screenshot] translations-markers -> ${path.relative(process.cwd(), file)}`);
+  });
+});

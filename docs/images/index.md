@@ -111,6 +111,15 @@ blobs:
   - file: template-locked.png
     uid: docs-images-template-locked-001
     id: template-locked.png
+  - file: translations-manage.png
+    uid: docs-images-translations-manage-001
+    id: translations-manage.png
+  - file: translations-markers.png
+    uid: docs-images-translations-markers-001
+    id: translations-markers.png
+  - file: translations-side-by-side.png
+    uid: docs-images-translations-side-by-side-001
+    id: translations-side-by-side.png
   - file: toc-edit.png
     uid: docs-images-toc-edit-001
     id: toc-edit.png
