@@ -142,8 +142,18 @@ const examplesEsbuildPlugin = {
   },
 };
 
+// The mock API this frontend talks to, from the same HYDRA_MOCK_API_PORT as
+// tests-playwright/ports.ts — no default, for the same reason: a checkout that
+// fell back to 8888 would fetch from another checkout's mock API.
+const mockApiPort = process.env.HYDRA_MOCK_API_PORT;
+if (!mockApiPort) {
+  throw new Error('HYDRA_MOCK_API_PORT must be set (tests-playwright/ports.ts has no defaults)');
+}
+const HYDRA_API_URL = JSON.stringify(`http://localhost:${mockApiPort}`);
+
 export default defineConfig({
   plugins: [react(), reactExamplesPlugin()],
+  define: { __HYDRA_API_URL__: HYDRA_API_URL },
   optimizeDeps: {
     esbuildOptions: { plugins: [examplesEsbuildPlugin] },
   },
