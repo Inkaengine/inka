@@ -91,30 +91,40 @@ test.describe('Caret sync after the admin places the caret', () => {
     helper,
     page,
   }) => {
-    // Needs a frontend whose render lands late: the test frontend's
-    // renderDelayMs hook. The example frontends render at once, so there the
+    // Needs a frontend whose render can be held: the test frontend's
+    // renderGate hook. The example frontends render at once, so there the
     // placement is done before anything else can happen.
     const field = await helper.getEditorLocator(BLOCK, 'value');
     await startRecording(page, field);
+    const gated = await field.evaluate((el) => !!(el.ownerDocument.defaultView as any).supportsRenderGate);
 
     await adminPlacesCaret(page, 'First text', 2);
     await caretLandsAfter(helper, field, 'Fi');
 
-    // The next placement's render lands late. Meanwhile the caret moves with
-    // no author input — what a re-render does to it. That is not news to the
-    // admin, however long the render takes.
-    await field.evaluate((el) => { (el.ownerDocument.defaultView as any).renderDelayMs = 600; });
-    await adminPlacesCaret(page, 'Second text', 4);
-    // Past the point the bridge used to stop holding caret moves back (100ms
-    // after the previous restore), while this render is still to come.
-    await page.waitForTimeout(250);
-    const renderStillComing = await field.evaluate((el) => (el.textContent || '').includes('First text'));
-    if (test.info().project.name === 'mock') expect(renderStillComing).toBe(true);
-    if (renderStillComing) await moveCaretQuietly(field, 1);
+    if (gated) {
+      // Hold the next placement's render. While it is held, move the caret
+      // with no author input — what a re-render does to it. That is not news
+      // to the admin.
+      await field.evaluate((el) => {
+        const w = el.ownerDocument.defaultView as any;
+        w.renderGate = new Promise<void>((resolve) => (w.releaseRender = resolve));
+      });
+      await adminPlacesCaret(page, 'Second text', 4);
+      await expect
+        .poll(() => field.evaluate((el) => !!(el.ownerDocument.defaultView as any).renderWaiting))
+        .toBe(true);
+      await moveCaretQuietly(field, 1);
+      await field.evaluate((el) => {
+        const w = el.ownerDocument.defaultView as any;
+        w.renderGate = null;
+        w.releaseRender();
+      });
+    } else {
+      await adminPlacesCaret(page, 'Second text', 4);
+    }
 
     await expect(field).toContainText('Second text');
     await caretLandsAfter(helper, field, 'Seco');
     expect(await reportedOffsets(page)).not.toContain(1);
-    await field.evaluate((el) => { (el.ownerDocument.defaultView as any).renderDelayMs = 0; });
   });
 });

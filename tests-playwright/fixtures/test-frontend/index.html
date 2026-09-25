@@ -207,12 +207,17 @@
 
         // Render content, expanding top-level listings
         // Container renderers (like renderGridBlock) call window._expandListingBlocks for nested content
+        window.supportsRenderGate = true;
         async function renderContentWithListings(content) {
             const myGeneration = ++window._renderGeneration;
-            // Test hook: a slow frontend (one fetching data, a heavy framework).
-            // A test sets window.renderDelayMs to make each render land later.
-            if (window.renderDelayMs) {
-                await new Promise((resolve) => setTimeout(resolve, window.renderDelayMs));
+            // Test hook: a render that lands only when the test says (a slow
+            // frontend, on cue rather than on a timer). A test sets
+            // window.renderGate to a promise; the render waits on it, with
+            // window.renderWaiting set meanwhile.
+            if (window.renderGate) {
+                window.renderWaiting = true;
+                await window.renderGate;
+                window.renderWaiting = false;
             }
 
             // ONE shared template-merge state for the WHOLE page render — created by the
