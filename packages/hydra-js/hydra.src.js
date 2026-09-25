@@ -13935,6 +13935,10 @@ export class Bridge {
     // the field's height stable across unfocused / focused / typing
     // without any host-CSS min-height override.
     field.toggleAttribute('data-empty', isEmpty);
+    // An empty slate field holds a zero-width space (the caret target — see
+    // withCaretTargets), which gives it a line of its own. The placeholder
+    // shares that line instead of adding a second (see the CSS).
+    field.toggleAttribute('data-empty-line', isEmpty && /[\u200B\uFEFF]/.test(field.textContent || ''));
   }
 
   /**
@@ -14793,6 +14797,13 @@ export class Bridge {
            field collapsed to 0px and became unclickable. */
         [data-edit-text][data-placeholder][data-empty]:has(br)::before {
           content: none;
+        }
+        /* An empty slate field holds a zero-width space, the caret target
+           (withCaretTargets): a line of its own, like the <br> above. Keep the
+           placeholder's hint but float it, so it sits on that line instead of
+           adding one above it — the field stays one line tall. */
+        [data-edit-text][data-placeholder][data-empty][data-empty-line]::before {
+          float: left;
         }
         /* Linkable field hover styles - indicate clickable link areas.
            Uses CSS outline (renders outside the box, ignores layout) so the
