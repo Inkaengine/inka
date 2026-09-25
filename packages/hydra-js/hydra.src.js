@@ -11920,7 +11920,12 @@ export class Bridge {
    * (`../x`) paths belong to other blocks and are left out.
    */
   _editableFieldsOnCanvas(blockUid) {
-    const el = this.queryBlockElement(blockUid);
+    // No DOM (a server render, a unit test): nothing is on a canvas.
+    if (typeof document === 'undefined') return [];
+    // A plain lookup, not queryBlockElement: that one materializes hydra
+    // comments when a block has no element, rewriting the DOM from what is only
+    // a read — and this runs at every DOM settle, for every block in the map.
+    const el = document.querySelector(`[data-block-uid="${CSS.escape(blockUid)}"]`);
     if (!el) return [];
     return Object.keys(this.getEditableFields(el)).filter(
       (name) => !name.startsWith('/') && !name.startsWith('.'),
