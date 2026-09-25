@@ -4,6 +4,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:test": "vite --port 3005 --strictPort"
+    "dev:test": "vite --port ${HYDRA_SVELTE_DOC_PORT:?HYDRA_SVELTE_DOC_PORT must be set (tests-playwright/ports.ts has no defaults)} --strictPort"
   }
 }
