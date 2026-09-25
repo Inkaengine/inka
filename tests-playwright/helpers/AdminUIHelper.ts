@@ -3974,13 +3974,20 @@ export class AdminUIHelper {
         // were none in the DOM for the old selector; callers poll for a count.
         const map = (window as any).__hydraBridge?.blockPathMap;
         if (!map) return [];
+        // A block still in the DOM that the map no longer has (just removed,
+        // the frontend not yet re-rendered) is still on the page: it counts as
+        // main content until the frontend takes it away. The map updates before
+        // the render, so dropping it here would let a caller waiting for "one
+        // block fewer" move on mid-render — the old `main` selector waited for
+        // the DOM, and so does this.
         const inRegion = (uid: string) => {
           let entry = map[uid];
+          if (!entry) return region === 'items';
           for (let hops = 0; entry && hops < 100; hops++) {
             if (entry.parentId === '_page') return entry.region === region;
             entry = map[entry.parentId];
           }
-          return false;
+          return region === 'items';
         };
         const seen = new Set<string>();
         const blockIds: string[] = [];
