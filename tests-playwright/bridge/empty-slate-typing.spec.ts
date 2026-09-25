@@ -86,17 +86,17 @@ test.describe('Empty slate typing', () => {
   // its OWN text node beside that one: the text shows twice. Each case starts
   // from a state with no text node the frontend owns.
 
-  /** Wait until the bridge has parked its caret target inside the empty field. */
-  async function caretParked(field: Locator) {
+  // Wait until the field is ready to type into: editable, with the caret in
+  // it. (Not "a zero-width space is in the field": the render data puts one in
+  // an empty field before the bridge has made it editable, and keys typed then
+  // are lost.)
+  async function readyToType(field: Locator) {
+    await expect(field).toHaveAttribute('contenteditable', 'true');
     await expect
       .poll(() =>
         field.evaluate((el) => {
-          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-          let t;
-          while ((t = walker.nextNode())) {
-            if (/[\uFEFF\u200B]/.test(t.textContent || '') && t.parentElement?.closest('[data-node-id]')) return true;
-          }
-          return false;
+          const sel = el.ownerDocument.getSelection();
+          return !!sel?.anchorNode && el.contains(sel.anchorNode) && el.ownerDocument.hasFocus();
         }),
       )
       .toBe(true);
@@ -108,7 +108,7 @@ test.describe('Empty slate typing', () => {
   }) => {
     const block = await helper.clickBlockInIframe('mock-empty-slate', { waitForToolbar: false });
     const field = helper.getSlateField(block);
-    await caretParked(field);
+    await readyToType(field);
     await page.keyboard.type('Hello');
     await expect.poll(() => visibleText(field)).toBe('Hello');
     await expect.poll(() => adminText(page, 'mock-empty-slate')).toBe('Hello');
@@ -175,7 +175,7 @@ test.describe('Empty slate typing', () => {
     // frontend chooses its own, and the mock's is deliberately non-standard.
     const block = await helper.clickBlockInIframe('mock-empty-slate', { waitForToolbar: false });
     const field = helper.getSlateField(block);
-    await caretParked(field);
+    await readyToType(field);
     await page.keyboard.press('ControlOrMeta+b');
     await page.keyboard.type('Bold');
     await expect.poll(() => visibleText(field)).toBe('Bold');
