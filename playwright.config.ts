@@ -51,6 +51,11 @@ export default defineConfig({
 
   /* Reporter to use */
   reporter: [
+    // Print each test as it runs. Runs that pass --reporter (every CI test job
+    // does) override this list; the ones that don't — the doc-asset capture in
+    // the inka-site deploy, the demo capture — printed nothing but "Command
+    // failed", so a broken screenshot could not be told from any other.
+    ['list'],
     ['html', { open: 'never' }],
     // Aggregates block-sanity field/text-style coverage across all parallel
     // workers and fails the run in onEnd if any block type has a field or style
