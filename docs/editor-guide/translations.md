@@ -79,11 +79,11 @@ A translation keeps a record of where each copied block came from, so Inka can t
 - **Untranslated** — a block still exactly as it was copied from the original.
 - **Out of date** — the original has changed since this block was translated.
 
-A container shows how many of the blocks inside it are untranslated or out of date, so you can find them without opening each one. You do not need the other language open to see these markers; they are there as soon as you open the page.
+When you select a block inside a container, the container's row in the sidebar carries a coloured dot if blocks inside it still need work — blue for untranslated, purple for out of date. Hover over the dot to see how many, for example "2 blocks inside are not translated yet". You do not need the other language open to see these markers; they are there as soon as you open the page.
 
 <block type="image">
 
-![The sidebar section for a grid container on a new translation, marked with a count of 2 untranslated blocks inside it.](../images/translations-markers.png)
+![The sidebar row for a grid container on a new translation, with a blue dot beside its name: blocks inside it are not translated yet.](../images/translations-markers.png)
 
 </block>
 

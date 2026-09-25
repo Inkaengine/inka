@@ -906,6 +906,9 @@ test.describe('Multilingual editing', () => {
     ).toBeVisible({ timeout: 10000 });
     // ONE of the two teasers was rewritten in English; the other is current.
     await expect(marker.first()).toHaveAttribute('data-nested-count', '1');
+    // And an editor can SEE it: `toBeVisible` passes an 8px box with no
+    // colour, which is what this marker was until it had a style of its own.
+    await expect(marker.first()).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   });
 
   test('bringing a block up to date moves its fingerprint forward', async ({
