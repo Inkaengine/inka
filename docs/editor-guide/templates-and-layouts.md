@@ -25,14 +25,14 @@ subjects: []
 title: Templates and layouts
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="title" _="${h1}" />
+  <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
       <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
     </region>
   </block>
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 ---
 
 # Templates and layouts
@@ -88,7 +88,7 @@ Regular blocks where you can do anything — add, edit, move, delete. The templa
 
 <block type="image">
 
-![A snippet template applied to a page. The "Snippet Header" block is selected, rendered muted as a locked block. Its sidebar shows its content read-only — a "Text" field with the value "Snippet Header - From Template" — above the template's own read-only settings (Template Name, Save Location).](/docs/images/template-locked.png)
+![A snippet template applied to a page. The "Snippet Header" block is selected, rendered muted as a locked block. Its sidebar shows its content read-only — a "Text" field with the value "Snippet Header - From Template" — above the template's own read-only settings (Template Name, Save Location).](../images/template-locked.png)
 
 </block>
 
@@ -149,7 +149,7 @@ Templates are saved when you **lock** them, not when you save the page. If you s
 
 <block type="image">
 
-![A template's sidebar bar, locked (🔒) — the Template Settings show as read-only text. Clicking the lock unlocks it (🔓) and makes the template editable.](/docs/images/template-edit-locked.png)
+![A template's sidebar bar, locked (🔒) — the Template Settings show as read-only text. Clicking the lock unlocks it (🔓) and makes the template editable.](../images/template-edit-locked.png)
 
 </block>
 

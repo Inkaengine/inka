@@ -22,6 +22,7 @@ subjects:
   - adapters
   - frontend
 title: CMS adapter guide
+id: adapters
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />

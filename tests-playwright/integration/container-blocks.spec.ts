@@ -1562,9 +1562,9 @@ test.describe('Single Allowed Block Auto-Insert', () => {
 
     // The slate block should have EMPTY text, not "Empty block" fallback
     // This verifies that applyBlockDefaults was called and slate got proper initial value
+    // (An empty slate holds the caret-target zero-width space — not text.)
     const slateBlock = newColumn.locator('> [data-block-uid]').first();
-    const slateText = await slateBlock.textContent();
-    expect(slateText?.trim()).toBe('');
+    expect(await helper.getCleanTextContent(slateBlock)).toBe('');
 
     // The new column should be selected (toolbar visible)
     const newColumnId = await newColumn.getAttribute('data-block-uid');

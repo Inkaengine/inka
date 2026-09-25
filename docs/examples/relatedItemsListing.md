@@ -39,11 +39,28 @@ Renders the current page's related items relation field (default relatedItems). 
 
 <block type="relatedItemsListing" relationField="relatedItems" variation="summary" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="relatedItemsListing" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="relatedItemsListing" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: relatedItemsListing
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./relatedItemsListing.md
+:block: relatedItemsListing
+:as: json
+```
+
+</block>
 
 <fields slotId="rendering">
 

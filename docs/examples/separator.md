@@ -5,10 +5,8 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The separator block allows blocks or groups of blocks to be visually separated
-  by a horizontal line.
+description: The separator block allows blocks or groups of blocks to be
+  visually separated by a horizontal line.
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
@@ -29,12 +27,13 @@ blocks-matched: |
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
+blocks-tagged: |
+  <block type="introduction" value="${p,h*/slate}" />
 ---
 
 # Separator
@@ -43,13 +42,17 @@ A horizontal rule used to visually divide sections of content. Supports an align
 
 <block type="image">
 
-![The separator example block being edited in Inka](/docs/images/separator-edit.png)
+![The separator example block being edited in Inka](../images/separator-edit.png)
 
 </block>
 
 ---
 
-<block type="introduction" data-json='{"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat."}],"type":"p"}]}' />
+<block type="introduction">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.
+
+</block>
 
 ---
 
@@ -65,21 +68,31 @@ A horizontal rule used to visually divide sections of content. Supports an align
 
 ---
 
-<fields data-json='{"styles":{"align":"center"}}' />
+<fields styles:align="center" />
 
 </block>
 
-<block type="image" align="center" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="/docs/examples/content-types/image-dark" />
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./content-types/image-dark "Title Image")
 
 <block type="separator">
 
 ---
 
-<fields data-json='{"styles":{"align":"center"}}' />
+<fields styles:align="center" />
 
 </block>
 
-<block type="image" align="right" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="/docs/examples/content-types/image-dark" data-json='{"styles":{"size:noprefix":"large"}}' />
+<block type="image">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./content-types/image-dark "Title Image")
+
+<fields align="right" styles:size:noprefix="large" />
+
+</block>
 
 ## Text Heading H2
 
@@ -89,11 +102,19 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields data-json='{"styles":{"align":"left"}}' />
+<fields styles:align="left" />
 
 </block>
 
-<block type="image" align="left" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="m" title="Title Image" url="/docs/examples/content-types/image-dark" data-json='{"styles":{"size:noprefix":"medium"}}' />
+<block type="image">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./content-types/image-dark "Title Image")
+
+<fields align="left" size="m" styles:size:noprefix="medium" />
+
+</block>
 
 ### Text Heading H3
 
@@ -103,21 +124,46 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields data-json='{"styles":{"align":"left"}}' />
+<fields styles:align="left" />
 
 </block>
 
-<block type="image" align="left" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="s" title="Title Image" url="/docs/examples/content-types/image-dark" data-json='{"styles":{"size:noprefix":"small"}}' />
+<block type="image">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./content-types/image-dark "Title Image")
+
+<fields align="left" size="s" styles:size:noprefix="small" />
+
+</block>
 
 ### Text Heading H3
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qu. Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.&#x20;
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-separator">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-separator" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="separator" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="separator" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: separator
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./separator.md
+:block: separator
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

@@ -5,11 +5,9 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The Grid block allows adding multi-column blocks. A grid block can contain
-  between one and four columns of different blocks. Text, teasers, images and
-  videos can be added in a grid block.
+description: The Grid block allows adding multi-column blocks. A grid block can
+  contain between one and four columns of different blocks. Text, teasers,
+  images and videos can be added in a grid block.
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
@@ -29,7 +27,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" description="${p/text}" />
+      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
     </region>
   </block>
 ---
@@ -52,7 +50,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="gridBlock" data-json='{"items":[{"@type":"slate","plaintext":"Text Title H2","value":[{"children":[{"text":"Text Title H2"}],"type":"h2"}]},{"@type":"slate","value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in. "}],"type":"p"}],"plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in. "},{"@type":"slate","plaintext":"Text Title H2","value":[{"children":[{"text":"Text Title H2"}],"type":"h2"}]},{"@type":"slate","value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in. "}],"type":"p"}],"plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in. "},{"@type":"slate","plaintext":"Text Title H2","value":[{"children":[{"text":"Text Title H2"}],"type":"h2"}]},{"@type":"slate","value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in. "}],"type":"p"}],"plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in. "},{"@type":"slate","plaintext":"Text Title H2","value":[{"children":[{"text":"Text Title H2"}],"type":"h2"}]},{"@type":"slate","value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in. "}],"type":"p"}],"plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in. "}]}' />
 
-<fields data-json='{"styles":{"backgroundColor":"grey"}}'>
+<fields styles:backgroundColor="grey">
 
 <block type="gridBlock">
 

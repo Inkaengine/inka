@@ -39,11 +39,28 @@ Renders a set of values as links into a faceted search — a "tag cloud" of shor
 
 <block type="searchShortcuts" index="Subject" searchUrl="/search" variation="default" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="searchShortcuts" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="searchShortcuts" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: searchShortcuts
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./searchShortcuts.md
+:block: searchShortcuts
+:as: json
+```
+
+</block>
 
 <fields slotId="rendering">
 

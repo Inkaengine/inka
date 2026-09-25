@@ -1,18 +1,17 @@
 import { mount } from 'svelte';
 import { initBridge } from '$hydra';
 import { expandListingBlocks, ploneFetchItems, contentPath, expandTemplatesSync } from '$helpers';
-import docPageDefinitions from '$schemas';
+import { sharedBlocksConfig } from '$schemas';
 import App from './App.svelte';
 
-const docBlocksConfig = Object.fromEntries(
-  Object.values(docPageDefinitions).flatMap(page => Object.entries(page.blocks))
-);
+// One source of truth: the flat shared-block-schemas registry, read directly.
+const docBlocksConfig = sharedBlocksConfig;
 
 // Expose hydra.js helpers globally for doc example components
 window.expandListingBlocks = expandListingBlocks;
 window.expandTemplatesSync = expandTemplatesSync;
 window.ploneFetchItems = ploneFetchItems;
-window._API_URL = 'http://localhost:8888';
+window._API_URL = __HYDRA_API_URL__; // from HYDRA_MOCK_API_PORT (vite.config.js)
 window._contentPath = (url) => contentPath(url, window._API_URL);
 
 // Svelte 5: mount once, then drive re-renders by mutating reactive props

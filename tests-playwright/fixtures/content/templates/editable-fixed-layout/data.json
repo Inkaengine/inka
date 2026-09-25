@@ -22,6 +22,7 @@
     },
     "default-slot": {
       "@type": "slate",
+      "fixed": false,
       "templateId": "resolveuid/editable-fixed-layout-uid",
       "templateInstanceId": "editable-fixed-def-instance",
       "slotId": "default",

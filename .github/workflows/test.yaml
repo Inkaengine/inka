@@ -82,16 +82,22 @@ jobs:
         # match, navigation, folder ordering). Was not previously wired
         # into CI even though the test file existed.
         run: pnpm test:api
+      - name: Check the served test content
+        # Every mount the mock serves (docs, /_test_data fixtures, site root),
+        # validated as one site. The mock refuses to start on the same errors;
+        # checking here fails the build in seconds, naming the content, instead
+        # of every test job timing out waiting for a server that exited.
+        run: pnpm check:content
       - name: Build Volto for production
         run: pnpm build
         env:
-          RAZZLE_API_PATH: http://localhost:8888
+          RAZZLE_API_PATH: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           # RAZZLE_ vars are inlined into the CLIENT bundle at build time (webpack
           # DefinePlugin), so the frontend-switcher list the browser shows comes from
           # HERE, not from a downstream job's runtime env. Label the entries the demo
           # video narrates ("Nuxt blog", "F7 Mobile") and give F7 its hash-router
           # suffix so the switch lands on a rendered page, not a blank one.
-          RAZZLE_DEFAULT_IFRAME_URL: "Test frontend|http://localhost:8889,Nuxt blog|http://localhost:3003,http://localhost:3004,http://localhost:3005,http://localhost:3006,http://localhost:3007,F7 Mobile|http://localhost:3008/#!"
+          RAZZLE_DEFAULT_IFRAME_URL: "Test frontend|http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},Nuxt blog|http://localhost:${{ env.HYDRA_NUXT_PORT }},http://localhost:${{ env.HYDRA_REACT_DOC_PORT }},http://localhost:${{ env.HYDRA_VUE_DOC_PORT }},http://localhost:${{ env.HYDRA_SVELTE_DOC_PORT }},http://localhost:${{ env.HYDRA_NEXTJS_PORT }},F7 Mobile|http://localhost:${{ env.HYDRA_F7_PORT }}/#!"
           VOLTOCONFIG: ${{ github.workspace }}/volto.config.js
           # Also inlined at build time, so it has to be set HERE: the jobs that
           # download this bundle can set it in their own env and it changes
@@ -105,6 +111,44 @@ jobs:
           name: volto-build
           path: build/
           retention-days: 1
+
+  # ── Plone backend addon (inkaengine.inka): the @templates endpoint ─────────
+  # The JS side of @templates (the mock's endpoint, the loadTemplates helper, the merge
+  # consuming it) runs in `build` above. This covers the Python addon that serves it on
+  # a real Plone.
+  test-backend-addon:
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        run: |
+          npm install -g corepack
+          corepack cache clean
+          corepack enable
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - name: Install dependencies
+        # The addon's tests run against the SAME template fixtures as the JS suites: the
+        # mock API exports them as a plone.exportimport distribution at test time, so the
+        # repo's node dependencies are needed. With CI set, a missing fixture fails the
+        # run instead of skipping the @templates tests.
+        run: |
+          pnpm dlx mrs-developer missdev --no-config --fetch-https
+          pnpm install --frozen-lockfile
+      - name: Use Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: 'backend/inkaengine.inka/.python-version'
+      - name: Install uv
+        # The addon's Makefile builds its virtualenv with uv (and mxdev, via uvx).
+        run: pip install uv
+      - name: Run addon tests (pytest)
+        working-directory: backend/inkaengine.inka
+        run: make test
 
   # ── Bridge + unit tests (no Volto needed) ────────────────────────────────
   test-bridge-unit:
@@ -174,14 +218,14 @@ jobs:
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
-          cd docs/examples/test-react && npx vite --port 3004 --strictPort &
-          cd docs/examples/test-svelte && npx vite --port 3005 --strictPort &
-          cd docs/examples/test-vue && npx vite --port 3006 --strictPort &
+          cd docs/examples/test-react && npx vite --port ${{ env.HYDRA_REACT_DOC_PORT }} --strictPort &
+          cd docs/examples/test-svelte && npx vite --port ${{ env.HYDRA_SVELTE_DOC_PORT }} --strictPort &
+          cd docs/examples/test-vue && npx vite --port ${{ env.HYDRA_VUE_DOC_PORT }} --strictPort &
           cd docs/examples/test-astro && pnpm run dev:test &
           sleep 3
       - name: Wait for servers
         run: |
-          for port in 8888 8889 3004 3005 3006 3009; do
+          for port in ${{ env.HYDRA_MOCK_API_PORT }} ${{ env.HYDRA_TEST_FRONTEND_PORT }} ${{ env.HYDRA_REACT_DOC_PORT }} ${{ env.HYDRA_VUE_DOC_PORT }} ${{ env.HYDRA_SVELTE_DOC_PORT }} ${{ env.HYDRA_ASTRO_DOC_PORT }}; do
             echo "Waiting for port $port..."
             for i in {1..30}; do
               curl -s http://localhost:$port > /dev/null && break
@@ -201,15 +245,15 @@ jobs:
           # broken-image assertion (its link checks still run, so a typo'd path
           # is still caught); see PageIntegrityHelper.skipBrokenImages.
           SKIP_BROKEN_IMAGE_CHECK: true
-          DISCOVER_BLOCKS_API: http://localhost:8888
+          DISCOVER_BLOCKS_API: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           # Discovery needs a frontend: without one it is type-only, container
           # regions are invisible, and the schema-dependent checks measure less
           # than they appear to. This job runs several frontends and discovery
           # runs once, so it nominates its primary — the vite test-frontend,
           # which carries the shared registry the fixtures are written against.
           # Per-frontend discovery would remove the need to choose.
-          FRONTEND_URL: http://localhost:8889
-          MOCK_PARENT_URL: http://localhost:8889/mock-parent.html
+          FRONTEND_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}
+          MOCK_PARENT_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}/mock-parent.html
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -447,14 +491,14 @@ jobs:
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
-          PORT=3001 RAZZLE_API_PATH=http://localhost:8888 \
-            RAZZLE_DEFAULT_IFRAME_URL=http://localhost:8889,http://localhost:3003 \
+          PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
+            RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
             VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
             pnpm start:prod &
           sleep 3
       - name: Wait for servers
         run: |
-          for port in 8888 8889 3001; do
+          for port in ${{ env.HYDRA_MOCK_API_PORT }} ${{ env.HYDRA_TEST_FRONTEND_PORT }} ${{ env.HYDRA_VOLTO_SSR_PORT }}; do
             echo "Waiting for port $port..."
             for i in {1..30}; do curl -s http://localhost:$port > /dev/null && break; sleep 2; done
           done
@@ -470,6 +514,132 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-admin-mock
+          path: |
+            playwright-report/
+            test-results/**/*.png
+          retention-days: 7
+
+  # ── Admin typing specs on the Next.js example ───────────────────────────
+  # admin-mock and admin-nuxt rebuild or re-key their DOM on every render, so a
+  # bug where the bridge edits DOM the frontend owns never shows there. The
+  # Next.js example keeps its DOM between renders (stable keys), like a real
+  # React frontend: the admin-driven typing flows — Enter/Backspace splits,
+  # paste, markdown shortcuts, prospective formatting — run against it here.
+  test-admin-nextjs:
+    needs: build
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup pnpm
+        run: |
+          npm install -g corepack
+          corepack cache clean
+          corepack enable
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - name: Install dependencies
+        run: |
+          pnpm dlx mrs-developer missdev --no-config --fetch-https
+          pnpm install --frozen-lockfile
+      - name: Build workspace deps (@plone/registry, @plone/components)
+        # pnpm start:prod loads these at runtime via workspace symlinks;
+        # their dist/ output must exist or the SSR server fails to boot.
+        run: pnpm build:deps
+      - name: Build Next.js example
+        run: cd examples/hydra-nextjs && pnpm install --ignore-workspace && pnpm run build:test
+        env:
+          NEXT_PUBLIC_BACKEND_BASE_URL: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
+      - name: Download Volto build
+        uses: actions/download-artifact@v4
+        with:
+          name: volto-build
+          path: build/
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install --with-deps chromium firefox
+      - name: Install Playwright deps only
+        # This step sat for 3h38m on one run. The log shows apt-get update stalling
+        # mid-fetch of the Ubuntu package indexes — silent after
+        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
+        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
+        # acquire so it fails fast, and bound the step as a backstop.
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install-deps chromium firefox
+      - name: Start servers
+        run: |
+          node tests-playwright/fixtures/mock-api-server.cjs &
+          npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
+          PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
+            RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
+            VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
+            pnpm start:prod &
+          (cd examples/hydra-nextjs && pnpm run start:test) &
+          sleep 3
+      - name: Wait for servers
+        run: |
+          for port in ${{ env.HYDRA_MOCK_API_PORT }} ${{ env.HYDRA_TEST_FRONTEND_PORT }} ${{ env.HYDRA_VOLTO_SSR_PORT }} ${{ env.HYDRA_NEXTJS_PORT }}; do
+            echo "Waiting for port $port..."
+            for i in {1..60}; do curl -s http://localhost:$port > /dev/null && break; sleep 2; done
+            curl -s http://localhost:$port > /dev/null || { echo "port $port never came up"; exit 1; }
+          done
+          echo "All servers ready"
+      - name: Run tests
+        run: >-
+          pnpm exec playwright test --project=admin-nextjs --reporter=github,list,html
+          tests-playwright/integration/inline-editing-basic.spec.ts
+          tests-playwright/integration/inline-editing-formatting.spec.ts
+          tests-playwright/integration/inline-editing-clipboard.spec.ts
+          tests-playwright/integration/inline-editing-links.spec.ts
+          tests-playwright/integration/markdown-shortcuts.spec.ts
+          tests-playwright/integration/slash-menu.spec.ts
+          tests-playwright/integration/complex-slate.spec.ts
+          tests-playwright/integration/block-add-remove.spec.ts
+          tests-playwright/integration/page-regions.spec.ts
+        env:
+          CI: true
+          NO_WEBSERVER: true
+          USE_PREBUILT: true
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-admin-nextjs
           path: |
             playwright-report/
             test-results/**/*.png
@@ -549,7 +719,7 @@ jobs:
           sleep 3
       - name: Wait for servers
         run: |
-          for port in 8888 8889 3003; do
+          for port in ${{ env.HYDRA_MOCK_API_PORT }} ${{ env.HYDRA_TEST_FRONTEND_PORT }} ${{ env.HYDRA_NUXT_PORT }}; do
             echo "Waiting for port $port..."
             for i in {1..30}; do curl -s http://localhost:$port > /dev/null && break; sleep 2; done
           done
@@ -566,15 +736,15 @@ jobs:
           # broken-image assertion (its link checks still run, so a typo'd path
           # is still caught); see PageIntegrityHelper.skipBrokenImages.
           SKIP_BROKEN_IMAGE_CHECK: true
-          DISCOVER_BLOCKS_API: http://localhost:8888
-          FRONTEND_URL: http://localhost:3003
+          DISCOVER_BLOCKS_API: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
+          FRONTEND_URL: http://localhost:${{ env.HYDRA_NUXT_PORT }}
           # Discovery reads the frontend's INIT through mock-parent. Without it
           # discovery is type-only: no container regions, so nested blocks are
           # invisible and every schema-dependent check passes by measuring
-          # nothing. The server has always been up in this job (8889, waited on
+          # nothing. The server has always been up in this job (the test frontend, waited on
           # above) — the variable was simply never passed, while FRONTEND_URL
           # beside it was. globalSetup now fails rather than run type-only.
-          MOCK_PARENT_URL: http://localhost:8889/mock-parent.html
+          MOCK_PARENT_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}/mock-parent.html
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -664,15 +834,15 @@ jobs:
         run: |
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
-          PORT=3001 RAZZLE_API_PATH=http://localhost:8888 \
-            RAZZLE_DEFAULT_IFRAME_URL=http://localhost:8889,http://localhost:3003 \
+          PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
+            RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
             VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
             pnpm start:prod &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
           sleep 3
       - name: Wait for servers
         run: |
-          for port in 8888 8889 3001 3003; do
+          for port in ${{ env.HYDRA_MOCK_API_PORT }} ${{ env.HYDRA_TEST_FRONTEND_PORT }} ${{ env.HYDRA_VOLTO_SSR_PORT }} ${{ env.HYDRA_NUXT_PORT }}; do
             echo "Waiting for port $port..."
             for i in {1..30}; do curl -s http://localhost:$port > /dev/null && break; sleep 2; done
           done
@@ -728,7 +898,7 @@ jobs:
       - name: Build Next.js example
         run: cd examples/hydra-nextjs && pnpm install --ignore-workspace && pnpm run build:test
         env:
-          NEXT_PUBLIC_BACKEND_BASE_URL: http://localhost:8888
+          NEXT_PUBLIC_BACKEND_BASE_URL: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
       - name: Install F7 example
         run: cd examples/hydra-vue-f7 && pnpm install --ignore-workspace
       - name: Install Svelte Quick Start
@@ -772,10 +942,10 @@ jobs:
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/hydra-nextjs && pnpm run start:test &
-          cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:8888 npx vite --port 3008 --strictPort --config vite.config.test.mjs &
-          npx vite --port 3010 --strictPort --config docs/quickstart/vanilla/vite.config.mjs &
-          cd docs/quickstart/svelte && npx vite --port 3011 --strictPort &
-          cd docs/quickstart/astro && npx astro dev --port 3012 &
+          cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} npx vite --port ${{ env.HYDRA_F7_PORT }} --strictPort --config vite.config.test.mjs &
+          npx vite --port ${{ env.HYDRA_VANILLA_DOC_PORT }} --strictPort --config docs/quickstart/vanilla/vite.config.mjs &
+          cd docs/quickstart/svelte && npx vite --port ${{ env.HYDRA_SVELTE_QS_PORT }} --strictPort &
+          cd docs/quickstart/astro && npx astro dev --port ${{ env.HYDRA_ASTRO_QS_PORT }} &
           sleep 3
       - name: Wait for servers
         run: |
@@ -783,7 +953,7 @@ jobs:
           # attempts and carried on, so a dead frontend reached the tests as 140
           # identical 30s timeouts ("no [data-block-uid] visible") and burned the
           # job's whole 45min budget — the symptom looked like 140 bugs.
-          for port in 8888 8889 3007 3008 3010 3011 3012; do
+          for port in ${{ env.HYDRA_MOCK_API_PORT }} ${{ env.HYDRA_TEST_FRONTEND_PORT }} ${{ env.HYDRA_NEXTJS_PORT }} ${{ env.HYDRA_F7_PORT }} ${{ env.HYDRA_VANILLA_DOC_PORT }} ${{ env.HYDRA_SVELTE_QS_PORT }} ${{ env.HYDRA_ASTRO_QS_PORT }}; do
             echo "Waiting for port $port..."
             ready=""
             for i in {1..45}; do
@@ -791,7 +961,7 @@ jobs:
               sleep 2
             done
             if [ -z "$ready" ]; then
-              echo "::error::No server on port $port after 60s — check the Start servers step"
+              echo "::error::No server on port $port after 90s — check the Start servers step"
               exit 1
             fi
           done
@@ -812,11 +982,11 @@ jobs:
           # page-integrity found no .discovered-blocks.json and skipped — the
           # nextjs project is inside block-sanity's own scope, so it had simply
           # stopped being checked while the job reported green.
-          DISCOVER_BLOCKS_API: http://localhost:8888
+          DISCOVER_BLOCKS_API: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           # See the bridge-unit job: discovery needs a frontend. This job runs
           # two, and nominates nextjs.
-          FRONTEND_URL: http://localhost:3007
-          MOCK_PARENT_URL: http://localhost:8889/mock-parent.html
+          FRONTEND_URL: http://localhost:${{ env.HYDRA_NEXTJS_PORT }}
+          MOCK_PARENT_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}/mock-parent.html
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4

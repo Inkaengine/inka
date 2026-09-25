@@ -50,17 +50,33 @@
       "type": "object"
     }
   },
-  "required": ["title"],
+  "required": [
+    "title"
+  ],
   "fieldsets": [
     {
       "id": "default",
       "title": "Default",
-      "fields": ["title", "description"]
+      "fields": [
+        "title",
+        "description"
+      ]
     },
     {
       "id": "event",
       "title": "Event",
-      "fields": ["start", "end", "location", "contact_name", "contact_email", "contact_phone", "event_url"]
+      "fields": [
+        "start",
+        "end",
+        "location",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "event_url"
+      ]
     }
+  ],
+  "layouts": [
+    "event_view"
   ]
 }

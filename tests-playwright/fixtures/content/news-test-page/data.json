@@ -37,6 +37,7 @@
     },
     "ni-leadimage-1": {
       "@type": "leadimage",
+      "readOnly": false,
       "fixed": true,
       "templateId": "resolveuid/tpl-ct-newsitem-view",
       "templateInstanceId": "tpl-ni-def",
@@ -44,6 +45,8 @@
     },
     "ni-body-1": {
       "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "News article body text." }] }],
       "plaintext": "News article body text.",
       "templateId": "resolveuid/tpl-ct-newsitem-view",

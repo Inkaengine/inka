@@ -30,7 +30,6 @@ blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
@@ -54,7 +53,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 <block type="image">
 
-![The table example block being edited in Inka](/docs/images/table-edit.png)
+![The table example block being edited in Inka](../images/table-edit.png)
 
 </block>
 
@@ -82,7 +81,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </block>
 
-<fields data-json='{"styles":{"backgroundColor":"grey"}}'>
+<fields styles:backgroundColor="grey">
 
 <block type="heading" alignment="left" heading="Basic Table" tag="h2" />
 
@@ -112,11 +111,28 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-table">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-table" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="slateTable" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="slateTable" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: slateTable
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./table.md
+:block: slateTable
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

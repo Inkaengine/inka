@@ -1841,6 +1841,16 @@ const BlocksList = ({ data, apiUrl, contextPath }) => {
           return <Block key={id} block={block} id={id} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
         })}
       </div>
+      {/* The page's footer region (blocks_layout.footer). */}
+      {data.blocks_layout.footer?.length > 0 && (
+        <footer className="blocks-footer">
+          {data.blocks_layout.footer.map((id) => {
+            const block = data.blocks[id];
+            if (!block) return null;
+            return <Block key={id} block={block} id={id} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
+          })}
+        </footer>
+      )}
     </TemplateContext.Provider>
   );
 };

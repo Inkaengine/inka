@@ -5,10 +5,8 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The heading block allows you to display headings to group multiple blocks
-  under one topic.
+description: The heading block allows you to display headings to group multiple
+  blocks under one topic.
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
@@ -34,10 +32,11 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />
+  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
+  <block type="introduction" value="${p,h*/slate}" />
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" description="${p/text}" />
+      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
     </region>
   </block>
 ---
@@ -50,15 +49,23 @@ A standalone heading block that renders as h1–h6 based on a configurable tag f
 
 ---
 
-<fields data-json='{"styles":{"align":"full","backgroundColor":"transparent","noLine":false}}' />
+<fields styles:align="full" styles:backgroundColor="transparent" styles:noLine=false />
 
 </block>
 
-<block type="introduction" data-json='{"value":[{"children":[{"text":"Lorem ipsum vitae elit libero, a pharetra augue. Nulla vitae elit libero, a pharetra augue. Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit. Donec ullamcorper nulla non metus auctor fringilla. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor. Vestibulum id ligula porta felis euismod semper."}],"type":"p"}]}' />
+<block type="introduction">
+
+Lorem ipsum vitae elit libero, a pharetra augue. Nulla vitae elit libero, a pharetra augue. Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit. Donec ullamcorper nulla non metus auctor fringilla. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor. Vestibulum id ligula porta felis euismod semper.
+
+</block>
 
 ---
 
-<block type="introduction" data-json='{"value":[{"children":[{"text":"Highlight Title H2 "}],"type":"h2"}]}' />
+<block type="introduction">
+
+## Highlight Title H2&#x20;
+
+</block>
 
 Lorem ipsum vitae elit libero, a pharetra augue. Nulla vitae elit libero, a pharetra augue. Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit. Donec ullamcorper nulla non metus auctor fringilla. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor. Vestibulum id ligula porta felis euismod semper.
 
@@ -78,17 +85,34 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ## Block Title
 
-<block type="teaser" title="Teaser Title H2" data-json='{"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","head_title":null,"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","Title":"Page","getRemoteUrl":null,"hasPreviewImage":true,"head_title":null,"image_field":"preview_image","title":"Page"}],"styles":{"align":"left"}}' />
+<block type="teaser" data-json='{"title":"Teaser Title H2","styles":{"align":"left"},"description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","head_title":null,"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Title":"Page","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","title":"Page","head_title":null,"getRemoteUrl":null,"hasPreviewImage":true,"image_field":"preview_image"}]}' />
 
 </block>
 
-<block type="heading" data-json='{"heading":"Getting Started","tag":"h2"}' />
+<block type="heading" heading="Getting Started" tag="h2" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-heading">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-heading" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="heading" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="heading" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: heading
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./heading.md
+:block: heading
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

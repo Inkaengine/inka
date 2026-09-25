@@ -1,4 +1,12 @@
 import { addUrlParams } from '../../utils/iframeUrl';
+import ViewPane from './ViewPane';
+import { ReadOnlyForm } from '../Sidebar/ReadOnlyForm';
+import {
+  counterpartBlockId,
+  translationStatus,
+  sourceFingerprint,
+  withAllBlocksReadOnly,
+} from '@volto-hydra/helpers';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { isEqual } from 'lodash';
 import { v4 as uuid } from 'uuid';
@@ -264,6 +272,7 @@ import slateTransforms from '../../utils/slateTransforms';
 // as applyFormat was replaced by SLATE_TRANSFORM_REQUEST handling
 import OpenObjectBrowser from './OpenObjectBrowser';
 import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
+import { getBlockTypeSchema } from '../../utils/blockPath';
 import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
@@ -900,6 +909,140 @@ const Iframe = (props) => {
   // Combined state for iframe data - formData, selection, requestId, and transformAction updated atomically
   // This ensures toolbar sees all together in the same render
   const intl = useIntl();
+
+  // Comparing languages while editing.
+  //
+  // Inka has no specialist create view — a translation is created and then
+  // edited, like everything else — so this is where a translator works: the
+  // page in another language on one side, the one being written on the other.
+  // Volto calls the same thing "compare languages"; it lives on the edit
+  // screen there too.
+  const translations = useMemo(
+    () => properties?.['@components']?.translations?.items || [],
+    [properties],
+  );
+  const [compareLanguage, setCompareLanguage] = useState(null);
+  const [compareContent, setCompareContent] = useState(null);
+  // Which pane the sidebar belongs to. Volto does the same with two forms and
+  // one sidebar: selecting a form makes the sidebar its own. Selecting the
+  // compared language shows ITS fields, read-only — there is one page being
+  // edited here, and it is not that one.
+  const [selectedPane, setSelectedPane] = useState('edit');
+
+  // The page this one was translated from, already read by the form when this
+  // page opened. Its own `language` says which it is, so nothing extra has to
+  // be passed to know when it is the one being compared.
+  const translationSource = props.translationSource;
+  const translationSourceLanguage =
+    typeof translationSource?.language === 'object'
+      ? translationSource.language?.token
+      : translationSource?.language;
+
+  useEffect(() => {
+    const translation = translations.find((t) => t.language === compareLanguage);
+    if (!translation) {
+      setCompareContent(null);
+      return;
+    }
+    // Comparing with the language this page was translated from — the usual
+    // case — needs no request: that page is already here.
+    if (compareLanguage && compareLanguage === translationSourceLanguage) {
+      setCompareContent(translationSource);
+      return;
+    }
+    let cancelled = false;
+    new Api()
+      .get(flattenToAppURL(translation['@id']))
+      .then((content) => {
+        if (!cancelled) setCompareContent(content);
+      })
+      .catch(() => {
+        // The other language is a convenience, not the page being edited: if it
+        // cannot be read, the pane simply does not open.
+        if (!cancelled) setCompareContent(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [compareLanguage, translations, translationSource, translationSourceLanguage]);
+
+  // What the pane is given: the compared page with every block read-only, so
+  // it can be read and inspected but not changed. Read-only is a property of a
+  // block, so "a page nobody may edit" needs no new kind of frame.
+  const compareReadOnlyContent = useMemo(
+    () =>
+      compareContent
+        ? {
+            ...compareContent,
+            blocks: withAllBlocksReadOnly(
+              compareContent.blocks,
+              buildIdFieldMap(config.blocks.blocksConfig, intl),
+            ),
+          }
+        : null,
+    [compareContent, intl],
+  );
+  const [compareSelectedBlock, setCompareSelectedBlock] = useState(null);
+
+  // The block next door that corresponds to the selected one. Null when there
+  // is none: the block was added after the copy, the one it came from has been
+  // deleted since, or the two pages were linked rather than copied and share
+  // no pairing at all.
+  const counterpartOfSelected = useMemo(
+    () =>
+      compareContent && selectedBlock
+        ? counterpartBlockId(
+            properties?.blocks,
+            selectedBlock,
+            compareContent?.blocks,
+            buildIdFieldMap(config.blocks.blocksConfig, intl),
+          )
+        : null,
+    [compareContent, selectedBlock, properties?.blocks, intl],
+  );
+
+  const comparePreviewUrl = useMemo(() => {
+    const translation = translations.find((t) => t.language === compareLanguage);
+    return translation
+      ? addUrlParams(
+          u,
+          // An editing frame, so its blocks can be selected and inspected.
+          // What makes it read-only is the CONTENT it is given.
+          { access_token: token || '', _edit: 'true' },
+          flattenToAppURL(translation['@id']),
+        )
+      : null;
+  }, [translations, compareLanguage, u, token]);
+
+  // What this translation needs: blocks that still read as the language they
+  // were copied from, and blocks whose SOURCE has changed since they were
+  // translated. Answerable only against that other language, so it follows the
+  // comparison.
+  //
+  // `missing` (a block the source has and this page never got) and `unknown`
+  // (no fingerprint recorded, or no schema for the type) come back too — they
+  // belong to the page, not to any block's blind, so they are not part of the
+  // per-block statuses below.
+  const translationStatuses = useMemo(
+    () =>
+      // Against the page this one was TRANSLATED FROM, whether or not a
+      // comparison is open and whichever language it shows: `@canonical` points
+      // at that page's blocks, so it is the only page these answers can come
+      // from. Markers used to wait for a comparison to be switched on, which is
+      // not when a translator wants them.
+      translationSource
+        ? translationStatus(properties?.blocks, translationSource?.blocks, {
+            idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, intl),
+            fingerprintOf: (sourceBlock, id, type) =>
+              sourceFingerprint(
+                sourceBlock,
+                getBlockTypeSchema(type, intl, config.blocks.blocksConfig),
+              ),
+          })
+        : { statuses: {}, missing: [], unknown: [] },
+    [translationSource, properties?.blocks, intl],
+  );
+
 
   // Initialize with properties so we have data from first render
   //
@@ -2238,13 +2381,26 @@ const Iframe = (props) => {
       if (event.origin !== initialUrlOrigin) {
         return;
       }
-      // No sender filtering here, deliberately. It was added when the adapter
-      // host could coexist with the editor, but the host is now confined to
-      // routes that render no editor, so the two never appear together.
-      // Comparing against contentWindow actively broke things: during an
+      // Everything but the compared-language pane, which has its own handler
+      // and its own read-only page. Both frames are on the frontend's origin
+      // and both post here, so without this the editor would act on the other
+      // page's messages — selecting its blocks, moving them.
+      //
+      // Narrow on purpose: an earlier version demanded the message come from
+      // THIS canvas's own frame, and rejected real ones (a MOVE_BLOCKS from
+      // the preview) whenever the element's contentWindow was not the one the
+      // ref happened to hold.
+      if (typeof document !== 'undefined') {
+        const comparePane = document.getElementById('translationSourceIframe');
+        if (comparePane && event.source === comparePane.contentWindow) return;
+      }
+
+      // Note there is no general sender filtering beyond that. It was tried
+      // and removed: the adapter host is confined to routes that render no
+      // editor, so the two never coexist, and comparing against
+      // contentWindow dropped legitimate INIT and PATH_CHANGE — during an
       // iframe navigation the element's contentWindow can already be the new
-      // document while a message from the old one is still in flight, so
-      // legitimate INIT and PATH_CHANGE were dropped.
+      // document while a message from the old one is still in flight.
       // Store the actual iframe origin from the first message we receive
       if (!iframeOriginRef.current) {
         iframeOriginRef.current = event.origin;
@@ -3317,6 +3473,31 @@ const Iframe = (props) => {
           break;
 
         case 'BLOCK_SELECTED': {
+          // Back to the page being edited when the editor is WORKING IN it —
+          // and only then. This page also RE-ANNOUNCES its existing selection
+          // on a re-render, on scroll and on resize, and those must not snatch
+          // the sidebar back from the compared language.
+          //
+          // This used to ask whether the compare pane held focus. It never
+          // can: that pane's iframe takes no pointer events (the click lands
+          // on the wrapper, which is how the pane gets selected), so nothing
+          // inside it is ever `document.activeElement` and the guard was
+          // always true. Any re-announcement from this pane then took the
+          // sidebar back, a beat after the editor clicked the other one —
+          // which is why it only failed sometimes.
+          //
+          // Evidence of working in this pane instead: it has focus, or it is
+          // announcing a DIFFERENT block from the one already selected.
+          const editPaneHasFocus =
+            typeof document !== 'undefined' &&
+            document.activeElement?.id === 'previewIframe';
+          const isRepeatOfCurrentSelection =
+            event.data.blockUid === selectedBlock ||
+            event.data.src === 'scrollHandler' ||
+            event.data.src === 'resizeHandler';
+          if (editPaneHasFocus || !isRepeatOfCurrentSelection) {
+            setSelectedPane('edit');
+          }
           // Update block UI state and selection atomically
           // Selection is included in BLOCK_SELECTED to prevent race conditions
 
@@ -5410,18 +5591,131 @@ const Iframe = (props) => {
           Key on mode + frontend URL ensures iframe remounts when switching edit/view
           or switching frontends (avoids beforeunload dialog from old iframe),
           but persists during SPA navigation within the same mode */}
+      {/* Comparing languages: pick the language to read alongside. Only offered
+          when the page HAS another language — on a single-language site
+          nothing here renders at all. */}
+      {isEditMode && translations.length > 0 && (
+        <div className="compare-languages" data-testid="compare-languages">
+          <span>Compare with</span>
+          {compareLanguage && selectedBlock && !counterpartOfSelected && (
+            <span className="compare-no-counterpart" data-testid="no-counterpart">
+              {`This block has no counterpart in ${compareLanguage}`}
+            </span>
+          )}
+          {/* Blocks the OTHER language has that this page never received —
+              added to it after this translation was made. They belong to no
+              blind here, because there is no block to hang them on: this page
+              is what is missing them. */}
+          {translationStatuses.missing.length > 0 && (
+            <span className="compare-missing-blocks" data-testid="missing-blocks">
+              {translationStatuses.missing.length === 1
+                ? `1 block in ${translationSourceLanguage} is not on this page`
+                : `${translationStatuses.missing.length} blocks in ${translationSourceLanguage} are not on this page`}
+            </span>
+          )}
+          {/* Copies made before any of this existed, or by something else: we
+              do not know what they were translated from, so nothing is claimed
+              about them either way. */}
+          {translationStatuses.unknown.length > 0 && (
+            <span className="compare-unknown-blocks" data-testid="unknown-blocks">
+              {`${translationStatuses.unknown.length} not checked`}
+            </span>
+          )}
+          {translations.map((translation) => (
+            <button
+              key={translation.language}
+              type="button"
+              className={
+                compareLanguage === translation.language
+                  ? 'compare-language active'
+                  : 'compare-language'
+              }
+              aria-pressed={compareLanguage === translation.language}
+              onClick={() => {
+                setSelectedPane('edit');
+                setCompareLanguage(
+                  compareLanguage === translation.language
+                    ? null
+                    : translation.language,
+                );
+              }}
+            >
+              {translation.language}
+            </button>
+          ))}
+        </div>
+      )}
       {iframeSrc && (
-        <iframe
-          key={`${isEditMode ? 'edit' : 'view'}-${u}`}
-          id="previewIframe"
-          name={iframeName}
-          title="Preview"
-          src={iframeSrc}
-          ref={setReferenceElement}
-          allow="clipboard-read; clipboard-write"
-          suppressHydrationWarning
-          style={iframeMaxWidth ? { maxWidth: iframeMaxWidth } : undefined}
-        />
+        <div
+          className={
+            comparePreviewUrl ? 'preview-panes translating' : 'preview-panes'
+          }
+        >
+          {/* Translating: the page being translated FROM, as the site renders
+              it. Read-only — no bridge, no editing chrome — beside the draft,
+              which is the pane the editor works in. */}
+          {comparePreviewUrl && (
+            // The pane is inert (its iframe takes no pointer events), so a
+            // click lands here — which is how it gets selected.
+            <div
+              className={
+                selectedPane === 'compare'
+                  ? 'source-preview-pane selected'
+                  : 'source-preview-pane'
+              }
+              // Which block of the other language is being shown: the
+              // counterpart of the one selected next door, or nothing when the
+              // selected block was added after the copy.
+              data-showing-block={counterpartOfSelected || ''}
+              onClick={() => setSelectedPane('compare')}
+              onKeyDown={(e) => e.key === 'Enter' && setSelectedPane('compare')}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selectedPane === 'compare'}
+              aria-label={`Show the fields of this page in ${compareLanguage}`}
+            >
+              <ViewPane
+                id="translationSourceIframe"
+                title={`This page in ${compareLanguage}`}
+                src={comparePreviewUrl}
+                // Pushed, not fetched: the same way the compare view shows a
+                // version. The pane renders the document we hand it.
+                content={compareReadOnlyContent}
+                className="source-preview"
+                selectable
+                // The same block, in the other language — paired by
+                // `@canonical`, which the copy recorded. A block added since
+                // the copy has no counterpart, and nothing lights up: that is
+                // itself worth seeing, because the block is new.
+                showBlock={counterpartOfSelected}
+                onSelectBlock={(uid) => {
+                  // Only when the editor is actually IN that pane. The pane
+                  // also echoes back the selection we drive into it from the
+                  // page being edited, and that must not take the sidebar.
+                  if (
+                    typeof document !== 'undefined' &&
+                    document.activeElement?.id !== 'translationSourceIframe'
+                  ) {
+                    return;
+                  }
+                  setSelectedPane('compare');
+                  setCompareSelectedBlock(uid);
+                }}
+              />
+            </div>
+          )}
+          <iframe
+            key={`${isEditMode ? 'edit' : 'view'}-${u}`}
+            id="previewIframe"
+            name={iframeName}
+            title="Preview"
+            src={iframeSrc}
+            ref={setReferenceElement}
+            allow="clipboard-read; clipboard-write"
+            suppressHydrationWarning
+            style={iframeMaxWidth ? { maxWidth: iframeMaxWidth } : undefined}
+          />
+        </div>
       )}
 
       {/* Multi-block selection outlines — individual outline per selected block */}
@@ -6263,6 +6557,49 @@ const Iframe = (props) => {
             );
           })()}
 
+      {/* The compared language's own fields, read-only, while its pane is the
+          selected one. Volto shows them by making the sidebar follow whichever
+          form was clicked; here the panes are frontends, so the fields come
+          from the document the pane was given. */}
+      {selectedPane === 'compare' &&
+        compareContent &&
+        props.schema &&
+        typeof document !== 'undefined' &&
+        document.getElementById('sidebar') &&
+        createPortal(
+          <div className="compare-language-fields" data-testid="compare-language-fields">
+            {(() => {
+              // A block if one was picked in that pane, the page otherwise —
+              // the same choice the sidebar makes for the page being edited.
+              const picked = compareSelectedBlock
+                ? getBlockById(
+                    compareContent,
+                    buildBlockPathMap(compareContent, config.blocks.blocksConfig, intl),
+                    compareSelectedBlock,
+                  )
+                : null;
+              return picked ? (
+                <ReadOnlyForm
+                  schema={getBlockTypeSchema(
+                    picked['@type'],
+                    intl,
+                    config.blocks.blocksConfig,
+                  )}
+                  formData={picked}
+                  title={`${picked['@type']} (${compareLanguage})`}
+                />
+              ) : (
+                <ReadOnlyForm
+                  schema={props.schema}
+                  formData={compareContent}
+                  title={`${compareContent.title || ''} (${compareLanguage})`}
+                />
+              );
+            })()}
+          </div>,
+          document.getElementById('sidebar'),
+        )}
+
       {/* Hierarchical sidebar widgets */}
       {/* Use properties (Redux) for formData - it's always up-to-date after onChangeFormData */}
       {/* blockPathMap is updated synchronously before onChangeFormData, so they stay in sync */}
@@ -6270,6 +6607,7 @@ const Iframe = (props) => {
         selectedBlock={selectedBlock}
         multiSelected={multiSelected}
         blocksErrors={blocksErrors}
+        blockStatuses={translationStatuses.statuses}
         formData={properties}
         blockPathMap={iframeSyncState.blockPathMap}
         templatePermissions={templateCacheRef.current}

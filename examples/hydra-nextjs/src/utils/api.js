@@ -4,8 +4,11 @@ import { loadTemplates } from '#utils/helpers';
 const templateCache = {};
 
 export async function fetchContent(apiPath, { token = null, path = '' } = {}) {
-    // Construct the full URL with navigation expansion (like Nuxt frontend)
-    const url = `${apiPath}/++api++/${path ? `${path}` : ''}?expand=breadcrumbs,navigation&expand.navigation.depth=2`;
+    // Construct the full URL with navigation expansion (like Nuxt frontend). `templates`
+    // asks a backend with the inkaengine.inka addon to return every template the page
+    // needs in this same response; loadTemplates (below) uses those and only fetches what
+    // is missing. A backend without the addon ignores it, and templates are fetched as before.
+    const url = `${apiPath}/++api++/${path ? `${path}` : ''}?expand=breadcrumbs,navigation,templates&expand.navigation.depth=2`;
 
     // Set up the headers
     const headers = {};

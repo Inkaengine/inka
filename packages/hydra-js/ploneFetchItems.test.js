@@ -112,4 +112,20 @@ describe('ploneFetchItems', () => {
       paths.indexOf('/docs/examples/grid/grid-image'),
     );
   });
+
+  test('an error response fails loudly, not as zero results', async () => {
+    // A stock Plone 6.2 answers an operation it lacks (string.search) with
+    // 400 {"message": "Invalid query."}. That body has no `items`, so it was
+    // read as an empty result: the LECC search page said "No results found"
+    // for every term and nothing anywhere said why.
+    global.fetch = async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({ message: 'Invalid query.', type: 'BadRequest' }),
+    });
+
+    await expect(run([{ i: 'path', o: RELATIVE, v: '.' }])).rejects.toThrow(
+      /400.*Invalid query\./,
+    );
+  });
 });

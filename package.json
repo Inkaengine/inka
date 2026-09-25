@@ -32,6 +32,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:api": "node --test tests-playwright/fixtures/*.test.cjs",
+    "check:content": "CONTENT_MOUNTS='/docs:docs,/_test_data:tests-playwright/fixtures/content,/:tests-playwright/fixtures/site-root' node bin/plone-content.cjs served",
     "check:docs": "node docs/examples/check-examples.mjs",
     "gen:myst": "node docs/gen-myst.mjs docs _myst-build",
     "docs:assets": "node scripts/regen-doc-assets.mjs",
