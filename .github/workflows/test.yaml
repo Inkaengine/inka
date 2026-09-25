@@ -357,6 +357,132 @@ jobs:
             test-results/**/*.png
           retention-days: 7
 
+  # ── Admin typing specs on the Next.js example ───────────────────────────
+  # admin-mock and admin-nuxt rebuild or re-key their DOM on every render, so a
+  # bug where the bridge edits DOM the frontend owns never shows there. The
+  # Next.js example keeps its DOM between renders (stable keys), like a real
+  # React frontend: the admin-driven typing flows — Enter/Backspace splits,
+  # paste, markdown shortcuts, prospective formatting — run against it here.
+  test-admin-nextjs:
+    needs: build
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup pnpm
+        run: |
+          npm install -g corepack
+          corepack cache clean
+          corepack enable
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - name: Install dependencies
+        run: |
+          pnpm dlx mrs-developer missdev --no-config --fetch-https
+          pnpm install --frozen-lockfile
+      - name: Build workspace deps (@plone/registry, @plone/components)
+        # pnpm start:prod loads these at runtime via workspace symlinks;
+        # their dist/ output must exist or the SSR server fails to boot.
+        run: pnpm build:deps
+      - name: Build Next.js example
+        run: cd examples/hydra-nextjs && pnpm install --ignore-workspace && pnpm run build:test
+        env:
+          NEXT_PUBLIC_BACKEND_BASE_URL: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
+      - name: Download Volto build
+        uses: actions/download-artifact@v4
+        with:
+          name: volto-build
+          path: build/
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install --with-deps chromium firefox
+      - name: Install Playwright deps only
+        # This step sat for 3h38m on one run. The log shows apt-get update stalling
+        # mid-fetch of the Ubuntu package indexes — silent after
+        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
+        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
+        # acquire so it fails fast, and bound the step as a backstop.
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: |
+          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          APTCONF
+          pnpm exec playwright install-deps chromium firefox
+      - name: Start servers
+        run: |
+          node tests-playwright/fixtures/mock-api-server.cjs &
+          npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
+          PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
+            RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
+            VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
+            pnpm start:prod &
+          (cd examples/hydra-nextjs && pnpm run start:test) &
+          sleep 3
+      - name: Wait for servers
+        run: |
+          for port in ${{ env.HYDRA_MOCK_API_PORT }} ${{ env.HYDRA_TEST_FRONTEND_PORT }} ${{ env.HYDRA_VOLTO_SSR_PORT }} ${{ env.HYDRA_NEXTJS_PORT }}; do
+            echo "Waiting for port $port..."
+            for i in {1..60}; do curl -s http://localhost:$port > /dev/null && break; sleep 2; done
+            curl -s http://localhost:$port > /dev/null || { echo "port $port never came up"; exit 1; }
+          done
+          echo "All servers ready"
+      - name: Run tests
+        run: >-
+          pnpm exec playwright test --project=admin-nextjs --reporter=github,list,html
+          tests-playwright/integration/inline-editing-basic.spec.ts
+          tests-playwright/integration/inline-editing-formatting.spec.ts
+          tests-playwright/integration/inline-editing-clipboard.spec.ts
+          tests-playwright/integration/inline-editing-links.spec.ts
+          tests-playwright/integration/markdown-shortcuts.spec.ts
+          tests-playwright/integration/slash-menu.spec.ts
+          tests-playwright/integration/complex-slate.spec.ts
+          tests-playwright/integration/block-add-remove.spec.ts
+          tests-playwright/integration/page-regions.spec.ts
+        env:
+          CI: true
+          NO_WEBSERVER: true
+          USE_PREBUILT: true
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-admin-nextjs
+          path: |
+            playwright-report/
+            test-results/**/*.png
+          retention-days: 7
+
   # ── Nuxt bridge tests (no Volto needed) ─────────────────────────────────
   test-nuxt-bridge:
     needs: build

@@ -3979,10 +3979,51 @@ export class AdminUIHelper {
    * Get all block IDs in order.
    * Returns an array of block UIDs, deduplicated (multi-element blocks count as one).
    * Uses evaluateAll for single browser round-trip instead of N sequential getAttribute calls.
-   * @param container - Container selector to scope the search (default: 'main' for main content)
+   *
+   * 'main' (the default) and 'footer' are PAGE REGIONS: every block, nested ones
+   * included, whose chain of parents reaches that region of the page (`items` for
+   * main content), read from the bridge's own blockPathMap. Not a `main` or
+   * `footer` selector: those assumed the frontend wraps its regions in <main> and
+   * <footer>, and a frontend need not (the Next.js example doesn't). Any other
+   * value is a selector scoping the search, as before.
+   * @param container - 'main', 'footer', or a container selector
    */
   async getBlockOrder(container: string = 'main'): Promise<string[]> {
     const iframe = this.getIframe();
+    const PAGE_REGIONS: Record<string, string> = { main: 'items', footer: 'footer' };
+    if (PAGE_REGIONS[container]) {
+      return await iframe.locator('[data-block-uid]').evaluateAll((elements, region) => {
+        // Before the bridge has its first data there are no blocks yet, as there
+        // were none in the DOM for the old selector; callers poll for a count.
+        const map = (window as any).__hydraBridge?.blockPathMap;
+        if (!map) return [];
+        // A block still in the DOM that the map no longer has (just removed,
+        // the frontend not yet re-rendered) is still on the page: it counts as
+        // main content until the frontend takes it away. The map updates before
+        // the render, so dropping it here would let a caller waiting for "one
+        // block fewer" move on mid-render — the old `main` selector waited for
+        // the DOM, and so does this.
+        const inRegion = (uid: string) => {
+          let entry = map[uid];
+          if (!entry) return region === 'items';
+          for (let hops = 0; entry && hops < 100; hops++) {
+            if (entry.parentId === '_page') return entry.region === region;
+            entry = map[entry.parentId];
+          }
+          return region === 'items';
+        };
+        const seen = new Set<string>();
+        const blockIds: string[] = [];
+        for (const el of elements) {
+          const uid = el.getAttribute('data-block-uid');
+          if (uid && !seen.has(uid) && inRegion(uid)) {
+            seen.add(uid);
+            blockIds.push(uid);
+          }
+        }
+        return blockIds;
+      }, PAGE_REGIONS[container]);
+    }
     const selector = `${container} [data-block-uid]`;
     return await iframe.locator(selector).evaluateAll((elements) => {
       const seen = new Set<string>();
