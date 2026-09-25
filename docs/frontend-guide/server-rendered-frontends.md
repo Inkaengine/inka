@@ -57,7 +57,7 @@ The fix is to update only the smallest block that changed, and let the rest of t
 ### Text
 
 ```text
-Admin (Volto)              Your server-rendered frontend
+Inka editor                Your server-rendered frontend
 ─────────────              ──────────────────────────────
 hydra.js bridge   ────►    FORM_DATA postMessage
                            │
@@ -280,18 +280,7 @@ Everything else — the diff, the POST, the swap, the `data-block-uid` contract 
 
 ## Caveats
 
-- **Network round trip per edit.** Faster than full reload (Sanity's
-
-approach) but slower than client-side reconciliation. For a typical   edit (one block at a time) it's a few hundred bytes and a few   milliseconds on a same-origin endpoint. Don't put the endpoint behind   authentication that adds another round trip.
-
-- **\`data-block-uid\` MUST be the outer element.** A wrapper around the
-
-block from outside the renderer (e.g. a CSS-grid `<li>` your layout   adds) will break `outerHTML` swaps — the swap would replace the wrapper   too. Always wrap inside the renderer.
-
-- **The endpoint must be on the same origin** as the rendered page (or
-
-CORS-enabled). The bridge POSTs from the iframe child to whatever URL   you give it; cross-origin without CORS will fail.
-
-- **The endpoint receives the full formData on every edit.** Don't log
-
-it to disk or replay it — it's editing state, potentially containing   unpublished content.
+- **A network round trip per edit.** This is faster than reloading the whole page, but slower than client-side reconciliation. A typical edit changes one block, so the request is a few hundred bytes and takes a few milliseconds on a same-origin endpoint.
+- **\`data-block-uid\` must be on the outer element.** A wrapper added around the block from outside the renderer (for example a CSS-grid `<li>` from your layout) breaks the `outerHTML` swap, because the swap would replace the wrapper too. Always wrap inside the renderer.
+- **The endpoint must be on the same origin** as the rendered page, or allow it through CORS. The bridge posts from the iframe to whatever URL you give it, and a cross-origin request without CORS fails.
+- **The endpoint receives unpublished content.** Every request carries the whole page as it is being edited. Serve the endpoint only from your editing front end, check the editor's token on each request, and don't log or store the body. See [Deploy and secure Inka](../deploy-and-secure.md#secure-the-server-render-endpoint).

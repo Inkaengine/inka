@@ -5,12 +5,10 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: Instead of combining editing and rendering into one framework and
-  codebase, these are separated and during editing a two way communication
-  channel is opened across an iframe so that the editing UI is no longer part of
-  the frontend code. Instead a small JS file called hydra.js is included in your
-  frontend during editing that handles the iframe bridge communication to Inka
-  which is running in the same browser window.
+description: Inka is the page-building and governance layer between your CMS and
+  your front ends. Content stays in the CMS, rules come from your design system,
+  and front ends in any framework render the result. Editing is private;
+  publishing is public.
 effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
@@ -49,39 +47,56 @@ blocks-tagged: |
 
 # How Inka Works
 
-Instead of combining editing and rendering into one framework and codebase, these are separated and during editing a two way communication channel is opened across an iframe so that the editing UI is no longer part of the frontend code. Instead a small JS file called hydra.js is included in your frontend during editing that handles the iframe bridge communication to Inka which is running in the same browser window.
+Inka is the page-building and governance layer between your CMS and your front ends. Content stays in the CMS, rules come from your design system, and front ends in any framework render the result. Editing is private; publishing is public.
 
 <block type="separator" />
 
-## Architecture Overview
+## Three layers
 
-You could think of it as splitting Volto into two parts, Rendering and CMS UI/Admin UI while keeping the same UI and then making the Rendering part easily replaceable with other implementations.
+Inka splits a site into three layers, and each can change without the others:
 
-### Architecture
+- **The CMS**, such as Plone, Drupal or WordPress, keeps the content, workflow, users, permissions, scheduling and translation. It connects to Inka through an [adapter](./adapters/index.md).
+- **Inka** does the page building and applies your design system's rules while people edit. It is not a CMS and stores no content of its own.
+- **Front ends** render the pages, in any framework, as a static site (SSG), server-rendered (SSR) or a single-page app (SPA). One site can have several.
 
-```bash
-                  Browser            RestAPI             Server
+This is more decoupled than a typical headless CMS. A headless CMS still owns the page builder, so its editing screens decide what a page can be. With Inka, the front end decides. Each front end declares its block schemas and rules through the bridge script (`initBridge`), and Inka applies them while people edit. Change your design system and the editing rules change with it, with no CMS release.
 
-              ┌──────────────┐                       ┌─────────────┐
- Anon/Editing │    Volto     │◄─────────────────────►│    Plone    │
-              └──────────────┘                       └─────────────┘
+### Diagram
 
-──────────────────────────────────────────────────────────────────────────
-
-          │   ┌──────────────┐                       ┌─────────────┐
-          │   │   Frontend   │◄──────────────────────┤    Plone    │
-          │   └──hydra.js────┘                       └─────────────┘
-          │          ▲                                  ▲
- Editing UI          │ iFrame Bridge                    │
-          │          ▼                                  │
-          │   ┌──────────────┐                          │
-          │   │    Inka     │◄─────────────────────────┘
-          │   └──────────────┘
-
-              ┌──────────────┐                       ┌─────────────┐
- Anon         │   Frontend   │◄──────────────────────┤    Plone    │
-              └──────────────┘                       └─────────────┘
+```text
+                        ┌───────────── behind login, can sit behind a VPN ──────────────┐
+┌───────────────┐       │   ┌────────────────┐   postMessage    ┌───────────────────┐   │
+│ CMS           │ save  │   │ Inka editor    │◄────────────────►│ Front end,        │   │
+│ Plone,        │◄──────┼───┤ page building, │    (iframe)      │ editing build     │   │
+│ Drupal,       │ read  │   │ design rules   │                  │ + bridge script   │   │
+│ WordPress     ├───────┼──►└────────────────┘                  └─────────▲─────────┘   │
+│ (adapters)    │ read  │                                                 │             │
+│               ├───────┼─────────────────────────────────────────────────┘             │
+│               │       └───────────────────────────────────────────────────────────────┘
+│               │ read, published content only        ┌───────────────────┐
+│               ├────────────────────────────────────►│ Public front end  │  no Inka, no bridge
+└───────────────┘                                     └───────────────────┘
 ```
+
+For the same picture drawn for people new to Inka, see [how it works](https://inka.sh/how-it-works) on inka.sh.
+
+## Editing is private, publishing is public
+
+Inka is only used to edit. The public site never talks to it.
+
+- **Inka sits behind login.** Editors sign in with their CMS account. You can also put it behind a VPN, because nothing public needs to reach it.
+- **The public site is a read-only front end.** It reads published content straight from the CMS API and never loads Inka.
+- **The bridge script is only for editing.** Load it only when the page is opened inside Inka's editing iframe, or ship it only in a separate editing build of your front end. Your public build does not need it.
+- **Edits travel over `postMessage`.** Inka opens your front end in an iframe. The bridge and Inka talk only through `postMessage`, and each side checks the other's origin: the bridge sends only to the Inka origin, and accepts messages only from that origin or from its own page.
+- **Inka saves to the CMS, the bridge does not.** When an editor saves, Inka writes the page through the CMS's API with the editor's own login, so the CMS's permissions and workflow apply. The front end only reads: it fetches content with the editor's token so the preview can show unpublished pages, and the bridge sends the edits to Inka.
+
+[Deploy and secure Inka](./deploy-and-secure.md) covers the settings that keep this split tight, such as `frame-ancestors` on the editing front end.
+
+## Inka is stateless
+
+Inka has no database and no content store of its own. Content, users and history live in the CMS. Each editor's own settings, such as the front ends they have added, live in their browser.
+
+So Inka is easy to run yourself: it is one Node.js process you can scale to zero between editing sessions. To recover, redeploy it; there is nothing to restore. PretaGov also runs Inka as a managed service, on a dedicated instance for each customer.
 
 ## The iframe ↔ admin bridge
 
@@ -94,7 +109,7 @@ This split lets the frontend stay 100% headless when not in admin (just renders 
 
 ## The chrome pattern
 
-Selection outlines, the Quanta toolbar, drag handles, edge handles, the empty-block "+" — none of these are rendered by the frontend. They're rendered in the admin (React) layered above the iframe. The frontend only:
+Selection outlines, the block toolbar, drag handles, edge handles, the empty-block "+" — none of these are rendered by the frontend. They're rendered in the admin (React) layered above the iframe. The frontend only:
 
 1. Adds the data attributes that mark editable elements (`data-block-uid`, `data-edit-text`, `data-edit-link`, `data-edit-media`, `data-node-id`).
 2. Captures pointer events through invisible elements so the admin's chrome stays interactive.
@@ -111,7 +126,39 @@ When the editor types in a slate field, the frontend doesn't compute the new sla
 
 This is why every slate node needs a `data-node-id` attribute on its rendered HTML — without one, the admin can't track the cursor across re-renders. See [Visual Editing › Renderer Node-ID Rules](./frontend-guide/visual-editing.md#renderer-node-id-rules).
 
-## Template membership (edit-side slot assignment)
+## Building a frontend
+
+The steps for creating an Inka-compatible frontend are the same across frameworks: catch-all route → fetch the page from your CMS's API → render blocks recursively → add `data-block-uid` and `data-edit-*` attributes on editable elements → load `hydra.js` only inside the admin iframe.
+
+See [Build a frontend](./frontend-guide/build-a-frontend.md) for the full step-by-step guide, or the example frontends: [Nuxt.js](https://github.com/Inkaengine/inka/tree/main/examples/nuxt-blog-starter), [Next.js](https://github.com/Inkaengine/inka/tree/main/examples/hydra-nextjs), [F7-Vue](https://github.com/Inkaengine/inka/tree/main/examples/hydra-vue-f7).
+
+## Layers of adoption
+
+Inka is **additive**: each layer below works on its own, and each next row enhances editing without breaking what came before. You can ship at any row, mix rows on the same site, and add the next layer when you're ready.
+
+<block type="slateTable" table.fixed table.celled>
+
+| Step | What you wire up | What editors get |
+| --- | --- | --- |
+| **Plain headless** | Frontend fetches your CMS's API. No `hydra.js` involved. | Sidebar editing in Inka, frontend reloads on save. Editors flip between the Inka edit tab and a frontend tab to see results — works fine, but loses inline editing and realtime preview. |
+| **Bridge installed** | Load `hydra.js`, call `initBridge({ page: { schema: { properties: { ... } } } })`. See [Live Preview › Setting Up the Bridge](./frontend-guide/live-preview.md#setting-up-the-bridge). | Frontend follows admin navigation (and vice versa). Frontend renders private content via shared auth ([Authentication](./frontend-guide/advanced.md#authentication)). Page metadata (title, description, etc.) editable from the admin. |
+| **Custom block types** | Add a `blocks: { ... }` config to `initBridge`. See [Custom Blocks › \`initBridge()\` Reference](./frontend-guide/custom-blocks.md#initbridge-reference). | Editors can add, configure, and convert your custom block types — schema renders in the sidebar with no editor plugin to deploy. Cross-block conversion ([fieldMappings](./frontend-guide/custom-blocks.md#block-conversion-and-fieldmappings)) becomes possible. |
+| **Block selection in preview** | Add `data-block-uid` to your rendered blocks. See [Visual Editing › HTML Annotations](./frontend-guide/visual-editing.md#html-annotations-for-visual-editing). | Click-to-select on the preview. Block toolbar above selected blocks. Sidebar↔preview selection scrolls into view. Multi-select with Shift/Ctrl-click. |
+| **Realtime preview** | Register `onEditChange` and render from the `formData` it gives you instead of from the API. | Preview updates as the editor types. Drag-and-drop, slash menu, container ops (wrap, unwrap, edge-drag, convert) all unlock — see the [Editor Guide](./editor-guide/index.md). |
+| **Direct field editing** | Add `data-edit-text`, `data-edit-link`, `data-edit-media` to specific elements. | Click rendered text and start typing. Click an image to pick or upload. Click a link to open the link picker. Markdown shortcuts (`##`, `**bold**`, etc.). |
+| **Templates and layouts** | Configure `allowedTemplates` / `allowedLayouts` on a region; use `expandTemplates` at render time. See [Templates](./frontend-guide/templates.md). | Editors pick layouts from a dropdown, insert template snippets via the BlockChooser, recognise locked vs editable vs slot blocks. |
+| **Listings and dynamic content** | Configure listing block types and pass `fetchItems` to `expandListingBlocks`. See [Listings](./frontend-guide/listings.md). | A `fieldMapping` widget on listing blocks maps query results to item fields. Listings render as repeated blocks, editable per item. |
+| **Custom UI / advanced** | Override the editor's components through Volto's add-on system. See [Advanced](./frontend-guide/advanced.md#custom-sidebar-and-cms-ui). | Bespoke widgets and custom block edit forms. |
+
+</block>
+
+Different parts of the same site can sit at different rows — inline-editable headlines on a marketing page, sidebar-only editing on a complex catalog page.
+
+## Inside the editor (for contributors)
+
+This section is for people working on Inka itself. You don't need it to build a front end. It describes how the editor, which builds on Volto (Plone's React editor), handles template membership and URLs.
+
+### Template membership (edit-side slot assignment)
 
 A block's template membership — `templateId`, `templateInstanceId`, `slotId`, `fixed`, `readOnly` — is not intrinsic to the block; the admin **assigns** it at edit time. The [merge](./frontend-guide/templates.md#how-the-merge-works) reads these fields to place content at render time. Crucially, assignment is **gated on edit mode** — editing a template is a different act from moving content around inside a template you're *not* editing:
 
@@ -134,7 +181,7 @@ If none apply, the position is **outside every template** and the function retur
 
 In normal mode the net effect matches the merge's own placement rules (a top/bottom slot outside a fixed anchor): dropping a block past a **free** edge flows it into that slot; dropping it past a **both-anchored** edge exits it to the surrounding page region. The drag scan that decides the drop position lives in `hydra.js` and, on a distance tie between coincident edges, prefers the deeper (inner) edge so a reorder inside a container isn't ejected to the outer level.
 
-## URL flattening and `publicURL`
+### URL flattening and `publicURL`
 
 Volto's stock URL helpers (`flattenToAppURL`, `isInternalURL`, `toPublicURL`) assume there's one "public URL" — usually the same origin the admin runs on, configured via `RAZZLE_PUBLIC_URL`. In Inka the admin and the published frontend(s) live on different origins, and the editor switches between published frontends at will, so there is no single public URL.
 
@@ -149,31 +196,3 @@ Inka makes `settings.publicURL` follow the currently active iframe frontend:
 Saved frontends come from two sources, merged: the `RAZZLE_DEFAULT_IFRAME_URL` env (baseline list shipped with the deployment, format `Name|EditURL[|PublishURL],…`) and the `saved_urls_<port>` cookie (per-editor additions made via the toolbar Settings modal). The optional third slot in each entry is for setups where the published site lives at a different origin than the edit-mode frontend (e.g. `edit.example.com` for previews, `www.example.com` for production).
 
 What we deliberately did NOT shadow: `UniversalLink`'s fallback `href` when an item is empty, Volto's admin-side `Robots.txt` / `Sitemap.xml` generators, `ContentMetadataTags` / `AlternateHrefLangs` in the admin's `<head>`, and the `RegistryImageWidget` site-logo URL. All of these inherit the dynamic `publicURL` transparently, and in an Inka deployment the authoritative `robots.txt` / `sitemap.xml` / SEO tags are served by the frontends, not the admin.
-
-## Building a frontend
-
-The steps for creating an Inka-compatible frontend are the same across frameworks: catch-all route → fetch page from Plone REST API → render blocks recursively → add `data-block-uid` and `data-edit-*` attributes on editable elements → load `hydra.js` only inside the admin iframe.
-
-See [Build a frontend](./frontend-guide/build-a-frontend.md) for the full step-by-step guide, or the example frontends: [Nuxt.js](https://github.com/Inkaengine/inka/tree/main/examples/nuxt-blog-starter), [Next.js](https://github.com/Inkaengine/inka/tree/main/examples/hydra-nextjs), [F7-Vue](https://github.com/Inkaengine/inka/tree/main/examples/hydra-vue-f7).
-
-## Layers of adoption
-
-Inka is **additive**: each layer below works on its own, and each next row enhances editing without breaking what came before. You can ship at any row, mix rows on the same site, and add the next layer when you're ready.
-
-<block type="slateTable" table.fixed table.celled>
-
-| Step | What you wire up | What editors get |
-| --- | --- | --- |
-| **Plain headless** | Frontend fetches the Plone REST API. No `hydra.js` involved. | Sidebar editing in Volto, frontend reloads on save. Editors flip between the Volto edit tab and a frontend tab to see results — works fine, but loses inline editing and realtime preview. |
-| **Bridge installed** | Load `hydra.js`, call `initBridge({ page: { schema: { properties: { ... } } } })`. See [Live Preview › Setting Up the Bridge](./frontend-guide/live-preview.md#setting-up-the-bridge). | Frontend follows admin navigation (and vice versa). Frontend renders private content via shared auth ([Authentication](./frontend-guide/advanced.md#authentication)). Page metadata (title, description, etc.) editable from the admin. |
-| **Custom block types** | Add a `blocks: { ... }` config to `initBridge`. See [Custom Blocks › \`initBridge()\` Reference](./frontend-guide/custom-blocks.md#initbridge-reference). | Editors can add, configure, and convert your custom block types — schema renders in the sidebar without touching Volto. Cross-block conversion ([fieldMappings](./frontend-guide/custom-blocks.md#block-conversion--fieldmappings)) becomes possible. |
-| **Block selection in preview** | Add `data-block-uid` to your rendered blocks. See [Visual Editing › HTML Annotations](./frontend-guide/visual-editing.md#html-annotations-for-visual-editing). | Click-to-select on the preview. Quanta Toolbar above selected blocks. Sidebar↔preview selection scrolls into view. Multi-select with Shift/Ctrl-click. |
-| **Realtime preview** | Register `onEditChange` and render from the `formData` it gives you instead of from the API. | Preview updates as the editor types. Drag-and-drop, slash menu, container ops (wrap, unwrap, edge-drag, convert) all unlock — see the [Editor Guide](./editor-guide/index.md). |
-| **Direct field editing** | Add `data-edit-text`, `data-edit-link`, `data-edit-media` to specific elements. | Click rendered text and start typing. Click an image to pick or upload. Click a link to open the link picker. Markdown shortcuts (`##`, `**bold**`, etc.). |
-| **Templates and layouts** | Configure `allowedTemplates` / `allowedLayouts` on a region; use `expandTemplates` at render time. See [Templates](./frontend-guide/templates.md). | Editors pick layouts from a dropdown, insert template snippets via the BlockChooser, recognise locked vs editable vs slot blocks. |
-| **Listings and dynamic content** | Configure listing block types and pass `fetchItems` to `expandListingBlocks`. See [Listings](./frontend-guide/listings.md). | A `fieldMapping` widget on listing blocks maps query results to item fields. Listings render as repeated blocks, editable per item. |
-| **Custom UI / advanced** | Override Volto components, or drive frontend-side editing via `sendBlockUpdate` / `sendBlockAction`. See [Advanced](./frontend-guide/advanced.md#custom-sidebar-and-cms-ui). | Bespoke widgets, custom block edit forms, in-frontend interactions for blocks Inka's defaults don't fit. |
-
-</block>
-
-Different parts of the same site can sit at different rows — inline-editable headlines on a marketing page, sidebar-only editing on a complex catalog page.
