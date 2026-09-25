@@ -10,7 +10,7 @@ import { compose } from 'redux';
 import keys from 'lodash/keys';
 import isEmpty from 'lodash/isEmpty';
 import { defineMessages, injectIntl } from 'react-intl';
-import { Button, Grid, Menu } from 'semantic-ui-react';
+import { Button } from 'semantic-ui-react';
 import { createPortal } from 'react-dom';
 import { v4 as uuid } from 'uuid';
 import qs from 'query-string';
@@ -25,10 +25,15 @@ import Icon from '@plone/volto/components/theme/Icon/Icon';
 import Toolbar from '@plone/volto/components/manage/Toolbar/Toolbar';
 import Sidebar from '@plone/volto/components/manage/Sidebar/Sidebar';
 import Toast from '@plone/volto/components/manage/Toast/Toast';
-import TranslationObject from '@plone/volto/components/manage/Multilingual/TranslationObject';
 import { Form } from '@plone/volto/components/manage/Form';
 
 import { getBaseUrl, flattenToAppURL } from '@plone/volto/helpers/Url/Url';
+import {
+  cloneBlocksForTranslation,
+  withFieldsReadOnly,
+  sourceFingerprint,
+} from '@volto-hydra/helpers';
+import { buildIdFieldMap, getBlockTypeSchema } from '../../../../../utils/blockPath';
 import {
   getBlocksFieldname,
   getBlocksLayoutFieldname,
@@ -44,7 +49,6 @@ import {
   tryParseJSON,
   extractInvariantErrors,
 } from '@plone/volto/helpers/FormValidation/FormValidation';
-import BodyClass from '@plone/volto/helpers/BodyClass/BodyClass';
 import Helmet from '@plone/volto/helpers/Helmet/Helmet';
 
 import { preloadLazyLibs } from '@plone/volto/helpers/Loadable';
@@ -328,38 +332,63 @@ class Add extends Component {
         });
       }
 
-      //copy blocks from translationObject
+      // Copy the original's blocks for the translator to work on.
+      //
+      // HYDRA: through the container API, so a container's CHILDREN are copied
+      // under new ids too. Volto's own loop renames only what blocks_layout
+      // lists, which leaves every nested block sharing its id with the block it
+      // was copied from — and a uid that names a block on two pages breaks
+      // selection, inline editing and the bridge, all of which address blocks
+      // by uid. Each copy keeps `@canonical`, the id it came from.
       if (translationObject && blocksFieldname && blocksLayoutFieldname) {
-        initialBlocks = {};
-        initialBlocksLayout = [];
-        const originalBlocks = JSON.parse(
-          JSON.stringify(translationObject[blocksFieldname]),
+        const copied = cloneBlocksForTranslation(
+          translationObject[blocksFieldname],
+          translationObject[blocksLayoutFieldname]?.items || [],
+          uuid,
+          buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
+          // What each copy was made FROM, so the editor can later be told which
+          // blocks the original has moved on from. A type with no schema here
+          // records nothing rather than a fingerprint over fields we cannot
+          // tell apart.
+          (sourceBlock, id, type) => {
+            const schema = getBlockTypeSchema(
+              type,
+              this.props.intl,
+              config.blocks.blocksConfig,
+            );
+            return schema ? sourceFingerprint(sourceBlock, schema) : null;
+          },
         );
-        const originalBlocksLayout =
-          translationObject[blocksLayoutFieldname].items;
-
-        originalBlocksLayout.forEach((value) => {
-          if (!isEmpty(originalBlocks[value])) {
-            let newUid = uuid();
-            initialBlocksLayout.push(newUid);
-            initialBlocks[newUid] = originalBlocks[value];
-            initialBlocks[newUid].block = newUid;
-
-            // Layout ID - keep a reference to the original block id within layout
-            initialBlocks[newUid]['@canonical'] = value;
-          }
-        });
+        initialBlocks = copied.blocks;
+        initialBlocksLayout = copied.layout;
+        // Volto's copy also stamps each block's own `block` key with its uid.
+        for (const [uid, block] of Object.entries(initialBlocks)) {
+          block.block = uid;
+        }
       }
+
+      const languageIndependentFields = translationObject
+        ? getLanguageIndependentFields(this.props.schema)
+        : [];
 
       const lifData = () => {
         const data = {};
-        if (translationObject) {
-          getLanguageIndependentFields(this.props.schema).forEach(
-            (lif) => (data[lif] = translationObject[lif]),
-          );
-        }
+        languageIndependentFields.forEach(
+          (lif) => (data[lif] = translationObject[lif]),
+        );
         return data;
       };
+
+      // HYDRA: a language-independent field is the SAME value in every
+      // language, so the translation inherits it — shown, so the translator
+      // knows what the tags are, but not editable, because there is one place
+      // that value lives. Volto only fades these with CSS and still posts
+      // whatever the input holds; `readOnly` — the same flag a locked block
+      // carries — means the form renders the value instead of a control.
+      const formSchema = withFieldsReadOnly(
+        this.props.schema,
+        languageIndependentFields,
+      );
 
       const pageAdd = (
         <div id="page-add">
@@ -374,7 +403,7 @@ class Add extends Component {
             navRoot={
               this.props.content?.['@components']?.navroot?.navroot || {}
             }
-            schema={this.props.schema}
+            schema={formSchema}
             type={this.props.type}
             formData={
               this.props.location?.state?.initialFormData || {
@@ -470,51 +499,13 @@ class Add extends Component {
         </div>
       );
 
-      return translationObject ? (
-        <>
-          <BodyClass className="babel-view" />
-          <Grid
-            celled="internally"
-            stackable
-            columns={2}
-            id="page-add-translation"
-          >
-            <Grid.Column className="source-object">
-              <TranslationObject
-                translationObject={translationObject}
-                schema={this.props.schema}
-                pathname={this.props.pathname}
-                visual={visual}
-                isFormSelected={
-                  this.state.formSelected === 'translationObjectForm'
-                }
-                onSelectForm={() => {
-                  this.setState({
-                    formSelected: 'translationObjectForm',
-                  });
-                }}
-              />
-            </Grid.Column>
-            <Grid.Column>
-              <div className="new-translation">
-                <Menu pointing secondary attached tabular>
-                  <Menu.Item
-                    name={translateTo?.toUpperCase() || ''}
-                    active={true}
-                  >
-                    {`${this.props.intl.formatMessage(messages.translateTo, {
-                      lang: translateTo || '',
-                    })}`}
-                  </Menu.Item>
-                </Menu>
-                {pageAdd}
-              </div>
-            </Grid.Column>
-          </Grid>
-        </>
-      ) : (
-        pageAdd
-      );
+      // Volto pairs two FORMS here: the source's fields beside the new page's,
+      // each with its own blocks editor. Inka has neither half of that — a
+      // page's fields are in the sidebar and its blocks are drawn by the
+      // frontend — so the source form would only repeat the sidebar, in a
+      // second place, for a page nobody is editing. The original appears where
+      // it is useful instead: the read-only pane beside the draft.
+      return pageAdd;
     }
     return <div />;
   }
@@ -531,6 +522,10 @@ export default compose(
       pathname: props.location.pathname,
       returnUrl: qs.parse(props.location.search).return_url,
       type: qs.parse(props.location.search).type,
+      // Which frontend the editor is previewing with, so a translation's
+      // read-only original is rendered by the same one as its draft.
+      frontendPreviewUrl: state.frontendPreviewUrl?.url,
+      token: state.userSession?.token,
     }),
     { createContent, getSchema, changeLanguage, setFormData },
   ),

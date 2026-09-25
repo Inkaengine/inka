@@ -38,6 +38,8 @@ import ReadOnlyForm from './ReadOnlyForm';
 import { getBlockById, updateBlockById, getResolvedSchema, getCommonAncestor } from '../../utils/blockPath';
 import { HydraSchemaProvider } from '../../context';
 import { getConvertibleTypes, convertBlockType, findTypeField } from '../../utils/blockSync';
+import { nestedStatus } from '@volto-hydra/helpers';
+import { buildIdFieldMap } from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isBlockReadonly } from '@volto-hydra/helpers';
 import { flattenToAppURL } from '@plone/volto/helpers';
@@ -171,8 +173,28 @@ const getFilteredBlockSchema = (blockType, intl, blockPathMap, blockId, blockDat
 // dependency-free ./templateSettingsSchema module so it can be unit-tested without the
 // React/Volto component tree. Imported at the top of this file.
 
+/** What the marker says out loud. */
+const NESTED_STATUS_WORDING = {
+  error: ['could not be saved', 'could not be saved'],
+  warning: ['need attention', 'needs attention'],
+  untranslated: ['are not translated yet', 'is not translated yet'],
+  // Translated, then the original moved on: the words here are a revision
+  // behind, which is a different job from never having been translated.
+  stale: [
+    'were translated before the original changed',
+    'was translated before the original changed',
+  ],
+};
+
+function nestedStatusLabel({ status, count }) {
+  const [many, one] =
+    NESTED_STATUS_WORDING[status] || NESTED_STATUS_WORDING.untranslated;
+  return count === 1 ? `1 block inside ${one}` : `${count} blocks inside ${many}`;
+}
+
 const ParentBlockSection = ({
   blocksErrors = {},
+  blockStatuses,
   blockId,
   blockType,
   blockData,
@@ -195,6 +217,24 @@ const ParentBlockSection = ({
 }) => {
   // Get intl from context if not passed (needed for getTemplateInstanceSchema)
   const contextIntl = useIntl();
+  // Errors are per block id already; untranslated copies are worked out by the
+  // form (it is the page that knows what it was translated from).
+  const nested = React.useMemo(
+    () =>
+      nestedStatus(blockData, {
+        statuses: {
+          ...Object.fromEntries(
+            Object.keys(blocksErrors || {}).map((id) => [id, 'error']),
+          ),
+          // Per-block translation status: untranslated (copied, never
+          // touched) or stale (its source changed since). Errors above win —
+          // one stops a save, these are work still to do.
+          ...(blockStatuses || {}),
+        },
+        idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, intl || contextIntl),
+      }),
+    [blockData, blocksErrors, blockStatuses, intl, contextIntl],
+  );
   // Store current block data in liveBlockDataRef on every render
   // This ensures child schemaEnhancers can see parent's current data
   if (liveBlockDataRef && blockData) {
@@ -289,6 +329,20 @@ const ParentBlockSection = ({
           >
             {title}
           </button>
+          {/* What the blocks INSIDE need. A blind is collapsed, so a teaser
+              three levels down that refuses to save — or still holds the
+              language it was copied from — is invisible until someone goes
+              looking. One marker, whatever the reason: the status it shows is
+              the worst one under it. */}
+          {nested && (
+            <span
+              className={`nested-status nested-status--${nested.status}`}
+              data-nested-status={nested.status}
+              data-nested-count={nested.count}
+              title={nestedStatusLabel(nested)}
+              aria-label={nestedStatusLabel(nested)}
+            />
+          )}
         </div>
         <div className="block-actions-menu" style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
           {/* Toolbar action buttons (e.g., add row/column for tables) */}
@@ -647,6 +701,7 @@ const ParentBlockSection = ({
  * Renders the parent chain for the selected block with settings forms
  */
 const ParentBlocksWidget = ({
+  blockStatuses,
   selectedBlock,
   multiSelected = [],
   // blockId → { field: [messages] }, from the last refused save. Volto's
@@ -853,6 +908,7 @@ const ParentBlocksWidget = ({
               <ParentBlockSection
                 key={parentId}
                 blocksErrors={blocksErrors}
+                blockStatuses={blockStatuses}
                 blockId={parentId}
                 blockType={parentType}
                 blockData={parentData}
@@ -880,6 +936,7 @@ const ParentBlocksWidget = ({
           <ParentBlockSection
             key={selectedBlock}
             blocksErrors={blocksErrors}
+            blockStatuses={blockStatuses}
             blockId={selectedBlock}
             blockType={currentBlockType}
             blockData={currentBlockData}

@@ -55,7 +55,7 @@ export default async function ploneApi({
     api = `${runtimeConfig.public.backendBaseUrl}/++api++/${api}`;
   }
   if (!query) {
-    api = `${api}?expand=breadcrumbs,navroot,navigation&expand.navigation.depth=2`;
+    api = `${api}?expand=breadcrumbs,navroot,navigation,translations&expand.navigation.depth=2`;
   } else {
     headers['Content-Type'] = 'application/json';
   }

@@ -285,6 +285,29 @@ export class AdminUIHelper {
   }
 
   /**
+   * Make the site multilingual for THIS test's session.
+   *
+   * Volto gates every multilingual behaviour on `@site`'s features.multilingual:
+   * the `/` redirect, the `translations` expander on content GETs, and the
+   * toolbar's Manage Translations entry. The mock answers that per session (it
+   * keys state by auth token), so asking here leaves every other spec sharing
+   * the server — in parallel — with the single-language site it was written
+   * against. Call it BEFORE the first page load: the admin reads @site once, at
+   * boot.
+   */
+  async enableMultilingual(languages: string[] = ['en', 'de']): Promise<void> {
+    const response = await this.page.request.post(`${URLS.mockApi}/@mock-site-features`, {
+      headers: { Authorization: `Bearer ${this.authToken}` },
+      data: { multilingual: true, languages },
+    });
+    if (!response.ok()) {
+      throw new Error(
+        `Could not make the mock multilingual: ${response.status()} ${await response.text()}`,
+      );
+    }
+  }
+
+  /**
    * Build a full admin URL for a content path, e.g. contentUrl('/test-page', '/edit')
    * → '<adminUrl>/_test_data/test-page/edit'
    */
