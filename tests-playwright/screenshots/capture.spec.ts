@@ -535,11 +535,25 @@ test.describe('Editor Guide screenshots: translations', () => {
 
     await snap(page, 'translations-side-by-side');
 
-    // Tight on the container's section of the sidebar, where the marker is.
-    const section = page.locator('.parent-block-section').filter({ hasText: 'GridBlock' }).first();
-    await section.evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    // Tight on the sidebar strip around the marker: the container's section
+    // itself is a blind Playwright will not shoot whole, so frame the marker's
+    // row across the sidebar's width.
+    await marker.first().scrollIntoViewIfNeeded();
+    await expect(marker.first()).toBeVisible();
+    const m = (await marker.first().boundingBox())!;
+    // The sidebar column the marker sits in: its nearest ancestor as wide as
+    // the sidebar, measured in the page rather than named by a class.
+    const sidebar = await marker.first().evaluate((el) => {
+      let node: Element | null = el;
+      while (node && node.getBoundingClientRect().width < 300) node = node.parentElement;
+      const r = (node || el).getBoundingClientRect();
+      return { x: r.x, width: r.width };
+    });
     const file = path.join(OUT_DIR, 'translations-markers.png');
-    await section.screenshot({ path: file });
+    await page.screenshot({
+      path: file,
+      clip: { x: sidebar.x, y: Math.max(0, m.y - 48), width: sidebar.width, height: 120 },
+    });
     console.log(`[screenshot] translations-markers -> ${path.relative(process.cwd(), file)}`);
   });
 });
