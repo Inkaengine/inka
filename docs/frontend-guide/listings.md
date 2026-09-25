@@ -77,7 +77,7 @@ A grid can have a mix of listing and static blocks sharing a single paging. The 
 
 ```jsx
 import { Suspense, useState } from 'react';
-import { staticBlocks, expandListingBlocks, ploneFetchItems } from '@hydra-js/hydra.js';
+import { staticBlocks, expandListingBlocks, ploneFetchItems } from '@hydra-js/helpers';
 
 function Grid({ blocks, blocks_layout, pageNum, apiUrl, contextPath }) {
   const pagingInput = { start: pageNum * 6, size: 6 };
@@ -191,7 +191,7 @@ const { items } = await expandListingBlocks(layout, {
 });
 ```
 
-The **Search Shortcuts** link target reads Volto's search-block facet params — a page with a `search` block picks up `?facet.<index>=<value>` from the URL. The block's *index* uses the existing `select_querystring_field` widget; the optional *this-page field* uses `schemaFieldSelect` (a `/@types`-backed field dropdown, parameterized by `fieldType`), which **Related Items** also uses with `fieldType: 'relation'`.
+The **Search Shortcuts** link target reads the search block's facet params — a page with a `search` block picks up `?facet.<index>=<value>` from the URL. The block's *index* uses the existing `select_querystring_field` widget; the optional *this-page field* uses `schemaFieldSelect` (a `/@types`-backed field dropdown, parameterized by `fieldType`), which **Related Items** also uses with `fieldType: 'relation'`.
 
 ## Field Mapping
 
