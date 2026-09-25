@@ -58,7 +58,7 @@ When a template is applied to a page, blocks fall into three categories:
 
 ### 🔒 Locked (fixed + read-only)
 
-Shown with a **lock icon** — a 🔒 in the Quanta toolbar (in place of the drag handle) and on the template's sidebar bar. You can't:
+Shown with a **lock icon** — a 🔒 in the block toolbar (in place of the drag handle) and on the template's sidebar bar. You can't:
 
 - Edit the text/media inside it.
 - Move it.
@@ -123,7 +123,9 @@ When `allowedLayouts` is configured for a page (or a region), the sidebar shows 
 1. The new layout's structure replaces the old one.
 2. Your existing content is **redistributed** into the new layout's slots based on `slotId`:
 
-\- Content tagged with a slot name is placed into the matching slot in the new layout.    - Content with no slot tag falls into the `"default"` slot if the new layout has one; otherwise into the bottom or top slot, or is dropped.    - Fixed blocks with the same `slotId` get their editable content carried over (text, media); their structural settings come from the new layout.
+- Content tagged with a slot name is placed into the matching slot in the new layout.
+- Content with no slot tag falls into the `"default"` slot if the new layout has one; otherwise into the bottom or top slot, or is dropped.
+- Fixed blocks with the same `slotId` get their editable content carried over (text, media); their structural settings come from the new layout.
 
 The point of `slotId` is that two layouts can share the same set of region names — switch between them and your content lands in the right places automatically.
 
@@ -135,7 +137,7 @@ Editing a template changes its **definition** — the change will appear on **ev
 
 ## Editing content inside a template
 
-A template's own (fixed) blocks are **locked** by default — you can edit *this page's* content, but not the template. To change the template itself, **unlock** it: select one of its blocks and click the 🔒 on its **sidebar bar** ("Template: *name*"), on the block's **Quanta toolbar**, or **Edit template** in the bar's `⋯` menu. The 🔒 becomes 🔓, and the template's blocks — plus its Name / Save Location — become editable.
+A template's own (fixed) blocks are **locked** by default — you can edit *this page's* content, but not the template. To change the template itself, **unlock** it: select one of its blocks and click the 🔒 on its **sidebar bar** ("Template: *name*"), on the block's **block toolbar**, or **Edit template** in the bar's `⋯` menu. The 🔒 becomes 🔓, and the template's blocks — plus its Name / Save Location — become editable.
 
 Unlocking one template unlocks only *that* template. The rest of the page stays editable as normal, and you can **unlock several templates at once** and edit them together.
 

@@ -60,7 +60,7 @@ This guide is for **content editors** using an Inka-powered site. It covers how 
 
 Two layers are stacked on the editor screen:
 
-- **Inka's mechanics** — the toolbar, sidebar, selection borders, Quanta toolbar, slash menu, link picker, image picker, container operations. These look and behave the same on every Inka-powered site, and this guide covers them.
+- **Inka's mechanics** — the toolbar, sidebar, selection borders, block toolbar, slash menu, link picker, image picker, container operations. These look and behave the same on every Inka-powered site, and this guide covers them.
 - **Your site's design system** — what block types exist, how they render, which fields are inline-editable, the names you see in menus. The live preview comes straight from your frontend, so a "paragraph" might be called "Lead paragraph", an image block might have a caption your developers added, the slash-menu list of available block types reflects what your site registered. The mechanics are the same; only the labels and visuals change.
 
 If something in this guide doesn't match what you see, it's almost always because your design system named or styled it differently — the underlying interaction is still the same.
@@ -83,7 +83,7 @@ The editor screen has three regions:
 └───────────┴──────────────────────────────────┴──────────────┘
 ```
 
-- **Toolbar (left)** — saving, navigating to other pages, site settings. Standard Volto, plus the **Frontend switcher** (see below).
+- **Toolbar (left)** — saving, navigating to other pages, site settings. The standard toolbar of Volto, the editor Inka builds on, plus the **Frontend switcher** (see below).
 - **Live preview (centre)** — your actual frontend, running inside an iframe. This is what readers will see. Click directly into the preview to edit.
 - **Sidebar (right)** — when no block is selected, lists the page-level fields (title, description, blocks). When a block is selected, shows that block's settings, the chain of parent containers, and (for container blocks) the list of children. See [Selecting blocks](./selecting-blocks.md) for the navigation patterns.
 
@@ -129,11 +129,11 @@ So `Escape` repeatedly takes you up one level at a time. See [Selecting blocks](
 
 ## Editing on a phone
 
-On narrow screens (≤767 px) the editor reshapes into a two-bar layout: the **Quanta toolbar** pins to the top of the viewport — always visible, never fades — and the **main toolbar** (Save, Cancel, Frontend switcher, Settings shortcut) sits as a compact bar at the bottom. The iframe canvas fills the space in between. There is no side panel: the sidebar opens as a full-screen sheet, popups slide up from the bottom, and the link editor takes over the top bar.
+On narrow screens (≤767 px) the editor reshapes into a two-bar layout: the **block toolbar** pins to the top of the viewport — always visible, never fades — and the **main toolbar** (Save, Cancel, Frontend switcher, Settings shortcut) sits as a compact bar at the bottom. The iframe canvas fills the space in between. There is no side panel: the sidebar opens as a full-screen sheet, popups slide up from the bottom, and the link editor takes over the top bar.
 
 <block type="image">
 
-![Mobile editing — Quanta toolbar pinned at the top with chevrons and format buttons, a slate block selected mid-screen with its selection outline, and the compact main toolbar at the bottom.](../images/mobile-block-selected.png)
+![Mobile editing — Block toolbar pinned at the top with chevrons and format buttons, a slate block selected mid-screen with its selection outline, and the compact main toolbar at the bottom.](../images/mobile-block-selected.png)
 
 </block>
 
@@ -159,11 +159,11 @@ A side panel is impossible on a 375 px screen. Instead, opening the sidebar (via
 
 ### Escaping nested blocks with `⬆`
 
-Phones don't have an `Escape` key. To walk back up out of a nested block (a teaser inside a grid, a paragraph inside a column), the Quanta toolbar shows an extra **\`⬆\` button** to the left of `⋯` whenever the selected block has a parent. One tap selects the parent container; tap again to keep walking up.
+Phones don't have an `Escape` key. To walk back up out of a nested block (a teaser inside a grid, a paragraph inside a column), the block toolbar shows an extra **\`⬆\` button** to the left of `⋯` whenever the selected block has a parent. One tap selects the parent container; tap again to keep walking up.
 
 <block type="image">
 
-![Mobile Quanta toolbar with a nested teaser selected — the ⬆ select-parent button is visible to the left of ⋯, and the teaser's grid parent is highlighted with a dashed selection outline.](../images/mobile-select-parent.png)
+![Mobile block toolbar with a nested teaser selected — the ⬆ select-parent button is visible to the left of ⋯, and the teaser's grid parent is highlighted with a dashed selection outline.](../images/mobile-select-parent.png)
 
 </block>
 
@@ -173,11 +173,11 @@ Phones don't have an `Escape` key. To walk back up out of a nested block (a teas
 
 | Desktop / tablet | Mobile (≤767 px) |
 | --- | --- |
-| Quanta floats near the block, can fade after idle | Quanta pinned to top, always visible |
+| The block toolbar floats near the block, can fade after idle | The block toolbar is pinned to the top, always visible |
 | Main toolbar on the left, full height | Main toolbar at the bottom, 44 px compact |
 | Sidebar on the right as a side panel | Sidebar covers the whole screen |
 | `⋯` menu drops down inline | `⋯` menu slides up as a bottom sheet |
-| `Escape` key walks selection up | Tap the `⬆` button in Quanta |
+| `Escape` key walks selection up | Tap the `⬆` button in the block toolbar |
 
 </block>
 

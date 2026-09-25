@@ -6,8 +6,8 @@ contributors: []
 creators:
   - admin
 description: Define custom block types directly in your frontend configuration
-  via the blocks option in initBridge. No Volto plugin deployment required. Each
-  block type needs an id, title, and a blockSchema with its field properties.
+  via the blocks option in initBridge. No editor plugin to deploy. Each block
+  type needs an id, title, and a blockSchema with its field properties.
 effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
@@ -45,7 +45,7 @@ blocks-tagged: |
 
 # Custom Blocks
 
-Define custom block types directly in your frontend configuration via the `blocks` option in `initBridge`. No Volto plugin deployment required. Each block type needs an `id`, `title`, and a `blockSchema` with its field properties.
+Define custom block types directly in your frontend configuration via the `blocks` option in `initBridge`. No editor plugin to deploy. Each block type needs an `id`, `title`, and a `blockSchema` with its field properties.
 
 ## `initBridge()` Reference
 
@@ -59,7 +59,7 @@ import { initBridge } from '@hydra-js/hydra.js';
 const bridge = initBridge({
   page:        { /* page-level blocks fields */ },
   blocks:      { /* block type registry */ },
-  voltoConfig: { /* other Volto settings */ },
+  voltoConfig: { /* other editor settings (Volto config) */ },
   onEditChange: (formData) => { /* re-render on edit */ },
   pathToApiPath: (path) => path,
   debug: false,
@@ -98,7 +98,7 @@ Defaults and side effects:
 - The sidebar shows one section per field when no block is selected.
 - **Auto-restrict**: any block type that's not in *any* field's `allowedBlocks` is auto-restricted (hidden from the BlockChooser globally). To bypass, set the block's `restricted` to a function instead of `true`/`false`.
 - Fields not present in saved page data are auto-initialised with `{ items: [] }` on load.
-- You can't currently change the page metadata schema itself — custom content types are created via "Site Setup > Content types" in Volto.
+- You can't currently change the page metadata schema itself — custom content types are created in your CMS (in Plone, under "Site Setup > Content types").
 
 ### `blocks` — block type registry
 
@@ -132,7 +132,7 @@ Per-block options (most are passed through to Volto's block config):
 - **\`mostUsed\`** — pin to the top of the chooser.
 - **\`disableCustomSidebarEditForm\`** — use only the schema form in the sidebar (no custom edit component). **Defaults to \`true\` for any block you give a \`blockSchema\`** — see [Overriding a built-in block](#overriding-a-built-in-block). Set `false` to keep the admin's own edit component for a block whose sidebar does something a JSON schema cannot express.
 - **\`blockSchema\`** — JSON-schema-style definition of the block's fields. See [Schema Enhancers](#schema-enhancers) below and the [Block reference](../examples/index.md).
-- **\`fieldMappings\`** — block-to-block conversion rules. See [Block Conversion & fieldMappings](#block-conversion--fieldmappings) below.
+- **\`fieldMappings\`** — block-to-block conversion rules. See [Block conversion and fieldMappings](#block-conversion-and-fieldmappings) below.
 - **\`schemaEnhancer\`** — recipe-based schema modifier; supports `fieldRules`, `inheritSchemaFrom`, etc. See [Schema Enhancers](#schema-enhancers).
 
 `page` and `blocks` interact via name lookup: a region's `allowedBlocks: ['slate', 'slider']` references keys of the `blocks` registry. You can use one without the other — `page` alone restricts placement of built-in blocks; `blocks` alone registers custom types and gets a default `blocks_layout` region accepting everything.
@@ -174,12 +174,12 @@ To keep the admin's edit component for one block — a picker or upload UI a sch
 
 - **\`onEditChange(formData)\`** — callback invoked with the new form data whenever the editor changes anything. See [Live Preview › Setting Up the Bridge](./live-preview.md#setting-up-the-bridge).
 - **\`pathToApiPath(path)\`** — function transforming a frontend path to the API/admin path on `PATH_CHANGE` messages. Use when your frontend embeds state (paging, filters) in URL segments that don't exist on the CMS side. See [Listings › Path Transformation](./listings.md#path-transformation-pathtoapipath).
-- **\`voltoConfig\`** — passes additional Volto config (non-block settings) through to the admin. Future home for things like slate formats ([TODO #109](https://github.com/Inkaengine/inka/issues/109)) and toolbar actions.
+- **\`voltoConfig\`** — passes additional Volto config (non-block settings) through to the editor.
 - **\`debug\`** — `true` enables verbose console logging in the bridge. Default `false`.
 
 ### Returns
 
-The `Bridge` instance, which exposes additional API methods you can call from the frontend (e.g. `getAccessToken()`, `sendBlockUpdate()`, `sendBlockAction()`). See [Advanced › Custom Sidebar UI](./advanced.md#custom-sidebar-and-cms-ui) for those.
+The `Bridge` instance. Most front ends don't need it: pass callbacks such as `onEditChange` to `initBridge` instead. `getAccessToken()` and `getAuthHeaders()` are separate exports of the bridge; see [Advanced › Authentication](./advanced.md#authentication).
 
 ## Defining a custom block
 
@@ -245,7 +245,7 @@ Child block types (like `slide` above) must be defined at the top level of `bloc
 - Set `disableCustomSidebarEditForm: true` to use only the schema form in the sidebar (no custom edit component)
 - Use `fieldsets` in the schema to organize fields into tabs
 
-**A \`widget: 'slate'\` field always has a node.** With no `default` in its schema it defaults to one empty paragraph, `[{ type: 'p', children: [{ text: '' }] }]`, so a renderer always has a node to draw and the author a node to type into. Hide an optional slate field with `isEmptySlate`, not truthiness — see [Visual Editing › Optional Fields](./visual-editing.md#optional-fields--empty-means-absent).
+**A \`widget: 'slate'\` field always has a node.** With no `default` in its schema it defaults to one empty paragraph, `[{ type: 'p', children: [{ text: '' }] }]`, so a renderer always has a node to draw and the author a node to type into. Hide an optional slate field with `isEmptySlate`, not truthiness — see [Visual Editing › Optional Fields](./visual-editing.md#optional-fields-empty-means-absent).
 
 **A \`widget: 'slate'\` field holds one top-level node.** A slate field — like `description` on the `slide` above — stores a single paragraph, heading, or list, not a document of several. Pasting or typing multiple paragraphs into it flattens them back into one node; only the built-in `slate` *block* splits multi-node content into separate blocks. Design slate fields for single-node content, and use a `blocks_layout`/`object_list` of `slate` blocks when you need several. See [Visual Editing › One top-level node per slate field](./visual-editing.md#one-top-level-node-per-slate-field).
 
@@ -285,20 +285,20 @@ properties: {
 
 It asks the same question of the fields that never reach the canvas. A sidebar OPTION — one offering a choice, so `choices` / a `Choice` factory / a boolean — has no annotation to look for, so it proves itself by being SET in at least one of your content examples. An option no example sets is reported by name: nothing renders it, so nothing can tell you it has stopped working, and no doc page shows an author what it does. Set it somewhere — a content fixture is enough, it does not have to be a page you ship — or drop the option.
 
-## Widgets hydra registers
+## Widgets Inka registers
 
-A schema names a widget by string, so anything in `config.widgets.widget` is available — Volto's own included (`select_querystring_field`, `query_sort_on`, `object_browser`, …). These are the ones hydra adds:
+A schema names a widget by string, so anything in `config.widgets.widget` is available — Volto's own included (`select_querystring_field`, `query_sort_on`, `object_browser`, …). These are the ones Inka adds:
 
 <block type="slateTable" table.fixed table.celled>
 
 | widget | picks | documented |
 | --- | --- | --- |
-| `blockTypeSelect` | which block type a container's item is | [container blocks](./container-blocks.md#blocktypeselect-widget-options) |
+| `blockTypeSelect` | which block type a container's item is | [container blocks](./container-blocks.md#recipe-options) |
 | `schemaFieldSelect` | a field of a CONTENT TYPE, from `/@types` | [listings](./listings.md) |
 | `vocabularySelect` | WHICH vocabulary (not a term from one) | below |
 | `blockPicker` | a block, storing a named field value from it | below |
 | `querystringSelect` | catalog indexes, one or several | below |
-| `field_mapping` | how one block's fields map onto another's | [fieldMappings](#block-conversion--fieldmappings) |
+| `field_mapping` | how one block's fields map onto another's | [fieldMappings](#block-conversion-and-fieldmappings) |
 
 </block>
 
@@ -311,9 +311,7 @@ Reach for a Volto widget first where one fits; each section below says when it d
 A field can reference a vocabulary — "suggest this answer from the site's keywords", "offer these states". Volto has widgets for picking a **term from** a vocabulary; it has none for picking **which vocabulary**, and the reason is structural rather than an oversight:
 
 - Vocabularies are named utilities, and `GET /@vocabularies` lists them all.
-- But it answers `{"@id", "title"}` per item, while Volto's vocabulary reducer
-
-reads `{token, title}` — so a built-in select aimed at the listing shows every   name and stores `undefined`.
+- But it answers `{"@id", "title"}` per item, while Volto's vocabulary reducer reads `{token, title}` — so a built-in select aimed at the listing shows every name and stores `undefined`.
 
 `vocabularySelect` reads the listing itself and keeps the **name** (the last segment of `@id`), which is what every consumer accepts — `@vocabularies/<name>`, Volto's `getVocabulary`, a schema's `vocabulary: { "@id": … }`.
 
@@ -392,7 +390,7 @@ One widget covers both shapes: `multiple: false` (the default) stores one index 
 
 `indexes: "sortable"` (also the default) offers only what the catalog can sort on. That list is worth taking as given rather than deriving: index type sets the floor — a KeywordIndex like `Subject` is multi-valued and has no single key to sort by, a ZCTextIndex is ranked text — but Plone layers judgment on top. In its registry `portal_type` and `review_state` are both `FieldIndex`, and only `review_state` is flagged sortable. Filtering an index list by type would offer things Plone deliberately does not.
 
-**Volto's own widgets, for comparison.** Both are registered and pass straight through a hydra schema:
+**Volto's own widgets, for comparison.** Both are registered and pass straight through an Inka schema:
 
 <block type="slateTable" table.fixed table.celled>
 
@@ -474,7 +472,7 @@ const bridge = initBridge({
 - `'parent.child': false` — hide a field inside a widget's inner schema
 - `{ when: { ... }, error: 'message' }` — mark the field invalid when the condition holds
 
-Condition operators: `is`, `isNot`, `isSet`, `isNotSet`, `oneOf`, `notOneOf`, `contains`, `notContains`, `containsAny`, `notContainsAny`, `containsAll`, `notContainsAll`, `regex`, `notRegex`, `gt`, `gte`, `lt`, `lte`. A bare value (`{ mode: 'advanced' }`) is shorthand for `is`. An operand may be a literal or `{ field: '<path>' }` — see [compare against another field](#-field----compare-against-another-field).
+Condition operators: `is`, `isNot`, `isSet`, `isNotSet`, `oneOf`, `notOneOf`, `contains`, `notContains`, `containsAny`, `notContainsAny`, `containsAll`, `notContainsAll`, `regex`, `notRegex`, `gt`, `gte`, `lt`, `lte`. A bare value (`{ mode: 'advanced' }`) is shorthand for `is`. An operand may be a literal or `{ field: '<path>' }` — see [compare against another field](#compare-against-another-field).
 
 Each operator is driven by the field's **declared type**, never the value shape. A field reduces to one of four **surfaces**, and an operator used off its surface raises an error (a mis-authored rule fails loudly rather than silently mismatching):
 
@@ -533,9 +531,9 @@ Use a warning when the value may well be right and the author should simply know
 
 Both actions compose with `set`, and both work in a switch (`[rule, rule, …]`), where the first matching entry wins — so a rule can refuse one case and merely advise on another.
 
-### `{ field: '...' }` — compare against another field
+### Compare against another field
 
-Any operand may name a field instead of a literal:
+Any operand may name a field instead of a literal, written `{ field: '...' }`:
 
 ### Javascript
 
@@ -573,32 +571,19 @@ fieldRules: {
 
 Some of what a rule needs to ask about is not a field at all. Volto stores an image's mime type and dimensions ALONGSIDE the reference, in `image_scales`, so "is this an SVG" and "is it square" are answerable from data the block already carries — no fetching, no extra state.
 
-- **A sub-path's surface comes from the VALUE**, because no schema describes
-
-`image_scales.image.0.width`. This is the one place the rule engine reads a   value's shape, and only because a declared type does not exist to consult.
-
-- **A sub-path that leads nowhere is UNSET**: every comparison is false, and
-
-only `isSet`/`isNotSet` answer. A rule must not fire on a block whose image   has not been chosen yet.
-
-- **\`times\` and \`plus\`** apply to a field reference, so a comparison can carry a
-
-tolerance — "square, within a tenth" rather than exactly equal, which no real   measurement is.
+- **A sub-path's surface comes from the VALUE**, because no schema describes `image_scales.image.0.width`. This is the one place the rule engine reads a value's shape, and only because a declared type does not exist to consult.
+- **A sub-path that leads nowhere is UNSET**: every comparison is false, and only `isSet`/`isNotSet` answer. A rule must not fire on a block whose image has not been chosen yet.
+- **\`times\` and \`plus\`** apply to a field reference, so a comparison can carry a tolerance — "square, within a tenth" rather than exactly equal, which no real measurement is.
 
 Two things to know:
 
-- **Surfaces still apply.** A reference does not smuggle a value past the
-
-operator table — `lt` on a `string` surface throws whether the operand is a   literal or a field. Comparing two date strings is therefore not expressible;   that needs a date surface, which is a separate question from where the operand   comes from.
-
-- **An empty reference makes the condition false.** If the named field holds
-
-nothing there is no value to compare against, and reading that as "no   constraint" would fire the rule on every form where the other field has not   been filled in yet.
+- **Surfaces still apply.** A reference does not smuggle a value past the operator table — `lt` on a `string` surface throws whether the operand is a literal or a field. Comparing two date strings is therefore not expressible; that needs a date surface, which is a separate question from where the operand comes from.
+- **An empty reference makes the condition false.** If the named field holds nothing there is no value to compare against, and reading that as "no constraint" would fire the rule on every form where the other field has not been filled in yet.
 
 Two extras drive **position-** and **type-**&#x61;ware rules:
 
 - The virtual field **\`@index\`** reads a block's ordinal position within its parent `object_list` region (a `number` surface) — `{ '@index': { lt: 1 } }` means "first in my region", and `../@index` is the parent block's index. Distinct from a region's `count` (which counts children).
-- A rule whose **\`set\` is a block-type NAME** (a string) rather than a field definition is a **\`@type\` rule** — it changes the item's *type* by position, not a field. Declared as `typeRule` on a typed `object_list`; see [\`typeRule\` — position picks a typed item's \`@type\`](#typerule--position-picks-a-typed-items-type). The retype is applied by CONVERSION (a schema enhancer can't rewrite stored `@type`), which brings up the confirm described under [Drag / paste via conversion](#drag--paste-via-conversion).
+- A rule whose **\`set\` is a block-type NAME** (a string) rather than a field definition is a **\`@type\` rule** — it changes the item's *type* by position, not a field. Declared as `typeRule` on a typed `object_list`; see [\`typeRule\` — position picks a typed item's \`@type\`](#typerule-position-picks-a-typed-items-type). The retype is applied by CONVERSION (a schema enhancer can't rewrite stored `@type`), which brings up the confirm described under [Drag / paste via conversion](#drag-and-paste-via-conversion).
 
 ### Javascript
 
@@ -658,7 +643,7 @@ Field paths: `../field` for the parent block's field (and `@index` / `../@index`
 
 **Worked examples:** two blocks in the reference carry rules for their own reasons — the [Teaser Block](../examples/teaser.md) has nothing to ask for while it borrows the linked page's wording (`overwrite` off), and the [Image Block](../examples/image-block.md) offers no size for a full-width image, written as a list of rules with a bare `false` as the catch-all.
 
-## Block Conversion & fieldMappings
+## Block conversion and fieldMappings
 
 `fieldMappings` (plural) on a block config defines how fields map between block types (and from linked content). This enables:
 
@@ -666,7 +651,7 @@ Field paths: `../field` for the parent block's field (and `@index` / `../@index`
 - **Listing item types** — query results are mapped to item blocks via `@default` (see [Listings](./listings.md)).
 - **Synchronised container children** — a parent controls child type, all children convert together (see [Container Blocks › Synchronised Block Types](./container-blocks.md#synchronised-block-types-in-a-container)).
 - **Drag / paste via conversion** — a block can be dropped or pasted into a container that only accepts a *convertible* type; it's converted on drop (see below).
-- **Copy from a linked target** — a block pulls fields from the content item its link field points at, with a per-field linked/custom toggle (see [\`@target\`](#target--copy-from-a-linked-content-item)).
+- **Copy from a linked target** — a block pulls fields from the content item its link field points at, with a per-field linked/custom toggle (see [\`@target\`](#copy-from-a-linked-content-item-target)).
 
 Each key in `fieldMappings` is either a **specific block type name**, **\`@default\`**, or **\`@target\`**.
 
@@ -703,7 +688,7 @@ selectFacet:  { fieldMappings: { checkboxFacet: { title: 'title', field: 'field'
 checkboxFacet: { fieldMappings: { selectFacet: { /* ... */ }, daterangeFacet: { /* ... */ } } },
 ```
 
-### `@target` — copy from a linked content item
+### Copy from a linked content item: `@target`
 
 `@target` maps a **linked** content item's attributes onto this block's own fields — the generic version of the Volto teaser's "copy from target" button. It maps *source content attributes* (`title`, `description`, `image`, …) to *this block's fields*. The item is whichever the block's **link field** points at (the `object_browser mode: 'link'` field — its stored snapshot is the source), so you don't name a URL field separately: "the url is the link in the mapping".
 
@@ -726,13 +711,8 @@ button: {
 
 Declaring `@target` is the **only** opt-in — no per-block enhancer wiring. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected). Every mapped field is one of two states:
 
-- **Linked** (default, toggle ticked) — the field *pulls from the linked item*.
-
-Its value is filled from the target's snapshot when the page opens for editing   and re-pulled when you change the link, so it always mirrors the linked content.
-
-- **Custom** (toggle unticked) — your own value, ignored by the target. A field
-
-becomes custom the moment you edit it, or when you untick the toggle;   re-ticking re-pulls the target value. Custom fields are recorded in the block's   `_customFields` array (absence ⇒ linked), so the state persists with the block.
+- **Linked** (default, toggle ticked) — the field *pulls from the linked item*. Its value is filled from the target's snapshot when the page opens for editing and re-pulled when you change the link, so it always mirrors the linked content.
+- **Custom** (toggle unticked) — your own value, ignored by the target. A field becomes custom the moment you edit it, or when you untick the toggle; re-ticking re-pulls the target value. Custom fields are recorded in the block's `_customFields` array (absence ⇒ linked), so the state persists with the block.
 
 ### Container ⇄ value (region-crossing paths)
 
@@ -762,13 +742,11 @@ tableCell: {                                         // the container form
 
 the region.
 
-- `<type>` selects a child type; `*` = any child that exposes `<field>` (siblings
-
-without it — an `image` for a `value` path — are skipped). A **concrete** type   (`blocks/slate/value`) makes expand unambiguous, so use it for a two-way bridge;   `*` suits read-only cross-region reads (e.g. a `when` condition).
+- `<type>` selects a child type; `*` = any child that exposes `<field>` (siblings without it — an `image` for a `value` path — are skipped). A **concrete** type (`blocks/slate/value`) makes expand unambiguous, so use it for a two-way bridge; `*` suits read-only cross-region reads (e.g. a `when` condition).
 
 Non-region scalar fields (`key`, `width`, …) carry over unchanged. This is the `convertValueContainer` helper; DnD/paste and the block chooser reuse it via the same `fieldMappings` graph. See `proposals/container-value-conversion.md`.
 
-#### `typeRule` — position picks a typed item's `@type`
+#### typeRule: position picks a typed item's type
 
 The bridge converts on demand; a **\`@type\` rule** on a typed `object_list` field decides *when*, by **position**. It is an ordinary `when`-based fieldRule (same grammar — `@index`, `../@index`, `../../<field>`, `oneOf`, `lt`, …) whose `set` is a block-**type name** instead of a field definition:
 
@@ -803,11 +781,11 @@ Only an **internal** link is a pull source. An external URL has no catalog item 
 - Transitive conversions use paths through intermediate types (e.g. hero → teaser → image).
 - Unmapped fields are kept in the data so converting back restores them.
 
-### Drag / paste via conversion
+### Drag and paste via conversion
 
 The same conversion graph gives drag-and-drop (and paste) more valid destinations: a block can be dropped or pasted into a container whose `allowedBlocks` only admits a type the block can *convert* to.
 
-**Every drop/paste is TRIALLED before it commits.** The candidate result is normalised (the same pass that applies field defaults and evaluates [\`@type\` rules](#typerule--position-picks-a-typed-items-type)), then each block's `@type` is diffed against what was dropped. If **anything** converted — because the dropped block had to convert to fit the container, **or** because a rule re-typed a block by its new position (e.g. a table row moved to row 0 turns its cells into header cells) — a **"Convert blocks?"** confirm lists each `from → to` and waits: **Convert** commits the already-converted result, **Cancel** aborts the whole drop. Nothing converted → it commits silently.
+**Every drop/paste is TRIALLED before it commits.** The candidate result is normalised (the same pass that applies field defaults and evaluates [\`@type\` rules](#typerule-position-picks-a-typed-items-type)), then each block's `@type` is diffed against what was dropped. If **anything** converted — because the dropped block had to convert to fit the container, **or** because a rule re-typed a block by its new position (e.g. a table row moved to row 0 turns its cells into header cells) — a **"Convert blocks?"** confirm lists each `from → to` and waits: **Convert** commits the already-converted result, **Cancel** aborts the whole drop. Nothing converted → it commits silently.
 
 The chooser popup survives only for the genuinely ambiguous case: a single block reachable to *several* target types, where you pick which one (cancelling leaves it untouched). Zero reachable types rejects the drop; multi-block selections are auto-only (every member must reach exactly one type). On mobile, conversion happens via cut → paste (drag/chevron move stays native-only). External-link and other type restrictions are unaffected; only the container's `allowedBlocks` gate is relaxed to "allowed or convertible".
 
@@ -850,19 +828,3 @@ When a parent block has `mappingField` set in its `inheritSchemaFrom` recipe, th
 - Saves the result as `fieldMapping` (singular) on the block data.
 
 The saved `fieldMapping` is read at render time by `expandListingBlocks` — no block registry access needed at render time.
-
-## HTML Paste Support (TODO)
-
-When the editor pastes rich HTML into the page, Inka will eventually be able to recognise it as a custom block by matching against a CSS selector mapping. The proposed shape:
-
-### Javascript
-
-```javascript
-video: {
-    fieldMappings: {
-        'css:video': { 'src': 'url', 'caption[@class="alt"]': 'alt' },
-    },
-}
-```
-
-The `css:<selector>` key in `fieldMappings` matches a pasted HTML element; the value maps element attributes to block fields. Not yet implemented — open question on whether this should run via `htmlTagsToSlate` (bypassing slate conversion) or be encoded into slate so attributes/classes survive.

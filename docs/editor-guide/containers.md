@@ -47,7 +47,7 @@ Which container types are available depends on your design system. A site might 
 
 ## Wrap
 
-Select one or more blocks (see [Selecting blocks](./selecting-blocks.md)), then choose **Wrap in...** from the Quanta toolbar dropdown (or sidebar block actions). A popup shows container types that:
+Select one or more blocks (see [Selecting blocks](./selecting-blocks.md)), then choose **Wrap in...** from the block toolbar dropdown (or sidebar block actions). A popup shows container types that:
 
 1. Accept every selected block type (their `allowedBlocks` covers the selection).
 2. Are themselves allowed in the current parent container.
@@ -64,7 +64,7 @@ Use this to retroactively group content — e.g. wrap two paragraphs and an imag
 
 ## Unwrap
 
-Select a container in block mode (one Escape from text mode). Choose **Unwrap container** from the Quanta toolbar dropdown.
+Select a container in block mode (one Escape from text mode). Choose **Unwrap container** from the block toolbar dropdown.
 
 The container's children are promoted to the parent at the container's position, and the container itself is removed.
 
@@ -97,7 +97,7 @@ Edge handles only appear when the container is selected. They don't render on ed
 
 ## Convert (change container type)
 
-In the Quanta toolbar dropdown, **Convert to...** lists block types this block can be converted to. For containers, conversion preserves the children:
+In the block toolbar dropdown, **Convert to...** lists block types this block can be converted to. For containers, conversion preserves the children:
 
 - **Layout shape conversion** — children move into the new container's layout field automatically (whether the source uses `blocks_layout` or `object_list`).
 - **Recursive child conversion** — if some children's `@type` isn't in the target's `allowedBlocks`, those children are themselves converted (using their `fieldMappings`) so they fit. If no path exists, the conversion target is shown disabled with a tooltip.
