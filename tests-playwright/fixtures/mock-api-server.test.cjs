@@ -490,6 +490,28 @@ describe('/@export (tree export, json | markdown)', { skip: HAVE_ASSETS ? false 
   });
 });
 
+describe('@types schemas', () => {
+  it('gives every type its layouts, which the admin reads without asking', async () => {
+    // Volto's display menu does `schema.layouts.filter(...)` with no guard —
+    // real Plone sends `layouts` for every type, so it has never had to. A
+    // schema without it throws inside the toolbar's More menu and takes the
+    // whole menu down with it: no Manage Translations, no rename, no workflow,
+    // and nothing on screen to say why.
+    const types = ['Document', 'Folder', 'Event', 'News Item'];
+    for (const type of types) {
+      const res = await fetch(`${baseUrl}/@types/${encodeURIComponent(type)}`, {
+        headers: { Accept: 'application/json' },
+      });
+      assert.equal(res.status, 200, `${type} has a schema`);
+      const schema = await res.json();
+      assert.ok(
+        Array.isArray(schema.layouts) && schema.layouts.length > 0,
+        `${type} must say which layouts it has, got ${JSON.stringify(schema.layouts)}`,
+      );
+    }
+  });
+});
+
 // Which SearchableText operations the backend has — and the mock must be
 // honest about it. `string.search` (raw, un-munged terms for elastic) is NOT
 // core Plone: it comes from pretagov's plone.app.querystring fork, which a site

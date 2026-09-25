@@ -41,7 +41,7 @@ export default async function ploneApi({
     // which ignores this expansion, still works: templates are then fetched one by one.
     const extra = preloadTemplates.filter(Boolean);
     api =
-      `${api}?expand=breadcrumbs,navroot,navigation,templates&expand.navigation.depth=2` +
+      `${api}?expand=breadcrumbs,navroot,navigation,translations,templates&expand.navigation.depth=2` +
       (extra.length
         ? `&expand.templates.extra=${encodeURIComponent([...new Set(extra)].join(','))}`
         : '');
