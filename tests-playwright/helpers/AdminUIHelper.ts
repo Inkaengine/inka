@@ -3957,25 +3957,27 @@ export class AdminUIHelper {
    * Returns an array of block UIDs, deduplicated (multi-element blocks count as one).
    * Uses evaluateAll for single browser round-trip instead of N sequential getAttribute calls.
    *
-   * 'main' (the default) is the page's main content — every block, nested ones
-   * included, whose chain of parents reaches the page's `items` region, read from
-   * the bridge's own blockPathMap. Not a `main` selector: that assumed the frontend
-   * wraps its blocks in a <main>, and a frontend need not (the Next.js example
-   * doesn't). Any other value is a selector scoping the search, as before.
-   * @param container - 'main', or a container selector to scope the search
+   * 'main' (the default) and 'footer' are PAGE REGIONS: every block, nested ones
+   * included, whose chain of parents reaches that region of the page (`items` for
+   * main content), read from the bridge's own blockPathMap. Not a `main` or
+   * `footer` selector: those assumed the frontend wraps its regions in <main> and
+   * <footer>, and a frontend need not (the Next.js example doesn't). Any other
+   * value is a selector scoping the search, as before.
+   * @param container - 'main', 'footer', or a container selector
    */
   async getBlockOrder(container: string = 'main'): Promise<string[]> {
     const iframe = this.getIframe();
-    if (container === 'main') {
-      return await iframe.locator('[data-block-uid]').evaluateAll((elements) => {
+    const PAGE_REGIONS: Record<string, string> = { main: 'items', footer: 'footer' };
+    if (PAGE_REGIONS[container]) {
+      return await iframe.locator('[data-block-uid]').evaluateAll((elements, region) => {
         // Before the bridge has its first data there are no blocks yet, as there
         // were none in the DOM for the old selector; callers poll for a count.
         const map = (window as any).__hydraBridge?.blockPathMap;
         if (!map) return [];
-        const inMainContent = (uid: string) => {
+        const inRegion = (uid: string) => {
           let entry = map[uid];
           for (let hops = 0; entry && hops < 100; hops++) {
-            if (entry.parentId === '_page') return entry.region === 'items';
+            if (entry.parentId === '_page') return entry.region === region;
             entry = map[entry.parentId];
           }
           return false;
@@ -3984,13 +3986,13 @@ export class AdminUIHelper {
         const blockIds: string[] = [];
         for (const el of elements) {
           const uid = el.getAttribute('data-block-uid');
-          if (uid && !seen.has(uid) && inMainContent(uid)) {
+          if (uid && !seen.has(uid) && inRegion(uid)) {
             seen.add(uid);
             blockIds.push(uid);
           }
         }
         return blockIds;
-      });
+      }, PAGE_REGIONS[container]);
     }
     const selector = `${container} [data-block-uid]`;
     return await iframe.locator(selector).evaluateAll((elements) => {

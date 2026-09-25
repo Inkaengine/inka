@@ -119,14 +119,28 @@ test.describe('Adding Blocks', () => {
     await helper.navigateToEdit('/test-page');
 
     const iframe = helper.getIframe();
+    // Blocks are found by what they ARE (the bridge's blockPathMap), not by the
+    // mock frontend's class names: each frontend draws its own markup.
+    const blocksMatching = (want: { type?: string; parent?: string }) =>
+      iframe.locator('body').evaluate((_, w) => {
+        const map = (window as any).__hydraBridge?.blockPathMap || {};
+        return Object.keys(map).filter(
+          (uid) =>
+            (!w.type || map[uid]?.blockType === w.type) &&
+            (!w.parent || map[uid]?.parentId === w.parent),
+        );
+      }, want);
+    const navsBefore = await blocksMatching({ type: 'contextNavigation' });
 
     // Add a contextNavigation; initializeContainerBlock seeds an 'empty' subblock.
     await helper.clickBlockInIframe('block-1-uuid');
     await helper.clickAddBlockButton();
     await helper.selectBlockType('contextNavigation');
+    await expect.poll(() => blocksMatching({ type: 'contextNavigation' })).toHaveLength(navsBefore.length + 1);
+    const nav = (await blocksMatching({ type: 'contextNavigation' })).find((uid) => !navsBefore.includes(uid))!;
 
     // The seeded empty renders as a plain, selectable placeholder inside the new nav.
-    const emptyChild = iframe.locator('.context-navigation [data-block-uid]').first();
+    const emptyChild = iframe.locator(`[data-block-uid="${nav}"] [data-block-uid]`).first();
     await expect(emptyChild).toBeVisible({ timeout: 5000 });
 
     // Select it — the admin must show a '+' so its type (navItem/listing) can be picked
@@ -148,7 +162,9 @@ test.describe('Adding Blocks', () => {
     // Pick navItem: the empty mutates in place into a navItem, which must render. A fresh
     // navItem has no href yet, so the renderer must show an editable placeholder, not crash.
     await helper.selectBlockType('navItem');
-    await expect(iframe.locator('.context-navigation a[data-block-uid]')).toBeVisible({ timeout: 5000 });
+    await expect.poll(() => blocksMatching({ parent: nav, type: 'navItem' })).toHaveLength(1);
+    const navItem = (await blocksMatching({ parent: nav, type: 'navItem' }))[0];
+    await expect(iframe.locator(`[data-block-uid="${navItem}"]`)).toBeVisible({ timeout: 5000 });
   });
 
   test('can add an Image block to the page', async ({ page }) => {
@@ -552,74 +568,6 @@ test.describe('Add and Remove Combined', () => {
   });
 });
 
-test.describe('Footer Blocks Add/Remove', () => {
-  // These tests are specific to the mock frontend's footer_blocks configuration
-  test.beforeEach(async ({}, testInfo) => {
-    test.skip(testInfo.project.name.includes('nuxt'), 'Skipping on nuxt - tests mock frontend config');
-  });
-
-  test('can add a block to footer', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-
-    await helper.login();
-    await helper.navigateToEdit('/test-page');
-
-    // Get initial footer block count
-    const initialFooterBlocks = await helper.getBlockOrder('footer');
-    expect(initialFooterBlocks.length).toBeGreaterThan(0);
-
-    // Click on a footer block to select it
-    await helper.clickBlockInIframe(initialFooterBlocks[0]);
-    await helper.waitForSidebarOpen();
-
-    // Click the Add button
-    await helper.clickAddBlockButton();
-
-    // Select Slate block type
-    await helper.selectBlockType('slate');
-
-    // Wait for block to be added to footer
-    await expect(async () => {
-      const newFooterBlocks = await helper.getBlockOrder('footer');
-      expect(newFooterBlocks.length).toBe(initialFooterBlocks.length + 1);
-    }).toPass({ timeout: 5000 });
-
-    // Verify new block appears in footer
-    const newFooterBlocks = await helper.getBlockOrder('footer');
-    expect(newFooterBlocks.length).toBe(initialFooterBlocks.length + 1);
-  });
-
-  test('can remove a block from footer', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-
-    await helper.login();
-    await helper.navigateToEdit('/test-page');
-
-    // Get initial footer blocks
-    const initialFooterBlocks = await helper.getBlockOrder('footer');
-    expect(initialFooterBlocks.length).toBeGreaterThan(0);
-
-    const blockToRemove = initialFooterBlocks[0];
-
-    // Select footer block
-    await helper.clickBlockInIframe(blockToRemove);
-    await helper.waitForSidebarOpen();
-
-    // Open menu and click Remove
-    await helper.openQuantaToolbarMenu(blockToRemove);
-    await helper.clickQuantaToolbarMenuOption(blockToRemove, 'Remove');
-
-    // Wait for block to be removed
-    await helper.waitForBlockToDisappear(blockToRemove);
-
-    // Verify footer block count decreased
-    const newFooterBlocks = await helper.getBlockOrder('footer');
-    expect(newFooterBlocks.length).toBe(initialFooterBlocks.length - 1);
-    expect(newFooterBlocks).not.toContain(blockToRemove);
-  });
-
-});
-
 test.describe('Enter Key to Add/Navigate', () => {
   test('Enter on image block (no focused field) adds new block after', async ({ page }) => {
     const helper = new AdminUIHelper(page);
@@ -917,72 +865,6 @@ test.describe('Enter Key to Add/Navigate', () => {
 
     // ...and the main content holds exactly the one new default block.
     await expect.poll(() => helper.getBlockOrder(), { timeout: 5000 }).toHaveLength(1);
-  });
-});
-
-test.describe('Allowed Blocks from Frontend', () => {
-  // These tests check the MOCK frontend's allowedBlocks configuration (no video,
-  // a custom block of its own). Every other frontend declares its own list — nuxt
-  // includes video and excludes hero, the Next.js example allows video — so they
-  // apply to the mock frontend only.
-  test.beforeEach(async ({}, testInfo) => {
-    test.skip(!testInfo.project.name.includes('mock'), 'tests the mock frontend\'s own allowedBlocks config');
-  });
-
-  test('block chooser hides blocks not in allowedBlocks list', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-
-    await helper.login();
-    await helper.navigateToEdit('/test-page');
-
-    // Click a block to select it, then click the add button
-    await helper.clickBlockInIframe('block-1-uuid');
-    await helper.clickAddBlockButton();
-
-    // Wait for the block chooser to appear
-    const chooserVisible = await helper.isBlockChooserVisible();
-    expect(chooserVisible).toBe(true);
-
-    // Frontend allows: ['slate', 'image', 'hero'] (configured in test-frontend/index.html)
-    // Video block should NOT be visible (not in allowed list)
-    expect(await helper.isBlockTypeVisible('video')).toBe(false);
-  });
-
-  test('custom block from frontend appears in block chooser', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-
-    await helper.login();
-    await helper.navigateToEdit('/test-page');
-
-    // Click a block to select it, then click the add button
-    await helper.clickBlockInIframe('block-1-uuid');
-    await helper.clickAddBlockButton();
-
-    // Wait for the block chooser to appear
-    const chooserVisible = await helper.isBlockChooserVisible();
-    expect(chooserVisible).toBe(true);
-
-    // Custom 'hero' block should be visible (defined in test-frontend/index.html)
-    expect(await helper.isBlockTypeVisible('hero')).toBe(true);
-  });
-
-  test('can add custom block defined by frontend', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-
-    await helper.login();
-    await helper.navigateToEdit('/test-page');
-
-    const initialCount = await helper.getBlockCount();
-
-    // Click a block to select it, then add a hero block
-    await helper.clickBlockInIframe('block-1-uuid');
-    await helper.clickAddBlockButton();
-    await helper.selectBlockType('hero');
-
-    // Verify block was added
-    await helper.waitForBlockCountToBe(initialCount + 1);
-    const newCount = await helper.getBlockCount();
-    expect(newCount).toBe(initialCount + 1);
   });
 });
 

@@ -430,6 +430,7 @@ jobs:
           tests-playwright/integration/slash-menu.spec.ts
           tests-playwright/integration/complex-slate.spec.ts
           tests-playwright/integration/block-add-remove.spec.ts
+          tests-playwright/integration/page-regions.spec.ts
         env:
           CI: true
           NO_WEBSERVER: true
