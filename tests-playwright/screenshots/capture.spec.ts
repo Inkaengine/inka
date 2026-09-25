@@ -488,6 +488,13 @@ test.describe('Editor Guide screenshots: translations', () => {
     console.log(`[screenshot] translations-manage -> ${path.relative(process.cwd(), file)}`);
   });
 
+  test.describe('on the test frontend', () => {
+  // The Nuxt example 404s a page that exists only in the editing session —
+  // its server-side fetch does not carry the session — so a translation
+  // created here renders "undefined: undefined" there. The multilingual spec
+  // runs on the test frontend (admin-mock), so this capture does too.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test('translations-side-by-side + translations-markers — a new translation beside its original', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -535,4 +542,5 @@ test.describe('Editor Guide screenshots: translations', () => {
     await section.screenshot({ path: file });
     console.log(`[screenshot] translations-markers -> ${path.relative(process.cwd(), file)}`);
   });
+});
 });
