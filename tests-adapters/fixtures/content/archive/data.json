@@ -1,7 +1,7 @@
 {
   "@id": "/archive",
   "@type": "Document",
-  "UID": "seed-news",
+  "UID": "seed-archive",
   "id": "archive",
   "title": "Archive",
   "review_state": "published",
