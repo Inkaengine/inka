@@ -866,9 +866,10 @@
             let updatedValue = currentValue;
             // Toggling a format OFF with the caret inside it (collapsed, in an
             // inline of that format): the admin (SyncedSlateToolbar
-            // applyInlineFormat) leaves the value alone and moves the caret to the
-            // start of the text leaf after the inline — Slate keeps one there,
-            // empty at the end of a line. Mirror that.
+            // applyInlineFormat) moves the caret to the start of the text leaf
+            // after the inline — Slate keeps one there — and, when that leaf is
+            // empty, gives it a zero-width space as toggling on gives the new
+            // inline one. Mirror that.
             let exitSelection = null;
             const anchorPath = selection?.anchor?.path;
             const collapsedSel = selection &&
@@ -880,7 +881,9 @@
               const children = updatedValue[0].children;
               const inlineIdx = anchorPath[1];
               if (typeof children[inlineIdx + 1]?.text !== 'string') {
-                children.splice(inlineIdx + 1, 0, { text: '' });
+                children.splice(inlineIdx + 1, 0, { text: '\u200B' });
+              } else if (children[inlineIdx + 1].text === '') {
+                children[inlineIdx + 1] = { ...children[inlineIdx + 1], text: '\u200B' };
               }
               exitSelection = {
                 anchor: { path: [0, inlineIdx + 1], offset: 0 },

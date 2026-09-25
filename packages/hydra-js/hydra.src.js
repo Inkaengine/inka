@@ -49,27 +49,16 @@ import { isStyleAllowed } from './slateStyles.js';
 export function withCaretTargets(nodes) {
   if (!Array.isArray(nodes)) return nodes;
   let changed = false;
-  const isEmptyLeaf = (c) => typeof c?.text === 'string' && c.text === '';
-  const isInline = (c) => !!c && typeof c.text !== 'string' && Array.isArray(c.children);
   const out = nodes.map((node) => {
     const children = node?.children;
     if (!Array.isArray(children) || children.length === 0) return node;
-    if (children.every(isEmptyLeaf)) {
+    if (children.every((c) => typeof c?.text === 'string' && c.text === '')) {
       changed = true;
       return { ...node, children: [{ ...children[0], text: '\u200B' }, ...children.slice(1)] };
     }
-    // An empty leaf beside an inline (Slate keeps one each side of it — the one
-    // after bold that has been toggled off, the one before bold at the start of
-    // a line) is where the caret goes, and draws no node either.
-    let kids = children.map((c, i) =>
-      isEmptyLeaf(c) && (isInline(children[i - 1]) || isInline(children[i + 1]))
-        ? { ...c, text: '\u200B' }
-        : c,
-    );
-    if (kids.some((c, i) => c !== children[i])) changed = true;
-    const filled = withCaretTargets(kids);
-    if (filled !== kids) changed = true;
-    else if (kids.every((c, i) => c === children[i])) return node;
+    const filled = withCaretTargets(children);
+    if (filled === children) return node;
+    changed = true;
     return { ...node, children: filled };
   });
   return changed ? out : nodes;
@@ -5978,6 +5967,17 @@ export class Bridge {
    * @param {Node} node - The DOM node to check
    * @returns {boolean} True if the node is on invalid whitespace
    */
+  /**
+   * Is `node` the text node drawn for the leaf right after an inline, holding
+   * the admin's zero-width space (its toggle-off caret target)?
+   */
+  _isLeafAfterInline(node) {
+    if (!node.textContent?.includes('\u200B')) return false;
+    const line = node.parentElement?.closest('[data-node-id]');
+    if (!line) return false;
+    return [...line.querySelectorAll('[data-node-id]')].some((el) => textNodeAfter(el) === node);
+  }
+
   isOnInvalidWhitespace(node) {
     if (!node) return false;
 
@@ -6043,12 +6043,12 @@ export class Bridge {
     // BOM/ZWS-only text nodes inside wrapper elements without data-node-id
     // are invalid — a node the frontend drew beside the leaf's own. But ZWS
     // nodes that are DIRECT children of a data-node-id element (cursor exit
-    // positioning) are valid, and so is a leaf's own text node holding the
-    // zero-width space the render data gives an empty leaf (withCaretTargets),
-    // whatever the frontend wraps it in: that IS where the caret belongs.
+    // positioning) are valid, and so is the text node drawn for the leaf after
+    // an inline when it holds the zero-width space the admin gives it on
+    // toggling a format off — whatever the frontend wraps it in, that IS where
+    // the caret was put (moving it would put the next typed text in the inline).
     const visibleText = node.textContent?.replace(/[\uFEFF\u200B\s]/g, '');
-    const isLeafCaretTarget = node.textContent?.includes('\u200B') && !!node.parentElement?.closest('[data-node-id]');
-    if (visibleText === '' && !isLeafCaretTarget && node.parentElement && !node.parentElement.hasAttribute?.('data-node-id')) {
+    if (visibleText === '' && !this._isLeafAfterInline(node) && node.parentElement && !node.parentElement.hasAttribute?.('data-node-id')) {
       return true;
     }
 
