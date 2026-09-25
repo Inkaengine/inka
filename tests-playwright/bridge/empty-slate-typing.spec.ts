@@ -121,6 +121,26 @@ test.describe('Empty slate typing', () => {
     }
   });
 
+  test('a deletion that removes the text node reaches the admin', async ({ helper, page }) => {
+    // Deleting all of a paragraph's text, the browser sometimes empties the text
+    // node (a characterData change) and sometimes REMOVES it (childList, nothing
+    // added) — which Ctrl+A then Backspace on the Vue frontends often does. The
+    // bridge must read the field either way. Removing the node here is what the
+    // browser does in the second case, so the outcome doesn't depend on which
+    // the browser picks.
+    const field = await helper.getEditorLocator('mock-block-1', 'value');
+    await field.click();
+    await expect.poll(() => adminText(page, 'mock-block-1')).not.toBe('');
+    await field.evaluate((el) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const nodes: Node[] = [];
+      let n;
+      while ((n = walker.nextNode())) nodes.push(n);
+      for (const node of nodes) node.parentNode?.removeChild(node);
+    });
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('');
+  });
+
   test('text typed after clearing a slate shows once after the next FORM_DATA', async ({
     helper,
     page,

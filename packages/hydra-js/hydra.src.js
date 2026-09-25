@@ -8039,9 +8039,12 @@ export class Bridge {
     let node = br;
     while (node) {
       for (let n = node.nextSibling; n; n = n.nextSibling) {
+        // A comment is never content (Vue's templates leave them in the DOM),
+        // so it doesn't make the placeholder a break.
         const empty =
-          n.nodeType === Node.TEXT_NODE &&
-          this.stripZeroWidthSpaces(n.textContent || '') === '';
+          n.nodeType === Node.COMMENT_NODE ||
+          (n.nodeType === Node.TEXT_NODE &&
+            this.stripZeroWidthSpaces(n.textContent || '') === '');
         if (!empty) return false;
       }
       const parent = node.parentElement;
@@ -11662,6 +11665,13 @@ export class Bridge {
               );
               if (addedTextNode) {
                 this.handleTextChange(targetElement, parent, addedTextNode);
+              } else if (Array.from(mutation.removedNodes).some((n) => n.nodeType === Node.TEXT_NODE)) {
+                // Text REMOVED with nothing added: deleting all of a paragraph's
+                // text, the browser sometimes removes the text node instead of
+                // emptying it (Ctrl+A, Backspace on the Vue frontends often
+                // does). The edit is real — read the field back all the same, or
+                // the deletion never reaches the admin.
+                this.handleTextChange(targetElement, parent, null);
               }
             }
           }
