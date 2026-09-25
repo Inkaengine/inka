@@ -2,7 +2,7 @@
  * The @templates response, fed to the real merge.
  *
  * templates-component.test.cjs stops at the JSON: it pins the response SHAPE. That proves
- * the endpoint returns what I designed, not that the design is right — a wrong idFieldMap
+ * the endpoint returns what I designed, not that the design is right — a wrong idField
  * or a template keyed by the wrong spelling produces perfectly well-shaped JSON and a
  * blank page. So this suite closes the loop: take what the endpoint actually serves, hand
  * it to expandTemplatesSync exactly as a frontend would, and assert the page renders.
@@ -17,10 +17,17 @@ const { app } = require('./mock-api-server.cjs');
 let server;
 let baseUrl;
 let expandTemplatesSync;
+let idFieldMap;
 
 before(async () => {
   // ESM helper from a CJS test.
   ({ expandTemplatesSync } = await import('../../packages/helpers/index.js'));
+  // The object_list id fields, derived from the block schemas the way a frontend does it —
+  // the endpoint carries templates only. Same registry the frontends register from.
+  const { buildIdFieldMap } = await import('../../packages/hydra-js/buildBlockPathMap.js');
+  const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
+  const { coreBlocksConfig } = await import('./core-block-schemas.js');
+  idFieldMap = buildIdFieldMap({ ...coreBlocksConfig, ...sharedBlocksConfig });
   await new Promise((resolve) => {
     server = app.listen(0, () => {
       baseUrl = `http://localhost:${server.address().port}`;
@@ -47,16 +54,17 @@ async function fetchPage(contentPath, extra = null) {
 }
 
 /**
- * Render a page through the merge using ONLY what the endpoint returned — no hand-written
- * idFieldMap, no separately fetched template. If the endpoint under-delivers, this throws
- * or renders empty, which is the point.
+ * Render a page through the merge the way a frontend does: templates ONLY from what the
+ * endpoint returned (no separately fetched template), and the idFieldMap derived from the
+ * block schemas. If the endpoint under-delivers, this throws or renders empty, which is
+ * the point.
  *
  * editMode: false because expandTemplatesSync otherwise passes blocks through untouched
  * (the admin owns merging in edit mode) — and a pass-through would make every assertion
  * below vacuously true.
  */
 function render(page, allowedLayouts) {
-  const { templates, idFieldMap } = page['@components'].templates;
+  const { templates } = page['@components'].templates;
   return expandTemplatesSync(page.blocks_layout.items, {
     blocks: page.blocks,
     templates,

@@ -1293,53 +1293,6 @@ function buildTypesComponent() {
 }
 
 /**
- * Derive the merge's `idFieldMap` ({ blockType: { field: idField } }) from the block
- * schemas.
- *
- * An object_list field is keyed by its own id field — a form's `subblocks` on
- * `field_id`, a table's `rows` on `key`, a slider's `slides` on `@id` — and
- * getChildFields() falls back to `@id` when it isn't told. That fallback mints a bogus
- * id for a `field_id`-keyed field, and the item is silently dropped on the next merge.
- * The admin derives this from the block schema; a frontend has no schema, so today it
- * hand-writes the literal and the two can drift.
- *
- * The schemas already declare `idField`, so derive it rather than restate it: walk every
- * block type for object_list fields and collect the ones whose idField isn't the `@id`
- * default. Nested object_lists (a table's rows -> cells) are NOT included: getChildFields
- * only reads top-level array fields of a block, so a nested entry could never be looked
- * up, and emitting one would imply a lookup that doesn't happen.
- */
-function deriveIdFieldMap(blocksConfig) {
-  const map = {};
-  for (const [blockType, def] of Object.entries(blocksConfig || {})) {
-    const props = def?.blockSchema?.properties;
-    if (!props) continue;
-    const fields = {};
-    for (const [field, spec] of Object.entries(props)) {
-      if (spec?.widget === 'object_list' && spec.idField && spec.idField !== '@id') {
-        fields[field] = spec.idField;
-      }
-    }
-    if (Object.keys(fields).length > 0) map[blockType] = fields;
-  }
-  return map;
-}
-
-// Derived from the same schema registry the frontends register from, so the map the merge
-// gets can't drift from the schema that defines it. Lazy + memoised rather than built at
-// startup: only @templates reads it, and deriving it is a require plus a walk over static
-// definitions — so nothing else need wait on it, and an unexpanded read never pays.
-let idFieldMapCache = null;
-function getIdFieldMap() {
-  if (!idFieldMapCache) {
-    const { sharedBlocksConfig } = require('./shared-block-schemas.js');
-    const { coreBlocksConfig } = require('./core-block-schemas.js');
-    idFieldMapCache = deriveIdFieldMap({ ...coreBlocksConfig, ...sharedBlocksConfig });
-  }
-  return idFieldMapCache;
-}
-
-/**
  * Collect every templateId referenced anywhere in a value, at any depth.
  * Mirrors the frontend helper's collectTemplateIds: the reference may sit on a block, a
  * nested container's child, or an object_list item, so this walks everything rather than
@@ -1417,7 +1370,7 @@ function resolveTemplates(pageContent, extraIds, sessionId, baseUrl) {
       if (templates[templateId] || errors.some((e) => e.templateId === templateId)) continue;
       // Errors name the id AS REQUESTED — the string the frontend has to match up — and
       // an unknown uid is just "not found", like any other missing template. Matches the
-      // inkaengine.inka addon (checked by the conformance suite); this used to report the
+      // inkaengine.inka addon, whose tests assert the same messages; this used to report the
       // resolved path, or "unresolvable template id" for an unknown uid.
       const notFound = { templateId, error: `not found: ${templateId}` };
       const tplPath = templateIdToPath(templateId);
@@ -1475,7 +1428,6 @@ function buildTemplatesComponent(cleanPath, baseUrl, sessionId, extraIds = []) {
   return {
     '@id': `${fullUrl}/@templates`,
     templates,
-    idFieldMap: getIdFieldMap(),
     // Named rather than thrown: one missing template must not fail the page read. The
     // frontend decides whether a missing template is fatal — ploneApi already has
     // `ignoreTemplateErrors` for exactly that call.
@@ -3628,7 +3580,7 @@ app.get('/@site', (req, res) => {
       .split(',')
       .map((lang) => lang.trim())
       .filter(Boolean),
-    // The three below were missing until the conformance suite diffed this against
+    // The three below were missing until this was diffed against
     // plone/server-dev:6. Values are the real server's defaults, not invented: a client
     // reading `plone.allowed_sizes` to pick a scale would have got undefined here.
     'plone.allowed_sizes': [
@@ -4098,7 +4050,7 @@ app.get('/rss-stub', (req, res) => {
  * Returns just Document for now; extend if a test needs Folder/News Item.
  */
 // `id` and `immediately_addable` are in Plone's @types entries (verified against
-// plone/server-dev:6 by the conformance suite) and were missing here — the same shape
+// plone/server-dev:6) and were missing here — the same shape
 // this file keeps getting wrong by emitting what its callers happened to read rather than
 // what Plone serves. `immediately_addable` mirrors `addable` for these two ordinary types.
 function listAddableTypes() {

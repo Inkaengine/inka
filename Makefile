@@ -113,12 +113,6 @@ backend-seed: ## Loads the shared template fixtures into the addon backend (run 
 	@echo "$(GREEN)==> Seed the Plone backend with the shared template fixtures$(RESET)"
 	bash backend/seed.sh
 
-.PHONY: test-conformance
-test-conformance: ## Diff the mock API against a real Plone (needs backend-start: @templates needs the addon)
-	@echo "$(GREEN)==> Diff mock API against real Plone$(RESET)"
-	HYDRA_MOCK_API_PORT=$${HYDRA_MOCK_API_PORT:-8888} \
-		pnpm exec playwright test --config=playwright-conformance.config.ts
-
 ## Storybook
 .PHONY: storybook-start
 storybook-start: ## Start Storybook server on port 6006

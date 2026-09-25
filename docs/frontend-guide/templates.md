@@ -172,21 +172,22 @@ of block objects, each identified by an **id field** (`@id` by default).
 
 Everything else is identical: every object\_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
 
-The merge identifies object\_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. A frontend has no schema, so whenever you expand a template or layout that contains an object\_list container you MUST tell the merge each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
+The merge identifies object\_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas, so whenever you expand a template or layout that contains an object\_list container you MUST tell it each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Build it from the same blocks config you pass to `initBridge` with `buildIdFieldMap`, exactly as the admin does, rather than writing it by hand. Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
 
 ### Javascript
 
 ```javascript
+import { buildIdFieldMap } from '@hydra-js/hydra.js';
+
+// Once, from your block definitions: { form: { subblocks: 'field_id' }, slider: { slides: '@id' }, … }
+const idFieldMap = buildIdFieldMap(blocksConfig);
+
 const items = expandTemplatesSync(layout, {
-    blocks, templateState, templates,
-    idFieldMap: {
-        form: { subblocks: 'field_id' }, // a form's fields key on field_id, not @id
-        slider: { slides: '@id' },
-    },
+    blocks, templateState, templates, idFieldMap,
 });
 ```
 
-(On the admin this map is derived from the block schema automatically. When you re-enter to expand a **single** object\_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
+(When you re-enter to expand a **single** object\_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
 
 ## allowedTemplates vs allowedLayouts
 
@@ -300,7 +301,6 @@ const { templates, errors } = await loadTemplates(
 - **Name forced layouts in both places:** in `expand.templates.extra`, so the backend returns them, and as `loadTemplates`' fourth argument, so they're still fetched from a backend without the addon.
 - **Without the addon it still works.** Plone ignores `expand=templates`, and `loadTemplates` fetches each template one at a time, as before. It's slower, not broken.
 - **A template the backend couldn't return** (missing, or one the visitor isn't allowed to view) is listed in `errors` and isn't requested again.
-- **The same component carries `idFieldMap`** (`pageData['@components'].templates.idFieldMap`): the object\_list id fields described above, ready to pass to `expandTemplatesSync`.
 - **Only list the layouts your rules actually force in view mode.** Every template named in `extra` is included in every page response it's added to.
 
 ## How the Merge Works

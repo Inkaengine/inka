@@ -6,7 +6,6 @@ has been bitten by exactly that drift: a session-aware `@navigation` route besid
 expansion that was not.)
 """
 
-from inkaengine.inka.api.templates import build_id_field_map
 from inkaengine.inka.api.templates import resolve_templates
 from inkaengine.inka.api.templates import split_list
 from plone import api
@@ -45,7 +44,6 @@ class Templates:
         templates, errors = resolve_templates(portal, self.request, page_content, extra)
 
         result["templates"]["templates"] = templates
-        result["templates"]["idFieldMap"] = build_id_field_map()
         # Named rather than raised: one missing template must not fail the page read. The
         # frontend decides whether that is fatal.
         if errors:

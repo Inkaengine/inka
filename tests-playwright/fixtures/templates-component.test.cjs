@@ -142,44 +142,17 @@ describe('@templates component', () => {
     // was not). Pin them together.
     const viaRoute = await routeTemplates(PAGE, '/_test_data/templates/footer-layout');
     const viaExpand = await expandTemplates(PAGE, '/_test_data/templates/footer-layout');
-    assert.deepEqual(viaRoute.templates, viaExpand.templates);
-    assert.deepEqual(viaRoute.idFieldMap, viaExpand.idFieldMap);
+    assert.deepEqual(viaRoute, viaExpand);
   });
 });
 
-describe('@templates idFieldMap', () => {
-  it('reports the id field of an object_list keyed by anything but @id', async () => {
-    // getChildFields falls back to '@id' when it is not told, which mints a bogus id for a
-    // field_id-keyed field and the item is silently dropped on the next merge. This map is
-    // what prevents that, and it is DERIVED from the block schemas so it cannot drift from
-    // the schema that defines it.
-    const { idFieldMap } = await expandTemplates(PAGE);
-    assert.equal(
-      idFieldMap?.form?.subblocks,
-      'field_id',
-      "a form's fields key on field_id, not @id",
-    );
-  });
-
-  it('omits fields that already key on @id', async () => {
-    // '@id' is getChildFields' own fallback, so restating it would be noise.
-    const { idFieldMap } = await expandTemplates(PAGE);
-    for (const [blockType, fields] of Object.entries(idFieldMap)) {
-      for (const [field, idField] of Object.entries(fields)) {
-        assert.notEqual(idField, '@id', `${blockType}.${field} restates the default`);
-      }
-    }
-  });
-
-  it('omits NESTED object_lists, which the merge cannot look up', async () => {
-    // getChildFields enumerates a block's TOP-LEVEL array fields only, so a slateTable's
-    // `table.rows` (nested under an object widget) could never be looked up in this map.
-    // Emitting it would imply a lookup that does not happen.
-    const { idFieldMap } = await expandTemplates(PAGE);
-    assert.equal(
-      idFieldMap?.slateTable?.rows,
-      undefined,
-      'a nested object_list is not reachable via idFieldMap',
-    );
+describe('@templates carries templates only', () => {
+  it('has no idFieldMap', async () => {
+    // Which object_list field a block keys by field_id rather than @id is a fact about the
+    // FRONTEND's block schemas, which a Plone backend never sees — the addon could only
+    // hardcode it, and a hardcoded copy drifts. Frontends derive it from their own block
+    // config with buildIdFieldMap(blocksConfig), as the admin does.
+    const component = await expandTemplates(PAGE);
+    assert.deepEqual(Object.keys(component).sort(), ['@id', 'templates']);
   });
 });

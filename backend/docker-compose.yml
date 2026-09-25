@@ -4,7 +4,7 @@
 # restarting the container — no image rebuild per change.
 #
 #     make backend-start      # this file
-#     make test-conformance   # diff the mock against it
+#     make backend-seed       # load the shared templates + docs
 #
 # Distinct from `make backend-docker-start`, which runs the stock plone/server-dev:6 with
 # no addon — that one is for checking the mock against vanilla Plone.

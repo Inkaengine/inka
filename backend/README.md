@@ -14,20 +14,18 @@ gone.
 
 ## The contract
 
-Settled against the mock API first, then implemented here and diffed against it:
+Settled against the mock API first, then implemented here:
 
 | What | Where |
 | --- | --- |
 | Response shape | `tests-playwright/fixtures/templates-component.test.cjs` |
 | The merge actually consuming it | `tests-playwright/fixtures/templates-component-merge.test.cjs` |
 | Reference implementation | `@templates` in `tests-playwright/fixtures/mock-plone-api.cjs` |
-| Diff against real Plone | `tests-playwright/conformance/templates-endpoint.spec.ts` |
 
 ```json
 {
   "@id": "http://localhost:8080/Plone/my-page/@templates",
-  "templates": { "<the templateId the block carries>": { "blocks": {}, "blocks_layout": {} } },
-  "idFieldMap": { "form": { "subblocks": "field_id" } }
+  "templates": { "<the templateId the block carries>": { "blocks": {}, "blocks_layout": {} } }
 }
 ```
 
@@ -47,10 +45,11 @@ Three rules the mock encodes, each of which the addon must reproduce:
 3. **Name a missing template, don't throw.** One unresolvable id must not fail the page
    read; it appears in an `errors` array and the rest still arrive.
 
-`idFieldMap` covers object_list fields keyed by anything but `@id` (a form's `subblocks` on
-`field_id`). The merge falls back to `@id` when not told, which mints a bogus id and the
-item is silently dropped on the next merge. Nested object_lists are excluded — the merge
-only enumerates a block's top-level array fields, so a nested entry could never be looked up.
+The response carries **templates only**. The `idFieldMap` the merge needs (which
+`object_list` field a block keys by `field_id` rather than `@id`) is a fact about the
+**frontend's** block schemas, which Plone never sees. Frontends derive it from their own
+block config with `buildIdFieldMap(blocksConfig)` from `@hydra-js/hydra.js`, as the admin
+does.
 
 ## Running the backend
 
@@ -194,5 +193,4 @@ and the page's own text sits in the slot between them.
 | --- | --- |
 | `cd backend/inkaengine.inka && make test` | The addon against the contract, including permissions (private templates are reported, not served). Needs `node` and this repo: its fixtures are exported from the mock at test time. |
 | `node --test tests-playwright/fixtures/templates-component*.test.cjs` | The mock's `@templates`, and the real merge consuming it. |
-| `make test-conformance` | The mock diffed against this addon on a real Plone. Needs `make backend-start`; it creates and deletes its own content. |
 | `make hydra-test ARGS="tests-playwright/integration/template*.spec.ts --project=admin-nuxt"` | Template editing through the Nuxt frontend. Two BlockChooser tests are flaky on Nuxt; they were before this change too. |

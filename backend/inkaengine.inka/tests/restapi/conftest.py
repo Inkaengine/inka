@@ -18,6 +18,7 @@ from plone.app.testing import TEST_USER_ID
 from plone.exportimport.importers import get_importer
 
 import importlib.util
+import os
 import pytest
 import sys
 import transaction
@@ -46,12 +47,15 @@ def distribution(tmp_path_factory):
 
     Session-scoped because generating it boots a node server and scans content — far too
     slow to repeat per test. Skips (rather than fails) when the inka checkout or node is
-    absent, so the addon can still be worked on without the JS repo.
+    absent, so the addon can still be worked on without the JS repo — except in CI, where
+    a skip would turn a broken setup into a green run with the @templates tests unrun.
     """
     try:
         build = _load_distribution_fixture().build_distribution
         return build(tmp_path_factory.mktemp("distribution"))
     except FileNotFoundError as exc:
+        if os.environ.get("CI"):
+            raise
         pytest.skip(f"shared template fixtures unavailable: {exc}")
 
 

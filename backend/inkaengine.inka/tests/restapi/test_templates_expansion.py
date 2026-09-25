@@ -6,7 +6,6 @@ API let the shape be tried against the real merge before any Python existed:
     tests-playwright/fixtures/mock-plone-api.cjs                  reference implementation
     tests-playwright/fixtures/templates-component.test.cjs        response shape
     tests-playwright/fixtures/templates-component-merge.test.cjs  the merge consuming it
-    tests-playwright/conformance/templates-endpoint.spec.ts       diff against real Plone
 
 These tests restate that contract in Python, against the SAME template fixtures (imported
 as a plone.exportimport distribution — see conftest.py). Three rules carry the weight:
@@ -42,7 +41,7 @@ class TestTemplatesComponent:
         response = api_session.get("/a-page?expand=templates")
         assert response.status_code == 200
         templates = response.json()["@components"]["templates"]
-        assert set(templates) >= {"@id", "templates", "idFieldMap"}
+        assert set(templates) == {"@id", "templates"}
 
     def test_resolves_the_template_the_page_references(
         self, api_session, page_using_template, site_footer
@@ -236,7 +235,7 @@ class TestTemplatesRoute:
     def test_route_serves_the_component(self, api_session, page_using_template):
         response = api_session.get("/a-page/@templates")
         assert response.status_code == 200
-        assert set(response.json()) >= {"@id", "templates", "idFieldMap"}
+        assert set(response.json()) == {"@id", "templates"}
 
     def test_route_matches_the_inline_expansion(self, api_session, page_using_template):
         """Two paths to one component drift when only one is maintained. Pin them."""
@@ -244,8 +243,7 @@ class TestTemplatesRoute:
         route = api_session.get(f"/a-page/@templates?{extra}").json()
         inline = api_session.get(f"/a-page?expand=templates&{extra}").json()
         inline = inline["@components"]["templates"]
-        assert route["templates"] == inline["templates"]
-        assert route["idFieldMap"] == inline["idFieldMap"]
+        assert route == inline
 
     def test_route_works_at_the_site_root(self, api_session, portal):
         """The site root has templates like any other page."""
@@ -254,29 +252,17 @@ class TestTemplatesRoute:
         assert "templates" in response.json()
 
 
-class TestIdFieldMap:
-    """The object_list id fields the merge cannot infer.
+class TestNoIdFieldMap:
+    """The component carries templates, nothing about block schemas.
 
-    The merge falls back to `@id` when it is not told, which mints a bogus id for a
-    `field_id`-keyed field — the item is then silently dropped on the next merge.
+    Which object_list field a block keys by `field_id` rather than `@id` is a fact about
+    the FRONTEND's block schemas, which Plone never sees. It used to be hardcoded here and
+    could only drift from them. Frontends derive it from their own block config with
+    `buildIdFieldMap(blocksConfig)`, exactly as the admin does.
     """
 
-    def test_reports_a_known_non_default_id_field(
-        self, api_session, page_using_template
-    ):
-        id_field_map = _id_field_map(api_session)
-        assert id_field_map["form"]["subblocks"] == "field_id", (
-            "a form's fields key on field_id, not @id"
-        )
-
-    def test_never_restates_the_at_id_default(self, api_session, page_using_template):
-        """`@id` is the merge's own fallback, so restating it would be noise."""
-        for block_type, fields in _id_field_map(api_session).items():
-            for field, id_field in fields.items():
-                assert id_field != "@id", f"{block_type}.{field} restates the default"
-
-
-def _id_field_map(api_session):
-    return api_session.get("/a-page?expand=templates").json()["@components"][
-        "templates"
-    ]["idFieldMap"]
+    def test_component_has_no_id_field_map(self, api_session, page_using_template):
+        component = api_session.get("/a-page?expand=templates").json()["@components"][
+            "templates"
+        ]
+        assert "idFieldMap" not in component

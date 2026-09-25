@@ -173,25 +173,6 @@ def resolve_templates(portal, request, page_content, extra_ids=()):
     return templates, errors
 
 
-def build_id_field_map():
-    """Object_list fields keyed by anything but `@id`.
-
-    The merge falls back to `@id` when it is not told, which mints a bogus id for a
-    `field_id`-keyed field — the item is then silently dropped on the next merge. Only
-    non-`@id` fields are reported, since `@id` is the merge's own default; and only
-    TOP-LEVEL array fields, because the merge enumerates a block's own array fields and
-    could never look up a nested one.
-
-    Static for now. The mock derives this from the block schema registry the frontends
-    register from; Plone has no equivalent registry of frontend block schemas, so the
-    known non-default cases are listed here until there is somewhere better to read them
-    from.
-    """
-    return {
-        "form": {"subblocks": "field_id"},
-    }
-
-
 def split_list(raw):
     """A comma-separated query value as a list, accepting a repeated param too."""
     if raw is None:
