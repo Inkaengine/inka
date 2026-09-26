@@ -381,6 +381,41 @@ test.describe('Adding Blocks to Containers', () => {
     await helper.waitForSidebarCurrentBlock('Teaser');
   });
 
+  test('a nested region saved empty gets its default block when the page opens', async ({ page }) => {
+    // Empty placeholders are stripped on save, so a column whose last block
+    // was deleted is stored with no blocks at all. Opening the page again has
+    // to give it something to type into, as it does for the page's own
+    // regions — the column's schema only arrives with the frontend's INIT.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/nested-empty-region-page');
+    const iframe = helper.getIframe();
+    const childrenOf = (parent: string) =>
+      iframe.locator('body').evaluate((_, p) => {
+        const map = (window as any).__hydraBridge?.blockPathMap || {};
+        return Object.keys(map)
+          .filter((uid) => map[uid]?.parentId === p)
+          .map((uid) => map[uid].blockType);
+      }, parent);
+    await expect.poll(() => childrenOf('col-full')).toEqual(['slate']);
+    await expect.poll(() => childrenOf('col-saved-empty')).toEqual(['slate']);
+
+    // The editor knows the seeded block too: what is typed into it saves.
+    const seeded = await iframe.locator('body').evaluate(() => {
+      const map = (window as any).__hydraBridge?.blockPathMap || {};
+      return Object.keys(map).find((uid) => map[uid]?.parentId === 'col-saved-empty')!;
+    });
+    await helper.enterEditMode(seeded);
+    await page.keyboard.type('Typed into the seeded block');
+    await expect(iframe.locator(`[data-block-uid="${seeded}"]`)).toHaveText('Typed into the seeded block');
+    await helper.saveContent();
+    // Opened again, the column holds what was typed.
+    await helper.navigateToEdit('/nested-empty-region-page');
+    await expect(
+      helper.getIframe().locator('[data-block-uid="col-saved-empty"]'),
+    ).toContainText('Typed into the seeded block');
+  });
+
   test('pressing Enter in container with single allowedBlock creates that type, not slate', async ({
     page,
   }) => {
