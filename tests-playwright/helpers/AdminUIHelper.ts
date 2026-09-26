@@ -221,9 +221,31 @@ export class AdminUIHelper {
     await target.click();
     if (options.replace) {
       await target.click({ clickCount: 3 });
-      await this.page.waitForTimeout(this.demoPacingMs ? 200 : 30);
+      // Typing replaces the text once it is selected — wait for that.
+      await expect
+        .poll(() =>
+          target.evaluate((el) => {
+            const selected = (el.ownerDocument.getSelection()?.toString() || '').trim();
+            return selected !== '' && selected === (el.textContent || '').trim();
+          }),
+        )
+        .toBe(true);
+      // In a demo, let the viewer see the selection before it is typed over.
+      if (this.demoPacingMs) await this.page.waitForTimeout(this.demoPacingMs);
     }
     await this.page.keyboard.type(text, { delay: this.demoPacingMs ? 55 : 20 });
+  }
+
+  /**
+   * Let the page in the iframe draw a frame: what a scroll, a drag-over or a
+   * re-render waits for — not a guessed number of milliseconds.
+   */
+  private async nextFrame(): Promise<void> {
+    await this.getIframe()
+      .locator('body')
+      .evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      );
   }
 
   /**
@@ -894,29 +916,28 @@ export class AdminUIHelper {
       }
     }
 
+    // Step by the selection itself — which block the bridge has selected —
+    // not by what the sidebar or the outline show while they catch up (the
+    // sidebar is briefly empty as it switches; the outline trails a re-render).
+    const selectedUid = () =>
+      this.getIframe()
+        .locator('body')
+        .evaluate(() => (window as any).__hydraBridge?.selectedBlockUid ?? null);
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Check if target block is now selected
-      const result = await this.isBlockSelectedInIframe(targetBlockId);
-      if (result.ok) {
+      const selected = await selectedUid();
+      if (selected === targetBlockId) {
         await this.waitForBlockSelectedInAdmin(targetBlockId);
         return;
       }
 
-      // Find and click the LAST "‹ BlockType" parent navigation button in sidebar
-      // Clicking it closes that section and navigates up one level
+      // Up one level: the last "‹ BlockType" button in the sidebar.
       const parentButton = parentButtonLocator.last();
-      const buttonExists = (await parentButton.count()) > 0;
-
-      if (!buttonExists) {
-        const buttonTexts = await getParentButtonTexts();
-        throw new Error(
-          `Cannot navigate to block "${targetBlockId}": parent navigation buttons disappeared from sidebar. ` +
-          `Last known buttons: [${buttonTexts.join(', ')}]`
-        );
-      }
-
+      await expect(
+        parentButton,
+        `Cannot navigate to block "${targetBlockId}": no parent navigation button (selected: ${selected})`,
+      ).toBeVisible();
       await parentButton.click();
-      await this.page.waitForTimeout(300); // Wait for selection to update
+      await expect.poll(selectedUid).not.toBe(selected);
     }
 
     const buttonTexts = await getParentButtonTexts();
@@ -1106,8 +1127,18 @@ export class AdminUIHelper {
       }));
     }, center);
 
-    // Hold for long press threshold
-    await this.page.waitForTimeout(700);
+    // Hold until the bridge's long press has fired: it clears its timer when it
+    // does. (No timer is set when the press can't be a long press — a text
+    // field has focus, or it isn't on a block — and then there is nothing to
+    // wait for.)
+    await expect
+      .poll(() =>
+        iframe.locator('body').evaluate(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          () => !(window as any).__hydraBridge?._longPressTimer,
+        ),
+      )
+      .toBe(true);
 
     // Dispatch touchend
     await iframe.locator('body').evaluate((body, pos) => {
@@ -1178,18 +1209,26 @@ export class AdminUIHelper {
       .locator('.sidebar-section-header.sticky-header')
       .count();
 
+    const headers = () => this.page.locator('.sidebar-section-header.sticky-header').count();
+    const editMode = () =>
+      this.getIframe().locator('body').evaluate((body) => body.dataset.hydraEditMode || 'text');
+    const modeBefore = await editMode();
+
     await this.page.keyboard.press('Escape');
 
-    // Check if we actually navigated (header count changed) or just entered block mode
-    // If still on same level after 300ms, press Escape again
-    await this.page.waitForTimeout(300);
-    const headersAfter = await this.page
-      .locator('.sidebar-section-header.sticky-header')
-      .count();
-
-    if (headersAfter >= headersBefore) {
-      // Didn't navigate — we entered block mode. Press again.
+    // Escape either navigated (the sidebar lost a level) or went from text
+    // mode to block mode. Wait for whichever happened; if it was the mode,
+    // press again to navigate.
+    let navigated = false;
+    await expect
+      .poll(async () => {
+        navigated = (await headers()) < headersBefore;
+        return navigated || (modeBefore === 'text' && (await editMode()) === 'block');
+      })
+      .toBe(true);
+    if (!navigated) {
       await this.page.keyboard.press('Escape');
+      await expect.poll(headers).toBeLessThan(headersBefore);
     }
   }
 
@@ -1456,10 +1495,8 @@ export class AdminUIHelper {
       const section = this.page.locator(selector);
       // Wait for the section to exist
       await section.waitFor({ state: 'attached', timeout: 5000 });
-      // Scroll to the section
       await section.scrollIntoViewIfNeeded();
-      // Brief wait for scroll to complete
-      await this.page.waitForTimeout(100);
+      await expect(section).toBeInViewport();
     }
   }
 
@@ -1938,18 +1975,7 @@ export class AdminUIHelper {
     // Grant clipboard permissions
     await this.page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 
-    // Trigger native copy with keyboard shortcut
-    await editor.press('ControlOrMeta+c');
-
-    // Small delay for clipboard to be populated
-    await this.page.waitForTimeout(50);
-
-    // Read clipboard from parent page (clipboard is shared)
-    const clipboardText = await this.page.evaluate(() =>
-      navigator.clipboard.readText()
-    );
-
-    return clipboardText;
+    return this.clipboardAfter(() => editor.press('ControlOrMeta+c'));
   }
 
   /**
@@ -1961,18 +1987,7 @@ export class AdminUIHelper {
     // Grant clipboard permissions
     await this.page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 
-    // Trigger native cut with keyboard shortcut
-    await editor.press('ControlOrMeta+x');
-
-    // Small delay for clipboard to be populated
-    await this.page.waitForTimeout(50);
-
-    // Read clipboard from parent page (clipboard is shared)
-    const clipboardText = await this.page.evaluate(() =>
-      navigator.clipboard.readText()
-    );
-
-    return clipboardText;
+    return this.clipboardAfter(() => editor.press('ControlOrMeta+x'));
   }
 
   /**
@@ -1984,11 +1999,25 @@ export class AdminUIHelper {
     // Grant clipboard permissions
     await this.page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 
-    // Trigger native paste with keyboard shortcut
+    // Trigger native paste with keyboard shortcut. What it pasted is the
+    // caller's to assert (with a retrying expect).
     await editor.press('ControlOrMeta+v');
+  }
 
-    // Small delay for paste to complete
-    await this.page.waitForTimeout(50);
+  /**
+   * Run a copy or cut and return what it put on the clipboard. The clipboard
+   * is set to a marker first, so the wait is for it to CHANGE — the copy
+   * having happened — rather than a guessed time.
+   */
+  private async clipboardAfter(action: () => Promise<void>): Promise<string> {
+    const marker = `\u0000clipboard-before-${Date.now()}`;
+    await this.page.evaluate((m) => navigator.clipboard.writeText(m), marker);
+    await action();
+    let text = marker;
+    await expect
+      .poll(async () => (text = await this.page.evaluate(() => navigator.clipboard.readText())))
+      .not.toBe(marker);
+    return text;
   }
 
   /**
@@ -2058,10 +2087,9 @@ export class AdminUIHelper {
   async waitForStableSelection(
     editor: Locator,
     expected: { editorHasFocus?: boolean; isCollapsed?: boolean },
-    options: { timeout?: number; stabilityMs?: number } = {}
+    options: { timeout?: number } = {}
   ): Promise<void> {
     const timeout = options.timeout ?? 10000;
-    const stabilityMs = options.stabilityMs ?? 200;
     await expect(async () => {
       const sel1 = await this.getSelectionInfo(editor);
       // Check expected properties
@@ -2071,11 +2099,17 @@ export class AdminUIHelper {
       if (expected.isCollapsed !== undefined) {
         expect(sel1.isCollapsed).toBe(expected.isCollapsed);
       }
-      // Wait and check again — selection must be stable
-      await this.page.waitForTimeout(stabilityMs);
+      // …while the bridge is idle: no render in progress, no transform
+      // pending, input not blocked. Nothing is left to move the selection.
+      // (Not "unchanged for a while": that can't tell settled from not yet
+      // started.)
+      const idle = await this.getIframe().locator('body').evaluate(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const b = (window as any).__hydraBridge;
+        return !!b && !b._renderInProgress && !b.pendingTransform && !b.blockedBlockId;
+      });
+      expect(idle, 'the bridge is idle').toBe(true);
       const sel2 = await this.getSelectionInfo(editor);
-      expect(sel2.editorHasFocus).toBe(sel1.editorHasFocus);
-      expect(sel2.isCollapsed).toBe(sel1.isCollapsed);
       expect(sel2.anchorOffset).toBe(sel1.anchorOffset);
       expect(sel2.focusOffset).toBe(sel1.focusOffset);
     }).toPass({ timeout });
@@ -2160,9 +2194,7 @@ export class AdminUIHelper {
       editor = iframe.locator(`[data-block-uid="${blockId}"][data-edit-text]`).first();
     }
 
-    // Wait a moment for any pending mutations to complete
-    await this.page.waitForTimeout(100);
-
+    // The text now; a caller expecting a change polls for it.
     return (await editor.textContent()) || '';
   }
 
@@ -2596,8 +2628,7 @@ export class AdminUIHelper {
         }
       }
 
-      // Wait a bit before polling again
-      await this.page.waitForTimeout(50);
+      await this.nextFrame();
     }
 
     // Timeout - return measurements anyway (test will likely fail with useful info)
@@ -3230,15 +3261,17 @@ export class AdminUIHelper {
           range.setStart(startPos.node, startPos.offset);
           range.setEnd(endPos.node, endPos.offset);
           const sel = win?.getSelection();
-          sel?.removeAllRanges();
-          sel?.addRange(range);
+          // Resolve on the selectionchange this causes: the bridge's own
+          // listener, added earlier, has handled it by the time ours runs.
+          return new Promise<void>((resolve) => {
+            doc.addEventListener('selectionchange', () => resolve(), { once: true });
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+          });
         }
       },
       { start: startOffset, end: endOffset },
     );
-
-    // Wait for selection change to propagate
-    await this.page.waitForTimeout(100);
   }
 
   /**
@@ -3287,12 +3320,16 @@ export class AdminUIHelper {
         range.setStart(startPos.node, startPos.offset);
         range.setEnd(endPos.node, endPos.offset);
         const sel = window.getSelection()!;
-        sel.removeAllRanges();
-        sel.addRange(range);
+        // Resolve on the selectionchange this causes: the bridge's own
+        // listener, added earlier, has handled it by the time ours runs.
+        return new Promise<void>((resolve) => {
+          document.addEventListener('selectionchange', () => resolve(), { once: true });
+          sel.removeAllRanges();
+          sel.addRange(range);
+        });
       },
       { startId: startBlockId, endId: endBlockId, startOffset, endOffset },
     );
-    await this.page.waitForTimeout(100);
   }
 
   /**
@@ -3467,21 +3504,17 @@ export class AdminUIHelper {
   async openFieldsetAccordion(fieldsetTitle: string): Promise<void> {
     const sidebar = this.page.locator('#sidebar-properties');
 
-    // Find clickable element containing the fieldset title text
-    // Look for the title element that might have an image/icon next to it
-    const accordionTitle = sidebar.locator(`div:has-text("${fieldsetTitle}")`).first();
+    // The accordion's own title element — not the first div whose text
+    // contains the title, which is an ancestor and never carries `active`.
+    const accordionTitle = sidebar.locator('.accordion .title', { hasText: fieldsetTitle }).first();
 
     // Check if accordion content is already visible by looking for active class
-    const isActive = await accordionTitle.evaluate((el) => {
-      // Check if this accordion title's parent or the title itself has 'active' class
-      return el.classList.contains('active') || el.parentElement?.classList.contains('active');
-    });
+    const isActive = await this.fieldsetAccordionOpen(accordionTitle);
 
     // Only click if not already active/open
     if (!isActive) {
       await accordionTitle.click();
-      // Wait for animation/expansion
-      await this.page.waitForTimeout(300);
+      await expect.poll(() => this.fieldsetAccordionOpen(accordionTitle)).toBe(true);
     }
   }
 
@@ -3492,21 +3525,23 @@ export class AdminUIHelper {
   async closeFieldsetAccordion(fieldsetTitle: string): Promise<void> {
     const sidebar = this.page.locator('#sidebar-properties');
 
-    // Find clickable element containing the fieldset title text
-    const accordionTitle = sidebar.locator(`div:has-text("${fieldsetTitle}")`).first();
+    // The accordion's own title element — not the first div whose text
+    // contains the title, which is an ancestor and never carries `active`.
+    const accordionTitle = sidebar.locator('.accordion .title', { hasText: fieldsetTitle }).first();
 
     // Check if accordion content is currently visible
-    const isActive = await accordionTitle.evaluate((el) => {
-      // Check if this accordion title's parent or the title itself has 'active' class
-      return el.classList.contains('active') || el.parentElement?.classList.contains('active');
-    });
+    const isActive = await this.fieldsetAccordionOpen(accordionTitle);
 
     // Only click if currently active/open
     if (isActive) {
       await accordionTitle.click();
-      // Wait for animation/collapse
-      await this.page.waitForTimeout(300);
+      await expect.poll(() => this.fieldsetAccordionOpen(accordionTitle)).toBe(false);
     }
+  }
+
+  /** Whether a sidebar fieldset accordion is open: its title is active. */
+  private fieldsetAccordionOpen(title: Locator): Promise<boolean> {
+    return title.evaluate((el) => el.classList.contains('active'));
   }
 
   /**
@@ -3605,9 +3640,6 @@ export class AdminUIHelper {
           expect(selectedText.trim()).toBe(currentText.trim());
         }).toPass({ timeout: 2000 });
       }
-
-      // Small wait to ensure selection is stable before typing
-      await this.page.waitForTimeout(50);
 
       await contentEditable.pressSequentially(value, { delay: 10 }); // Type replaces selection
       await contentEditable.blur(); // Trigger blur to commit the value
@@ -3743,10 +3775,34 @@ export class AdminUIHelper {
     // The add button has class volto-hydra-add-button and is appended to the selected block element
     const addButton = this.page.locator('.volto-hydra-add-button');
 
-    // Scroll add button into view - it may be outside viewport if block is at edge
-    await addButton.scrollIntoViewIfNeeded();
+    // The button sits over the iframe, positioned against the selected block —
+    // for a block drawn in two places (a tab: its label and its panel) that
+    // can be far from where the author was working, scrolled out of the
+    // canvas. Scrolling the admin page can't bring it back; scroll the canvas
+    // by however far it is out of view, as an author would, and wait for the
+    // bridge to re-place it.
+    await expect.poll(async () => {
+      const outBy = await this.addButtonOutOfCanvasBy(addButton);
+      if (outBy !== 0) {
+        await this.getIframe().locator('body').evaluate((_, dy) => window.scrollBy(0, dy), outBy);
+      }
+      return outBy;
+    }).toBe(0);
     await this.demoStep(addButton);
     await addButton.click({ timeout: 10000 });
+  }
+
+  /** How far (px) the add button lies above (negative) or below the canvas; 0 when in view. */
+  private async addButtonOutOfCanvasBy(addButton: Locator): Promise<number> {
+    const button = await addButton.boundingBox();
+    const canvas = await this.page.locator('#previewIframe').boundingBox();
+    if (!button || !canvas) return 0;
+    const margin = 20;
+    if (button.y < canvas.y) return button.y - canvas.y - margin;
+    if (button.y + button.height > canvas.y + canvas.height) {
+      return button.y + button.height - (canvas.y + canvas.height) + margin;
+    }
+    return 0;
   }
 
   /**
@@ -3943,7 +3999,7 @@ export class AdminUIHelper {
       const cls = (await t.getAttribute('class')) || '';
       if (!cls.split(/\s+/).includes('active')) {
         await t.click().catch(() => {});
-        await this.page.waitForTimeout(100);
+        await expect(t).toHaveClass(/(^|\s)active(\s|$)/);
       }
       // Wait for the now-active content area to render.
       const content = chooser.locator('.accordion .content.active');
@@ -4117,7 +4173,7 @@ export class AdminUIHelper {
     // Use realistic mouse events at coordinates (not element-specific dispatch)
     await this.page.mouse.move(startX, startY);
     await this.page.mouse.down();
-    await this.page.waitForTimeout(50);
+    await this.nextFrame();
 
     return { startX, startY };
   }
@@ -4138,9 +4194,9 @@ export class AdminUIHelper {
       : targetRect.y + targetRect.height * 0.25;
     const clientX = targetRect.x + targetRect.width / 2;
 
-    // Use realistic mouse movement
+    // Use realistic mouse movement; the drop indicator follows on the next frame.
     await this.page.mouse.move(clientX, clientY);
-    await this.page.waitForTimeout(100);
+    await this.nextFrame();
   }
 
   /**
@@ -4148,7 +4204,8 @@ export class AdminUIHelper {
    */
   async completeDrag(dragHandle: Locator): Promise<void> {
     await this.page.mouse.up();
-    await this.page.waitForTimeout(500);
+    // The drop is done when the drag shadow is gone.
+    await expect(this.getIframe().locator('.dragging')).toHaveCount(0);
   }
 
   /**
@@ -4583,8 +4640,8 @@ export class AdminUIHelper {
         await this.page.mouse.move(edgeX, currentEdgeY);
       }
 
-      // Brief wait for scroll to take effect
-      await this.page.waitForTimeout(50);
+      // Let the auto-scroll advance a frame.
+      await this.nextFrame();
     }
 
     // If we get here, we've exceeded max attempts
@@ -4611,7 +4668,7 @@ export class AdminUIHelper {
     // Get drop position in page coordinates and move mouse there
     const dropPos = await this.getDropPositionInPageCoords(targetBlock, insertAfter);
     await this.page.mouse.move(dropPos.x, dropPos.y, { steps: 5 });
-    await this.page.waitForTimeout(100);
+    await this.nextFrame();
 
     return dropPos;
   }
@@ -4696,7 +4753,7 @@ export class AdminUIHelper {
       if (!box) throw new Error('dragCursorToMovingTarget: target has no bounding box');
       const pos = cursorFor(box);
       await this.page.mouse.move(pos.x, pos.y, { steps: 3 });
-      await this.page.waitForTimeout(50);
+      await this.nextFrame();
       // Target stopped drifting on BOTH axes (axis-agnostic: vertical and
       // horizontal edge drags share this path).
       const stable = lastX !== null && Math.abs(box.x - lastX) < 2 && Math.abs(box.y - lastY!) < 2;
@@ -4744,8 +4801,8 @@ export class AdminUIHelper {
       const dropPosPage = await this.getDropPositionInPageCoords(targetBlock, insertAfter);
       await this.page.mouse.move(dropPosPage.x, dropPosPage.y, { steps: 5 });
 
-      // Wait a moment for the drop indicator to update
-      await this.page.waitForTimeout(100);
+      // The drop indicator follows on the next frame.
+      await this.nextFrame();
 
       // Verify the indicator is in the right position (unless skipped)
       if (skipVerification) {
@@ -4758,8 +4815,7 @@ export class AdminUIHelper {
       } catch (error) {
         if (attempt < maxRetries - 1) {
           console.log(`[DROP] Indicator not in expected position, retrying (attempt ${attempt + 1}/${maxRetries})`);
-          // Wait a bit for scroll to settle before retrying
-          await this.page.waitForTimeout(100);
+          await this.nextFrame();
         } else {
           // Last attempt failed - re-throw the error
           throw error;
@@ -4832,7 +4888,7 @@ export class AdminUIHelper {
     // Multiple small moves to trigger scroll
     for (let i = 0; i < 5; i++) {
       await this.page.mouse.move(edgeX, edgeY + (i % 2), { steps: 2 });
-      await this.page.waitForTimeout(50);
+      await this.nextFrame();
     }
   }
 
@@ -4855,8 +4911,19 @@ export class AdminUIHelper {
     console.log(`[SCROLL] Moving to safe zone: (${safeX.toFixed(0)}, ${safeY.toFixed(0)})`);
     await this.page.mouse.move(safeX, safeY, { steps: 3 });
 
-    // Wait for any residual scroll to settle
-    await this.page.waitForTimeout(150);
+    // Wait for any residual auto-scroll to stop: the scroll position the same
+    // from one frame to the next.
+    await expect
+      .poll(async () => {
+        const before = await this.iframeScrollY();
+        await this.nextFrame();
+        return (await this.iframeScrollY()) === before;
+      })
+      .toBe(true);
+  }
+
+  private iframeScrollY(): Promise<number> {
+    return this.getIframe().locator('body').evaluate(() => window.scrollY);
   }
 
   /**
@@ -5196,18 +5263,11 @@ export class AdminUIHelper {
    * @throws Error if the expected count is not reached within the timeout
    */
   async waitForBlockCountToBe(expectedCount: number, timeout: number = 10000): Promise<void> {
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeout) {
-      const currentCount = await this.getBlockCount();
-
-      if (currentCount === expectedCount) {
-        return; // Success!
-      }
-
-      // Wait a bit before checking again
-      await this.page.waitForTimeout(100);
-    }
+    const reached = await expect
+      .poll(() => this.getBlockCount(), { timeout })
+      .toBe(expectedCount)
+      .then(() => true, () => false);
+    if (reached) return;
 
     // Timeout reached - get final count for error message
     const finalCount = await this.getBlockCount();
@@ -5321,18 +5381,11 @@ export class AdminUIHelper {
     expectedValue: string,
     timeout: number = 5000
   ): Promise<void> {
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeout) {
-      const currentValue = await this.getSidebarFieldValue(fieldName);
-
-      if (currentValue === expectedValue) {
-        return; // Success!
-      }
-
-      // Wait a bit before checking again
-      await this.page.waitForTimeout(100);
-    }
+    const reached = await expect
+      .poll(() => this.getSidebarFieldValue(fieldName), { timeout })
+      .toBe(expectedValue)
+      .then(() => true, () => false);
+    if (reached) return;
 
     // Timeout reached - get final value for error message
     const finalValue = await this.getSidebarFieldValue(fieldName);
@@ -5517,30 +5570,25 @@ export class AdminUIHelper {
 
     // Poll for a popup that's actually on-screen (not at -10000,-10000)
     // The popup may exist but be positioned off-screen until selection position is calculated
-    let popup: Locator | null = null;
-    let boundingBox: { x: number; y: number; width: number; height: number } | null = null;
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeout) {
-      const count = await popups.count();
-
-      for (let i = 0; i < count; i++) {
-        const candidate = popups.nth(i);
-        const box = await candidate.boundingBox();
-        if (box && box.x > -100 && box.y > -100) {
-          popup = candidate;
-          boundingBox = box;
-          break;
+    const found: { popup?: Locator; box?: { x: number; y: number; width: number; height: number } } = {};
+    await expect
+      .poll(async () => {
+        const count = await popups.count();
+        for (let i = 0; i < count; i++) {
+          const candidate = popups.nth(i);
+          const box = await candidate.boundingBox();
+          if (box && box.x > -100 && box.y > -100) {
+            found.popup = candidate;
+            found.box = box;
+            return true;
+          }
         }
-      }
-
-      if (popup && boundingBox) {
-        break;
-      }
-
-      // Wait a bit before retrying
-      await this.page.waitForTimeout(100);
-    }
+        return false;
+      }, { timeout })
+      .toBe(true)
+      .catch(() => {});
+    const popup = found.popup ?? null;
+    const boundingBox = found.box ?? null;
 
     if (!popup || !boundingBox) {
       const count = await popups.count();
@@ -6059,8 +6107,8 @@ export class AdminUIHelper {
       const sections = this.page.locator('.object-browser .breadcrumbs .section');
       const count = await sections.count();
       if (count >= 2) {
+        // The listing reloads; the wait for the item below covers it.
         await sections.nth(count - 2).click();
-        await this.page.waitForTimeout(1000);
       }
     }
 
@@ -6090,11 +6138,11 @@ export class AdminUIHelper {
       const closeButton = banner.locator('button').last();
       if (await closeButton.isVisible().catch(() => false)) {
         await closeButton.click();
-        await this.page.waitForTimeout(500);
+        await expect(browserHeading).not.toBeVisible().catch(() => {});
       }
       if (await browserHeading.isVisible().catch(() => false)) {
         await this.page.keyboard.press('Escape');
-        await this.page.waitForTimeout(500);
+        await expect(browserHeading).not.toBeVisible();
       }
     }
   }
@@ -6170,7 +6218,7 @@ export class AdminUIHelper {
 
     // Scroll into view to ensure element is in viewport for elementFromPoint
     await dropTarget.scrollIntoViewIfNeeded();
-    await this.page.waitForTimeout(100); // Brief wait for scroll to settle
+    await expect(dropTarget).toBeInViewport();
 
     const box = await dropTarget.boundingBox();
     if (!box) throw new Error('Could not get bounding box for drop target');
