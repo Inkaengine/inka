@@ -107,6 +107,29 @@ export function withCaretTargets(nodes) {
 }
 
 /**
+ * The slate value with the leaf at `path` given a zero-width space when it is
+ * empty — the caret target for the one leaf the author clicked into (see
+ * _requestCaretTarget). Returns the same value when there is nothing to fill.
+ */
+export function withCaretLeaf(nodes, path) {
+  if (!Array.isArray(nodes) || !path?.length) return nodes;
+  const [index, ...rest] = path;
+  const node = nodes[index];
+  if (!node) return nodes;
+  let next = node;
+  if (rest.length === 0) {
+    if (typeof node.text === 'string' && node.text === '') next = { ...node, text: '\u200B' };
+  } else if (Array.isArray(node.children)) {
+    const children = withCaretLeaf(node.children, rest);
+    if (children !== node.children) next = { ...node, children };
+  }
+  if (next === node) return nodes;
+  const out = [...nodes];
+  out[index] = next;
+  return out;
+}
+
+/**
  * The text node the frontend drew for an element's caret target: the descendant
  * text node holding the zero-width space (withCaretTargets puts it in the render
  * data exactly so it can be found), else the first descendant text node. Not
@@ -115,6 +138,19 @@ export function withCaretTargets(nodes) {
  * anchors) — typing into one of those leaves the leaf's real node untouched, and
  * the next render draws the text again beside it.
  */
+/**
+ * Is `node` a leaf's own caret target: a text node holding the data's U+200B
+ * and nothing visible (spaces the author typed after it included), inside a
+ * line (a data-node-id element)? The frontend drew it for an empty leaf; the
+ * caret belongs in it.
+ */
+export function isCaretTargetNode(node) {
+  return !!node && node.nodeType === Node.TEXT_NODE
+    && /^[\u200B\uFEFF\s\u00A0]+$/.test(node.textContent || '')
+    && node.textContent.includes('\u200B')
+    && !!node.parentElement?.closest('[data-node-id]');
+}
+
 /**
  * The first text node after `element` in document order, within the nearest
  * data-node-id element around it (its line) — the node drawn for the leaf that
@@ -6011,17 +6047,6 @@ export class Bridge {
    * @param {Node} node - The DOM node to check
    * @returns {boolean} True if the node is on invalid whitespace
    */
-  /**
-   * Is `node` the text node drawn for the leaf right after an inline, holding
-   * the admin's zero-width space (its toggle-off caret target)?
-   */
-  _isLeafAfterInline(node) {
-    if (!node.textContent?.includes('\u200B')) return false;
-    const line = node.parentElement?.closest('[data-node-id]');
-    if (!line) return false;
-    return [...line.querySelectorAll('[data-node-id]')].some((el) => textNodeAfter(el) === node);
-  }
-
   isOnInvalidWhitespace(node) {
     if (!node) return false;
 
@@ -6085,14 +6110,13 @@ export class Bridge {
     }
 
     // BOM/ZWS-only text nodes inside wrapper elements without data-node-id
-    // are invalid — a node the frontend drew beside the leaf's own. But ZWS
-    // nodes that are DIRECT children of a data-node-id element (cursor exit
-    // positioning) are valid, and so is the text node drawn for the leaf after
-    // an inline when it holds the zero-width space the admin gives it on
-    // toggling a format off — whatever the frontend wraps it in, that IS where
-    // the caret was put (moving it would put the next typed text in the inline).
+    // are invalid — a node beside the leaf's own. But ZWS nodes that are
+    // DIRECT children of a data-node-id element (cursor exit positioning) are
+    // valid, and so is a leaf's own caret target (isCaretTargetNode): the
+    // frontend's text node holding the zero-width space the data gave an empty
+    // leaf — whatever wraps it, that is where the caret belongs.
     const visibleText = node.textContent?.replace(/[\uFEFF\u200B\s]/g, '');
-    if (visibleText === '' && !this._isLeafAfterInline(node) && node.parentElement && !node.parentElement.hasAttribute?.('data-node-id')) {
+    if (visibleText === '' && !isCaretTargetNode(node) && node.parentElement && !node.parentElement.hasAttribute?.('data-node-id')) {
       return true;
     }
 
@@ -6258,7 +6282,8 @@ export class Bridge {
       // This ensures browser types into this node rather than creating a new one
       const visibleText = textNode.textContent.replace(/[\uFEFF\u200B]/g, '');
       if (visibleText === '') {
-        if (!textNode.textContent.includes('\uFEFF')) {
+        // A caret target the frontend drew already has its zero-width space.
+        if (!textNode.textContent.includes('\uFEFF') && !textNode.textContent.includes('\u200B')) {
           textNode.textContent = '\uFEFF' + textNode.textContent;
           log('getValidPositionForWhitespace: prepended ZWS to empty text node');
         }
@@ -6327,15 +6352,132 @@ export class Bridge {
    *
    * @returns {boolean} True if selection was corrected
    */
+  /**
+   * The author has put the caret in an empty element of a slate field that
+   * has no text node to type into. Rather than make a node of our own — the
+   * frontend doesn't know about it, and a frontend that keeps its DOM draws the
+   * typed text again beside it on its next render — render once with a
+   * zero-width space in that leaf, so the frontend draws its own node, then
+   * put the caret in it. The same flow as a format toggle: input is blocked
+   * and keys typed meanwhile are buffered, then replayed into the node.
+   *
+   * Returns false when it can't or needn't (the caret isn't in such an
+   * element, a render or transform is already in progress, or the leaf was
+   * already given its zero-width space and the frontend still drew no node —
+   * it chose not to): the caller then places the caret its own way. Returns
+   * 'wait' when the element's block isn't selected yet: the caller leaves the
+   * caret be.
+   */
+  _requestCaretTarget(node) {
+    if (!this.onContentChangeCallback || this._rendersReplaceHtml) return false;
+    // A caret target already on its way: its render places the caret. Leave
+    // the caret be meanwhile — a node of our own made now is one the frontend
+    // then draws the text again beside.
+    if (this.pendingTransform?.requestId?.startsWith('caret-target-')) return 'wait';
+    if (this._renderInProgress || this.pendingTransform || this.blockedBlockId) return false;
+    const el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    // The caret in (or on) a node-id element, or on the field itself: its first one.
+    const nodeEl = el?.closest?.('[data-node-id]')
+      || (el?.hasAttribute?.('data-edit-text') ? el.querySelector('[data-node-id]') : null);
+    if (!nodeEl || !isValidNodeId(nodeEl.getAttribute('data-node-id'))) return false;
+    const walker = document.createTreeWalker(nodeEl, NodeFilter.SHOW_TEXT);
+    let t;
+    while ((t = walker.nextNode())) {
+      if (t.textContent.length > 0) return false;
+    }
+    const blockEl = nodeEl.closest('[data-block-uid]');
+    const fieldEl = nodeEl.closest('[data-edit-text]');
+    if (!blockEl || !fieldEl) return false;
+    const blockUid = blockEl.getAttribute('data-block-uid');
+    const fieldName = fieldEl.getAttribute('data-edit-text');
+    // Only for the block that is selected. A click's selectionchange can come
+    // before the click selects its block (Firefox fires it on the press): a
+    // render then would re-select the old block and hold input against the
+    // new one. Leave the caret alone ('wait') — the click's own selectBlock
+    // asks again, for the right block; a node of our own made now would be
+    // there first, and the frontend would draw the text again beside it.
+    if (blockUid !== this.selectedBlockUid) return 'wait';
+    if (!this.fieldTypeIsSlate(this.getFieldType(blockUid, fieldName))) return false;
+    const resolved = this.resolveFieldPath(fieldName, blockUid);
+    const value = getFieldValue(this.getBlockData(resolved.blockId), resolved.fieldName);
+    const elementPath = nodeEl.getAttribute('data-node-id').split('.').map(Number);
+    let element = { children: value };
+    for (const i of elementPath) element = element?.children?.[i];
+    if (!Array.isArray(element?.children)) return false;
+    const leafIndex = element.children.findIndex((c) => typeof c?.text === 'string');
+    if (leafIndex < 0 || element.children[leafIndex].text !== '') return false;
+    const path = [...elementPath, leafIndex];
+    const leaf = this._caretLeaf;
+    if (leaf && leaf.blockUid === blockUid && leaf.fieldName === fieldName && leaf.path.join('.') === path.join('.')) {
+      return false;
+    }
+    this._caretLeaf = { blockUid, fieldName, path };
+    const point = { path, offset: 0 };
+    const selection = { anchor: point, focus: point };
+    log('_requestCaretTarget: rendering a caret target for', blockUid, fieldName, JSON.stringify(path));
+    // Hold keys now, so every key from here on is buffered for replay. Not the
+    // pointer: this can start mid-click (selectBlock runs on the press), and
+    // blocking pointer events then sends the rest of that click elsewhere.
+    const requestId = `caret-target-${Date.now()}`;
+    this.setBlockProcessing(blockUid, true, requestId);
+    this._setPointerBlocking(false);
+    // A caret placement like the admin's: hold caret reports until it is done.
+    this.expectedSelectionFromAdmin = selection;
+    this._restoredSelectionKey = null;
+    // Render once the code that got us here has finished — a click arrives
+    // mid-selectBlock, which has yet to tell the admin what is selected; a
+    // render inside it ran before that.
+    queueMicrotask(() => {
+      if (this.pendingTransform?.requestId !== requestId) return;
+      this._isEchoFormData = false;
+      this._executeRender(this.onContentChangeCallback, { transformedSelection: selection });
+    });
+    return true;
+  }
+
+  /** Put the caret at the end of the focused field (a last resort for replaying typed keys). */
+  _caretToFieldEnd() {
+    const blockEl = this.selectedBlockUid && this.queryBlockElement(this.selectedBlockUid);
+    if (!blockEl || !this.focusedFieldName) return;
+    const field = blockEl.getAttribute('data-edit-text') === this.focusedFieldName
+      ? blockEl
+      : blockEl.querySelector(`[data-edit-text="${CSS.escape(this.focusedFieldName)}"]`);
+    if (!field) return;
+    const range = document.createRange();
+    range.selectNodeContents(field);
+    range.collapse(false);
+    const sel = document.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
   correctInvalidWhitespaceSelection() {
     const selection = window.getSelection();
     if (!selection?.rangeCount) return false;
 
     const range = selection.getRangeAt(0);
+    // The caret in a leaf's own caret target belongs AFTER its zero-width
+    // space: typed text then follows it in the same node. Before it, move it
+    // just past it (not elsewhere — that leaf is where the author is).
+    const start = range.startContainer;
+    const afterSpace = isCaretTargetNode(start) ? start.textContent.indexOf('\u200B') + 1 : -1;
+    if (range.collapsed && afterSpace > 0 && range.startOffset < afterSpace) {
+      const atEnd = document.createRange();
+      atEnd.setStart(start, afterSpace);
+      atEnd.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(atEnd);
+      return true;
+    }
     const anchorOnWhitespace = this.isOnInvalidWhitespace(range.startContainer);
     const focusOnWhitespace = this.isOnInvalidWhitespace(range.endContainer);
 
     if (!anchorOnWhitespace && !focusOnWhitespace) return false;
+
+    // The caret in an empty element the frontend drew no text node for: ask
+    // for the render that gives it one, rather than making a node of our own
+    // (see _requestCaretTarget). The caret is placed when that render lands.
+    if (range.collapsed && this._requestCaretTarget(range.startContainer)) return false;
 
     // Only log when actually correcting
     log('correctInvalidWhitespaceSelection: correcting cursor on invalid whitespace', {
@@ -7424,7 +7566,19 @@ export class Bridge {
           const sel = window.getSelection();
           sel.removeAllRanges();
           sel.addRange(fallback);
+          // An empty field: give it a caret target to type into.
+          this._requestCaretTarget(fieldElement);
         }
+      }
+      // The click landed in an empty element with no text node: leave the
+      // caret there and ask for the render that gives it one (see
+      // _requestCaretTarget) — it places the caret in the frontend's node.
+      if (range && range.collapsed && this._requestCaretTarget(range.startContainer)) {
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        log('activateEditableField: caret target requested; the caret is placed when it renders');
+        range = null;
       }
       if (range) {
         log('activateEditableField: caretRangeFromPoint result:', {
@@ -7827,8 +7981,19 @@ export class Bridge {
             selectionRestored = false;
           }
           if (!selectionRestored) {
-            log('Selection restore failed — dropping', this.eventBuffer.length, 'buffered events to avoid wrong-selection replay');
-            this.eventBuffer = [];
+            // Never drop what the author typed. Put the caret back where it was
+            // before the render, or failing that at the end of the field, and
+            // replay the buffered keys there.
+            log('Selection restore failed — replaying', this.eventBuffer.length, 'buffered events at the pre-render caret');
+            let placed = false;
+            if (this._preRenderSelection) {
+              try {
+                placed = this.restoreSlateSelection(this._preRenderSelection, this.formData);
+              } catch (e) {
+                log('Pre-render selection restore failed:', e.message);
+              }
+            }
+            if (!placed) this._caretToFieldEnd();
           }
 
           // The restore's own selectionchange ends the hold on caret reports
@@ -8395,9 +8560,7 @@ export class Bridge {
         // matched a stored one (a prospective inline's), so every such render
         // waited out the timeout; ignoring them entirely would call a render
         // done before its caret targets were drawn.
-        const rendered = this._caretTargetsGiven?.has(`${blockUid}|${fieldName}`)
-          ? withCaretTargets(slateValue)
-          : slateValue;
+        const rendered = this._renderedSlate?.get(`${blockUid}|${fieldName}`) ?? slateValue;
         const domValue = this.readSlateValueFromDOM(fieldEl, slateValue, { matchMetadataFromDom: true, keepCaretTargets: true });
         if (!renderedMatches(domValue, rendered, this._caretPathFromAdmin(blockUid, fieldName, caretSelection))) {
           log('isContentReady MISMATCH:', blockUid, fieldName, '+' + (this._renderStartTime ? (performance.now() - this._renderStartTime).toFixed(0) : '?') + 'ms');
@@ -8434,9 +8597,7 @@ export class Bridge {
       if (!fieldEl) continue;
 
       for (let retry = 0; retry < maxRetries; retry++) {
-        const rendered = this._caretTargetsGiven?.has(`${blockUid}|${fieldName}`)
-          ? withCaretTargets(slateValue)
-          : slateValue;
+        const rendered = this._renderedSlate?.get(`${blockUid}|${fieldName}`) ?? slateValue;
         const domValue = this.readSlateValueFromDOM(fieldEl, slateValue, { keepCaretTargets: true });
         if (renderedMatches(domValue, rendered)) {
           log('waitForContentReady: MATCH on retry', retry, 'innerHTML:', fieldEl.innerHTML?.substring(0, 200));
@@ -11719,17 +11880,6 @@ export class Bridge {
       // iframe; the echo guard in _maybeSendLinkableAnchors sends only when the
       // map changes.
       this._maybeSendLinkableAnchors();
-      // A slate field that has just appeared on the canvas empty gets its caret
-      // target on one more render (see _caretTargetsPending). Here, at DOM
-      // settle, because only now has the framework drawn it — an async renderer
-      // (React) commits after afterContentRender has run. A render in progress
-      // will patch the DOM and bring us back here. It can't repeat: the next
-      // projection sees the field and fills it.
-      if (!this._rendersReplaceHtml && !this._renderInProgress && this.onContentChangeCallback && this._caretTargetsPending()) {
-        log('caret targets pending at DOM settle, rendering again');
-        this._isEchoFormData = false;
-        this._executeRender(this.onContentChangeCallback);
-      }
       // Signal DOM settled — but only if no new mutations arrived during
       // this rAF callback. If new mutations come, the observer will fire
       // again and we'll wait for the next settlement.
@@ -12066,34 +12216,12 @@ export class Bridge {
     if (typeof document === 'undefined') return [];
     // A plain lookup, not queryBlockElement: that one materializes hydra
     // comments when a block has no element, rewriting the DOM from what is only
-    // a read — and this runs at every DOM settle, for every block in the map.
+    // a read — and this runs on every render, for every block in the map.
     const el = document.querySelector(`[data-block-uid="${CSS.escape(blockUid)}"]`);
     if (!el) return [];
     return Object.keys(this.getEditableFields(el)).filter(
       (name) => !name.startsWith('/') && !name.startsWith('.'),
     );
-  }
-
-  /**
-   * True when a slate field on the canvas needs caret targets the last render
-   * did not give it — a field whose element has just appeared (a new block, a
-   * first render). The projection only sees the DOM of the render before it, so
-   * such a field gets its zero-width space on the render after.
-   */
-  _caretTargetsPending() {
-    if (!this.blockPathMap) return false;
-    for (const blockUid of Object.keys(this.blockPathMap)) {
-      if (blockUid === '_schemas' || blockUid === '_page') continue;
-      const source = this.getBlockData(blockUid);
-      if (!source) continue;
-      for (const fieldName of this._editableFieldsOnCanvas(blockUid)) {
-        if (this._caretTargetsGiven?.has(`${blockUid}|${fieldName}`)) continue;
-        if (!isSlateFieldType(this.getFieldType(blockUid, fieldName))) continue;
-        const value = getFieldValue(source, fieldName);
-        if (withCaretTargets(value) !== value) return true;
-      }
-    }
-    return false;
   }
 
   _projectForRender(formData) {
@@ -12104,9 +12232,10 @@ export class Bridge {
     const CONTAINER_WIDGETS = new Set(['blocks_layout', 'object_list']);
 
     let projected = null; // cloned lazily; most renders change nothing
-    // The fields given caret targets in THIS render — afterContentRender asks
-    // for another render when a field newly on the canvas still needs one.
-    this._caretTargetsGiven = new Set();
+    // Each slate field's value as THIS render hands it to the frontend, when
+    // it differs from the stored one (caret targets): what readiness compares
+    // the DOM against.
+    this._renderedSlate = new Map();
     for (const blockUid of Object.keys(this.blockPathMap)) {
       if (blockUid === '_schemas' || blockUid === '_page') continue;
       const schema = this.getBlockSchema(blockUid);
@@ -12135,18 +12264,24 @@ export class Bridge {
       // frontend's own. Only fields already on the canvas, so a renderer's own
       // "hide it when empty" rule decides as it always did. Never stored:
       // this.formData keeps the empty leaf, and reading the DOM back strips it.
+      // Plus the one empty leaf the author has put the caret in (see
+      // _requestCaretTarget), when the frontend drew no node for it.
       for (const fieldName of this._editableFieldsOnCanvas(blockUid)) {
         if (!isSlateFieldType(this.getFieldType(blockUid, fieldName))) continue;
         let target = projected;
         if (target) for (const key of pathInfo.path) target = target?.[key];
         const current = getFieldValue(target || source, fieldName);
-        const filled = withCaretTargets(current);
+        let filled = withCaretTargets(current);
+        const leaf = this._caretLeaf;
+        if (leaf && leaf.blockUid === blockUid && leaf.fieldName === fieldName) {
+          filled = withCaretLeaf(filled, leaf.path);
+        }
         if (filled === current) continue;
         if (!projected) projected = JSON.parse(JSON.stringify(formData));
         target = projected;
         for (const key of pathInfo.path) target = target?.[key];
         if (target) this.setFieldValueByPath(target, fieldName, filled);
-        this._caretTargetsGiven.add(`${blockUid}|${fieldName}`);
+        this._renderedSlate.set(`${blockUid}|${fieldName}`, filled);
       }
 
       // Reveal: seed a sentinel into each empty inline field of a revealed
