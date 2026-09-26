@@ -399,6 +399,21 @@ test.describe('Adding Blocks to Containers', () => {
       }, parent);
     await expect.poll(() => childrenOf('col-full')).toEqual(['slate']);
     await expect.poll(() => childrenOf('col-saved-empty')).toEqual(['slate']);
+
+    // The editor knows the seeded block too: what is typed into it saves.
+    const seeded = await iframe.locator('body').evaluate(() => {
+      const map = (window as any).__hydraBridge?.blockPathMap || {};
+      return Object.keys(map).find((uid) => map[uid]?.parentId === 'col-saved-empty')!;
+    });
+    await helper.enterEditMode(seeded);
+    await page.keyboard.type('Typed into the seeded block');
+    await expect(iframe.locator(`[data-block-uid="${seeded}"]`)).toHaveText('Typed into the seeded block');
+    await helper.saveContent();
+    // Opened again, the column holds what was typed.
+    await helper.navigateToEdit('/nested-empty-region-page');
+    await expect(
+      helper.getIframe().locator('[data-block-uid="col-saved-empty"]'),
+    ).toContainText('Typed into the seeded block');
   });
 
   test('pressing Enter in container with single allowedBlock creates that type, not slate', async ({
