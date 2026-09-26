@@ -1049,21 +1049,32 @@ function translationLocation(urlPath, targetLanguage, baseUrl, sessionId) {
   return `${baseUrl}/${targetLanguage}`;
 }
 
+/**
+ * A navigation entry, with EXACTLY the fields plone.restapi's navigation
+ * serializer emits: @id, title, description, review_state, and items for the
+ * level below (see its services/navigation/get.py, which builds entries from
+ * `url`, `Title`, `Description`, `review_state` and nothing else).
+ *
+ * It used to add @type, id, UID, is_folderish and hasPreviewImage. None of them
+ * is in a real navigation response — hasPreviewImage is a plone.volto CATALOG
+ * column, so it reaches search results and listings, not the menu — and a mock
+ * that offers a field the CMS does not is an invitation to read it. That is the
+ * @order mistake in a smaller shape: code written against this file, correct
+ * here, wrong against Plone. Nothing read them, which is the only reason this
+ * was cheap to correct.
+ *
+ * is_folderish stays as an INPUT, deciding whether to recurse, because the mock
+ * knows it from the content it holds. It just does not travel in the reply.
+ */
 function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth, sessionId) {
-  const hasPreviewImage = !!(rawContent.preview_image || rawContent['@type'] === 'Image');
   const children = (remainingDepth > 0 && rawContent.is_folderish !== false)
     ? getNavigationItems(urlPath, remainingDepth, baseUrl, sessionId)
     : [];
   return {
     '@id': `${baseUrl}${urlPath}`,
-    '@type': rawContent['@type'],
-    'id': rawContent.id,
     'title': rawContent.title,
     'description': rawContent.description || '',
     'review_state': rawContent.review_state || 'published',
-    'UID': rawContent.UID || `${rawContent.id}-uid`,
-    'is_folderish': rawContent.is_folderish !== undefined ? rawContent.is_folderish : true,
-    'hasPreviewImage': hasPreviewImage,
     'items': children,
   };
 }
@@ -1209,8 +1220,12 @@ function buildBreadcrumbsComponent(cleanPath, baseUrl) {
 
 function buildActionsComponent(cleanPath, baseUrl, sessionId) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  // No '@id'. plone.restapi's ActionsGet replies with the category map alone
+  // (Actions.__call__(expand=True) returns {actions: data}), and the expanded
+  // @components.actions is that same map. The '@id' belongs only to the
+  // UNEXPANDED stub, which enrichContent builds itself — carrying it here put a
+  // key in the reply that no real Plone sends in that shape.
   return {
-    '@id': `${fullUrl}/@actions`,
     document_actions: [],
     // Two sources, and they disagree. plone.restapi's own recorded example
     // (actions_get.resp) has keys [icon, id, title]; a live Plone 6
