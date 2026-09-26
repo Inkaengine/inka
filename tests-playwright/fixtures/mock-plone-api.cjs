@@ -2725,23 +2725,28 @@ app.post('*/@copy', (req, res) => {
   ]);
 });
 
-app.post('*/@order', (req, res) => {
-  const parentPath = req.path.replace('/@order', '') || '/';
-  const sessionId = getSessionId(req);
-  const { obj_id: objId, delta } = req.body || {};
-  if (!objId) {
-    return res.status(400).json({
-      error: { type: 'BadRequest', message: '@order requires obj_id' },
-    });
-  }
-  if (!sessionOrder[sessionId]) sessionOrder[sessionId] = {};
-  const current = sessionOrder[sessionId][parentPath] || [];
-  const without = current.filter((entry) => entry !== objId);
-  const index = delta === 'top' ? 0 : Math.max(0, without.length);
-  without.splice(index, 0, objId);
-  sessionOrder[sessionId][parentPath] = without;
-  return res.status(204).send();
-});
+/**
+ * POST /:parent/@order — 404, because plone.restapi has no such endpoint.
+ *
+ * It used to be implemented here, and only here. Ordering in Plone is a PATCH on
+ * the container carrying `ordering` (its OrderingMixin); this route was invented
+ * by an earlier version of this mock, our Plone adapter was written against the
+ * invention, and the contract suite stayed green while every reorder against a
+ * real Plone 404'd. Answering as Plone does is what caught it.
+ *
+ * Named rather than left to Express's catch-all so the next caller is told where
+ * to go instead of guessing at a bare 404.
+ */
+app.post('*/@order', (req, res) =>
+  res.status(404).json({
+    error: {
+      type: 'NotFound',
+      message:
+        'plone.restapi has no @order endpoint. Reorder with PATCH on the ' +
+        'container: {"ordering": {"obj_id": "<id>", "delta": "top"|"bottom"|<int>}}',
+    },
+  }),
+);
 
 /**
  * DELETE /:path (content removal)
@@ -3355,6 +3360,21 @@ app.post('/*', (req, res, next) => {
   if (!body || !body['@type']) {
     // No @type means this isn't a content creation request - pass to next handler
     return next();
+  }
+
+  // A type this deployment does not have is a 400, as plone.restapi's add
+  // service answers when the FTI is missing. Accepting anything meant the mock
+  // would create a "Newsletter" or a misspelled "Documnet" and serve it back
+  // happily, so nothing could tell a type the CMS has from one an adapter
+  // invented — and the set the mock CREATES could drift from the set it
+  // DECLARES in @types, which is the same drift one layer down.
+  if (!isKnownType(body['@type'])) {
+    return res.status(400).json({
+      error: {
+        type: 'BadRequest',
+        message: `Invalid type: ${body['@type']}`,
+      },
+    });
   }
 
   const parentPath = req.path || '/';
@@ -6044,10 +6064,37 @@ app.patch('*', (req, res) => {
   // back, and the site menu — which the order IS — never moved.
   if (content && req.body?.ordering?.obj_id) {
     const { obj_id: objId, delta, subset_ids: subsetIds } = req.body.ordering;
+    // Plone raises BadRequest("Content ordering is not supported by this
+    // resource") when the context has no ordering adapter — an Image, a File,
+    // anything that holds no children. Accepting it here recorded an order
+    // nobody could ever read back, so an adapter aiming a reorder at the wrong
+    // object was told it had worked.
+    if (content.is_folderish === false) {
+      return res.status(400).json({
+        error: {
+          type: 'BadRequest',
+          message: 'Content ordering is not supported by this resource',
+        },
+      });
+    }
     const naturalIds = getFolderChildItems(cleanPath, `http://localhost:${PORT}`)
       .map((item) => String(item['@id'] || '').split('/').filter(Boolean).pop())
       .filter(Boolean);
     const current = sessionOrder[sessionId]?.[cleanPath] || naturalIds;
+    // Plone checks that the client is seeing the same order it is, and refuses
+    // when it is not: a reorder computed against a stale table would move the
+    // wrong row. The check is on the ORDER of the named ids, not their presence.
+    if (Array.isArray(subsetIds) && subsetIds.length) {
+      const positions = subsetIds.map((id) => current.indexOf(id));
+      const mismatched =
+        positions.some((i) => i === -1) ||
+        positions.some((i, n) => n > 0 && i < positions[n - 1]);
+      if (mismatched) {
+        return res.status(400).json({
+          error: { type: 'BadRequest', message: 'Client/server ordering mismatch' },
+        });
+      }
+    }
     // A subset reorders only among the rows it names, leaving the rest put —
     // the contents view sends one when a filter is on.
     const scope = Array.isArray(subsetIds) && subsetIds.length ? subsetIds : current;
@@ -6079,6 +6126,14 @@ app.patch('*', (req, res) => {
   // view's sort dropdown means and what makes it show up in the site menu.
   if (content && req.body?.sort?.on) {
     const { on, order } = req.body.sort;
+    if (content.is_folderish === false) {
+      return res.status(400).json({
+        error: {
+          type: 'BadRequest',
+          message: 'Content ordering is not supported by this resource',
+        },
+      });
+    }
     const children = getFolderChildItems(cleanPath, `http://localhost:${PORT}`);
     // The catalog indexes the contents view offers. sortable_title is Plone's
     // case-insensitive title index, which is why it is not just `title`.

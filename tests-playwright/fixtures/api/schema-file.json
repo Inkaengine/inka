@@ -1,0 +1,33 @@
+{
+  "title": "File",
+  "description": "A file, such as a PDF",
+  "properties": {
+    "title": {
+      "title": "Title",
+      "description": "",
+      "type": "string"
+    },
+    "description": {
+      "title": "Summary",
+      "description": "Used in item listings and search results.",
+      "type": "string",
+      "widget": "textarea"
+    },
+    "file": {
+      "title": "File",
+      "description": "",
+      "type": "object",
+      "factory": "File",
+      "widget": "file"
+    }
+  },
+  "fieldsets": [
+    {
+      "id": "default",
+      "title": "Default",
+      "fields": ["title", "description", "file"]
+    }
+  ],
+  "required": ["file"],
+  "layouts": ["file_view"]
+}

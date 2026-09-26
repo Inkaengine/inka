@@ -644,3 +644,93 @@ describe('internal references under a prefix mount', () => {
     assert.ok(text.includes('"/image-scales-test/test-image.png"'));
   });
 });
+
+/**
+ * Where this mock must FAIL.
+ *
+ * Twice now a real-Plone bug has hidden behind this file being more forgiving
+ * than Plone: an invented @order endpoint our adapter was written against, and a
+ * @copy that overwrote where Plone renames. A mock that accepts what the CMS
+ * rejects does not make tests pass, it makes them meaningless — so each of these
+ * pins a refusal, with Plone's own status and wording.
+ */
+describe('refusals, as Plone refuses', () => {
+  const token = 'strictness-suite';
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+
+  it('has no @order endpoint', async () => {
+    // plone.restapi orders via PATCH on the container. This route existed here
+    // and nowhere else, so the adapter that used it 404'd against every real
+    // Plone while the contract suite stayed green.
+    const res = await fetch(`${baseUrl}/_test_data/@order`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ obj_id: 'anything', delta: 'top' }),
+    });
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.match(body.error.message, /PATCH on the container/);
+  });
+
+  it('refuses to order something that holds no children', async () => {
+    // another-page is authored is_folderish: false — it holds nothing, so there
+    // is no order to set.
+    const res = await fetch(`${baseUrl}/_test_data/another-page`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ ordering: { obj_id: 'x', delta: 'top' } }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error.message, /ordering is not supported/);
+  });
+
+  it('refuses a reorder computed against an order it does not share', async () => {
+    // Plone's own check: if the client's subset is not in the server's order,
+    // the client is looking at a stale table and the move would hit the wrong
+    // row.
+    const res = await fetch(`${baseUrl}/_test_data`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        ordering: {
+          obj_id: 'accordion-test-page',
+          delta: 'top',
+          subset_ids: ['this-one-does-not-exist', 'nor-this'],
+        },
+      }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error.message, /ordering mismatch/);
+  });
+
+  it('refuses to create a type it does not have', async () => {
+    const res = await fetch(`${baseUrl}/_test_data`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ '@type': 'Documnet', title: 'Typo' }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error.message, /Invalid type/);
+  });
+
+  it('still creates the types it declares, and the File it serves uploads for', async () => {
+    // The point is not to refuse everything: what this mock CREATES and what it
+    // DECLARES in @types have to be the same set, or the refusal above is just a
+    // different way to be wrong.
+    for (const type of ['Document', 'Folder', 'File']) {
+      const res = await fetch(`${baseUrl}/_test_data`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ '@type': type, title: `A ${type}` }),
+      });
+      assert.equal(res.status, 201, `${type} should be creatable`);
+    }
+  });
+});

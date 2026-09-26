@@ -728,28 +728,17 @@ test.describe('Page Creation', () => {
     await page.locator(tc.submenuItem).click();
     await page.waitForURL(new RegExp(`\\/add\\?type=${tc.typeId}`), { timeout: 10000 });
 
-    // Fill Title and save. The Add route is visual now (Hydra's iframe, not
-    // Volto's in-page block editor — Hydra's Form replaced BlocksForm in that
-    // branch with <Iframe>), so page metadata lives in the sidebar rather than
-    // in a flat form. Add HAS to render the iframe: with the backend inversion
-    // on, that iframe hosts the adapter that answers getSchema, and a route
-    // without one deadlocks.
-    await helper.waitForSidebarOpen();
-    // NOT scoped to #sidebar-properties: which container holds the metadata
-    // form varies with how the route was reached.
-    const titleField = page.locator('input[id="field-title"]').first();
-    // isVisible() is instantaneous: if the sidebar has not rendered yet it
-    // answers false, and clicking the tab then navigates AWAY from the field
-    // being waited for. Wait for the field first, and only fall back to the
-    // tab if it genuinely is not there.
-    const appeared = await titleField
-      .waitFor({ state: 'visible', timeout: 10000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!appeared) {
-      await page.getByRole('button', { name: 'Page', exact: true }).click();
-      await expect(titleField).toBeVisible({ timeout: 15000 });
-    }
+    // Fill Title and save. The Add route renders its fields IN THE FORM, not in
+    // the sidebar: there is nothing to preview before the document exists, which
+    // is why Inka creates and then edits.
+    //
+    // This test used to wait for the sidebar, because the route was briefly made
+    // visual to give getSchema an adapter to reach over the bridge. AdapterHost
+    // hosts one on every route now, so the route went back to a plain form —
+    // and the two specs disagreed until then, this one waiting for a sidebar
+    // while multilingual.spec waited for `#page-add #field-title`.
+    const titleField = page.locator('#page-add #field-title');
+    await expect(titleField).toBeVisible({ timeout: 15000 });
     await titleField.fill(tc.titleFieldFill);
     await page.locator('#toolbar-save, button:has-text("Save")').click();
 
