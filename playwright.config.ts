@@ -18,6 +18,10 @@ const needsAstro = projectArg?.includes('astro');
 // Example frontends — opt-in only (not started unless explicitly requested)
 const needsNextjs = projectArg?.includes('nextjs');
 const needsF7 = projectArg?.includes('f7');
+// Quick Start starter apps — opt-in only, same rationale as the example frontends.
+const needsVanilla = projectArg?.includes('vanilla');
+const needsSvelteQs = projectArg?.includes('svelte-qs');
+const needsAstroQs = projectArg?.includes('astro-qs');
 
 /**
  * Playwright Test configuration for Volto Hydra tests.
@@ -47,6 +51,11 @@ export default defineConfig({
 
   /* Reporter to use */
   reporter: [
+    // Print each test as it runs. Runs that pass --reporter (every CI test job
+    // does) override this list; the ones that don't — the doc-asset capture in
+    // the inka-site deploy, the demo capture — printed nothing but "Command
+    // failed", so a broken screenshot could not be told from any other.
+    ['list'],
     ['html', { open: 'never' }],
     // Aggregates block-sanity field/text-style coverage across all parallel
     // workers and fails the run in onEnd if any block type has a field or style
@@ -188,6 +197,41 @@ export default defineConfig({
         storageState: 'tests-playwright/.generated/storage-svelte.json',
       },
     },
+    // Quick Start starters — each runs the exact docs/quickstart/<fw> snippet
+    // (opt-in). Only quickstart-*.spec.ts runs on these dedicated blank apps.
+    {
+      name: 'vanilla',
+      testDir: 'tests-playwright/bridge',
+      testMatch: /quickstart-.*\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+        permissions: ['clipboard-read', 'clipboard-write'],
+        storageState: 'tests-playwright/.generated/storage-svelte.json',
+      },
+    },
+    {
+      name: 'svelte-qs',
+      testDir: 'tests-playwright/bridge',
+      testMatch: /quickstart-.*\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+        permissions: ['clipboard-read', 'clipboard-write'],
+        storageState: 'tests-playwright/.generated/storage-svelte.json',
+      },
+    },
+    {
+      name: 'astro-qs',
+      testDir: 'tests-playwright/bridge',
+      testMatch: /quickstart-.*\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+        permissions: ['clipboard-read', 'clipboard-write'],
+        storageState: 'tests-playwright/.generated/storage-svelte.json',
+      },
+    },
 
     // Example frontends for bridge tests — always defined so workers can find them.
     // webServer entries below are conditional (only started when --project includes nextjs/f7).
@@ -244,6 +288,7 @@ export default defineConfig({
         storageState: 'tests-playwright/.generated/storage-nuxt.json',
       },
       testIgnore: [
+        /mock-.*\.spec\.ts/, // the mock frontend's own setup (mock-frontend.spec.ts)
         /nuxt-.*\.spec\.ts/, // Skip nuxt-specific tests (they set their own cookie)
         /multifield.*\.spec\.ts/, // Skip multifield tests (hero block not in Nuxt)
       ],
@@ -271,6 +316,7 @@ export default defineConfig({
         storageState: 'tests-playwright/.generated/storage-nextjs.json',
       },
       testIgnore: [
+        /mock-.*\.spec\.ts/, // the mock frontend's own setup (mock-frontend.spec.ts)
         /nuxt-.*\.spec\.ts/,
       ],
     },
@@ -284,6 +330,7 @@ export default defineConfig({
         storageState: 'tests-playwright/.generated/storage-f7.json',
       },
       testIgnore: [
+        /mock-.*\.spec\.ts/, // the mock frontend's own setup (mock-frontend.spec.ts)
         /nuxt-.*\.spec\.ts/,
       ],
     },
@@ -464,11 +511,47 @@ export default defineConfig({
     // 120s timeout because the first run installs astro + @astrojs/node.
     ...(needsAstro ? [{
       name: 'Astro Frontend (Test)',
-      command: 'pnpm run dev:test',
+      command: `npx astro dev --port ${PORTS.astroDoc}`,
       url: URLS.astroDoc,
       timeout: 120 * 1000,
       reuseExistingServer: true,
       cwd: path.join(process.cwd(), 'docs/examples/test-astro'),
+      stdout: 'pipe' as const,
+      stderr: 'pipe' as const,
+    }] : []),
+    // Quick Start vanilla starter — a vite server rooted at docs/quickstart/vanilla,
+    // aliasing the bridge specifier to source. SPA fallback serves index.html for
+    // the editor iframe's content path (/_test_data/test-page).
+    ...(needsVanilla ? [{
+      name: 'Quick Start Vanilla',
+      command: `npx vite --port ${PORTS.vanillaDoc} --strictPort --config ${path.join(process.cwd(), 'docs/quickstart/vanilla/vite.config.mjs')}`,
+      url: URLS.vanillaDoc,
+      timeout: 60 * 1000,
+      reuseExistingServer: true,
+      cwd: path.join(process.cwd(), 'docs/quickstart/vanilla'),
+      stdout: 'pipe' as const,
+      stderr: 'pipe' as const,
+    }] : []),
+    // Quick Start Svelte 5 starter — a vite server rooted at docs/quickstart/svelte.
+    ...(needsSvelteQs ? [{
+      name: 'Quick Start Svelte',
+      command: `npx vite --port ${PORTS.svelteQs} --strictPort`,
+      url: URLS.svelteQs,
+      timeout: 60 * 1000,
+      reuseExistingServer: true,
+      cwd: path.join(process.cwd(), 'docs/quickstart/svelte'),
+      stdout: 'pipe' as const,
+      stderr: 'pipe' as const,
+    }] : []),
+    // Quick Start Astro starter — server-render (node adapter); astro dev serves
+    // the catch-all page + the /api/render endpoint. 120s for the first run.
+    ...(needsAstroQs ? [{
+      name: 'Quick Start Astro',
+      command: `npx astro dev --port ${PORTS.astroQs}`,
+      url: URLS.astroQs,
+      timeout: 120 * 1000,
+      reuseExistingServer: true,
+      cwd: path.join(process.cwd(), 'docs/quickstart/astro'),
       stdout: 'pipe' as const,
       stderr: 'pipe' as const,
     }] : []),

@@ -10,7 +10,7 @@
     "start": "pnpm run dev",
     "predev": "pnpm run copy:hydra",
     "dev": "cross-env NODE_ENV=development vite",
-    "dev:test": "pnpm run copy:hydra && cross-env VITE_API_BASE_URL=http://localhost:8888 vite --port 3008 --strictPort",
+    "dev:test": "pnpm run copy:hydra && cross-env VITE_API_BASE_URL=http://localhost:${HYDRA_MOCK_API_PORT:?HYDRA_MOCK_API_PORT must be set (tests-playwright/ports.ts has no defaults)} vite --port ${HYDRA_F7_PORT:?HYDRA_F7_PORT must be set (tests-playwright/ports.ts has no defaults)} --strictPort",
     "prebuild": "pnpm run copy:hydra",
     "build": "cross-env NODE_ENV=production vite build",
     "postinstall": "cpy --flat ./node_modules/framework7-icons/fonts/*.* ./src/fonts/ && cpy --flat ./node_modules/material-icons/iconfont/*.* ./src/fonts/"

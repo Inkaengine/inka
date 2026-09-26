@@ -5,9 +5,8 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  A labelled admonition box — note, tip, warning, or important — with a
-  rich-text body. Use it for asides, gotchas, and warnings inside a page.
+description: A labelled admonition box — note, tip, warning, or important — with
+  a rich-text body. Use it for asides, gotchas, and warnings inside a page.
 effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
@@ -26,14 +25,15 @@ title: Callout
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
-  <block type="callout">
-    <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-    </region>
-  </block>
   <block type="codeExample">
     <region name="tabs" widget="object_list">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+blocks-tagged: |
+  <block type="callout">
+    <region name="items" widget="blocks_layout">
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
     </region>
   </block>
 ---
@@ -46,7 +46,7 @@ This is a **custom** block — register it via `initBridge`. The level is the bl
 
 <block type="callout" variation="note">
 
-This is a **note** — the default level. The body takes normal markdown: `code`, [links](../live-preview.md), and multiple paragraphs.
+This is a **note** — the default level. The body takes normal markdown: `code`, [links](../frontend-guide/live-preview.md), and multiple paragraphs.
 
 </block>
 
@@ -68,11 +68,28 @@ This is an **important** — for a must-know gotcha.
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-callout">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-callout" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="callout" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="callout" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: callout
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./callout.md
+:block: callout
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

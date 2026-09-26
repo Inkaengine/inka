@@ -1,0 +1,33 @@
+{
+  "title": "Image",
+  "description": "An image file",
+  "properties": {
+    "title": {
+      "title": "Title",
+      "description": "",
+      "type": "string"
+    },
+    "description": {
+      "title": "Summary",
+      "description": "Used in item listings and search results.",
+      "type": "string",
+      "widget": "textarea"
+    },
+    "image": {
+      "title": "Image",
+      "description": "",
+      "type": "object",
+      "factory": "Image",
+      "widget": "file"
+    }
+  },
+  "fieldsets": [
+    {
+      "id": "default",
+      "title": "Default",
+      "fields": ["title", "description", "image"]
+    }
+  ],
+  "required": ["image"],
+  "layouts": ["image_view"]
+}

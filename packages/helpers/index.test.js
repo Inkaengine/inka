@@ -1,6 +1,7 @@
 import {
   buildQuerystringSearchBody,
   getFieldTypeString,
+  isEmptySlate,
   isPlainStringFieldType,
   isSlateFieldType,
   isTextareaFieldType,
@@ -18,18 +19,27 @@ const criterion = (body, i) => body.query.find((q) => q.i === i);
 const criteria = (body, i) => body.query.filter((q) => q.i === i);
 
 describe('buildQuerystringSearchBody — core body', () => {
-  test('no queryConfig → default relativePath "." + folder-order sort', () => {
+  test('no queryConfig → the folder\'s own items (".::1") + folder-order sort', () => {
+    // Volto's listing with no criteria shows the folder's CONTENTS — its
+    // direct children. `.` alone is the whole subtree: the LECC "Information in
+    // other languages" page listed 25 items (every language's sub-pages)
+    // against the source's 7 languages, and three languages fell off the page.
     const body = buildQuerystringSearchBody(undefined, {}, {});
     expect(criterion(body, 'path')).toEqual({
       i: 'path',
       o: 'plone.app.querystring.operation.string.relativePath',
-      v: '.',
+      v: '.::1',
     });
     expect(body.sort_on).toBe('getObjPositionInParent');
     expect(body.sort_order).toBe('ascending');
     expect(body.b_start).toBe(0);
     expect(body.b_size).toBe(10);
     expect(body.metadata_fields).toBe('_all');
+  });
+
+  test('an empty query with its own depth keeps that depth', () => {
+    const body = buildQuerystringSearchBody({ query: [], depth: 2 }, {}, {});
+    expect(criterion(body, 'path').v).toBe('.::2');
   });
 
   test('a configured query is cloned (not mutated) and gets effective-desc default sort', () => {
@@ -410,6 +420,119 @@ describe('loadTemplates — the per-template timeout', () => {
   });
 });
 
+describe('loadTemplates — uses the templates the page response already carries', () => {
+  // A backend with the @templates addon returns every template a page needs inside the
+  // page response (`?expand=templates`). The helper must use those instead of requesting
+  // each one again — and still fetch whatever the response lacks, so a backend WITHOUT the
+  // addon (no component, or an unexpanded @id stub) keeps working exactly as before.
+  const template = (refs = []) => ({
+    blocks: Object.fromEntries(refs.map((id, i) => [`b${i}`, { templateId: id }])),
+    blocks_layout: { items: refs.map((_, i) => `b${i}`) },
+  });
+  const pageWith = (component, refs = ['/templates/one']) => ({
+    ...template(refs),
+    '@components': { templates: component },
+  });
+  const recordingLoader = (available = {}) => {
+    const calls = [];
+    const load = async (id) => {
+      calls.push(id);
+      if (!(id in available)) throw new Error(`HTTP 404 for ${id}`);
+      return available[id];
+    };
+    return { load, calls };
+  };
+
+  it('makes no request for a template the response carries', async () => {
+    const one = template();
+    const page = pageWith({ templates: { '/templates/one': one } });
+    const { load, calls } = recordingLoader();
+
+    const { templates, errors } = await loadTemplates(page, load);
+
+    expect(calls).toEqual([]);
+    expect(templates['/templates/one']).toBe(one);
+    expect(errors).toEqual([]);
+  });
+
+  it('fetches only what the response lacks', async () => {
+    const page = pageWith({ templates: { '/templates/one': template() } });
+    const footer = template();
+    const { load, calls } = recordingLoader({ '/templates/footer': footer });
+
+    const { templates } = await loadTemplates(page, load, {}, ['/templates/footer']);
+
+    expect(calls).toEqual(['/templates/footer']);
+    expect(templates['/templates/footer']).toBe(footer);
+  });
+
+  it('follows a nested reference the response lacks', async () => {
+    // The endpoint resolves nested references itself, so this only happens with a
+    // response that is incomplete — but the helper must not silently drop it.
+    const two = template();
+    const page = pageWith({ templates: { '/templates/one': template(['/templates/two']) } });
+    const { load, calls } = recordingLoader({ '/templates/two': two });
+
+    const { templates } = await loadTemplates(page, load);
+
+    expect(calls).toEqual(['/templates/two']);
+    expect(templates['/templates/two']).toBe(two);
+  });
+
+  it('does not request again a template the backend already reported as failed', async () => {
+    // e.g. a private template an anonymous visitor cannot view: asking again would only
+    // fail the same way, one request later.
+    const page = pageWith(
+      {
+        templates: {},
+        errors: [{ templateId: '/templates/one', error: 'unauthorized: /templates/one' }],
+      },
+      ['/templates/one'],
+    );
+    const { load, calls } = recordingLoader({ '/templates/one': template() });
+
+    const { templates, errors } = await loadTemplates(page, load);
+
+    expect(calls).toEqual([]);
+    expect(templates).not.toHaveProperty(['/templates/one']);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].templateId).toBe('/templates/one');
+    // The same shape as a failed fetch: an Error, whose message is the backend's.
+    expect(errors[0].error).toBeInstanceOf(Error);
+    expect(errors[0].error.message).toBe('unauthorized: /templates/one');
+  });
+
+  it('fetches as before when the component is only an unexpanded @id stub', async () => {
+    const page = pageWith({ '@id': 'http://example.com/page/@templates' });
+    const one = template();
+    const { load, calls } = recordingLoader({ '/templates/one': one });
+
+    const { templates } = await loadTemplates(page, load);
+
+    expect(calls).toEqual(['/templates/one']);
+    expect(templates['/templates/one']).toBe(one);
+  });
+
+  it('fetches as before when the response has no @components at all', async () => {
+    const page = template(['/templates/one']);
+    const { load, calls } = recordingLoader({ '/templates/one': template() });
+
+    await loadTemplates(page, load);
+
+    expect(calls).toEqual(['/templates/one']);
+  });
+
+  it("writes the response's templates back to the caller's cache, like fetched ones", async () => {
+    const one = template();
+    const page = pageWith({ templates: { '/templates/one': one } });
+    const cache = {};
+
+    await loadTemplates(page, recordingLoader().load, cache);
+
+    expect(cache['/templates/one']).toBe(one);
+  });
+});
+
 // ---------------------------------------------------------------------------
 
 describe('getFieldTypeString — a field with no declared type is a string', () => {
@@ -450,5 +573,47 @@ describe('getFieldTypeString — a field with no declared type is a string', () 
     expect(getFieldTypeString({ type: 'array', widget: 'select' })).toBe('array:select');
     expect(getFieldTypeString({ type: 'boolean' })).toBe('boolean');
     expect(getFieldTypeString({})).toBe('string');
+  });
+});
+
+/**
+ * A slate value always has a top node — the editor gives every slate field one
+ * empty paragraph by default — so "nothing written" is that paragraph, not an
+ * absent value. A renderer hiding an optional slate field asks this instead of
+ * plain truthiness, which a one-node array always passes.
+ */
+describe('isEmptySlate', () => {
+  test('the default empty paragraph is empty', () => {
+    expect(isEmptySlate([{ type: 'p', children: [{ text: '' }] }])).toBe(true);
+  });
+
+  test('an empty paragraph carrying its node id is still empty', () => {
+    expect(isEmptySlate([{ type: 'p', nodeId: 0, children: [{ text: '' }] }])).toBe(true);
+  });
+
+  test('absent, null and [] are empty — content saved before the default', () => {
+    expect(isEmptySlate(undefined)).toBe(true);
+    expect(isEmptySlate(null)).toBe(true);
+    expect(isEmptySlate([])).toBe(true);
+  });
+
+  test('any text is content', () => {
+    expect(isEmptySlate([{ type: 'p', children: [{ text: 'Roads closed' }] }])).toBe(false);
+  });
+
+  test('text inside an inline element is content', () => {
+    expect(
+      isEmptySlate([
+        { type: 'p', children: [{ text: '' }, { type: 'link', children: [{ text: 'x' }] }, { text: '' }] },
+      ]),
+    ).toBe(false);
+  });
+
+  test('a zero-width space is content — it is what reveal renders so the field shows', () => {
+    expect(isEmptySlate([{ type: 'p', children: [{ text: '​' }] }])).toBe(false);
+  });
+
+  test('a textless element that stands for something (an image, a rule) is content', () => {
+    expect(isEmptySlate([{ type: 'img', url: '/a.png', children: [{ text: '' }] }])).toBe(false);
   });
 });

@@ -43,19 +43,19 @@ before(async () => {
 after(async () => { if (server) await new Promise((r) => server.close(r)); });
 
 describe('/@export json from a markdown mount', { skip: HAVE_ASSETS ? false : 'generated doc assets absent — run `pnpm docs:assets` first (images-present test)' }, () => {
-  it('emits a deployable, validator-clean tar with markdown blobs bundled', async () => {
+  it('emits a deployable, validator-clean zip with markdown blobs bundled', async () => {
     const res = await fetch(`${baseUrl}/@export`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ format: 'json' }),
     });
     assert.equal(res.status, 200, 'export succeeded');
-    assert.equal(res.headers.get('content-type'), 'application/gzip');
+    assert.equal(res.headers.get('content-type'), 'application/zip');
     const buf = Buffer.from(await res.arrayBuffer());
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-export-'));
     try {
-      fs.writeFileSync(path.join(dir, 'e.tar.gz'), buf);
-      execFileSync('tar', ['-xzf', 'e.tar.gz', '-C', dir], { cwd: dir });
+      fs.writeFileSync(path.join(dir, 'e.zip'), buf);
+      execFileSync('unzip', ['-q', '-o', 'e.zip'], { cwd: dir });
       const content = path.join(dir, 'content');
       const meta = JSON.parse(fs.readFileSync(path.join(content, '__metadata__.json'), 'utf8'));
 

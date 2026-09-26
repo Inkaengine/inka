@@ -5,11 +5,9 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The Grid block allows adding multi-column blocks. A grid block can contain
-  between one and four columns of different blocks. This is a grid block with
-  multiple listing blocks.
+description: The Grid block allows adding multi-column blocks. A grid block can
+  contain between one and four columns of different blocks. This is a grid block
+  with multiple listing blocks.
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
@@ -30,11 +28,12 @@ rights: ""
 subjects: []
 title: Grid-Listing
 blocks-matched: |
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
 blocks-tagged: |
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" description="${p/text}" />
+      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
     </region>
   </block>
 ---
@@ -43,10 +42,10 @@ blocks-tagged: |
 
 <block type="gridBlock">
 
-<block type="listing" headlineTag="h2" variation="default" data-json='{"querystring":{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_order":"ascending"}}' />
+<block type="listing" data-json='{"headlineTag":"h2","variation":"default","querystring":{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_order":"ascending"}}' />
 
-<block type="listing" headlineTag="h2" variation="default" data-json='{"querystring":{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_on":"getId","sort_order":"descending","sort_order_boolean":true}}' />
+<block type="listing" data-json='{"headlineTag":"h2","variation":"default","querystring":{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_on":"getId","sort_order":"descending","sort_order_boolean":true}}' />
 
-<block type="slate" data-json='{"value":[{"type":"p","children":[{"text":"A manual block placed after the listings. The listings fill the earlier pages, so reaching this block requires paging the grid — the editor must page forward to reveal it when it is selected."}]}]}' />
+A manual block placed after the listings. The listings fill the earlier pages, so reaching this block requires paging the grid — the editor must page forward to reveal it when it is selected.
 
 </block>

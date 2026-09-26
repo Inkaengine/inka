@@ -55,11 +55,20 @@ const LINKABLE_SELECTOR =
 function readAnchor(el) {
   for (let level = 1; level <= 6; level += 1) {
     const name = el.getAttribute(`data-linkable-h${level}`);
-    if (name !== null) return { name, level };
+    if (name !== null) return { name: withoutZeroWidth(name), level };
   }
   const name = el.getAttribute('data-linkable-id');
   if (name === null) return null;
-  return { name, level: HEADING_LEVEL[el.tagName] ?? null };
+  return { name: withoutZeroWidth(name), level: HEADING_LEVEL[el.tagName] ?? null };
+}
+
+/**
+ * A label read from text can carry the zero-width spaces hydra gives an empty
+ * leaf (\u200B, the caret target in the render data) and the caret keeps while
+ * typing (\uFEFF). They are hydra's, not the author's, so not part of a name.
+ */
+function withoutZeroWidth(name) {
+  return name.replace(/[\u200B\uFEFF]/g, '');
 }
 
 /**

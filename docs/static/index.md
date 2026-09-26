@@ -18,14 +18,15 @@ rights: ""
 subjects:
   - frontend
 title: Static
-blocks-matched: |
-  <block type="title" _="${h1}" />
 blobs:
   - file: hydra-demo.mp4
     uid: docs-static-hydra-demo-001
-    title: Hydra demo (homepage hero)
+    id: hydra-demo.mp4
+    title: Inka demo (homepage hero)
     description: Homepage hero loop showing live editing, formatting, drag-and-drop,
       container selection, and the frontend switcher.
+blocks-matched: |
+  <block type="title" _="${h1}" />
 ---
 
 # Static

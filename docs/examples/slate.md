@@ -5,10 +5,8 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The Text Block allows you to add text to a web page. The text can be formatted
-  and structured in different ways (bold, headings, etc.).
+description: The Text Block allows you to add text to a web page. The text can
+  be formatted and structured in different ways (bold, headings, etc.).
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
@@ -33,18 +31,18 @@ subjects:
 title: Text
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-  <block type="callout">
-    <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-    </region>
-  </block>
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+    </region>
+  </block>
+blocks-tagged: |
+  <block type="callout">
+    <region name="items" widget="blocks_layout">
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
     </region>
   </block>
 ---
@@ -55,7 +53,7 @@ Rich text block powered by the Slate editor. Supports paragraphs, headings, list
 
 <block type="image">
 
-![The slate example block being edited in Volto Hydra](/docs/images/slate-edit.png)
+![The slate example block being edited in Inka](../images/slate-edit.png)
 
 </block>
 
@@ -83,7 +81,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <block type="separator" />
 
-<block type="heading" alignment="left" tag="h2" data-json='{"heading":" Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. "}' />
+<block type="heading" data-json='{"alignment":"left","tag":"h2","heading":" Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. "}' />
 
 <block type="separator" />
 
@@ -95,19 +93,36 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-text">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-text" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="slate" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="slate" format="json" />
+### Schema
 
-<block type="callout" variation="note" slotId="rendering">
-
-The Astro examples below omit `data-block-uid` on the block's root element because `BlockRenderer.astro` wraps every block in `<div data-block-uid={uid}>`. See [Server-rendered frontends](../server-rendered-frontends.md) for why.
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: slate
+```
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./slate.md
+:block: slate
+:as: json
+```
+
+</block>
+
+<fields slotId="rendering">
+
+<block type="callout" variation="note">
+
+The Astro examples below omit `data-block-uid` on the block's root element because `BlockRenderer.astro` wraps every block in `<div data-block-uid={uid}>`. See [Server-rendered frontends](../frontend-guide/server-rendered-frontends.md) for why.
+
+</block>
 
 ### React
 
@@ -191,6 +206,6 @@ defineProps({ node: Object });
 {/if}
 ```
 
-</block>
+</fields>
 
 </fields>

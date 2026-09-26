@@ -1,0 +1,21 @@
+{
+  "@id": "/_test_data/test-page",
+  "@type": "Document",
+  "id": "test-page",
+  "title": "Quick Start card page",
+  "description": "One card block (rendered editable) plus a non-card block (shown as JSON), for the quickstart selection test.",
+  "blocks": {
+    "card-1": {
+      "@type": "card",
+      "image": "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27400%27 height=%27200%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%232563eb%27/%3E%3C/svg%3E",
+      "title": "A card",
+      "description": "One editable block; everything else is shown as JSON.",
+      "link": "/somewhere"
+    },
+    "other-1": {
+      "@type": "slate",
+      "value": [{ "type": "p", "children": [{ "text": "Not a card — this renders as JSON." }] }]
+    }
+  },
+  "blocks_layout": { "items": ["card-1", "other-1"] }
+}

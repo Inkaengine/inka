@@ -32,14 +32,13 @@ blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />
+  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
 ---
 
 # Teaser
@@ -48,43 +47,60 @@ A content preview card that links to another page. Selecting a target page via t
 
 <block type="image">
 
-![The teaser example block being edited in Volto Hydra](/docs/images/teaser-edit.png)
+![The teaser example block being edited in Inka](../images/teaser-edit.png)
 
 </block>
 
-<fields title="Headline H2" data-json='{"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","Title":"Page","getRemoteUrl":null,"hasPreviewImage":true,"head_title":null,"image_field":"preview_image","title":"Page"}]}'>
+<fields title="Headline H2" data-json='{"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Title":"Page","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","title":"Page","head_title":null,"getRemoteUrl":null,"hasPreviewImage":true,"image_field":"preview_image"}]}'>
 
 <fields head_title="Head title">
 
-<block type="teaser" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.","styles":{"align":"center"}}' />
+<block type="teaser" data-json='{"styles":{"align":"center"},"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
 
 <fields data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea."}'>
 
-<block type="teaser" data-json='{"styles":{"align":"left"}}' />
+<block type="teaser" styles:align="left" />
 
-<block type="teaser" data-json='{"styles":{"align":"right"}}' />
-
-</fields>
+<block type="teaser" styles:align="right" />
 
 </fields>
 
-<block type="teaser" data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.","styles":{"align":"center","backgroundColor":"grey"}}' />
+</fields>
+
+<block type="teaser" data-json='{"styles":{"align":"center","backgroundColor":"grey"},"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
 
 <fields data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea."}'>
 
-<block type="teaser" data-json='{"styles":{"align":"left","backgroundColor":"grey"}}' />
+<block type="teaser" styles:align="left" styles:backgroundColor="grey" />
 
-<block type="teaser" data-json='{"styles":{"align":"right","backgroundColor":"grey"}}' />
-
-</fields>
+<block type="teaser" styles:align="right" styles:backgroundColor="grey" />
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-teaser">
+</fields>
 
-<block type="codeExample" slotId="schema" source="teaser" format="schema" />
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-teaser" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="json-data" source="teaser" format="json" />
+<block type="codeExample" slotId="schema">
+
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: teaser
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./teaser.md
+:block: teaser
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

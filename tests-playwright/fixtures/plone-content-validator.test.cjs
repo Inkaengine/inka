@@ -420,6 +420,22 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.equal(r.stats.resolveuidBroken, 1);
   });
 
+  it('resolves a readable UID the way the mock does, and flags one that names nothing', () => {
+    // Test fixtures carry readable UIDs (`test-image-1-uid`); the mock resolves
+    // `resolveuid/<[a-z0-9-]+>`. Matching only hex left these as "unrecognized
+    // reference form" — or, in free text, unchecked altogether.
+    const image = { '@id': '/img', '@type': 'Image', id: 'img', UID: 'test-image-1-uid', image: { data: 'x' } };
+    const page = (uid) => ({
+      '@id': '/p', '@type': 'Document', id: 'p', UID: 'page-uid',
+      blocks: { i: { '@type': 'image', url: `resolveuid/${uid}` } },
+      blocks_layout: { items: ['i'] },
+    });
+    const ok = checkIntegrity([{ rel: '/img', data: image }, { rel: '/p', data: page('test-image-1-uid') }]);
+    assert.deepEqual(ok.errors.filter((e) => e.includes('resolveuid') || e.includes('reference form')), []);
+    const bad = checkIntegrity([{ rel: '/img', data: image }, { rel: '/p', data: page('no-such-uid') }]);
+    assert.ok(bad.errors.some((e) => e.includes('broken resolveuid/no-such-uid')), bad.errors.join('\n'));
+  });
+
   it('FAILS on a multi-node slate value (must be a single top-level node)', () => {
     // The editor makes one block per paragraph, and a paragraph boundary is a
     // block boundary, so a slate value with >1 top-level node (a title + body
@@ -1223,5 +1239,85 @@ describe('checkBlockSchemas()', () => {
       FIELDS,
     );
     assert.deepEqual(r.errors, []);
+  });
+});
+
+describe('checkIntegrity() — object_list items must carry their type', () => {
+  // Schema-driven: an object_list field's items are block instances (they get a
+  // @uid, are selectable/editable), so each must carry a type in the field the
+  // schema names. Absent a schema this can't be known, so the check runs only
+  // when a schemaFor is supplied. Regression guard for the `tab`/socialLinks
+  // "no editable example" bug the bridge suite caught 17 minutes in.
+  const accordionSchema = (t) =>
+    t === 'accordion' ? { properties: { panels: { widget: 'object_list' } } } : null;
+
+  const pageWithAccordion = (panels) => ({
+    '@id': '/page-a', '@type': 'Document', id: 'page-a',
+    UID: 'pageauid1234567', parent: { '@id': '/' },
+    blocks: { acc: { '@type': 'accordion', panels } },
+    blocks_layout: { items: ['acc'] },
+  });
+
+  it('FLAGS a data-json object_list item that dropped its @type', () => {
+    const { root, contentDir } = buildFixture({
+      pageA: pageWithAccordion([{ '@type': 'panel', title: 'ok' }, { title: 'no type' }]),
+    });
+    const r = checkIntegrity(contentDir, { schemaFor: accordionSchema });
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('object_list field "panels" item 1') && e.includes('missing its type field "@type"')),
+      r.errors.join('\n'),
+    );
+    // item 0 carries @type — only item 1 is reported.
+    assert.ok(!r.errors.some((e) => e.includes('panels" item 0')), r.errors.join('\n'));
+  });
+
+  it('PASSES when every object_list item carries its @type', () => {
+    const { root, contentDir } = buildFixture({
+      pageA: pageWithAccordion([{ '@type': 'panel', title: 'a' }, { '@type': 'panel', title: 'b' }]),
+    });
+    const r = checkIntegrity(contentDir, { schemaFor: accordionSchema });
+    cleanup(root);
+    assert.ok(!r.errors.some((e) => e.includes('missing its type field')), r.errors.join('\n'));
+  });
+
+  it('honors the schema-named typeField (not a hardcoded @type)', () => {
+    // A field can name where the type lives; the check reads THAT key.
+    const schemaFor = (t) =>
+      t === 'facetgroup' ? { properties: { facets: { widget: 'object_list', typeField: 'type' } } } : null;
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: { fg: { '@type': 'facetgroup', facets: [{ label: 'no type key' }] } },
+        blocks_layout: { items: ['fg'] },
+      },
+    });
+    const r = checkIntegrity(contentDir, { schemaFor });
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('facets" item 0') && e.includes('missing its type field "type"')),
+      r.errors.join('\n'),
+    );
+  });
+
+  it('accepts an item typed by @type even where the schema names another typeField', () => {
+    // hydra reads an item's type as `@type ?? item[typeField]` (getBlockType),
+    // so an item carrying @type IS typed — a frontend whose facets are
+    // `{"@type": "selectFacet"}` against a schema naming `type` renders fine.
+    const schemaFor = (t) =>
+      t === 'facetgroup' ? { properties: { facets: { widget: 'object_list', typeField: 'type' } } } : null;
+    const r = checkIntegrity(
+      [{
+        rel: '/p',
+        data: {
+          '@id': '/p', '@type': 'Document', id: 'p', UID: 'p-uid',
+          blocks: { fg: { '@type': 'facetgroup', facets: [{ '@type': 'selectFacet' }] } },
+          blocks_layout: { items: ['fg'] },
+        },
+      }],
+      { schemaFor },
+    );
+    assert.deepEqual(r.errors.filter((e) => e.includes('type field')), []);
   });
 });

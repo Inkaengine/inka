@@ -5,10 +5,8 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: >-
-  
-  The introductory block allows the display of an introductory text, which is
-  displayed larger than normal continuous text.
+description: The introductory block allows the display of an introductory text,
+  which is displayed larger than normal continuous text.
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
@@ -35,12 +33,13 @@ blocks-matched: |
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
+blocks-tagged: |
+  <block type="introduction" value="${p,h*/slate}" />
 ---
 
 # Introduction
@@ -49,13 +48,17 @@ Displays the page's title and description as a styled header. The introduction b
 
 <block type="image">
 
-![The introduction example block being edited in Volto Hydra](/docs/images/introduction-edit.png)
+![The introduction example block being edited in Inka](../images/introduction-edit.png)
 
 </block>
 
 ---
 
-<block type="introduction" data-json='{"value":[{"children":[{"text":"Highlight Title H2 "}],"type":"h2"}]}' />
+<block type="introduction">
+
+## Highlight Title H2&#x20;
+
+</block>
 
 Lorem ipsum vitae elit libero, a pharetra augue. Nulla vitae elit libero, a pharetra augue. Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit. Donec ullamcorper nulla non metus auctor fringilla. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor. Vestibulum id ligula porta felis euismod semper.
 
@@ -65,11 +68,28 @@ Lorem ipsum vitae elit libero, a pharetra augue. Nulla vitae elit libero, a phar
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-introduction">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-introduction" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="introduction" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="introduction" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: introduction
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./introduction.md
+:block: introduction
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

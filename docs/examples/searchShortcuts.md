@@ -39,15 +39,32 @@ Renders a set of values as links into a faceted search — a "tag cloud" of shor
 
 <block type="searchShortcuts" index="Subject" searchUrl="/search" variation="default" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="searchShortcuts" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="searchShortcuts" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: searchShortcuts
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./searchShortcuts.md
+:block: searchShortcuts
+:as: json
+```
+
+</block>
 
 <fields slotId="rendering">
 
-This block has no bespoke renderer. Add its fetcher to your fetchItems map (keyed by @type) and expandListingBlocks expands it in any region you render — the same seam that powers [listings](../listings.md) and other collection blocks. See [Custom Blocks](../custom-blocks.md) to define the block type. Only the fetcher below is block-specific.
+This block has no bespoke renderer. Add its fetcher to your fetchItems map (keyed by @type) and expandListingBlocks expands it in any region you render — the same seam that powers [listings](../frontend-guide/listings.md) and other collection blocks. See [Custom Blocks](../frontend-guide/custom-blocks.md) to define the block type. Only the fetcher below is block-specific.
 
 ### Fetcher
 

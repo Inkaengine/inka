@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layers>
+  <layer interface="inkaengine.inka.interfaces.IBrowserLayer"
+         name="inkaengine.inka"
+  />
+</layers>

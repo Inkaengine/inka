@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 /**
  * Serializes Slate JSON into JSX elements
  * @param {Array} value - The Slate JSON value (array of nodes)
@@ -11,35 +9,48 @@ function serializeSlateJSON(value) {
   if (!Array.isArray(value)) {
     return null;
   }
-  return value?.map(serializeNode);
+  return value.map((node, index) => serializeNode(node, index));
 }
 
 /**
- * Recursively serializes a single Slate node into a JSX element
+ * A leaf's text with its line breaks: "\n" is Shift+Enter in the editor, drawn as
+ * <br>. A break at the very end needs a second <br> to show, as it does there.
+ */
+function lineBreaks(text) {
+  const [first, ...rest] = text.split("\n");
+  return [
+    first,
+    ...rest.flatMap((line, i) => [<br key={`br${i}`} />, line]),
+    text.endsWith("\n") ? <br key="trailing" /> : null,
+  ];
+}
+
+/**
+ * Recursively serializes a single Slate node into a JSX element. Keys are the
+ * node's position among its siblings: stable across renders, so React updates
+ * the DOM it already has instead of replacing it on every edit.
  * @param {Object} node - The Slate node object
+ * @param {number} index - The node's position among its siblings
  * @returns {JSX.Element} - The JSX representation of the node
  */
-function serializeNode(node) {
+function serializeNode(node, index) {
   if (!node) {
     return null;
   }
-  const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 11);
   if (node.text !== undefined) {
     // Only render data-node-id when nodeId is a valid path (text leaves don't
     // get nodeIds from addNodeIds). Rendering "undefined" breaks hydra.js lookups.
     const nodeIdProps = node.nodeId != null ? { "data-node-id": `${node.nodeId}` } : {};
-    return node.text !== "" ? (
-      <span key={uid} {...nodeIdProps}>
-        {node.text}
-      </span>
-    ) : (
-      <span key={uid} {...nodeIdProps}>
-        &#xFEFF;
+    return (
+      <span key={index} {...nodeIdProps}>
+        {lineBreaks(node.text)}
       </span>
     );
   }
 
-  const children = node.children ? node.children.map(serializeNode) : null;
+  const children = node.children
+    ? node.children.map((child, i) => serializeNode(child, i))
+    : null;
   // Only attach data-node-id when nodeId is a valid path. The previous
   // `${node?.nodeId}` template would emit the literal string "undefined"
   // when missing, which the bridge then treated as a real (broken) anchor
@@ -49,7 +60,7 @@ function serializeNode(node) {
   switch (node.type) {
     case "link":
       return (
-        <a key={uid} href={node.data?.url} {...nodeIdProps}>
+        <a key={index} href={node.data?.url} {...nodeIdProps}>
           {children}
         </a>
       );
@@ -58,7 +69,7 @@ function serializeNode(node) {
       const Tag = node.type;
       if (Tag)
         return (
-          <Tag key={uid} {...nodeIdProps}>
+          <Tag key={index} {...nodeIdProps}>
             {children}
           </Tag>
         );
@@ -67,17 +78,7 @@ function serializeNode(node) {
 }
 
 export default function SlateBlock({ value }) {
-  const [slateValue, setSlateValue] = useState(value);
-  const elements = serializeSlateJSON(slateValue);
-  useEffect(() => {
-    setSlateValue(value);
-  }, [value]);
-  const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 11);
-  return (
-    <div key={uid} data-edit-text="value">
-      {elements}
-    </div>
-  );
+  return <div data-edit-text="value">{serializeSlateJSON(value)}</div>;
 }
 
 /**

@@ -38,6 +38,8 @@ whole_day: true
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
+blocks-tagged: |
+  <block type="introduction" value="${p,h*/slate}" />
 ---
 
 <fields templateId="/templates/event-view" templateInstanceId="tpl-ev-def">
@@ -50,9 +52,15 @@ blocks-matched: |
 
 </block>
 
-<fields slotId="content">
+<fields data-json='{"readOnly":false}'>
 
-<block type="introduction" data-json='{"value":[{"children":[{"text":"Wings fair wings doppio sit irish americano galão eu variety affogato."}],"type":"p"}]}' />
+<fields slotId="content" data-json='{"fixed":false}'>
+
+<block type="introduction">
+
+Wings fair wings doppio sit irish americano galão eu variety affogato.
+
+</block>
 
 <block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
 
@@ -60,8 +68,10 @@ Percolator and extraction press luwak press aroma foam eu panna spoon espresso i
 
 </fields>
 
-<block type="eventMetadata" slotId="event-metadata" data-json='{"fixed":true,"required":true}' />
+<block type="eventMetadata" data-json='{"slotId":"event-metadata","fixed":true,"required":true}' />
 
-<block type="slate" slotId="content" />
+<block type="slate" data-json='{"slotId":"content","fixed":false}' />
+
+</fields>
 
 </fields>

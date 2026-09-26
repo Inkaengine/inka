@@ -1,0 +1,23 @@
+---
+// Not shown in the docs — the server-side switch renderer. The endpoint calls it
+// with either the whole page ({ unit: 'page' }) or one changed block
+// ({ unit: 'block', blockId }); it renders the card block editable and shows
+// anything else as raw JSON, emitting the same data-block-uid + data-edit-*
+// contract the client-render tabs produce.
+const { unit, formData } = Astro.props
+const ids = unit.unit === 'page' ? (formData.blocks_layout?.items ?? []) : [unit.blockId]
+---
+{ids.map((id: string) => {
+  const block = formData.blocks[id]
+  return block['@type'] === 'card' ? (
+    <div data-block-uid={id}>
+      <a href={block.link} data-edit-link="link">
+        <img src={block.image} data-edit-media="image" />
+        <h3 data-edit-text="title">{block.title}</h3>
+        <p data-edit-text="description">{block.description}</p>
+      </a>
+    </div>
+  ) : (
+    <pre data-block-uid={id}>{JSON.stringify(block, null, 2)}</pre>
+  )
+})}

@@ -34,12 +34,13 @@ blocks-matched: |
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
+blocks-tagged: |
+  <block type="introduction" value="${p,h*/slate}" />
 ---
 
 # Table of Contents
@@ -48,7 +49,7 @@ Renders a table of contents generated from heading blocks on the current page. I
 
 <block type="image">
 
-![The toc example block being edited in Volto Hydra](/docs/images/toc-edit.png)
+![The toc example block being edited in Inka](../images/toc-edit.png)
 
 </block>
 
@@ -56,9 +57,21 @@ Renders a table of contents generated from heading blocks on the current page. I
 
 ---
 
-<block type="image" align="wide" copyright_and_sources="Copyright: unsplash.com" description="Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt." size="l" title="Title Image" url="/docs/examples/content-types/image-dark" data-json='{"styles":{"size:noprefix":"large"}}' />
+<block type="image">
 
-<block type="introduction" data-json='{"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. "}],"type":"p"}]}' />
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./content-types/image-dark "Title Image")
+
+<fields align="wide" copyright_and_sources="Copyright: unsplash.com" styles:size:noprefix="large" />
+
+</block>
+
+<block type="introduction">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.&#x20;
+
+</block>
 
 ---
 
@@ -94,15 +107,32 @@ Text can be **bold** or *italic*.
 
 ---
 
-<fields data-json='{"styles":{"align":"left"}}' />
+<fields styles:align="left" />
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-toc">
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-toc" data-json='{"fixed":false,"readOnly":false}'>
 
-<block type="codeExample" slotId="schema" source="toc" format="schema" />
+<block type="codeExample" slotId="schema">
 
-<block type="codeExample" slotId="json-data" source="toc" format="json" />
+### Schema
+
+```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
+:jsobject: toc
+```
+
+</block>
+
+<block type="codeExample" slotId="json-data">
+
+### JSON
+
+```{literalinclude} ./toc.md
+:block: toc
+:as: json
+```
+
+</block>
 
 <block type="codeExample" slotId="rendering">
 

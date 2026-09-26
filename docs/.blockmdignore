@@ -1,0 +1,22 @@
+# blockmd mount ignore — gitignore syntax, matched against paths under docs/.
+# Replaces the per-folder `exclude:` frontmatter: one top-level file, standard
+# git patterns (leading `/` anchors to this root). Paths named here are never
+# mounted as content, so they don't appear in nav/order. The export never
+# rewrites this file.
+
+# Build / tooling output
+/_build/
+/_static/
+/_myst/
+/content/
+
+# Scaffolding that isn't docs content
+/blocks/
+/quickstart/
+
+# The shared example block components — NOT the Examples guide at /examples
+/examples/examples/
+
+# Test fixtures anywhere in the tree
+test-*
+fixtures/

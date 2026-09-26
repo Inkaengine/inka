@@ -123,6 +123,11 @@
 <body>
     <header>
         <nav id="navigation"></nav>
+        <!-- The page in the site's other languages. Rendered from the API's
+             own answer (@components.translations), never guessed from the
+             path: which languages exist is the site's business, and what this
+             page is called in each is the translation's. -->
+        <nav id="language-switcher" aria-label="Language" hidden></nav>
     </header>
     <div id="render-counter" style="position: fixed; top: 0; right: 0; background: #333; color: #fff; padding: 4px 8px; font-size: 12px; z-index: 9999;">0</div>
     <main>
@@ -202,8 +207,18 @@
 
         // Render content, expanding top-level listings
         // Container renderers (like renderGridBlock) call window._expandListingBlocks for nested content
+        window.supportsRenderGate = true;
         async function renderContentWithListings(content) {
             const myGeneration = ++window._renderGeneration;
+            // Test hook: a render that lands only when the test says (a slow
+            // frontend, on cue rather than on a timer). A test sets
+            // window.renderGate to a promise; the render waits on it, with
+            // window.renderWaiting set meanwhile.
+            if (window.renderGate) {
+                window.renderWaiting = true;
+                await window.renderGate;
+                window.renderWaiting = false;
+            }
 
             // ONE shared template-merge state for the WHOLE page render — created by the
             // page-load entry and NEVER reset mid-render. Every expand call (top-level,
@@ -405,14 +420,42 @@
                     contentPath
                 });
 
-                // Fetch content from mock API using ++api++ prefix
+                async function renderLanguageSwitcher(content, fetchHeaders) {
+            const el = document.getElementById('language-switcher');
+            if (!el) return;
+            const site = await fetch(`${window._apiOrigin}/++api++/@site`, { headers: fetchHeaders })
+                .then((r) => r.json())
+                .catch(() => ({}));
+            const languages = site['plone.available_languages'] || [];
+            if (languages.length < 2) {
+                el.hidden = true;
+                return;
+            }
+            const current = content.language?.token || content.language || '';
+            const translations = content['@components']?.translations?.items || [];
+            const names = { en: 'English', de: 'Deutsch', fr: 'Français', it: 'Italiano' };
+            el.hidden = false;
+            el.innerHTML = languages
+                .map((lang) => {
+                    const name = names[lang] || lang;
+                    if (lang === current) {
+                        return `<span aria-current="true">${name}</span>`;
+                    }
+                    const translation = translations.find((t) => t.language === lang);
+                    const href = translation ? new URL(translation['@id']).pathname : `/${lang}`;
+                    return `<a href="${href}" hreflang="${lang}">${name}</a>`;
+                })
+                .join(' ');
+        }
+
+        // Fetch content from mock API using ++api++ prefix
                 // Include auth token if available (for session-based content in tests)
                 const fetchHeaders = { 'Accept': 'application/json' };
                 const token = getAccessToken();
                 if (token) {
                     fetchHeaders['Authorization'] = `Bearer ${token}`;
                 }
-                const response = await fetch(`${window._apiOrigin}/++api++${contentPath}?expand=navigation`, { headers: fetchHeaders });
+                const response = await fetch(`${window._apiOrigin}/++api++${contentPath}?expand=navigation,translations`, { headers: fetchHeaders });
                 let content = await response.json();
 
                 // Helper to load templates
@@ -453,6 +496,12 @@
 
                 // Expose template expansion for renderer.js (object_list arrays)
                 window._expandTemplatesSync = expandTemplatesSync;
+
+                // Render the language switcher: this page in every language
+                // the site has. A language the page is not translated into
+                // links to that language's root, which is what Volto's own
+                // selector offers — better than hiding the language entirely.
+                await renderLanguageSwitcher(content, fetchHeaders);
 
                 // Render navigation from @components.navigation.items
                 const navItems = content['@components']?.navigation?.items || [];
