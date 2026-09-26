@@ -187,6 +187,40 @@ test.describe('Adding Blocks', () => {
     expect(newCount).toBe(initialCount + 1);
   });
 
+  test('a block whose id is a chooser button class is added by its label', async ({ page }) => {
+    // Every chooser button carries `ui basic icon button`, so the fixture's `button` block
+    // can't be told apart by its id: `button.button` matches the whole chooser. The accordion
+    // panel offers it.
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/accordion-test-page');
+    // Judged by the bridge's block map, not by markup: each frontend draws a
+    // button block its own way. The map gives each block's type and parent.
+    const blockMap = () =>
+      helper
+        .getIframe()
+        .locator('body')
+        .evaluate(() => (window as any).__hydraBridge?.blockPathMap || {});
+    const buttons = async () =>
+      Object.entries(await blockMap())
+        .filter(([, info]: [string, any]) => info?.blockType === 'button')
+        .map(([uid]) => uid);
+    const before = await buttons();
+    const panel = (await blockMap())['content-text-1']?.parentId;
+    expect(panel, 'content-text-1 sits in an accordion panel').toBeTruthy();
+
+    await helper.clickBlockInIframe('content-text-1');
+    await helper.clickAddBlockButton();
+    await helper.selectBlockType('button', { label: 'Button' });
+
+    // One button block more — the one picked by its label, not whatever
+    // `button.button` matched first — beside the block it was added after.
+    await expect.poll(buttons).toHaveLength(before.length + 1);
+    const added = (await buttons()).find((uid) => !before.includes(uid))!;
+    expect((await blockMap())[added]?.parentId).toBe(panel);
+  });
+
   test('new block appears in iframe immediately', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 

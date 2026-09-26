@@ -515,6 +515,9 @@ export const sharedBlocksConfig = {
                                     'slate', 'image', 'separator', 'teaser', 'listing', 'slateTable',
                                     'hero', 'columns', 'slider', 'gridBlock', 'section',
                                     'contextNavigation', 'codeExample', 'toc', 'highlight', 'introduction',
+                                    // `button`'s id is also a class of every chooser button, so
+                                    // it is picked by its label (block-add-remove.spec.ts).
+                                    'button',
                                 , 'accordion'],
                                 defaultBlockType: 'slate',
                             },

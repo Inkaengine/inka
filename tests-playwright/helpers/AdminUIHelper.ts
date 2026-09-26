@@ -3908,8 +3908,14 @@ export class AdminUIHelper {
    * regardless of accordion state, but is hidden inside collapsed groups. We first confirm the
    * type is on offer at all (else the WRONG chooser is open — fail loudly saying what IS offered),
    * then expand the section holding it and click it like a user would.
+   *
+   * `label` picks it by its visible name instead, the way an author does: type the name into the
+   * chooser's search box and click the button with exactly that name. Needed when the id is also
+   * one of the classes every chooser button carries (`ui basic icon button`), e.g. a block with
+   * id `button`: `button.button` matches every block in the chooser. The picked button must still
+   * carry the id's class, so a label naming a different block fails.
    */
-  async selectBlockType(blockType: string): Promise<void> {
+  async selectBlockType(blockType: string, { label }: { label?: string } = {}): Promise<void> {
     // Scope to the visible chooser. A previous chooser instance may still be
     // in the DOM mid-unmount; `.first()` without `:visible` can pick that
     // stale one, so the click is a no-op and the new chooser appears to
@@ -3936,9 +3942,23 @@ export class AdminUIHelper {
       );
     }
 
+    if (label) {
+      await chooser.locator('input').first().fill(label);
+      const named = chooser
+        .getByRole('button', { name: label, exact: true })
+        .and(chooser.locator(`button.${blockType}`));
+      await expect(named).toHaveCount(1, { timeout: 5000 });
+      await this.demoStep(named);
+      await named.click();
+      await expect(this.page.locator('.blocks-chooser:visible')).toHaveCount(0, {
+        timeout: 5000,
+      });
+      return;
+    }
+
     // Open the accordion SECTION the button lives in, the way a user would, then click the button
-    // once it is genuinely visible. (We can't drive the search box instead: it filters on the
-    // block's TITLE, and callers pass the @type id — `from` would never match "E-mail".)
+    // once it is genuinely visible. (The search box filters on the block's TITLE, and callers pass
+    // the @type id — `from` would never match "E-mail" — so it is used only with `label`.)
     const button = chooser.locator(`button.${blockType}`).first();
     if (!(await button.isVisible())) {
       // Direct children only: a block button carries `class={block.id}`, so `.accordion .title`
