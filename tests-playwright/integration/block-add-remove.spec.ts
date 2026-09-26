@@ -195,15 +195,30 @@ test.describe('Adding Blocks', () => {
 
     await helper.login();
     await helper.navigateToEdit('/accordion-test-page');
-    const accordion = helper.getIframe().locator('[data-block-uid="accordion-1"]');
-    await expect(accordion.locator('a.btn')).toHaveCount(0);
+    // Judged by the bridge's block map, not by markup: each frontend draws a
+    // button block its own way. The map gives each block's type and parent.
+    const blockMap = () =>
+      helper
+        .getIframe()
+        .locator('body')
+        .evaluate(() => (window as any).__hydraBridge?.blockPathMap || {});
+    const buttons = async () =>
+      Object.entries(await blockMap())
+        .filter(([, info]: [string, any]) => info?.blockType === 'button')
+        .map(([uid]) => uid);
+    const before = await buttons();
+    const panel = (await blockMap())['content-text-1']?.parentId;
+    expect(panel, 'content-text-1 sits in an accordion panel').toBeTruthy();
 
     await helper.clickBlockInIframe('content-text-1');
     await helper.clickAddBlockButton();
     await helper.selectBlockType('button', { label: 'Button' });
 
-    // The fixture renders a button block as its link, labelled "Button" until given a label.
-    await expect(accordion.locator('a.btn')).toHaveText(['Button']);
+    // One button block more — the one picked by its label, not whatever
+    // `button.button` matched first — beside the block it was added after.
+    await expect.poll(buttons).toHaveLength(before.length + 1);
+    const added = (await buttons()).find((uid) => !before.includes(uid))!;
+    expect((await blockMap())[added]?.parentId).toBe(panel);
   });
 
   test('new block appears in iframe immediately', async ({ page }) => {
