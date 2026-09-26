@@ -61,6 +61,15 @@ test.describe('form empty field — pick a type (typed object_list)', () => {
   });
 
   test('with one allowed type, the + types the empty field in place and it keeps its id', async ({ page }) => {
+    // The single-type form schema is declared by the MOCK test frontend only —
+    // a page-path switch in its index.html. On admin-nuxt / admin-nextjs /
+    // admin-f7 the page is served by a frontend that declares none of it, so
+    // the test would be about a configuration that isn't there (same idiom as
+    // slate-style-allowlist's restricted-styles page).
+    test.skip(
+      test.info().project.name !== 'admin-mock',
+      'the single-type form schema is declared by the mock frontend',
+    );
     // /form-single-type-page: the form's fields allow only 'static_text' and
     // start empty, so the '+' converts the empty straight away, no chooser.
     // static_text has no schema defaults, so nothing but the '+' itself has to
