@@ -36,8 +36,8 @@ blocks-matched: |
 
 Add data attributes to your rendered HTML to enable progressively richer visual editing:
 
-- **\`data-block-uid="blockId"\`** — Click-to-select blocks. hydra.js adds click handlers and shows a blue outline and Quanta toolbar on selected blocks.
-- **\`data-edit-text="fieldName"\`** — Inline text editing. For simple text, click and type directly. For rich text (slate widget), select text to apply formatting via the Quanta toolbar.
+- **\`data-block-uid="blockId"\`** — Click-to-select blocks. hydra.js adds click handlers and shows a blue outline and the block toolbar on selected blocks.
+- **\`data-edit-text="fieldName"\`** — Inline text editing. For simple text, click and type directly. For rich text (slate widget), select text to apply formatting via the block toolbar.
 - **\`data-edit-media="fieldName"\`** — Visual media uploading. Editors can upload, pick or drag-and-drop images directly onto the element.
 - **\`data-edit-link="fieldName"\`** — Link editing. Click behaviour is replaced with a link picker to select content, enter an external URL, or open the link.
 
@@ -112,7 +112,7 @@ Some markup is built by a third-party script, somewhere your renderer never writ
 - `block-uid` on the target makes it **part of that block**: the block is now several elements sharing one uid, and its selection outline covers all of them. Use it when the script-built element really is part of the block, as a banner showing the block's message is.
 - A slate field inside still needs its `data-node-id`s — comments cannot supply those, so render them in whatever markup you *do* hand the script (above, the `<span>` inside the banner's `<p>`).
 
-## Optional Fields — empty means absent
+## Optional fields: empty means absent
 
 Render optional fields **data-driven**: no data, no element. Don't render an empty element just to give the editor something to click — it leaks empty markup into your published page.
 
@@ -125,19 +125,19 @@ Render optional fields **data-driven**: no data, no element. Don't render an emp
 
 Plain truthiness is enough — you never need `.length` or a null-safe walk. Inka normalises a field the editor has cleared (widgets write `[]`, which is truthy) to absent before your renderer sees it.
 
-**Slate fields are the exception: they are never absent.** Every slate field holds at least one empty paragraph — it is the field's default when the schema names none, as `''` is a string's. Slate edits nodes and the caret lives in one, so an empty field the author types into needs a node for its `data-node-id`. Truthiness always passes a one-paragraph array, so hide an optional slate field with `isEmptySlate` from `@volto-hydra/helpers`:
+**Slate fields are the exception: they are never absent.** Every slate field holds at least one empty paragraph — it is the field's default when the schema names none, as `''` is a string's. Slate edits nodes and the caret lives in one, so an empty field the author types into needs a node for its `data-node-id`. Truthiness always passes a one-paragraph array, so hide an optional slate field with `isEmptySlate` from `@hydra-js/helpers` (see [Installation](./installation.md#get-the-bridge)):
 
 ### Jsx
 
 ```jsx
-import { isEmptySlate } from '@volto-hydra/helpers';
+import { isEmptySlate } from '@hydra-js/helpers';
 
 {!isEmptySlate(block.summary) && <div data-edit-text="summary">{renderSlate(block.summary)}</div>}
 ```
 
 A slate field your block always shows needs no check at all — render its nodes, and the empty paragraph is what the author types into.
 
-To fill an empty field from the canvas, the editor selects the block and presses **reveal optional fields** in the Quanta toolbar. Inka feeds your renderer a placeholder value for each empty field, so your own `&&` guard (or `isEmptySlate` check) produces the element and it becomes editable. For a slate field the placeholder is its own empty paragraph holding a zero-width space, so it keeps its `data-node-id`. The placeholder exists only in the data handed to your renderer: it is never stored, so fields left unfilled leave no trace in saved content and render nothing in view. Your renderer needs no code for this.
+To fill an empty field from the canvas, the editor selects the block and presses **reveal optional fields** in the block toolbar. Inka feeds your renderer a placeholder value for each empty field, so your own `&&` guard (or `isEmptySlate` check) produces the element and it becomes editable. For a slate field the placeholder is its own empty paragraph holding a zero-width space, so it keeps its `data-node-id`. The placeholder exists only in the data handed to your renderer: it is never stored, so fields left unfilled leave no trace in saved content and render nothing in view. Your renderer needs no code for this.
 
 Reveal is best-effort. Inka offers any field whose type could be edited inline, which it cannot always tell apart from a field you keep in the sidebar (alt text and css classes are strings too). Fields you don't render inline simply don't appear — the editor fills those from the sidebar as usual.
 
@@ -254,15 +254,12 @@ This breaks cursor positioning because hydra.js can't correlate DOM structure to
 
 Sometimes a renderer adds elements to slate output that are **not** part of the editable content — a decorative icon (an "opens in a new tab" glyph), a generated chip, an embedded non-editable widget. These have no `data-node-id` (they aren't Slate nodes), and they must be marked so that **both** the editor's caret and hydra's DOM→Slate reader skip them:
 
-- **\`contenteditable="false"\`** — the browser treats the element as a
-
-non-editable island: the caret steps over it, backspace/delete removes it as a   unit, and selection includes it whole. Add this to anything that must not be   typed into.
-
+- **\`contenteditable="false"\`** — the browser treats the element as a non-editable island: the caret steps over it, backspace/delete removes it as a unit, and selection includes it whole. Add this to anything that must not be typed into.
 - **\`aria-hidden="true"\`** — for purely decorative chrome (e.g. icons), so
 
 assistive tech ignores it too.
 
-hydra's DOM→Slate reader skips any child (without a `data-node-id`) that carries **either** attribute — treating it as chrome, not content. Without this, the element's text would be read back into the Slate value on every edit / select / delete over it, corrupting the value.
+The bridge's DOM→Slate reader skips any child (without a `data-node-id`) that carries **either** attribute — treating it as chrome, not content. Without this, the element's text would be read back into the Slate value on every edit / select / delete over it, corrupting the value.
 
 ### Html
 
@@ -280,13 +277,8 @@ A slate field's `value` is an array, but it always holds exactly **one top-level
 
 Editing can transiently produce more than one top-level node — pasting multiple paragraphs, pressing Enter, or a Backspace that demotes a list item to a paragraph (`[ul, p]`). Inka normalizes that immediately:
 
-- **Split** — when the field is the `value` of a `slate` block, each extra
-
-node becomes its own `slate` block, inserted after the original in the   same container (`blocks_layout` or `object_list`). This is how pressing   Enter in a text block produces a new block.
-
-- **Flatten** — when the field *can't* be split — a slate field of a
-
-non-slate block (e.g. a `slateTable` cell's `value`), a slate field nested   on a `widget: 'object'` (`content/headline`), or a container that's full or   in table mode — the extra nodes' content merges back into the first node.   No text is lost.
+- **Split** — when the field is the `value` of a `slate` block, each extra node becomes its own `slate` block, inserted after the original in the same container (`blocks_layout` or `object_list`). This is how pressing Enter in a text block produces a new block.
+- **Flatten** — when the field *can't* be split — a slate field of a non-slate block (e.g. a `slateTable` cell's `value`), a slate field nested on a `widget: 'object'` (`content/headline`), or a container that's full or in table mode — the extra nodes' content merges back into the first node. No text is lost.
 
 A frontend renderer can therefore always assume one top-level node per slate field; it never has to handle a multi-node `value`.
 

@@ -183,13 +183,8 @@ The page's own blocks fields — declared on the `_page` schema — are the oute
 
 Rules fold from the outermost region inwards:
 
-- **\`disallowedStyles\` accumulates.** A style banned at the page level stays
-
-banned for everything nested inside it — a child region cannot re-enable it by   listing it in `allowedStyles`.
-
-- **\`allowedStyles\` replaces.** A nested region restates the list for its own
-
-subtree, and may deliberately widen it — an article region can allow `h4` even   when the page's default list stops at `h3`.
+- **\`disallowedStyles\` accumulates.** A style banned at the page level stays banned for everything nested inside it — a child region cannot re-enable it by listing it in `allowedStyles`.
+- **\`allowedStyles\` replaces.** A nested region restates the list for its own subtree, and may deliberately widen it — an article region can allow `h4` even when the page's default list stops at `h3`.
 
 ### What a disallowed style becomes
 
@@ -311,7 +306,7 @@ This replaces `dataPath`: declare the container inside the object rather than ho
 
 ## Container schema reference
 
-A block's schema is a standard [Volto block schema](https://6.docs.plone.org/volto/blocks/editcomponent.html) (fieldsets, `properties`, widgets, `default`, etc.). Inka reads three container-oriented `widget` values plus a few per-field keys — those are:
+A block's schema uses the same format as a [Volto block schema](https://6.docs.plone.org/volto/blocks/editcomponent.html), since Inka's editor builds on Volto (fieldsets, `properties`, widgets, `default`, etc.). Inka reads three container-oriented `widget` values plus a few per-field keys — those are:
 
 <block type="slateTable" table.fixed table.celled>
 
@@ -323,7 +318,7 @@ A block's schema is a standard [Volto block schema](https://6.docs.plone.org/vol
 
 </block>
 
-All three can nest inside `object`, and a container may mix a `blocks_layout` region and an `object_list` region. Everything else in a field def (`title`, `default`, `type`, `choices`, `mode`, …) is plain Volto and behaves as documented there.
+All three can nest inside `object`, and a container may mix a `blocks_layout` region and an `object_list` region. Everything else in a field def (`title`, `default`, `type`, `choices`, `mode`, …) works as in Volto and behaves as documented there.
 
 ## Rendering Containers in Your Frontend
 
@@ -433,17 +428,9 @@ announcement: {
 
 This is the one case where `"empty"` is a **configured** default rather than the fallback Inka inserts for an ambiguous region. The seed and the add diverge on purpose:
 
-- **Passive seed** (region loaded, or its last child deleted): Inka seeds a bare
-
-`@type: "empty"` placeholder — nothing renders. `defaultBlockType` wins over the   single-`allowedBlocks` auto-fill, so the region genuinely shows empty.
-
-- **The '+' (active add / fill)**: inserts a real block from `allowedBlocks`
-
-(converting the empty placeholder **in place**), never another `empty`. The add   path reads `allowedBlocks`, not `defaultBlockType` — so a single-entry   `allowedBlocks` fills straight to that type with no chooser.
-
-- **\`"empty"\` is never in \`allowedBlocks\`** — it isn't a type an editor opts into;
-
-it's the "region is empty" state. On save the placeholder is stripped, so a   genuinely-empty region persists with no blocks.
+- **Passive seed** (region loaded, or its last child deleted): Inka seeds a bare `@type: "empty"` placeholder — nothing renders. `defaultBlockType` wins over the single-`allowedBlocks` auto-fill, so the region genuinely shows empty.
+- **The '+' (active add / fill)**: inserts a real block from `allowedBlocks` (converting the empty placeholder **in place**), never another `empty`. The add path reads `allowedBlocks`, not `defaultBlockType` — so a single-entry `allowedBlocks` fills straight to that type with no chooser.
+- **\`"empty"\` is never in \`allowedBlocks\`** — it isn't a type an editor opts into; it's the "region is empty" state. On save the placeholder is stripped, so a genuinely-empty region persists with no blocks.
 
 Use this for optional site chrome — e.g. a header announcement that is usually absent but can hold a single global alert when needed. (Because the seed is `"empty"`, the frontend must render `empty` as a selectable slot — see below.)
 
@@ -566,5 +553,5 @@ When `parentControlled[childType]` is set, it **replaces** the `@default` fallba
 - **\`parentControlled\`** — `{ childType: [fieldName, ...] }` per-child-type override. Replaces the `fieldMappings['@default']` fallback.
 - **\`defaultsField\`** — prefix for the inherited fields on the parent's "Item Defaults" fieldset (default: `'itemDefaults'`).
 - **\`blockTypeSelect\`** widget options:
-
-\- **\`blocksField\`** — which sub-blocks field's `allowedBlocks` to use for the choices. Auto-discovers if omitted. Set to `'..'` when the choices should come from the *enclosing parent's* `allowedSiblingTypes`.   - **\`filterConvertibleFrom\`** — only offer types whose `fieldMappings` accept the named source. Typically `'@default'` for listings (every item type must be populatable from canonical content fields).
+- **\`blocksField\`** — which sub-blocks field's `allowedBlocks` to use for the choices. Auto-discovers if omitted. Set to `'..'` when the choices should come from the *enclosing parent's* `allowedSiblingTypes`.
+- **\`filterConvertibleFrom\`** — only offer types whose `fieldMappings` accept the named source. Typically `'@default'` for listings (every item type must be populatable from canonical content fields).

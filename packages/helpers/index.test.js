@@ -77,6 +77,65 @@ describe('buildQuerystringSearchBody — core body', () => {
   });
 });
 
+describe('buildQuerystringSearchBody — sort order when only sort_on is set', () => {
+  // Plone sorts ascending when a request names sort_on but no sort_order. A
+  // listing that sets sort_on (folder order, title, …) without sort_order must
+  // not be flipped to descending: the docs landing pages and every folder
+  // listing sorted on getObjPositionInParent rendered in reverse on live Plone.
+  // Descending is only the default for the implicit "newest first" sort.
+  const docsQuery = [
+    {
+      i: 'path',
+      o: 'plone.app.querystring.operation.string.relativePath',
+      v: '.::1',
+    },
+  ];
+
+  test('a query sorted on getObjPositionInParent with no sort_order is ascending', () => {
+    const body = buildQuerystringSearchBody(
+      { query: docsQuery, sort_on: 'getObjPositionInParent' },
+      {},
+      {},
+    );
+    expect(body.sort_on).toBe('getObjPositionInParent');
+    expect(body.sort_order).toBe('ascending');
+  });
+
+  test('a query sorted on sortable_title with no sort_order is ascending', () => {
+    const body = buildQuerystringSearchBody(
+      { query: docsQuery, sort_on: 'sortable_title' },
+      {},
+      {},
+    );
+    expect(body.sort_order).toBe('ascending');
+  });
+
+  test('a sort_on override from extraCriteria with no sort_order is ascending', () => {
+    const body = buildQuerystringSearchBody(
+      { query: docsQuery },
+      {},
+      { sort_on: 'sortable_title' },
+    );
+    expect(body.sort_on).toBe('sortable_title');
+    expect(body.sort_order).toBe('ascending');
+  });
+
+  test('an explicit sort_order is kept', () => {
+    const body = buildQuerystringSearchBody(
+      { query: docsQuery, sort_on: 'getObjPositionInParent', sort_order: 'descending' },
+      {},
+      {},
+    );
+    expect(body.sort_order).toBe('descending');
+  });
+
+  test('the implicit default sort for a configured query stays newest first', () => {
+    const body = buildQuerystringSearchBody({ query: docsQuery }, {}, {});
+    expect(body.sort_on).toBe('effective');
+    expect(body.sort_order).toBe('descending');
+  });
+});
+
 describe('buildQuerystringSearchBody — queryType (Standard vs Advanced)', () => {
   test('queryType "search" → string.search (Advanced)', () => {
     const body = buildQuerystringSearchBody({}, {}, {

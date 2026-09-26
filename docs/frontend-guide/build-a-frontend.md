@@ -60,9 +60,9 @@ Before you dive into the steps, here's what your frontend ends up doing.
 To make a site editable with Inka you break a page into:
 
 - **Blocks fields** — one or more named, ordered lists of blocks. Each is a schema property with `widget: 'blocks_layout'`; the field name is a key inside the page's `blocks_layout` dict (the default field is `items`, plus e.g. `header`, `footer`). Every field's blocks live in the page's single shared `blocks` dict; the field only records ordering.
-- **Blocks** — discrete visual elements with a schema and settings that can be moved and edited.
-
-\- Type, title, icon etc. so the user can pick from a menu.   - Fields: string, image, link etc. each with their own sidebar widget.     - `slate` is a special field that contains JSON for a paragraph, heading etc.     - `blocks` fields let a block hold other blocks.
+- **Blocks** — discrete visual elements with a schema and settings that can be moved and edited. Each block has:
+  - a type, title, icon etc. so the user can pick it from a menu;
+  - fields: string, image, link etc., each with its own sidebar widget. `slate` is a special field that holds JSON for a paragraph, heading etc., and `blocks` fields let a block hold other blocks.
 
 When the page loads inside Inka's edit iframe, you initialise the bridge and declare your blocks; otherwise you render normally from the API:
 
@@ -159,13 +159,8 @@ You can embed the Inka tags directly if you want: `<p data-edit-text="title">A c
 
 To let editors link to a spot *inside* a page, mark the element with a real `id` (the `#fragment` the browser scrolls to) **and** a linkable-anchor attribute carrying the label shown in the link picker. The attribute you pick also records the anchor's **level**, so the picker (and consumers like an in-page navigation block) can show a hierarchy:
 
-- `data-linkable-h1` … `data-linkable-h6="Label"` — a heading anchor \*\*at that
-
-level\*\*. Use these on your headings; the suffix is the level.
-
-- `data-linkable-id="Label"` — a **level-less** anchor (a figure, a defined term,
-
-any non-heading target).
+- `data-linkable-h1` … `data-linkable-h6="Label"` — a heading anchor **at that level**. Use these on your headings; the suffix is the level.
+- `data-linkable-id="Label"` — a **level-less** anchor (a figure, a defined term, any non-heading target).
 
 ### Html
 
@@ -185,7 +180,7 @@ It's your choice which elements are linkable — a common pattern is to tag ever
 
 To build something *from* the anchors — an in-page navigation ("On this page") block — **derive the list from the page content you already render**, the same way you stamp the heading `id`s. That works identically published (no bridge, JS off) and while editing: structural edits (adding, removing, reordering heading blocks) re-render your frontend with fresh content, so the nav follows them. There is no bridge callback for this — the anchors ride in the ordinary edit-form data (`block._linkableAnchors`), which is what the object browser's link picker reads; a nav rebuilds itself from content on the next render.
 
-\> One consequence: text typed into an *existing* heading updates the nav on the next > render (when you blur the block), not on every keystroke — inline text edits don't > re-render the frontend until they're flushed. Adding or removing headings updates it > immediately.
+> One consequence: text typed into an *existing* heading updates the nav on the next render (when you blur the block), not on every keystroke — inline text edits don't re-render the frontend until they're flushed. Adding or removing headings updates it immediately.
 
 If your anchors carry levels, pair the derived list with `buildAnchorTree(anchors)` (from `@hydra-js/hydra.js`) to render a nested contents list; no levels means a flat list.
 
@@ -203,15 +198,15 @@ For example, in Nuxt.js you create a file `pages/[..slug].vue`.
 
 The page has a template with the static parts of your theme like header and footer. You might also check the content type to render each differently.
 
-## 3. Fetch Content from Plone REST API
+## 3. Fetch Content from Your CMS
 
-On page setup, take the path and make a [REST API call to the contents endpoint](https://6.docs.plone.org/plone.restapi/docs/source/endpoints/content-types.html) to get the JSON for this page.
+On page setup, take the path and ask your CMS's API for the JSON of this page. Inka works with any CMS that has an [adapter](../adapters/index.md). The steps below use Plone as the worked example, because its REST API is the shape Inka's page data follows.
 
-- You can use `@plone/client` for this
-- In some frameworks (such as Nuxt.js) it's better to use their built-in fetch
-- You can also use the [Plone GraphQL API](https://2022.training.plone.org/gatsby/data.html)
+With Plone, make a [REST API call to the contents endpoint](https://6.docs.plone.org/plone.restapi/docs/source/endpoints/content-types.html):
 
-\- Note: this is just a wrapper on the REST API rather than a server-side implementation, so it's not more efficient than using the REST API directly
+- You can use `@plone/client` for this.
+- In some frameworks (such as Nuxt.js) it's better to use their built-in fetch.
+- You can also use the [Plone GraphQL API](https://2022.training.plone.org/gatsby/data.html). It is a wrapper on the REST API rather than a server-side implementation, so it is no more efficient than calling the REST API directly.
 
 ## 4. Render Page Metadata
 
@@ -237,9 +232,7 @@ Give `Block` an `@type: "empty"` case: a container region with no `defaultBlockT
 Several helper functions get reused in many blocks:
 
 1. **Generating a URL for links** — all REST API URLs are relative to the API URL, so you need to convert these to the right frontend URL
-2. **Generating a URL for an image** — blocks have image data in many formats so a helper function is useful
-
-\- You may also decide to use your framework or hosting solution for image resizing
+2. **Generating a URL for an image** — blocks have image data in many formats so a helper function is useful. You may also decide to use your framework or hosting solution for image resizing.
 
 ## 8. Listing Blocks
 
@@ -258,16 +251,16 @@ If your [REST API call returns an error](https://6.docs.plone.org/plone.restapi/
 
 ## 11. Search Blocks
 
-If you choose to allow Volto's built-in Search Block for end-user customisable search:
+If you offer the built-in search block for end-user customisable search:
 
-- Render Facets/Filters (currently not as sub-blocks but this could change)
+- Render its facets. Each facet is a typed sub-block (checkbox, select, date range, toggle) in the block's `facets` list, and the results are a child listing block. See the [Search example](../examples/search.md).
 - Build your query and make a [REST API call to query items](https://6.docs.plone.org/plone.restapi/docs/source/endpoints/querystring.html)
 
 ## 12. Form Blocks
 
-Form-block is a plugin that allows a visual form builder:
+The form block is a visual form builder:
 
-- Currently not a container with sub-blocks but this could change
+- It is a container: its fields are a typed list of sub-blocks, and each field's `field_type` picks its schema. See the [Form example](../examples/form.md).
 - Render each field type component (or limit which are available)
 - Produce a compatible JSON submission to the form-block endpoint
 - Handle field validation errors
@@ -282,7 +275,7 @@ Inka separates your production frontend from the editing experience, which gives
 The simplest setup — your frontend handles both production and editing:
 
 1. Deploy your frontend as SPA or Hybrid (SSR + client-side hydration).
-2. Deploy Inka and the Plone API server.
+2. Deploy Inka and your CMS.
 3. Log in to Inka, go to user preferences, set your frontend URL.
 
 This gives you all visual editing features including inline text editing, drag and drop, and realtime preview.
@@ -293,8 +286,8 @@ Get the speed of static generation while keeping visual editing. Deploy two vers
 
 1. **Production** — deploy your frontend in SSG or SSR mode (fast, cacheable).
 2. **Editing** — deploy the same frontend in SPA mode to a separate URL (used only inside Inka).
-3. **Inka + Plone** — only needs to run during editing, so scale-to-zero / serverless works.
-4. **SSG rebuild** — for SSG, configure [collective.webhook](https://github.com/collective/collective.webhook) to trigger a rebuild on edit. SSR doesn't need this.
+3. **Inka** — only needs to run during editing, so scale-to-zero / serverless works. See [Deploy and secure Inka](../deploy-and-secure.md).
+4. **SSG rebuild** — for SSG, have your CMS trigger a rebuild when content changes (with Plone, use [collective.webhook](https://github.com/collective/collective.webhook)). SSR doesn't need this.
 
 ### Example: the Nuxt.js demo
 

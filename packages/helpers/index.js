@@ -237,13 +237,18 @@ export function buildQuerystringSearchBody(
     }
   }
 
-  // Default sort: folder order for unconfigured listings, effective date for configured ones
+  // Default sort: folder order for unconfigured listings, effective date
+  // (newest first) for configured ones. Descending is the default ONLY for that
+  // implicit effective-date sort. A listing that names its own sort_on without a
+  // sort_order gets Plone's own default, ascending — forcing descending there
+  // reversed every folder-order listing on real Plone.
+  const explicitSortOn = extraCriteria.sort_on || queryConfig?.sort_on;
   const defaultSort = hasQuery ? 'effective' : 'getObjPositionInParent';
-  const defaultOrder = hasQuery ? 'descending' : 'ascending';
+  const defaultOrder = hasQuery && !explicitSortOn ? 'descending' : 'ascending';
 
   const body = {
     query,
-    sort_on: extraCriteria.sort_on || queryConfig?.sort_on || defaultSort,
+    sort_on: explicitSortOn || defaultSort,
     sort_order:
       extraCriteria.sort_order || queryConfig?.sort_order || defaultOrder,
     b_start,

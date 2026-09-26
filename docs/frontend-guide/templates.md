@@ -239,7 +239,7 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 
 ```javascript
 import { loadTemplates, expandTemplatesSync, expandTemplates }
-    from '@hydra-js/hydra.js';
+    from '@hydra-js/helpers';
 
 const loadTemplate = async (id) =>
     fetch(`${apiBase}${id}`).then(r => r.json());

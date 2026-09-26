@@ -56,7 +56,7 @@ The frontend can also mark certain links as **always navigable during edit mode*
 
 </block>
 
-The Quanta toolbar's link icon does the same thing and is available on slate text fields too — select some text, click the link icon, and the link picker opens for that text range.
+The block toolbar's link icon does the same thing and is available on slate text fields too — select some text, click the link icon, and the link picker opens for that text range.
 
 ## Linking to a spot inside a page
 

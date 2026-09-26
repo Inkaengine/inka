@@ -1,49 +1,58 @@
-# Volto Hydra (volto-hydra)
+# Inka
 
-A **Visual Headless CMS** using Plone as a server, with an Administration interface based on Volto. Hydra provides a true visual editor with drag-and-drop blocks and editable text — with **any frontend stack you choose**. No assumptions. No learning curve.
+Inka is a design-system-first page builder for any CMS. It is open source under the [MIT licence](./LICENSE).
 
-## Why Hydra?
+Your components are your blocks, and your design system's rules are applied while people edit, so editors can build pages people want to read without breaking the design system. Inka is the editing and governance layer, not a CMS: content stays in your CMS, and your front ends, in any framework, render it.
 
-- **Visual + true Headless + Open Source** — a unique combination in the CMS space
-- **Framework agnostic** — Next.js, Nuxt.js, Astro, or any stack you want
-- **Quick to enable** — visual editing comes from simple HTML data attributes; no React or Vue required in your frontend
-- **Omni-channel** — switch between multiple frontends mid-edit
-- **Enterprise features** — versioning, i18n, workflow, automated content rules
-- **Customisable** — both the admin interface and block definitions
-- **Choice of backend** — Python (Plone) or JavaScript (Nick) for the server
-- **Battle-hardened** — Plone is used by both the CIA and FBI
+Inka is ready for production and in use on NSW Government sites. See the [case studies](https://inka.sh/case-studies).
+
+- Website: <https://inka.sh>
+- Documentation: <https://inka.sh/docs>
+- Security: see [SECURITY.md](./SECURITY.md)
+
+## How it works
+
+- **The CMS** keeps content, workflow, users and permissions. It connects to Inka through an [adapter](./docs/adapters/index.md).
+- **Inka** does the page building and applies the rules each front end declares.
+- **Front ends** render the pages. During editing, Inka opens the front end in an iframe and a small bridge script, `hydra.js`, talks to it over `postMessage`. The public site never loads Inka or the bridge.
+
+The `hydra` name in the bridge script, attributes and package names is the project's former name, kept for compatibility.
 
 ## Try the online demo
 
-Log in to <https://hydra.pretagov.com>, open user preferences (bottom left), and either pick a preset frontend or paste in your own URL. The default frontend is the [Nuxt.js demo](https://hydra-nuxt-flowbrite.netlify.app/) — deployed as SSG to demonstrate scale-to-zero editing on free hosting.
+Open [admin.inka.sh](https://admin.inka.sh) and log in as **admin** / **admin**. Open user preferences (bottom left), and either pick a preset front end or paste in your own URL. The demo resets overnight.
 
 ## Documentation
 
-Full documentation is in the [`docs/`](./docs/) directory (built with Sphinx).
+The docs live in [`docs/`](./docs/) and are published at <https://inka.sh/docs>.
 
 | Topic | Where |
 | ----- | ----- |
-| What it is, quick start, run locally | [`docs/getting-started/`](./docs/getting-started/index.md) |
-| What your editors will experience | [`docs/what-editors-will-experience/`](./docs/what-editors-will-experience/index.md) |
-| How to build (architecture, blocks, listings, templates, deployment, step-by-step) | [`docs/how-to-build/`](./docs/how-to-build/index.md) |
-| Block examples (slate, image, teaser, listing, search, hero, columns, accordion, slider, form, …) | [`docs/examples/`](./docs/examples/README.md) |
+| How Inka works | [`docs/architecture.md`](./docs/architecture.md) |
+| Deploy and secure Inka | [`docs/deploy-and-secure.md`](./docs/deploy-and-secure.md) |
+| Build a front end | [`docs/frontend-guide/`](./docs/frontend-guide/index.md) |
+| What editors will experience | [`docs/editor-guide/`](./docs/editor-guide/index.md) |
+| Rules and checks | [`docs/compliance/`](./docs/compliance/index.md) |
+| Connect a CMS | [`docs/adapters/`](./docs/adapters/index.md) |
+| Testing and the mock API | [`docs/testing/`](./docs/testing/index.md) |
+| Block examples | [`docs/examples/`](./docs/examples/index.md) |
 
 ## Run locally for development
 
 Clone the repository:
 
 ```bash
-git clone https://github.com/collective/volto-hydra.git
-cd volto-hydra
+git clone https://github.com/Inkaengine/inka.git
+cd inka
 ```
 
-Start the Plone REST API:
+Start a Plone REST API to edit against:
 
 ```bash
 docker run -it -d --rm --name=api -p 8080:8080 -e SITE=Plone -e CORS_ALLOW_ORIGIN='*' plone/server-dev:6
 ```
 
-Start an example frontend (Nuxt.js):
+Start an example front end (Nuxt.js):
 
 ```bash
 cd examples/nuxt-blog-starter
@@ -51,64 +60,39 @@ pnpm install
 NUXT_PUBLIC_BACKEND_BASE_URL=http://localhost:8080/Plone pnpm run dev
 ```
 
-Frontend at <http://localhost:3000>. To edit, start the Hydra admin:
+The front end runs at <http://localhost:3000>. To edit, install and start Inka:
 
 ```bash
 cd ../..
 make install
-RAZZLE_API_PATH="http://localhost:8080/Plone" RAZZLE_DEFAULT_IFRAME_URL=http://localhost:3000 pnpm start
+pnpm build:deps
+PORT=3001 RAZZLE_API_PATH="http://localhost:8080/Plone" RAZZLE_DEFAULT_IFRAME_URL=http://localhost:3000 pnpm start
 ```
 
-Log in at <http://localhost:3001>.
+Log in at <http://localhost:3001> as **admin** / **admin**.
 
-### Run only your frontend, against the deployed CMS
+### Run only your front end, against the demo
 
-If you don't want to run Plone + Hydra locally and just want to develop your frontend against the deployed admin:
+If you don't want to run Plone and Inka locally, develop your front end against the demo:
 
 ```bash
 cd examples/nuxt-blog-starter
 pnpm install
-NUXT_PUBLIC_BACKEND_BASE_URL=https://hydra-api.pretagov.com pnpm run dev
+NUXT_PUBLIC_BACKEND_BASE_URL=https://api.inka.sh pnpm run dev
 ```
 
-Then log in at <https://hydra.pretagov.com/> and add your local frontend URL (`http://localhost:3000`) in personal preferences.
+Then log in at <https://admin.inka.sh> and add your local front end (`http://localhost:3000`) in personal preferences.
 
-## Example frontends
+### Tests
+
+Run the unit tests with `pnpm test` (after `pnpm build:deps`) and `cd packages/hydra-js && pnpm test`. For the Playwright suite, see the [test suite README](./tests-playwright/README.md). To run the checks against your own front end, see [Testing and the mock API](./docs/testing/index.md).
+
+## Example front ends
 
 - [Nuxt.js](./examples/nuxt-blog-starter)
 - [Next.js](./examples/hydra-nextjs)
 - [F7-Vue](./examples/hydra-vue-f7)
 
-## How Hydra works (in one diagram)
+## Issues and contributions
 
-Editing and rendering are separated. During editing the frontend runs inside an iframe owned by Hydra's admin UI; a small `hydra.js` bridge handles two-way `postMessage` communication. When not editing, the frontend just renders content from the REST API — no admin code involved.
-
-```text
-                  Browser            REST API           Server
-
-              ┌──────────────┐                       ┌─────────────┐
- Anon/Editing │    Volto     │◄─────────────────────►│    Plone    │
-              └──────────────┘                       └─────────────┘
-
-──────────────────────────────────────────────────────────────────────
-
-          │   ┌──────────────┐                       ┌─────────────┐
-          │   │   Frontend   │◄──────────────────────┤    Plone    │
-          │   └──hydra.js────┘                       └─────────────┘
-          │          ▲                                  ▲
- Editing UI          │ iframe bridge                    │
-          │          ▼                                  │
-          │   ┌──────────────┐                          │
-          │   │    Hydra     │◄─────────────────────────┘
-          │   └──────────────┘
-
-              ┌──────────────┐                       ┌─────────────┐
- Anon         │   Frontend   │◄──────────────────────┤    Plone    │
-              └──────────────┘                       └─────────────┘
-```
-
-For the full architecture (chrome pattern, slate transforms, frontend integration steps), see [`docs/how-to-build/architecture.md`](./docs/how-to-build/architecture.md).
-
-## Project status & roadmap
-
-[Hydra project board](https://github.com/orgs/collective/projects/3/views/4).
+Report bugs and ideas in [GitHub issues](https://github.com/Inkaengine/inka/issues). Report security problems privately, as described in [SECURITY.md](./SECURITY.md).

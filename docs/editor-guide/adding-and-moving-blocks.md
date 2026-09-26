@@ -68,7 +68,7 @@ If the current block is itself a container, `Enter` creates a new container of t
 
 ### Drag and drop
 
-Each selected block has a **drag handle** in the Quanta toolbar above it. Click and drag from there to move the block somewhere else. While dragging:
+Each selected block has a **drag handle** in the block toolbar above it. Click and drag from there to move the block somewhere else. While dragging:
 
 - A **line indicator** shows where the block will land between siblings.
 - A **shaded overlay** highlights the whole drop target when you hover over an empty container — dropping there places the block as the container's first child (replacing the empty placeholder rather than landing as a sibling).

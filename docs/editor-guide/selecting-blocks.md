@@ -57,7 +57,7 @@ Click on a block in the preview. If the frontend marks any of its fields as inli
 
 - A subtle border appears around the block.
 - The field you're editing gets a faint underline.
-- The Quanta toolbar appears above the block (formatting, convert-to, delete, etc.).
+- The block toolbar appears above the block (formatting, convert-to, delete, etc.).
 - The sidebar switches to that block's settings.
 
 ![Slate paragraph in text mode — cursor in the field, sidebar showing block's settings.](../images/block-selected.png)
@@ -68,8 +68,9 @@ Press `Escape` to leave text editing. The block stays selected, but you're no lo
 
 - A full border appears around the block (visually stronger than the text-mode hint).
 - Keyboard shortcuts now operate on the whole block:
-
-\- **Arrow Up / Down** — move selection to the previous / next sibling block (container-aware: jumps into and out of containers).   - **Enter** — add a new block after this one.   - **Delete / Backspace** — remove the selected block.
+- **Arrow Up / Down** — move selection to the previous / next sibling block (container-aware: jumps into and out of containers).
+- **Enter** — add a new block after this one.
+- **Delete / Backspace** — remove the selected block.
 
 Press `Escape` again to **deselect** (or go up to the parent container if this block is inside one). Each `Escape` walks one step up the hierarchy.
 
@@ -98,7 +99,7 @@ While multiple blocks are selected:
 
 - A combined bounding box is drawn around them.
 - `Delete` / `Backspace` removes all of them.
-- The Quanta toolbar dropdown offers actions that apply to all (e.g. "Wrap in...", see [Containers](./containers.md)).
+- The block toolbar dropdown offers actions that apply to all (e.g. "Wrap in...", see [Containers](./containers.md)).
 - The sidebar shows the count and lists each selected block by type.
 
 ![Two adjacent paragraphs multi-selected — combined bounding box, sidebar shows "2 selected", toolbar shows count badge.](../images/multi-select.png)

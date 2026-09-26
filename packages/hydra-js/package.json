@@ -13,7 +13,7 @@
   "type": "module",
   "keywords": [],
   "author": "",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "devDependencies": {
     "esbuild": "^0.28.0",
     "jest": "^30.0.0",

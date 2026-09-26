@@ -5,8 +5,9 @@ allow_discussion: false
 contributors: []
 creators:
   - admin
-description: Get the Inka bridge into your project — prerequisites, loading
-  hydra.js, and the minimal initBridge() call that makes a page editable.
+description: Get the Inka bridge into your project — prerequisites, getting and
+  loading hydra.js, and the minimal initBridge() call that makes a page
+  editable.
 effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 review_state: published
@@ -32,8 +33,29 @@ Adding Inka to a frontend is a small script and a few HTML attributes — there 
 
 ## Prerequisites
 
-- A running Inka admin and content backend for editors to log into (the hosted demo at <https://admin.inka.sh> works while you develop).
+- A running Inka admin and content backend for editors to log into (the hosted demo at [admin.inka.sh](https://admin.inka.sh) works while you develop).
 - A frontend that renders your content — any framework, or none. The bridge only runs when the page is opened inside the admin's edit iframe.
+
+## Get the bridge
+
+The bridge is one JavaScript file, `hydra.js`. It is not published to npm, so build it from the Inka repository:
+
+### Shell
+
+```shell
+git clone https://github.com/Inkaengine/inka.git
+cd inka
+make install
+pnpm -F @volto-hydra/hydra-js build
+```
+
+This writes `packages/hydra-js/hydra.js`: a single ES module with its dependencies bundled in. Copy it into your front end. The [Nuxt example](https://github.com/Inkaengine/inka/tree/main/examples/nuxt-blog-starter) does this in its `sync-hydra` script before every build.
+
+The render helpers used on some pages, such as `expandListingBlocks` and `expandTemplates`, are in `packages/helpers/index.js`, a single ES module with no dependencies. Copy it too if you use them. It is safe to import on the server.
+
+These docs import the two files as `@hydra-js/hydra.js` and `@hydra-js/helpers`. Those are names you give them yourself, with an alias in your bundler (the Nuxt example sets both in `nuxt.config.ts`), or import the files by path instead.
+
+The `hydra` name in the file, the `hydra-edit:` and `hydra-view:` iframe names and the `<!-- hydra -->` comments is Inka's former name, kept for compatibility.
 
 ## Load hydra.js
 
