@@ -10,6 +10,11 @@ import { getAccessToken } from '@hydra-js/hydra.js';
 // in edit mode. Nav is a site-level concern, doesn't change per page,
 // safe to fetch once.
 export default async function useSiteNav() {
+  // Everything that needs the Nuxt app is taken BEFORE the first await. On the
+  // server, a composable loses the app after it awaits, and useState then throws
+  // "[nuxt] instance unavailable" — which prerendered the home page as a 500 and
+  // failed the whole static build (the browser-only test env never saw it).
+  const nuxtApp = useNuxtApp();
   const runtimeConfig = useRuntimeConfig();
   const route = useRoute();
 
@@ -21,7 +26,9 @@ export default async function useSiteNav() {
   const segment = route.path.split('/').filter(Boolean)[0];
   const language = languages.value?.includes(segment) ? segment : null;
 
-  const nav = useState(`hydra-site-nav:${language || ''}`, () => null);
+  const nav = nuxtApp.runWithContext(() =>
+    useState(`hydra-site-nav:${language || ''}`, () => null),
+  );
   if (nav.value) return nav;
   const headers = { Accept: 'application/json' };
   const token = route.query.access_token || getAccessToken();
