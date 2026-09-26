@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nativeActionsFrom } from './nativeActions';
+import { nativeActionsFrom, nativeActionForPanel } from './nativeActions';
 
 /**
  * The shape here is Plone's, because that is what the admin's store holds by
@@ -41,5 +41,55 @@ describe('nativeActionsFrom', () => {
     expect(
       nativeActionsFrom({ object: [{ id: 'view', title: 'View', url: 'http://cms/' }] }),
     ).toEqual([]);
+  });
+});
+
+describe('nativeActionForPanel', () => {
+  // Volto has its own Site Setup and Profile screens. Against a CMS that is not
+  // Plone they would call endpoints that do not exist, so the adapter offers its
+  // own screen instead — but "the site category" is not enough to find it:
+  // WordPress declares TWO site actions (settings and the media library), and
+  // picking the first would be a coin flip. The adapter says which one answers
+  // a known screen.
+  const store = {
+    object: [{ id: 'edit', title: 'Edit' }],
+    site_actions: [
+      { id: 'wp-media', title: 'Media library', url: 'http://cms/wp-admin/upload.php', native: true },
+      {
+        id: 'wp-settings',
+        title: 'Site settings',
+        url: 'http://cms/wp-admin/options-general.php',
+        native: true,
+        panel: 'site-setup',
+      },
+    ],
+    user: [
+      {
+        id: 'preferences',
+        title: 'Your profile',
+        url: 'http://cms/wp-admin/profile.php',
+        native: true,
+        panel: 'profile',
+      },
+    ],
+  };
+
+  it('finds the action the adapter marked as answering a screen', () => {
+    expect(nativeActionForPanel(store, 'site-setup').id).toBe('wp-settings');
+    expect(nativeActionForPanel(store, 'profile').id).toBe('preferences');
+  });
+
+  it('says nothing when the CMS offers no such screen', () => {
+    // Plone: Volto's own screens work against it, so it declares none and the
+    // admin keeps its own link. An empty answer here is the signal for that.
+    expect(nativeActionForPanel({ object: [], site_actions: [], user: [] }, 'site-setup')).toBeNull();
+    expect(nativeActionForPanel(undefined, 'profile')).toBeNull();
+  });
+
+  it('ignores a marked action with nowhere to go', () => {
+    // A permission flag carries no url; rendering it as a link sends the editor
+    // nowhere, which is worse than showing Volto's own screen.
+    const flagged = { site_actions: [{ id: 'x', title: 'X', panel: 'site-setup' }] };
+    expect(nativeActionForPanel(flagged, 'site-setup')).toBeNull();
   });
 });

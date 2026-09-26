@@ -160,6 +160,50 @@ export function routeToIntent({ op, path, data }) {
           // the folder it was added to.
           { intent: 'types.list', args: { path: contextPath } };
 
+    // What the deployment is, as opposed to what any document is: the default
+    // language, the languages offered, and which features are on. The admin
+    // gates real affordances on this — `features.multilingual` decides whether
+    // Manage Translations exists — so with no case here every one of them
+    // silently disappeared in a bridge session, because the read fell to the
+    // default below and returned null.
+    case 'site':
+      return { intent: 'site.get', args: {}, endpoint };
+
+    // The translation group, both ways. Volto's translation table sends all
+    // four of these; with no case here they fell to the default, returned null,
+    // and the table rendered against a group that had never been fetched.
+    case 'translations':
+      if (op === 'post') {
+        // Volto sends the document to bring INTO the group, as a path.
+        return {
+          intent: 'translations.link',
+          args: { path: contextPath, target: data?.id },
+          endpoint,
+        };
+      }
+      if (op === 'del') {
+        // Leaving names a LANGUAGE, not a path: the group holds one item per
+        // language, so the language identifies which to drop.
+        return {
+          intent: 'translations.unlink',
+          args: { path: contextPath, language: data?.language },
+          endpoint,
+        };
+      }
+      return { intent: 'translations.get', args: { path: contextPath }, endpoint };
+
+    // Where a translation belongs, which the CMS decides — plone.app.multilingual
+    // walks up for the closest translated parent rather than assuming the
+    // language's root folder.
+    case 'translation-locator':
+      return {
+        intent: 'translations.locate',
+        // A URLSearchParams, so ask it — property access reads undefined and
+        // the locator would be asked to find "a translation into nothing".
+        args: { path: contextPath, language: params.get('target_language') },
+        endpoint,
+      };
+
     case 'querystring':
       return { intent: 'querystring.getIndexes', args: {} };
 

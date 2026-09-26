@@ -691,6 +691,8 @@ export class DrupalAdapter extends BaseAdapter {
               title: 'Your profile',
               url: `${this.cmsBaseUrl}/user`,
               category: 'user',
+              // Answers the admin's own Profile screen.
+              panel: 'profile',
             },
           ],
         };
@@ -844,6 +846,41 @@ export class DrupalAdapter extends BaseAdapter {
         // configuration, so the original is the honest answer rather than a
         // fabricated style URL that would 404.
         return `${this.cmsBaseUrl}${args.path}`;
+      }
+
+      // Drupal reports its configured languages through JSON:API when the
+      // Language module is on. When it is off there is exactly one language and
+      // no endpoint for it, which is not an error — it is the answer.
+      //
+      // `multilingual` follows the same evidence: more than one configured
+      // language is what makes a translation possible here, so it is derived
+      // rather than declared, and a single-language Drupal reports false.
+      case 'site.get': {
+        let languages = [];
+        let defaultLanguage = null;
+        try {
+          const payload = await this.fetchJson(
+            '/jsonapi/configurable_language/configurable_language',
+          );
+          for (const entry of payload?.data ?? []) {
+            const code = entry?.attributes?.drupal_internal__id;
+            // Drupal lists two pseudo-languages of its own that no content is
+            // ever in.
+            if (!code || code === 'und' || code === 'zxx') continue;
+            languages.push(code);
+            if (entry?.attributes?.default) defaultLanguage = code;
+          }
+        } catch {
+          // The Language module is not installed. One language, unnamed here.
+          languages = [];
+        }
+        defaultLanguage = defaultLanguage ?? languages[0] ?? 'en';
+        if (!languages.length) languages = [defaultLanguage];
+        return {
+          defaultLanguage,
+          languages,
+          features: { multilingual: languages.length > 1 },
+        };
       }
 
       case 'querystring.getIndexes': {

@@ -166,7 +166,6 @@ An adapter is any object with this shape. In TypeScript it is the `HydraAdapter`
   capabilities: ['content', 'search-fulltext'],
   async init(ctx) {},                  // ctx.cmsBaseUrl, ctx.emit(event, payload)
   async whoami() {},                   // the signed-in user, or null
-  getAdminUrl(panel) {},               // deep link into the CMS's own admin, or null
   async dispatch(intent, args) {},     // do the work
 }
 ```

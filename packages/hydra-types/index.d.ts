@@ -22,6 +22,20 @@ export type Capability =
   | 'per-content-permissions'
   /** Supports inherit-from-parent / break-inheritance. Plone-only in practice. */
   | 'hierarchical-permissions'
+  /**
+   * Can hold the same document in several languages, linked to each other.
+   *
+   * A group of documents, one per language, that know about each other — not a
+   * translated interface, and not a language field on a document. Plone has it
+   * through plone.app.multilingual; core WordPress needs a plugin, so vanilla
+   * WordPress must not claim it; Drupal has it when more than one language is
+   * configured.
+   *
+   * Everything the admin offers for translations is gated on this, because a
+   * translation that cannot exist is worse to offer than to omit: the editor
+   * fills in a form and the save fails.
+   */
+  | 'multilingual'
   | 'versioning'
   | 'sharing'
   | 'comments'
@@ -59,6 +73,15 @@ export type Intent =
   | 'vocabulary.get'
   | 'asset.upload'
   | 'asset.imageUrl'
+  | 'site.get'
+  /** The languages this document exists in, as a group. */
+  | 'translations.get'
+  /** Put an existing document into this one's translation group. */
+  | 'translations.link'
+  /** Take a language out of this one's translation group. */
+  | 'translations.unlink'
+  /** Where a translation into a given language should be created. */
+  | 'translations.locate'
   | 'auth.whoami'
   /**
    * End the session. The credential lives in the adapter, so signing out is
@@ -335,6 +358,5 @@ export interface HydraAdapter {
   capabilities: Capability[];
   init(ctx: AdapterContext): Promise<void>;
   whoami(): Promise<User | null>;
-  getAdminUrl(panel: string): string | null;
   dispatch(intent: Intent, args: unknown): Promise<unknown>;
 }

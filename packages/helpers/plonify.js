@@ -59,6 +59,7 @@ function componentsToPlone(context, path) {
     types: (value) => plonify('types.list', value, { path }),
     actions: (value) => actionsToPlone(value),
     querystring: (value) => plonify('querystring.getIndexes', value, { path }),
+    translations: (value) => plonify('translations.get', value, { path }),
   };
   return Object.fromEntries(
     Object.entries(context).map(([name, value]) => {
@@ -172,6 +173,10 @@ function actionsToPlone(pas) {
       ...(declared.url ? { url: declared.url } : {}),
       // How it opens travels with it; the toolbar decides nothing on its own.
       ...(declared.target ? { target: declared.target } : {}),
+      // Which of the admin's own screens this one answers, where the adapter
+      // says so. The category cannot carry that: a CMS may offer several `site`
+      // screens and only one of them is Site Setup.
+      ...(declared.panel ? { panel: declared.panel } : {}),
       native: Boolean(declared.url),
     };
     if (existing === -1) category.push(entry);
@@ -268,6 +273,51 @@ export function plonify(intent, result, { path, endpoint } = {}) {
     case 'state.get':
     case 'state.transition':
       return permissionsToPlone(result);
+
+    // The translation group, in the shape Volto's table reads: it walks
+    // `items` and takes `@id` and `language` off each entry. An empty list
+    // matters as much as a full one — the view reads `.items` before checking
+    // it, so a missing list throws where an empty one renders "not translated
+    // yet".
+    case 'translations.get':
+      return {
+        ...(path ? { '@id': `${path}/@translations` } : {}),
+        items: (result?.items ?? []).map((item) => ({
+          '@id': item.path,
+          language: item.language,
+          ...(item.title ? { title: item.title } : {}),
+        })),
+      };
+
+    // Where a translation belongs. The CMS decides — plone.app.multilingual
+    // walks up for the closest translated parent — and Volto reads the place
+    // off `@id`.
+    case 'translations.locate':
+      return { '@id': result?.path };
+
+    // Linking and unlinking answer with nothing; Volto only checks they
+    // succeeded, and the table refetches the group afterwards.
+    case 'translations.link':
+    case 'translations.unlink':
+      return result ?? {};
+
+    // What the deployment is. Volto reads these keys by name —
+    // `state.site.data['plone.default_language']`, `.features.multilingual` —
+    // so the canonical answer arrives under Plone's own spellings or the admin
+    // decides it is a single-language site with no default language, whatever
+    // the CMS actually said.
+    //
+    // `multilingual` is false unless the adapter says otherwise: a CMS that
+    // cannot hold translations must not have the admin offer to make them.
+    case 'site.get':
+      return {
+        'plone.default_language': result?.defaultLanguage,
+        'plone.available_languages': result?.languages ?? [
+          result?.defaultLanguage,
+        ].filter(Boolean),
+        ...(result?.title ? { 'plone.site_title': result.title } : {}),
+        features: { multilingual: Boolean(result?.features?.multilingual) },
+      };
 
     default:
       return result;

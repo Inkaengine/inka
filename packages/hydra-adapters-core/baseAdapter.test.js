@@ -55,3 +55,53 @@ test('rejects an unsupported intent with NOT_IMPLEMENTED', async () => {
     code: 'NOT_IMPLEMENTED',
   });
 });
+
+describe('an expansion the adapter cannot serve', () => {
+  /**
+   * The document is what was asked for; the bundle beside it is a convenience.
+   *
+   * The admin declares its expansion bundle STATICALLY — it cannot wait for an
+   * adapter to announce what it supports, because the first content request
+   * goes out while the announcement is still in flight (see bridge/client.js).
+   * So every adapter is asked for the same bundle, and one that cannot serve a
+   * member of it must not take the document down with it.
+   *
+   * `translations` is the case that forced this: only a CMS with a multilingual
+   * story can answer it, and a WordPress content read must not fail because the
+   * admin asked whether the page had a German version.
+   */
+  class HalfAdapter extends BaseAdapter {
+    constructor() {
+      super({ name: 'half', capabilities: ['content'] });
+    }
+
+    // `dispatchOnce` is the one adapters implement; BaseAdapter.dispatch wraps
+    // it with retention and the 401 retry.
+    async dispatchOnce(intent, args) {
+      if (intent === 'breadcrumbs.get') return { items: [{ title: 'Home' }] };
+      throw new AdapterError(`half does not implement '${intent}'`, {
+        code: 'NOT_IMPLEMENTED',
+        status: 501,
+      });
+    }
+  }
+
+  it('is omitted, and the rest of the bundle still arrives', async () => {
+    const adapter = new HalfAdapter();
+    const context = await adapter.expandContext('/news', [
+      'breadcrumbs',
+      'translations',
+    ]);
+    expect(context.breadcrumbs).toEqual({ items: [{ title: 'Home' }] });
+    expect('translations' in context).toBe(false);
+  });
+
+  it('still refuses a name that is not an expansion at all', async () => {
+    // A typo must fail: it is a bug in the caller, not a capability the CMS
+    // lacks, and swallowing it would hide the mistake behind a missing key.
+    const adapter = new HalfAdapter();
+    await expect(adapter.expandContext('/news', ['nonesuch'])).rejects.toThrow(
+      /unknown expansion/i,
+    );
+  });
+});

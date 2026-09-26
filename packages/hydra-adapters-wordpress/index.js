@@ -763,6 +763,9 @@ export class WordPressAdapter extends BaseAdapter {
               title: 'Your profile',
               url: `${this.cmsBaseUrl}/wp-admin/profile.php`,
               category: 'user',
+              // Answers the admin's own Profile screen, which against
+              // WordPress would PATCH endpoints that do not exist.
+              panel: 'profile',
             },
             {
               id: 'wp-settings',
@@ -770,6 +773,9 @@ export class WordPressAdapter extends BaseAdapter {
               url: `${this.cmsBaseUrl}/wp-admin/options-general.php`,
               category: 'site',
               target: 'window',
+              // Answers Site Setup. The media library above is also `site`,
+              // which is why the category alone cannot say this.
+              panel: 'site-setup',
             },
           ],
         };
@@ -1192,6 +1198,27 @@ export class WordPressAdapter extends BaseAdapter {
         // the 30s limit — invalidating more than changed is not free when a
         // request costs a second.
         return null;
+      }
+
+      // WordPress keeps this in its settings endpoint. `language` is a WP
+      // locale ('en_US'), and the admin wants a language tag, so the region is
+      // dropped — 'en_US' and 'en_GB' are both English as far as choosing the
+      // interface language goes.
+      //
+      // `multilingual: false` is the honest answer for core WordPress: holding
+      // a page in two languages needs a plugin (Polylang, WPML), and until this
+      // adapter detects one, offering to create a translation would offer
+      // something that cannot exist.
+      case 'site.get': {
+        const settings = await this.fetchJson('/wp/v2/settings');
+        const locale = settings?.language ?? 'en_US';
+        const defaultLanguage = locale.split(/[_-]/)[0];
+        return {
+          defaultLanguage,
+          languages: [defaultLanguage],
+          ...(settings?.title ? { title: settings.title } : {}),
+          features: { multilingual: false },
+        };
       }
 
       case 'querystring.getIndexes': {

@@ -29,6 +29,7 @@ export const EXPANSIONS = {
   actions: (path) => ['state.get', { path }],
   types: (path) => ['types.list', { path }],
   querystring: () => ['querystring.getIndexes', {}],
+  translations: (path) => ['translations.get', { path }],
 };
 
 const READ_CACHE_LIMIT = 500;
@@ -244,10 +245,6 @@ export class BaseAdapter {
     return null;
   }
 
-  getAdminUrl() {
-    return null;
-  }
-
   /**
    * Refuse form values the transition's own schema did not declare.
    *
@@ -342,10 +339,29 @@ export class BaseAdapter {
     const entries = await Promise.all(
       expand.map(async (name) => {
         const [intent, intentArgs] = EXPANSIONS[name](path);
-        return [name, await this.dispatchOnce(intent, intentArgs)];
+        try {
+          return [name, await this.dispatchOnce(intent, intentArgs)];
+        } catch (error) {
+          // An expansion this CMS cannot serve is omitted, not fatal. The
+          // DOCUMENT is what was asked for; the bundle beside it is a
+          // convenience, and taking the read down with it would mean a
+          // WordPress page failing to load because the admin asked whether it
+          // had a German version.
+          //
+          // The admin cannot avoid asking: its bundle is declared statically,
+          // before any adapter has announced what it supports, because the
+          // first content request goes out while that announcement is still in
+          // flight (bridge/client.js says so at length).
+          //
+          // Only this one reason, though. Anything else — a refused session, a
+          // CMS that is down, a malformed answer — is a real failure and stays
+          // one, or expansion becomes a place where errors go to be forgotten.
+          if (error?.code === 'NOT_IMPLEMENTED') return [name, undefined];
+          throw error;
+        }
       }),
     );
-    return Object.fromEntries(entries);
+    return Object.fromEntries(entries.filter(([, value]) => value !== undefined));
   }
 
   /** Attach an expansion bundle to a document, if one was asked for. */

@@ -258,3 +258,42 @@ describe('state.transition with data', () => {
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   });
 });
+
+/**
+ * Screens the CMS answers for itself.
+ *
+ * Volto has its own Profile and Site Setup. Against a CMS that is not Plone
+ * they would call endpoints that do not exist, so an adapter may declare an
+ * action that answers one of those screens instead, marked with `panel`.
+ *
+ * The mark is what the toolbar looks for, and it is only useful if it is
+ * honest: a panel with no destination is a dead link where a working screen
+ * used to be, and two actions claiming the same panel means the toolbar picks
+ * by position — the coin flip the mark exists to avoid.
+ */
+describe('native screens', () => {
+  const PANELS = ['profile', 'site-setup'];
+
+  it('marks at most one action per screen, and each has somewhere to go', async () => {
+    if (!advertises('state')) return;
+    const pas: any = await target.adapter.dispatch('state.get', { path: PATH });
+    const declared = (pas.actions ?? []).filter((a: any) => a.panel);
+
+    for (const action of declared) {
+      expect(
+        PANELS,
+        `${action.id} claims an unknown screen '${action.panel}'`,
+      ).toContain(action.panel);
+      expect(
+        typeof action.url === 'string' && action.url.length > 0,
+        `${action.id} claims '${action.panel}' with no url`,
+      ).toBe(true);
+    }
+
+    const claimed = declared.map((a: any) => a.panel);
+    expect(
+      claimed.length,
+      `two actions claim the same screen: ${claimed.join(', ')}`,
+    ).toBe(new Set(claimed).size);
+  });
+});

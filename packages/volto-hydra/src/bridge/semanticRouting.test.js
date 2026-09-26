@@ -30,8 +30,80 @@ describe('routeToIntent', () => {
     ['del', '/news/first-post', 'content.delete'],
     ['get', '/news/@breadcrumbs', 'breadcrumbs.get'],
     ['post', '/news/@workflow/publish', 'state.transition'],
+    ['get', '/@site', 'site.get'],
+    ['get', '/en/about/@translations', 'translations.get'],
+    ['post', '/en/about/@translations', 'translations.link'],
+    ['del', '/en/about/@translations', 'translations.unlink'],
+    ['get', '/en/about/@translation-locator?target_language=de', 'translations.locate'],
   ])('%s %s -> %s', (op, path, intent) => {
     expect(routeToIntent({ op, path, data: {} })?.intent).toBe(intent);
+  });
+
+  /**
+   * The admin gates real features on what @site says — `features.multilingual`
+   * decides whether Manage Translations exists at all. In a bridge session that
+   * read has nowhere to go: the router had no case for it, so it fell to the
+   * default and returned null, and every multilingual affordance silently
+   * vanished against every adapter.
+   */
+  /**
+   * The translation group, both ways. Volto's own table sends all four of these
+   * at Plone paths, and with no case for them every one fell to the default and
+   * returned null — so against an adapter the table rendered, then threw when it
+   * read a group that had never been fetched.
+   */
+  it('carries what each translation call is about', () => {
+    expect(
+      routeToIntent({ op: 'get', path: '/en/about/@translations', data: {} }),
+    ).toEqual({
+      intent: 'translations.get',
+      args: { path: '/en/about' },
+      endpoint: 'translations',
+    });
+    // Linking names the document to bring into the group; Volto sends a path.
+    expect(
+      routeToIntent({
+        op: 'post',
+        path: '/en/about/@translations',
+        data: { id: '/de/ueber-uns' },
+      }),
+    ).toEqual({
+      intent: 'translations.link',
+      args: { path: '/en/about', target: '/de/ueber-uns' },
+      endpoint: 'translations',
+    });
+    // Unlinking names the language to remove, not a path.
+    expect(
+      routeToIntent({
+        op: 'del',
+        path: '/en/about/@translations',
+        data: { language: 'de' },
+      }),
+    ).toEqual({
+      intent: 'translations.unlink',
+      args: { path: '/en/about', language: 'de' },
+      endpoint: 'translations',
+    });
+    // The locator's language rides in the query string, not the body.
+    expect(
+      routeToIntent({
+        op: 'get',
+        path: '/en/about/@translation-locator?target_language=de',
+        data: {},
+      }),
+    ).toEqual({
+      intent: 'translations.locate',
+      args: { path: '/en/about', language: 'de' },
+      endpoint: 'translation-locator',
+    });
+  });
+
+  it('routes the site read, which the admin gates features on', () => {
+    expect(routeToIntent({ op: 'get', path: '/@site', data: {} })).toEqual({
+      intent: 'site.get',
+      args: {},
+      endpoint: 'site',
+    });
   });
 
   /**
@@ -112,6 +184,64 @@ describe('routeToIntent', () => {
   });
 });
 
+describe('plonify site.get', () => {
+  /**
+   * Volto reads these keys directly — `state.site.data['plone.default_language']`
+   * and `state.site.data.features.multilingual` — so the canonical answer has to
+   * arrive under Plone's own names or the admin sees a single-language site with
+   * no default language, whatever the CMS said.
+   */
+  it('gives Volto the keys it reads', () => {
+    const p = plonify('site.get', {
+      defaultLanguage: 'en',
+      languages: ['en', 'de'],
+      features: { multilingual: true },
+      title: 'Example',
+    });
+    expect(p['plone.default_language']).toBe('en');
+    expect(p['plone.available_languages']).toEqual(['en', 'de']);
+    expect(p.features.multilingual).toBe(true);
+    expect(p['plone.site_title']).toBe('Example');
+  });
+
+  it('reports a single-language site rather than guessing', () => {
+    // A CMS with no multilingual support says so, and the admin hides the
+    // affordances instead of offering ones that cannot work.
+    const p = plonify('site.get', { defaultLanguage: 'en' });
+    expect(p.features.multilingual).toBe(false);
+    expect(p['plone.available_languages']).toEqual(['en']);
+  });
+});
+
+describe('plonify translations', () => {
+  /**
+   * Volto's translation table reads `content['@components'].translations.items`
+   * and, for each entry, `item['@id']` and `item.language`. The canonical answer
+   * names a path and a language, so it has to arrive under those keys — the view
+   * derives its whole row set from them, and gets `undefined` otherwise.
+   */
+  it('gives the table the keys it reads', () => {
+    const p = plonify('translations.get', {
+      items: [{ language: 'de', path: '/de/ueber-uns', title: 'Über uns' }],
+    });
+    expect(p.items[0]['@id']).toBe('/de/ueber-uns');
+    expect(p.items[0].language).toBe('de');
+    expect(p.items[0].title).toBe('Über uns');
+  });
+
+  it('reports no translations as an empty list, not a missing one', () => {
+    // The view reads `.items` before checking it: an absent list throws where an
+    // empty one renders "not translated yet".
+    expect(plonify('translations.get', {}).items).toEqual([]);
+    expect(plonify('translations.get', null).items).toEqual([]);
+  });
+
+  it('answers the locator with the place, as Volto reads it', () => {
+    const p = plonify('translations.locate', { path: '/de' });
+    expect(p['@id']).toBe('/de');
+  });
+});
+
 describe('plonify', () => {
   it('renders a Document in the shape reducers read', () => {
     const p = plonify('content.get', doc);
@@ -172,6 +302,30 @@ describe('plonify', () => {
       // How it opens travels with the action: the toolbar decides nothing.
       expect(added.target).toBe('iframe');
       expect(p.object.find((a) => a.id === 'wp-settings')).toBeUndefined();
+    });
+
+    it('carries the screen an action answers, so the toolbar can find it', () => {
+      // Category is not enough: WordPress declares two `site` actions, and only
+      // one of them is Site Setup. The adapter marks which, and that mark has to
+      // survive into the store or the toolbar is back to guessing by position.
+      const p = actions([
+        {
+          id: 'wp-media',
+          title: 'Media library',
+          url: 'http://cms/wp-admin/upload.php',
+          category: 'site',
+        },
+        {
+          id: 'wp-settings',
+          title: 'Site settings',
+          url: 'http://cms/wp-admin/options-general.php',
+          category: 'site',
+          panel: 'site-setup',
+        },
+      ]);
+      expect(p.site_actions.find((a) => a.id === 'wp-settings').panel).toBe('site-setup');
+      // Not invented for the one that did not claim it.
+      expect(p.site_actions.find((a) => a.id === 'wp-media').panel).toBeUndefined();
     });
 
     it('leaves the built-ins alone when the adapter declares nothing', () => {

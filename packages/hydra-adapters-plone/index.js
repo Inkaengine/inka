@@ -71,6 +71,13 @@ export class PloneAdapter extends BaseAdapter {
         // roles assigned on an object and inherited down the tree.
         'per-content-permissions',
         'hierarchical-permissions',
+        // plone.app.multilingual: one document per language, linked as a group.
+        // Declared because the ADAPTER can serve the calls; whether a given
+        // site has languages configured is a different question, and site.get
+        // answers that one (`features.multilingual`). The admin needs both — it
+        // will not ask an adapter that cannot serve these, and it will not offer
+        // translations on a site with one language.
+        'multilingual',
       ],
     });
     this.cmsBaseUrl = cmsBaseUrl;
@@ -637,6 +644,67 @@ export class PloneAdapter extends BaseAdapter {
           },
         });
         return null;
+      }
+
+      // Plone's own @site, in canonical terms. It is the one CMS here that
+      // already answers this question in this shape, which is why the admin
+      // used to read it directly — and why nothing noticed the read had no
+      // route once the admin stopped talking to a CMS itself.
+      case 'site.get': {
+        const site = await this.fetchJson('/@site');
+        const defaultLanguage = site?.['plone.default_language'] ?? 'en';
+        return {
+          defaultLanguage,
+          languages: site?.['plone.available_languages']?.length
+            ? site['plone.available_languages']
+            : [defaultLanguage],
+          ...(site?.['plone.site_title']
+            ? { title: site['plone.site_title'] }
+            : {}),
+          features: {
+            multilingual: Boolean(site?.features?.multilingual),
+          },
+        };
+      }
+
+      // plone.app.multilingual's own endpoints, in canonical terms.
+      case 'translations.get': {
+        const raw = await this.fetchJson(`${args.path}/@translations`);
+        return {
+          items: (raw?.items ?? []).map((item) => ({
+            language: item.language,
+            path: this.toPath(item['@id']),
+            ...(item.title ? { title: item.title } : {}),
+          })),
+        };
+      }
+
+      case 'translations.link': {
+        // Plone takes the document to bring into the group as `id`, and it
+        // accepts a path.
+        await this.requestJson(`${args.path}/@translations`, {
+          method: 'POST',
+          body: { id: args.target },
+        });
+        return {};
+      }
+
+      case 'translations.unlink': {
+        // A language, not a path: the group holds one item per language.
+        await this.requestJson(`${args.path}/@translations`, {
+          method: 'DELETE',
+          body: { language: args.language },
+        });
+        return {};
+      }
+
+      case 'translations.locate': {
+        const raw = await this.fetchJson(
+          `${args.path}/@translation-locator?target_language=${encodeURIComponent(
+            args.language,
+          )}`,
+        );
+        return { path: this.toPath(raw?.['@id']) };
       }
 
       case 'querystring.getIndexes': {

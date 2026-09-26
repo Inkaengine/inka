@@ -10,6 +10,7 @@ import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 import { compose } from 'redux';
 import { asyncConnect, Helmet } from '@plone/volto/helpers';
+import { getSite } from '@plone/volto/actions/site/site';
 import { Segment } from 'semantic-ui-react';
 import { renderRoutes } from 'react-router-config';
 import { Slide, ToastContainer, toast } from 'react-toastify';
@@ -299,6 +300,26 @@ export function connectAppComponent(AppComponent) {
         key: 'content',
         promise: ({ location, store }) =>
           loadsInThisEnvironment() && fetchContent({ store, location }),
+      },
+      {
+        // The site's own facts — default language, languages offered, which
+        // features are on — which the admin gates real affordances on:
+        // `features.multilingual` decides whether Manage Translations exists at
+        // all.
+        //
+        // Volto fetches this through an asyncProps EXTENDER
+        // (helpers/Site/index.js), guarded `__SERVER__ &&`. Two reasons that
+        // never fires here: a bridge session has no server-side CMS to read,
+        // and the extender list is built for `loadOnServer`, so on the client it
+        // is not consumed at all — patching the guard inside it changes nothing.
+        //
+        // So it is asked for here instead, where this file already re-runs its
+        // promises on the client in a bridge session. Only in that session: on
+        // the server, and against a CMS the admin talks to directly, Volto's own
+        // extender still does it and a second fetch would be waste.
+        key: 'site',
+        promise: ({ store: { dispatch } }) =>
+          config.settings.useBridgeBackend && dispatch(getSite()),
       },
       {
         key: 'navigation',

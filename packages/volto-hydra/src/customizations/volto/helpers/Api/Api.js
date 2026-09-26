@@ -85,8 +85,9 @@ class Api {
      * graceful degradation, it is a nonsense request that fails confusingly
      * far from its cause. Anything the adapter cannot serve is a bug — either
      * a UI affordance that should have been capability-gated, or a control
-     * panel that should be delegating to the CMS's own admin via
-     * adapter.getAdminUrl() instead of calling an API at all.
+     * panel that should be delegating to the CMS's own admin — an action the
+     * adapter declares with a `panel`, which the toolbar links to — instead of
+     * calling an API at all.
      *
      * SSR is not an exception. In a bridge session `withoutServerPrefetch`
      * strips the server-side prefetch from every route, so nothing should be

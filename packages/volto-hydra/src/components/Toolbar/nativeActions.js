@@ -18,3 +18,23 @@ export const nativeActionsFrom = (actions) =>
     // own screens arrive as actions too, but they are permission flags with no
     // destination, and rendering one as a link sends the user nowhere.
     .filter((action) => action?.native && action.url);
+
+/**
+ * The CMS's own answer to one of the admin's screens, if it has one.
+ *
+ * Volto's Site Setup and Profile are real screens that work against Plone.
+ * Against a CMS that is not Plone they would call endpoints that do not exist,
+ * so the adapter offers its own screen instead — and says WHICH of its actions
+ * answers that screen, because the category cannot: WordPress declares two
+ * `site` actions (settings and the media library) and picking either by
+ * position would be a coin flip.
+ *
+ * `null` means this CMS has no such screen to offer, which is the signal to
+ * keep the admin's own — Plone declares nothing here, deliberately.
+ *
+ * @param {Object} actions - Volto's actions store (Plone's category names)
+ * @param {'site-setup'|'profile'} panel
+ * @returns {Object|null}
+ */
+export const nativeActionForPanel = (actions, panel) =>
+  nativeActionsFrom(actions).find((action) => action.panel === panel) ?? null;
