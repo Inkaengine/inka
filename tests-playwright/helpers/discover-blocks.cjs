@@ -125,6 +125,124 @@ function buildEmptyRegionCases(blocksConfig, blocks) {
 }
 
 /**
+ * Everything that can be wrong about a listing inside a container.
+ *
+ * A listing has no presentation of its own: the container decides what its query
+ * results become, through the item type chosen on the listing and that type's
+ * `fieldMappings['@default']` recipe. Three things therefore have to line up,
+ * and none of them is checked by an example of the container, or of the
+ * listing, alone:
+ *
+ *  1. `no-example` — the container ALLOWS a listing and no content puts one
+ *     there, so the pairing is never rendered by anything.
+ *  2. `pinned-type-not-allowed` — the listing's type field pins a value (a
+ *     static `default`, a `choices` entry, or a recipe `default` with no
+ *     `blocksField` tying it to the container) that the container does not
+ *     allow. A recipe default WITH `blocksField` is resolved against the
+ *     container's allowed types, so it is a preference, not a pin.
+ *     The container then imposes its own type at render while the listing's
+ *     stored field mapping was computed for the pinned one.
+ *  3. `item-type-without-default-mapping` — the container allows an item type
+ *     that has no `@default` recipe, so a listing can never populate it.
+ *
+ * (2) is the one that shipped. A listing pinned `default: 'link'` and sat in a
+ * grid whose allowedBlocks are card/contentBlock; the mapping was computed for
+ * a link (`Title → Text`) and the grid rendered cards, which have no `text`.
+ * Every result came out blank — right count, right type, right place, no
+ * content — and every test stayed green.
+ *
+ * A "listing" is recognised by CONFIG, not by name: a block whose
+ * `inheritSchemaFrom` recipe declares a `mappingField` turns query results into
+ * items of another type. True of any frontend, not just the one this was found
+ * on.
+ *
+ * @param {Object} blocksConfig
+ * @param {DiscoveredBlock[]} blocks - discoverBlocks() output
+ * @returns {Array<{kind: string, parentType: string, field: string, listingType: string, itemType?: string}>}
+ */
+function collectListingContainerIssues(blocksConfig, blocks) {
+  const listingTypes = new Set();
+  for (const [blockType, blockDef] of Object.entries(blocksConfig || {})) {
+    if (blockDef?.schemaEnhancer?.inheritSchemaFrom?.mappingField) {
+      listingTypes.add(blockType);
+    }
+  }
+  if (listingTypes.size === 0) return [];
+
+  const hasDefaultMapping = (type) =>
+    Boolean(blocksConfig?.[type]?.fieldMappings?.['@default']);
+
+  // What each container example actually contains, per field.
+  const seen = new Set(); // `${parentType}\u0000${field}\u0000${childType}`
+  for (const b of blocks || []) {
+    const props = blocksConfig?.[b.blockType]?.blockSchema?.properties || {};
+    for (const field of Object.keys(props)) {
+      for (const childType of subTypesInField(b.blockData, field)) {
+        seen.add(`${b.blockType}\u0000${field}\u0000${childType}`);
+      }
+    }
+  }
+
+  const issues = [];
+  for (const { parentType, field, allowedBlocks } of buildAllowedBlocksList(blocksConfig)) {
+    for (const listingType of allowedBlocks) {
+      if (!listingTypes.has(listingType)) continue;
+      const where = { parentType, field, listingType };
+
+      // 1. Is the pairing rendered anywhere?
+      if (!seen.has(`${parentType}\u0000${field}\u0000${listingType}`)) {
+        issues.push({ kind: 'no-example', ...where });
+      }
+
+      // The item types this container OFFERS a listing — which is what the
+      // dropdown shows: siblings, minus other listings, FILTERED to those with a
+      // `@default` recipe (`filterConvertibleFrom: '@default'`). The filter is
+      // the point: a general container like a section allows slate, image and
+      // table alongside everything else, and none of those is a listing item
+      // type. Demanding a @default from every allowed sibling reported twenty
+      // non-problems on the first real config it met.
+      const offered = allowedBlocks.filter(
+        (t) => t !== listingType && !listingTypes.has(t) && hasDefaultMapping(t),
+      );
+
+      // 3. The container must offer SOMETHING a listing can become. An empty
+      // list means the type dropdown is empty: a listing can be added here and
+      // can never render as anything.
+      if (offered.length === 0) {
+        issues.push({ kind: 'no-convertible-item-type', ...where });
+      }
+
+      // 2. The listing must not pin a type this container forbids.
+      const recipe = blocksConfig?.[listingType]?.schemaEnhancer?.inheritSchemaFrom;
+      const typeFieldName = recipe?.typeField;
+      const typeField =
+        typeFieldName &&
+        blocksConfig?.[listingType]?.blockSchema?.properties?.[typeFieldName];
+      if (typeField) {
+        const pinned = new Set();
+        if (typeof typeField.default === 'string') pinned.add(typeField.default);
+        for (const choice of typeField.choices || []) {
+          pinned.add(Array.isArray(choice) ? choice[0] : choice);
+        }
+        // A recipe default is a pin only when nothing ties it to the container.
+        // With `blocksField` the choices ARE the container's allowed types and
+        // blockSync resolves the default against them (kept if allowed, else
+        // the first allowed), so it can never land outside them.
+        if (typeof recipe.default === 'string' && !recipe.blocksField) {
+          pinned.add(recipe.default);
+        }
+        for (const itemType of pinned) {
+          if (!offered.includes(itemType)) {
+            issues.push({ kind: 'pinned-type-not-allowed', ...where, itemType });
+          }
+        }
+      }
+    }
+  }
+  return issues;
+}
+
+/**
  * For a parent block's data, return the set of sub-block types present in
  * the given container field. Handles both object_list shape (array of items
  * with field_type/@type) and blocks_layout shape (ids in {items:[]} that
@@ -132,6 +250,21 @@ function buildEmptyRegionCases(blocksConfig, blocks) {
  */
 function subTypesInField(blockData, field) {
   const types = new Set();
+  // blocks_layout REGION: a blocks_layout field named `items` keeps its ids at
+  // `blocks_layout.items`, pointing into the shared `blocks` dict — the same
+  // lookup the runtime does (getChildEntries in packages/helpers). Reading only
+  // `blockData[field]` missed every container stored this way: discovery reported
+  // context navs as having no navItem and no listing example while two real
+  // pages had both.
+  const regionIds = blockData?.blocks_layout?.[field];
+  if (Array.isArray(regionIds)) {
+    const dict = blockData?.blocks || {};
+    for (const id of regionIds) {
+      const t = dict[id]?.['@type'];
+      if (typeof t === 'string') types.add(t);
+    }
+    return types;
+  }
   const value = blockData?.[field];
   if (!value) return types;
   // blocks_layout: { items: [...] } pointing into blockData.blocks
@@ -1790,6 +1923,7 @@ module.exports = {
   extractBlocks,
   buildObjectListFieldsMap,
   buildEmptyRegionCases,
+  collectListingContainerIssues,
   isContainmentExempt,
   readContainmentRules,
 };

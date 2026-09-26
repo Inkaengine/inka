@@ -857,11 +857,14 @@ export const sharedBlocksConfig = {
                 headlineTag: { title: 'Headline tag', widget: 'select', choices: [['h1','h1'],['h2','h2'],['h3','h3'],['h4','h4'],['h5','h5'],['h6','h6']] },
                 querystring: { title: 'Search criteria', widget: 'querystring' },
                 query: { title: 'Query', widget: 'querystring' },
+                // No static default: a listing's item type is chosen from what
+                // its CONTAINER allows (blocksField '..'), and the recipe below
+                // resolves `summary` against that — a context nav gets navItem.
                 variation: {
                     title: 'Item Type',
                     widget: 'blockTypeSelect',
                     filterConvertibleFrom: '@default',
-                    default: 'summary',
+                    blocksField: '..',
                 },
                 // fieldMapping field is rendered by inheritSchemaFrom via mappingField
             },
@@ -871,6 +874,12 @@ export const sharedBlocksConfig = {
                 typeField: 'variation',  // listing has no blocks field — declare on recipe
                 mappingField: 'fieldMapping',
                 defaultsField: 'itemDefaults',
+                // The item type comes from the enclosing container's allowed
+                // types; `summary` is the PREFERRED default, used only where
+                // the container allows it (blockSync resolves it).
+                blocksField: '..',
+                filterConvertibleFrom: '@default',
+                default: 'summary',
                 // Override the default "hide everything not in @default":
                 // teaser has an `overwrite` meta-toggle that should remain
                 // editable per-child so the user can override auto-populated
