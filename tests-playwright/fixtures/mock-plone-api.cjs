@@ -651,6 +651,29 @@ function matchSearchableText(searchTerm, item) {
 }
 
 /**
+ * The human title of a content type, as a catalog brain's `type_title` carries
+ * it. Memoised: this is read once per search RESULT, and hitting the schema
+ * files per item made a listing of 50 do 50 stats.
+ */
+const typeTitleCache = new Map();
+function typeTitleOf(typeName) {
+  if (!typeName) return undefined;
+  if (typeTitleCache.has(typeName)) return typeTitleCache.get(typeName);
+  let title = typeName;
+  const schemaPath = path.join(
+    __dirname,
+    'api',
+    `schema-${String(typeName).toLowerCase()}.json`,
+  );
+  if (fs.existsSync(schemaPath)) {
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8'));
+    if (schema.title) title = schema.title;
+  }
+  typeTitleCache.set(typeName, title);
+  return title;
+}
+
+/**
  * Format a content item for search results
  * Includes image_field and image_scales matching real Plone API structure
  * Includes is_folderish for folder navigation in object browser
@@ -672,6 +695,11 @@ function formatSearchItem(content, baseUrl) {
   const item = {
     '@id': content['@id'],
     '@type': content['@type'],
+    // The human name of the type, which every catalog brain carries and
+    // plone.restapi's search serializer always emits. Volto's Links-and-
+    // references view prints it, so omitting it showed a blank column here and
+    // a filled one against a real Plone.
+    'type_title': typeTitleOf(content['@type']),
     'id': content.id,
     'title': content.title,
     'description': content.description || '',
@@ -5007,17 +5035,29 @@ app.post('*/@querystring-search', (req, res) => {
     ? `${baseUrl}${contextPath}/@querystring-search`
     : `${baseUrl}/@querystring-search`;
 
+  // ONLY when the results are actually batched. plone.restapi's
+  // HypermediaBatch.links returns nothing when items_total <= b_size — "Don't
+  // provide batching links if resultset isn't batched" — and Volto renders its
+  // paging controls on `search?.batching &&`, so sending the key always put
+  // paging under a single page of results.
   res.json({
     '@id': searchUrl,
     items,
     items_total: itemsTotal,
-    batching: {
-      '@id': searchUrl,
-      first: `${searchUrl}?b_start=0`,
-      last: `${searchUrl}?b_start=${Math.max(0, itemsTotal - b_size)}`,
-      next: b_start + b_size < itemsTotal ? `${searchUrl}?b_start=${b_start + b_size}` : null,
-      prev: b_start > 0 ? `${searchUrl}?b_start=${Math.max(0, b_start - b_size)}` : null,
-    },
+    ...(itemsTotal > b_size
+      ? {
+          batching: {
+            '@id': searchUrl,
+            first: `${searchUrl}?b_start=0`,
+            last: `${searchUrl}?b_start=${Math.max(0, itemsTotal - b_size)}`,
+            next:
+              b_start + b_size < itemsTotal
+                ? `${searchUrl}?b_start=${b_start + b_size}`
+                : null,
+            prev: b_start > 0 ? `${searchUrl}?b_start=${Math.max(0, b_start - b_size)}` : null,
+          },
+        }
+      : {}),
   });
 });
 
@@ -5253,17 +5293,13 @@ app.get('*/@search', (req, res) => {
     ? `${API_ORIGIN}/@search`
     : `${API_ORIGIN}${searchPath}/@search`;
 
+  // No batching key: this route returns every match in one go, which is the
+  // unbatched case, and Plone sends no links for that. See the note on
+  // @querystring-search above.
   res.json({
     '@id': searchUrl,
     'items': items,
     'items_total': items.length,
-    'batching': {
-      '@id': searchUrl,
-      'first': `${searchUrl}?b_start=0`,
-      'last': `${searchUrl}?b_start=0`,
-      'next': null,
-      'prev': null,
-    },
   });
 });
 

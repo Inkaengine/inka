@@ -81,7 +81,13 @@ function resultsToPlone(result, path) {
     '@id': path,
     items,
     items_total: result?.total ?? items.length,
-    batching: result?.batching ?? {},
+    // Only when the CMS says the results ARE batched. Plone omits the key
+    // otherwise ("Don't provide batching links if resultset isn't batched" —
+    // plone.restapi's HypermediaBatch.links), and Volto renders its paging
+    // controls on `search?.batching &&`. Manufacturing an empty object here
+    // meant a single page of results always came with paging controls attached,
+    // over every adapter, including one talking to a real Plone.
+    ...(result?.batching ? { batching: result.batching } : {}),
   };
 }
 
