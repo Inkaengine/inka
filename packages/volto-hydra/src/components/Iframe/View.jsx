@@ -694,6 +694,7 @@ const Iframe = (props) => {
     closeObjectBrowser,
     schema, // Content type schema for page-level field types
     saveTemplatesRef, // Ref that Form.jsx uses to trigger template save
+    flushEditsRef, // Ref that Form.jsx awaits before validating a save
     multiSelected = [], // Array of block UIDs in multi-selection
     blocksErrors = {}, // blockId → { field: [messages] } from a refused save
     onSetMultiSelected, // Callback to set multi-selection in Redux
@@ -1404,6 +1405,38 @@ const Iframe = (props) => {
   // This causes the effect to run and fetch templates, then send deferred INITIAL_DATA
   const [templateSyncTrigger, setTemplateSyncTrigger] = useState(0);
 
+  // Flush any pending inline edit text from the iframe. Text typed in the
+  // iframe is debounced, so it may not have been sent via INLINE_EDIT_DATA yet;
+  // this resolves once it has, and React has processed the state update.
+  const flushIframeEdits = useCallback(async () => {
+    if (!referenceElement?.contentWindow) return;
+    await new Promise((resolve) => {
+      const requestId = `save-flush-${Date.now()}`;
+      const handleMessage = (event) => {
+        if (
+          (event.data.type === 'BUFFER_FLUSHED' && event.data.requestId === requestId) ||
+          (event.data.type === 'INLINE_EDIT_DATA' && event.data.flushRequestId === requestId)
+        ) {
+          window.removeEventListener('message', handleMessage);
+          // Let React process the INLINE_EDIT_DATA state update
+          setTimeout(resolve, 0);
+        }
+      };
+      window.addEventListener('message', handleMessage);
+      referenceElement.contentWindow.postMessage(
+        { type: 'FLUSH_BUFFER', requestId },
+        '*'
+      );
+    });
+  }, [referenceElement]);
+
+  // Form.jsx awaits this BEFORE it validates a save, so a required field typed
+  // on the canvas and saved inside the debounce is validated with its value.
+  useEffect(() => {
+    if (!flushEditsRef) return;
+    flushEditsRef.current = flushIframeEdits;
+  }, [flushEditsRef, flushIframeEdits]);
+
   // Set up saveTemplatesRef function for Form.jsx to call before page save
   // Templates are merged into cache when exiting template edit mode
   // This function just persists whatever is in cache to the backend
@@ -1440,28 +1473,7 @@ const Iframe = (props) => {
       }
 
       // Flush any pending inline edit text from the iframe before saving.
-      // Text typed in the iframe is debounced, so it may not have been sent
-      // via INLINE_EDIT_DATA yet. The flush ensures formData is up to date.
-      if (referenceElement?.contentWindow) {
-        await new Promise((resolve) => {
-          const requestId = `save-flush-${Date.now()}`;
-          const handleMessage = (event) => {
-            if (
-              (event.data.type === 'BUFFER_FLUSHED' && event.data.requestId === requestId) ||
-              (event.data.type === 'INLINE_EDIT_DATA' && event.data.flushRequestId === requestId)
-            ) {
-              window.removeEventListener('message', handleMessage);
-              // Let React process the INLINE_EDIT_DATA state update
-              setTimeout(resolve, 0);
-            }
-          };
-          window.addEventListener('message', handleMessage);
-          referenceElement.contentWindow.postMessage(
-            { type: 'FLUSH_BUFFER', requestId },
-            '*'
-          );
-        });
-      }
+      await flushIframeEdits();
 
       const templateCache = templateCacheRef.current;
 
@@ -1546,7 +1558,7 @@ const Iframe = (props) => {
       // `formData` param lacks).
       return pageFormData !== formData ? pageFormData : undefined;
     };
-  }, [saveTemplatesRef, referenceElement, persistTemplateDoc, iframeSyncState.templateEditMode]);
+  }, [saveTemplatesRef, flushIframeEdits, persistTemplateDoc, iframeSyncState.templateEditMode]);
 
   // v2 lock-commit ("Change on all pages"): after the iframe flushes pending
   // inline edits, reverse-merge the instance's blocks back into the template

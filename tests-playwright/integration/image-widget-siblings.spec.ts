@@ -53,7 +53,7 @@ test.describe('ImageWidget sibling preservation', () => {
   // TODO(follow-up): track Nuxt comment-schema-vs-Redux race as its own issue.
   test.describe.configure({ retries: process.env.CI ? 5 : 0 });
 
-  test('PATCH on save preserves image_field and image_scales siblings (no changes)', async ({ page }) => {
+  test('PATCH on save preserves image_field and image_scales siblings (image unchanged)', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 
     // Capture every PATCH the admin sends to the API. The hydra bridge
@@ -74,10 +74,11 @@ test.describe('ImageWidget sibling preservation', () => {
     await helper.login();
     await helper.navigateToEdit(FIXTURE_PATH);
 
-    // Touch the hero block's heading so the bridge marks `blocks` dirty
-    // and includes the hero block in the PATCH. (Volto skips unchanged
-    // fields in the PATCH — without a touch the PATCH only ever carries
-    // `footer_blocks` and we can't observe whether the siblings survive.)
+    // Change the hero block's heading so the hero block is in the PATCH (Volto
+    // leaves unchanged blocks out, so without a change we can't observe
+    // whether the image's siblings survive). A real change that stays: an
+    // edit typed and then deleted again saves the page as it was, and then
+    // rightly carries no blocks at all.
     const iframe = helper.getIframe();
     const heading = iframe.locator(`[data-block-uid="${BLOCK_UID}"] [data-edit-text="heading"]`);
     const originalHeading = (await heading.textContent()) ?? '';
@@ -93,11 +94,7 @@ test.describe('ImageWidget sibling preservation', () => {
     // backspaces + save. The net text change is zero, but that round-trip is what marks the
     // block dirty; on slower CI the save otherwise races the edit sync and the hero drops out
     // of the PATCH. Waiting on the observable ' x' guarantees the edit landed.
-    await expect(heading).not.toHaveText(originalHeading);
-    await page.keyboard.press('Backspace');
-    await page.keyboard.press('Backspace');
-    // Heading is now back to its original text — but the block is dirty
-    // so it WILL be in the PATCH body.
+    await expect(heading).toHaveText(`${originalHeading} x`);
 
     await helper.saveContent();
 
@@ -122,6 +119,9 @@ test.describe('ImageWidget sibling preservation', () => {
         JSON.stringify(Object.keys(lastPatch.body?.blocks || {}))
       }`,
     ).toBeTruthy();
+
+    // The heading change is what put the block in the PATCH.
+    expect(block.heading).toBe(`${originalHeading} x`);
 
     // The image URL itself MUST survive (basic sanity).
     expect(block.image, 'block.image (URL string) must be in PATCH').toBeTruthy();
