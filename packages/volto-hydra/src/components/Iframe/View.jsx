@@ -268,7 +268,7 @@ import slateTransforms from '../../utils/slateTransforms';
 import OpenObjectBrowser from './OpenObjectBrowser';
 import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
 import { getBlockTypeSchema } from '../../utils/blockPath';
-import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
+import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { canContainAll, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
@@ -4051,6 +4051,16 @@ const Iframe = (props) => {
             config.blocks.blocksConfig,
             { intl, metadata, properties: formWithPageFields },
           );
+          // ...and every region nested in a block. The Form seeded those when it
+          // loaded, but a frontend's own container schemas only arrive with its
+          // INIT, so a nested region saved empty (placeholders are stripped on
+          // save) would open with nothing in it to click or type into.
+          formWithPageFields = ensureAllContainersHaveBlocks(
+            formWithPageFields,
+            config.blocks.blocksConfig,
+            intl,
+            uuid,
+          );
           // Rebuild blockPathMap only if empty blocks were actually added
           if (formWithPageFields !== preEnsureForm) {
             initialBlockPathMap = buildBlockPathMap(
@@ -4344,6 +4354,13 @@ const Iframe = (props) => {
             config.blocks.blocksConfig,
             { intl, metadata, properties: mergedFormData },
           );
+          // ...and every region nested in a block (see INIT).
+          formDataToSend = ensureAllContainersHaveBlocks(
+            formDataToSend,
+            config.blocks.blocksConfig,
+            intl,
+            uuid,
+          );
           if (formDataToSend !== mergedFormData) {
             blockPathMap = buildBlockPathMap(formDataToSend, config.blocks.blocksConfig, intl);
           }
@@ -4439,6 +4456,13 @@ const Iframe = (props) => {
           uuid,
           config.blocks.blocksConfig,
           { intl, metadata, properties: mergedFormData },
+        );
+        // ...and every region nested in a block (see INIT).
+        formDataToSend = ensureAllContainersHaveBlocks(
+          formDataToSend,
+          config.blocks.blocksConfig,
+          intl,
+          uuid,
         );
         if (formDataToSend !== mergedFormData) {
           blockPathMap = buildBlockPathMap(formDataToSend, config.blocks.blocksConfig, intl);

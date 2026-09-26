@@ -1,0 +1,125 @@
+{
+  "@id": "http://localhost:8888/nested-empty-region-page",
+  "@type": "Document",
+  "UID": "nested-empty-region-page-uid",
+  "id": "nested-empty-region-page",
+  "title": "Nested Empty Region Page",
+  "description": "A column saved with no content: its region must get a block to type into when the page opens",
+  "review_state": "published",
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": false,
+  "created": "2025-01-01T12:00:00+00:00",
+  "modified": "2025-01-01T12:00:00+00:00",
+  "lock": {
+    "locked": false,
+    "stealable": true
+  },
+  "@components": {
+    "actions": {
+      "@id": "http://localhost:8888/nested-empty-region-page/@actions",
+      "document_actions": [],
+      "object": [
+        {
+          "id": "view",
+          "title": "View"
+        },
+        {
+          "id": "edit",
+          "title": "Edit"
+        },
+        {
+          "id": "folderContents",
+          "title": "Contents"
+        }
+      ],
+      "object_buttons": [],
+      "portal_tabs": [],
+      "site_actions": [],
+      "user": []
+    },
+    "breadcrumbs": {
+      "@id": "http://localhost:8888/nested-empty-region-page/@breadcrumbs",
+      "items": [
+        {
+          "@id": "http://localhost:8888",
+          "title": "Home"
+        },
+        {
+          "@id": "http://localhost:8888/nested-empty-region-page",
+          "title": "Nested Empty Region Page"
+        }
+      ],
+      "root": "http://localhost:8888"
+    },
+    "navigation": {
+      "@id": "http://localhost:8888/nested-empty-region-page/@navigation",
+      "items": []
+    },
+    "workflow": {
+      "@id": "http://localhost:8888/nested-empty-region-page/@workflow"
+    }
+  },
+  "can_manage_portlets": true,
+  "can_view": true,
+  "can_edit": true,
+  "can_delete": true,
+  "can_add": true,
+  "blocks": {
+    "cols": {
+      "@type": "columns",
+      "title": "Columns",
+      "blocks": {
+        "col-full": {
+          "@type": "column",
+          "title": "Full",
+          "blocks": {
+            "full-text": {
+              "@type": "slate",
+              "value": [
+                {
+                  "type": "p",
+                  "children": [
+                    {
+                      "text": "Has content"
+                    }
+                  ]
+                }
+              ],
+              "plaintext": "Has content"
+            }
+          },
+          "blocks_layout": {
+            "items": [
+              "full-text"
+            ]
+          }
+        },
+        "col-saved-empty": {
+          "@type": "column",
+          "title": "Saved empty",
+          "blocks": {},
+          "blocks_layout": {
+            "items": []
+          }
+        }
+      },
+      "blocks_layout": {
+        "columns": [
+          "col-full",
+          "col-saved-empty"
+        ]
+      }
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "cols"
+    ]
+  }
+}

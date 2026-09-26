@@ -381,6 +381,26 @@ test.describe('Adding Blocks to Containers', () => {
     await helper.waitForSidebarCurrentBlock('Teaser');
   });
 
+  test('a nested region saved empty gets its default block when the page opens', async ({ page }) => {
+    // Empty placeholders are stripped on save, so a column whose last block
+    // was deleted is stored with no blocks at all. Opening the page again has
+    // to give it something to type into, as it does for the page's own
+    // regions — the column's schema only arrives with the frontend's INIT.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/nested-empty-region-page');
+    const iframe = helper.getIframe();
+    const childrenOf = (parent: string) =>
+      iframe.locator('body').evaluate((_, p) => {
+        const map = (window as any).__hydraBridge?.blockPathMap || {};
+        return Object.keys(map)
+          .filter((uid) => map[uid]?.parentId === p)
+          .map((uid) => map[uid].blockType);
+      }, parent);
+    await expect.poll(() => childrenOf('col-full')).toEqual(['slate']);
+    await expect.poll(() => childrenOf('col-saved-empty')).toEqual(['slate']);
+  });
+
   test('pressing Enter in container with single allowedBlock creates that type, not slate', async ({
     page,
   }) => {
