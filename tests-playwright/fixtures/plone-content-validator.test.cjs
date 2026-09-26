@@ -420,6 +420,22 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.equal(r.stats.resolveuidBroken, 1);
   });
 
+  it('resolves a readable UID the way the mock does, and flags one that names nothing', () => {
+    // Test fixtures carry readable UIDs (`test-image-1-uid`); the mock resolves
+    // `resolveuid/<[a-z0-9-]+>`. Matching only hex left these as "unrecognized
+    // reference form" — or, in free text, unchecked altogether.
+    const image = { '@id': '/img', '@type': 'Image', id: 'img', UID: 'test-image-1-uid', image: { data: 'x' } };
+    const page = (uid) => ({
+      '@id': '/p', '@type': 'Document', id: 'p', UID: 'page-uid',
+      blocks: { i: { '@type': 'image', url: `resolveuid/${uid}` } },
+      blocks_layout: { items: ['i'] },
+    });
+    const ok = checkIntegrity([{ rel: '/img', data: image }, { rel: '/p', data: page('test-image-1-uid') }]);
+    assert.deepEqual(ok.errors.filter((e) => e.includes('resolveuid') || e.includes('reference form')), []);
+    const bad = checkIntegrity([{ rel: '/img', data: image }, { rel: '/p', data: page('no-such-uid') }]);
+    assert.ok(bad.errors.some((e) => e.includes('broken resolveuid/no-such-uid')), bad.errors.join('\n'));
+  });
+
   it('FAILS on a multi-node slate value (must be a single top-level node)', () => {
     // The editor makes one block per paragraph, and a paragraph boundary is a
     // block boundary, so a slate value with >1 top-level node (a title + body
@@ -1283,5 +1299,25 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
       r.errors.some((e) => e.includes('facets" item 0') && e.includes('missing its type field "type"')),
       r.errors.join('\n'),
     );
+  });
+
+  it('accepts an item typed by @type even where the schema names another typeField', () => {
+    // hydra reads an item's type as `@type ?? item[typeField]` (getBlockType),
+    // so an item carrying @type IS typed — a frontend whose facets are
+    // `{"@type": "selectFacet"}` against a schema naming `type` renders fine.
+    const schemaFor = (t) =>
+      t === 'facetgroup' ? { properties: { facets: { widget: 'object_list', typeField: 'type' } } } : null;
+    const r = checkIntegrity(
+      [{
+        rel: '/p',
+        data: {
+          '@id': '/p', '@type': 'Document', id: 'p', UID: 'p-uid',
+          blocks: { fg: { '@type': 'facetgroup', facets: [{ '@type': 'selectFacet' }] } },
+          blocks_layout: { items: ['fg'] },
+        },
+      }],
+      { schemaFor },
+    );
+    assert.deepEqual(r.errors.filter((e) => e.includes('type field')), []);
   });
 });

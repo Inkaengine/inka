@@ -324,7 +324,14 @@
 
       // Get the text from first child (assuming simple structure for now)
       const textNode = paragraph.children[0];
-      if (!textNode || !textNode.text) {
+      // Ctrl+B with nothing selected in an EMPTY paragraph (its one leaf has no
+      // text) formats what is typed next, as the admin does. Only then: this
+      // mock reads the first leaf alone, so an empty first leaf in front of an
+      // inline (after a format) is not the paragraph's text, and formatting it
+      // would wipe what follows.
+      const emptyParagraph =
+        paragraph.children.length === 1 && textNode?.text === '' && start === end;
+      if (!textNode || (!textNode.text && !emptyParagraph)) {
         console.log('[MOCK_PARENT] applySlateTransform: early return (no textNode or no text)', { textNode: JSON.stringify(textNode) });
         return result;
       }
@@ -338,10 +345,14 @@
       if (start === end) {
         const before = originalText.substring(0, start);
         const after = originalText.substring(start);
-        // Slate normalization: text nodes must surround inline elements
+        // Slate normalization: text nodes must surround inline elements.
+        // The inline holds a zero-width space, as the admin's does
+        // (SyncedSlateToolbar / elementEditor utils): it keeps the empty inline
+        // from being normalized away, and gives the frontend a text node of its
+        // own inside it for the caret — the one the author types into.
         paragraph.children = [
           { text: before },
-          { type: format, children: [{ text: '' }] },
+          { type: format, children: [{ text: '\u200B' }] },
           { text: after },
         ];
         return result;
@@ -853,7 +864,32 @@
 
             // Apply the Slate transformation
             let updatedValue = currentValue;
-            if (transformType === 'format' && format) {
+            // Toggling a format OFF with the caret inside it (collapsed, in an
+            // inline of that format): the admin (SyncedSlateToolbar
+            // applyInlineFormat) moves the caret to the start of the text leaf
+            // after the inline — Slate keeps one there — and, when that leaf is
+            // empty, gives it a zero-width space as toggling on gives the new
+            // inline one. Mirror that.
+            let exitSelection = null;
+            const anchorPath = selection?.anchor?.path;
+            const collapsedSel = selection &&
+              selection.anchor.offset === selection.focus.offset &&
+              JSON.stringify(selection.anchor.path) === JSON.stringify(selection.focus.path);
+            if (transformType === 'format' && format && collapsedSel && anchorPath?.length === 3 &&
+                currentValue?.[0]?.children?.[anchorPath[1]]?.type === format) {
+              updatedValue = JSON.parse(JSON.stringify(currentValue));
+              const children = updatedValue[0].children;
+              const inlineIdx = anchorPath[1];
+              if (typeof children[inlineIdx + 1]?.text !== 'string') {
+                children.splice(inlineIdx + 1, 0, { text: '\u200B' });
+              } else if (children[inlineIdx + 1].text === '') {
+                children[inlineIdx + 1] = { ...children[inlineIdx + 1], text: '\u200B' };
+              }
+              exitSelection = {
+                anchor: { path: [0, inlineIdx + 1], offset: 0 },
+                focus: { path: [0, inlineIdx + 1], offset: 0 },
+              };
+            } else if (transformType === 'format' && format) {
               updatedValue = applySlateTransform(currentValue, selection, format, transformType);
             } else if (transformType === 'delete') {
               updatedValue = applySlateDelete(currentValue, selection);
@@ -871,7 +907,9 @@
             // After a transform, the Slate tree structure changes, so the original
             // selection paths are invalid. We need to compute new paths.
             let transformedSelection = selection;
-            if (transformType === 'delete') {
+            if (exitSelection) {
+              transformedSelection = exitSelection;
+            } else if (transformType === 'delete') {
               // After delete, content is empty — cursor at start of first node
               transformedSelection = {
                 anchor: { path: [0, 0], offset: 0 },
@@ -914,6 +952,12 @@
               formatRequestId: requestId,
               transformedSelection,
             };
+            // A transform that left the data alone (toggling off at the end of a
+            // line): the admin sends skipRender (View.jsx skipRenderOnSend) — the
+            // frontend has nothing to redraw, only the caret to move.
+            if (JSON.stringify(updatedValue) === JSON.stringify(currentValue)) {
+              response.skipRender = true;
+            }
             console.log('[MOCK_PARENT] Sending FORM_DATA with formatRequestId:', response);
             event.source.postMessage(response, event.origin);
             logMessage('sent', 'FORM_DATA', { blockId, formatRequestId: requestId });

@@ -1,0 +1,8 @@
+{
+  "/image-scales-test": [
+    "url: path not in content: /image-scales-test/test-image.png"
+  ],
+  "/templates/test-layout": [
+    "template block grid-block > tpl-grid-cell-2 (slate) is missing templateId and slotId and fixed"
+  ]
+}

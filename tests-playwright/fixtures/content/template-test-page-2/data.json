@@ -32,6 +32,8 @@
     },
     "page2-user-content": {
       "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
       "value": [
         {
           "type": "p",

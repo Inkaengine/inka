@@ -91,6 +91,28 @@ backend-docker-start:	## Starts a Docker-based backend for development
 	@echo "$(GREEN)==> Start Docker-based Plone Backend$(RESET)"
 	docker run -it --rm --name=backend -p 8080:8080 -e SITE=Plone -e CORS_ALLOW_ORIGIN='*' $(DOCKER_IMAGE)
 
+.PHONY: backend-start
+backend-start: ## Starts the Plone backend with the templates addon mounted (see backend/)
+	@echo "$(GREEN)==> Start Plone backend with the Inka templates addon$(RESET)"
+	docker compose -f backend/docker-compose.yml up
+
+.PHONY: backend-stop
+backend-stop: ## Stops the addon backend
+	docker compose -f backend/docker-compose.yml down
+
+.PHONY: backend-clean
+backend-clean: ## Stops the addon backend and DELETES its database (fresh site next start)
+	@echo "$(RED)==> Removing the backend database — content will be lost$(RESET)"
+	docker compose -f backend/docker-compose.yml down
+	# Only the database: `down -v` would also drop the pip cache, and the next start would
+	# re-download ~200 packages for nothing.
+	docker volume rm -f backend_inka-plone-data
+
+.PHONY: backend-seed
+backend-seed: ## Loads the shared template fixtures into the addon backend (run on a fresh site)
+	@echo "$(GREEN)==> Seed the Plone backend with the shared template fixtures$(RESET)"
+	bash backend/seed.sh
+
 ## Storybook
 .PHONY: storybook-start
 storybook-start: ## Start Storybook server on port 6006
@@ -195,6 +217,9 @@ export HYDRA_SVELTE_DOC_PORT ?= 3006
 export HYDRA_NEXTJS_PORT ?= 3007
 export HYDRA_F7_PORT ?= 3008
 export HYDRA_ASTRO_DOC_PORT ?= 3009
+export HYDRA_VANILLA_DOC_PORT ?= 3010
+export HYDRA_SVELTE_QS_PORT ?= 3011
+export HYDRA_ASTRO_QS_PORT ?= 3012
 
 .PHONY: hydra-test
 hydra-test: ## Run bridge/e2e tests. Playwright's webServer starts the mock API, Volto, and each frontend with the CORRECT env (NEXT_PUBLIC_BACKEND_BASE_URL=mock, ports) — never start them by hand. ARGS="tests-playwright/bridge/block-sanity.spec.ts --project=nuxt -g gridBlock"

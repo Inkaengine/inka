@@ -111,32 +111,10 @@ function getAllRedirects() {
 // The ESM loaders (readTree, checkIntegrity) are imported once at startup and
 // held so a mount can be reloaded SYNCHRONOUSLY (on a watcher change or a cache
 // miss) without re-awaiting a dynamic import.
-//
-// Declared HERE, above the startup validation that reads it. A `let` read
-// before its declaration throws, so with it further down, any mount that is an
-// exportimport tree (has __metadata__.json) killed the server at load with
-// "Cannot access 'mdRuntime' before initialization". It is still null when the
-// validation runs — the loaders arrive asynchronously, later — which is what
-// that code already expects.
 let mdRuntime = null;
 
-// Validate each mounted content tree at startup. Errors are loud (listed)
-// but non-fatal — tests using the mock API still start. Set
-// SKIP_CONTENT_VALIDATION=true to suppress entirely.
-if (process.env.SKIP_CONTENT_VALIDATION !== 'true') {
-  const { validate, checkIntegrity, formatReport } = require('./plone-content-validator.cjs');
-  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    if (!fs.existsSync(path.join(dirPath, '__metadata__.json'))) continue;
-    const v = validate(dirPath);
-    const c = checkIntegrity(dirPath, { schemaFor: mdRuntime && mdRuntime.schemaFor });
-    const problems = v.errors.length + v.warnings.length + c.errors.length + c.warnings.length;
-    if (problems > 0) {
-      console.log(`[content-check] ${mountPath} -> ${dirPath}`);
-      if (v.errors.length || v.warnings.length) console.log(formatReport('validate', v));
-      if (c.errors.length || c.warnings.length) console.log(formatReport('check', c));
-    }
-  }
-}
+// Content validation runs once every mount is loaded — see validateServedContent,
+// awaited as part of `ready`.
 
 // Session-based transient content storage for uploads
 // Uploads are stored per-session so they don't appear for other users
@@ -214,11 +192,14 @@ const uidPositionMap = {};
  * @param {Object} req - Express request
  * @returns {string} Session ID (defaults to '_default' for unauthenticated requests)
  */
+/** Renewed token -> the session id its state lives under. */
+const sessionAliases = {};
+
 function getSessionId(req) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
-    return `token:${token}`;
+    return sessionIdentity(`token:${token}`);
   }
   // Unauthenticated requests use default session (no persistence)
   return '_default';
@@ -274,18 +255,24 @@ function generateAuthToken(username = 'admin') {
  */
 function migrateSession(fromToken, toToken) {
   if (!fromToken || fromToken === toToken) return;
-  const from = `token:${fromToken}`;
-  const to = `token:${toToken}`;
-  for (const store of [
-    sessionContent,
-    sessionBlobs,
-    sessionDeletions,
-    sessionOrder,
-    sessionSharing,
-    sessionWorkingCopies,
-  ]) {
-    if (store[from] !== undefined) store[to] = store[from];
+  // The renewed token becomes another NAME for the same session rather than a
+  // copy of it. Copying each store meant a store that was still empty at
+  // renewal time got no entry, so anything written afterwards landed under one
+  // name and was read back under the other — the session's translations, and
+  // whether its site is multilingual, both went missing that way. One identity
+  // has no such gap, and needs nothing added to it when a new store appears.
+  sessionAliases[`token:${toToken}`] = sessionIdentity(`token:${fromToken}`);
+}
+
+/** Follow a session id through any renewals to the identity holding its state. */
+function sessionIdentity(sessionId) {
+  const seen = new Set();
+  let id = sessionId;
+  while (sessionAliases[id] && !seen.has(id)) {
+    seen.add(id);
+    id = sessionAliases[id];
   }
+  return id;
 }
 
 // Middleware
@@ -758,7 +745,10 @@ function mountInternalRefs(content, urlPath) {
     .filter((m) => m !== '/' && (urlPath === m || urlPath.startsWith(m + '/')))
     .sort((a, b) => b.length - a.length)[0];
   if (!prefix) return content;
-  const walk = (value) => {
+  // The item's own @id is its identity, not a reference — only it is skipped.
+  // An @id inside a field (`href: [{"@id": "/test-page"}]`, the shape Plone
+  // stores a link in) is a reference like any other.
+  const walk = (value, top = false) => {
     if (typeof value === 'string') {
       if (!value.startsWith('/') || value.startsWith('//') || value.startsWith(prefix + '/')) return value;
       const [pathPart] = value.split('/@@');
@@ -766,15 +756,15 @@ function mountInternalRefs(content, urlPath) {
       if (contentDirMap[clean] || !contentDirMap[prefix + clean]) return value;
       return prefix + value;
     }
-    if (Array.isArray(value)) return value.map(walk);
+    if (Array.isArray(value)) return value.map((v) => walk(v));
     if (value && typeof value === 'object') {
       const out = {};
-      for (const [k, v] of Object.entries(value)) out[k] = k === '@id' ? v : walk(v);
+      for (const [k, v] of Object.entries(value)) out[k] = top && k === '@id' ? v : walk(v);
       return out;
     }
     return value;
   };
-  return walk(content);
+  return walk(content, true);
 }
 
 function loadRawContentFromDisk(urlPath) {
@@ -828,12 +818,38 @@ function parseExpand(req) {
   return String(raw).split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function loadContentFromDisk(urlPath, expandList = [], sessionId) {
+/**
+ * A comma-separated query value as a list. Express hands back an array when a param is
+ * repeated (`?x=a&x=b`), so accept both spellings of "several values".
+ */
+function splitList(raw) {
+  if (raw === undefined || raw === null) return [];
+  const parts = Array.isArray(raw) ? raw : [raw];
+  return parts
+    .flatMap((p) => String(p).split(','))
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The `expand.<component>.<param>` options that accompany ?expand=, passed through to the
+ * component builders. Plone spells component options this way (`expand.navigation.depth`);
+ * keeping the raw keys means a builder reads the same name Plone documents.
+ */
+function parseExpandParams(req) {
+  const out = {};
+  for (const [key, value] of Object.entries(req?.query || {})) {
+    if (key.startsWith('expand.')) out[key] = value;
+  }
+  return out;
+}
+
+function loadContentFromDisk(urlPath, expandList = [], sessionId, expandParams = {}) {
   const baseUrl = `http://localhost:${PORT}`;
   const content = loadRawContentFromDisk(urlPath);
   if (!content) return null;
 
-  return enrichContent(content, urlPath, baseUrl, expandList, sessionId);
+  return enrichContent(content, urlPath, baseUrl, expandList, sessionId, expandParams);
 }
 
 /**
@@ -853,6 +869,184 @@ function loadContentFromDisk(urlPath, expandList = [], sessionId) {
 function rawContentForComponents(urlPath, sessionId) {
   const inSession = sessionId ? sessionContent[sessionId]?.[urlPath] : undefined;
   return inSession || loadRawContentFromDisk(urlPath);
+}
+
+/* ── Multilingual, as plone.app.multilingual serves it ───────────────────────
+ *
+ * A translation GROUP holds one item per language; being "translations of each
+ * other" is membership of the same group, which is why linking is symmetric and
+ * needs no per-item list. Fixtures declare a group in frontmatter
+ * (`translation-group`); linking and unlinking at runtime are session state,
+ * like every other write this mock accepts.
+ */
+
+// The site's own languages. Env-configurable like every other site setting
+// here; a session may widen it (see /@mock-site-features).
+const DEFAULT_LANGUAGE = process.env.MOCK_SITE_DEFAULT_LANGUAGE || 'en';
+
+function availableLanguages(sessionId) {
+  const session = sessionId ? siteFeaturesFor(sessionId).languages : null;
+  if (session) return session;
+  return (process.env.MOCK_SITE_LANGUAGES || DEFAULT_LANGUAGE)
+    .split(',')
+    .map((lang) => lang.trim())
+    .filter(Boolean);
+}
+
+/**
+ * A title turned into an id, as plone.i18n's normalizer does it: lowercase,
+ * accents folded to their base letter, anything else a hyphen. Plone derives
+ * the id from the title whenever the client does not send one — Volto's add
+ * form never does — so a created page lands at a readable path instead of
+ * `untitled-document-<timestamp>`.
+ */
+function normalizeId(title) {
+  if (!title) return '';
+  return String(title)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/gi, 'ss')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 100);
+}
+
+// Plone serialises `language` as a vocabulary term. Titles are the language's
+// own name, as Plone's vocabulary gives it.
+const LANGUAGE_TITLES = { en: 'English', de: 'Deutsch', fr: 'Français', it: 'Italiano' };
+
+function languageField(token) {
+  const code = token && token !== '##DEFAULT##' ? token : DEFAULT_LANGUAGE;
+  return { token: code, title: LANGUAGE_TITLES[code] || code };
+}
+
+/**
+ * A reference to content — a path, a full URL on this server, or a UID — as the
+ * path it names, or null.
+ */
+function resolveContentReference(reference, sessionId) {
+  if (!reference) return null;
+  const ref = String(reference);
+  const asPath = (ref.startsWith('http') ? new URL(ref).pathname : ref).replace(/\/$/, '');
+  if (asPath.startsWith('/') && rawContentForComponents(asPath, sessionId)) return asPath;
+  if (uidToPathMap[ref]) return uidToPathMap[ref];
+  return (
+    allContentPaths(sessionId).find(
+      (p) => rawContentForComponents(p, sessionId)?.UID === ref,
+    ) || null
+  );
+}
+
+/**
+ * The language root folder a path lives under, or null.
+ *
+ * plone.app.multilingual puts each language in its own top-level folder and
+ * makes that folder the NAVIGATION ROOT for everything inside it — which is
+ * what stops a menu, a breadcrumb trail or a search listing the site in two
+ * languages at once. A path outside any of them (a single-language site, or a
+ * shared folder) has no language root and is rooted at the site, as before.
+ */
+function languageRootFor(urlPath, sessionId) {
+  const first = String(urlPath || '/').split('/').filter(Boolean)[0];
+  if (!first) return null;
+  const candidate = `/${first}`;
+  const folder = rawContentForComponents(candidate, sessionId);
+  if (!folder || folder.is_folderish === false) return null;
+  // A language root folder is a top-level folder that IS a language: /en whose
+  // own language is `en`. Asked of the content rather than of the site's
+  // configured list, because the folders are the fact — a session that has not
+  // asked for a multilingual site still sees /en as /en's tree, and an
+  // ordinary folder like /_test_data (no language of its own) is never one.
+  const language =
+    typeof folder.language === 'object' ? folder.language?.token : folder.language;
+  return language === first ? candidate : null;
+}
+
+/** sessionId -> { multilingual, languages } */
+const sessionSiteFeatures = {};
+/** sessionId -> { [path]: groupId | null } — null is "unlinked in this session" */
+const sessionTranslationGroups = {};
+
+function siteFeaturesFor(sessionId) {
+  return sessionSiteFeatures[sessionId] || { multilingual: false, languages: null };
+}
+
+function translationGroupOf(urlPath, sessionId) {
+  const overlay = sessionId ? sessionTranslationGroups[sessionId] : undefined;
+  if (overlay && Object.prototype.hasOwnProperty.call(overlay, urlPath)) {
+    return overlay[urlPath];
+  }
+  const raw = rawContentForComponents(urlPath, sessionId);
+  return raw?.['translation-group'] || null;
+}
+
+function setTranslationGroup(sessionId, urlPath, group) {
+  if (!sessionTranslationGroups[sessionId]) sessionTranslationGroups[sessionId] = {};
+  sessionTranslationGroups[sessionId][urlPath] = group;
+}
+
+function languageOf(urlPath, sessionId) {
+  const raw = rawContentForComponents(urlPath, sessionId);
+  if (raw?.language) {
+    return typeof raw.language === 'string' ? raw.language : raw.language.token;
+  }
+  // Fall back to the language root folder the item sits in: an item created in
+  // /de is German whether or not the creator said so.
+  const root = urlPath.split('/').filter(Boolean)[0];
+  return availableLanguages().includes(root) ? root : DEFAULT_LANGUAGE;
+}
+
+/** Every content path this session can see — disk plus its own writes. */
+function allContentPaths(sessionId) {
+  const sessionPaths = sessionId ? Object.keys(sessionContent[sessionId] || {}) : [];
+  return [...new Set([...Object.keys(contentDirMap), ...sessionPaths])].filter(
+    (p) => !(sessionId && sessionDeletions[sessionId]?.has(p)),
+  );
+}
+
+/** The other members of this item's translation group. */
+function translationsOf(urlPath, baseUrl, sessionId) {
+  const group = translationGroupOf(urlPath, sessionId);
+  if (!group) return [];
+  return allContentPaths(sessionId)
+    .filter((p) => p !== urlPath && translationGroupOf(p, sessionId) === group)
+    .map((p) => ({
+      '@id': `${baseUrl}${p}`,
+      language: languageOf(p, sessionId),
+      title: rawContentForComponents(p, sessionId)?.title || p.split('/').pop(),
+    }))
+    .sort((a, b) => a.language.localeCompare(b.language));
+}
+
+function buildTranslationsComponent(cleanPath, baseUrl, sessionId) {
+  const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  return {
+    '@id': `${fullUrl}/@translations`,
+    items: translationsOf(cleanPath, baseUrl, sessionId),
+    // The language root folder this item lives under, which is what Plone
+    // reports as the root of the translation's tree.
+    root: `${baseUrl}/${languageOf(cleanPath, sessionId)}`,
+  };
+}
+
+/**
+ * Where a translation of `urlPath` into `targetLanguage` belongs.
+ *
+ * Plone answers with the nearest ancestor that HAS a translation in the target
+ * language, so a translated section keeps its shape. The language root folder
+ * is the last such ancestor, and the answer for a page directly beneath it.
+ */
+function translationLocation(urlPath, targetLanguage, baseUrl, sessionId) {
+  const parts = urlPath.split('/').filter(Boolean);
+  for (let i = parts.length - 1; i > 0; i -= 1) {
+    const ancestor = '/' + parts.slice(0, i).join('/');
+    const match = translationsOf(ancestor, baseUrl, sessionId).find(
+      (t) => t.language === targetLanguage,
+    );
+    if (match) return match['@id'];
+  }
+  return `${baseUrl}/${targetLanguage}`;
 }
 
 function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth, sessionId) {
@@ -1052,12 +1246,23 @@ function buildActionsComponent(cleanPath, baseUrl, sessionId) {
   };
 }
 
-function buildNavigationComponent(cleanPath, baseUrl, sessionId) {
+function buildNavigationComponent(cleanPath, baseUrl, sessionId, depth) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  // Rooted at the navroot: the site, or the language folder for a page inside
+  // one. A menu that ignored this would offer every page of every language.
+  const languageRoot = languageRootFor(cleanPath, sessionId);
   return {
     '@id': `${fullUrl}/@navigation`,
-    // Always rooted at site root — top-level items with nested children
-    items: getRootNavigationItems(sessionId),
+    // `depth` comes from `expand.navigation.depth`: real Plone honours it on the INLINE
+    // expansion too, and this builder used to hardcode 2 there — so the mock nested at
+    // depth=1, where Plone does not. The /@navigation route read the param and the
+    // expansion did not: the same two-paths-one-component drift this file keeps hitting.
+    items: getNavigationItems(
+      languageRoot || '/',
+      depth === undefined ? 2 : depth,
+      undefined,
+      sessionId,
+    ),
   };
 }
 
@@ -1254,8 +1459,23 @@ function getSharing(cleanPath, sessionId) {
   };
 }
 
-function buildNavrootComponent(cleanPath, baseUrl) {
+function buildNavrootComponent(cleanPath, baseUrl, sessionId) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  // Inside a language, the language folder is the root.
+  const languageRoot = languageRootFor(cleanPath, sessionId);
+  if (languageRoot) {
+    const folder = loadRawContentFromDisk(languageRoot) || {};
+    return {
+      '@id': `${fullUrl}/@navroot`,
+      navroot: {
+        '@id': `${baseUrl}${languageRoot}`,
+        '@type': folder['@type'] || 'Folder',
+        title: folder.title || languageRoot.slice(1),
+        ...(folder.description ? { description: folder.description } : {}),
+        language: languageField(folder.language),
+      },
+    };
+  }
   // The navigation root is the SITE ROOT object, so serialise its real title and
   // description — Plone does, and a frontend is entitled to read the site's name
   // out of the response it already has rather than fetching the root itself.
@@ -1280,13 +1500,170 @@ function buildTypesComponent() {
 }
 
 /**
+ * Collect every templateId referenced anywhere in a value, at any depth.
+ * Mirrors the frontend helper's collectTemplateIds: the reference may sit on a block, a
+ * nested container's child, or an object_list item, so this walks everything rather than
+ * assuming a shape.
+ */
+function collectTemplateIds(value, found = new Set(), seen = new Set()) {
+  if (!value || typeof value !== 'object') return found;
+  if (seen.has(value)) return found;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) collectTemplateIds(item, found, seen);
+    return found;
+  }
+  if (typeof value.templateId === 'string') found.add(value.templateId);
+  for (const v of Object.values(value)) collectTemplateIds(v, found, seen);
+  return found;
+}
+
+/**
+ * Normalise a templateId to the path this mock stores content under.
+ * A reference may be a `resolveuid/UID`, an absolute URL, or a plain path — all three
+ * appear in fixtures. resolveuid is resolved through the same uidToPath index the
+ * /resolveuid route uses, so a template addressed by uid and one addressed by path are
+ * the same entry.
+ */
+function templateIdToPath(templateId) {
+  if (!templateId || typeof templateId !== 'string') return null;
+  const uidMatch = templateId.match(/(?:^|\/)resolveuid\/([^/?#]+)$/);
+  if (uidMatch) {
+    let resolved = uidToPathMap[uidMatch[1]];
+    if (!resolved) {
+      // Same fallback resolveUidUrls uses: a template added after startup isn't in the
+      // index yet, so rescan before calling it missing.
+      initContentDirMap();
+      resolved = uidToPathMap[uidMatch[1]];
+    }
+    return resolved ? resolved.replace(/\/+$/, '') || '/' : null;
+  }
+  let p = templateId;
+  if (p.startsWith('http')) {
+    try { p = new URL(p).pathname; } catch { return null; }
+  }
+  p = p.replace('/++api++', '');
+  if (!p.startsWith('/')) p = `/${p}`;
+  return p.replace(/\/+$/, '') || '/';
+}
+
+/**
+ * Resolve a page's templates: everything referenced via templateId in the page, plus the
+ * `extra` ids the caller named, plus everything those reference in turn.
+ *
+ * `extra` exists because the FRONTEND owns the layout rules (which layout a News Item
+ * gets, which footer a section gets). A forced layout is never referenced from page
+ * content — that is exactly why the frontend had to pre-load it by hand — so the backend
+ * cannot discover it and must be told. The backend answers only the data question:
+ * "resolve these and everything they reference". No policy crosses the wire.
+ *
+ * Returns templates keyed by the SAME string the caller referenced, because that is what
+ * expandTemplatesSync looks up: a block carrying `resolveuid/abc` must find an entry at
+ * `resolveuid/abc`, not at the path it resolved to. One template reached by two spellings
+ * is emitted under both.
+ */
+function resolveTemplates(pageContent, extraIds, sessionId, baseUrl) {
+  const templates = {};
+  const errors = [];
+  const visitedPaths = new Set();
+  let pending = [
+    ...collectTemplateIds(pageContent),
+    ...(extraIds || []),
+  ];
+
+  while (pending.length > 0) {
+    const next = [];
+    for (const templateId of pending) {
+      if (templates[templateId] || errors.some((e) => e.templateId === templateId)) continue;
+      // Errors name the id AS REQUESTED — the string the frontend has to match up — and
+      // an unknown uid is just "not found", like any other missing template. Matches the
+      // inkaengine.inka addon, whose tests assert the same messages; this used to report the
+      // resolved path, or "unresolvable template id" for an unknown uid.
+      const notFound = { templateId, error: `not found: ${templateId}` };
+      const tplPath = templateIdToPath(templateId);
+      if (!tplPath) {
+        errors.push(notFound);
+        continue;
+      }
+      // Enriched, like any other read: the template's own blocks get the same
+      // resolveuid/image-scale/relation treatment the page does, so a frontend renders
+      // template content through exactly the same path as page content.
+      const content = getContent(tplPath, sessionId, []);
+      if (!content) {
+        errors.push(notFound);
+        continue;
+      }
+      // Minus its own @components: those are links nobody asked for, and the addon omits
+      // them (on Plone, expanding them re-enters @templates and recurses).
+      const { '@components': _ownComponents, ...entry } = content;
+      templates[templateId] = entry;
+      // A template may reference further templates; follow those too. Guard on the
+      // resolved PATH so two spellings of one template are walked once.
+      if (!visitedPaths.has(tplPath)) {
+        visitedPaths.add(tplPath);
+        for (const nested of collectTemplateIds(content)) {
+          if (!templates[nested]) next.push(nested);
+        }
+      }
+    }
+    pending = next;
+  }
+  return { templates, errors };
+}
+
+/**
+ * The @templates component: every template a page needs to render, resolved in one
+ * request.
+ *
+ * Without this a frontend fetches each template itself, discovers nested references only
+ * after the parent arrives, and serialises the walk — the N+1 that made the SSG prerender
+ * hit the API ~179x for the same forced footer and cold-hang. Here the walk happens
+ * server-side, where the content already is.
+ *
+ * Deliberately NOT included: allowedTemplates / allowedLayouts. Layouts are a design
+ * system's artifacts — a second frontend against this same content would use entirely
+ * different template paths — so the rules stay frontend-owned and arrive here only as
+ * `extra`.
+ */
+function buildTemplatesComponent(cleanPath, baseUrl, sessionId, extraIds = []) {
+  const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  // Read RAW: rawContentForComponents is the reader a @components builder may use
+  // (getContent attaches @components, so calling it here is a cycle). Only templateId
+  // references are needed from the page, and those are in the stored blocks.
+  const page = rawContentForComponents(cleanPath, sessionId);
+  const { templates, errors } = resolveTemplates(page, extraIds, sessionId, baseUrl);
+  return {
+    '@id': `${fullUrl}/@templates`,
+    templates,
+    // Named rather than thrown: one missing template must not fail the page read. The
+    // frontend decides whether a missing template is fatal — ploneApi already has
+    // `ignoreTemplateErrors` for exactly that call.
+    ...(errors.length > 0 ? { errors } : {}),
+  };
+}
+
+/**
  * Generate the FULL @components map (every entry expanded). The
  * expand-aware caller (enrichContent) decides which entries are included
  * vs left as @id stubs.
  */
-function generateComponents(urlPath, baseUrl, sessionId) {
+function generateComponents(urlPath, baseUrl, sessionId, params = {}) {
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
   return {
+    // Lazy, unlike its siblings: resolving templates walks the page's references and
+    // reads each template from disk, so building it for every GET would make unexpanded
+    // reads pay for a component nobody asked for. expandComponents calls the thunk only
+    // for a component actually named in ?expand=.
+    templates: () =>
+      buildTemplatesComponent(
+        cleanPath,
+        baseUrl,
+        sessionId,
+        // Plone spells component options `expand.<component>.<param>` — the same shape
+        // as `expand.navigation.depth`. Comma-separated, since a frontend forces several
+        // layouts (a page layout and a footer layout).
+        splitList(params['expand.templates.extra']),
+      ),
     // @actions has no session here on purpose: the adapter reads @actions
     // directly, and that route IS session-aware, so a working copy still
     // reports iterate_checkin.
@@ -1299,9 +1676,20 @@ function generateComponents(urlPath, baseUrl, sessionId) {
     // made session-aware and this path was not, which is the same bug one
     // layer up: the two paths this file exists to keep identical drifted
     // again, and only the one nothing reads was fixed.
-    navigation: buildNavigationComponent(cleanPath, baseUrl, sessionId),
-    navroot: buildNavrootComponent(cleanPath, baseUrl),
+    navigation: buildNavigationComponent(
+      cleanPath,
+      baseUrl,
+      sessionId,
+      params['expand.navigation.depth'] !== undefined
+        ? parseInt(params['expand.navigation.depth'], 10)
+        : undefined,
+    ),
+    navroot: buildNavrootComponent(cleanPath, baseUrl, sessionId),
     types: buildTypesComponent(),
+    // Always built, never always sent: enrichContent only includes a component
+    // the request expanded, and Volto's api middleware drops the
+    // `translations` expander entirely on a site that is not multilingual.
+    translations: buildTranslationsComponent(cleanPath, baseUrl, sessionId),
     workflow: buildWorkflowComponent(cleanPath, baseUrl),
   };
 }
@@ -1584,7 +1972,7 @@ function getFolderChildItems(folderPath, baseUrl) {
  * middleware to add ?expand= which the request handler then expands.
  */
 function stubComponents(fullUrl) {
-  const ids = ['actions', 'aliases', 'breadcrumbs', 'contextnavigation', 'navigation', 'navroot', 'types', 'workflow'];
+  const ids = ['actions', 'aliases', 'breadcrumbs', 'contextnavigation', 'navigation', 'navroot', 'templates', 'translations', 'types', 'workflow'];
   const stubs = {};
   for (const k of ids) {
     stubs[k] = { '@id': `${fullUrl}/@${k}` };
@@ -1596,17 +1984,20 @@ function stubComponents(fullUrl) {
  * Replace stubs for the named components with their fully-expanded bodies.
  * `expandList` is parsed from ?expand= on the incoming request.
  */
-function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId) {
+function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId, params = {}) {
   if (!expandList || expandList.length === 0) return stubs;
-  const expanded = generateComponents(urlPath, baseUrl, sessionId);
+  const expanded = generateComponents(urlPath, baseUrl, sessionId, params);
   const out = { ...stubs };
   for (const name of expandList) {
-    if (expanded[name] !== undefined) out[name] = expanded[name];
+    if (expanded[name] === undefined) continue;
+    // A component may be a thunk (deferred because building it is expensive) — calling
+    // it only here is what keeps an unexpanded read from paying for it.
+    out[name] = typeof expanded[name] === 'function' ? expanded[name]() : expanded[name];
   }
   return out;
 }
 
-function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId) {
+function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, expandParams = {}) {
   // Always use urlPath for @id (includes mount prefix), normalize trailing slash
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
@@ -1619,6 +2010,12 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId) {
       '@id': baseUrl + parent['@id']
     };
   } else if (!parent) {
+    // Every item with no stored parent reports the SITE ROOT as its parent,
+    // which is wrong for anything nested — /de/dienstleistungen is a child of
+    // /de. Deriving it from the path here is the obvious fix and it is not
+    // this one: it fails four of the compare-languages tests against the Nuxt
+    // frontend, so something downstream reads this. Left as it was, on
+    // purpose, with the gap stated rather than half-fixed.
     parent = {
       '@id': baseUrl,
       '@type': 'Plone Site',
@@ -1646,9 +2043,17 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId) {
     'modified': transformed.modified || '2025-01-01T12:00:00+00:00',
     'lock': transformed.lock || { 'locked': false, 'stealable': true },
     'parent': parent,
+    // Plone serialises `language` as a vocabulary term, never the bare code a
+    // fixture writes — and Volto reads `content.language.token` throughout its
+    // multilingual views.
+    'language': languageField(
+      typeof transformed.language === 'object' && transformed.language
+        ? transformed.language.token
+        : transformed.language || languageOf(cleanPath, sessionId),
+    ),
     'items': childItems,
     'items_total': childItems.length,
-    '@components': expandComponents(stubComponents(fullUrl), expandList, urlPath, baseUrl, sessionId),
+    '@components': expandComponents(stubComponents(fullUrl), expandList, urlPath, baseUrl, sessionId, expandParams),
     // Permissions - granted by default, but a fixture may set `_mockPermissions` to model
     // an unauthorized case (e.g. a templates folder the user can't add to, or a template
     // document the user can't modify). This mirrors Plone's per-object permission flags.
@@ -1754,27 +2159,40 @@ function scanContentDir(contentDirPath, mountPath) {
 
 /**
  * Generate site root content (not from disk)
+ *
+ * Expand-aware like every other read (enrichContent): named components expanded, the
+ * rest @id stubs. It used to serialise generateComponents() whole, and that map holds
+ * `templates` as a lazy thunk, which JSON.stringify silently drops — so the synthesised
+ * root was the one page `?expand=templates` never answered, and a frontend fell back to
+ * fetching its forced layouts one by one without anything saying so.
  */
-function getSiteRoot() {
+function getSiteRoot(expandList = [], sessionId, expandParams = {}) {
   const baseUrl = `http://localhost:${PORT}`;
   return {
     '@id': baseUrl + '/',
     '@type': 'Plone Site',
-    'id': 'Plone',
-    'title': 'Plone Site',
-    'description': '',
-    'items': [],
-    'items_total': 0,
-    'is_folderish': true,
-    'blocks': {},
-    'blocks_layout': { 'items': [] },
-    '@components': generateComponents('/', baseUrl),
-    'can_manage_portlets': true,
-    'can_view': true,
-    'can_edit': true,
-    'can_delete': true,
-    'can_add': true,
-    'can_list_contents': true
+    id: 'Plone',
+    title: 'Plone Site',
+    description: '',
+    items: [],
+    items_total: 0,
+    is_folderish: true,
+    blocks: {},
+    blocks_layout: { items: [] },
+    '@components': expandComponents(
+      stubComponents(baseUrl),
+      expandList,
+      '/',
+      baseUrl,
+      sessionId,
+      expandParams,
+    ),
+    can_manage_portlets: true,
+    can_view: true,
+    can_edit: true,
+    can_delete: true,
+    can_add: true,
+    can_list_contents: true,
   };
 }
 
@@ -1820,28 +2238,109 @@ function loadMarkdownMount(mount) {
   console.log(`Registered ${items.size} markdown items from ${dirPath} at ${mountPath}`);
 }
 
-/** Validate the WHOLE markdown tree at once, via the SAME validator the JSON
- *  mounts use (plone-content-validator) -- markdown and JSON decode to the same
- *  content shape, so one validation path serves both. It runs after every
- *  markdown mount is loaded (not per-mount): a /docs page's cross-link to the
- *  site root '/' or '/images/*' is only resolvable once the '/' mount is in, so
- *  a per-mount check would cry false positives on the mount that loads first.
- *  Loud but non-fatal, so a --watch restart or reload surfaces a real problem
- *  while developing rather than at test time. */
-function validateMarkdownContent() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
-  const source = [...markdownItems].map(([rel, data]) => ({ rel, data }));
-  const { errors } = mdRuntime.checkIntegrity(source, { schemaFor: mdRuntime.schemaFor });
-  if (errors.length) {
-    console.log(`[content-check] ${errors.length} problem(s) in markdown content:`);
-    for (const m of errors.slice(0, 30)) console.log(`  ${m}`);
+/**
+ * Validate the site this mock SERVES — every mount, JSON and markdown, as one
+ * content tree — with the same validator the deploy gate and the
+ * `plone-content` CLI use. Returns the error list.
+ *
+ * Whole-site, not per-mount: a /docs page's link to '/' or a fixture's image in
+ * another mount only resolves once every mount is in. Each item is checked as
+ * served (after mountInternalRefs), keyed by the path the mock serves it at.
+ * Mounts that are exportimport trees (have __metadata__.json) also get the
+ * export-shape check, since they are what gets imported into a real Plone.
+ */
+function validateServedContent() {
+  const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+  const errors = [];
+  for (const { dirPath } of CONTENT_MOUNTS) {
+    if (!isMarkdownMount({ dirPath }) && fs.existsSync(path.join(dirPath, '__metadata__.json'))) {
+      errors.push(...validate(dirPath).errors);
+    }
   }
+  const paths = new Set([...markdownItems.keys(), ...Object.keys(contentDirMap)]);
+  const source = [...paths].map((urlPath) => {
+    const data = loadRawContentFromDisk(urlPath);
+    if (data == null) throw new Error(`content-check: ${urlPath} is registered but has no content`);
+    return { rel: urlPath, data: { ...data, '@id': urlPath } };
+  });
+  errors.push(...checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent }).errors);
+  return withoutExpectedErrors(errors.map((m) => m.trim()));
+}
+
+/**
+ * A fixture that is broken ON PURPOSE — it exists to show how a frontend copes
+ * with that content — is declared in its mount's `expected-errors.json`:
+ *
+ *   { "/image-scales-test": ["url: path not in content: /image-scales-test/test-image.png"] }
+ *
+ * keyed by the item's path within the mount, each entry a substring of the one
+ * problem it excuses. An entry excuses only the problems it matches on that
+ * item, and an entry that matches nothing is an error in its own right, so a
+ * declaration cannot outlive the breakage it describes.
+ */
+function withoutExpectedErrors(errors) {
+  const remaining = [...errors];
+  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
+    const file = path.join(dirPath, 'expected-errors.json');
+    if (!fs.existsSync(file)) continue;
+    for (const [rel, expected] of Object.entries(JSON.parse(fs.readFileSync(file, 'utf-8')))) {
+      const itemPath = mountPath === '/' ? rel : mountPath + (rel === '/' ? '' : rel);
+      for (const text of expected) {
+        const hits = remaining.filter((m) => m.startsWith(`${itemPath}: `) && m.includes(text));
+        if (!hits.length) {
+          remaining.push(`${itemPath}: expected-errors.json expects "${text}", which no longer occurs — remove it from ${file}`);
+        }
+        for (const m of hits) remaining.splice(remaining.indexOf(m), 1);
+      }
+    }
+  }
+  return remaining;
+}
+
+/**
+ * shared-block-schemas describe hydra's OWN test frontend, so they judge only
+ * content that ships in this checkout (the docs, the fixtures, the site root).
+ * A frontend mounting its own content has its own schemas — its `hero` is not
+ * this `hero` — so its blocks get the structural checks, not these shapes.
+ */
+const HYDRA_ROOT = path.resolve(__dirname, '..', '..');
+function hydraSchemaForOwnContent(type, urlPath) {
+  const mount = CONTENT_MOUNTS
+    .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(m.mountPath + '/'))
+    .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
+  const owned = path.resolve(mount.dirPath).startsWith(HYDRA_ROOT + path.sep);
+  return owned ? blockSchemaFor(type) : null;
+}
+
+function reportContentErrors(errors) {
+  console.error(`[content-check] ${errors.length} problem(s) in the served content:`);
+  for (const m of errors) console.error(`  ${m}`);
+}
+
+/** Startup: invalid content is fatal — tests must not run against a site that
+ *  would not import, or that links to nothing. SKIP_CONTENT_VALIDATION=true is
+ *  the explicit way out. */
+function assertServedContentValid() {
+  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
+  const errors = validateServedContent();
+  if (errors.length) {
+    reportContentErrors(errors);
+    throw new Error(`${errors.length} content problem(s) — fix the content (listed above) or set SKIP_CONTENT_VALIDATION=true`);
+  }
+}
+
+/** A reload (watcher or cache miss) only reports: one bad edit mid-session
+ *  should not take the dev server down. The next start is the gate. */
+function reportServedContentProblems() {
+  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
+  const errors = validateServedContent();
+  if (errors.length) reportContentErrors(errors);
 }
 
 /** Reload one mount, format-agnostically -- the ContentSource.reload() seam that
  *  both the watcher and the cache-miss path call, so neither is JSON-specific. */
 function reloadMount(mount) {
-  if (isMarkdownMount(mount)) { loadMarkdownMount(mount); validateMarkdownContent(); return; }
+  if (isMarkdownMount(mount)) { loadMarkdownMount(mount); return; }
   if (mount.mountPath !== '/' && fs.existsSync(path.join(mount.dirPath, 'data.json'))) {
     contentDirMap[mount.mountPath] = { dirPath: mount.dirPath, dirName: path.basename(mount.dirPath) };
   }
@@ -1871,20 +2370,21 @@ async function getEngine() {
 async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
   if (!mounts.length) return;
-  const { readTree, schemaRegistryFromBlockDefinitions } = await import('../../lib/markdown-mount.mjs');
-  // One validator for both mounts: the JSON tree and the markdown tree decode to
-  // the same content shape, so markdown validates through plone-content-validator
-  // too (checkIntegrity accepts the in-memory [{rel, data}] form).
+  const { readTree } = await import('../../lib/markdown-mount.mjs');
   const { checkIntegrity } = require('./plone-content-validator.cjs');
-  // schemaFor lets a `<block type="codeExample" source= format="schema">` show the
-  // real block schema — from shared-block-schemas (the complete registry the
-  // frontends register from, every block type) — so a doc's schema view can't
-  // drift from what renders. ESM, so dynamic import from this CJS module.
-  const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
-  const schemaFor = schemaRegistryFromBlockDefinitions(sharedBlocksConfig);
-  mdRuntime = { readTree, checkIntegrity, schemaFor };
+  mdRuntime = { readTree, checkIntegrity, schemaFor: blockSchemaFor };
   for (const mount of mounts) loadMarkdownMount(mount);
-  validateMarkdownContent();
+}
+
+/** The block schemas content is checked against, and that a markdown
+ *  `<block type="codeExample" format="schema">` shows — shared-block-schemas,
+ *  the complete registry the frontends register from, so neither can drift from
+ *  what renders. A type it does not know is not schema-checked. Imported here,
+ *  not via markdown-mount, so a JSON-only consumer needs no markdown toolchain. */
+let blockSchemaFor = null;
+async function loadBlockSchemas() {
+  const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
+  blockSchemaFor = (type) => sharedBlocksConfig[type]?.blockSchema;
 }
 
 // Scan content directories on startup (content loaded on-demand)
@@ -1915,7 +2415,7 @@ initContentDirMap();
 // Markdown mounts need a dynamic import, so loading them is async. Anything
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
-ready = initMarkdownMounts();
+ready = loadBlockSchemas().then(initMarkdownMounts).then(assertServedContentValid);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
@@ -1933,6 +2433,7 @@ function setupContentWatchers() {
       // Reload every mount through the format-agnostic seam -- markdown trees
       // reload and re-validate too, not just the JSON contentDirMap.
       for (const mount of CONTENT_MOUNTS) reloadMount(mount);
+      reportServedContentProblems();
     }, debounceMs);
   };
   for (const { dirPath } of CONTENT_MOUNTS) {
@@ -1955,7 +2456,7 @@ setupContentWatchers();
  * @param {string} urlPath - Content path
  * @param {string} sessionId - Session ID for session-specific uploads
  */
-function getContent(urlPath, sessionId, expandList = []) {
+function getContent(urlPath, sessionId, expandList = [], expandParams = {}) {
   // A path deleted in this session is gone for this session, even if disk
   // content still backs it.
   if (sessionId && sessionDeletions[sessionId]?.has(urlPath)) {
@@ -1979,19 +2480,19 @@ function getContent(urlPath, sessionId, expandList = []) {
       // unconditionally so the read-time @components reflect the current
       // request's ?expand= choices, like Plone does.
       const baseUrl = `http://localhost:${PORT}`;
-      return enrichContent(stored, urlPath, baseUrl, expandList, sessionId);
+      return enrichContent(stored, urlPath, baseUrl, expandList, sessionId, expandParams);
     }
   }
 
   // Try disk first (distribution content may have a site root). The SESSION
   // still goes with it: the page may be untouched while a sibling was renamed
   // or hidden, and the menu on this page has to show that.
-  const diskContent = loadContentFromDisk(urlPath, expandList, sessionId);
+  const diskContent = loadContentFromDisk(urlPath, expandList, sessionId, expandParams);
   if (diskContent) return diskContent;
 
   // Fall back to generated site root
   if (urlPath === '/') {
-    return getSiteRoot();
+    return getSiteRoot(expandList, sessionId, expandParams);
   }
 
   return null;
@@ -2712,7 +3213,7 @@ app.post('/@export', async (req, res) => {
     const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
     const contentDir = path.join(staging, 'content');
     const v = validate(contentDir, { allowMissingBlobs });
-    const c = checkIntegrity(contentDir, { schemaFor: mdRuntime && mdRuntime.schemaFor, allowMissingBlobs });
+    const c = checkIntegrity(contentDir, { schemaFor: blockSchemaFor, allowMissingBlobs });
     const errors = [...v.errors, ...c.errors];
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
@@ -2730,6 +3231,68 @@ app.post('/@export', async (req, res) => {
     fs.rmSync(staging, { recursive: true, force: true });
   }
 });
+
+/**
+ * The fields a create was SENT, minus the instructions to the create itself.
+ *
+ * Plone stores whatever the type's schema has. Hand-picking a few per type
+ * dropped the rest without a word, so a field the editor filled in looked saved
+ * and was gone on the next read.
+ */
+function postedFields(body) {
+  const {
+    // Instructions to the create, not content.
+    '@type': _type,
+    '@static_behaviors': _behaviors,
+    translation_of: _translationOf,
+    id: _id,
+    // Computed by the server, whatever a client sends. Volto's add form
+    // carries `parent` in its form data, and on a TRANSLATION that parent is
+    // the page being translated from — storing it would put the German page's
+    // parent at /en/services, which is where breadcrumbs, navigation and the
+    // navroot all read from.
+    parent: _parent,
+    '@id': _atId,
+    '@components': _components,
+    items: _items,
+    is_folderish: _isFolderish,
+    ...posted
+  } = body;
+  return posted;
+}
+
+/**
+ * The translation half of a create, for ANY type.
+ *
+ * plone.app.multilingual translates whatever the type is — a page, a folder, an
+ * image, a file — through this same pair: `language` says which language the
+ * new item is, `translation_of` which group it joins. Doing it inside the
+ * Document branch alone meant pages were linked and everything else was saved
+ * loose, in no language, behind a 201 that said it had worked.
+ *
+ * Returns null, or the reason it cannot be done: a `translation_of` naming
+ * nothing is refused rather than dropped, because the alternative is telling
+ * the editor their translation was created and leaving it in no group.
+ */
+function applyTranslationOnCreate(raw, body, path, sessionId) {
+  if (body.language) raw.language = body.language;
+  if (!body.translation_of) return null;
+
+  // Volto sends the ORIGINAL'S PATH (Add.jsx passes
+  // flattenToAppURL(content['@id'])), while plone.app.multilingual's own
+  // examples use a UID. Accept either rather than only the one this mock found
+  // convenient.
+  const originalPath = resolveContentReference(body.translation_of, sessionId);
+  if (!originalPath) {
+    return `translation_of: nothing found at ${body.translation_of}`;
+  }
+  const group =
+    translationGroupOf(originalPath, sessionId)
+    || `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  setTranslationGroup(sessionId, originalPath, group);
+  setTranslationGroup(sessionId, path, group);
+  return null;
+}
 
 app.post('/*', (req, res, next) => {
   // Skip special endpoints (already handled above or below)
@@ -2771,6 +3334,7 @@ app.post('/*', (req, res, next) => {
 
     // Create the image content
     const imageContent = {
+      ...postedFields(body),
       '@id': `${API_ORIGIN}${imagePath}`,
       '@type': 'Image',
       'UID': `uid-${imageId}`,
@@ -2818,6 +3382,10 @@ app.post('/*', (req, res, next) => {
 
     // Store in session-specific storage (or global if no session)
     const sessionId = getSessionId(req);
+    const problem = applyTranslationOnCreate(imageContent, body, imagePath, sessionId);
+    if (problem) {
+      return res.status(400).json({ error: { type: 'BadRequest', message: problem } });
+    }
     setSessionContent(sessionId, imagePath, imageContent);
 
     // Keep the bytes so @@images can serve back the scale URLs this response
@@ -2848,6 +3416,7 @@ app.post('/*', (req, res, next) => {
         .replace(/^-+|-+$/g, '');
     const filePath = `${parentPath === '/' ? '' : parentPath}/${fileId}`.replace(/\/+/g, '/');
     const fileContent = {
+      ...postedFields(body),
       '@id': `${API_ORIGIN}${filePath}`,
       '@type': 'File',
       'UID': `uid-${fileId}`,
@@ -2864,6 +3433,10 @@ app.post('/*', (req, res, next) => {
     };
 
     const sessionId = getSessionId(req);
+    const problem = applyTranslationOnCreate(fileContent, body, filePath, sessionId);
+    if (problem) {
+      return res.status(400).json({ error: { type: 'BadRequest', message: problem } });
+    }
     setSessionContent(sessionId, filePath, fileContent);
 
     if (process.env.DEBUG) {
@@ -2883,13 +3456,14 @@ app.post('/*', (req, res, next) => {
     // serialize through enrichContent so the response carries
     // @components / is_folderish / parent / items / etc., same as a
     // GET on the same path would.
-    const id = body.id || `untitled-document-${Date.now()}`;
+    const id = body.id || normalizeId(body.title) || `untitled-document-${Date.now()}`;
     const docPath = `${parentPath === '/' ? '' : parentPath}/${id}`.replace(/\/+/g, '/');
     const now = new Date().toISOString();
     const baseUrl = `http://localhost:${PORT}`;
     const rawDoc = {
       '@type': 'Document',
       id,
+      ...postedFields(body),
       title: body.title || id,
       description: body.description || '',
       blocks: body.blocks || {},
@@ -2901,6 +3475,13 @@ app.post('/*', (req, res, next) => {
     };
 
     const sessionId = getSessionId(req);
+    // A translation is created with the language it is FOR, and already linked
+    // to what it translates — neither side needs a second request to know about
+    // the other.
+    const problem = applyTranslationOnCreate(rawDoc, body, docPath, sessionId);
+    if (problem) {
+      return res.status(400).json({ error: { type: 'BadRequest', message: problem } });
+    }
     setSessionContent(sessionId, docPath, rawDoc);
 
     if (process.env.DEBUG) {
@@ -2916,13 +3497,17 @@ app.post('/*', (req, res, next) => {
     // volto.blocks behavior should land on the canonical view, not
     // /edit. Same response shape as Document so Volto can transition
     // off the POST response.
-    const id = body.id || `untitled-folder-${Date.now()}`;
+    // Plone derives an id from the title for any type, not for pages alone —
+    // a folder called "Mannschaft" lives at /mannschaft, which is the path
+    // every link to it will use.
+    const id = body.id || normalizeId(body.title) || `untitled-folder-${Date.now()}`;
     const folderPath = `${parentPath === '/' ? '' : parentPath}/${id}`.replace(/\/+/g, '/');
     const now = new Date().toISOString();
     const baseUrl = `http://localhost:${PORT}`;
     const rawFolder = {
       '@type': 'Folder',
       id,
+      ...postedFields(body),
       title: body.title || id,
       description: body.description || '',
       created: now,
@@ -2932,6 +3517,10 @@ app.post('/*', (req, res, next) => {
     };
 
     const sessionId = getSessionId(req);
+    const problem = applyTranslationOnCreate(rawFolder, body, folderPath, sessionId);
+    if (problem) {
+      return res.status(400).json({ error: { type: 'BadRequest', message: problem } });
+    }
     setSessionContent(sessionId, folderPath, rawFolder);
 
     if (process.env.DEBUG) {
@@ -3300,10 +3889,149 @@ app.get('/@site', (req, res) => {
     // languages. Env-driven so this stays configurable WITHOUT editing this
     // (submodule) file per run; guarded by our repo's translate specs so a
     // submodule resync that drops it is caught.
-    'plone.available_languages': (process.env.MOCK_SITE_LANGUAGES || 'en')
-      .split(',')
-      .map((lang) => lang.trim())
-      .filter(Boolean),
+    'plone.available_languages': availableLanguages(getSessionId(req)),
+    // The three below were missing until this was diffed against
+    // plone/server-dev:6. Values are the real server's defaults, not invented: a client
+    // reading `plone.allowed_sizes` to pick a scale would have got undefined here.
+    'plone.allowed_sizes': [
+      'icon 32:32', 'tile 64:64', 'thumb 128:128', 'mini 200:65536',
+      'preview 400:65536', 'teaser 600:65536', 'large 800:65536',
+      'larger 1000:65536', 'great 1200:65536', 'huge 1600:65536',
+      '2k 2000:65536', '4k 4000:65536',
+    ],
+    'plone.portal_timezone': process.env.MOCK_SITE_TIMEZONE || 'UTC',
+    'plone.robots_txt': 'User-agent: *\nDisallow: /\n',
+    // What Volto gates every multilingual behaviour on: its `/` redirect, the
+    // `translations` expander it adds to content GETs, and the toolbar's
+    // Manage Translations entry. Per SESSION, so a multilingual spec gets a
+    // multilingual site while the rest of the suite — which shares this
+    // server, in parallel — goes on seeing the single-language one it was
+    // written against.
+    features: {
+      // A site configured with more than one language IS multilingual — that
+      // is what MOCK_SITE_LANGUAGES says. The per-session opt-in exists for
+      // the shared test server, where the default site has one language and
+      // every other spec expects it to stay that way.
+      multilingual:
+        siteFeaturesFor(getSessionId(req)).multilingual ||
+        availableLanguages().length > 1,
+    },
+  });
+});
+
+/**
+ * POST /@mock-site-features  {multilingual, languages}
+ *
+ * Mock-only, and named so nobody mistakes it for Plone: a real site turns
+ * multilingual by installing plone.app.multilingual, which a test cannot do.
+ * Scoped to the caller's session — see the `features` note above.
+ */
+app.post('/@mock-site-features', (req, res) => {
+  const sessionId = getSessionId(req);
+  const { multilingual, languages } = req.body || {};
+  sessionSiteFeatures[sessionId] = {
+    multilingual: !!multilingual,
+    languages: Array.isArray(languages) && languages.length ? languages : null,
+  };
+  res.json(sessionSiteFeatures[sessionId]);
+});
+
+/**
+ * The @translations endpoints (plone.app.multilingual).
+ *
+ * GET    lists the group's other languages.
+ * POST   {id}        links an existing item into this item's group.
+ * DELETE {language}  drops that language out of the group.
+ *
+ * A link is symmetric because both sides end up in one group, so neither
+ * response has to carry the other's list.
+ */
+const translationsPath = (req) =>
+  (req.path.replace('/++api++', '').replace(/\/?@translations$/, '') || '/').replace(/\/+$/, '') || '/';
+
+app.get(/.*\/@translations$/, (req, res) => {
+  const cleanPath = translationsPath(req);
+  res.json(buildTranslationsComponent(cleanPath, `http://localhost:${PORT}`, getSessionId(req)));
+});
+
+app.post(/.*\/@translations$/, (req, res) => {
+  const cleanPath = translationsPath(req);
+  const sessionId = getSessionId(req);
+  const target = String(req.body?.id || '');
+  if (!target) {
+    return res.status(400).json({
+      error: { type: 'BadRequest', message: 'Property "id" is required' },
+    });
+  }
+  // Volto sends whatever the object browser gave it: a path, or a full URL on
+  // this server.
+  const targetPath = resolveContentReference(target, sessionId);
+  if (!targetPath) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `No content at ${target}` },
+    });
+  }
+  if (languageOf(targetPath, sessionId) === languageOf(cleanPath, sessionId)) {
+    return res.status(400).json({
+      error: {
+        type: 'BadRequest',
+        message: 'Both objects are in the same language',
+      },
+    });
+  }
+  // Join whichever group already exists, so linking a third language to either
+  // side of a pair joins the pair rather than splitting it.
+  const group =
+    translationGroupOf(cleanPath, sessionId) ||
+    translationGroupOf(targetPath, sessionId) ||
+    `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  setTranslationGroup(sessionId, cleanPath, group);
+  setTranslationGroup(sessionId, targetPath, group);
+  res.status(201).json(
+    buildTranslationsComponent(cleanPath, `http://localhost:${PORT}`, getSessionId(req)),
+  );
+});
+
+app.delete(/.*\/@translations$/, (req, res) => {
+  const cleanPath = translationsPath(req);
+  const sessionId = getSessionId(req);
+  const language = req.body?.language;
+  const baseUrl = `http://localhost:${PORT}`;
+  const match = translationsOf(cleanPath, baseUrl, sessionId).find(
+    (t) => t.language === language,
+  );
+  if (!match) {
+    return res.status(404).json({
+      error: {
+        type: 'NotFound',
+        message: `No translation in ${language} to unlink`,
+      },
+    });
+  }
+  // The item asked about leaves the group; the rest of the group stays
+  // together, which is what Plone does when you unlink one language.
+  setTranslationGroup(sessionId, new URL(match['@id']).pathname, null);
+  res.status(204).send();
+});
+
+/**
+ * GET /path/@translation-locator?target_language=de
+ * Where a translation of this item belongs.
+ */
+app.get(/.*\/@translation-locator$/, (req, res) => {
+  const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@translation-locator$/, '') || '/')
+    .replace(/\/+$/, '') || '/';
+  const target = req.query.target_language;
+  if (!target) {
+    return res.status(400).json({
+      error: {
+        type: 'BadRequest',
+        message: 'Property "target_language" is required',
+      },
+    });
+  }
+  res.json({
+    '@id': translationLocation(cleanPath, String(target), `http://localhost:${PORT}`, getSessionId(req)),
   });
 });
 
@@ -3581,6 +4309,12 @@ function getTypeSchema(typeName) {
           fields: ['title', 'description'],
         },
       ],
+      // Every Plone type says which layouts it has, and the admin's display
+      // menu reads it without a guard: `schema.layouts.filter(...)`. A schema
+      // without it throws inside the toolbar's More menu and takes the whole
+      // menu with it — Manage Translations included — with nothing on screen
+      // to say why. A folderish type gets the listing views.
+      layouts: ['listing_view', 'summary_view', 'tabular_view', 'album_view'],
     };
   }
 
@@ -3762,16 +4496,24 @@ app.get('/rss-stub', (req, res) => {
  *
  * Returns just Document for now; extend if a test needs Folder/News Item.
  */
+// `id` and `immediately_addable` are in Plone's @types entries (verified against
+// plone/server-dev:6) and were missing here — the same shape
+// this file keeps getting wrong by emitting what its callers happened to read rather than
+// what Plone serves. `immediately_addable` mirrors `addable` for these two ordinary types.
 function listAddableTypes() {
   return [
     {
       '@id': `http://localhost:${PORT}/@types/Document`,
+      id: 'Document',
       addable: true,
+      immediately_addable: true,
       title: 'Page',
     },
     {
       '@id': `http://localhost:${PORT}/@types/Folder`,
+      id: 'Folder',
       addable: true,
+      immediately_addable: true,
       title: 'Folder',
     },
   ];
@@ -3839,7 +4581,32 @@ app.get(/.*\/@navigation$/, (req, res) => {
 
 app.get(/.*\/@navroot$/, (req, res) => {
   const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@navroot$/, '') || '/').replace(/\/+$/, '') || '/';
-  res.json(buildNavrootComponent(cleanPath, `http://localhost:${PORT}`));
+  res.json(buildNavrootComponent(cleanPath, `http://localhost:${PORT}`, getSessionId(req)));
+});
+
+/**
+ * GET /<path>/@templates — the templates a page needs to render, resolved in one request.
+ *
+ * Reachable both here and inline via `?expand=templates`; a frontend fetching the page
+ * anyway should prefer the expansion, since that costs no extra round trip. Forced
+ * layouts are named with `?expand.templates.extra=/a,/b` on EITHER path — the same
+ * option spelling Plone uses for `expand.navigation.depth`, so the two paths take the
+ * same query and can't drift.
+ */
+// `.*` rather than `.*\/` so this also matches the SITE ROOT (`/++api++/@templates`),
+// which has templates like any other page. The sibling component routes above use the
+// stricter form and 404 at the root; that is pre-existing, and not worth repeating here.
+app.get(/.*@templates$/, (req, res) => {
+  const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@templates$/, '') || '/').replace(/\/+$/, '') || '/';
+  const baseUrl = `http://localhost:${PORT}`;
+  res.json(
+    buildTemplatesComponent(
+      cleanPath,
+      baseUrl,
+      getSessionId(req),
+      splitList(req.query['expand.templates.extra']),
+    ),
+  );
 });
 
 /**
@@ -4248,7 +5015,18 @@ app.get('*/@search', (req, res) => {
   } else if (pathDepth === '1') {
     // Get immediate children of the search path (used by ObjectBrowser)
     // Unlike navigation, search returns ALL content types (including Images, Files)
-    const normalizedSearch = (searchPath === '' || searchPath === '/') ? '/' : searchPath;
+    // `path.query` names the folder to search, as Plone's catalog takes it;
+    // without it the search is rooted at the request's own path. Ignoring it
+    // meant a search told to look inside one language answered with the whole
+    // site.
+    const askedPath = pathQuery
+      ? (String(pathQuery).startsWith('http')
+          ? new URL(String(pathQuery)).pathname
+          : String(pathQuery)
+        ).replace(/\/$/, '') || '/'
+      : null;
+    const contextPath = (searchPath === '' || searchPath === '/') ? '/' : searchPath;
+    const normalizedSearch = askedPath || contextPath;
     const searchDepth = normalizedSearch === '/' ? 0 : normalizedSearch.split('/').filter(Boolean).length;
 
     // Direct children, from disk AND from anything this session created or
@@ -4338,6 +5116,26 @@ app.get('*/@search', (req, res) => {
       .map((itemPath) => loadContentFromDisk(itemPath))
       .filter((content) => content != null)  // skip dirs with no parseable data.json
       .map((content) => formatSearchItem(content, baseUrl));
+  }
+
+  // The `Language` index, which is how Plone keeps the languages apart in the
+  // CATALOG — language root folders and a navigation root per language
+  // separate what is browsed; this separates what is found.
+  // plone.app.multilingual filters searches by language and takes
+  // `Language=all` to opt out. A search that says nothing about language is
+  // left alone: every single-language spec in this suite is one of those, and
+  // filtering them by a default would answer a question they never asked.
+  const languageQuery = req.query.Language;
+  if (languageQuery && languageQuery !== 'all') {
+    const wanted = Array.isArray(languageQuery) ? languageQuery : [languageQuery];
+    const sessionId = getSessionId(req);
+    items = items.filter((item) => {
+      // An INDEX, not a returned field: a brain is filtered on the language
+      // the object has, whatever metadata the result happens to carry —
+      // plone.restapi's search summaries do not include it.
+      const itemPath = String(item['@id'] || '').replace(baseUrl, '') || '/';
+      return wanted.includes(languageOf(itemPath, sessionId));
+    });
   }
 
   // GET @search honours sort_on / sort_order, as the catalog does.
@@ -5080,7 +5878,7 @@ app.get('*', (req, res, next) => {
   // Reload content from disk to pick up changes during development.
   // Pass ?expand= so @components matches what the client requested
   // (real Plone behaviour: stub by default, expand only what's listed).
-  const content = getContent(cleanPath, sessionId, parseExpand(req));
+  const content = getContent(cleanPath, sessionId, parseExpand(req), parseExpandParams(req));
 
   if (content) {
     // Filter actions based on authentication
@@ -5270,6 +6068,10 @@ app.patch('*', (req, res) => {
 // Start server only when run directly (not when require()'d)
 let server;
 if (require.main === module) {
+  ready.catch((err) => {
+    console.error(`[content-check] ${err.message}`);
+    process.exit(1);
+  });
   server = app.listen(PORT, () => {
     console.log(`Mock Plone API server running on http://localhost:${PORT}`);
     console.log(`Health endpoint: http://localhost:${PORT}/health`);

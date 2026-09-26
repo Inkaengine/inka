@@ -21,6 +21,7 @@
                         @keydown.escape="closeSearch" @blur="onSearchBlur" />
                 </form>
             </div>
+            <LanguageSwitcher :page="props.page" />
             <NuxtLink :to="`${adminUrl}/login`" data-linkable-allow class="text-gray-800 dark:text-white hover:bg-gray-50 focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-4 py-2 md:px-5 md:py-2.5 dark:hover:bg-gray-700 focus:outline-none dark:focus:ring-gray-800">Login</NuxtLink>
             <button @click="mobileMenuOpen = !mobileMenuOpen" type="button" class="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600">
                 <span class="sr-only">Open main menu</span>
@@ -101,6 +102,7 @@ const adminUrl = runtimeConfig.public.adminUrl;
 // Independent of page data — works in both view mode (ploneApi
 // could also return it bundled, but we read from the dedicated
 // composable so the source is the same in edit mode too).
+const props = defineProps({ page: { type: Object, default: null } });
 const nav = await useSiteNav();
 
 const openPanel = ref(null);

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:test": "vite --port 3006 --strictPort"
+    "dev:test": "vite --port ${HYDRA_VUE_DOC_PORT:?HYDRA_VUE_DOC_PORT must be set (tests-playwright/ports.ts has no defaults)} --strictPort"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.4",

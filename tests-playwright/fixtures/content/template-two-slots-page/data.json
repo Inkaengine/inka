@@ -17,6 +17,8 @@
     },
     "ts-p1": {
       "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "Primary content one" }] }],
       "plaintext": "Primary content one",
       "templateId": "resolveuid/test-layout-template-uid",
@@ -25,6 +27,8 @@
     },
     "ts-p2": {
       "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "Primary content two" }] }],
       "plaintext": "Primary content two",
       "templateId": "resolveuid/test-layout-template-uid",
@@ -43,6 +47,8 @@
     },
     "ts-s1": {
       "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "Secondary content one" }] }],
       "plaintext": "Secondary content one",
       "templateId": "resolveuid/test-layout-template-uid",

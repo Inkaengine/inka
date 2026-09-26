@@ -30,6 +30,7 @@ order:
   - visual-editing
   - listings
   - templates
+  - multilingual
   - advanced
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />

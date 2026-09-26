@@ -364,7 +364,9 @@ function checkIntegrity(source, { schemaFor, allowMissingBlobs = false } = {}) {
   stats.items = uidMap.size;
 
   // Pass 2a: resolveuid references
-  const resolveuidRe = /(?:\.\.\/)*resolveuid\/([a-f0-9]{10,})/g;
+  // The UID alphabet the mock resolves (`[a-z0-9][-a-z0-9]*`): Plone's own are
+  // hex, test fixtures use readable ones like `test-image-1-uid`.
+  const resolveuidRe = /(?:\.\.\/)*resolveuid\/([a-z0-9][-a-z0-9]*)/g;
   for (const { rel, dir, data } of items) {
     const text = onDisk
       ? fs.readFileSync(path.join(dir, 'data.json'), 'utf8')
@@ -494,7 +496,7 @@ function imageDimensions(file) {
   // string when it is a failure. NOTHING is silently accepted — an unrecognized
   // form returns a reason so it fails loudly.
   function refFailure(ref) {
-    const ru = ref.match(/resolveuid\/([a-f0-9]{10,})/);
+    const ru = ref.match(/resolveuid\/([a-z0-9][-a-z0-9]*)/);
     if (ru) return uidMap.has(ru[1]) ? null : `broken resolveuid/${ru[1]}`;
     if (/^https?:\/\//.test(ref)) return null;             // external — well-formed, unverifiable offline
     if (/^(mailto:|tel:|data:)/.test(ref)) return null;    // known schemes
@@ -554,7 +556,9 @@ function imageDimensions(file) {
     // instead of a bare array, or a richtext HTML field stored as slate) slips
     // straight through. Schema-driven on purpose — "which field is slate" only
     // exists in the schema, so this runs when a `schemaFor` is supplied.
-    const schema = schemaFor && block['@type'] ? schemaFor(block['@type']) : null;
+    // `schemaFor(type, rel)` — the item is passed so a caller serving content
+    // from several owners can answer with THAT content's schemas (or none).
+    const schema = schemaFor && block['@type'] ? schemaFor(block['@type'], rel) : null;
     if (schema && schema.properties) {
       const shape = (v) => Array.isArray(v) ? 'an array'
         : (v && typeof v === 'object' ? `an object {${Object.keys(v).join(',')}}` : typeof v);
@@ -576,7 +580,9 @@ function imageDimensions(file) {
           // instead of 17 minutes into the bridge suite.
           const typeKey = def.typeField || '@type';
           v.forEach((item, i) => {
-            if (item && typeof item === 'object' && item[typeKey] == null) {
+            // Read the way hydra's getBlockType does: `@type` first, then the
+            // schema's typeField — an item carrying either is typed.
+            if (item && typeof item === 'object' && item['@type'] == null && item[typeKey] == null) {
               errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — an object_list item is a block and must carry its type`);
             }
           });

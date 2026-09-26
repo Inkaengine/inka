@@ -1,0 +1,42 @@
+# Plone backend for developing the Inka templates addon.
+#
+# Mounts the addon and installs it editable, so Python is edited locally and picked up by
+# restarting the container — no image rebuild per change.
+#
+#     make backend-start      # this file
+#     make backend-seed       # load the shared templates + docs
+#
+# Distinct from `make backend-docker-start`, which runs the stock plone/server-dev:6 with
+# no addon — that one is for checking the mock against vanilla Plone.
+#
+# This uses the image's OWN addon mechanism rather than a custom command:
+#   DEVELOP  — paths to pip install --editable, into the venv Plone actually runs from
+#              (/app/bin). Installing with the system pip instead leaves the package
+#              invisible to Plone: the ZCML never loads and the endpoint 404s.
+#   PROFILES — GenericSetup profiles applied when the site is created. Without this the
+#              package is importable but its profile is never activated, so it does not
+#              even appear in @addons.
+services:
+  backend:
+    image: plone/server-dev:6
+    ports:
+      - "8080:8080"
+    environment:
+      SITE: Plone
+      CORS_ALLOW_ORIGIN: "*"
+      DEVELOP: /addon
+      PROFILES: inkaengine.inka:default
+    volumes:
+      # The addon source, editable inside the container.
+      - ./inkaengine.inka:/addon
+      # Keep the ZODB across restarts so content created while trialling survives.
+      # PROFILES only applies at SITE CREATION, so after changing what a profile installs,
+      # remove this volume (`make backend-clean`) to get a site built from scratch.
+      - inka-plone-data:/data
+      # The addon's dependencies resolve to newer versions than the image ships, so a
+      # first boot downloads ~200 packages. Caching the wheels makes later boots quick.
+      - inka-pip-cache:/root/.cache/pip
+
+volumes:
+  inka-plone-data:
+  inka-pip-cache:

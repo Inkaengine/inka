@@ -1,0 +1,50 @@
+# python related
+*.egg-info
+*.pyc
+*.pyo
+
+# tools related
+__pycache__/
+.coverage
+.mypy_cache
+.pytest_cache
+.ruff_cache
+/build/
+coverage.xml
+dist/
+docs/_build
+node_modules/
+
+# venv / buildout related
+.eggs/
+.installed.cfg
+.mr.developer.cfg
+.venv/
+bin/
+develop-eggs/
+eggs/
+etc/
+include/
+lib/
+lib64
+parts/
+pyvenv.cfg
+var/
+
+# mxdev
+.installed.txt
+.lock
+/.mxdev_cache/
+/.make-sentinels/
+/*-mxdev.txt
+/instance/
+/reports/
+/sources/
+/venv/
+constraints*.txt
+requirements*.txt
+
+# Shared template fixtures, exported from the inka mock API at test time
+# (tests/distribution_fixture.py). A build artifact of the markdown fixtures in
+# tests-playwright/fixtures/site-root — never committed, so it cannot go stale.
+/tests/distribution/
