@@ -55,5 +55,26 @@ test.describe('form empty field — pick a type (typed object_list)', () => {
     await expect(iframe.locator('.form-block input[type="email"]')).toBeVisible({ timeout: 5000 });
     // ...and it's no longer the empty placeholder.
     await expect(iframe.locator('.form-block', { hasText: 'Empty field — pick a type' })).toHaveCount(0);
+    // It is the same item, typed in place: it keeps its id (the object_list's
+    // idField), so it can still be selected and edited.
+    await expect(iframe.locator('[data-block-uid="empty-1"] input[type="email"]')).toBeVisible();
+  });
+
+  test('with one allowed type, the + types the empty field in place and it keeps its id', async ({ page }) => {
+    // /form-single-type-page: the form's fields allow only 'from' (E-mail) and
+    // start empty, so the '+' converts the empty straight away, no chooser.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/form-single-type-page');
+    const iframe = helper.getIframe();
+    await expect(iframe.locator('[data-block-uid="empty-1"]')).toBeVisible({ timeout: 10000 });
+
+    await helper.clickBlockInIframe('empty-1');
+    await helper.clickAddBlockButton();
+    await expect(page.locator('.blocks-chooser')).toHaveCount(0);
+    // The same item, typed in place: it keeps its field_id (the object_list's
+    // idField), so it renders as that field and can still be selected.
+    await expect(iframe.locator('[data-block-uid="empty-1"] input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await helper.waitForBlockSelectedInAdmin('empty-1');
   });
 });

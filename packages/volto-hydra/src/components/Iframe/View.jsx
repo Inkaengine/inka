@@ -4945,6 +4945,14 @@ const Iframe = (props) => {
     for (const k of ['templateId', 'templateInstanceId', 'slotId', 'fixed', 'readOnly']) {
       if (blockData[k] !== undefined) newBlockData = { ...newBlockData, [k]: blockData[k] };
     }
+    // An object_list item is found by its idField, which is not one of its
+    // type's fields, so a conversion with no field mapping (filling an empty
+    // placeholder) drops it: the item then has no id and cannot be rendered,
+    // selected or edited. It is the same item, typed in place — keep its id.
+    const idField = bpm?.[blockId]?.isObjectListItem ? bpm[blockId].idField : null;
+    if (idField && blockData[idField] !== undefined) {
+      newBlockData = { ...newBlockData, [idField]: blockData[idField] };
+    }
     return updateBlockById(props, bpm, blockId, newBlockData);
   };
 
