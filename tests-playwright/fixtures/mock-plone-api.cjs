@@ -2655,7 +2655,13 @@ app.post('*/@move', (req, res) => {
     if (raw.UID) uidToPathMap[raw.UID] = `${destPath}${suffix}`;
   }
 
-  results.push({ source: sourcePath, target: destPath });
+  // Absolute URLs, as plone.restapi's copymove formats them from
+  // absolute_url(). Bare paths here meant the adapter's URL handling was never
+  // exercised against the shape a real Plone answers with.
+  results.push({
+    source: `http://localhost:${PORT}${sourcePath}`,
+    target: `http://localhost:${PORT}${destPath}`,
+  });
   }
 
   return res.json(results);
@@ -2687,13 +2693,36 @@ app.post('*/@copy', (req, res) => {
     });
   }
   const id = sourcePath.split('/').filter(Boolean).pop();
-  const destPath = `${targetPath === '/' ? '' : targetPath}/${id}`;
+  const base = targetPath === '/' ? '' : targetPath;
+
+  // Plone RENAMES rather than overwriting: copy_of_<id>, then copy2_of_<id>,
+  // copy3_of_<id>. This wrote over whatever was at the destination, so pasting
+  // the same page twice silently left one copy — and the reply still named a
+  // path, so nothing upstream could tell.
+  let newId = id;
+  for (let n = 1; getContent(`${base}/${newId}`, sessionId); n += 1) {
+    newId = `${n === 1 ? 'copy' : `copy${n}`}_of_${id}`;
+    if (n > 50) {
+      return res.status(409).json({
+        error: { type: 'Conflict', message: `No free id for ${id} in ${targetPath}` },
+      });
+    }
+  }
+  const destPath = `${base}/${newId}`;
+
   const raw = JSON.parse(JSON.stringify(source));
   delete raw['@components'];
+  raw.id = newId;
   raw.UID = `${raw.UID || id}-copy-${Object.keys(sessionContent[sessionId] || {}).length}`;
   setSessionContent(sessionId, destPath, raw);
   uidToPathMap[raw.UID] = destPath;
-  return res.json([{ source: sourcePath, target: destPath }]);
+  // Absolute URLs, as plone.restapi's copymove formats them from
+  // absolute_url() — a bare path here let the adapter's own URL handling go
+  // untested against the shape a real Plone answers with.
+  const origin = `http://localhost:${PORT}`;
+  return res.json([
+    { source: `${origin}${sourcePath}`, target: `${origin}${destPath}` },
+  ]);
 });
 
 app.post('*/@order', (req, res) => {

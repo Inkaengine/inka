@@ -272,6 +272,36 @@ describe('content.copy', () => {
     expect(fetched.blocksLayout.items).toEqual(original.blocksLayout.items);
   });
 
+  it('copying the same document twice leaves two copies', async () => {
+    // A paste into a container that already holds that path is the ordinary
+    // case — someone pastes twice — and it is where an adapter can quietly
+    // lose work. Plone renames to copy_of_<id>, WordPress suffixes the slug,
+    // Drupal will accept a DUPLICATE alias and resolve it to whichever node it
+    // likes. All three answers are fine; overwriting the first copy is not, and
+    // neither is reporting a path that resolves to something else.
+    const first: any = await target.adapter.dispatch('content.copy', {
+      path: '/news/first-post',
+      targetParentPath: '/archive',
+    });
+    const second: any = await target.adapter.dispatch('content.copy', {
+      path: '/news/first-post',
+      targetParentPath: '/archive',
+    });
+
+    expect(second.path).not.toBe(first.path);
+    expect(second.id).not.toBe(first.id);
+
+    // Both still there, and each path leads to its own document.
+    const one: any = await target.adapter.dispatch('content.get', {
+      path: first.path,
+    });
+    const two: any = await target.adapter.dispatch('content.get', {
+      path: second.path,
+    });
+    expect(one.id).toBe(first.id);
+    expect(two.id).toBe(second.id);
+  });
+
   it('refuses to copy a document into itself', async () => {
     await expect(
       target.adapter.dispatch('content.copy', {

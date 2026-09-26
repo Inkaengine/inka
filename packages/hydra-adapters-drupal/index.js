@@ -254,6 +254,32 @@ export class DrupalAdapter extends BaseAdapter {
     return flattenPayload(payload) ?? [];
   }
 
+  /**
+   * An alias under `parent` that no node holds yet, starting from `id`.
+   *
+   * Drupal's path aliases are not unique — nothing stops two nodes claiming the
+   * same one, and which the path then resolves to is not the caller's choice. So
+   * a copy has to look before it writes. Pathauto suffixes a number when it
+   * collides, which is the convention followed here.
+   */
+  async freeAlias(parent, id, limit = 50) {
+    for (let n = 0; n < limit; n += 1) {
+      const alias = `${parent}/${n === 0 ? id : `${id}-${n}`}`;
+      try {
+        await this.nodeByAlias(alias);
+      } catch (error) {
+        // Only "nothing is there" means the alias is free. Anything else — a
+        // dead CMS, a rejected credential — must not read as a free slot.
+        if (error?.code === 'NOT_FOUND') return alias;
+        throw error;
+      }
+    }
+    throw new AdapterError(
+      `No free alias under ${parent} for ${id} after ${limit} tries`,
+      { code: 'CONFLICT', status: 409 },
+    );
+  }
+
   toDocument(flat) {
     const blocksRaw = flat.attributes.field_hydra_blocks;
     const parsed = blocksRaw ? JSON.parse(blocksRaw) : {};
@@ -386,10 +412,17 @@ export class DrupalAdapter extends BaseAdapter {
       }
 
       case 'content.create': {
-        const slug = String(args.data.title)
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-+|-+$/g, '');
+        // An explicit slug wins, as WordPress's create already allowed. A copy
+        // needs it: the id an editor pasted is the one they expect to find, and
+        // deriving it from the title again would put the copy at the same alias
+        // as the original — which Drupal accepts, then resolves to whichever
+        // node it likes.
+        const slug =
+          args.data.slug ??
+          String(args.data.title)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
         const parent = args.parentPath === '/' ? '' : args.parentPath;
         const alias = `${parent}/${slug}`;
 
@@ -462,6 +495,8 @@ export class DrupalAdapter extends BaseAdapter {
         // gains a suffix when the target already holds that alias — the same
         // problem Plone solves with copy_of_.
         const source = this.toDocument(await this.nodeByAlias(args.path));
+        const parent = args.targetParentPath === '/' ? '' : args.targetParentPath;
+        const id = args.path.split('/').filter(Boolean).pop();
         return this.dispatchOnce('content.create', {
           parentPath: args.targetParentPath,
           data: {
@@ -469,14 +504,12 @@ export class DrupalAdapter extends BaseAdapter {
             title: source.title,
             blocks: source.blocks,
             blocksLayout: source.blocksLayout,
+            // Drupal will happily store a SECOND node at an alias it already
+            // has, and then resolve that path to whichever it prefers — so
+            // pasting twice would lose a copy with nothing to say it had.
+            slug: (await this.freeAlias(parent, id)).split('/').pop(),
           },
         });
-        // Not handled, and deliberately not faked: copying into a container that
-        // already holds this alias leaves Drupal with two nodes wanting the same
-        // path. Plone renames to copy_of_<id>; doing the equivalent here needs a
-        // path_alias lookup this adapter does not have yet, and inventing a
-        // suffix that Drupal has not accepted would report a path that does not
-        // resolve.
       }
 
       case 'content.sort': {
