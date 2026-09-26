@@ -51,6 +51,11 @@ export default defineConfig({
 
   /* Reporter to use */
   reporter: [
+    // Print each test as it runs. Runs that pass --reporter (every CI test job
+    // does) override this list; the ones that don't — the doc-asset capture in
+    // the inka-site deploy, the demo capture — printed nothing but "Command
+    // failed", so a broken screenshot could not be told from any other.
+    ['list'],
     ['html', { open: 'never' }],
     // Aggregates block-sanity field/text-style coverage across all parallel
     // workers and fails the run in onEnd if any block type has a field or style
@@ -283,6 +288,7 @@ export default defineConfig({
         storageState: 'tests-playwright/.generated/storage-nuxt.json',
       },
       testIgnore: [
+        /mock-.*\.spec\.ts/, // the mock frontend's own setup (mock-frontend.spec.ts)
         /nuxt-.*\.spec\.ts/, // Skip nuxt-specific tests (they set their own cookie)
         /multifield.*\.spec\.ts/, // Skip multifield tests (hero block not in Nuxt)
       ],
@@ -310,6 +316,7 @@ export default defineConfig({
         storageState: 'tests-playwright/.generated/storage-nextjs.json',
       },
       testIgnore: [
+        /mock-.*\.spec\.ts/, // the mock frontend's own setup (mock-frontend.spec.ts)
         /nuxt-.*\.spec\.ts/,
       ],
     },
@@ -323,6 +330,7 @@ export default defineConfig({
         storageState: 'tests-playwright/.generated/storage-f7.json',
       },
       testIgnore: [
+        /mock-.*\.spec\.ts/, // the mock frontend's own setup (mock-frontend.spec.ts)
         /nuxt-.*\.spec\.ts/,
       ],
     },
@@ -503,7 +511,7 @@ export default defineConfig({
     // 120s timeout because the first run installs astro + @astrojs/node.
     ...(needsAstro ? [{
       name: 'Astro Frontend (Test)',
-      command: 'pnpm run dev:test',
+      command: `npx astro dev --port ${PORTS.astroDoc}`,
       url: URLS.astroDoc,
       timeout: 120 * 1000,
       reuseExistingServer: true,

@@ -1,43 +1,22 @@
 import { getAccessToken } from '@hydra-js/hydra.js';
 import { loadTemplates } from '@hydra-js/helpers';
 
-// Shared template cache across all page renders (survives SSG prerendering)
-const templateCache = {};
-// In-flight fetches, keyed by template path. templateCache only holds COMPLETED
-// templates, so with prerender concurrency > 1 two routes starting together both
-// miss the still-empty cache and each fetch the same forced layout (the footer,
-// on every page) — doubling the instant load on a small auto-suspend API and
-// making one time out ("not found in pre-loaded templates. Available:"). Sharing
-// one in-flight promise per path collapses that to a single fetch.
-const inFlightTemplates = {};
-
 export default async function ploneApi({
   path,
   query = null,
   watch = [],
   _default = {},
   pages = {},
-  preloadTemplates = [],  // Specific templates to eagerly pre-load (forced layouts)
-  // Whether a template FETCH failure is ignored. Default false: a failed template load
-  // propagates the real error (failing the render, and the SSG build), instead of being
-  // silently dropped — which otherwise resurfaces far away as a misleading
-  // "template not found in pre-loaded templates" 500 that hides the actual cause (the API
-  // didn't answer). Opt in with `ignoreTemplateErrors: true` only when a page can
-  // legitimately render without the template.
+  // Templates to resolve in addition to the ones the page references: the forced layouts
+  // this frontend's rules pick (a footer, a content-type layout). They are never
+  // referenced from page content, so the backend cannot discover them — the layout RULES
+  // stay here, and the backend is only asked to resolve what they name.
+  preloadTemplates = [],
+  // Whether a template that failed to resolve is ignored. Default false: a missing
+  // template fails the render with the real error, instead of being dropped and
+  // resurfacing far away as a misleading "not found in pre-loaded templates" 500. Opt in
+  // with `ignoreTemplateErrors: true` only when a page can legitimately render without it.
   ignoreTemplateErrors = false,
-  // Milliseconds before a single template fetch is ABORTED (0 = no timeout). The SSG
-  // prerender hits the API ~179x; a cold instance accepted the connection but never
-  // answered, and with no timeout `fetch` hung ~300s on one route — stalling the whole
-  // build. This aborts (actually cancels) the request; loadTemplates also stops WAITING
-  // at its own 5s, but that leaves the socket open — the abort closes it. Kept at 5s to
-  // match loadTemplates so neither pre-empts the other with a surprising cap.
-  templateFetchTimeout = 5000,
-  // While EDITING, always reload templates — the editor may be changing a template, so a
-  // cached copy from an earlier render would be stale. In view / SSG, templates are
-  // immutable for the render, so reuse the shared cross-render cache: it dedupes the
-  // forced-layout fetches (site-footer is on every page — that was ~179 identical
-  // refetches across the prerender, extra load on the very API that then cold-hung).
-  reloadTemplates = false,
 }) {
   const runtimeConfig = useRuntimeConfig();
   const route = useRoute();
@@ -55,7 +34,17 @@ export default async function ploneApi({
     api = `${runtimeConfig.public.backendBaseUrl}/++api++/${api}`;
   }
   if (!query) {
-    api = `${api}?expand=breadcrumbs,navroot,navigation&expand.navigation.depth=2`;
+    // Ask for every template the page needs in the same response: `templates` is the
+    // @templates component (the inkaengine.inka addon), which resolves the page's template
+    // references — and theirs, recursively — on the server. loadTemplates (below) uses
+    // what comes back and only fetches what is missing, so a backend without the addon,
+    // which ignores this expansion, still works: templates are then fetched one by one.
+    const extra = preloadTemplates.filter(Boolean);
+    api =
+      `${api}?expand=breadcrumbs,navroot,navigation,translations,templates&expand.navigation.depth=2` +
+      (extra.length
+        ? `&expand.templates.extra=${encodeURIComponent([...new Set(extra)].join(','))}`
+        : '');
   } else {
     headers['Content-Type'] = 'application/json';
   }
@@ -65,52 +54,6 @@ export default async function ploneApi({
     headers,
   });
 
-  // Fetch a single template by id/path — de-duped per path (see inFlightTemplates).
-  const loadTemplate = async (templateId) => {
-    // templateId may be a path or a full URL — normalise to path
-    const tplPath = templateId.startsWith('http')
-      ? new URL(templateId).pathname
-      : `/${templateId.replace(/^\//, '')}`;
-    // Concurrent renders of the same forced layout share ONE fetch.
-    if (inFlightTemplates[tplPath]) return inFlightTemplates[tplPath];
-    const fetchTemplate = async () => {
-      const url = `${runtimeConfig.public.backendBaseUrl}/++api++${tplPath}`;
-      // Bound the fetch: a hung request (cold API that never answers) aborts instead of
-      // stalling the whole prerender indefinitely.
-      const controller = templateFetchTimeout > 0 ? new AbortController() : null;
-      const timer = controller
-        ? setTimeout(() => controller.abort(), templateFetchTimeout)
-        : null;
-      try {
-        const response = await fetch(url, { headers, signal: controller?.signal });
-        if (!response.ok) {
-          throw new Error(`Failed to fetch template ${templateId}: HTTP ${response.status}`);
-        }
-        return await response.json();
-      } catch (error) {
-        if (error?.name === 'AbortError') {
-          throw new Error(
-            `Timed out fetching template ${templateId} after ${templateFetchTimeout}ms`,
-          );
-        }
-        throw error;
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
-    };
-    const p = fetchTemplate();
-    inFlightTemplates[tplPath] = p;
-    // Clear once settled (success OR failure) so a later render can retry a
-    // failed fetch and a success doesn't pin the promise.
-    p.finally(() => { if (inFlightTemplates[tplPath] === p) delete inFlightTemplates[tplPath]; });
-    return p;
-  };
-
-  // Working template set for this render: the shared cross-render cache in view/SSG (so a
-  // forced template is fetched once and reused across pages), or a fresh empty set while
-  // editing (so every template is reloaded from the API — never a stale cached copy).
-  const tplCache = reloadTemplates ? {} : templateCache;
-
   // plone.app.redirector 302s moved content (/++api++/old -> /++api++/new).
   // ofetch auto-follows to valid JSON, so without this the page would render
   // the new content under the OLD url. Capture the followed-redirect target
@@ -118,6 +61,30 @@ export default async function ploneApi({
   // redirect can't be issued from the ofetch interceptor (it won't propagate
   // as an SSR redirect).
   let redirectTarget = null;
+  // Failures recorded inside useFetch's callbacks, re-thrown once it returns. They have to
+  // be carried out: an error thrown INSIDE `transform` does not propagate — useFetch parks
+  // it in its `error` ref and leaves `data` at its default — and a failed page read left
+  // the page to render with no data at all. Either way the page then failed far away,
+  // with the misleading "not found in pre-loaded templates" (a missing page became a 500).
+  let templateFailure = null;
+  let pageFailure = null;
+  // Fetch one template by id — only for templates the page response did not already
+  // carry (see loadTemplates). No cache or de-duplication: with the addon installed this
+  // is rarely called at all.
+  const loadTemplate = async (templateId) => {
+    // templateId may be a path or a full URL — normalise to path
+    const tplPath = templateId.startsWith('http')
+      ? new URL(templateId).pathname
+      : `/${templateId.replace(/^\//, '')}`;
+    const response = await fetch(`${runtimeConfig.public.backendBaseUrl}/++api++${tplPath}`, {
+      headers,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch template ${templateId}: HTTP ${response.status}`);
+    }
+    return response.json();
+  };
+
   const toFrontendPath = (u) => u
     .replace(runtimeConfig.public.backendBaseUrl, '')
     .replace('/++api++', '')
@@ -145,10 +112,16 @@ export default async function ploneApi({
     },
     onResponseError({ request, response, options }) {
       const error = response._data;
-      showError({
+      const failure = {
         statusCode: response.status,
-        statusMessage: `${error.type}: ${error.message}`,
-      });
+        statusMessage: error?.type ? `${error.type}: ${error.message}` : response.statusText,
+      };
+      if (query) {
+        // A listing query that fails leaves the page itself standing.
+        showError(failure);
+      } else {
+        pageFailure = failure;
+      }
       return {
         title: response.statusText,
         '@components': { navigation: { items: [] } },
@@ -159,37 +132,30 @@ export default async function ploneApi({
       if (query) {
         return data;
       } else {
-        const comp = data['@components'];
-        delete data['@components'];
-
-        // ONE template-loading path: loadTemplates handles the forced-layout templates
-        // (passed as extraTemplateIds — they aren't referenced in page content) AND the
-        // templates the content references, with a single dedup + cache + recursion.
-        // `tplCache` is the shared cross-render cache in view/SSG (so a forced template is
-        // fetched once and reused) or empty while editing (always reload). The per-fetch
-        // timeout lives in `loadTemplate` (below) — no change to the shared helper.
+        // Before @components is stripped: loadTemplates reads the templates the response
+        // already carries from it, and fetches only the rest (nested references, and the
+        // forced layouts in preloadTemplates if the backend did not resolve them).
         const { templates, errors } = await loadTemplates(
           data,
           loadTemplate,
-          tplCache,
+          {},
           preloadTemplates,
         );
-        // Persist newly-loaded templates into the SHARED cross-render cache.
-        // loadTemplates COPIES the cache it's given and returns a new object, so
-        // without this write-back templateCache never fills — every prerendered
-        // route re-fetched the forced footer layout (~once per page), hammering
-        // the 1-thread API until a fetch dropped and the page 500'd with
-        // "not found in pre-loaded templates". Skip while editing (fresh each time).
-        if (!reloadTemplates) Object.assign(templateCache, templates);
-        if (errors.length) {
-          const summary = errors.map(e => `${e.templateId}: ${e.error?.message || e.error}`).join('; ');
-          // Default: don't swallow. A failed template load fails the render with the real
-          // error, instead of dropping the template and 500-ing far away with a misleading
-          // "not found". Opt into leniency only when a page can render without it.
+        const comp = data['@components'];
+        delete data['@components'];
+
+        const failure = errors.length
+          ? `Failed to load templates: ${errors.map((e) => `${e.templateId}: ${e.error?.message || e.error}`).join('; ')}`
+          : null;
+        if (failure) {
+          // Default: don't swallow. A failed template fails the render with the real
+          // error, instead of dropping the template and 500-ing far away with a
+          // misleading "not found". Opt into leniency only when a page can render without.
           if (!ignoreTemplateErrors) {
-            throw new Error(`Failed to load templates: ${summary}`);
+            templateFailure = failure;
+            throw new Error(failure);
           }
-          console.warn('[ploneApi] Ignoring failed templates:', summary);
+          console.warn('[ploneApi] Ignoring template failure:', failure);
         }
 
         return {
@@ -202,6 +168,14 @@ export default async function ploneApi({
       }
     },
   });
+
+  if (pageFailure) {
+    // The backend's own status (a missing page is a 404), before any template expansion runs.
+    throw createError({ ...pageFailure, fatal: true });
+  }
+  if (templateFailure) {
+    throw createError({ statusCode: 500, message: templateFailure, fatal: true });
+  }
 
   // Moved content: surface the target so the page setup can navigateTo() it.
   // Must be issued from the page's setup context for Nuxt to honor the SSR

@@ -121,7 +121,7 @@ export default defineNuxtConfig({
       }
     },
     test: {
-      // Test environment: HTTP mode, points to mock API on localhost:8888
+      // Test environment: HTTP mode, points to the mock API (NUXT_TEST_BACKEND, from HYDRA_MOCK_API_PORT)
       ssr: false,
       vue: {
         compilerOptions: {

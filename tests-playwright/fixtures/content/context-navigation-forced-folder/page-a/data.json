@@ -10,6 +10,8 @@
     "title-block": { "@type": "title" },
     "body": {
       "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
       "templateId": "resolveuid/context-navigation-layout-uid",
       "templateInstanceId": "page-a-cnav-instance",
       "slotId": "default",

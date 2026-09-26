@@ -420,6 +420,119 @@ describe('loadTemplates — the per-template timeout', () => {
   });
 });
 
+describe('loadTemplates — uses the templates the page response already carries', () => {
+  // A backend with the @templates addon returns every template a page needs inside the
+  // page response (`?expand=templates`). The helper must use those instead of requesting
+  // each one again — and still fetch whatever the response lacks, so a backend WITHOUT the
+  // addon (no component, or an unexpanded @id stub) keeps working exactly as before.
+  const template = (refs = []) => ({
+    blocks: Object.fromEntries(refs.map((id, i) => [`b${i}`, { templateId: id }])),
+    blocks_layout: { items: refs.map((_, i) => `b${i}`) },
+  });
+  const pageWith = (component, refs = ['/templates/one']) => ({
+    ...template(refs),
+    '@components': { templates: component },
+  });
+  const recordingLoader = (available = {}) => {
+    const calls = [];
+    const load = async (id) => {
+      calls.push(id);
+      if (!(id in available)) throw new Error(`HTTP 404 for ${id}`);
+      return available[id];
+    };
+    return { load, calls };
+  };
+
+  it('makes no request for a template the response carries', async () => {
+    const one = template();
+    const page = pageWith({ templates: { '/templates/one': one } });
+    const { load, calls } = recordingLoader();
+
+    const { templates, errors } = await loadTemplates(page, load);
+
+    expect(calls).toEqual([]);
+    expect(templates['/templates/one']).toBe(one);
+    expect(errors).toEqual([]);
+  });
+
+  it('fetches only what the response lacks', async () => {
+    const page = pageWith({ templates: { '/templates/one': template() } });
+    const footer = template();
+    const { load, calls } = recordingLoader({ '/templates/footer': footer });
+
+    const { templates } = await loadTemplates(page, load, {}, ['/templates/footer']);
+
+    expect(calls).toEqual(['/templates/footer']);
+    expect(templates['/templates/footer']).toBe(footer);
+  });
+
+  it('follows a nested reference the response lacks', async () => {
+    // The endpoint resolves nested references itself, so this only happens with a
+    // response that is incomplete — but the helper must not silently drop it.
+    const two = template();
+    const page = pageWith({ templates: { '/templates/one': template(['/templates/two']) } });
+    const { load, calls } = recordingLoader({ '/templates/two': two });
+
+    const { templates } = await loadTemplates(page, load);
+
+    expect(calls).toEqual(['/templates/two']);
+    expect(templates['/templates/two']).toBe(two);
+  });
+
+  it('does not request again a template the backend already reported as failed', async () => {
+    // e.g. a private template an anonymous visitor cannot view: asking again would only
+    // fail the same way, one request later.
+    const page = pageWith(
+      {
+        templates: {},
+        errors: [{ templateId: '/templates/one', error: 'unauthorized: /templates/one' }],
+      },
+      ['/templates/one'],
+    );
+    const { load, calls } = recordingLoader({ '/templates/one': template() });
+
+    const { templates, errors } = await loadTemplates(page, load);
+
+    expect(calls).toEqual([]);
+    expect(templates).not.toHaveProperty(['/templates/one']);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].templateId).toBe('/templates/one');
+    // The same shape as a failed fetch: an Error, whose message is the backend's.
+    expect(errors[0].error).toBeInstanceOf(Error);
+    expect(errors[0].error.message).toBe('unauthorized: /templates/one');
+  });
+
+  it('fetches as before when the component is only an unexpanded @id stub', async () => {
+    const page = pageWith({ '@id': 'http://example.com/page/@templates' });
+    const one = template();
+    const { load, calls } = recordingLoader({ '/templates/one': one });
+
+    const { templates } = await loadTemplates(page, load);
+
+    expect(calls).toEqual(['/templates/one']);
+    expect(templates['/templates/one']).toBe(one);
+  });
+
+  it('fetches as before when the response has no @components at all', async () => {
+    const page = template(['/templates/one']);
+    const { load, calls } = recordingLoader({ '/templates/one': template() });
+
+    await loadTemplates(page, load);
+
+    expect(calls).toEqual(['/templates/one']);
+  });
+
+  it("writes the response's templates back to the caller's cache, like fetched ones", async () => {
+    const one = template();
+    const page = pageWith({ templates: { '/templates/one': one } });
+    const cache = {};
+
+    await loadTemplates(page, recordingLoader().load, cache);
+
+    expect(cache['/templates/one']).toBe(one);
+  });
+});
+
 // ---------------------------------------------------------------------------
 
 describe('getFieldTypeString — a field with no declared type is a string', () => {

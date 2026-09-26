@@ -1,0 +1,14 @@
+{
+    "title": "Inka",
+    "description": "Backend support for the Inka engine",
+    "author": "PretaGov",
+    "email": "support@pretagov.com",
+    "github_organization": "Inkaengine",
+    "use_prerelease_versions": "No",
+    "plone_version": "6.2.2",
+    "python_package_name": "inkaengine.inka",
+    "feature_headless": true,
+    "initialize_ci": true,
+    "initialize_documentation": false,
+    "__template__": "backend_addon"
+}

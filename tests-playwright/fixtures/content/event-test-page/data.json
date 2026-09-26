@@ -26,6 +26,7 @@
     },
     "ev-metadata-1": {
       "@type": "eventMetadata",
+      "readOnly": false,
       "fixed": true,
       "templateId": "resolveuid/tpl-ct-event-view",
       "templateInstanceId": "tpl-ev-def",
@@ -33,6 +34,8 @@
     },
     "ev-body-1": {
       "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "Event description goes here." }] }],
       "plaintext": "Event description goes here.",
       "templateId": "resolveuid/tpl-ct-event-view",

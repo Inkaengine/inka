@@ -19,18 +19,21 @@
       "@type": "slider",
       "slides": [
         {
+          "@type": "slide",
           "@id": "slide-1",
           "title": "Slide 1",
           "description": "First slide content",
           "head_title": "Welcome"
         },
         {
+          "@type": "slide",
           "@id": "slide-2",
           "title": "Slide 2",
           "description": "Second slide content",
           "head_title": "Features"
         },
         {
+          "@type": "slide",
           "@id": "slide-3",
           "title": "Slide 3",
           "description": "Third slide content",

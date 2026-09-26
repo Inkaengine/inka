@@ -172,21 +172,22 @@ of block objects, each identified by an **id field** (`@id` by default).
 
 Everything else is identical: every object\_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
 
-The merge identifies object\_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. A frontend has no schema, so whenever you expand a template or layout that contains an object\_list container you MUST tell the merge each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
+The merge identifies object\_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas, so whenever you expand a template or layout that contains an object\_list container you MUST tell it each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Build it from the same blocks config you pass to `initBridge` with `buildIdFieldMap`, exactly as the admin does, rather than writing it by hand. Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
 
 ### Javascript
 
 ```javascript
+import { buildIdFieldMap } from '@hydra-js/hydra.js';
+
+// Once, from your block definitions: { form: { subblocks: 'field_id' }, slider: { slides: '@id' }, … }
+const idFieldMap = buildIdFieldMap(blocksConfig);
+
 const items = expandTemplatesSync(layout, {
-    blocks, templateState, templates,
-    idFieldMap: {
-        form: { subblocks: 'field_id' }, // a form's fields key on field_id, not @id
-        slider: { slides: '@id' },
-    },
+    blocks, templateState, templates, idFieldMap,
 });
 ```
 
-(On the admin this map is derived from the block schema automatically. When you re-enter to expand a **single** object\_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
+(When you re-enter to expand a **single** object\_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
 
 ## allowedTemplates vs allowedLayouts
 
@@ -226,7 +227,7 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 
 <block type="callout" variation="important">
 
-**A forced layout (`allowedLayouts`) under `expandTemplatesSync` must be pre-loaded.** It isn't referenced from page data, so `loadTemplates` won't auto-scan it. The async `expandTemplates` fetches it on demand, but the **sync** `expandTemplatesSync` (recommended for SSR / Vue computed) needs it already in `templates` — pass its id explicitly: `loadTemplates(data, loadTemplate, cache, ['/templates/footer-layout'])`. Otherwise you'll hit `Template "…" not found in pre-loaded templates`.
+**A forced layout (`allowedLayouts`) under `expandTemplatesSync` must be pre-loaded.** It isn't referenced from page data, so `loadTemplates` won't auto-scan it. The async `expandTemplates` fetches it on demand, but the **sync** `expandTemplatesSync` (recommended for SSR / Vue computed) needs it already in `templates` — pass its id explicitly: `loadTemplates(data, loadTemplate, cache, ['/templates/footer-layout'])`. Otherwise you'll hit `Template "…" not found in pre-loaded templates`. With the backend addon, also name it in `expand.templates.extra` so it arrives with the page (see "Fetching templates with the page" below).
 
 </block>
 
@@ -249,7 +250,7 @@ const loadTemplate = async (id) =>
 const templateState = {};
 
 // Sync approach: pre-fetch templates, use in computed properties
-const templates = await loadTemplates(pageData, loadTemplate);
+const { templates } = await loadTemplates(pageData, loadTemplate);
 const items = expandTemplatesSync(layout, {
     blocks, templateState, templates,
 });
@@ -274,6 +275,33 @@ Options:
 - **\`templates\`**: (sync only) Pre-fetched map of templateId -> template data
 - **\`loadTemplate(id)\`**: (async only) Function to fetch template content
 - **\`allowedLayouts\`**: Force a layout when container has no template applied
+
+## Fetching templates with the page
+
+With the `inkaengine.inka` backend addon installed (`backend/` in the Inka repository), Plone returns every template a page needs in the same response as the page. Add `templates` to `expand`, and name any forced layouts in `expand.templates.extra`: they aren't referenced from the page, so the backend can't find them on its own. Then pass the whole response, `@components` included, to `loadTemplates`. It uses the templates that came back and only fetches what's missing.
+
+### Javascript
+
+```javascript
+const forcedLayouts = ['/templates/site-footer'];
+
+const response = await fetch(
+    `${apiBase}/++api++${path}?expand=templates` +
+    `&expand.templates.extra=${encodeURIComponent(forcedLayouts.join(','))}`,
+    { headers: { Accept: 'application/json' } },
+);
+const pageData = await response.json();
+
+// Reads pageData['@components'].templates: no request per template.
+const { templates, errors } = await loadTemplates(
+    pageData, loadTemplate, {}, forcedLayouts,
+);
+```
+
+- **Name forced layouts in both places:** in `expand.templates.extra`, so the backend returns them, and as `loadTemplates`' fourth argument, so they're still fetched from a backend without the addon.
+- **Without the addon it still works.** Plone ignores `expand=templates`, and `loadTemplates` fetches each template one at a time, as before. It's slower, not broken.
+- **A template the backend couldn't return** (missing, or one the visitor isn't allowed to view) is listed in `errors` and isn't requested again.
+- **Only list the layouts your rules actually force in view mode.** Every template named in `extra` is included in every page response it's added to.
 
 ## How the Merge Works
 

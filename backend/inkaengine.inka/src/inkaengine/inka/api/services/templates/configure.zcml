@@ -1,0 +1,21 @@
+<configure
+    xmlns="http://namespaces.zope.org/zope"
+    xmlns:plone="http://namespaces.plone.org/plone"
+    >
+
+  <!-- The inline `?expand=templates` path. -->
+  <adapter
+      factory=".get.Templates"
+      name="templates"
+      />
+
+  <!-- The standalone route, served by the same adapter. -->
+  <plone:service
+      method="GET"
+      factory=".get.TemplatesGet"
+      for="zope.interface.Interface"
+      permission="zope2.View"
+      name="@templates"
+      />
+
+</configure>

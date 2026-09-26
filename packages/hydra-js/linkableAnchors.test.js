@@ -92,6 +92,22 @@ describe('collectLinkableAnchors', () => {
       child: [{ id: 'deep', name: 'Deep', level: 2 }],
     });
   });
+  it('drops the zero-width spaces hydra gives an empty heading from the name', () => {
+    // A frontend that labels a heading from its text reads the caret-target
+    // zero-width space hydra puts in an empty leaf (and \uFEFF the caret keeps
+    // while typing) — neither is part of the name.
+    const root = dom(`
+      <div data-block-uid="b1">
+        <h2 id="ed" data-linkable-id="Ed\u200B">Ed</h2>
+        <h2 id="bom" data-linkable-h3="\uFEFFTitle">Title</h2>
+      </div>`);
+    expect(collectLinkableAnchors(root)).toEqual({
+      b1: [
+        { id: 'ed', name: 'Ed', level: 2 },
+        { id: 'bom', name: 'Title', level: 3 },
+      ],
+    });
+  });
 });
 
 describe('buildAnchorTree', () => {

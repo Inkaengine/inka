@@ -1,0 +1,1 @@
+Formatting no longer stalls typing for a second: the bridge recognises a render as done when the stored value holds a zero-width space (a new bold inline's), and waits only for the caret's own leaf to be drawn. A space typed into a new bold inline is kept.

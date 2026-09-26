@@ -629,7 +629,17 @@ const SyncedSlateToolbar = ({
           const formBlock = getBlockById(form, blockPathMap, selectedBlock);
           const formBlockValue = formBlock?.value?.[0]?.children;
           log('FORMAT: Cursor exit: inlinePath:', JSON.stringify(inlinePath), 'afterPoint:', JSON.stringify(afterPoint), 'editor.children:', JSON.stringify(editor.children?.[0]?.children), 'form.blocks.value:', JSON.stringify(formBlockValue));
-          if (afterPoint) {
+          const [afterLeaf] = afterPoint ? Editor.leaf(editor, afterPoint) : [null];
+          if (afterPoint && afterLeaf?.text === '') {
+            // The caret lands in the empty leaf Slate keeps after the inline.
+            // Give it a zero-width space, as toggling ON gives the new inline
+            // one: the frontend then draws a text node for it, and the typed
+            // text goes into THAT node. With nothing to draw, the iframe made a
+            // node of its own, and a frontend that keeps its DOM drew the text
+            // again beside it on its next render. handleChange sends it.
+            Transforms.insertText(editor, '\u200B', { at: afterPoint });
+            Transforms.select(editor, { path: afterPoint.path, offset: 0 });
+          } else if (afterPoint) {
             Transforms.select(editor, afterPoint);
             // Selection-only change won't trigger handleChange, so manually send FORM_DATA
             if (requestId) {
@@ -641,8 +651,8 @@ const SyncedSlateToolbar = ({
               activeFormatRequestIdRef.current = null;
             }
           } else {
-            log('FORMAT: Cursor exit: NO afterPoint, inserting empty text node');
-            Transforms.insertNodes(editor, { text: '' }, { at: [...inlinePath.slice(0, -1), inlinePath[inlinePath.length - 1] + 1] });
+            log('FORMAT: Cursor exit: NO afterPoint, inserting a caret-target text node');
+            Transforms.insertNodes(editor, { text: '\u200B' }, { at: [...inlinePath.slice(0, -1), inlinePath[inlinePath.length - 1] + 1] });
             const newAfterPoint = Editor.after(editor, inlinePath);
             if (newAfterPoint) {
               Transforms.select(editor, newAfterPoint);

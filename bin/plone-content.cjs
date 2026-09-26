@@ -6,6 +6,9 @@
  *   plone-content schema   [<content-dir>] --fields <block-fields.json>
  *                                            — every block field no schema declares
  *   plone-content all      [<content-dir>]   — validate + check (+ schema with --fields)
+ *   plone-content served                     — the whole site the mock API serves for
+ *                                              CONTENT_MOUNTS (every mount together), the
+ *                                              same check that stops the mock starting
  *
  * <content-dir> defaults to cwd/content. `--fields` takes the map a frontend
  * emits from its own block schemas: { blockType: ["field", ...] }.
@@ -21,12 +24,26 @@ const { validate, checkIntegrity, checkBlockSchemas, formatReport } = require(
 function usage() {
   console.error(
     'Usage: plone-content <validate|check|schema|all> [<content-dir>] ' +
-      '[--fields <block-fields.json>]',
+      '[--fields <block-fields.json>]\n' +
+      '       plone-content served   (reads CONTENT_MOUNTS)',
   );
   process.exit(2);
 }
 
 const argv = process.argv.slice(2);
+
+if (argv[0] === 'served') {
+  // Loading the mock runs the check; it rejects `ready` with the problems
+  // already listed on stderr. Exit explicitly: its content watchers would
+  // otherwise keep the process alive.
+  const { ready } = require(path.join(__dirname, '..', 'tests-playwright', 'fixtures', 'mock-plone-api.cjs'));
+  ready.then(
+    () => { console.log('[content-check] served content is valid'); process.exit(0); },
+    (err) => { console.error(`[content-check] ${err.message}`); process.exit(1); },
+  );
+  return;
+}
+
 const fieldsIndex = argv.indexOf('--fields');
 const fieldsPath = fieldsIndex === -1 ? null : argv[fieldsIndex + 1];
 if (fieldsIndex !== -1) argv.splice(fieldsIndex, 2);

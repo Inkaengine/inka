@@ -1,0 +1,1 @@
+Clicking into an empty text field no longer triggers a stray re-render while you type: the field gets its caret target from one render on click, and typed keys are never dropped.

@@ -1,0 +1,1 @@
+The admin test helpers wait for what they are waiting for — a sidebar level gone, the clipboard changed, a selectionchange handled, a frame drawn — never a guessed number of milliseconds.

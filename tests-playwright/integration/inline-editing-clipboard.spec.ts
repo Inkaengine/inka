@@ -96,11 +96,11 @@ test.describe('Inline Editing - Clipboard', () => {
 
     // Press Delete to remove selected text
     await page.keyboard.press('Delete');
-    await page.waitForTimeout(200);
 
-    // Verify result - deletion crossed the bold boundary successfully
-    const finalText = await helper.getCleanTextContent(editor);
-    expect(finalText).toBe('Helsting');
+    // Deletion crossed the bold boundary: a range spanning an inline is a delete
+    // transform (an admin round trip), so wait for the text it leaves — a fixed
+    // 200ms read whatever was there at that moment (a slower admin: nothing yet).
+    await expect.poll(() => helper.getCleanTextContent(editor)).toBe('Helsting');
   });
 
   test('pasting plain text with line break splits block like Enter', async ({ page }) => {

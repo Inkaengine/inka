@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "dev:test": "astro dev --port 3009",
+    "dev:test": "astro dev --port ${HYDRA_ASTRO_DOC_PORT:?HYDRA_ASTRO_DOC_PORT must be set (tests-playwright/ports.ts has no defaults)}",
     "build": "astro build",
     "preview": "astro preview"
   },
