@@ -52,9 +52,9 @@ What the run needs:
 
 This GitHub Actions job puts it together. Change the front-end steps and the content path to suit your project.
 
-### Yaml
+### GitHub Actions
 
-```yaml
+```text
 jobs:
   block-sanity:
     runs-on: ubuntu-latest

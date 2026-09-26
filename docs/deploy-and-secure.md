@@ -115,9 +115,9 @@ initBridge({
 });
 ```
 
-### Http
+### Headers
 
-```http
+```text
 Content-Security-Policy: frame-ancestors https://inka.example.org
 Referrer-Policy: no-referrer
 ```
