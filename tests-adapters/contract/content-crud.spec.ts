@@ -121,4 +121,36 @@ describe('content.create / content.delete', () => {
       target.adapter.dispatch('content.get', { path: created.path }),
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
+
+  it('creates a document WITH its blocks, in one call', async () => {
+    // Creating and then updating is not the same thing. Translating a page
+    // copies the original's blocks into the new document, and the admin posts
+    // them with the create — so an adapter that accepts a create and silently
+    // drops `blocks` produces an empty translation, with nothing in the reply
+    // to say the body was lost.
+    const blocks = {
+      n1: {
+        '@type': 'slate',
+        value: [{ type: 'p', children: [{ text: 'Born with a body' }] }],
+      },
+    };
+
+    const created: any = await target.adapter.dispatch('content.create', {
+      parentPath: '/news',
+      data: {
+        type: target.types.page,
+        title: 'With blocks',
+        blocks,
+        blocksLayout: { items: ['n1'] },
+      },
+    });
+
+    const fetched: any = await target.adapter.dispatch('content.get', {
+      path: created.path,
+    });
+    expect(fetched.blocksLayout.items).toEqual(['n1']);
+    expect(fetched.blocks.n1.value[0].children[0].text).toBe('Born with a body');
+
+    await target.adapter.dispatch('content.delete', { path: created.path });
+  });
 });

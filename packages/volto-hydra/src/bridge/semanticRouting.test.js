@@ -162,6 +162,64 @@ describe('routeToIntent', () => {
     expect(r.intent).toBe('content.create');
   });
 
+  it('carries every field the add form collected, not a chosen few', () => {
+    // The first version named type/title/blocks/blocksLayout and dropped the
+    // rest, so a document created over the bridge lost its description, its
+    // tags and — on a translation — the language it was being created in.
+    // Nothing said so: the create succeeded, just emptier than asked for.
+    const r = routeToIntent({
+      op: 'post',
+      path: '/news',
+      data: {
+        '@type': 'Document',
+        title: 'A page',
+        description: 'not a file',
+        subjects: ['design'],
+        blocks: { b: { '@type': 'slate' } },
+        blocks_layout: { items: ['b'] },
+      },
+    });
+    expect(r.intent).toBe('content.create');
+    expect(r.args.data.description).toBe('not a file');
+    expect(r.args.data.subjects).toEqual(['design']);
+    // Plone's spelling is translated, not passed on under both names.
+    expect(r.args.data.blocksLayout).toEqual({ items: ['b'] });
+    expect(r.args.data.blocks_layout).toBeUndefined();
+    // '@type' is the canonical `type`, and does not survive as itself.
+    expect(r.args.data.type).toBe('Document');
+    expect(r.args.data['@type']).toBeUndefined();
+  });
+
+  it('routes creating a translation as translating, not as a bare create', () => {
+    // "Create a document whose translation_of is /en/services" only means
+    // something to a CMS with one document per language. Said as "this document
+    // should exist in German, with this content", both families can answer:
+    // grouped CMSes create and link, variants CMSes write the German values
+    // onto the entity that already exists. The admin asks the same thing either
+    // way, and translations.locate has already said where it belongs.
+    const r = routeToIntent({
+      op: 'post',
+      path: '/de',
+      data: {
+        '@type': 'Document',
+        title: 'Dienstleistungen',
+        translation_of: '/en/services',
+        language: 'de',
+        blocks: { b: { '@type': 'slate' } },
+        blocks_layout: { items: ['b'] },
+      },
+    });
+    expect(r.intent).toBe('translations.create');
+    expect(r.args.sourcePath).toBe('/en/services');
+    expect(r.args.language).toBe('de');
+    expect(r.args.parentPath).toBe('/de');
+    expect(r.args.data.title).toBe('Dienstleistungen');
+    expect(r.args.data.blocksLayout).toEqual({ items: ['b'] });
+    // The Plone-only spelling of the relationship does not travel with the
+    // payload: it IS the intent now.
+    expect(r.args.data.translation_of).toBeUndefined();
+  });
+
   it('returns null for endpoints with no canonical form', () => {
     expect(routeToIntent({ op: 'get', path: '/x/@history' })).toBeNull();
   });

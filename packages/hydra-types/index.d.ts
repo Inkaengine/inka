@@ -36,24 +36,6 @@ export type Capability =
    * fills in a form and the save fails.
    */
   | 'multilingual'
-  /**
-   * Translations are separate DOCUMENTS, which can be linked and unlinked.
-   *
-   * A narrower claim than `multilingual`, and the two genuinely come apart.
-   * Plone and WordPress-with-Polylang hold one document per language and link
-   * them into a group: an editor can point an existing page at a group, or
-   * detach one, and both documents survive either way.
-   *
-   * Drupal and Contentful hold ONE entity carrying a version of each field per
-   * language. There is no second document to link, and the nearest thing to
-   * unlinking deletes that language's values — destructive where the grouped
-   * kind is not. So an adapter over one of those declares `multilingual` and
-   * NOT this, and the admin offers translating without offering linking.
-   *
-   * The distinction is p.a.m.'s own: it has both, groups of documents and
-   * single shared objects (see its shared_uuid / Language Independent Folder).
-   */
-  | 'translations-grouped'
   | 'versioning'
   | 'sharing'
   | 'comments'
@@ -94,6 +76,16 @@ export type Intent =
   | 'site.get'
   /** The languages this document exists in, as a group. */
   | 'translations.get'
+  /**
+   * Make this document exist in another language, with the given content.
+   *
+   * Said as an intention rather than as Plone's `translation_of` field, because
+   * the mechanism differs by family: a grouped CMS creates a second document and
+   * joins the group, a variants CMS writes the language's values onto the entity
+   * that is already there. `parentPath` is where translations.locate said a new
+   * document belongs, and means nothing to an adapter that creates none.
+   */
+  | 'translations.create'
   /** Put an existing document into this one's translation group. */
   | 'translations.link'
   /** Take a language out of this one's translation group. */
@@ -364,6 +356,44 @@ export interface PermissionsAndState {
      */
     category?: 'object' | 'object-buttons' | 'site' | 'user';
   }>;
+}
+
+/**
+ * What the DEPLOYMENT is, as opposed to what any document is. Answered by
+ * `site.get`.
+ */
+export interface SiteInfo {
+  /** The language the site is authored in, as a language tag. */
+  defaultLanguage: string;
+  /** Every language the site offers, including the default. */
+  languages?: string[];
+  title?: string;
+  features?: {
+    /** Can hold the same document in more than one language at all. */
+    multilingual?: boolean;
+    /**
+     * HOW it holds them — a property of this site's configuration, not of the
+     * CMS.
+     *
+     *   'grouped'  — one document per language, linked to each other. Pointing
+     *                an existing page at a group, or detaching one, is metadata
+     *                on documents that both survive: lossless and reversible.
+     *   'variants' — one entity carrying a version of each field per language.
+     *                There is no second document, so there is nothing to link,
+     *                and removing a language deletes that language's content.
+     *
+     * Drupal is either, depending on setup: Content Translation gives variants,
+     * while separate nodes joined by a reference field are grouped. WordPress
+     * with Polylang is grouped. So the adapter is told which by whoever
+     * constructs it — the frontend knows its own site, and the CMS's name does
+     * not settle it.
+     *
+     * The admin offers linking and unlinking only for 'grouped'. On 'variants'
+     * the nearest operation destroys content, which must not hide behind a
+     * control that reads as "relate these two pages".
+     */
+    translations?: 'grouped' | 'variants';
+  };
 }
 
 export interface AdapterContext {

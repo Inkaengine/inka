@@ -78,10 +78,6 @@ export class PloneAdapter extends BaseAdapter {
         // will not ask an adapter that cannot serve these, and it will not offer
         // translations on a site with one language.
         'multilingual',
-        // …and its translations are separate documents, so linking an existing
-        // page into a group and detaching one are both real, and neither
-        // destroys anything.
-        'translations-grouped',
       ],
     });
     this.cmsBaseUrl = cmsBaseUrl;
@@ -449,6 +445,25 @@ export class PloneAdapter extends BaseAdapter {
     );
   }
 
+  /**
+   * A create body, Plone's way round.
+   *
+   * Every field the caller sent, not a hand-picked few: a create carries a body
+   * — translating a page posts the original's blocks with it — plus whatever the
+   * add form collected. Naming a few keys here meant blocks were accepted and
+   * dropped, so a translation was created empty behind a 201 that said it had
+   * worked. Drupal and WordPress already build from `data.blocks`; this is the
+   * same contract, spelled `blocks_layout`.
+   */
+  toCreateBody(data) {
+    const { type, blocksLayout, ...fields } = data;
+    return {
+      '@type': type,
+      ...fields,
+      ...(blocksLayout ? { blocks_layout: blocksLayout } : {}),
+    };
+  }
+
   async dispatchOnce(intent, args) {
     switch (intent) {
       case 'http': {
@@ -483,10 +498,24 @@ export class PloneAdapter extends BaseAdapter {
       case 'content.create': {
         const raw = await this.fetchJson(args.parentPath, {
           method: 'POST',
+          body: this.toCreateBody(args.data),
+        });
+        return this.toDocument(raw);
+      }
+
+      // Translating is one call here: Plone takes the relationship ON the
+      // create, and plone.app.multilingual joins the group from it. The
+      // sequence a grouped CMS without that would need — create, then link —
+      // is the adapter's business, not the admin's.
+      case 'translations.create': {
+        const raw = await this.fetchJson(args.parentPath, {
+          method: 'POST',
           body: {
-            '@type': args.data.type,
-            title: args.data.title,
-            ...args.data.fields,
+            ...this.toCreateBody(args.data),
+            // A path; plone.app.multilingual's own examples use a UID, and
+            // restapi resolves either.
+            translation_of: args.sourcePath,
+            language: args.language,
           },
         });
         return this.toDocument(raw);
@@ -667,6 +696,10 @@ export class PloneAdapter extends BaseAdapter {
             : {}),
           features: {
             multilingual: Boolean(site?.features?.multilingual),
+            // plone.app.multilingual links separate documents into a group, so
+            // linking an existing page into one and detaching it are both
+            // metadata on objects that survive either way.
+            translations: 'grouped',
           },
         };
       }

@@ -131,16 +131,54 @@ export function routeToIntent({ op, path, data }) {
           endpoint: 'upload',
         };
       }
+      // Everything the form collected. Naming four keys here dropped the
+      // rest — description, tags, the '@static_behaviors' Plone needs — and a
+      // create that quietly saves less than it was given looks like a create
+      // that worked.
+      const {
+        '@type': type,
+        blocks_layout: blocksLayout,
+        translation_of: translationOf,
+        language,
+        ...fields
+      } = data ?? {};
+      const payload = {
+        ...fields,
+        ...(type !== undefined ? { type } : {}),
+        ...(blocksLayout !== undefined ? { blocksLayout } : {}),
+      };
+
+      // Creating a translation is its own intention, not a create with an
+      // extra field.
+      //
+      // 'translation_of' assumes the grouped model — a document per language,
+      // pointing at a sibling — which is how Plone and WordPress+Polylang work
+      // and is not how Drupal's content translation does. There the page
+      // already exists and translating it means writing the German values onto
+      // the entity that is already there; there is no second document for
+      // 'translation_of' to name.
+      //
+      // Naming the SOURCE and the LANGUAGE says what the editor asked for and
+      // leaves the mechanism to the adapter. parentPath is carried because
+      // translations.locate has already asked the CMS where a translation
+      // belongs, and that answer should not be re-derived.
+      if (translationOf) {
+        return {
+          intent: 'translations.create',
+          args: {
+            sourcePath: translationOf,
+            language,
+            parentPath: contextPath,
+            data: payload,
+          },
+        };
+      }
+
       return {
         intent: 'content.create',
         args: {
           parentPath: contextPath,
-          data: {
-            type: data?.['@type'],
-            title: data?.title,
-            blocks: data?.blocks,
-            blocksLayout: data?.blocks_layout,
-          },
+          data: { ...payload, ...(language !== undefined ? { language } : {}) },
         },
       };
     }

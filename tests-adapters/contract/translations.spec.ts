@@ -65,4 +65,75 @@ describe('translations', () => {
     expect(typeof place.path).toBe('string');
     expect(place.path.startsWith('/')).toBe(true);
   });
+
+  it('refuses to create a translation it cannot link', async () => {
+    if (advertises('multilingual')) return;
+    // The admin asks for a translation only when the capability is claimed, so
+    // this is the belt to that braces: a create that silently produced a loose,
+    // unlinked document would cost the editor a whole page of typing before
+    // anyone noticed it belonged to nothing.
+    await expect(
+      target.adapter.dispatch('translations.create', {
+        sourcePath: '/news/first-post',
+        language: 'de',
+        parentPath: '/news',
+        data: { type: target.types.page, title: 'Erster Beitrag' },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('creates a translation that is in the group, and keeps its body', async () => {
+    if (!advertises('multilingual')) return;
+
+    // Where the CMS says it belongs, not where the caller guessed.
+    const place: any = await target.adapter.dispatch('translations.locate', {
+      path: '/news/first-post',
+      language: 'de',
+    });
+
+    const created: any = await target.adapter.dispatch('translations.create', {
+      sourcePath: '/news/first-post',
+      language: 'de',
+      parentPath: place.path,
+      data: {
+        type: target.types.page,
+        title: 'Erster Beitrag',
+        blocks: {
+          t1: {
+            '@type': 'slate',
+            value: [{ type: 'p', children: [{ text: 'Auf Deutsch' }] }],
+          },
+        },
+        blocksLayout: { items: ['t1'] },
+      },
+    });
+
+    // The translation carries the copied blocks. Translating a page means
+    // copying its body and then editing it; a create that dropped the body
+    // would leave the editor with a blank page and no reason given.
+    const doc: any = await target.adapter.dispatch('content.get', {
+      path: created.path,
+    });
+    expect(doc.title).toBe('Erster Beitrag');
+    expect(doc.blocksLayout.items).toEqual(['t1']);
+
+    // And it is in the group, from BOTH ends — the point of translating rather
+    // than adding a page that happens to be in German.
+    const fromSource: any = await target.adapter.dispatch('translations.get', {
+      path: '/news/first-post',
+    });
+    expect(fromSource.items.map((i: any) => i.language)).toContain('de');
+    expect(
+      fromSource.items.find((i: any) => i.language === 'de').path,
+    ).toBe(created.path);
+
+    const fromCopy: any = await target.adapter.dispatch('translations.get', {
+      path: created.path,
+    });
+    expect(fromCopy.items.map((i: any) => i.language).sort()).toEqual(
+      expect.arrayContaining(['en']),
+    );
+
+    await target.adapter.dispatch('content.delete', { path: created.path });
+  });
 });
