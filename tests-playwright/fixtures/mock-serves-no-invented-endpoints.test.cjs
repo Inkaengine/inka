@@ -22,7 +22,10 @@ const path = require('node:path');
 
 const CORE = new Set(
   JSON.parse(
-    fs.readFileSync(path.join(__dirname, 'api', 'plone-restapi-endpoints.json'), 'utf-8'),
+    fs.readFileSync(
+      path.join(__dirname, 'api', 'plone-restapi-endpoints.json'),
+      'utf-8',
+    ),
   ).endpoints,
 );
 
@@ -37,11 +40,13 @@ const DECLARED = {
   // Add-ons this project expects on the backend.
   '@submit-form': 'addon: collective.volto.formsupport',
   '@form-data': 'addon: collective.volto.formsupport (stored submissions)',
-  '@export': 'addon: plone.exportimport (our --markdown flavour extends it; see docs)',
+  '@export':
+    'addon: plone.exportimport (our --markdown flavour extends it; see docs)',
   // Ours, implemented by the Plone addon in backend/.
   '@templates': 'ours: the templates feature — see backend/README.md',
   // Mock-only, and named so nobody mistakes it for an API.
-  '@mock-site-features': 'test-only: control plane for per-session site features',
+  '@mock-site-features':
+    'test-only: control plane for per-session site features',
 };
 
 /**
@@ -55,7 +60,8 @@ const REFUSALS = {
 function routesOf(source) {
   const found = new Set();
   // app.get('*/@foo'), app.post(/.*\/@foo$/), app.all(...) — literal or regex.
-  const registration = /app\.(?:get|post|patch|put|delete|all)\(\s*(?:'([^']*)'|\/([^,]*?)\/[gimsuy]*)\s*,/g;
+  const registration =
+    /app\.(?:get|post|patch|put|delete|all)\(\s*(?:'([^']*)'|\/([^,]*?)\/[gimsuy]*)\s*,/g;
   let match;
   while ((match = registration.exec(source)) !== null) {
     const pattern = match[1] ?? match[2] ?? '';
@@ -75,7 +81,9 @@ describe('the mock serves no invented endpoints', () => {
   it('every route is core plone.restapi, declared, or a deliberate refusal', () => {
     const unexplained = [...routesOf(source)].filter(
       (endpoint) =>
-        !CORE.has(endpoint) && !(endpoint in DECLARED) && !(endpoint in REFUSALS),
+        !CORE.has(endpoint) &&
+        !(endpoint in DECLARED) &&
+        !(endpoint in REFUSALS),
     );
     assert.deepEqual(
       unexplained,
@@ -92,7 +100,10 @@ describe('the mock serves no invented endpoints', () => {
   it('records where the core list came from, so it can be checked again', () => {
     // A list nobody can regenerate is a list nobody will trust in a year.
     const fixture = JSON.parse(
-      fs.readFileSync(path.join(__dirname, 'api', 'plone-restapi-endpoints.json'), 'utf-8'),
+      fs.readFileSync(
+        path.join(__dirname, 'api', 'plone-restapi-endpoints.json'),
+        'utf-8',
+      ),
     );
     assert.match(fixture._source, /plone\.restapi/);
     assert.ok(fixture._regenerate.length > 0);
