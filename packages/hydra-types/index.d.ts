@@ -36,6 +36,24 @@ export type Capability =
    * fills in a form and the save fails.
    */
   | 'multilingual'
+  /**
+   * Translations are separate DOCUMENTS, which can be linked and unlinked.
+   *
+   * A narrower claim than `multilingual`, and the two genuinely come apart.
+   * Plone and WordPress-with-Polylang hold one document per language and link
+   * them into a group: an editor can point an existing page at a group, or
+   * detach one, and both documents survive either way.
+   *
+   * Drupal and Contentful hold ONE entity carrying a version of each field per
+   * language. There is no second document to link, and the nearest thing to
+   * unlinking deletes that language's values — destructive where the grouped
+   * kind is not. So an adapter over one of those declares `multilingual` and
+   * NOT this, and the admin offers translating without offering linking.
+   *
+   * The distinction is p.a.m.'s own: it has both, groups of documents and
+   * single shared objects (see its shared_uuid / Language Independent Folder).
+   */
+  | 'translations-grouped'
   | 'versioning'
   | 'sharing'
   | 'comments'

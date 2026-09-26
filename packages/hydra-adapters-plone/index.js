@@ -78,6 +78,10 @@ export class PloneAdapter extends BaseAdapter {
         // will not ask an adapter that cannot serve these, and it will not offer
         // translations on a site with one language.
         'multilingual',
+        // …and its translations are separate documents, so linking an existing
+        // page into a group and detaching one are both real, and neither
+        // destroys anything.
+        'translations-grouped',
       ],
     });
     this.cmsBaseUrl = cmsBaseUrl;
