@@ -1,0 +1,38 @@
+{
+  "@id": "/form-single-type-page",
+  "@type": "Document",
+  "UID": "form-single-type-page-uid",
+  "id": "form-single-type-page",
+  "title": "Form Single Type Page",
+  "description": "A form whose fields allow one type (static text) and start empty: the + types the empty field in place",
+  "review_state": "published",
+  "is_folderish": false,
+  "type_title": "Page",
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "form-1": {
+      "@type": "form",
+      "title": "Contact",
+      "submit_label": "Submit",
+      "subblocks": [
+        {
+          "field_id": "empty-1",
+          "field_type": "empty",
+          "label": ""
+        }
+      ],
+      "default_from": "noreply@example.com",
+      "default_to": "admin@example.com",
+      "default_subject": "New form submission",
+      "captcha": "honeypot"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "form-1"
+    ]
+  }
+}

@@ -4905,12 +4905,14 @@ const Iframe = (props) => {
       getBlockById(properties, bpm, selectedBlock)?.['@type'] === 'empty';
     if (selectedIsEmpty && allowed?.length === 1) {
       const newFormData = convertBlockInPlace(properties, bpm, selectedBlock, allowed[0]);
-      const newBpm = buildBlockPathMap(newFormData, blocksConfig, intl);
       onChangeFormData(newFormData);
+      // Only the pending selection here, as insertAndSelectBlock does: the
+      // props sync sends the new data to the iframe, and it skips a send when
+      // iframeSyncState.formData already equals it. Setting formData here made
+      // it equal, so unless schema defaults happened to change the block, the
+      // canvas never got the typed item.
       setIframeSyncState(prev => ({
         ...prev,
-        formData: newFormData,
-        blockPathMap: newBpm,
         pendingSelectBlockUid: selectedBlock,
       }));
     } else if (allowed?.length === 1) {
@@ -4944,6 +4946,14 @@ const Iframe = (props) => {
     // would become per-page (and lose its lock). No-op for normal page blocks.
     for (const k of ['templateId', 'templateInstanceId', 'slotId', 'fixed', 'readOnly']) {
       if (blockData[k] !== undefined) newBlockData = { ...newBlockData, [k]: blockData[k] };
+    }
+    // An object_list item is found by its idField, which is not one of its
+    // type's fields, so a conversion with no field mapping (filling an empty
+    // placeholder) drops it: the item then has no id and cannot be rendered,
+    // selected or edited. It is the same item, typed in place — keep its id.
+    const idField = bpm?.[blockId]?.isObjectListItem ? bpm[blockId].idField : null;
+    if (idField && blockData[idField] !== undefined) {
+      newBlockData = { ...newBlockData, [idField]: blockData[idField] };
     }
     return updateBlockById(props, bpm, blockId, newBlockData);
   };
