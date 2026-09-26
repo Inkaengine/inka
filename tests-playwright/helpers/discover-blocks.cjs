@@ -571,12 +571,17 @@ function validateSlateNode(node, pathStr, issues) {
  *  - Missing `type` on root element.
  *  - Invalid node shapes anywhere in the tree.
  *
- * Schema-independent; runs against raw API data.
+ * Runs against raw API data, guessing a slate value from its shape. Where the
+ * schema is known, `objectListFields` names the block's object_list fields:
+ * their items are records (validated as sub-blocks of their own), and a record
+ * may have a `text` field (a link's text) that would otherwise look like a
+ * slate leaf.
  */
-function collectSlateIssues(blockData, pagePath, blockId, out, blockType, inTableCell = false) {
+function collectSlateIssues(blockData, pagePath, blockId, out, blockType, inTableCell = false, objectListFields = new Set()) {
   if (!blockData || typeof blockData !== 'object') return;
   for (const [key, value] of Object.entries(blockData)) {
     if (key.startsWith('@') || key === 'blocks' || key === 'blocks_layout') continue;
+    if (objectListFields.has(key)) continue;
     if (!Array.isArray(value) || value.length === 0) continue;
     const first = value[0];
     const looksSlate =
@@ -1496,6 +1501,7 @@ async function discoverBlocks(
         collectSlateIssues(
           blockData, pagePath, blockId, slateIssues, blockType,
           Array.isArray(entry.path) && entry.path.includes('cells'),
+          new Set(objectListFields.get(blockType)?.keys() ?? []),
         );
         // Effective (dynamic) required set from Hydra's REAL resolver — fieldRules
         // + hideParentOwnedFields applied, so a conditionally-hidden field (a
@@ -1919,6 +1925,7 @@ module.exports = {
   // drift would show up as a validator shouting about `slotId` on every block.
   UNDECLARED_EXEMPT,
   collectFieldMappingIssues,
+  collectSlateIssues,
   discoverBlocks,
   extractBlocks,
   buildObjectListFieldsMap,
