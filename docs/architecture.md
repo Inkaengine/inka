@@ -51,6 +51,17 @@ Inka is the page-building and governance layer between your CMS and your front e
 
 <block type="separator" />
 
+## Your design system as blocks and rules
+
+Pages are laid out in blocks, and the blocks are your design system. Each block type is a component your developers already wrote in the front end. With each one go the rules for using it:
+
+- **What can go inside what.** Each region lists the block types it accepts, and how many (`allowedBlocks`, `maxLength`).
+- **Which fields an editor can change.** A block's schema lists its fields; templates and layouts can lock blocks so they can't be moved or edited (`fixed`, `readOnly`).
+- **What those fields accept.** Field rules check a value and either block the save or give advice.
+- **Which combinations are not allowed.** A rule can compare one field with another, so a setting that only works with certain others can be refused.
+
+Editors get a page builder that only offers what your design system allows. They drag, drop and type on the rendered page, on a phone as well as a desktop (see [editing on a phone](./editor-guide/index.md#editing-on-a-phone)), but there is no freeform mode to fall out of, so an off-system page is not something anyone has to catch in review. [Rules and checks](./compliance/index.md) has an example of each kind of rule.
+
 ## Three layers
 
 Inka splits a site into three layers, and each can change without the others:
@@ -59,7 +70,7 @@ Inka splits a site into three layers, and each can change without the others:
 - **Inka** does the page building and applies your design system's rules while people edit. It is not a CMS and stores no content of its own.
 - **Front ends** render the pages, in any framework, as a static site (SSG), server-rendered (SSR) or a single-page app (SPA). One site can have several.
 
-This is more decoupled than a typical headless CMS. A headless CMS still owns the page builder, so its editing screens decide what a page can be. With Inka, the front end decides. Each front end declares its block schemas and rules through the bridge script (`initBridge`), and Inka applies them while people edit. Change your design system and the editing rules change with it, with no CMS release.
+This is more decoupled than a typical headless CMS. A headless CMS still owns the page builder, so its editing screens decide what a page can be. With Inka, the front end decides. Each front end declares its block schemas and rules through the bridge script (`initBridge`), and Inka applies them while people edit. Change your design system and the editing rules change with it, with no CMS release. Change the CMS and keep the editor and the front ends; rebuild a front end and keep the CMS and the rules.
 
 ### Diagram
 
@@ -78,13 +89,21 @@ This is more decoupled than a typical headless CMS. A headless CMS still owns th
 └───────────────┘                                     └───────────────────┘
 ```
 
-For the same picture drawn for people new to Inka, see [how it works](https://inka.sh/how-it-works) on inka.sh.
+### More than one content store
+
+An adapter connects Inka to a content store through one contract, so editors get the same experience whatever sits behind it: Plone, Drupal, WordPress or a custom store. Different sections of one site can come from different stores, for example news from one system, a product catalogue from another and policies from a third. Editors work on all of it in the same editor. If your content lives somewhere that isn't a CMS, write an adapter for it; it uses the same contract as the built-in ones. See the [CMS adapter guide](./adapters/index.md).
+
+### More than one front end
+
+Nuxt, Next.js, Astro, Vue and Framework7 front ends work today, and so do server-rendered sites in PHP, Django, Rails or Laravel (see [server-rendered front ends](./frontend-guide/server-rendered-frontends.md)). A front end adds one small JavaScript file, the bridge, and a few HTML attributes on the elements editors can change. There is no SDK to adopt and no framework to switch to.
+
+One site can have several front ends reading the same content, for example the main website and a mobile app. Editors switch between them in the toolbar while they edit, to see the same page rendered by a different front end and design system.
 
 ## Editing is private, publishing is public
 
 Inka is only used to edit. The public site never talks to it.
 
-- **Inka sits behind login.** Editors sign in with their CMS account. You can also put it behind a VPN, because nothing public needs to reach it.
+- **Inka sits behind login.** Editors sign in with their CMS account, so single sign-on, roles and approval workflow are the CMS's, used as they are. You can also put Inka behind a VPN, because nothing public needs to reach it.
 - **The public site is a read-only front end.** It reads published content straight from the CMS API and never loads Inka.
 - **The bridge script is only for editing.** Load it only when the page is opened inside Inka's editing iframe, or ship it only in a separate editing build of your front end. Your public build does not need it.
 - **Edits travel over `postMessage`.** Inka opens your front end in an iframe. The bridge and Inka talk only through `postMessage`, and each side checks the other's origin: the bridge sends only to the Inka origin, and accepts messages only from that origin or from its own page.
@@ -92,11 +111,30 @@ Inka is only used to edit. The public site never talks to it.
 
 [Deploy and secure Inka](./deploy-and-secure.md) covers the settings that keep this split tight, such as `frame-ancestors` on the editing front end.
 
+## Rules while editing
+
+Rules run as the page is written, not in a review afterwards. Field rules do one of two things:
+
+- **A hard rule stops the save.** A required field left empty, or a value that cannot work (a field rule with `error`), marks the field invalid, and the page can't be saved until it is fixed.
+- **An advisory rule gives advice.** A field rule with `warning` shows beside the field while the editor works, and the page still saves.
+
+Region rules (`allowedBlocks`, `maxLength`, `allowedStyles`) act earlier still: the editor is only offered the blocks and text styles the region accepts.
+
+The same mechanism covers more than layout. Accessibility and other standards you are held to, the structure of your design system, and what the site says, such as words your brand avoids, can all be written as rules. See [Rules and checks](./compliance/index.md).
+
+A machine can check colour contrast or heading order. It can't tell whether alt text says anything useful, whether the reading level suits the audience, or whether a photo belongs on the page. Those need a person's judgement. [Inka Assure](https://inka.sh/plugins/inka-assure), in development and planned for late 2026, will save that judgement against the version of the page it applies to: who signed it off, when, and on what basis. When the page changes, the item will come back for review. Overrides will be recorded the same way.
+
+## AI agents
+
+An MCP connection for AI agents is [coming soon](https://inka.sh/plugins/mcp). An agent will connect with the access an editor has and be held to the same rules. There is no separate path for agents, so an agent can't write its way around the rules.
+
+An agent that comes in through the same door can be asked to check as well as write, for example cross-checking a claim against your own documents, or finding a figure that doesn't match its source. You set which checks run and which need a person to sign off.
+
 ## Inka is stateless
 
 Inka has no database and no content store of its own. Content, users and history live in the CMS. Each editor's own settings, such as the front ends they have added, live in their browser.
 
-So Inka is easy to run yourself: it is one Node.js process you can scale to zero between editing sessions. To recover, redeploy it; there is nothing to restore. PretaGov also runs Inka as a managed service, on a dedicated instance for each customer.
+So Inka is easy to run yourself: it is one Node.js process you can scale to zero between editing sessions. To recover, redeploy it; there is nothing to restore. When you run it on your own infrastructure, nothing phones home, no content leaves your network, and you decide when to upgrade. PretaGov also runs Inka as a managed service, on a dedicated instance for each customer.
 
 ## The iframe ↔ admin bridge
 
