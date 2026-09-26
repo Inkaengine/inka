@@ -803,7 +803,35 @@ export class AdminUIHelper {
       try {
         await childEditable.or(selfEditable).first().waitFor({ state: 'visible', timeout: 5000 });
       } catch (e) {
-        throw new Error(`Block "${blockId}" was clicked but no contenteditable field appeared. Check that hydra.js is handling the block selection.`);
+        // The bridge's own view of the moment: what it has selected, and
+        // whether a render, transform or input block is holding the field.
+        const bridge = await iframe
+          .locator('body')
+          .evaluate(() => {
+            const b = (window as any).__hydraBridge;
+            return b
+              ? JSON.stringify({
+                  selected: b.selectedBlockUid,
+                  focusedField: b.focusedFieldName,
+                  renderInProgress: !!b._renderInProgress,
+                  pendingTransform: b.pendingTransform,
+                  blockedBlockId: b.blockedBlockId,
+                  caretLeaf: b._caretLeaf,
+                  editMode: b.editMode,
+                  // Who has the focus: something else taking it is a suspect.
+                  focus: (() => {
+                    const a = document.activeElement as HTMLElement | null;
+                    if (!a) return null;
+                    const owner = a.closest?.('[data-block-uid]')?.getAttribute('data-block-uid') ?? null;
+                    return `${a.tagName}${a.getAttribute?.('data-edit-text') ? `[data-edit-text=${a.getAttribute('data-edit-text')}]` : ''} in ${owner}`;
+                  })(),
+                })
+              : 'no bridge';
+          })
+          .catch((err: Error) => `unreadable: ${err.message}`);
+        throw new Error(
+          `Block "${blockId}" was clicked but no contenteditable field appeared. Check that hydra.js is handling the block selection. Bridge: ${bridge}`,
+        );
       }
     }
 

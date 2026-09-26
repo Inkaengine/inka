@@ -102,6 +102,75 @@ test.describe('Empty slate typing', () => {
       .toBe(true);
   }
 
+  test('text typed while the caret target is still rendering arrives once', async ({
+    helper,
+    page,
+  }) => {
+    // Clicking into an empty field that has no text node asks for a render
+    // that gives it one (a zero-width space in the render data): the author's
+    // text then goes into the frontend's own node. Keys typed before that
+    // render lands are held and replayed into it — none lost, none doubled.
+    // The test frontend's renderGate holds the render so the keys really do
+    // arrive first; a frontend without it renders at once.
+    const block = helper.getIframe().locator('[data-block-uid="mock-empty-slate"]');
+    const gated = await block.evaluate((el) => !!(el.ownerDocument.defaultView as any).supportsRenderGate);
+    if (gated) {
+      await block.evaluate((el) => {
+        const w = el.ownerDocument.defaultView as any;
+        w.renderGate = new Promise<void>((resolve) => (w.releaseRender = resolve));
+      });
+    }
+    await helper.clickBlockInIframe('mock-empty-slate', { waitForToolbar: false });
+    const field = helper.getSlateField(block);
+    await readyToType(field);
+    if (gated) {
+      // The click asked for the caret target's render, which is held.
+      await expect.poll(() => block.evaluate((el) => !!(el.ownerDocument.defaultView as any).renderWaiting)).toBe(true);
+    }
+    await page.keyboard.type('Hello');
+    if (gated) {
+      await block.evaluate((el) => {
+        const w = el.ownerDocument.defaultView as any;
+        w.renderGate = null;
+        w.releaseRender();
+      });
+    }
+    await expect.poll(() => visibleText(field)).toBe('Hello');
+    await expect.poll(() => adminText(page, 'mock-empty-slate')).toBe('Hello');
+
+    await sendAdminUpdate(page, helper, 'mock-block-1', 'Changed by the admin');
+    expect(await visibleText(field)).toBe('Hello');
+    {
+      const nodes = await textNodesWith(field, 'Hello');
+      expect(nodes.found, `text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+    }
+  });
+
+  test('clicking into an empty field renders once, and a format toggle once more', async ({
+    helper,
+    page,
+  }) => {
+    // Renders only when needed: one to give the clicked empty field its caret
+    // target, one for the format toggle — none at "DOM settle", none while the
+    // author types. The test frontend counts its renders.
+    const block = helper.getIframe().locator('[data-block-uid="mock-empty-slate"]');
+    const renders = () => block.evaluate((el) => (el.ownerDocument.defaultView as any).hydraRenderCount as number | undefined);
+    const before = await renders();
+    await helper.clickBlockInIframe('mock-empty-slate', { waitForToolbar: false });
+    const field = helper.getSlateField(block);
+    await readyToType(field);
+    await page.keyboard.type('a');
+    await expect.poll(() => adminText(page, 'mock-empty-slate')).toBe('a');
+    await page.keyboard.press('ControlOrMeta+b');
+    await page.keyboard.type('b');
+    await expect.poll(() => visibleText(field)).toBe('ab');
+    await expect.poll(() => adminText(page, 'mock-empty-slate')).toBe('ab');
+    expect(await rendersBold(field, 'b')).toBe(true);
+    if (before !== undefined) {
+      expect(await renders(), 'renders: the caret target, then the format toggle').toBe(before + 2);
+    }
+  });
+
   test('text typed into an empty slate shows once after the next FORM_DATA', async ({
     helper,
     page,
