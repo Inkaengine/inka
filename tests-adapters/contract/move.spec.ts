@@ -190,6 +190,37 @@ describe('content.order', () => {
   });
 });
 
+describe('content.order and the menu', () => {
+  it('reorders the MENU, not just the listing', async () => {
+    // This is most of what ordering is for. The contents view is where an editor
+    // does it, but what they are arranging is the navigation: in Drupal
+    // content.order writes menu link weights, in WordPress menu_order, in Plone
+    // the folder position the navigation is built from. An adapter that reordered
+    // its own listing and left the menu alone would pass every test above and be
+    // wrong in the only place a reader looks.
+    const before: any = await target.adapter.dispatch('navigation.get', {
+      path: '/',
+    });
+    const paths = before.items.map((i: any) => i.path);
+    expect(paths.length, 'nothing in the menu to reorder').toBeGreaterThan(1);
+
+    const last = paths[paths.length - 1];
+    await target.adapter.dispatch('content.order', {
+      path: last,
+      targetIndex: 0,
+    });
+
+    const after: any = await target.adapter.dispatch('navigation.get', {
+      path: '/',
+    });
+    expect(after.items.map((i: any) => i.path)[0]).toBe(last);
+    // And nothing fell out of the menu on the way.
+    expect(after.items.map((i: any) => i.path).sort()).toEqual(
+      [...paths].sort(),
+    );
+  });
+});
+
 describe('content.sort', () => {
   it('writes a new order for the children, by a field', async () => {
     // Persistent, not a sorted listing: after this, tree.list with no sort

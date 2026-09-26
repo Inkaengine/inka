@@ -633,15 +633,28 @@ export class DrupalAdapter extends BaseAdapter {
 
       case 'navigation.get': {
         const links = await this.allMenuLinks();
-        const top = links.filter(
-          (l) =>
-            !l.relationships.parent?.id &&
-            // A disabled link is Drupal's "keep this out of the menu". The
-            // document is untouched and still readable by anyone with its
-            // address — it is simply not listed, which is a different claim
-            // from being unpublished.
-            l.attributes?.enabled !== false,
-        );
+        const top = links
+          .filter(
+            (l) =>
+              !l.relationships.parent?.id &&
+              // A disabled link is Drupal's "keep this out of the menu". The
+              // document is untouched and still readable by anyone with its
+              // address — it is simply not listed, which is a different claim
+              // from being unpublished.
+              l.attributes?.enabled !== false,
+          )
+          // BY WEIGHT, which is the whole point of ordering. tree.list sorted
+          // here and this did not, so reordering a page moved it in the contents
+          // view and left the menu — the thing being arranged — untouched. Title
+          // breaks a tie, as Drupal's own menu tree does, so equal weights are
+          // at least stable rather than however JSON:API happened to answer.
+          .sort(
+            (a, b) =>
+              (a.attributes.weight ?? 0) - (b.attributes.weight ?? 0) ||
+              String(a.attributes.title ?? '').localeCompare(
+                String(b.attributes.title ?? ''),
+              ),
+          );
         const items = [];
         for (const l of top) {
           const nodeId = l.relationships.node?.id;

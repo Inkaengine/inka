@@ -914,7 +914,18 @@ export class WordPressAdapter extends BaseAdapter {
 
       case 'navigation.get': {
         const posts = await this.fetchJson(`/wp/v2/${this.postType}`, {
-          params: { parent: '0', status: 'any', context: 'edit', per_page: '100' },
+          params: {
+            parent: '0',
+            status: 'any',
+            context: 'edit',
+            per_page: '100',
+            // BY menu_order, which is what content.order writes. Without it the
+            // menu came back in WordPress's default order and a reorder moved
+            // the contents view only — the arrangement never reached the one
+            // place a reader sees it.
+            orderby: 'menu_order',
+            order: 'asc',
+          },
         });
         return {
           items: posts.map((p) => this.toDocument(p, `/${p.slug}`)),
