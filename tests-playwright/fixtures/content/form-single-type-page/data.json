@@ -4,7 +4,7 @@
   "UID": "form-single-type-page-uid",
   "id": "form-single-type-page",
   "title": "Form Single Type Page",
-  "description": "A form whose fields allow one type (E-mail) and start empty: the + types the empty field in place",
+  "description": "A form whose fields allow one type (static text) and start empty: the + types the empty field in place",
   "review_state": "published",
   "is_folderish": false,
   "type_title": "Page",

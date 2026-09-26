@@ -4905,12 +4905,14 @@ const Iframe = (props) => {
       getBlockById(properties, bpm, selectedBlock)?.['@type'] === 'empty';
     if (selectedIsEmpty && allowed?.length === 1) {
       const newFormData = convertBlockInPlace(properties, bpm, selectedBlock, allowed[0]);
-      const newBpm = buildBlockPathMap(newFormData, blocksConfig, intl);
       onChangeFormData(newFormData);
+      // Only the pending selection here, as insertAndSelectBlock does: the
+      // props sync sends the new data to the iframe, and it skips a send when
+      // iframeSyncState.formData already equals it. Setting formData here made
+      // it equal, so unless schema defaults happened to change the block, the
+      // canvas never got the typed item.
       setIframeSyncState(prev => ({
         ...prev,
-        formData: newFormData,
-        blockPathMap: newBpm,
         pendingSelectBlockUid: selectedBlock,
       }));
     } else if (allowed?.length === 1) {

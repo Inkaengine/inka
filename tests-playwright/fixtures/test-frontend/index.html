@@ -550,7 +550,9 @@
                     // match on the page id rather than one of the two prefixes.
                     const restrictStyles = /\/restricted-styles-page(\/|$)/.test(pagePath);
                     // A form whose fields allow ONE type and start empty: the '+'
-                    // on the empty field types it in place with no chooser.
+                    // on the empty field types it in place with no chooser. The
+                    // type is static_text because it has no schema defaults, so
+                    // the typed item differs from the empty only by its type.
                     const singleTypeFields = /\/form-single-type-page(\/|$)/.test(pagePath);
 
                     // Listen for changes from the admin UI and update blocks
@@ -618,7 +620,7 @@
                                             ...sharedBlocksConfig.form.blockSchema.properties,
                                             subblocks: {
                                                 ...sharedBlocksConfig.form.blockSchema.properties.subblocks,
-                                                allowedBlocks: ['from'],
+                                                allowedBlocks: ['static_text'],
                                                 defaultBlockType: 'empty',
                                             },
                                         },

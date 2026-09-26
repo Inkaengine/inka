@@ -61,8 +61,10 @@ test.describe('form empty field — pick a type (typed object_list)', () => {
   });
 
   test('with one allowed type, the + types the empty field in place and it keeps its id', async ({ page }) => {
-    // /form-single-type-page: the form's fields allow only 'from' (E-mail) and
+    // /form-single-type-page: the form's fields allow only 'static_text' and
     // start empty, so the '+' converts the empty straight away, no chooser.
+    // static_text has no schema defaults, so nothing but the '+' itself has to
+    // carry the change to the canvas.
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/form-single-type-page');
@@ -74,7 +76,7 @@ test.describe('form empty field — pick a type (typed object_list)', () => {
     await expect(page.locator('.blocks-chooser')).toHaveCount(0);
     // The same item, typed in place: it keeps its field_id (the object_list's
     // idField), so it renders as that field and can still be selected.
-    await expect(iframe.locator('[data-block-uid="empty-1"] input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await expect(iframe.locator('[data-block-uid="empty-1"] input[type="static_text"]')).toBeVisible({ timeout: 5000 });
     await helper.waitForBlockSelectedInAdmin('empty-1');
   });
 });
