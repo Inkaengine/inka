@@ -3,7 +3,9 @@ import { Button, Container, Segment, Table } from 'semantic-ui-react';
 import Helmet from '@plone/volto/helpers/Helmet/Helmet';
 import { flattenToAppURL, getBaseUrl } from '@plone/volto/helpers/Url/Url';
 import langmap from '@plone/volto/helpers/LanguageMap/LanguageMap';
-import { adapterSupports } from '../../../../../components/Toolbar/adapterCapability';
+import config from '@plone/volto/registry';
+import { canLinkTranslations } from '../../../../../components/Toolbar/translationsMode';
+import useAdapterInfo from '../../../../../bridge/useAdapterInfo';
 import reduce from 'lodash/reduce';
 import { Link, useLocation } from 'react-router-dom';
 import Icon from '@plone/volto/components/theme/Icon/Icon';
@@ -71,17 +73,29 @@ const ManageTranslations = (props) => {
   );
   // HYDRA: linking exists only where a translation is a separate DOCUMENT.
   //
-  // Plone and WordPress-with-Polylang hold one page per language and link them
-  // into a group: pointing an existing page at a group, or detaching one, leaves
-  // both pages intact. Drupal and Contentful hold ONE entity with a version of
-  // each field per language — there is no second document to link, and the
-  // nearest thing to unlinking deletes that language's content.
+  // With one page per language, linking an existing page into a group and
+  // detaching one are metadata on two pages that both survive. Where a language
+  // is a version of ONE entity there is no second page to link, and the nearest
+  // operation copies its fields in and deletes it — which must not hide behind a
+  // control that reads as "relate these two pages".
   //
-  // So on those the table still lists the languages and still offers to
-  // translate; it does not offer to link, because the call would be rejected,
-  // and it does not offer to unlink, because the only thing it could mean there
-  // is destructive.
-  const canLink = adapterSupports('translations-grouped');
+  // Read from the SITE, not from the adapter's capabilities: Drupal does both,
+  // so this is how a deployment is set up rather than which CMS it is.
+  //
+  // The table still lists every language and still offers to translate, because
+  // those mean something in both kinds.
+  //
+  // The adapter's answer arrives after the first paint and never touches the
+  // store, so reading it inside a selector froze it: useSelector re-runs on
+  // store changes, and a late announcement is not one. The control stayed
+  // hidden for the session.
+  const adapterInfo = useAdapterInfo();
+  const siteData = useSelector((state) => state.site.data);
+  const canLink = canLinkTranslations({
+    siteData,
+    adapterInfo,
+    bridged: config.settings.useBridgeBackend,
+  });
 
   const [isClient, setIsClient] = useState(false);
 

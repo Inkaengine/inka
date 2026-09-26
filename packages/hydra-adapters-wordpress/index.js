@@ -93,7 +93,20 @@ export function parseBlocks(content) {
 }
 
 export class WordPressAdapter extends BaseAdapter {
-  constructor({ cmsBaseUrl, nonce, credentials, postType = 'pages' } = {}) {
+  /**
+   * `translations` is only meaningful once a plugin provides them: core
+   * WordPress holds one language. Polylang and WPML both keep a separate POST
+   * per language and relate them, which is the grouped kind — so that is the
+   * default here, and it takes effect only when something reports more than one
+   * language.
+   */
+  constructor({
+    cmsBaseUrl,
+    nonce,
+    credentials,
+    postType = 'pages',
+    translations = 'grouped',
+  } = {}) {
     super({
       name: 'wordpress',
       capabilities: [
@@ -112,6 +125,7 @@ export class WordPressAdapter extends BaseAdapter {
       ],
     });
     this.cmsBaseUrl = cmsBaseUrl;
+    this.translationsMode = translations;
     // { username, appPassword } from WordPress's application-password flow.
     // Sent as Basic auth, which is how WordPress accepts a credential from a
     // client acting on behalf of a user — and unlike a cookie it works
@@ -1217,7 +1231,10 @@ export class WordPressAdapter extends BaseAdapter {
           defaultLanguage,
           languages: [defaultLanguage],
           ...(settings?.title ? { title: settings.title } : {}),
-          features: { multilingual: false },
+          // Core WordPress holds one language; a plugin is what changes that,
+          // and until this adapter detects one, saying otherwise would offer to
+          // create a translation that cannot exist.
+          features: { multilingual: false, translations: this.translationsMode },
         };
       }
 

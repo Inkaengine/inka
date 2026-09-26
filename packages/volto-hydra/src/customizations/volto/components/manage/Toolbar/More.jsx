@@ -39,6 +39,8 @@ import {
 import { flattenToAppURL, getBaseUrl } from '@plone/volto/helpers/Url/Url';
 import { usePrevious } from '@plone/volto/helpers/Utils/usePrevious';
 import config from '@plone/volto/registry';
+import { canTranslate } from '../../../../../components/Toolbar/translationsMode';
+import useAdapterInfo from '../../../../../bridge/useAdapterInfo';
 import rightArrowSVG from '@plone/volto/icons/right-key.svg';
 import userSVG from '@plone/volto/icons/user.svg';
 import applySVG from '@plone/volto/icons/ready.svg';
@@ -133,9 +135,19 @@ const More = (props) => {
 
   const content = useSelector((state) => state.content?.data, shallowEqual);
   const workingCopy = useSelector((state) => state.workingCopy, shallowEqual);
-  const isMultilingual = useSelector(
-    (state) => state.site.data.features?.multilingual,
-  );
+  // HYDRA: multilingual is a site fact AND an adapter capability.
+  //
+  // Volto reads only the site's answer, which is right when it is the CMS's own
+  // admin. Over an adapter it is half the question: a Drupal with two languages
+  // reports multilingual: true and its adapter implements none of the
+  // translation intents, so this entry opened a table whose every call rejects.
+  const adapterInfo = useAdapterInfo();
+  const siteData = useSelector((state) => state.site.data);
+  const isMultilingual = canTranslate({
+    siteData,
+    adapterInfo,
+    bridged: config.settings.useBridgeBackend,
+  });
 
   const actions = useSelector((state) => state.actions.actions, shallowEqual);
 

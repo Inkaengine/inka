@@ -68,7 +68,27 @@ function orderDocuments(items, sortOn, sortOrder) {
 }
 
 export class DrupalAdapter extends BaseAdapter {
-  constructor({ cmsBaseUrl, credentials, bundle = 'page' } = {}) {
+  /**
+   * `translations` says how THIS Drupal holds them, because Drupal does both
+   * and its own API cannot tell you which the editors use:
+   *
+   *   'variants' — Content Translation: one node carrying a version of each
+   *                field per langcode. The default, and what `default_langcode`
+   *                on a node means.
+   *   'grouped'  — separate nodes per language joined by a reference field,
+   *                which some sites prefer because each language then has its
+   *                own revisions, workflow and URL history.
+   *
+   * Whoever builds the adapter knows which; the CMS's name does not settle it,
+   * and guessing wrong offers an editor a lossless "link" that would actually
+   * merge one node into another and delete it.
+   */
+  constructor({
+    cmsBaseUrl,
+    credentials,
+    bundle = 'page',
+    translations = 'variants',
+  } = {}) {
     super({
       name: 'drupal',
       capabilities: [
@@ -91,6 +111,7 @@ export class DrupalAdapter extends BaseAdapter {
     this.cmsBaseUrl = cmsBaseUrl;
     this.credentials = credentials ?? null;
     this.bundle = bundle;
+    this.translationsMode = translations;
     this.csrfToken = null;
   }
 
@@ -879,7 +900,10 @@ export class DrupalAdapter extends BaseAdapter {
         return {
           defaultLanguage,
           languages,
-          features: { multilingual: languages.length > 1 },
+          features: {
+            multilingual: languages.length > 1,
+            translations: this.translationsMode,
+          },
         };
       }
 

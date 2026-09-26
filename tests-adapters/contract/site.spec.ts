@@ -41,6 +41,27 @@ describe('site.get', () => {
     expect(typeof site.features?.multilingual).toBe('boolean');
   });
 
+  it('says HOW it holds translations, where it holds them at all', async () => {
+    // Not a property of the CMS — a property of how this site is set up.
+    //
+    //   grouped  — one document per language, linked. Linking an existing page
+    //              into a group and detaching one are both lossless.
+    //   variants — one entity carrying a version of each field per language.
+    //              There is no second document, so there is nothing to link,
+    //              and removing a language deletes its content.
+    //
+    // Drupal can be either: Content Translation gives variants, while a site
+    // built on separate nodes joined by a reference field is grouped. The
+    // adapter is told which by whoever constructs it, because the frontend
+    // knows its own site and the CMS type does not settle it.
+    // Asked of any adapter that can serve translations at all, not only of a
+    // site that happens to have a second language configured today: the mode is
+    // structural, and the admin needs it before an editor adds a language.
+    if (!target.adapter.capabilities.includes('multilingual' as never)) return;
+    const site: any = await target.adapter.dispatch('site.get', {});
+    expect(['grouped', 'variants']).toContain(site.features?.translations);
+  });
+
   it('lists the languages it offers, including its default', async () => {
     const site: any = await target.adapter.dispatch('site.get', {});
     expect(Array.isArray(site.languages)).toBe(true);

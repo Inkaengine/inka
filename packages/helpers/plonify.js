@@ -316,7 +316,16 @@ export function plonify(intent, result, { path, endpoint } = {}) {
           result?.defaultLanguage,
         ].filter(Boolean),
         ...(result?.title ? { 'plone.site_title': result.title } : {}),
-        features: { multilingual: Boolean(result?.features?.multilingual) },
+        features: {
+          multilingual: Boolean(result?.features?.multilingual),
+          // How this site holds translations, which decides whether the admin
+          // offers to link and unlink them. Not a Plone key — Plone has only
+          // the grouped kind, so it never had to say — and absent means the
+          // same thing here: grouped.
+          ...(result?.features?.translations
+            ? { translations: result.features.translations }
+            : {}),
+        },
       };
 
     default:
