@@ -62,8 +62,34 @@ export type Intent =
   | 'content.create'
   | 'content.update'
   | 'content.delete'
+  /**
+   * Put a document at a position among its siblings.
+   *
+   * Two forms, because an editor asks for this in two ways. `targetIndex` is an
+   * absolute slot, and may be negative to count from the end — 0 is first, -1
+   * is last, as a slice reads. `delta` is a signed step, which is what a drag
+   * produces: the gesture is relative and the admin has no sibling list to
+   * resolve it against. An adapter serves both; every CMS here has to read the
+   * siblings to renumber them anyway.
+   */
   | 'content.order'
+  /**
+   * Order a folder's children by a field, persistently.
+   *
+   * Not the same as asking for a sorted listing: in a CMS with manual ordering
+   * this WRITES the new order, and what the reader sees afterwards no longer
+   * depends on the query. An adapter whose CMS has no manual ordering to write
+   * rejects rather than reporting success it cannot keep.
+   */
+  | 'content.sort'
   | 'content.move'
+  /**
+   * Copy a document into another container, leaving the original where it is.
+   *
+   * The other half of paste. Unlike a move, the copy is a NEW document: it has
+   * its own id, and the CMS decides how it deduplicates one that clashes.
+   */
+  | 'content.copy'
   | 'types.list'
   | 'types.getSchema'
   | 'search'

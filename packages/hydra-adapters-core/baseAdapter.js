@@ -23,6 +23,34 @@ export class AdapterError extends Error {
  * makes emulation legitimate — an adapter whose CMS cannot expand natively
  * simply issues the same calls itself, and no caller can tell the difference.
  */
+/**
+ * Where a reordered document ends up, for the two ways an editor asks.
+ *
+ * Shared because all three adapters have to agree exactly: the contract pins
+ * both forms, and three hand-rolled clamps would drift — "to the bottom" landing
+ * second-to-last on one CMS is the kind of difference nobody notices until a
+ * menu is wrong.
+ *
+ *   targetIndex — an absolute slot among the siblings, negative counting from
+ *                 the end: 0 first, -1 last, as a slice reads.
+ *   delta       — a signed step from where it is now, which is what a drag
+ *                 gives: the gesture is relative and the admin has no sibling
+ *                 list to resolve it against.
+ *
+ * `from` is its current index and `count` the number of siblings it will sit
+ * among AFTER being taken out, so the last valid slot is `count`.
+ */
+export function resolveOrderPosition({ targetIndex, delta, from, count }) {
+  const clamp = (n) => Math.max(0, Math.min(n, count));
+  if (delta !== undefined && delta !== null) {
+    if (delta === 'top') return 0;
+    if (delta === 'bottom') return count;
+    return clamp(from + Number(delta));
+  }
+  const index = Number(targetIndex ?? 0);
+  return clamp(index < 0 ? count + 1 + index : index);
+}
+
 export const EXPANSIONS = {
   breadcrumbs: (path) => ['breadcrumbs.get', { path }],
   navigation: (path) => ['navigation.get', { path }],
@@ -232,7 +260,6 @@ export class BaseAdapter {
     return sorted ? `${route}?${sorted}` : route;
   }
 
-
   async init(ctx) {
     this.ctx = ctx;
   }
@@ -361,7 +388,9 @@ export class BaseAdapter {
         }
       }),
     );
-    return Object.fromEntries(entries.filter(([, value]) => value !== undefined));
+    return Object.fromEntries(
+      entries.filter(([, value]) => value !== undefined),
+    );
   }
 
   /** Attach an expansion bundle to a document, if one was asked for. */

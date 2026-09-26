@@ -46,7 +46,6 @@ function splitEndpoint(path) {
   return { contextPath, endpoint, rest };
 }
 
-
 /**
  * Find a file upload inside a create payload.
  *
@@ -95,6 +94,43 @@ export function routeToIntent({ op, path, data }) {
       };
     }
     if (op === 'patch') {
+      // Reordering and sorting a folder are not field writes, however they are
+      // spelled. Volto PATCHes the PARENT with {ordering: …} or {sort: …} and no
+      // @endpoint, so both landed in the branch below and became
+      // content.update — adapters dutifully tried to write a field called
+      // `ordering` on the folder. Every adapter implements content.order and
+      // nothing could reach it, so dragging a row in the contents view, or
+      // choosing a sort, did nothing an editor could see.
+      //
+      // Detected by the shape of the payload, like the upload check on create:
+      // `ordering` and `sort` are Plone's spelling of an operation, not fields
+      // any of these CMSes store.
+      if (data?.ordering?.obj_id) {
+        const { obj_id: objId, delta } = data.ordering;
+        const path = `${contextPath === '/' ? '' : contextPath}/${objId}`;
+        // The two ENDS are positions any CMS can name, so they travel as one:
+        // -1 counts from the end, as a slice does. A drag gives a signed step
+        // instead, and there is no sibling list here to resolve it against, so
+        // it travels as the relative move it is.
+        if (delta === 'top')
+          return { intent: 'content.order', args: { path, targetIndex: 0 } };
+        if (delta === 'bottom')
+          return { intent: 'content.order', args: { path, targetIndex: -1 } };
+        return {
+          intent: 'content.order',
+          args: { path, delta: Number(delta) },
+        };
+      }
+      if (data?.sort?.on) {
+        return {
+          intent: 'content.sort',
+          args: {
+            path: contextPath,
+            sortOn: data.sort.on,
+            sortOrder: data.sort.order,
+          },
+        };
+      }
       const { blocks, blocks_layout: blocksLayout, ...fields } = data ?? {};
       return {
         intent: 'content.update',
@@ -182,14 +218,18 @@ export function routeToIntent({ op, path, data }) {
         },
       };
     }
-    if (op === 'del') return { intent: 'content.delete', args: { path: contextPath } };
+    if (op === 'del')
+      return { intent: 'content.delete', args: { path: contextPath } };
     return null;
   }
 
   switch (endpoint) {
     case 'types':
       return rest.length
-        ? { intent: 'types.getSchema', args: { type: decodeURIComponent(rest[0]) } }
+        ? {
+            intent: 'types.getSchema',
+            args: { type: decodeURIComponent(rest[0]) },
+          }
         : // The PATH matters: Volto asks /news/@types to mean "what can be
           // created HERE", and dropping it left the adapter answering with
           // every registered type. On WordPress the first of those was `post`,
@@ -228,7 +268,11 @@ export function routeToIntent({ op, path, data }) {
           endpoint,
         };
       }
-      return { intent: 'translations.get', args: { path: contextPath }, endpoint };
+      return {
+        intent: 'translations.get',
+        args: { path: contextPath },
+        endpoint,
+      };
 
     // Where a translation belongs, which the CMS decides — plone.app.multilingual
     // walks up for the closest translated parent rather than assuming the
@@ -322,7 +366,9 @@ export function routeToIntent({ op, path, data }) {
           // calls that field.
           sortOn: sortOn || undefined,
           sortOrder: params.get('sort_order') || undefined,
-          limit: params.get('b_size') ? Number(params.get('b_size')) : undefined,
+          limit: params.get('b_size')
+            ? Number(params.get('b_size'))
+            : undefined,
         },
       };
     }
@@ -345,22 +391,31 @@ export function routeToIntent({ op, path, data }) {
         args: {
           name: decodeURIComponent(rest.join('/')),
           title: params.get('title') ?? undefined,
-          limit: params.get('b_size') ? Number(params.get('b_size')) : undefined,
+          limit: params.get('b_size')
+            ? Number(params.get('b_size'))
+            : undefined,
         },
       };
 
     case 'workflow':
       return rest.length
-        ? { intent: 'state.transition', args: { path: contextPath, id: rest[0] } }
+        ? {
+            intent: 'state.transition',
+            args: { path: contextPath, id: rest[0] },
+          }
         : { intent: 'state.get', args: { path: contextPath } };
 
+    // Paste is one of these two, decided by whether the clipboard was cut or
+    // copied. Both carry every item the selection held, and both mean one
+    // canonical operation per document.
     case 'move':
-      // One @move carries every item a cut-and-paste selected; the canonical
-      // intent moves one document. Several steps, not source[0]: taking only
+    case 'copy':
+      // One request carries every item a cut-and-paste selected; the canonical
+      // intent handles one document. Several steps, not source[0]: taking only
       // the first silently dropped the rest of a bulk move.
       return (Array.isArray(data?.source) ? data.source : [data?.source]).map(
         (source) => ({
-          intent: 'content.move',
+          intent: endpoint === 'copy' ? 'content.copy' : 'content.move',
           args: { path: source, targetParentPath: contextPath },
         }),
       );

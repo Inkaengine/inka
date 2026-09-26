@@ -6042,6 +6042,42 @@ app.patch('*', (req, res) => {
     }
   }
 
+  // Sorting a folder's children is the other half of the same PATCH, and it is
+  // PERSISTENT: plone.restapi's resortAllItemsInContext catalogues the children,
+  // sorts them by the index asked for and writes the new position of every one
+  // (its OrderingMixin). So a sort is not a query — reload with no sort and the
+  // children come back in the order that was written, which is what the contents
+  // view's sort dropdown means and what makes it show up in the site menu.
+  if (content && req.body?.sort?.on) {
+    const { on, order } = req.body.sort;
+    const children = getFolderChildItems(cleanPath, `http://localhost:${PORT}`);
+    // The catalog indexes the contents view offers. sortable_title is Plone's
+    // case-insensitive title index, which is why it is not just `title`.
+    const keyOf = (item) => {
+      switch (on) {
+        case 'sortable_title':
+          return String(item.title ?? '').toLowerCase();
+        case 'effective':
+        case 'created':
+        case 'modified':
+        case 'expires':
+          return String(item[on] ?? '');
+        default:
+          return String(item[on] ?? '');
+      }
+    };
+    const sorted = [...children].sort((a, b) => {
+      const x = keyOf(a);
+      const y = keyOf(b);
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
+    if (order === 'reverse' || order === 'descending') sorted.reverse();
+    if (!sessionOrder[sessionId]) sessionOrder[sessionId] = {};
+    sessionOrder[sessionId][cleanPath] = sorted
+      .map((item) => String(item['@id'] || '').split('/').filter(Boolean).pop())
+      .filter(Boolean);
+  }
+
   if (content) {
     // Version snapshot: the state BEFORE this edit becomes version N (like
     // CMFEditions). @history lists these; @history/<n> serves them; the

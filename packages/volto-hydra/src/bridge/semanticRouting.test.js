@@ -220,6 +220,79 @@ describe('routeToIntent', () => {
     expect(r.args.data.translation_of).toBeUndefined();
   });
 
+  it('routes a reorder to content.order, not to a field called ordering', () => {
+    // Volto reorders by PATCHing the PARENT with {ordering: {obj_id, delta}} —
+    // no @endpoint at all, so it fell into the plain patch branch and became
+    // content.update. Adapters then tried to write a field named `ordering` on
+    // the folder: content.order was implemented by all three and unreachable,
+    // and dragging a row in the contents view did nothing anyone could see.
+    const top = routeToIntent({
+      op: 'patch',
+      path: '/news',
+      data: { ordering: { obj_id: 'draft-post', delta: 'top' } },
+    });
+    expect(top.intent).toBe('content.order');
+    expect(top.args).toEqual({ path: '/news/draft-post', targetIndex: 0 });
+
+    const bottom = routeToIntent({
+      op: 'patch',
+      path: '/news',
+      data: { ordering: { obj_id: 'draft-post', delta: 'bottom' } },
+    });
+    expect(bottom.args).toEqual({ path: '/news/draft-post', targetIndex: -1 });
+
+    // A drag gives a signed step instead of an end to move to. The editor's
+    // gesture is relative and there is no sibling list here to resolve it
+    // against, so it travels as what it is.
+    const dragged = routeToIntent({
+      op: 'patch',
+      path: '/news',
+      data: { ordering: { obj_id: 'draft-post', delta: -1 } },
+    });
+    expect(dragged.args).toEqual({ path: '/news/draft-post', delta: -1 });
+  });
+
+  it('routes the contents sort dropdown to content.sort', () => {
+    // Also a PATCH on the parent, {sort: {on, order}}, and also silently
+    // written as a field. Sorting a folder is persistent in a CMS with manual
+    // ordering: it renumbers the children, which is not the same thing as
+    // asking for a sorted listing.
+    const r = routeToIntent({
+      op: 'patch',
+      path: '/news',
+      data: { sort: { on: 'sortable_title', order: 'descending' } },
+    });
+    expect(r.intent).toBe('content.sort');
+    expect(r.args).toEqual({
+      path: '/news',
+      sortOn: 'sortable_title',
+      sortOrder: 'descending',
+    });
+  });
+
+  it('fans @copy out over every source, like @move', () => {
+    const steps = routeToIntent({
+      op: 'post',
+      path: '/target/@copy',
+      data: { source: ['/a/one', '/a/two'] },
+    });
+    expect(steps).toEqual([
+      { intent: 'content.copy', args: { path: '/a/one', targetParentPath: '/target' } },
+      { intent: 'content.copy', args: { path: '/a/two', targetParentPath: '/target' } },
+    ]);
+  });
+
+  it('still updates ordinary fields with content.update', () => {
+    // Guard against the shape checks being too eager, as the upload check
+    // needed: a page really can have a field called `sort` in its schema.
+    const r = routeToIntent({
+      op: 'patch',
+      path: '/news',
+      data: { title: 'Renamed', blocks: {} },
+    });
+    expect(r.intent).toBe('content.update');
+  });
+
   it('returns null for endpoints with no canonical form', () => {
     expect(routeToIntent({ op: 'get', path: '/x/@history' })).toBeNull();
   });

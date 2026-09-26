@@ -176,6 +176,21 @@ export class PloneAdapter extends BaseAdapter {
     return p === '' ? '/' : p;
   }
 
+  /**
+   * Where @copy or @move says the document ended up, as a path.
+   *
+   * plone.restapi answers `[{source, target}]` with ABSOLUTE URLs — it formats
+   * them from absolute_url() — and the id in `target` is not always the id that
+   * went in: a copy into a container that already has that id becomes
+   * copy_of_<id>. So the reply is the only reliable answer, and it has to be
+   * reduced to a path like everything else the adapter returns.
+   */
+  copymoveTarget(result) {
+    const target = Array.isArray(result) ? result[0]?.target : null;
+    if (!target) return null;
+    return /^https?:/.test(target) ? this.toPath(target) : target;
+  }
+
   toDocument(raw) {
     const {
       '@id': atId,
@@ -657,10 +672,9 @@ export class PloneAdapter extends BaseAdapter {
           method: 'POST',
           body: { source: args.path },
         });
-        const target = Array.isArray(result) ? result[0]?.target : null;
         const id = args.path.split('/').filter(Boolean).pop();
         const destPath =
-          target ??
+          this.copymoveTarget(result) ??
           `${args.targetParentPath === '/' ? '' : args.targetParentPath}/${id}`;
         return this.dispatchOnce('content.get', { path: destPath });
       }
@@ -668,15 +682,90 @@ export class PloneAdapter extends BaseAdapter {
       case 'content.order': {
         const segments = args.path.split('/').filter(Boolean);
         const objId = segments.pop();
-        const parentPath = `/${segments.join('/')}`;
-        await this.fetchJson(`${parentPath === '/' ? '' : parentPath}/@order`, {
-          method: 'POST',
-          body: {
-            obj_id: objId,
-            delta: args.targetIndex === 0 ? 'top' : 'bottom',
-          },
+        const parentPath = `/${segments.join('/')}` || '/';
+        // A PATCH on the CONTAINER, which is what plone.restapi accepts: its
+        // deserializer takes `ordering` on the folder (see its OrderingMixin).
+        // This posted to `/@order`, an endpoint plone.restapi does not have —
+        // only our mock did, which is why the contract stayed green while a real
+        // Plone would have 404'd every reorder.
+        const order = (delta) =>
+          this.fetchJson(parentPath, {
+            method: 'PATCH',
+            body: { ordering: { obj_id: objId, delta } },
+          });
+
+        // A step is what @order takes natively, so it needs no listing at all.
+        if (args.delta !== undefined) {
+          await order(Number(args.delta));
+          return null;
+        }
+        // The two ends are named positions here too.
+        if (args.targetIndex === 0) {
+          await order('top');
+          return null;
+        }
+        if (args.targetIndex === -1) {
+          await order('bottom');
+          return null;
+        }
+        // Any other slot is a step from wherever it is now, which only the
+        // current order can say. Previously EVERY index that was not 0 was
+        // treated as 'bottom', so "third" quietly meant "last".
+        const siblings = await this.dispatchOnce('tree.list', {
+          parent: parentPath,
+        });
+        const paths = siblings.items.map((item) => item.path);
+        const from = paths.indexOf(args.path);
+        if (from === -1) {
+          throw new AdapterError(`Not found among its siblings: ${args.path}`, {
+            code: 'NOT_FOUND',
+            status: 404,
+          });
+        }
+        const to =
+          args.targetIndex < 0
+            ? Math.max(0, paths.length + args.targetIndex)
+            : Math.min(args.targetIndex, paths.length - 1);
+        if (to !== from) await order(to - from);
+        return null;
+      }
+
+      // Native: plone.restapi takes a sort on a folder PATCH and renumbers the
+      // children itself.
+      case 'content.sort': {
+        await this.fetchJson(args.path, {
+          method: 'PATCH',
+          body: { sort: { on: args.sortOn, order: args.sortOrder } },
         });
         return null;
+      }
+
+      case 'content.copy': {
+        if (
+          args.targetParentPath === args.path ||
+          args.targetParentPath.startsWith(`${args.path}/`)
+        ) {
+          throw new AdapterError('Cannot copy a document inside itself', {
+            code: 'INVALID_MOVE',
+            status: 400,
+          });
+        }
+        // Same shape as @move — the target container, source in the body — and
+        // the same answer: a list of {source, target}. The copy is a new object
+        // with a new UID, and Plone picks the id, adding copy_of_ when it
+        // clashes, so the reply's target is the only reliable place to look.
+        const result = await this.fetchJson(`${args.targetParentPath}/@copy`, {
+          method: 'POST',
+          body: { source: args.path },
+        });
+        const destPath = this.copymoveTarget(result);
+        if (!destPath) {
+          throw new AdapterError(
+            `Plone copied ${args.path} but did not say where to`,
+            { code: 'UNEXPECTED_RESPONSE', status: 502 },
+          );
+        }
+        return this.dispatchOnce('content.get', { path: destPath });
       }
 
       // Plone's own @site, in canonical terms. It is the one CMS here that

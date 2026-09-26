@@ -1,4 +1,8 @@
-import { BaseAdapter, AdapterError } from '@volto-hydra/hydra-adapters-core';
+import {
+  BaseAdapter,
+  AdapterError,
+  resolveOrderPosition,
+} from '@volto-hydra/hydra-adapters-core';
 
 /**
  * Hydra adapter for vanilla WordPress — no plugin, no theme changes.
@@ -1144,6 +1148,54 @@ export class WordPressAdapter extends BaseAdapter {
         return this.toDocument(moved, destPath);
       }
 
+      case 'content.copy': {
+        if (
+          args.targetParentPath === args.path ||
+          args.targetParentPath.startsWith(`${args.path}/`)
+        ) {
+          throw new AdapterError('Cannot copy a document inside itself', {
+            code: 'INVALID_MOVE',
+            status: 400,
+          });
+        }
+        // WordPress has no duplicate route in the REST API — the "Duplicate
+        // Post" everyone knows is a plugin — so the copy is a create carrying
+        // the original's title and body. WordPress assigns the slug and
+        // deduplicates it itself (first-post-2), which is why the path comes
+        // back from the create rather than being predicted here.
+        const source = await this.dispatchOnce('content.get', {
+          path: args.path,
+        });
+        return this.dispatchOnce('content.create', {
+          parentPath: args.targetParentPath,
+          data: {
+            type: source.type,
+            title: source.title,
+            blocks: source.blocks,
+            blocksLayout: source.blocksLayout,
+          },
+        });
+      }
+
+      case 'content.sort': {
+        // Persistent: the children are read in the order asked for and their
+        // menu_order rewritten, so a later listing with no sort returns them
+        // this way. That is what the contents view's sort means — a CMS that
+        // only sorted the response would forget it on the next read.
+        const children = await this.dispatchOnce('tree.list', {
+          parent: args.path,
+          sortOn: args.sortOn,
+          sortOrder: args.sortOrder,
+        });
+        for (const [index, child] of children.items.entries()) {
+          await this.dispatchOnce('content.order', {
+            path: child.path,
+            targetIndex: index,
+          });
+        }
+        return null;
+      }
+
       case 'content.order': {
         const id = await this.resolvePath(args.path);
 
@@ -1181,7 +1233,12 @@ export class WordPressAdapter extends BaseAdapter {
         }
 
         const rest = (siblings ?? []).filter((s) => s.id !== id);
-        const index = Math.max(0, Math.min(args.targetIndex ?? 0, rest.length));
+        const index = resolveOrderPosition({
+          targetIndex: args.targetIndex,
+          delta: args.delta,
+          from: (siblings ?? []).findIndex((s) => s.id === id),
+          count: rest.length,
+        });
         const ordered = [...rest.slice(0, index), post, ...rest.slice(index)];
 
         // ONE request for every renumbering, via WordPress core's batch

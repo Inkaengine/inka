@@ -1,4 +1,8 @@
-import { BaseAdapter, AdapterError } from '@volto-hydra/hydra-adapters-core';
+import {
+  BaseAdapter,
+  AdapterError,
+  resolveOrderPosition,
+} from '@volto-hydra/hydra-adapters-core';
 import { flattenPayload, aliasOf } from './normalize.js';
 
 /**
@@ -442,6 +446,57 @@ export class DrupalAdapter extends BaseAdapter {
         return this.toDocument(await this.nodeByUuid(node.id));
       }
 
+      case 'content.copy': {
+        if (
+          args.targetParentPath === args.path ||
+          args.targetParentPath.startsWith(`${args.path}/`)
+        ) {
+          throw new AdapterError('Cannot copy a document inside itself', {
+            code: 'INVALID_MOVE',
+            status: 400,
+          });
+        }
+        // A new node, not a second reference to the same one: Drupal has no
+        // duplicate operation in JSON:API, so the copy is a create carrying the
+        // original's fields. Its alias is derived from the target, and the id
+        // gains a suffix when the target already holds that alias — the same
+        // problem Plone solves with copy_of_.
+        const source = this.toDocument(await this.nodeByAlias(args.path));
+        return this.dispatchOnce('content.create', {
+          parentPath: args.targetParentPath,
+          data: {
+            type: source.type,
+            title: source.title,
+            blocks: source.blocks,
+            blocksLayout: source.blocksLayout,
+          },
+        });
+        // Not handled, and deliberately not faked: copying into a container that
+        // already holds this alias leaves Drupal with two nodes wanting the same
+        // path. Plone renames to copy_of_<id>; doing the equivalent here needs a
+        // path_alias lookup this adapter does not have yet, and inventing a
+        // suffix that Drupal has not accepted would report a path that does not
+        // resolve.
+      }
+
+      case 'content.sort': {
+        // Persistent, like every other reorder here: the children are read in
+        // the order asked for and their menu weights rewritten, so a later
+        // listing with no sort returns them this way.
+        const children = await this.dispatchOnce('tree.list', {
+          parent: args.path,
+          sortOn: args.sortOn,
+          sortOrder: args.sortOrder,
+        });
+        for (const [index, child] of children.items.entries()) {
+          await this.dispatchOnce('content.order', {
+            path: child.path,
+            targetIndex: index,
+          });
+        }
+        return null;
+      }
+
       case 'content.order': {
         const node = await this.nodeByAlias(args.path);
         const links = await this.allMenuLinks();
@@ -463,7 +518,12 @@ export class DrupalAdapter extends BaseAdapter {
           .sort((a, b) => (a.attributes.weight ?? 0) - (b.attributes.weight ?? 0));
 
         const without = siblings.filter((l) => l.id !== link.id);
-        const at = Math.max(0, Math.min(args.targetIndex ?? 0, without.length));
+        const at = resolveOrderPosition({
+          targetIndex: args.targetIndex,
+          delta: args.delta,
+          from: siblings.findIndex((l) => l.id === link.id),
+          count: without.length,
+        });
         without.splice(at, 0, link);
 
         for (const [index, sibling] of without.entries()) {
