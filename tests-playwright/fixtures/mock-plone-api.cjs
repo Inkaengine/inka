@@ -5252,73 +5252,20 @@ app.get('*/@search', (req, res) => {
   });
 });
 
-/**
- * GET /:path/@contents or /@contents
- * Get folder contents for content browsing
- * Returns items at the parent folder level (siblings of current content)
+/*
+ * There is no @contents endpoint here, and there is none in Plone.
+ *
+ * This file used to serve one. Nothing called it — not Volto, not an adapter,
+ * not a test — and plone.restapi has no such service: a folder's children come
+ * from @search with path.depth=1, which is what the contents view asks for.
+ *
+ * Removed rather than left dormant, because a route in this file reads as
+ * evidence that Plone has one. That is precisely how the @order endpoint came
+ * about: invented here, then an adapter was written against it and passed its
+ * contract for two weeks while every real Plone 404'd. See
+ * mock-serves-no-invented-endpoints.test.cjs, which now refuses to let a new
+ * route in without saying where it comes from.
  */
-app.get('*/@contents', (req, res) => {
-  const contentPath = req.path.replace('/@contents', '') || '/';
-
-  // Helper to format content item for response
-  const formatItem = (itemPath) => {
-    const content = loadContentFromDisk(itemPath);
-    if (!content) return null;
-    return {
-      '@id': content['@id'],
-      '@type': content['@type'],
-      'id': content.id,
-      'title': content.title,
-      'description': content.description || '',
-      'review_state': content.review_state || 'published',
-      'UID': content.UID,
-      'is_folderish': content.is_folderish !== undefined ? content.is_folderish : true,
-    };
-  };
-
-  // For Documents, we return siblings (contents of parent folder)
-  // For the site root, we return all root-level items
-  let items;
-
-  if (contentPath === '' || contentPath === '/') {
-    // Root level - return all root-level items
-    items = Object.keys(contentDirMap)
-      .filter((itemPath) => {
-        if (itemPath === '/') return false;
-        const pathParts = itemPath.split('/').filter(p => p);
-        return pathParts.length === 1;
-      })
-      .map(formatItem)
-      .filter(Boolean);
-  } else {
-    // Get parent folder's contents (siblings of this content)
-    const pathParts = contentPath.split('/').filter(p => p);
-    const parentPath = pathParts.length > 1
-      ? '/' + pathParts.slice(0, -1).join('/')
-      : '/';
-
-    items = Object.keys(contentDirMap)
-      .filter((itemPath) => {
-        if (itemPath === '/') return false;
-        const itemParts = itemPath.split('/').filter(p => p);
-        // Same depth as current content and same parent
-        if (parentPath === '/') {
-          return itemParts.length === 1;
-        } else {
-          return itemPath.startsWith(parentPath + '/') &&
-                 itemParts.length === pathParts.length;
-        }
-      })
-      .map(formatItem)
-      .filter(Boolean);
-  }
-
-  res.json({
-    '@id': `${API_ORIGIN}${contentPath}/@contents`,
-    'items': items,
-    'items_total': items.length,
-  });
-});
 
 /**
  * POST /:path/@submit-form
