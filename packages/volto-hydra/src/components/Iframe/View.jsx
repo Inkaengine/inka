@@ -306,7 +306,11 @@ import {
   pullLinkedFields,
   pullAllLinkedFields,
 } from '../../utils/copyFromTarget';
-import { flattenToAppURL, isInternalURL } from '@plone/volto/helpers/Url/Url';
+import {
+  flattenToAppURL,
+  isInternalURL,
+  getBaseUrl,
+} from '@plone/volto/helpers/Url/Url';
 import { searchContent } from '@plone/volto/actions/search/search';
 import ChildBlocksWidget from '../Sidebar/ChildBlocksWidget';
 import ParentBlocksWidget from '../Sidebar/ParentBlocksWidget';
@@ -2492,6 +2496,29 @@ const Iframe = (props) => {
           if (iframeBasePath && navPath.startsWith(iframeBasePath)) {
             navPath = navPath.slice(iframeBasePath.length) || '/';
           }
+          // An announcement of the page the admin is ALREADY showing is not a
+          // navigation.
+          //
+          // /en/services/manage-translations is the admin's view OF
+          // /en/services, so pushing /en/services there is not following the
+          // editor anywhere — it drops them out of the sub-view they opened,
+          // while they are using it. Caught as a 1-in-3 flake: the translations
+          // table was rebuilt under the pointer and the click on Link landed on
+          // a button that had just been detached. Same for Contents, Sharing and
+          // History, which all keep a preview of the same document.
+          //
+          // getBaseUrl is Volto's own answer to "which content is this admin
+          // route about" (nonContentRoutes lists manage-translations), so a real
+          // navigation to a CHILD — /en/services/consulting — still differs and
+          // is still followed.
+          const adminContentPath = getBaseUrl(history.location.pathname) || '/';
+          if (adminContentPath === navPath) {
+            log(
+              'PATH_CHANGE: the preview announced the page we are already on; staying in',
+              history.location.pathname,
+            );
+            break;
+          }
           // Update module-level state BEFORE history.push so useEffect knows iframe already has this path
           persistedIframe = { frontendUrl: u, path: navPath, isEdit: false };
           history.push(navPath);
@@ -3709,7 +3736,15 @@ const Iframe = (props) => {
             if (iframeBasePath && contentPath.startsWith(iframeBasePath)) {
               contentPath = contentPath.slice(iframeBasePath.length) || '/';
             }
-            const adminPath = history.location.pathname.replace(/\/edit$/, '') || '/';
+            // Which CONTENT the admin is on, not which route. Stripping only
+            // '/edit' left every other admin view of the same document looking
+            // like a different page, so the iframe's first INIT pushed the admin
+            // out of it: opening Manage Translations bounced straight back to the
+            // view, and the translations table was torn down under the pointer
+            // between linking and unlinking. getBaseUrl is Volto's own answer,
+            // and it knows manage-translations (nonContentRoutes), so following
+            // the editor to a real CHILD page still works.
+            const adminPath = getBaseUrl(history.location.pathname) || '/';
             if (contentPath !== adminPath) {
               log('INIT: iframe navigated to different page, following to view mode:', contentPath, '(raw:', event.data.currentPath, ', base:', iframeBasePath, ')');
               // Update persistedIframe BEFORE history.push so useEffect won't reload iframe
