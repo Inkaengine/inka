@@ -6364,10 +6364,16 @@ export class Bridge {
    * Returns false when it can't or needn't (the caret isn't in such an
    * element, a render or transform is already in progress, or the leaf was
    * already given its zero-width space and the frontend still drew no node —
-   * it chose not to): the caller then places the caret its own way.
+   * it chose not to): the caller then places the caret its own way. Returns
+   * 'wait' when the element's block isn't selected yet: the caller leaves the
+   * caret be.
    */
   _requestCaretTarget(node) {
     if (!this.onContentChangeCallback || this._rendersReplaceHtml) return false;
+    // A caret target already on its way: its render places the caret. Leave
+    // the caret be meanwhile — a node of our own made now is one the frontend
+    // then draws the text again beside.
+    if (this.pendingTransform?.requestId?.startsWith('caret-target-')) return 'wait';
     if (this._renderInProgress || this.pendingTransform || this.blockedBlockId) return false;
     const el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
     // The caret in (or on) a node-id element, or on the field itself: its first one.
@@ -6384,6 +6390,13 @@ export class Bridge {
     if (!blockEl || !fieldEl) return false;
     const blockUid = blockEl.getAttribute('data-block-uid');
     const fieldName = fieldEl.getAttribute('data-edit-text');
+    // Only for the block that is selected. A click's selectionchange can come
+    // before the click selects its block (Firefox fires it on the press): a
+    // render then would re-select the old block and hold input against the
+    // new one. Leave the caret alone ('wait') — the click's own selectBlock
+    // asks again, for the right block; a node of our own made now would be
+    // there first, and the frontend would draw the text again beside it.
+    if (blockUid !== this.selectedBlockUid) return 'wait';
     if (!this.fieldTypeIsSlate(this.getFieldType(blockUid, fieldName))) return false;
     const resolved = this.resolveFieldPath(fieldName, blockUid);
     const value = getFieldValue(this.getBlockData(resolved.blockId), resolved.fieldName);
