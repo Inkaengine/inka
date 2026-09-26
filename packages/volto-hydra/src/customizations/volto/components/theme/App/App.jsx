@@ -4,13 +4,13 @@
  */
 
 import AdapterHost from '../../../../../bridge/AdapterHost';
+import { ensureSiteLoaded } from '../../../../../bridge/site';
 import React, { Component } from 'react';
 import jwtDecode from 'jwt-decode';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 import { compose } from 'redux';
 import { asyncConnect, Helmet } from '@plone/volto/helpers';
-import { getSite } from '@plone/volto/actions/site/site';
 import { Segment } from 'semantic-ui-react';
 import { renderRoutes } from 'react-router-config';
 import { Slide, ToastContainer, toast } from 'react-toastify';
@@ -298,8 +298,17 @@ export function connectAppComponent(AppComponent) {
       },
       {
         key: 'content',
-        promise: ({ location, store }) =>
-          loadsInThisEnvironment() && fetchContent({ store, location }),
+        // AFTER the site, in a bridge session. The api middleware builds the
+        // expand list from the store as the request goes out, and drops
+        // `translations` unless the site is already known to be multilingual —
+        // so a content read that wins this race comes back without
+        // `@components.translations`, and nothing reads it again. SSR settles
+        // this for a direct-fetch admin; there is no server here to settle it.
+        promise: async ({ location, store }) => {
+          if (!loadsInThisEnvironment()) return;
+          if (config.settings.useBridgeBackend) await ensureSiteLoaded(store);
+          return fetchContent({ store, location });
+        },
       },
       {
         // The site's own facts — default language, languages offered, which
@@ -318,8 +327,8 @@ export function connectAppComponent(AppComponent) {
         // the server, and against a CMS the admin talks to directly, Volto's own
         // extender still does it and a second fetch would be waste.
         key: 'site',
-        promise: ({ store: { dispatch } }) =>
-          config.settings.useBridgeBackend && dispatch(getSite()),
+        promise: ({ store }) =>
+          config.settings.useBridgeBackend && ensureSiteLoaded(store),
       },
       {
         key: 'navigation',

@@ -20,6 +20,7 @@ import { useEffect } from 'react';
 import { useStore } from 'react-redux';
 import hoistNonReactStatics from 'hoist-non-react-statics';
 import config from '@plone/volto/registry';
+import { ensureSiteLoaded } from './site';
 
 export default function withClientSideAsyncConnect(Component) {
   /**
@@ -43,6 +44,14 @@ export default function withClientSideAsyncConnect(Component) {
       let cancelled = false;
       (async () => {
         const items = await loadersFor();
+        if (cancelled) return;
+        // The site first, always. A route loader's content read has its expand
+        // list built from the store as it goes out, and the api middleware drops
+        // `translations` unless the site is already known to be multilingual —
+        // so a deep link to /edit or /manage-translations that raced the site
+        // read came back with no translations and no way to notice. Settled once
+        // per session: every later route finds it loaded and does not wait.
+        await ensureSiteLoaded(store);
         if (cancelled) return;
         for (const item of items) {
           // The shape redux-connect passes its promises.
