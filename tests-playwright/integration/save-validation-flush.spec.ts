@@ -28,24 +28,32 @@ test.describe('save validation', () => {
       timeout: 15000,
     });
 
-    // Add a navItem after an existing one; it starts with no label, so it
-    // shows the renderer's placeholder.
+    // Add a navItem after an existing one; it starts with no label. Found by
+    // the bridge's block map, not by markup — each frontend draws it its own way.
+    const navItems = () =>
+      iframe.locator('body').evaluate(() => {
+        const map = (window as any).__hydraBridge?.blockPathMap || {};
+        return Object.keys(map).filter(
+          (uid) => map[uid]?.blockType === 'navItem' && map[uid]?.parentId === 'nav-1',
+        );
+      });
+    const before = await navItems();
     await helper.clickBlockInIframe('item-test-page');
     await helper.clickAddBlockButton();
     await helper.selectBlockType('navItem');
-    const fresh = nav.locator('a[data-block-uid]', {
-      hasText: 'New navigation item',
-    });
-    await expect(fresh).toHaveCount(1);
-    const added = (await fresh.getAttribute('data-block-uid'))!;
+    await expect.poll(navItems).toHaveLength(before.length + 1);
+    const added = (await navItems()).find((uid) => !before.includes(uid))!;
 
-    // Type the required label on the canvas…
-    await helper.enterEditMode(added, 'label');
-    await page.keyboard.press('ControlOrMeta+a');
+    // Type the required label on the canvas… Select what's there first only if
+    // something is: a frontend may draw a placeholder as text (the test
+    // frontend's "New navigation item"), and Ctrl+A in an EMPTY field selects
+    // the whole block instead, as an author would find.
+    const label = await helper.enterEditMode(added, 'label');
+    if (await helper.getCleanTextContent(label)) {
+      await page.keyboard.press('ControlOrMeta+a');
+    }
     await page.keyboard.type('Contact us');
-    await expect(
-      iframe.locator(`[data-block-uid="${added}"] [data-edit-text="label"]`),
-    ).toHaveText('Contact us');
+    await expect(label).toHaveText('Contact us');
 
     // …and save straight away, inside the debounce. It saves.
     await page
