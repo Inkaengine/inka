@@ -41,6 +41,7 @@ import { getConvertibleTypes, convertBlockType, findTypeField } from '../../util
 import { nestedStatus } from '@volto-hydra/helpers';
 import { buildIdFieldMap } from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
+import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
 import { isBlockReadonly } from '@volto-hydra/helpers';
 import { flattenToAppURL } from '@plone/volto/helpers';
 
@@ -99,15 +100,17 @@ const getParentChain = (blockId, blockPathMap) => {
 
 
 /**
- * Filter out container fields from schema (widget: 'blocksid_list' or widget: 'object_list')
- * These fields display as [object Object] and should be managed via the block hierarchy instead
+ * Filter out container fields from schema (widget: 'blocksid_list', or an
+ * object_list region). These fields display as [object Object] and should be
+ * managed via the block hierarchy instead. A plain list (`subBlocks: false`)
+ * stays: Volto's object-list widget edits it here.
  */
 const filterBlocksFields = (schema) => {
   if (!schema) return null;
 
   const containerFields = new Set();
   for (const [fieldId, fieldDef] of Object.entries(schema.properties || {})) {
-    if (fieldDef?.widget === 'blocksid_list' || fieldDef?.widget === 'object_list') {
+    if (fieldDef?.widget === 'blocksid_list' || isObjectListRegion(fieldDef)) {
       containerFields.add(fieldId);
     }
   }

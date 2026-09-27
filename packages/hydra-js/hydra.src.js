@@ -32,6 +32,7 @@ import { expelAllowedTypes, findOnlyEmptyChildUid } from './containerOps.js';
 import { acceptableAt } from './conversionMap.js';
 import { collectLinkableAnchors } from './linkableAnchors.js';
 import { isStyleAllowed } from './slateStyles.js';
+import { isRegionField } from './regionWidgets.js';
 
 /**
  * Has the frontend drawn the slate value it was given? `dom` is the DOM read
@@ -1828,7 +1829,7 @@ export class Bridge {
     let parentAllowed = null;
     if (parentSchema?.properties && info.region) {
       const fd = parentSchema.properties[info.region];
-      if (fd?.widget === 'blocks_layout' || fd?.widget === 'object_list') {
+      if (isRegionField(fd)) {
         parentAllowed = fd.allowedBlocks || null;
       }
     } else if (info.parentId === PAGE_BLOCK_UID) {
@@ -1976,8 +1977,7 @@ export class Bridge {
       ? this.blockPathMap?._schemas?.[parentInfo._schemaRef] : null;
     const parentFd = parentSchema?.properties && containerInfo?.region
       ? parentSchema.properties[containerInfo.region] : null;
-    const parentFieldDef = (parentFd?.widget === 'blocks_layout' || parentFd?.widget === 'object_list')
-      ? parentFd : null;
+    const parentFieldDef = isRegionField(parentFd) ? parentFd : null;
     const parentAllowed = expelAllowedTypes(containerInfo, parentFieldDef);
 
     const blockMid = (el, axis) => {

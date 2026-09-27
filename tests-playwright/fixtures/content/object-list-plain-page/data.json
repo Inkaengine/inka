@@ -1,0 +1,85 @@
+{
+  "@id": "http://localhost:8888/object-list-plain-page",
+  "@type": "Document",
+  "UID": "object-list-plain-page-uid",
+  "id": "object-list-plain-page",
+  "title": "Object List Plain Page",
+  "description": "A hero whose tags are a plain list (subBlocks: false), edited in the sidebar",
+  "review_state": "published",
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": false,
+  "created": "2025-01-01T12:00:00+00:00",
+  "modified": "2025-01-01T12:00:00+00:00",
+  "lock": {
+    "locked": false,
+    "stealable": true
+  },
+  "@components": {
+    "actions": {
+      "@id": "http://localhost:8888/object-list-plain-page/@actions",
+      "document_actions": [],
+      "object": [
+        {
+          "id": "view",
+          "title": "View"
+        },
+        {
+          "id": "edit",
+          "title": "Edit"
+        },
+        {
+          "id": "folderContents",
+          "title": "Contents"
+        }
+      ],
+      "object_buttons": [],
+      "portal_tabs": [],
+      "site_actions": [],
+      "user": []
+    },
+    "breadcrumbs": {
+      "@id": "http://localhost:8888/object-list-plain-page/@breadcrumbs",
+      "items": [
+        {
+          "@id": "http://localhost:8888",
+          "title": "Home"
+        },
+        {
+          "@id": "http://localhost:8888/object-list-plain-page",
+          "title": "Object List Plain Page"
+        }
+      ],
+      "root": "http://localhost:8888"
+    },
+    "navigation": {
+      "@id": "http://localhost:8888/object-list-plain-page/@navigation",
+      "items": []
+    },
+    "workflow": {
+      "@id": "http://localhost:8888/object-list-plain-page/@workflow"
+    }
+  },
+  "can_manage_portlets": true,
+  "can_view": true,
+  "can_edit": true,
+  "can_delete": true,
+  "can_add": true,
+  "blocks": {
+    "hero-1": {
+      "@type": "hero",
+      "heading": "Plain list hero",
+      "subheading": "Tags are edited in the sidebar"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "hero-1"
+    ]
+  }
+}
