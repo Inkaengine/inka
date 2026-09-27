@@ -26,7 +26,7 @@ blocks-matched: |
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>

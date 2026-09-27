@@ -26,13 +26,13 @@ blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
 blocks-tagged: |
   <block type="slider">
-    <region name="slides" widget="object_list">
+    <region name="slides" widget="object_list" idField="@id" typeField="@type">
       <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/text}" buttonText="${p[2]/text}" href="${p[2]/link}" preview_image="${img/link}" />
     </region>
   </block>

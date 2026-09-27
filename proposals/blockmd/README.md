@@ -32,7 +32,7 @@ blocks-matched: |
   <block type="separator" _="${hr}" />
 blocks-tagged: |
   <block type="accordion">
-    <region name="panels" widget="object_list">
+    <region name="panels" widget="object_list" idField="@id" typeField="@type">
       <block type="panel" title="${h2/text}" />
     </region>
   </block>
