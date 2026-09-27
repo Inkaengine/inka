@@ -37,9 +37,9 @@ blocks-matched: |
   </block>
 blocks-tagged: |
   <block type="slateTable">
-    <region name="table.rows" idField="key" typeField="@type">
+    <region name="table.rows" idField="key" typeField="none">
       <block type="row">
-        <region name="cells" idField="key" typeField="@type">
+        <region name="cells" idField="key" typeField="none">
           <block type="cell" value="${td/slate}" />
         </region>
       </block>

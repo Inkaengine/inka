@@ -29,9 +29,9 @@ blocks-tagged: |
   <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
   <block type="introduction" value="${p,h*/slate}" />
   <block type="slateTable">
-    <region name="table.rows" idField="key" typeField="@type">
+    <region name="table.rows" idField="key" typeField="none">
       <block type="row">
-        <region name="cells" idField="key" typeField="@type">
+        <region name="cells" idField="key" typeField="none">
           <block type="cell" value="${td/slate}" />
         </region>
       </block>
