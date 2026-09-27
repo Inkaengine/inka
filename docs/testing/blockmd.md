@@ -131,6 +131,10 @@ A **`blocks_layout`** region is an ordered sequence of blocks — the standard s
 
 An **`object_list`** region is a list of typed items — accordion panels, code-example tabs — split out of a flat stream at each item's anchor, or iterated from an already-nested node's children (a table's rows and cells). A region name may be a dotted path such as `table.rows`.
 
+An `object_list` region must declare two fields, with no defaults: **`idField`**, where each item's id is stored, and **`typeField`**, where its type is stored. Use the same field names the block's schema uses, because frontends read them from there — tabs and panels are `idField="@id" typeField="@type"`, table rows and cells are `idField="key"`. Every item is given its own id on import; frontends key items by it, so a missing id (or ids under a field frontends don't read) makes every item render as the last one.
+
+Set **`typeField=null`** when the items store no type field — a list whose items all share one shape, like a table's rows and cells. They still have a type: editors type them by their container (`slateTable:rows`, `slateTable:rows:cells`), so writing a `@type` onto them would add a second name no frontend registers. Omitting `typeField` altogether is an error, so the choice is always stated.
+
 You never author item ids or block uids — the loader mints them, deterministically.
 
 ## Attaching fields with `<fields>`

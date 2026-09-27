@@ -33,9 +33,9 @@ blocks-tagged: |
     </region>
   </block>
   <block type="slateTable">
-    <region name="table.rows" idField="key" typeField="none">
+    <region name="table.rows" idField="key" typeField=null>
       <block type="row">
-        <region name="cells" idField="key" typeField="none">
+        <region name="cells" idField="key" typeField=null>
           <block type="cell" value="${td/slate}" />
         </region>
       </block>
