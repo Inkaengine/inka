@@ -549,7 +549,37 @@ function imageDimensions(file) {
     yield* slateLinkUrls(value.children);
   }
 
+  // Every list item needs its OWN id, in the field frontends read it from.
+  // Frontends key items by that id (`expand(rows, null, 'key')` → `@uid`), so
+  // items with no id — or a repeated one — all resolve to one item: a whole
+  // table rendering its last cell everywhere. Reading the schema-named idField
+  // (not "any id") also catches ids written under the wrong key.
+  function checkItemIds(items, idKey, what, where) {
+    const seen = new Set();
+    items.forEach((item, i) => {
+      if (!item || typeof item !== 'object') return;
+      const id = item[idKey];
+      if (id == null || id === '') {
+        errors.push(`${where} ${what} ${i} has no id "${idKey}" — every item needs its own id, or frontends collapse the items onto one`);
+      } else if (seen.has(id)) {
+        errors.push(`${where} ${what} ${i} repeats id "${id}" — every item needs its own id, or frontends collapse the items onto one`);
+      } else {
+        seen.add(id);
+      }
+    });
+  }
+
   function checkBlockRefs(rel, bid, block) {
+    // A table's rows and each row's cells are keyed by `key` — Volto's slateTable
+    // shape, which every frontend reads. Not a schema object_list, so checked
+    // here by type.
+    if (block['@type'] === 'slateTable' && Array.isArray(block.table && block.table.rows)) {
+      const where = `  ${rel}: block ${bid} (slateTable)`;
+      checkItemIds(block.table.rows, 'key', 'table row', where);
+      block.table.rows.forEach((row, r) => {
+        if (row && Array.isArray(row.cells)) checkItemIds(row.cells, 'key', `table row ${r} cell`, where);
+      });
+    }
     // A block FIELD's value must match its schema widget's shape. This catches a
     // decode bug the link/slate-value checks below can't: they only look at
     // block.value, so a mismatched FIELD (a slate field stored as {value:[…]}
@@ -579,6 +609,7 @@ function imageDimensions(file) {
           // and that left socialLinks' links untyped) is caught here in seconds
           // instead of 17 minutes into the bridge suite.
           const typeKey = def.typeField || '@type';
+          checkItemIds(v, def.idField || '@id', `object_list field "${field}" item`, `  ${rel}: block ${bid} (${block['@type']})`);
           v.forEach((item, i) => {
             // Read the way hydra's getBlockType does: `@type` first, then the
             // schema's typeField — an item carrying either is typed.

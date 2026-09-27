@@ -194,3 +194,14 @@ describe('expandTemplatesSync: object_list items must carry their id', () => {
     expect(out.map((r) => r['@uid'])).toEqual(['r1', 'r2']);
   });
 });
+
+describe('expandTemplatesSync: object_list ids must be unique', () => {
+  // Two items sharing an id resolve to one item, the same collapse as a missing id.
+  const dup = [{ '@type': 'row', key: 'r1' }, { '@type': 'row', key: 'r1' }];
+
+  test.each([false, true])('throws on a repeated idField value (editMode=%s)', (editMode) => {
+    expect(() => expandTemplatesSync(dup, {
+      templateState: {}, templates: {}, idField: 'key', editMode,
+    })).toThrow(/repeats "key" "r1"/);
+  });
+});

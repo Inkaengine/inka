@@ -4108,6 +4108,26 @@ export async function expandTemplates(inputItems, options = {}) {
  * get `@uid: undefined`, collapse onto the last item and render it everywhere
  * (a whole table showing its last cell), so a missing id is a content error.
  */
+/**
+ * Two object_list items sharing an id resolve to one item — the same collapse as
+ * a missing id — so a repeated id is a content error too.
+ */
+function assertUniqueObjectListIds(items, idField) {
+  const seen = new Set();
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || typeof item === 'string') continue;
+    const id = item[idField];
+    if (id == null) continue; // a missing id is reported by objectListItemId
+    if (seen.has(id)) {
+      throw new Error(
+        `expandTemplatesSync: object_list repeats "${idField}" "${id}" (type ${item['@type'] ?? 'unknown'}). ` +
+          'Every item needs its own id.',
+      );
+    }
+    seen.add(id);
+  }
+}
+
 function objectListItemId(item, idField) {
   const id = item[idField];
   if (!id) {
@@ -4147,6 +4167,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // detector when no override is given (the browser edit iframe + view render).
   const editMode =
     editModeOverride !== undefined ? editModeOverride : _isEditMode();
+  if (idField) assertUniqueObjectListIds(inputItems || [], idField);
   if (editMode) {
     return (inputItems || [])
       .map((item) => {
