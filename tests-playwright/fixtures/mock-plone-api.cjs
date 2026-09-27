@@ -651,6 +651,67 @@ function matchSearchableText(searchTerm, item) {
 }
 
 /**
+ * What a search result carries when the query did not ask for more.
+ *
+ * plone.restapi builds a summary from `default_metadata_fields` and adds only
+ * what `metadata_fields` requests, intersected with the catalog schema
+ * (serializer/summary.py). The defaults are six:
+ *   @id, @type, description, review_state, title, type_title
+ * and plone.volto — which this backend has — registers an
+ * IJSONSummarySerializerMetadata utility adding ten more:
+ *   effective, end, getObjSize, getRemoteUrl, head_title, image_field,
+ *   image_scales, mime_type, nav_title, start
+ * Verified against a live Plone 6 (demo.plone.org/++api++/@search), which
+ * answers with exactly these.
+ *
+ * Everything else — UID, id, created, is_folderish, exclude_from_nav,
+ * getObjPositionInParent, Subject — is real catalog metadata that arrives ONLY
+ * when asked for. This file used to hand out the lot unasked, and that is not a
+ * harmless generosity: the Plone adapter reads raw.UID in toBrief without
+ * requesting it, so every listed document had an id here and a URL against a
+ * real Plone. Same shape of bug as the invented @order, one field down.
+ */
+const DEFAULT_SUMMARY_FIELDS = new Set([
+  '@id',
+  '@type',
+  'description',
+  'review_state',
+  'title',
+  'type_title',
+  // plone.volto's additions
+  'effective',
+  'end',
+  'getObjSize',
+  'getRemoteUrl',
+  'head_title',
+  'image_field',
+  'image_scales',
+  'mime_type',
+  'nav_title',
+  'start',
+]);
+
+/**
+ * Trim a search item to what the request is entitled to.
+ *
+ * `metadata_fields` may be a single name, a list, or '_all'. Unknown names are
+ * ignored rather than refused, as Plone ignores fields outside the catalog
+ * schema.
+ */
+function applyMetadataFields(item, requested) {
+  const asked = requested === undefined || requested === null
+    ? []
+    : Array.isArray(requested)
+      ? requested
+      : [requested];
+  if (asked.includes('_all')) return item;
+  const keep = new Set([...DEFAULT_SUMMARY_FIELDS, ...asked]);
+  return Object.fromEntries(
+    Object.entries(item).filter(([name]) => keep.has(name)),
+  );
+}
+
+/**
  * The human title of a content type, as a catalog brain's `type_title` carries
  * it. Memoised: this is read once per search RESULT, and hitting the schema
  * files per item made a listing of 50 do 50 stats.
@@ -5040,9 +5101,13 @@ app.post('*/@querystring-search', (req, res) => {
   // provide batching links if resultset isn't batched" — and Volto renders its
   // paging controls on `search?.batching &&`, so sending the key always put
   // paging under a single page of results.
+  // Trimmed at the RESPONSE, not at formatSearchItem: the filtering and
+  // sorting above read fields (Subject for facets, effective for sort) that the
+  // caller may not have asked to see.
+  const requestedFields = req.body?.metadata_fields ?? req.query?.metadata_fields;
   res.json({
     '@id': searchUrl,
-    items,
+    items: items.map((item) => applyMetadataFields(item, requestedFields)),
     items_total: itemsTotal,
     ...(itemsTotal > b_size
       ? {
@@ -5298,7 +5363,9 @@ app.get('*/@search', (req, res) => {
   // @querystring-search above.
   res.json({
     '@id': searchUrl,
-    'items': items,
+    'items': items.map((item) =>
+      applyMetadataFields(item, req.query?.metadata_fields),
+    ),
     'items_total': items.length,
   });
 });

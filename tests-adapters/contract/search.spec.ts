@@ -30,35 +30,51 @@ beforeEach(async () => {
  * over title and stored block content. A skip here means a real capability
  * gap to close, not a CMS difference to accept.
  */
-describe.skipIf(!resolved.capabilities.includes('search-fulltext'))('search', () => {
-  it('finds a seeded document by its title text', async () => {
-    const res: any = await target.adapter.dispatch('search', {
-      query: 'First',
+describe.skipIf(!resolved.capabilities.includes('search-fulltext'))(
+  'search',
+  () => {
+    it('finds a seeded document by its title text', async () => {
+      const res: any = await target.adapter.dispatch('search', {
+        query: 'First',
+      });
+      expect(typeof res.total).toBe('number');
+      expect(Array.isArray(res.items)).toBe(true);
+      expect(res.items.map((i: any) => i.path)).toContain('/news/first-post');
     });
-    expect(typeof res.total).toBe('number');
-    expect(Array.isArray(res.items)).toBe(true);
-    expect(res.items.map((i: any) => i.path)).toContain('/news/first-post');
-  });
 
-  it('returns canonical Documents, not CMS-shaped brains', async () => {
-    const res: any = await target.adapter.dispatch('search', {
-      query: 'First',
+    it('returns canonical Documents, not CMS-shaped brains', async () => {
+      const res: any = await target.adapter.dispatch('search', {
+        query: 'First',
+      });
+      const hit = res.items.find((i: any) => i.path === '/news/first-post');
+      expect(hit).toBeDefined();
+      expect(hit.path).not.toMatch(/^https?:/);
+      expect(typeof hit.id).toBe('string');
+      // The SAME id the document answers with, not a different name for it.
+      //
+      // A listing and a read have to agree on identity or nothing can be matched
+      // across them — selection, "is this the page I have open", the bridge's
+      // block addressing. Plone's catalog only carries UID when the query ASKS
+      // for it (metadata_fields), so an adapter that reads raw.UID off a default
+      // search gets undefined and falls back to something else, and this is the
+      // assertion that notices. Our mock used to hand out every catalog field
+      // unasked, which hid it.
+      const fetched: any = await target.adapter.dispatch('content.get', {
+        path: hit.path,
+      });
+      expect(hit.id).toBe(fetched.id);
+      expect(typeof hit.title).toBe('string');
     });
-    const hit = res.items.find((i: any) => i.path === '/news/first-post');
-    expect(hit).toBeDefined();
-    expect(hit.path).not.toMatch(/^https?:/);
-    expect(typeof hit.id).toBe('string');
-    expect(typeof hit.title).toBe('string');
-  });
 
-  it('returns an empty result set rather than throwing on no match', async () => {
-    const res: any = await target.adapter.dispatch('search', {
-      query: 'zzzz-no-such-content-zzzz',
+    it('returns an empty result set rather than throwing on no match', async () => {
+      const res: any = await target.adapter.dispatch('search', {
+        query: 'zzzz-no-such-content-zzzz',
+      });
+      expect(res.items).toEqual([]);
+      expect(res.total).toBe(0);
     });
-    expect(res.items).toEqual([]);
-    expect(res.total).toBe(0);
-  });
-});
+  },
+);
 
 describe('tree.list', () => {
   it('lists the children of a folder', async () => {

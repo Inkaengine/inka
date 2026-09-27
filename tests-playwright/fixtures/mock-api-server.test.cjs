@@ -26,11 +26,19 @@ after(async () => {
 });
 
 // Helper: POST to @querystring-search
+/**
+ * `metadata_fields: '_all'` unless a test says otherwise, because that is what
+ * every real caller here sends — ploneFetchItems, Volto's contents view, the
+ * object browser. A catalog summary carries six fields by default (plus the ten
+ * plone.volto adds); id, UID and getObjPositionInParent are not among them, and
+ * the assertions below read all three. Asking for them is what a real caller
+ * has to do, and the mock now holds callers to it.
+ */
 async function querystringSearch(contextPath, body) {
   const res = await fetch(`${baseUrl}${contextPath}/@querystring-search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ metadata_fields: '_all', ...body }),
   });
   assert.equal(res.status, 200);
   return res.json();

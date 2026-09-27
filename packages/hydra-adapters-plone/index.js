@@ -898,6 +898,13 @@ export class PloneAdapter extends BaseAdapter {
         if (args.query) params.set('SearchableText', args.query);
         if (args.path) params.set('path.query', args.path);
         if (args.limit) params.set('b_size', String(args.limit));
+        // ASK for the UID. A catalog summary carries the six fields
+        // plone.restapi defaults to plus whatever plone.volto adds, and UID is
+        // in neither — it arrives only when metadata_fields requests it. toBrief
+        // reads raw.UID for the document's id, so without this every listed
+        // document's id was its URL against a real Plone, while our mock (which
+        // used to send every field unasked) showed a proper id.
+        params.set('metadata_fields', 'UID');
         const raw = await this.fetchJson(
           `${args.path ?? ''}/@search?${params.toString()}`,
         );
@@ -914,7 +921,11 @@ export class PloneAdapter extends BaseAdapter {
         // children. Passing path.query on an unscoped /@search is NOT
         // equivalent — the context is what bounds the subtree.
         const base = args.parent === '/' ? '' : args.parent;
-        const raw = await this.fetchJson(`${base}/@search?path.depth=1`);
+        // metadata_fields=UID for the same reason as search above: toBrief
+        // reads it, and a default summary does not carry it.
+        const raw = await this.fetchJson(
+          `${base}/@search?path.depth=1&metadata_fields=UID`,
+        );
         return {
           items: (raw.items ?? []).map((i) => this.toBrief(i)),
           total: raw.items_total ?? 0,
