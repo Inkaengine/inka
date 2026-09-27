@@ -93,7 +93,8 @@
       ],
       "default_from": "noreply@example.com",
       "default_to": "admin@example.com",
-      "default_subject": "Form"
+      "default_subject": "Form",
+      "captcha": "honeypot"
     }
   },
   "blocks_layout": {
