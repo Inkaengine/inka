@@ -173,3 +173,24 @@ describe('expandTemplatesSync: object_list arrays in template blocks', () => {
     expect(result[0].templateInstanceId).toBe('inst-1');
   });
 });
+
+describe('expandTemplatesSync: object_list items must carry their id', () => {
+  // Items without an id all map to `@uid: undefined`, collapse onto the last
+  // one, and a whole table renders its last cell everywhere. Fail loudly instead.
+  const rows = [
+    { '@type': 'row', cells: [] },
+    { '@type': 'row', cells: [] },
+  ];
+
+  test.each([false, true])('throws on an item with no idField value (editMode=%s)', (editMode) => {
+    expect(() => expandTemplatesSync(rows, {
+      templateState: {}, templates: {}, idField: 'key', editMode,
+    })).toThrow(/no "key"/);
+  });
+
+  test('keeps items that have their id', () => {
+    const keyed = [{ '@type': 'row', key: 'r1' }, { '@type': 'row', key: 'r2' }];
+    const out = expandTemplatesSync(keyed, { templateState: {}, templates: {}, idField: 'key', editMode: false });
+    expect(out.map((r) => r['@uid'])).toEqual(['r1', 'r2']);
+  });
+});
