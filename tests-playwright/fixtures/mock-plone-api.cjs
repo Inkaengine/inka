@@ -225,6 +225,58 @@ function setSessionContent(sessionId, urlPath, content) {
 let tokenCounter = 0;
 
 /**
+ * Who is calling, from the token's `sub`.
+ *
+ * Locks belong to a person, not a session id: Volto only warns "locked by
+ * someone else" when the lock's creator differs from the logged-in user, so a
+ * lock recorded against an opaque session hash would read as another editor's.
+ */
+function currentUser(req) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) return null;
+  const [, payload] = header.slice(7).split('.');
+  if (!payload) return null;
+  // Not verified — this is a mock, and the signature is the string
+  // "fake-signature". Malformed base64 means no user, not a crash.
+  try {
+    return JSON.parse(Buffer.from(payload, 'base64').toString('utf-8')).sub ?? null;
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
+
+/**
+ * Locks, per session and path.
+ *
+ * plone.locking's model, as plone.restapi exposes it: a lock has a creator, a
+ * token the holder must present to write, a timeout, and `stealable` saying
+ * whether another user may break it. Content carries {locked, stealable} at all
+ * times — that is how Volto's Edit route knows locking EXISTS at all
+ * (`content?.lock !== undefined`), and why leaving it out meant no edit in this
+ * mock ever took one.
+ */
+const sessionLocks = {};
+
+function lockInfoFor(sessionId, cleanPath) {
+  const held = sessionLocks[sessionId]?.[cleanPath];
+  // The unlocked shape is exactly two keys — see plone.restapi's lock_get.resp.
+  if (!held) return { locked: false, stealable: true };
+  return {
+    locked: true,
+    stealable: true,
+    creator: held.creator,
+    creator_name: held.creator,
+    creator_url: `${API_ORIGIN}/author/${held.creator}`,
+    created: held.created,
+    name: 'plone.locking.stealable',
+    time: held.time,
+    timeout: held.timeout,
+    token: held.token,
+  };
+}
+
+/**
  * Mint a session token.
  *
  * The `jti` is not decoration: every mutation in this mock is scoped to the
@@ -2163,7 +2215,16 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     'exclude_from_nav': transformed.exclude_from_nav || false,
     'created': transformed.created || '2025-01-01T12:00:00+00:00',
     'modified': transformed.modified || '2025-01-01T12:00:00+00:00',
-    'lock': transformed.lock || { 'locked': false, 'stealable': true },
+    // The ACTUAL lock, not a fixed "nobody holds this".
+    //
+    // Volto's Edit route locks on entry (it does so whenever content.lock
+    // exists, which is why this key matters), unlocks on unmount if
+    // content.lock.locked, and sends content.lock.token as a Lock-Token header
+    // on every write. With a constant {locked:false} here, POST @lock wrote to
+    // nowhere a reader could see: the unlock never fired and the token never
+    // travelled. A fixture may still set `lock` itself, to model a document
+    // someone ELSE is holding.
+    'lock': transformed.lock || lockInfoFor(sessionId, cleanPath),
     'parent': parent,
     // Plone serialises `language` as a vocabulary term, never the bare code a
     // fixture writes — and Volto reads `content.language.token` throughout its
@@ -2659,15 +2720,15 @@ app.post('/@login', (req, res) => {
   if (login && password) {
     // Generate fresh token with new expiration
     const token = generateAuthToken(login);
+    // A login that succeeds means the CMS HAS this account, so @users has to
+    // agree: it answers 404 for an id it does not know, and every test that logs
+    // in under its own name would otherwise be unable to identify itself. This
+    // mock accepts any credentials by design; registering the account keeps the
+    // two endpoints telling the same story.
+    rememberUser(login);
     const response = {
       token,
-      user: {
-        '@id': `${API_ORIGIN}/@users/${login}`,
-        id: login,
-        fullname: 'Admin User',
-        email: 'admin@example.com',
-        roles: ['Manager', 'Authenticated'],
-      },
+      user: userRecord(MOCK_USERS.find((user) => user.id === login)),
     };
 
     if (process.env.DEBUG) {
@@ -4423,16 +4484,106 @@ app.post(/.*\/@sharing$/, (req, res) => {
  * ++api++ prefix the rest of its requests carry — and Express reads `+` as a
  * repeat modifier, so '/++api++/@users/:userid' can never match as a path.
  */
-app.get(/^(?:\/\+\+api\+\+)?\/@users\/([^/]+)$/, (req, res) => {
-  const userid = req.params[0];
-  res.json({
-    '@id': `${API_ORIGIN}/@users/${userid}`,
-    id: userid,
+/**
+ * The users this site has.
+ *
+ * Shape from plone.restapi's own users.resp: the collection is an envelope, and
+ * each member carries description, email, fullname, groups, home_page, id,
+ * location, portrait, roles and username. Two of them, because one user cannot
+ * show whether a picker filters — and the sharing screen's search is the caller
+ * that asks this a real question.
+ */
+const MOCK_USERS = [
+  {
+    id: 'admin',
     fullname: 'Admin User',
     email: 'admin@example.com',
+    description: 'The site administrator',
+    location: 'Berlin',
+    home_page: 'https://example.com',
     roles: ['Manager', 'Authenticated'],
-    username: userid,
+  },
+  {
+    id: 'editor',
+    fullname: 'Edith Editor',
+    email: 'editor@example.com',
+    description: 'Writes and publishes',
+    location: 'Bangkok',
+    home_page: '',
+    roles: ['Editor', 'Authenticated'],
+  },
+];
+
+/** Register an account this mock has seen authenticate. */
+function rememberUser(id) {
+  if (MOCK_USERS.some((user) => user.id === id)) return;
+  MOCK_USERS.push({
+    id,
+    fullname: id === 'admin' ? 'Admin User' : id,
+    email: `${id}@example.com`,
+    description: '',
+    location: '',
+    home_page: '',
+    roles: ['Manager', 'Authenticated'],
   });
+}
+
+function userRecord(user) {
+  return {
+    '@id': `${API_ORIGIN}/@users/${user.id}`,
+    id: user.id,
+    username: user.id,
+    fullname: user.fullname,
+    email: user.email,
+    description: user.description,
+    location: user.location,
+    home_page: user.home_page,
+    portrait: null,
+    roles: user.roles,
+    groups: {
+      '@id': `${API_ORIGIN}/@users`,
+      items: [{ id: 'AuthenticatedUsers', title: 'AuthenticatedUsers' }],
+      items_total: 1,
+    },
+  };
+}
+
+/**
+ * GET /@users (and /@users?query=) — the collection.
+ *
+ * `query` matches id, fullname and email, which is what plone.restapi's user
+ * search does. This did not exist: only /@users/<id> did, so anything that
+ * listed or searched users got a 404 here and a list from a real Plone.
+ */
+app.get(/^(?:\/\+\+api\+\+)?\/@users$/, (req, res) => {
+  const query = String(req.query.query ?? '').toLowerCase();
+  const matches = query
+    ? MOCK_USERS.filter((user) =>
+        [user.id, user.fullname, user.email]
+          .join(' ')
+          .toLowerCase()
+          .includes(query),
+      )
+    : MOCK_USERS;
+  res.json({
+    '@id': `${API_ORIGIN}/@users`,
+    items: matches.map(userRecord),
+    items_total: matches.length,
+  });
+});
+
+app.get(/^(?:\/\+\+api\+\+)?\/@users\/([^/]+)$/, (req, res) => {
+  const userid = req.params[0];
+  // An id nobody has is a 404, not a synthesised user. The adapter identifies
+  // the session by asking for its own id, and inventing an answer for any name
+  // would have that succeed against a CMS where the account does not exist.
+  const known = MOCK_USERS.find((user) => user.id === userid);
+  if (!known) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `No such user: ${userid}` },
+    });
+  }
+  return res.json(userRecord(known));
 });
 
 /**
@@ -5715,25 +5866,88 @@ app.delete('*/@form-data', (req, res) => {
 });
 
 /**
- * POST /:path/@lock
- * Lock content for editing
+ * GET /:path/@lock — who holds this, if anyone.
+ *
+ * Two keys when nobody does, the full record when someone does. This route did
+ * not exist, so nothing could read back what POST had written: the lock was
+ * write-only, and a test could not tell a lock that was taken from one that was
+ * quietly dropped.
  */
-app.post('*/@lock', (req, res) => {
-  res.json({
-    locked: true,
-    stealable: true,
-    creator: 'admin',
-    time: new Date().toISOString(),
-    timeout: 600
-  });
+app.get('*/@lock', (req, res) => {
+  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
+  const sessionId = getSessionId(req);
+  if (getContent(cleanPath, sessionId) === null) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `No such resource: ${cleanPath}` },
+    });
+  }
+  return res.json(lockInfoFor(sessionId, cleanPath));
 });
 
 /**
- * DELETE /:path/@lock
- * Unlock content after editing
+ * POST /:path/@lock — take the lock.
+ *
+ * Answers the full record, including the `token` the holder then sends back as
+ * a Lock-Token header on every write (Volto's Edit does exactly that). It used
+ * to answer a fixed object with creator 'admin' and no token at all, so the
+ * token round trip — the part that actually protects anything — was untested.
+ */
+app.post('*/@lock', (req, res) => {
+  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
+  const sessionId = getSessionId(req);
+  if (getContent(cleanPath, sessionId) === null) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `No such resource: ${cleanPath}` },
+    });
+  }
+  const creator = currentUser(req) ?? 'anonymous';
+  if (!sessionLocks[sessionId]) sessionLocks[sessionId] = {};
+  const existing = sessionLocks[sessionId][cleanPath];
+  // Re-locking your own document refreshes it rather than failing: Plone's
+  // lockable.lock() on an already-held lock by the same creator is a no-op, and
+  // Volto locks again on every entry into edit.
+  sessionLocks[sessionId][cleanPath] = {
+    creator,
+    created: existing?.created ?? new Date().toISOString(),
+    time: Date.now() / 1000,
+    timeout: Number(req.body?.timeout ?? 600),
+    token: existing?.token ?? `${Math.random().toString(36).slice(2)}-${Date.now()}`,
+  };
+  return res.json(lockInfoFor(sessionId, cleanPath));
+});
+
+/**
+ * PATCH /:path/@lock — refresh a lock you already hold.
+ *
+ * Volto's long edits call this to keep the lock alive. Refusing to refresh a
+ * lock nobody holds, rather than inventing one, because a refresh that silently
+ * CREATES a lock would hide a client that lost its own.
+ */
+app.patch('*/@lock', (req, res) => {
+  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
+  const sessionId = getSessionId(req);
+  const held = sessionLocks[sessionId]?.[cleanPath];
+  if (!held) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `Not locked: ${cleanPath}` },
+    });
+  }
+  held.time = Date.now() / 1000;
+  held.timeout = Number(req.body?.timeout ?? held.timeout);
+  return res.json(lockInfoFor(sessionId, cleanPath));
+});
+
+/**
+ * DELETE /:path/@lock — release it.
+ *
+ * Answers lock_info for the now-unlocked object, which is what plone.restapi's
+ * unlock service returns — not the bare {locked:false} this used to send.
  */
 app.delete('*/@lock', (req, res) => {
-  res.json({ locked: false });
+  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
+  const sessionId = getSessionId(req);
+  if (sessionLocks[sessionId]) delete sessionLocks[sessionId][cleanPath];
+  return res.json(lockInfoFor(sessionId, cleanPath));
 });
 
 /**
