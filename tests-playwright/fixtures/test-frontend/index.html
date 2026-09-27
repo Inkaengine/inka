@@ -549,6 +549,11 @@
                     // /_test_data depending on how the mock API is mounted, so
                     // match on the page id rather than one of the two prefixes.
                     const restrictStyles = /\/restricted-styles-page(\/|$)/.test(pagePath);
+                    // A form whose fields allow ONE type and start empty: the '+'
+                    // on the empty field types it in place with no chooser. The
+                    // type is static_text because it has no schema defaults, so
+                    // the typed item differs from the empty only by its type.
+                    const singleTypeFields = /\/form-single-type-page(\/|$)/.test(pagePath);
 
                     // Listen for changes from the admin UI and update blocks
                     // Return promise from async render so hydra.js can wait for DOM updates
@@ -606,6 +611,22 @@
                             // PAGE denies. Deny accumulates down the tree and cannot be
                             // re-allowed by a nested region; `h2` proves the allow half
                             // still takes effect.
+                            ...(singleTypeFields ? {
+                                form: {
+                                    ...sharedBlocksConfig.form,
+                                    blockSchema: {
+                                        ...sharedBlocksConfig.form.blockSchema,
+                                        properties: {
+                                            ...sharedBlocksConfig.form.blockSchema.properties,
+                                            subblocks: {
+                                                ...sharedBlocksConfig.form.blockSchema.properties.subblocks,
+                                                allowedBlocks: ['static_text'],
+                                                defaultBlockType: 'empty',
+                                            },
+                                        },
+                                    },
+                                },
+                            } : {}),
                             ...(restrictStyles ? {
                                 column: {
                                     ...sharedBlocksConfig.column,
