@@ -72,9 +72,9 @@ const PROTO_TEXT = {
   ].join('\n'),
   slateTable: [
     '<block type="slateTable">',
-    '  <region name="table.rows" idField="key" typeField=null>',
+    '  <region name="table.rows" idField="key">',
     '    <block type="row">',
-    '      <region name="cells" idField="key" typeField=null>',
+    '      <region name="cells" idField="key">',
     '        <block type="cell" value="${td/slate}" />',
     '      </region>',
     '    </block>',
