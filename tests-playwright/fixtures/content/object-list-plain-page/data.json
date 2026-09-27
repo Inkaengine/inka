@@ -75,11 +75,31 @@
       "@type": "hero",
       "heading": "Plain list hero",
       "subheading": "Tags are edited in the sidebar"
+    },
+    "form-1": {
+      "@type": "form",
+      "title": "Contact",
+      "submit_label": "Submit",
+      "subblocks": [
+        {
+          "field_id": "q-1",
+          "@id": "q-1",
+          "field_type": "single_choice",
+          "label": "How should we reply?",
+          "input_values": [
+            "Email"
+          ]
+        }
+      ],
+      "default_from": "noreply@example.com",
+      "default_to": "admin@example.com",
+      "default_subject": "Form"
     }
   },
   "blocks_layout": {
     "items": [
-      "hero-1"
+      "hero-1",
+      "form-1"
     ]
   }
 }

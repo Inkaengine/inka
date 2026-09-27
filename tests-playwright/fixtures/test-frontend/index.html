@@ -631,6 +631,37 @@
                                 },
                             } : {}),
                             ...(plainListField ? {
+                                // A form question whose options are a plain list
+                                // of value and label, as a form block offers them.
+                                single_choice: {
+                                    ...sharedBlocksConfig.single_choice,
+                                    blockSchema: {
+                                        ...sharedBlocksConfig.single_choice.blockSchema,
+                                        fieldsets: [
+                                            {
+                                                ...sharedBlocksConfig.single_choice.blockSchema.fieldsets[0],
+                                                fields: [...sharedBlocksConfig.single_choice.blockSchema.fieldsets[0].fields, 'display_values'],
+                                            },
+                                            ...sharedBlocksConfig.single_choice.blockSchema.fieldsets.slice(1),
+                                        ],
+                                        properties: {
+                                            ...sharedBlocksConfig.single_choice.blockSchema.properties,
+                                            display_values: {
+                                                title: 'Options',
+                                                widget: 'object_list',
+                                                subBlocks: false,
+                                                schema: {
+                                                    title: 'Option',
+                                                    fieldsets: [{ id: 'default', title: 'Option', fields: ['label', 'value'] }],
+                                                    properties: {
+                                                        label: { title: 'Label', type: 'string' },
+                                                        value: { title: 'Value', type: 'string' },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
                                 hero: {
                                     ...sharedBlocksConfig.hero,
                                     blockSchema: {
@@ -649,10 +680,13 @@
                                                 subBlocks: false,
                                                 schema: {
                                                     title: 'Tag',
-                                                    fieldsets: [{ id: 'default', title: 'Tag', fields: ['value', 'label'] }],
+                                                    // `heading` shares its name with the hero's own
+                                                    // canvas field, as a form option's `label` does
+                                                    // with its question's.
+                                                    fieldsets: [{ id: 'default', title: 'Tag', fields: ['value', 'heading'] }],
                                                     properties: {
                                                         value: { title: 'Value', type: 'string' },
-                                                        label: { title: 'Label', type: 'string' },
+                                                        heading: { title: 'Label', type: 'string' },
                                                     },
                                                 },
                                             },

@@ -8791,6 +8791,16 @@ export class Bridge {
    * is what Vue does in the Framework7 example on almost every activation.
    */
   restoreFocusFromSavedClick(blockElement, { skipFocus = false, fieldType = null } = {}) {
+    // A saved click restores a caret the re-render destroyed ON THE PAGE. If
+    // the page has lost focus since — the author is typing in the sidebar —
+    // the click is over, and restoring it would take focus out of the sidebar.
+    // (The FORM_DATA handler clears it only when the clicked field's own value
+    // changed, so a sidebar edit to another field of the same block — a
+    // question's options — used to re-render it and pull focus to its label.)
+    if (this.savedClickPosition && !this._iframeFocused) {
+      log('restoreFocusFromSavedClick: page not focused, dropping saved click');
+      this.savedClickPosition = null;
+    }
     const hasSavedClickPosition = !!this.savedClickPosition;
     if (!this.focusedFieldName || (skipFocus && !hasSavedClickPosition)) return;
 
