@@ -21,11 +21,11 @@ subjects:
   - content
 title: Typography - Page Title (H1, 48/56px)
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
-  <block type="button" title="${p/text}" href="${p/link}" />
+  <block type="button" title="${a/text}" href="${a/link}" />
   <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/text}" />
   <block type="introduction" value="${p,h*/slate}" />
   <block type="slateTable">
@@ -131,9 +131,49 @@ Caption Description (14/18px). The Image content type can be used to upload an i
 
 <block type="button" inneralign="left" title="Button text (button, 18/24px)" />
 
-<block type="gridBlock" data-json='{"items":[{"@type":"slate","plaintext":"Text Heading (H2, 30/36px)","value":[{"children":[{"text":"Text Heading (H2, 30/36px)"}],"type":"h2"}]},{"@type":"slate","value":[{"children":[{"text":"For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid."}],"type":"p"}],"plaintext":"For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid."}]}' />
+<block type="gridBlock">
 
-<block type="gridBlock" data-json='{"items":[{"@type":"slate","plaintext":"Text Heading (H3, 24/30px)","value":[{"children":[{"text":"Text Heading (H3, 24/30px)"}],"type":"h2"}]},{"@type":"slate","value":[{"children":[{"text":"Paragraph Text (p, 18/24px)"}],"type":"p"}],"plaintext":"Paragraph Text (p, 18/24px)"},{"@type":"slate","plaintext":"Text Heading (H3, 24/30px)","value":[{"children":[{"text":"Text Heading (H3, 24/30px)"}],"type":"h2"}]},{"@type":"slate","value":[{"children":[{"text":"Paragraph Text (p, 18/24px)"}],"type":"p"}],"plaintext":"Paragraph Text (p, 18/24px)"}]}' />
+<block type="slate">
+
+## Text Heading (H2, 30/36px)
+
+</block>
+
+<block type="slate">
+
+For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid.
+
+</block>
+
+</block>
+
+<block type="gridBlock">
+
+<block type="slate">
+
+## Text Heading (H3, 24/30px)
+
+</block>
+
+<block type="slate">
+
+Paragraph Text (p, 18/24px)
+
+</block>
+
+<block type="slate">
+
+## Text Heading (H3, 24/30px)
+
+</block>
+
+<block type="slate">
+
+Paragraph Text (p, 18/24px)
+
+</block>
+
+</block>
 
 <block type="toc" data-json='{"variation":"default","levels":["h2","h3"]}' />
 
@@ -145,4 +185,6 @@ Caption Description (14/18px). The Image content type can be used to upload an i
 
 </block>
 
-<block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
+<block type="slate">
+
+</block>

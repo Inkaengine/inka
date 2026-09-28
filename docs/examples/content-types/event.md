@@ -40,7 +40,7 @@ sync_uid: null
 title: Event
 whole_day: false
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
 ---
 
@@ -60,6 +60,10 @@ blocks-matched: |
 
 </fields>
 
-<block type="slate" data-json='{"slotId":"content","value":[{"children":[{"text":""}],"type":"p"}],"fixed":false,"readOnly":false}' />
+<block type="slate">
+
+<fields slotId="content" fixed=false readOnly=false />
+
+</block>
 
 </fields>

@@ -22,7 +22,7 @@ rights: ""
 subjects: []
 title: Selecting blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
@@ -33,7 +33,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
     </region>
   </block>
   <block type="slateTable">
@@ -132,7 +132,11 @@ When a block is selected, the sidebar shows the **chain of parent containers** f
 
 Click any `‹` arrow to **navigate up** to that level. This does the same thing as pressing `Escape` repeatedly, but visibly — you can see what each parent is named, jump several levels in one click, and edit the parent's own settings (alignment, padding, …) inline without leaving the current selection.
 
-<block type="image" data-json='{"url":"../images/parent-chain.png","align":"center","size":"l","alt":"Sidebar showing parent chain for a slate inside a column inside columns. Three sections each with a `‹` arrow: Columns (\"My Columns Section\"), Column (\"Left Column\"), Text (current, body field shown)."}' />
+<block type="image">
+
+![Sidebar showing parent chain for a slate inside a column inside columns. Three sections each with a \`‹\` arrow: Columns ("My Columns Section"), Column ("Left Column"), Text (current, body field shown).](../images/parent-chain.png)
+
+</block>
 
 This works for any depth — nested columns, slider with templated children, accordion inside a section inside the page. The chain reflects the real DOM hierarchy.
 
@@ -155,7 +159,11 @@ Slides                    [+]
 
 If the container has multiple blocks fields (e.g. a header field and a body field), each appears as a separate section with its own children list and add button.
 
-<block type="image" data-json='{"url":"../images/children-list.png","align":"center","size":"l","alt":"Sidebar with a search container selected, showing two children-list sections — Facets (with three facet rows) and Results Listing (with one Listing row). Each row has a `⋮⋮` drag handle and a `>` drill-in arrow; each section has a `+` add button."}' />
+<block type="image">
+
+![Sidebar with a search container selected, showing two children-list sections — Facets (with three facet rows) and Results Listing (with one Listing row). Each row has a \`⋮⋮\` drag handle and a \`>\` drill-in arrow; each section has a \`+\` add button.](../images/children-list.png)
+
+</block>
 
 ### Picking from the outline (for paged containers)
 

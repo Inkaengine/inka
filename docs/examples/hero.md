@@ -22,7 +22,7 @@ subjects:
   - media
 title: Hero Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -30,14 +30,27 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
-  <block type="hero" heading="${h1/text}" subheading="${strong/text}" description="${em/richtext}" buttonText="${p/text}" buttonLink="${p/link}" />
+  <block type="hero" heading="${h1/text}" subheading="${strong?/text}" description="${p?/slate}" buttonText="${a?/text}" buttonLink="${a?/link}" image="${img?/src}" />
 ---
 
 # Hero Block
 
 A full-width hero section with heading, subheading, image, rich text description, and a call-to-action button. Demonstrates multiple field types in a single block: string, textarea, slate, image, and object\_browser.
 
-<block type="hero" data-json='{"heading":"Welcome to Our Site","subheading":"Discover amazing content\nacross multiple lines","buttonText":"Get Started","buttonLink":[{"@id":"/docs/frontend-guide/build-a-frontend","@type":"Document","Title":"Build a frontend","Description":"The actual code you write will depend on the framework you choose. You can look at these examples to help you:","title":"Build a frontend","head_title":null,"getRemoteUrl":null,"hasPreviewImage":false,"image_field":""}],"image":"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27800%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%234a90d9%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3EHero Image%3C/text%3E%3C/svg%3E","description":[{"type":"p","children":[{"text":"We build tools that make content editing delightful."}]}]}' />
+<block type="hero">
+
+# Welcome to Our Site
+
+**Discover amazing content\
+across multiple lines**
+
+We build tools that make content editing delightful.
+
+[Get Started](/docs/frontend-guide/build-a-frontend)
+
+![](<data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27800%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%234a90d9%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3EHero Image%3C/text%3E%3C/svg%3E>)
+
+</block>
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-hero" fixed=false readOnly=false>
 
