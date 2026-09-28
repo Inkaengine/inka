@@ -33,7 +33,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="slider">
     <region name="slides" widget="object_list" idField="@id" typeField="@type">
-      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/text}" buttonText="${p[2]/text}" href="${p[2]/link}" preview_image="${img/link}" />
+      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/text}" buttonText="${p?[2]/text}" href="${p?[2]/link}" preview_image="${img/link}" />
     </region>
   </block>
 ---
@@ -42,7 +42,31 @@ blocks-tagged: |
 
 A carousel/slider that cycles through slides. Slides are stored as an object\_list — each slide has a title, description, image, and optional button.
 
-<block type="slider" data-json='{"autoplayEnabled":false,"autoplayDelay":5000,"slides":[{"@type":"slide","head_title":"New Release","title":"Product Launch 2025","description":"Discover our latest innovations.","preview_image":[{"@id":"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27800%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%235577aa%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3ESlide 1%3C/text%3E%3C/svg%3E"}],"buttonText":"Learn More"},{"@type":"slide","head_title":"Featured","title":"Award-Winning Design","description":"Recognized for excellence in UX.","preview_image":[{"@id":"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27800%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%23aa5577%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3ESlide 2%3C/text%3E%3C/svg%3E"}],"buttonText":"See Details","hideButton":true}]}' />
+<block type="slider" autoplayEnabled=false autoplayDelay=5000>
+
+## Product Launch 2025
+
+**New Release**
+
+Discover our latest innovations.
+
+Learn More
+
+![](<data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27800%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%235577aa%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3ESlide 1%3C/text%3E%3C/svg%3E>)
+
+## Award-Winning Design
+
+**Featured**
+
+Recognized for excellence in UX.
+
+See Details
+
+![](<data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27800%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%23aa5577%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3ESlide 2%3C/text%3E%3C/svg%3E>)
+
+<fields hideButton=true />
+
+</block>
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-slider" fixed=false readOnly=false>
 

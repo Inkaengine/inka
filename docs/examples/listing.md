@@ -40,7 +40,7 @@ blocks-tagged: |
   </block>
   <block type="slider">
     <region name="slides" widget="object_list" idField="@id" typeField="@type">
-      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/text}" buttonText="${p[2]/text}" href="${p[2]/link}" preview_image="${img/link}" />
+      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/text}" buttonText="${p?[2]/text}" href="${p?[2]/link}" preview_image="${img/link}" />
     </region>
   </block>
 ---

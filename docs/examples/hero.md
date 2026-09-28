@@ -30,7 +30,7 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
-  <block type="hero" heading="${h1/text}" subheading="${strong/text}" description="${em/richtext}" buttonText="${p/text}" buttonLink="${p/link}" />
+  <block type="hero" heading="${h1/text}" subheading="${strong?/text}" description="${em?/richtext}" buttonText="${p?/text}" buttonLink="${p?/link}" image="${img?/src}" />
 ---
 
 # Hero Block
