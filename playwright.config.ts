@@ -45,7 +45,18 @@ const needsJourney = projectArgs.some((p) => p.startsWith('journey'));
 // Everything runs through an adapter now. The admin's direct-fetch path is the
 // legacy one, so leaving most projects on it meant the suite mostly exercised
 // what we are moving away from.
-const useBridgeBackend = 'true';
+//
+// Overridable so the cost of the bridge can be MEASURED rather than argued
+// about: RAZZLE_USE_BRIDGE_BACKEND=false runs the same specs on the legacy
+// direct-fetch path for comparison. Validated rather than defaulted, like
+// RAZZLE_BRIDGE_EXPANDERS below — a typo must fail, not quietly pick a side.
+const bridgeOverride = process.env.RAZZLE_USE_BRIDGE_BACKEND;
+if (bridgeOverride && !['true', 'false'].includes(bridgeOverride)) {
+  throw new Error(
+    `RAZZLE_USE_BRIDGE_BACKEND must be 'true' or 'false', got '${bridgeOverride}'`,
+  );
+}
+const useBridgeBackend = bridgeOverride ?? 'true';
 
 // Expansion is on everywhere except an EMULATING adapter, where it measurably
 // costs more than it saves: Drupal's journey went 190 -> 214 requests, and
