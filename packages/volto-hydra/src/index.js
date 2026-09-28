@@ -249,7 +249,8 @@ config.settings.additionalToolbarComponents = {
   // Hide container block fields - ChildBlocksWidget handles their UI
   config.widgets.widget.blocks_layout = HiddenBlocksWidget;
 
-  // Hide object_list fields - items are edited via iframe selection
+  // Hide object_list regions - items are edited via iframe selection. A plain
+  // list (`subBlocks: false`) gets Volto's object-list widget instead.
   config.widgets.widget.object_list = HiddenObjectListWidget;
 
   // Field mapping widget - for mapping source fields to target block fields
