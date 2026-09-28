@@ -2245,17 +2245,65 @@ export class AdminUIHelper {
     const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
 
     let text = '';
-    await expect(async () => {
-      text = (await editor.textContent()) || '';
+    const read = async () => {
+      let value = (await editor.textContent()) || '';
       // Strip only truly invisible characters (ZWS, word joiner) - don't convert to space
       // Keep NBSP as regular space since it's a visible space character
       // Don't collapse multiple spaces - that could hide missing space bugs
-      text = text
+      return value
         .replace(/[\uFEFF\u200B\u2060]/g, '') // Remove invisible chars
         .replace(/\u00A0/g, ' ') // Convert NBSP to regular space
         .trim();
-      expect(text).toMatch(regex);
-    }).toPass({ timeout });
+    };
+    try {
+      await expect(async () => {
+        text = await read();
+        expect(text).toMatch(regex);
+      }).toPass({ timeout });
+    } catch (error) {
+      // An empty editor is the failure that says least and happens most.
+      //
+      // CI has failed here with Received string: "" — the element existed and
+      // stayed empty for the whole timeout, which rules out a bad locator and
+      // says nothing else. The two candidate explanations need different fixes:
+      // the keystrokes went NOWHERE (slate had no selection in this block), or
+      // they went into ANOTHER block (selection restore put the caret back where
+      // it was before a split — the frontend logs "restoreSlateSelection failed:
+      // could not find positions by visible offset" on exactly this flow).
+      //
+      // Whichever it was is visible in the DOM at the moment of failure, so it is
+      // collected here rather than guessed at later. Only on the failure path:
+      // the happy path is untouched.
+      const diagnosis = await editor
+        .evaluate((el) => {
+          const root = el.closest('[data-block-uid]');
+          const doc = el.ownerDocument;
+          const active = doc.activeElement as HTMLElement | null;
+          const siblings = Array.from(
+            doc.querySelectorAll('[data-block-uid]'),
+          ).map((b) => ({
+            uid: (b as HTMLElement).dataset.blockUid,
+            text: (b.textContent || '').replace(/[\uFEFF\u200B]/g, '').trim().slice(0, 40),
+          }));
+          return {
+            blockUid: (root as HTMLElement | null)?.dataset.blockUid ?? '(none)',
+            contentEditable: el.getAttribute('contenteditable'),
+            focusInside: !!active && el.contains(active),
+            activeElement: active
+              ? `${active.tagName}${active.getAttribute('data-block-uid') ? `[${active.getAttribute('data-block-uid')}]` : ''}`
+              : '(none)',
+            html: el.innerHTML.slice(0, 200),
+            blocks: siblings,
+          };
+        })
+        .catch((e) => ({ diagnosticsFailed: String(e).slice(0, 120) }));
+      throw new Error(
+        `${(error as Error).message}\n` +
+          `  editor state at failure: ${JSON.stringify(diagnosis, null, 2)}\n` +
+          `  If the expected text appears in ANOTHER block above, the keystrokes\n` +
+          `  went to the wrong block — a selection-restore fault, not a slow test.`,
+      );
+    }
     return text;
   }
 
