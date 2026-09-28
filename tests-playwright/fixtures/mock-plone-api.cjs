@@ -4875,6 +4875,73 @@ app.get('*/@breadcrumbs', (req, res) => {
  * Get available actions for content (Edit, View, etc.)
  * Use regex to ensure matching with ++api++ prefix
  */
+/**
+ * GET /@linkintegrity?uids=<uid> — what links TO these documents.
+ *
+ * plone.app.linkintegrity keeps a relation catalogue of stored links, which is
+ * what makes Plone's delete confirmation able to say "three pages point here".
+ * Emulated by SCANNING: walk everything this session can see and look in its
+ * blocks for the target — by `resolveuid/<uid>`, which is what Plone rewrites a
+ * link to on save, and by the plain path, which is what an authoring tool has
+ * before any rewriting. Both, because the contract deliberately does not dictate
+ * which encoding a CMS uses.
+ *
+ * Shape from plone.restapi's LinkIntegrityGet: one entry per uid, the item's own
+ * summary plus `breaches` (the SOURCES that link to it, each with an '@id') and
+ * `items_total` (how many things are inside it). A missing `uids` is a 400 there,
+ * so it is one here.
+ */
+app.get(/^(?:\/\+\+api\+\+)?\/@linkintegrity$/, (req, res) => {
+  const sessionId = getSessionId(req);
+  const raw = req.query.uids;
+  const uids = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  if (uids.length === 0) {
+    return res.status(400).json({
+      error: { type: 'BadRequest', message: 'Missing parameter "uids"' },
+    });
+  }
+
+  const paths = allContentPaths(sessionId);
+  const out = [];
+  for (const uid of uids) {
+    const targetPath = uidToPathMap[uid]
+      || paths.find((p) => getContent(p, sessionId)?.UID === uid);
+    if (!targetPath) {
+      return res.status(404).json({
+        error: { type: 'NotFound', message: `No object with UID ${uid}` },
+      });
+    }
+    const needles = [`resolveuid/${uid}`, targetPath];
+    const breaches = [];
+    for (const candidate of paths) {
+      if (candidate === targetPath) continue;
+      const source = getContent(candidate, sessionId);
+      if (!source) continue;
+      // The blocks as stored — a link lives inside slate values, teaser hrefs,
+      // listing criteria. Serialising and searching finds all of them without
+      // this file needing to know any block's shape, which is the same reason
+      // the block engine holds no block knowledge.
+      const haystack = JSON.stringify(source.blocks ?? {});
+      if (!needles.some((needle) => haystack.includes(needle))) continue;
+      breaches.push({
+        '@id': `${API_ORIGIN}${candidate}`,
+        title: source.title ?? candidate,
+        '@type': source['@type'],
+      });
+    }
+    const contained = paths.filter((p) => p.startsWith(`${targetPath}/`)).length;
+    const item = getContent(targetPath, sessionId);
+    out.push({
+      '@id': `${API_ORIGIN}${targetPath}`,
+      title: item?.title ?? targetPath,
+      '@type': item?.['@type'],
+      breaches,
+      items_total: contained,
+    });
+  }
+  return res.json(out);
+});
+
 app.get(/.*\/@actions$/, (req, res) => {
   const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@actions$/, '') || '/').replace(/\/+$/, '') || '/';
   res.json(buildActionsComponent(cleanPath, `http://localhost:${PORT}`, getSessionId(req)));

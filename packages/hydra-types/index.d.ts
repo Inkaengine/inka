@@ -72,6 +72,16 @@ export type Capability =
    */
   | 'batch-native'
   /**
+   * The CMS can say what links TO a document, so a delete can be warned about.
+   *
+   * Plone has @linkintegrity. Drupal could answer from entity reference
+   * back-references. WordPress indexes nothing of the kind, so it does not claim
+   * this and `reference.dependents` refuses honestly there — which is the point:
+   * a delete warning that cannot see incoming links is worse than none, because
+   * it teaches editors the dialog means something.
+   */
+  | 'link-integrity'
+  /**
    * A document can be kept OUT of navigation without being unpublished.
    *
    * A different claim from any workflow state: the document stays readable by
@@ -161,13 +171,33 @@ export type Intent =
    */
   | 'auth.logout'
   /**
-   * Turn a stable document id into something renderable, and back. Links
-   * between documents MUST be stored by id, never by path: a path changes when
-   * the target is renamed or moved and every link to it dies silently. Plone
-   * solved this with resolveuid; WordPress has no native equivalent, so its
-   * adapter has to supply one.
+   * Turn a stored reference into something renderable.
+   *
+   * The contract is an OUTCOME, not an encoding: a reference stored today must
+   * still resolve after the target is renamed or moved. How an adapter achieves
+   * that is its own business — Plone stores resolveuid, WordPress stores the post
+   * id (stable across renames, unlike the permalink) and resolves it fresh on
+   * every render, Drupal has /node/<id> which is already rename-proof. This used
+   * to say references "MUST be stored by id, never by path", which is a mechanism
+   * mandate rather than a promise, and one a CMS can satisfy differently.
    */
   | 'reference.resolve'
+  /**
+   * What refers to this document — the question a delete warning is made of.
+   *
+   * Separate from reference.resolve on purpose: resolving forwards is something
+   * every CMS here can do, while looking BACKWARDS needs an index of incoming
+   * links, and that is where they genuinely differ rather than merely differing
+   * in encoding. Plone has one (@linkintegrity, which powers its delete
+   * confirmation); Drupal tracks entity reference back-references; WordPress
+   * indexes nothing of the kind. So this is gated on `link-integrity` and the
+   * admin withholds the warning where it cannot be answered — better than a
+   * confirmation dialog that quietly means nothing.
+   *
+   * Containment ("and it holds 12 things") is NOT part of this: tree.list already
+   * answers that, and bundling them would make one intent two questions.
+   */
+  | 'reference.dependents'
   /**
    * Listings. `querystring.getIndexes` describes what can be queried and how;
    * `querystringSearch` runs one. Together they are the second highest volume

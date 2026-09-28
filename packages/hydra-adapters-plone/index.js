@@ -78,6 +78,10 @@ export class PloneAdapter extends BaseAdapter {
         // will not ask an adapter that cannot serve these, and it will not offer
         // translations on a site with one language.
         'multilingual',
+        // plone.app.linkintegrity keeps a relation catalogue of stored links, so
+        // this CMS can answer what points AT a document — which is what a delete
+        // warning needs. See reference.dependents.
+        'link-integrity',
       ],
     });
     this.cmsBaseUrl = cmsBaseUrl;
@@ -831,6 +835,35 @@ export class PloneAdapter extends BaseAdapter {
           )}`,
         );
         return { path: this.toPath(raw?.['@id']) };
+      }
+
+      case 'reference.dependents': {
+        // Two steps because @linkintegrity speaks UIDs and every intent here
+        // speaks paths: read the document (which 404s honestly if the path is
+        // wrong — "nothing links here" must not be the answer to a typo), then
+        // ask what points at its uid.
+        const doc = await this.dispatchOnce('content.get', { path: args.path });
+        const answer = await this.fetchJson(
+          `/@linkintegrity?uids=${encodeURIComponent(doc.id)}`,
+        );
+        const entry = Array.isArray(answer) ? answer[0] : null;
+        // An empty array is what plone.restapi returns when linkintegrity is not
+        // installed at all. Reporting that as "nothing links here" would be the
+        // reassuring lie this intent exists to avoid.
+        if (!entry) {
+          throw new AdapterError(
+            'Plone answered no link-integrity record, which means the feature is ' +
+              'not installed — not that nothing links to this document.',
+            { code: 'NOT_IMPLEMENTED', status: 501 },
+          );
+        }
+        return {
+          references: (entry.breaches ?? []).map((source) => ({
+            id: source.UID ?? this.toPath(source['@id']),
+            path: this.toPath(source['@id']),
+            title: source.title,
+          })),
+        };
       }
 
       case 'querystring.getIndexes': {

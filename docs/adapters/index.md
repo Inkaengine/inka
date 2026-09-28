@@ -256,6 +256,28 @@ ADAPTER_TARGET=my-cms npx vitest run --config vitest.adapters.config.mjs
 
 The suite covers content CRUD, listings, search, navigation, breadcrumbs, schemas, vocabularies, references, assets, workflow, moves, auth and expansion. Getting it green is what "supports this CMS" means here.
 
+## References, and what a delete would break
+
+Two different questions, and only one of them every CMS can answer.
+
+`reference.resolve` turns a stored reference into something renderable, and the
+contract is an OUTCOME: a reference stored today still resolves after the target
+is renamed or moved. It does not say how. Plone stores `resolveuid`, which is an
+encoding its own REST layer produces and consumes; WordPress stores the post id,
+stable across renames where the permalink is not, and resolves it on every render;
+Drupal has `/node/<id>`, which is rename-proof already. Do not copy Plone's
+encoding into your adapter — copy the promise.
+
+`reference.dependents` asks the other way round: what links TO this document. That
+needs an index of incoming links, and it is where CMSes genuinely differ rather
+than differing in spelling. Plone has one, so it answers; WordPress indexes
+nothing of the kind, so it does not claim `link-integrity` and the intent refuses.
+The admin then withholds its delete warning there, which is better than a
+confirmation dialog that quietly means nothing.
+
+Containment — "and it holds twelve things" — is not part of either: `tree.list`
+answers that already.
+
 ## Several operations at once
 
 `batch` takes a list of operations and applies them as one intention:
@@ -291,19 +313,19 @@ cannot be emulated from outside the CMS.
 
 <block type="slateTable" table.fixed table.celled>
 
-| Group           | Intents                                                                                                                                          |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Content         | `content.get`, `content.create`, `content.update`, `content.delete`, `content.order`, `content.sort`, `content.move`, `content.copy`             |
-| Types           | `types.list`, `types.getSchema`                                                                                                                  |
-| Reading         | `search`, `querystringSearch`, `querystring.getIndexes`, `tree.list`, `navigation.get`, `breadcrumbs.get`, `reference.resolve`, `vocabulary.get` |
-| Assets          | `asset.upload`, `asset.imageUrl`                                                                                                                 |
-| Session         | `auth.whoami`, `auth.logout`                                                                                                                     |
-| Workflow        | `state.get`, `state.getForms`, `state.transition`                                                                                                |
-| Navigation      | `navigation.setExcluded`, `navigation.setTitle`                                                                                                  |
-| The site        | `site.get`                                                                                                                                       |
-| Translations    | `translations.get`, `translations.create`, `translations.link`, `translations.unlink`, `translations.locate`                                     |
-| Several at once | `batch`                                                                                                                                          |
-| Escape hatch    | `http`                                                                                                                                           |
+| Group           | Intents                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Content         | `content.get`, `content.create`, `content.update`, `content.delete`, `content.order`, `content.sort`, `content.move`, `content.copy`                                     |
+| Types           | `types.list`, `types.getSchema`                                                                                                                                          |
+| Reading         | `search`, `querystringSearch`, `querystring.getIndexes`, `tree.list`, `navigation.get`, `breadcrumbs.get`, `reference.resolve`, `reference.dependents`, `vocabulary.get` |
+| Assets          | `asset.upload`, `asset.imageUrl`                                                                                                                                         |
+| Session         | `auth.whoami`, `auth.logout`                                                                                                                                             |
+| Workflow        | `state.get`, `state.getForms`, `state.transition`                                                                                                                        |
+| Navigation      | `navigation.setExcluded`, `navigation.setTitle`                                                                                                                          |
+| The site        | `site.get`                                                                                                                                                               |
+| Translations    | `translations.get`, `translations.create`, `translations.link`, `translations.unlink`, `translations.locate`                                                             |
+| Several at once | `batch`                                                                                                                                                                  |
+| Escape hatch    | `http`                                                                                                                                                                   |
 
 </block>
 
@@ -327,5 +349,6 @@ cannot be emulated from outside the CMS.
 | `http-passthrough`                                               | Forwarding Plone-dialect requests unchanged                                     |
 | `expand-native`                                                  | The admin asks for its expander bundle inside the content response              |
 | `batch-native`                                                   | Grouping writes into one request saves round trips, so callers may batch freely |
+| `link-integrity`                                                 | The CMS can say what links TO a document, so a delete can be warned about       |
 
 </block>
