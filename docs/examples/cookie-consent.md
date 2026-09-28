@@ -27,6 +27,8 @@ blocks-matched: |
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
+blocks-tagged: |
+  <block type="cookieConsent" message="${p,ul,ol/slate}" />
 ---
 
 # Cookie Consent Block
@@ -35,7 +37,13 @@ A consent banner and a preferences dialog, written by one block. It is the worke
 
 ## Live example
 
-<block type="cookieConsent" data-json='{"analyticsPurpose":"Counts visits and pages, so we can see what is worth improving. Never used to identify you.","message":[{"type":"p","children":[{"text":"We use essential cookies to make this site work, and analytics cookies to see how it is used."}]}]}' />
+<block type="cookieConsent">
+
+We use essential cookies to make this site work, and analytics cookies to see how it is used.
+
+<fields analyticsPurpose="Counts visits and pages, so we can see what is worth improving. Never used to identify you." />
+
+</block>
 
 <fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent" fixed=false readOnly=false>
 
