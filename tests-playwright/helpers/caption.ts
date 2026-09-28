@@ -1,5 +1,7 @@
 import type { Page } from '@playwright/test';
 
+import { holdOn, readFor } from './demoPacing';
+
 /**
  * On-screen captions burned into a Playwright-recorded demo video.
  *
@@ -23,9 +25,6 @@ import type { Page } from '@playwright/test';
  * that can't do screencast overlays.
  */
 const CAPTION_ID = '__hydra_demo_caption__';
-
-/** Default lifetime of a screencast pill. Long enough to span a whole beat. */
-const DEFAULT_MS = 15_000;
 
 /**
  * The live screencast overlay per page, so a new caption can dispose the
@@ -51,15 +50,26 @@ async function disposeOverlay(page: Page): Promise<void> {
 /**
  * Show or update the caption. Pass '' to hide it.
  *
- * Non-blocking: the pill stays up for `ms` while the following actions run, so
- * place it right BEFORE the beat it narrates ("Unlock the shared footer
- * template"), not after.
+ * The pill stays up while the following actions run, until the next caption or
+ * `clearCaption` replaces it — so place it right BEFORE the beat it narrates
+ * ("Unlock the shared footer template"), not after. With DEMO_PACING on, it
+ * first holds for as long as its words take to read (`readFor(text)`), or for
+ * `hold` when given (e.g. `glance()`). Without DEMO_PACING it does not wait.
+ *
+ * No overlay `duration`: Playwright's showOverlay(html, { duration }) waits out
+ * the whole duration before it returns, which made every caption a hidden
+ * fixed wait (15s each).
  */
 export async function showCaption(
   page: Page,
   text: string,
-  ms: number = DEFAULT_MS,
+  { hold }: { hold?: number } = {},
 ): Promise<void> {
+  await drawCaption(page, text);
+  if (text) await holdOn(page, hold ?? readFor(text));
+}
+
+async function drawCaption(page: Page, text: string): Promise<void> {
   const sc = screencastOf(page);
   if (sc?.showOverlay) {
     await disposeOverlay(page);
@@ -70,7 +80,7 @@ export async function showCaption(
       `border-radius:999px;font:600 16px/1.3 system-ui,-apple-system,sans-serif;` +
       `text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.35);` +
       `z-index:2147483647;">${escapeHtml(text)}</div>`;
-    liveOverlay.set(page, await sc.showOverlay(html, { duration: ms }));
+    liveOverlay.set(page, await sc.showOverlay(html));
     return;
   }
 
