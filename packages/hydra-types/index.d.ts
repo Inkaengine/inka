@@ -40,6 +40,28 @@ export type Capability =
   | 'sharing'
   | 'comments'
   /**
+   * This CMS speaks Plone's REST dialect, so the admin's own requests can be
+   * forwarded verbatim instead of being translated into intents.
+   *
+   * Declared by the Plone adapter and read by BridgeApi, which returns at that
+   * check before the intent router is consulted at all — so an adapter claiming
+   * this serves ~30 Volto action creators without implementing a single intent,
+   * and one that does not gets them as canonical intents. It was missing from
+   * this union while being load-bearing in both places.
+   */
+  | 'http-passthrough'
+  /**
+   * The CMS answers ?expand=breadcrumbs,actions,types,navigation inside the
+   * content response, so the admin's expander bundle rides along in a request it
+   * was making anyway.
+   *
+   * Adapters without this still SERVE expansion — the base class emulates it —
+   * but the admin does not ask, because emulation cannot reduce the request count
+   * and measurably raised it (Drupal's journey 190 -> 214). See
+   * bridge/expanders.js.
+   */
+  | 'expand-native'
+  /**
    * A document can be kept OUT of navigation without being unpublished.
    *
    * A different claim from any workflow state: the document stays readable by
