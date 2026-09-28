@@ -137,6 +137,20 @@ An `object_list` region must declare **`idField`**, the field each item's id is 
 
 You never author item ids or block uids — the loader mints them, deterministically.
 
+## Headings inside a table cell
+
+A table is written as a markdown table, its first row the header. A markdown cell is one line of inline content, so `## ` cannot go in one — but a cell's value can hold several blocks, such as a heading above its text. Those blocks are marked with inline HTML tags, which a markdown cell allows, and the markdown between them reads as usual:
+
+### Markdown
+
+```markdown
+| Plan | Includes |
+| --- | --- |
+| <h3>Starter</h3>Everything to **get going** | <h3>Team</h3>Shared [workflows](./workflows.md) |
+```
+
+A cell that is one paragraph is plain inline markdown. In a cell with several blocks, each heading is an `<h2>`–`<h6>` tag, and a paragraph stays bare unless it is empty or follows another bare paragraph, when it is a `<p>…</p>`. A cell holding anything else — a list or a quote — has no cell form, so its table keeps the `data-json` form rather than lose it.
+
 ## Attaching fields with `<fields>`
 
 The `<fields>` tag sets field values on the blocks in its scope, and its form chooses that scope:
