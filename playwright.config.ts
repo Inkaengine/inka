@@ -93,7 +93,16 @@ export default defineConfig({
    * is the signal that something is getting gradually worse rather than broken.
    */
   globalTimeout: process.env.CI ? 35 * 60 * 1000 : undefined,
-  maxFailures: process.env.CI ? 25 : undefined,
+  /**
+   * Ten, not twenty-five, because of what retries cost.
+   *
+   * Every failure is attempted three times (retries: 2 below), so a cap of N
+   * failures is up to 3N runs before the suite gives up — 30 runs at ~11s each
+   * rather than 75. And ten failures in one project is already systemic: the 450
+   * that hid behind the job timeout were one root cause, and the tenth told you
+   * as much as the four hundredth.
+   */
+  maxFailures: process.env.CI ? 10 : undefined,
   reportSlowTests: { max: 10, threshold: 20 * 1000 },
 
   /* Run tests in files in parallel */
