@@ -21,6 +21,7 @@
 // the workspace happened to be linked. A relative path needs nothing installed.
 import { getBlockType } from '../helpers/index.js';
 import { foldSlateStyleRules } from './slateStyles.js';
+import { isObjectListRegion } from './regionWidgets.js';
 
 // Same value as PAGE_BLOCK_UID in hydra.js — defined locally to avoid
 // importing from @volto-hydra/hydra-js (which would pull in Volto deps).
@@ -173,7 +174,7 @@ export function buildIdFieldMap(blocksConfig, intl) {
     let schema = null;
     try { schema = getBlockTypeSchema(type, intl, blocksConfig); } catch { schema = null; }
     for (const [field, def] of Object.entries(schema?.properties || {})) {
-      if (def?.widget === 'object_list') {
+      if (isObjectListRegion(def)) {
         (map[type] || (map[type] = {}))[field] = def.idField || '@id';
       }
     }
@@ -534,7 +535,7 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
       // Container field - process its contents
       if (fieldDef.widget === 'blocks_layout') {
         processBlocksContainer(item, itemId, itemPath, fieldName, fieldDef, disallow, slateRules);
-      } else if (fieldDef.widget === 'object_list') {
+      } else if (isObjectListRegion(fieldDef)) {
         // Use dataPath if provided to find data in a different location
         const dataPath = fieldDef.dataPath || [fieldName];
         let fieldData = item;

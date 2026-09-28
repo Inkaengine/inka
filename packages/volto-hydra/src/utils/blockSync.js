@@ -42,6 +42,7 @@ import { normalizeSlateFields, undefinedSlateTypes } from '../../../hydra-js/sla
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
   deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
 import { addableSiblingTypes, buildBlockPathMap } from '../../../hydra-js/buildBlockPathMap.js';
+import { isObjectListRegion } from '../../../hydra-js/regionWidgets.js';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
   convertFieldValue,
@@ -2232,7 +2233,8 @@ function resolveWhenField(fieldPath, formData, args) {
   // rather than throwing on a numeric op, mirroring object_list). A typed
   // object_list stores its type in a `typeField`; blocks_layout children carry
   // `@type` — getBlockType handles both.
-  const isObjectList = def?.widget === 'object_list';
+  // A plain list (`subBlocks: false`) is a value, not a region.
+  const isObjectList = isObjectListRegion(def);
   const isBlocksLayoutRegion =
     def?.widget === 'blocks_layout' ||
     Array.isArray(block?.blocks_layout?.[fieldName]);
@@ -2872,7 +2874,7 @@ function resolveRegionDescriptor(blockType, path, blocksConfig, intl) {
       if (fieldDef.widget === 'blocks_layout') {
         return { ...base, isObjectList: false };
       }
-      if (fieldDef.widget === 'object_list') {
+      if (isObjectListRegion(fieldDef)) {
         return {
           ...base,
           isObjectList: true,

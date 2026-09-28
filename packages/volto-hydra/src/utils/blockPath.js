@@ -27,6 +27,7 @@ import {
   getResolvedSchema,
   buildIdFieldMap,
 } from '../../../hydra-js/buildBlockPathMap.js';
+import { isObjectListRegion } from '../../../hydra-js/regionWidgets.js';
 // From the dep-free slateMerge (NOT slateTransforms) so the offline block-path
 // evaluator's esbuild bundle stays free of @plone/volto-slate / registry.
 import { mergeBlockValues } from './slateMerge.js';
@@ -713,7 +714,7 @@ export function getAllContainerFields(
             [...titlePath, fd.title || titleize(fieldName)],
           ),
         );
-      } else if (fd.widget === 'blocks_layout' || fd.widget === 'object_list') {
+      } else if (fd.widget === 'blocks_layout' || isObjectListRegion(fd)) {
         out.push([fieldName, fd, objectPath, titlePath]);
       }
     }
@@ -771,7 +772,7 @@ export function getAllContainerFields(
         currentCount,
         canAdd: !parentIsReadonly && maxLengthOk,
       });
-    } else if (fieldDef.widget === 'object_list') {
+    } else if (isObjectListRegion(fieldDef)) {
       // object_list: items stored as array
       // Two modes:
       //   1. allowedBlocks set: typed items, each can have a different type via typeField
@@ -1447,7 +1448,7 @@ export function getContainerRegionDescriptors(
     for (const [fieldName, fieldDef] of Object.entries(properties || {})) {
       if (fieldDef?.widget === 'object' && fieldDef.schema?.properties) {
         collect(fieldDef.schema.properties, [...regionPath, fieldName]);
-      } else if (fieldDef?.widget === 'object_list') {
+      } else if (isObjectListRegion(fieldDef)) {
         regions.push({
           region: fieldName,
           ...(regionPath.length > 0 && { regionPath }),
@@ -2401,8 +2402,9 @@ export function initializeContainerBlock(
       }
     }
 
-    // Handle object_list containers (like cells in a row)
-    if (fieldDef.widget === 'object_list') {
+    // Handle object_list containers (like cells in a row). A plain list
+    // (`subBlocks: false`) is not a region and is not seeded.
+    if (isObjectListRegion(fieldDef)) {
       const idField = fieldDef.idField || '@id';
       const typeFieldName = fieldDef.typeField || null;
       const hasAllowedBlocks = !!fieldDef.allowedBlocks;

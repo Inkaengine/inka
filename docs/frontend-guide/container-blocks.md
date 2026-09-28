@@ -313,10 +313,32 @@ A block's schema uses the same format as a [Volto block schema](https://6.docs.p
 | `widget` | Storage | Key fields |
 | --- | --- | --- |
 | `blocks_layout` | children are ids in the parent's shared `blocks` dict; this field's name is a region key under `blocks_layout` | `allowedBlocks`, `maxLength`, `allowedTemplates`, `allowedStyles` / `disallowedStyles` / `allowedMarks` / `disallowedMarks` ([slate styles](#restricting-slate-styles-per-region)) |
-| `object_list` | inline array on the field itself | `idField` (default `@id`), `schema` (item schema), `allowedBlocks` + `typeField` (typed items), `defaultBlockType`, `maxLength`, `addMode: 'table'` |
+| `object_list` | inline array on the field itself | `idField` (default `@id`), `schema` (item schema), `allowedBlocks` + `typeField` (typed items), `defaultBlockType`, `maxLength`, `addMode: 'table'`, `subBlocks` (default `true`; see below) |
 | `object` | groups sub-fields under one key; sub-fields (plain OR the two container widgets above) nest inside | `schema` (the nested properties) |
 
 </block>
+
+### A plain list — `subBlocks: false`
+
+An `object_list` is a region by default: its items are sub-blocks, selectable on the canvas, seeded when the list is empty and added with +. Some lists are not like that — a dropdown's options are drawn inside the browser's own control, so there is nothing on the canvas to click. Set **`subBlocks: false`** and the field is a plain list of objects instead: Volto's object-list widget edits it in the sidebar (add, remove, reorder, each item's fields), its items are not blocks, and nothing is seeded.
+
+### Javascript
+
+```javascript
+options: {
+    title: 'Options',
+    widget: 'object_list',
+    subBlocks: false,
+    schema: {
+        title: 'Option',   // the sidebar's "Add Option" button
+        fieldsets: [{ id: 'default', title: 'Option', fields: ['value', 'label'] }],
+        properties: {
+            value: { title: 'Value' },
+            label: { title: 'Label' },
+        },
+    },
+}
+```
 
 All three can nest inside `object`, and a container may mix a `blocks_layout` region and an `object_list` region. Everything else in a field def (`title`, `default`, `type`, `choices`, `mode`, …) works as in Volto and behaves as documented there.
 

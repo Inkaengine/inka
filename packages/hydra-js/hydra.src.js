@@ -32,6 +32,7 @@ import { expelAllowedTypes, findOnlyEmptyChildUid } from './containerOps.js';
 import { acceptableAt } from './conversionMap.js';
 import { collectLinkableAnchors } from './linkableAnchors.js';
 import { isStyleAllowed } from './slateStyles.js';
+import { isRegionField } from './regionWidgets.js';
 
 /**
  * Has the frontend drawn the slate value it was given? `dom` is the DOM read
@@ -1828,7 +1829,7 @@ export class Bridge {
     let parentAllowed = null;
     if (parentSchema?.properties && info.region) {
       const fd = parentSchema.properties[info.region];
-      if (fd?.widget === 'blocks_layout' || fd?.widget === 'object_list') {
+      if (isRegionField(fd)) {
         parentAllowed = fd.allowedBlocks || null;
       }
     } else if (info.parentId === PAGE_BLOCK_UID) {
@@ -1976,8 +1977,7 @@ export class Bridge {
       ? this.blockPathMap?._schemas?.[parentInfo._schemaRef] : null;
     const parentFd = parentSchema?.properties && containerInfo?.region
       ? parentSchema.properties[containerInfo.region] : null;
-    const parentFieldDef = (parentFd?.widget === 'blocks_layout' || parentFd?.widget === 'object_list')
-      ? parentFd : null;
+    const parentFieldDef = isRegionField(parentFd) ? parentFd : null;
     const parentAllowed = expelAllowedTypes(containerInfo, parentFieldDef);
 
     const blockMid = (el, axis) => {
@@ -8791,6 +8791,16 @@ export class Bridge {
    * is what Vue does in the Framework7 example on almost every activation.
    */
   restoreFocusFromSavedClick(blockElement, { skipFocus = false, fieldType = null } = {}) {
+    // A saved click restores a caret the re-render destroyed ON THE PAGE. If
+    // the page has lost focus since — the author is typing in the sidebar —
+    // the click is over, and restoring it would take focus out of the sidebar.
+    // (The FORM_DATA handler clears it only when the clicked field's own value
+    // changed, so a sidebar edit to another field of the same block — a
+    // question's options — used to re-render it and pull focus to its label.)
+    if (this.savedClickPosition && !this._iframeFocused) {
+      log('restoreFocusFromSavedClick: page not focused, dropping saved click');
+      this.savedClickPosition = null;
+    }
     const hasSavedClickPosition = !!this.savedClickPosition;
     if (!this.focusedFieldName || (skipFocus && !hasSavedClickPosition)) return;
 

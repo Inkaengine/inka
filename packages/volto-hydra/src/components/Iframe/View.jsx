@@ -20,6 +20,7 @@ import { validateAndLog, validateTemplatePlaceholders } from '../../utils/formDa
 import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
+import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
 import {
   isSlateFieldType,
   formDataContentEqual,
@@ -442,7 +443,8 @@ const extractBlockFieldTypes = (intl, contentTypeSchema = null) => {
 
           blockFieldTypes[typeKey][`${fieldPrefix}${fieldName}`] = getFieldTypeString(field);
 
-          if (field.widget === 'object_list' && field.schema?.properties) {
+          // A plain list's items (`subBlocks: false`) are not blocks.
+          if (isObjectListRegion(field) && field.schema?.properties) {
             // Virtual type key is object-transparent (no prefix).
             const itemTypeKey = `${typeKey}:${fieldName}`;
             if (!config.blocks.blocksConfig[itemTypeKey]) {
