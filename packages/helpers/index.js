@@ -4103,6 +4103,42 @@ export async function expandTemplates(inputItems, options = {}) {
  * @param {Array} options.allowedLayouts - Force layout from this list if no matching layout applied
  * @returns {Array} Items with @uid field
  */
+/**
+ * An object_list item's id, read from its idField. Items without one would all
+ * get `@uid: undefined`, collapse onto the last item and render it everywhere
+ * (a whole table showing its last cell), so a missing id is a content error.
+ */
+/**
+ * Two object_list items sharing an id resolve to one item — the same collapse as
+ * a missing id — so a repeated id is a content error too.
+ */
+function assertUniqueObjectListIds(items, idField) {
+  const seen = new Set();
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || typeof item === 'string') continue;
+    const id = item[idField];
+    if (id == null) continue; // a missing id is reported by objectListItemId
+    if (seen.has(id)) {
+      throw new Error(
+        `expandTemplatesSync: object_list repeats "${idField}" "${id}" (type ${item['@type'] ?? 'unknown'}). ` +
+          'Every item needs its own id.',
+      );
+    }
+    seen.add(id);
+  }
+}
+
+function objectListItemId(item, idField) {
+  const id = item[idField];
+  if (!id) {
+    throw new Error(
+      `expandTemplatesSync: object_list item has no "${idField}" (type ${item['@type'] ?? 'unknown'}). ` +
+        'Every item needs its own id; content imported from markdown gets one minted on import.',
+    );
+  }
+  return id;
+}
+
 export function expandTemplatesSync(inputItems, options = {}) {
   const {
     blocks: blocksDict,
@@ -4131,6 +4167,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // detector when no override is given (the browser edit iframe + view render).
   const editMode =
     editModeOverride !== undefined ? editModeOverride : _isEditMode();
+  if (idField) assertUniqueObjectListIds(inputItems || [], idField);
   if (editMode) {
     return (inputItems || [])
       .map((item) => {
@@ -4139,10 +4176,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
           return block ? { ...block, '@uid': item } : null;
         }
         // Object_list items: map idField → @uid
-        if (idField && item && !item['@uid']) {
-          const id = item[idField];
-          if (id) return { ...item, '@uid': id };
-        }
+        if (idField && item && !item['@uid']) return { ...item, '@uid': objectListItemId(item, idField) };
         return item;
       })
       .filter(Boolean);
@@ -4180,10 +4214,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
         return { ...block, '@uid': item };
       }
       // Object_list items: map idField → @uid
-      if (idField && item && !item['@uid']) {
-        const id = item[idField];
-        if (id) return { ...item, '@uid': id };
-      }
+      if (idField && item && !item['@uid']) return { ...item, '@uid': objectListItemId(item, idField) };
       return item;
     })
     .filter(Boolean);

@@ -23,7 +23,7 @@ blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
@@ -37,7 +37,7 @@ A consent banner and a preferences dialog, written by one block. It is the worke
 
 <block type="cookieConsent" data-json='{"analyticsPurpose":"Counts visits and pages, so we can see what is worth improving. Never used to identify you.","message":[{"type":"p","children":[{"text":"We use essential cookies to make this site work, and analytics cookies to see how it is used."}]}]}' />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

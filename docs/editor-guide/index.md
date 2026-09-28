@@ -36,16 +36,17 @@ blocks-matched: |
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
 blocks-tagged: |
   <block type="slateTable">
-    <region name="table.rows">
-      <block type="row">
-        <region name="cells">
-          <block type="cell" value="${td/slate}" />
+    <region name="table.rows" idField="key">
+      <block type="row" _="${tr}">
+        <region name="cells" idField="key" typeField="type">
+          <block type="header" value="${th/slate}" />
+          <block type="data" value="${td/slate}" />
         </region>
       </block>
     </region>

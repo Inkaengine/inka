@@ -25,7 +25,7 @@ blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
@@ -39,7 +39,7 @@ A full-width hero section with heading, subheading, image, rich text description
 
 <block type="hero" data-json='{"heading":"Welcome to Our Site","subheading":"Discover amazing content\nacross multiple lines","buttonText":"Get Started","buttonLink":[{"@id":"/docs/frontend-guide/build-a-frontend","@type":"Document","Title":"Build a frontend","Description":"The actual code you write will depend on the framework you choose. You can look at these examples to help you:","title":"Build a frontend","head_title":null,"getRemoteUrl":null,"hasPreviewImage":false,"image_field":""}],"image":"data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27800%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%234a90d9%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3EHero Image%3C/text%3E%3C/svg%3E","description":[{"type":"p","children":[{"text":"We build tools that make content editing delightful."}]}]}' />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-hero" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-hero" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

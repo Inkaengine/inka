@@ -28,7 +28,7 @@ blocks-matched: |
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
@@ -234,7 +234,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-button" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-button" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

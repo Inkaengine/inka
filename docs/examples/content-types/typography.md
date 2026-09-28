@@ -26,13 +26,14 @@ blocks-matched: |
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
   <block type="button" title="${p/text}" href="${p/link}" />
-  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
+  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/text}" />
   <block type="introduction" value="${p,h*/slate}" />
   <block type="slateTable">
-    <region name="table.rows">
-      <block type="row">
-        <region name="cells">
-          <block type="cell" value="${td/slate}" />
+    <region name="table.rows" idField="key">
+      <block type="row" _="${tr}">
+        <region name="cells" idField="key" typeField="type">
+          <block type="header" value="${th/slate}" />
+          <block type="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -50,7 +51,15 @@ blocks-tagged: |
 
 <block type="gridBlock">
 
-<block type="teaser" data-json='{"description":"For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid.","title":"Teaser Title (H2, 30/36px)","styles":{"align":"left"},"head_title":null,"href":[{"@id":"/docs/examples/content-types","@type":"Document","Title":"Content Types","Description":"This section has a sample of content types available in this site.","title":"Content Types","head_title":null,"getRemoteUrl":null,"hasPreviewImage":false,"image_field":""}]}' />
+<block type="teaser">
+
+### [Teaser Title (H2, 30/36px)](/docs/examples/content-types)
+
+For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid.
+
+<fields styles:align="left" />
+
+</block>
 
 </block>
 

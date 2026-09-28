@@ -33,10 +33,11 @@ blocks-tagged: |
     </region>
   </block>
   <block type="slateTable">
-    <region name="table.rows">
-      <block type="row">
-        <region name="cells">
-          <block type="cell" value="${td/slate}" />
+    <region name="table.rows" idField="key">
+      <block type="row" _="${tr}">
+        <region name="cells" idField="key" typeField="type">
+          <block type="header" value="${th/slate}" />
+          <block type="data" value="${td/slate}" />
         </region>
       </block>
     </region>

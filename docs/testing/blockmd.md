@@ -27,7 +27,7 @@ blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
@@ -131,7 +131,44 @@ A **`blocks_layout`** region is an ordered sequence of blocks — the standard s
 
 An **`object_list`** region is a list of typed items — accordion panels, code-example tabs — split out of a flat stream at each item's anchor, or iterated from an already-nested node's children (a table's rows and cells). A region name may be a dotted path such as `table.rows`.
 
+An `object_list` region must declare **`idField`**, the field each item's id is stored in, with no default. Use the field name the block's schema uses, because frontends read it from there — tabs and panels are `idField="@id"`, table rows and cells are `idField="key"`. Every item is given its own id on import; frontends key items by it, so a missing id (or ids under a field frontends don't read) makes every item render as the last one.
+
+**`typeField`** is the field each item's type is stored in, and it is needed only when the region allows **more than one** item type — then the stored type is the only thing that says which each item is, and leaving it off is an error. With one item type it is optional: leaving it off (or writing `typeField=null`) means the items store no type field, like a table's rows and cells. They still have a type — editors type them by their container (`slateTable:rows`, `slateTable:rows:cells`) — so writing a `@type` onto them would add a second name no frontend registers. Declare it anyway (tabs and panels use `typeField="@type"`) when the stored content carries the type.
+
 You never author item ids or block uids — the loader mints them, deterministically.
+
+## Tables
+
+A table is mapped by its prototype like any other block — the engine knows what a markdown table is, but nothing about any block's table JSON. The rule names the node each item is: a row is a `${tr}`, and a cell a `${th/…}` (the header row) or a `${td/…}` (any other row). Two item prototypes for the cells, each with its own type, say how a header cell is stored differently from a data cell:
+
+### Markdown
+
+```markdown
+<block type="slateTable">
+  <region name="table.rows" idField="key">
+    <block type="row" _="${tr}">
+      <region name="cells" idField="key" typeField="type">
+        <block type="header" value="${th/slate}" />
+        <block type="data" value="${td/slate}" />
+      </region>
+    </block>
+  </region>
+</block>
+```
+
+Read left to right: the rows at `table.rows` are the table's `tr`s; each row's `cells` are its `th`s and `td`s, stored with `type` set to `header` or `data` and the cell's content in `value`. The same rules are read backwards to write the table. The table object's other fields — `celled`, `striped` — are written as dotted attributes, `<block type="slateTable" table.celled>`. A markdown table's header is exactly its first row, so a table whose header cells are anywhere else keeps the `data-json` form.
+
+A markdown cell is one line of inline content, so `## ` cannot go in one — but a cell can hold several blocks, such as a heading above its text. Those are written as inline HTML tags, which a markdown cell allows, and the markdown between them reads as usual:
+
+### Markdown
+
+```markdown
+| Plan | Includes |
+| --- | --- |
+| <h3>Starter</h3>Everything to **get going** | <h3>Team</h3>Shared [workflows](./workflows.md) |
+```
+
+A cell that is one paragraph is plain inline markdown. In a cell with several blocks, each heading is an `<h2>`–`<h6>` tag, and a paragraph stays bare unless it is empty or follows another bare paragraph, when it is a `<p>…</p>`. A cell holding anything else — a list or a quote — has no cell form, so its table keeps the `data-json` form rather than lose it.
 
 ## Attaching fields with `<fields>`
 
@@ -144,7 +181,7 @@ The `<fields>` tag sets field values on the blocks in its scope, and its form ch
 
 An attribute's type comes from how it is written, with no schema involved:
 
-- a bare name, `collapsed`, is boolean `true`
+- a bare name, `collapsed`, is boolean `true`, and `collapsed=false` is `false` — a false value is written like any other, never dropped as if absent
 - an unquoted value, `size=3`, is coerced — number, boolean, null, or JSON
 - a double-quoted value, `title="Hi ${1/text}"`, is a string (so any references inside it survive)
 - a single-quoted `data='{ … }'` carries raw JSON object fields verbatim

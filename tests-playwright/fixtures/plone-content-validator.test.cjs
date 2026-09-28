@@ -1260,7 +1260,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
 
   it('FLAGS a data-json object_list item that dropped its @type', () => {
     const { root, contentDir } = buildFixture({
-      pageA: pageWithAccordion([{ '@type': 'panel', title: 'ok' }, { title: 'no type' }]),
+      pageA: pageWithAccordion([{ '@id': 'p1', '@type': 'panel', title: 'ok' }, { '@id': 'p2', title: 'no type' }]),
     });
     const r = checkIntegrity(contentDir, { schemaFor: accordionSchema });
     cleanup(root);
@@ -1274,7 +1274,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
 
   it('PASSES when every object_list item carries its @type', () => {
     const { root, contentDir } = buildFixture({
-      pageA: pageWithAccordion([{ '@type': 'panel', title: 'a' }, { '@type': 'panel', title: 'b' }]),
+      pageA: pageWithAccordion([{ '@id': 'p1', '@type': 'panel', title: 'a' }, { '@id': 'p2', '@type': 'panel', title: 'b' }]),
     });
     const r = checkIntegrity(contentDir, { schemaFor: accordionSchema });
     cleanup(root);
@@ -1319,5 +1319,60 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
       { schemaFor },
     );
     assert.deepEqual(r.errors.filter((e) => e.includes('type field')), []);
+  });
+});
+
+describe('checkIntegrity — every list item has its own id', () => {
+  // Frontends key object_list items and table rows/cells by their id
+  // (`expand(rows, null, 'key')`). Items with no id — or a repeated one — all
+  // resolve to one item, so a whole table renders its last cell everywhere.
+  const page = (blocks) => [{
+    rel: '/p',
+    data: {
+      '@id': '/p', '@type': 'Document', id: 'p', UID: 'p-uid',
+      blocks, blocks_layout: { items: Object.keys(blocks) },
+    },
+  }];
+  const slidesSchema = (idField) => (t) => (t === 'slider'
+    ? { properties: { slides: { widget: 'object_list', ...(idField ? { idField } : {}) } } } : null);
+  const idErrors = (r) => r.errors.filter((e) => e.includes(' id '));
+
+  it('FAILS an object_list item with no id (default idField @id)', () => {
+    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }, { '@type': 'slide' }] } }), { schemaFor: slidesSchema() });
+    assert.ok(r.errors.some((e) => e.includes('slides" item 1') && e.includes('has no id "@id"')), r.errors.join('\n'));
+    assert.ok(!r.errors.some((e) => e.includes('slides" item 0')), r.errors.join('\n'));
+  });
+
+  it('reads the id from the schema-named idField, so ids stored under the wrong key fail', () => {
+    // A region that put ids in @id while the frontend reads `key`.
+    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }] } }), { schemaFor: slidesSchema('key') });
+    assert.ok(r.errors.some((e) => e.includes('slides" item 0') && e.includes('has no id "key"')), r.errors.join('\n'));
+  });
+
+  it('FAILS two object_list items that share an id', () => {
+    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'x' }, { '@type': 'slide', '@id': 'x' }] } }), { schemaFor: slidesSchema() });
+    assert.ok(r.errors.some((e) => e.includes('slides" item 1') && e.includes('repeats id "x"')), r.errors.join('\n'));
+  });
+
+  const table = (rows) => ({ t: { '@type': 'slateTable', table: { rows } } });
+  const cell = (key, text) => ({ ...(key ? { key } : {}), type: 'data', value: [{ type: 'p', children: [{ text }] }] });
+
+  it('FAILS table rows and cells with no key', () => {
+    const r = checkIntegrity(page(table([{ cells: [cell(null, 'a'), cell(null, 'b')] }])), {});
+    assert.ok(r.errors.some((e) => e.includes('table row 0') && e.includes('has no id "key"')), r.errors.join('\n'));
+    assert.ok(r.errors.some((e) => e.includes('row 0 cell 1') && e.includes('has no id "key"')), r.errors.join('\n'));
+  });
+
+  it('FAILS table cells that repeat a key within their row', () => {
+    const r = checkIntegrity(page(table([{ key: 'r1', cells: [cell('c', 'a'), cell('c', 'b')] }])), {});
+    assert.ok(r.errors.some((e) => e.includes('row 0 cell 1') && e.includes('repeats id "c"')), r.errors.join('\n'));
+  });
+
+  it('PASSES keyed lists and tables', () => {
+    const r = checkIntegrity(page({
+      s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }, { '@type': 'slide', '@id': 'b' }] },
+      ...table([{ key: 'r1', cells: [cell('c1', 'a'), cell('c2', 'b')] }, { key: 'r2', cells: [cell('c3', 'c'), cell('c4', 'd')] }]),
+    }), { schemaFor: slidesSchema() });
+    assert.deepEqual(idErrors(r), []);
   });
 });

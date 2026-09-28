@@ -41,7 +41,7 @@ Inka is an open-source, design-system-first page builder for any CMS. It ships a
 
 The docs are a set of guides by audience — build a frontend, deploy it, edit content, test it, connect a content store, and set the rules editors work within.
 
-<block type="video" data-json='{"align":"full","url":"./static/hydra-demo.mp4","autoplay":true,"loop":true,"muted":true,"controls":false}' />
+<block type="video" align="full" url="./static/hydra-demo.mp4" autoplay=true loop=true muted=true controls=false />
 
 ## The guides
 
