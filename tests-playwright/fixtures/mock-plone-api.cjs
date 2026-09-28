@@ -2095,11 +2095,25 @@ function resolveHrefLinks(obj, baseUrl) {
  * Get folder child items sorted by __metadata__.json ordering.
  * Like Plone's content serializer, returns summary representations of children.
  */
-function getFolderChildItems(folderPath, baseUrl) {
+/**
+ * A folder's immediate children — disk AND the session.
+ *
+ * It read contentDirMap alone, so anything this session created was invisible
+ * here: a folder's `items` came back empty, and — worse, because it reported
+ * success — the ordering PATCH had nothing to reorder. Its base order was the
+ * empty disk listing, the moved id was not in it, and the reorder silently did
+ * nothing. Found by importing a tree and watching the importer say "ordered" while
+ * the order never changed.
+ *
+ * Same fix the navigation path already had, for the same reason: the two callers
+ * this file exists to keep identical had drifted, and only the one nothing read
+ * was corrected.
+ */
+function getFolderChildItems(folderPath, baseUrl, sessionId) {
   const normalizedFolder = folderPath.replace(/\/$/, '') || '/';
   const folderDepth = normalizedFolder === '/' ? 0 : normalizedFolder.split('/').filter(Boolean).length;
 
-  const items = Object.keys(contentDirMap)
+  const items = allContentPaths(sessionId)
     .filter((itemPath) => {
       if (itemPath === '/') return false;
       if (itemPath === normalizedFolder) return false;
@@ -2108,7 +2122,8 @@ function getFolderChildItems(folderPath, baseUrl) {
       return itemParts.length === folderDepth + 1;
     })
     .map((itemPath) => {
-      const rawContent = loadRawContentFromDisk(itemPath);
+      // Session first, then disk — the reader a @components builder may use.
+      const rawContent = rawContentForComponents(itemPath, sessionId);
       if (!rawContent) return null;
       return {
         '@id': `${baseUrl}${itemPath}`,
@@ -2203,7 +2218,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
   // Dynamically build items (folder children) like Plone does,
   // sorted by __metadata__.json ordering
   const isFolderish = transformed.is_folderish !== undefined ? transformed.is_folderish : true;
-  const childItems = isFolderish ? getFolderChildItems(cleanPath, baseUrl) : [];
+  const childItems = isFolderish ? getFolderChildItems(cleanPath, baseUrl, sessionId) : [];
 
   const enriched = {
     ...transformed,
@@ -6434,7 +6449,7 @@ app.patch('*', (req, res) => {
         },
       });
     }
-    const naturalIds = getFolderChildItems(cleanPath, `http://localhost:${PORT}`)
+    const naturalIds = getFolderChildItems(cleanPath, `http://localhost:${PORT}`, sessionId)
       .map((item) => String(item['@id'] || '').split('/').filter(Boolean).pop())
       .filter(Boolean);
     const current = sessionOrder[sessionId]?.[cleanPath] || naturalIds;
@@ -6491,7 +6506,7 @@ app.patch('*', (req, res) => {
         },
       });
     }
-    const children = getFolderChildItems(cleanPath, `http://localhost:${PORT}`);
+    const children = getFolderChildItems(cleanPath, `http://localhost:${PORT}`, sessionId);
     // The catalog indexes the contents view offers. sortable_title is Plone's
     // case-insensitive title index, which is why it is not just `title`.
     const keyOf = (item) => {
