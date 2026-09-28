@@ -63,19 +63,16 @@ A question whose answer is completed from a vocabulary the author picked.
 ### React
 
 ```jsx
-
 ```
 
 ### Vue
 
 ```vue
-
 ```
 
 ### Svelte
 
 ```svelte
-
 ```
 
 </block>
