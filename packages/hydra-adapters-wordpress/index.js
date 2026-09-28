@@ -914,19 +914,27 @@ export class WordPressAdapter extends BaseAdapter {
 
       case 'navigation.get': {
         const posts = await this.fetchJson(`/wp/v2/${this.postType}`, {
-          params: {
-            parent: '0',
-            status: 'any',
-            context: 'edit',
-            per_page: '100',
-            // BY menu_order, which is what content.order writes. Without it the
-            // menu came back in WordPress's default order and a reorder moved
-            // the contents view only — the arrangement never reached the one
-            // place a reader sees it.
-            orderby: 'menu_order',
-            order: 'asc',
-          },
+          params: { parent: '0', status: 'any', context: 'edit', per_page: '100' },
         });
+        // Sorted HERE, by menu_order then title, rather than asking WordPress
+        // for orderby=menu_order.
+        //
+        // The ordering itself is the point: menu_order is what content.order
+        // writes, and without applying it a reorder moved the contents view and
+        // left the menu alone. But asking the REST API to do it broke the
+        // journey's link picker, reproducibly — the last passing commit still
+        // passes on a re-run today, so it was the parameter and not the weather.
+        // Sorting the answer costs one pass over at most 100 rows and depends on
+        // nothing the API has to agree to, which is how Drupal's navigation does
+        // it too. Title breaks the tie, because every page starts at menu_order
+        // 0 and WordPress's tie-break is its own business.
+        posts.sort(
+          (a, b) =>
+            (a.menu_order ?? 0) - (b.menu_order ?? 0) ||
+            String(a.title?.rendered ?? a.title?.raw ?? '').localeCompare(
+              String(b.title?.rendered ?? b.title?.raw ?? ''),
+            ),
+        );
         return {
           items: posts.map((p) => this.toDocument(p, `/${p.slug}`)),
         };
