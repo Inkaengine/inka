@@ -4,6 +4,7 @@
 import { Page, Locator, FrameLocator, expect, ElementHandle } from '@playwright/test';
 import { TEST_DATA_PREFIX } from './test-paths';
 import { showCaption, clearCaption } from './caption';
+import { glance, holdOn, pacingUnitMs, readFor } from './demoPacing';
 import { URLS } from '../ports';
 import { randomUUID } from 'node:crypto';
 import { selectablePoint } from './selectablePoint';
@@ -22,10 +23,12 @@ export class AdminUIHelper {
   // per test) gives each test its own isolated mock-api session.
   readonly authToken = `${TEST_AUTH_TOKEN}-${randomUUID()}`;
 
-  // Opt-in demo pacing: recorded demos set this (e.g. 1200) so viewport-branching
-  // steps that flash by — the mobile settings sheet opening/closing — linger long
-  // enough to read. Default 0: functional tests are completely unaffected.
-  demoPacingMs = 0;
+  // Demo pacing (./demoPacing): one glance in ms from DEMO_PACING, so recorded
+  // demos linger where a step would flash by. 0 without DEMO_PACING: functional
+  // tests are completely unaffected.
+  get demoPacingMs(): number {
+    return pacingUnitMs();
+  }
 
   constructor(
     public readonly page: Page,
@@ -73,14 +76,6 @@ export class AdminUIHelper {
         }
       }
     });
-
-    // Global opt-in demo pacing: `DEMO_PACING=1200` enables paced, cursor-visible
-    // gestures across every recorded-demo spec without per-spec wiring. A spec
-    // may still override by assigning `helper.demoPacingMs` directly. Default 0
-    // → functional tests (and hydra's own suite) are completely unaffected.
-    if (process.env.DEMO_PACING) {
-      this.demoPacingMs = Number(process.env.DEMO_PACING) || 0;
-    }
   }
 
   /**
@@ -97,7 +92,7 @@ export class AdminUIHelper {
       // grid's "Card Defaults" accordion), so it must not be used here.
       await target.hover({ timeout: 1500 }).catch(() => {});
     }
-    await this.page.waitForTimeout(this.demoPacingMs);
+    await holdOn(this.page, glance());
   }
 
   /**
@@ -231,7 +226,7 @@ export class AdminUIHelper {
         )
         .toBe(true);
       // In a demo, let the viewer see the selection before it is typed over.
-      if (this.demoPacingMs) await this.page.waitForTimeout(this.demoPacingMs);
+      await holdOn(this.page, glance());
     }
     await this.page.keyboard.type(text, { delay: this.demoPacingMs ? 55 : 20 });
   }
@@ -1321,7 +1316,7 @@ export class AdminUIHelper {
     await expect(this.page.locator('.sidebar-container.collapsed')).toHaveCount(0, { timeout });
     await this.waitForSidebarOpen(timeout);
     // Demo pacing: let the freshly-opened sheet be seen before the next action.
-    if (this.demoPacingMs) await this.page.waitForTimeout(this.demoPacingMs);
+    await holdOn(this.page, glance());
   }
 
   /**
@@ -1337,7 +1332,7 @@ export class AdminUIHelper {
     const close = this.page.locator('.sidebar-container .sidebar-close-button');
     if (await close.isVisible().catch(() => false)) {
       // Demo pacing: hold on the sheet's final state before dismissing it.
-      if (this.demoPacingMs) await this.page.waitForTimeout(this.demoPacingMs);
+      await holdOn(this.page, glance());
       await close.click();
       await expect(this.page.locator('.sidebar-container.collapsed')).toBeAttached({ timeout });
     }
@@ -1360,8 +1355,9 @@ export class AdminUIHelper {
 
   /**
    * High-level caption for a demo recording — a subtitle pill saying what's happening
-   * NEXT ("Unlock the shared footer template"). Non-blocking: the pill stays up for
-   * `ms` while the following actions run, so place it right before a beat.
+   * NEXT ("Unlock the shared footer template"). The pill stays up while the
+   * following actions run, until the next caption replaces it, so place it right
+   * before a beat. With DEMO_PACING it holds for its reading time (or `hold`).
    *
    * Delegates to the shared caption module, which prefers Playwright >= 1.61's
    * screencast overlay (composited into the video, so nothing is injected into the
@@ -1369,8 +1365,8 @@ export class AdminUIHelper {
    * `demo-video/caption` is the same implementation — there is only one, so a demo
    * can mix the two call styles without ending up with two pills on screen.
    */
-  async caption(text: string, ms: number = 15_000): Promise<void> {
-    await showCaption(this.page, text, ms);
+  async caption(text: string, opts?: { hold?: number }): Promise<void> {
+    await showCaption(this.page, text, opts);
   }
 
   /** Remove the caption pill entirely (see `caption()`). */
@@ -1424,8 +1420,10 @@ export class AdminUIHelper {
     await toggle.click();
     const confirm = this.page.locator('.template-unlock-modal .template-confirm');
     await expect(confirm).toBeVisible({ timeout: 5000 });
-    // Demo pacing: hold on the warning modal before confirming.
-    if (this.demoPacingMs) await this.page.waitForTimeout(this.demoPacingMs);
+    // Demo pacing: long enough to read the warning before confirming.
+    if (this.demoPacingMs) {
+      await holdOn(this.page, readFor(await this.page.locator('.template-unlock-modal').innerText()));
+    }
     await confirm.click();
     await expect(this.page.locator('.template-unlock-modal')).toHaveCount(0, { timeout: 5000 });
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
@@ -1446,8 +1444,8 @@ export class AdminUIHelper {
     await toggle.click();
     const modal = this.page.locator('.template-lock-modal');
     await expect(modal).toBeVisible({ timeout: 5000 });
-    // Demo pacing: hold on the decision modal before choosing.
-    if (this.demoPacingMs) await this.page.waitForTimeout(this.demoPacingMs);
+    // Demo pacing: long enough to read the choices before choosing.
+    if (this.demoPacingMs) await holdOn(this.page, readFor(await modal.innerText()));
     const btn = { commit: '.template-commit', reset: '.template-reset', cancel: '.template-cancel' }[choice];
     await modal.locator(btn).click();
     await expect(modal).toHaveCount(0, { timeout: 5000 });
