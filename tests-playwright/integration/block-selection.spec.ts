@@ -465,34 +465,29 @@ test.describe('Block Selection', () => {
     await helper.clickBlockInIframe('title-block');
     await helper.waitForBlockSelectedInAdmin('title-block');
 
-    // Get initial scroll position (should be 0 or near top)
+    // Where the page is with the block selected and in view.
     const iframeBody = iframe.locator('body');
     const scrollBefore = await iframeBody.evaluate(() => window.scrollY);
 
     // Scroll iframe to bottom programmatically (simulates user scrolling)
     await iframeBody.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.waitForTimeout(200);
-
-    // Check scroll position right after scrolling
     const scrollAfterEnd = await iframeBody.evaluate(() => window.scrollY);
     expect(scrollAfterEnd).toBeGreaterThan(scrollBefore);
 
-    // Wait to see if it jumps back (the bug was scroll-back after ~1s)
-    await page.waitForTimeout(1000);
+    // The editor follows the scroll: the selected block's toolbar and outline
+    // move off screen with it. That is the bridge reacting to the scroll —
+    // the point at which it used to scroll the page back to the block.
+    await expect.poll(() => helper.isQuantaToolbarVisibleInIframe('title-block')).toBe(false);
 
-    // Check if scroll position was maintained
+    // It did not: the page stays where the author scrolled it.
     const scrollFinal = await iframeBody.evaluate(() => window.scrollY);
-
-    // The scroll should stay where End key put it, not jump back to the selected block
     expect(scrollFinal).toBeGreaterThanOrEqual(scrollAfterEnd - 50);
 
-    // Now scroll back to the top - the toolbar should reappear on the selected block
-    await iframeBody.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(500);
-
-    // Verify the toolbar is visible again for the selected block
-    const hasToolbar = await helper.isQuantaToolbarVisibleInIframe('title-block');
-    expect(hasToolbar).toBe(true);
+    // Scrolled back to where the block was, the toolbar is on it again. (Not to
+    // the top of the page: in this short window the block sits below the fold
+    // there, and selecting it is what scrolled it into view.)
+    await iframeBody.evaluate((_, y) => window.scrollTo(0, y), scrollBefore);
+    await expect.poll(() => helper.isQuantaToolbarVisibleInIframe('title-block')).toBe(true);
   });
 });
 
