@@ -57,11 +57,11 @@ Displays a list of content items from a query. The listing block fetches items f
 
 <fields headlineTag="h2">
 
-<fields block="24280e07-e962-4414-8ee5-cdaf58ca5f35" data-json='{"query":[]}'>
+<fields block="24280e07-e962-4414-8ee5-cdaf58ca5f35">
 
-<block type="listing" data-json='{"headline":"Listing: Default","variation":"default","styles":{"backgroundColor":"transparent"},"querystring":{"b_size":"4","limit":"10","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}}' />
+<block type="listing" data-json='{"headline":"Listing: Default","variation":"default","styles":{"backgroundColor":"transparent"},"querystring":{"b_size":"4","limit":"10","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"query":[]}' />
 
-<block type="listing" data-json='{"headline":"Listing: Summary","variation":"summary","styles":{"backgroundColor":"grey"},"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}}' />
+<block type="listing" data-json='{"headline":"Listing: Summary","variation":"summary","styles":{"backgroundColor":"grey"},"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"query":[]}' />
 
 </fields>
 
@@ -77,7 +77,7 @@ Displays a list of content items from a query. The listing block fetches items f
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-listing" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-listing" fixed=false>
 
 <block type="codeExample" slotId="schema">
 

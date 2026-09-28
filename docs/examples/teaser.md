@@ -38,7 +38,7 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
+  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/text}" />
 ---
 
 # Teaser
@@ -51,35 +51,73 @@ A content preview card that links to another page. Selecting a target page via t
 
 </block>
 
-<fields title="Headline H2" data-json='{"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Title":"Page","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","title":"Page","head_title":null,"getRemoteUrl":null,"hasPreviewImage":true,"image_field":"preview_image"}]}'>
+<block type="teaser">
 
-<fields head_title="Head title">
+## [Headline H2](/docs/examples/content-types/page)
 
-<block type="teaser" data-json='{"styles":{"align":"center"},"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
+**Head title**
 
-<fields data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea."}'>
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.
 
-<block type="teaser" styles:align="left" />
+<fields styles:align="center" />
 
-<block type="teaser" styles:align="right" />
+</block>
 
-</fields>
+<block type="teaser">
 
-</fields>
+## [Headline H2](/docs/examples/content-types/page)
 
-<block type="teaser" data-json='{"styles":{"align":"center","backgroundColor":"grey"},"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."}' />
+**Head title**
 
-<fields data-json='{"description":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea."}'>
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea.
 
-<block type="teaser" styles:align="left" styles:backgroundColor="grey" />
+<fields styles:align="left" />
 
-<block type="teaser" styles:align="right" styles:backgroundColor="grey" />
+</block>
 
-</fields>
+<block type="teaser">
 
-</fields>
+## [Headline H2](/docs/examples/content-types/page)
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-teaser" data-json='{"fixed":false,"readOnly":false}'>
+**Head title**
+
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea.
+
+<fields styles:align="right" />
+
+</block>
+
+<block type="teaser">
+
+## [Headline H2](/docs/examples/content-types/page)
+
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.
+
+<fields styles:align="center" styles:backgroundColor="grey" />
+
+</block>
+
+<block type="teaser">
+
+## [Headline H2](/docs/examples/content-types/page)
+
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea.
+
+<fields styles:align="left" styles:backgroundColor="grey" />
+
+</block>
+
+<block type="teaser">
+
+## [Headline H2](/docs/examples/content-types/page)
+
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea.
+
+<fields styles:align="right" styles:backgroundColor="grey" />
+
+</block>
+
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-teaser" fixed=false>
 
 <block type="codeExample" slotId="schema">
 

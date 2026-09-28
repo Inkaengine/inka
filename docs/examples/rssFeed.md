@@ -38,7 +38,7 @@ Renders entries from an external RSS feed. Its items are fetched at render time 
 
 <block type="rssFeed" feedUrl="https://pypi.org/rss/project/plone/releases.xml" variation="default" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-rssFeed" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-rssFeed" fixed=false>
 
 <block type="codeExample" slotId="schema">
 

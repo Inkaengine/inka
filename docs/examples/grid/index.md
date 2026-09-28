@@ -44,7 +44,7 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
+  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/text}" />
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
       <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
@@ -82,7 +82,7 @@ Explore the full documentation.
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-grid" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-grid" fixed=false>
 
 <block type="codeExample" slotId="schema">
 

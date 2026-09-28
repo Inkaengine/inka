@@ -117,7 +117,7 @@ blandit praesent luptatum zzril qui.
 
 <block type="slate" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-maps" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-maps" fixed=false>
 
 <block type="codeExample" slotId="schema">
 

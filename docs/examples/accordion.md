@@ -32,7 +32,7 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
+  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/text}" />
   <block type="slateTable">
     <region name="table.rows" idField="key">
       <block type="row">
@@ -59,15 +59,195 @@ A collapsible panel group. Each panel is an object\_list item with a title and a
 
 </block>
 
-<fields data-json='{"collapsed":false,"filtering":false,"non_exclusive":false,"right_arrows":true}'>
+<block type="accordion">
 
-<block type="accordion" data-json='{"panels":[{"@type":"panel","title":"What is a block?","blocks":[{"@type":"slate","value":[{"type":"p","children":[{"text":"A reusable unit of content you can add, edit and reorder."}]}]}]},{"@type":"panel","title":"Adding a panel","blocks":[{"@type":"slate","value":[{"type":"p","children":[{"text":"Each panel is an object-list item with a title and a content area that holds child blocks."}]}]}]}]}' />
+## What is a block?
 
-<block type="accordion" data-json='{"styles":{"backgroundColor":"grey"},"panels":[{"@type":"panel","title":"Accordion with text","blocks":[{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet."}],"type":"p"}]}]},{"@type":"panel","title":"Accordion with image","blocks":[{"@type":"image","align":"center","credit":{},"description":"The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"l","title":"Image - Light","url":"./content-types/image-light.jpg"},{"@type":"separator","styles":{"align":"left"}},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]},{"@type":"image","align":"left","credit":{},"description":"The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"l","title":"Image","url":"./content-types/image-dark"},{"@type":"slate","plaintext":"Text Heading H3","styles":{},"value":[{"children":[{"text":"Text Heading H3"}],"type":"h2"}]},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]},{"@type":"separator","styles":{"align":"left"}},{"@type":"image","align":"left","credit":{},"description":"The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"m","styles":{"size:noprefix":"medium"},"title":"Image","url":"./content-types/image-dark"},{"@type":"slate","plaintext":"Text Heading H3","styles":{},"value":[{"children":[{"text":"Text Heading H3"}],"type":"h2"}]},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]},{"@type":"image","align":"right","credit":{},"description":"The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"m","styles":{"size:noprefix":"medium"},"title":"Image - Light","url":"./content-types/image-light.jpg"},{"@type":"slate","plaintext":"Text Heading H3","styles":{},"value":[{"children":[{"text":"Text Heading H3"}],"type":"h2"}]},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]},{"@type":"separator","styles":{"align":"left"}},{"@type":"image","align":"left","credit":{},"description":"The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"s","styles":{"size:noprefix":"small"},"title":"Image","url":"./content-types/image-dark"},{"@type":"slate","plaintext":"Text Heading H3","styles":{},"value":[{"children":[{"text":"Text Heading H3"}],"type":"h2"}]},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]},{"@type":"image","align":"right","credit":{},"description":"The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","image_field":"image","size":"s","styles":{"size:noprefix":"small"},"title":"Image","url":"./content-types/image-dark"},{"@type":"slate","plaintext":"Text Heading H3","styles":{},"value":[{"children":[{"text":"Text Heading H3"}],"type":"h2"}]},{"@type":"slate","plaintext":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.","styles":{},"value":[{"children":[{"text":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi."}],"type":"p"}]}]},{"@type":"panel","title":"Accordion with teaser","blocks":[{"@type":"teaser","description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo","head_title":null,"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Title":"Page","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","title":"Page","head_title":null,"getRemoteUrl":null,"hasPreviewImage":true,"image_field":"preview_image"}],"styles":{"align":"center"},"title":"Teaser Title H2"},{"@type":"teaser","description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper","head_title":null,"href":[{"@id":"/docs/examples/content-types/image-light.jpg","@type":"Image","Title":"Image - Light","Description":"\nThe Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.","title":"Image - Light","head_title":null,"getRemoteUrl":null,"hasPreviewImage":true,"image_field":"image"}],"styles":{"align":"left"},"title":"Teaser Title H2"},{"@type":"teaser","description":"Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper","head_title":null,"href":[{"@id":"/docs/examples/content-types/page","@type":"Document","Title":"Page","Description":"The Page content type can be used to display content on a single page of the website. Pages can be structured using text, images and blocks.","title":"Page","head_title":null,"getRemoteUrl":null,"hasPreviewImage":true,"image_field":"preview_image"}],"styles":{"align":"right"},"title":"Teaser Title H2"}]},{"@type":"panel","title":"Accordion with listing","blocks":[{"@type":"listing","headlineTag":"h2","querystring":{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true},"styles":{},"variation":"summary"}]},{"@type":"panel","title":"Accordion with table","blocks":[{"@type":"slateTable","styles":{"backgroundColor":"transparent"},"table":{"basic":false,"celled":true,"compact":false,"fixed":true,"hideHeaders":false,"inverted":false,"rows":[{"cells":[{"type":"header","value":[{"children":[{"text":"Title Tablehead "}],"type":"p"}]},{"type":"header","value":[{"children":[{"text":"Title Tablehead "}],"type":"p"}]},{"type":"header","value":[{"children":[{"text":"Title Tablehead "}],"type":"p"}]}]},{"cells":[{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]}]},{"cells":[{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]}]},{"cells":[{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]}]}],"striped":true}}]}]}' />
+A reusable unit of content you can add, edit and reorder.
 
-</fields>
+## Adding a panel
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-accordion" data-json='{"fixed":false,"readOnly":false}'>
+Each panel is an object-list item with a title and a content area that holds child blocks.
+
+</block>
+
+<block type="accordion" styles:backgroundColor="grey">
+
+## Accordion with text
+
+Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+
+## Accordion with image
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](./content-types/image-light.jpg "Image - Light")
+
+<fields image_field="image" />
+
+</block>
+
+<block type="separator">
+
+---
+
+<fields styles:align="left" />
+
+</block>
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](./content-types/image-dark "Image")
+
+<fields align="left" image_field="image" />
+
+</block>
+
+<block type="slate">
+
+## Text Heading H3
+
+</block>
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<block type="separator">
+
+---
+
+<fields styles:align="left" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](./content-types/image-dark "Image")
+
+<fields align="left" size="m" image_field="image" styles:size:noprefix="medium" />
+
+</block>
+
+<block type="slate">
+
+## Text Heading H3
+
+</block>
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](./content-types/image-light.jpg "Image - Light")
+
+<fields align="right" size="m" image_field="image" styles:size:noprefix="medium" />
+
+</block>
+
+<block type="slate">
+
+## Text Heading H3
+
+</block>
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<block type="separator">
+
+---
+
+<fields styles:align="left" />
+
+</block>
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](./content-types/image-dark "Image")
+
+<fields align="left" size="s" image_field="image" styles:size:noprefix="small" />
+
+</block>
+
+<block type="slate">
+
+## Text Heading H3
+
+</block>
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<block type="image">
+
+The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
+
+![](./content-types/image-dark "Image")
+
+<fields align="right" size="s" image_field="image" styles:size:noprefix="small" />
+
+</block>
+
+<block type="slate">
+
+## Text Heading H3
+
+</block>
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+## Accordion with teaser
+
+<block type="teaser">
+
+### [Teaser Title H2](/docs/examples/content-types/page)
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo
+
+<fields styles:align="center" />
+
+</block>
+
+<block type="teaser">
+
+### [Teaser Title H2](/docs/examples/content-types/image-light.jpg)
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper
+
+<fields styles:align="left" />
+
+</block>
+
+<block type="teaser">
+
+### [Teaser Title H2](/docs/examples/content-types/page)
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper
+
+<fields styles:align="right" />
+
+</block>
+
+## Accordion with listing
+
+<block type="listing" data-json='{"headlineTag":"h2","querystring":{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true},"variation":"summary"}' />
+
+## Accordion with table
+
+<block type="slateTable" data-json='{"styles":{"backgroundColor":"transparent"},"table":{"basic":false,"celled":true,"compact":false,"fixed":true,"hideHeaders":false,"inverted":false,"rows":[{"cells":[{"type":"header","value":[{"children":[{"text":"Title Tablehead "}],"type":"p"}]},{"type":"header","value":[{"children":[{"text":"Title Tablehead "}],"type":"p"}]},{"type":"header","value":[{"children":[{"text":"Title Tablehead "}],"type":"p"}]}]},{"cells":[{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]}]},{"cells":[{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]}]},{"cells":[{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]},{"type":"data","value":[{"children":[{"text":"Heading H3"}],"type":"h2"},{"children":[{"text":"Heading H2"}],"type":"h3"},{"children":[{"text":"Text can be "},{"children":[{"text":"bold"}],"type":"strong"},{"text":" or "},{"children":[{"text":"italic"}],"type":"em"},{"text":" or a "},{"children":[{"text":"Link"}],"data":{"url":"./content-types/image-dark.md"},"type":"link"},{"text":" "}],"type":"p"}]}]}],"striped":true}}' />
+
+</block>
+
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-accordion" fixed=false>
 
 <block type="codeExample" slotId="schema">
 

@@ -59,7 +59,7 @@ We build robust systems.
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-columns" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-columns" fixed=false>
 
 <block type="codeExample" slotId="schema">
 
