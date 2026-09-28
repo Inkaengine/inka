@@ -115,6 +115,10 @@ export class WordPressAdapter extends BaseAdapter {
       name: 'wordpress',
       capabilities: [
         'content',
+        // WordPress core takes 25 requests per /batch/v1 call, and its
+        // require-all-or-none mode is a real all-or-nothing promise — so unlike
+        // the emulated floor, this adapter can honour `atomic`. See applyBatch.
+        'batch-native',
         'search-fulltext',
         // WordPress filters by parent, type and status server-side; tree.list
         // relies on it, so claiming otherwise would be false advertising.
@@ -630,6 +634,88 @@ export class WordPressAdapter extends BaseAdapter {
     let binary = '';
     for (const b of bytes) binary += String.fromCharCode(b);
     return `Basic ${btoa(binary)}`;
+  }
+
+  /**
+   * A batch WordPress can promise, or none at all.
+   *
+   * /batch/v1 (core, 5.6+) takes up to 25 requests per call, and its
+   * `require-all-or-none` validation pre-flights every one and applies nothing if
+   * any would fail. That is exactly `atomic`, which the emulated floor cannot
+   * offer — so this is where the capability earns its name.
+   *
+   * It is NOT used for ordinary batches, and that is deliberate: with default
+   * validation WordPress attempts every request even after one fails, so a
+   * grouped non-atomic batch could not keep the floor's promise that nothing
+   * after the failure ran. A caller who did not ask for atomicity gets the
+   * sequential floor, whose semantics are exact.
+   *
+   * Only all-`content.update` batches are grouped. A create's id is not known
+   * until it returns, and an upload is multipart — batching those would need the
+   * responses of earlier requests, which one call cannot provide. Anything mixed
+   * goes to the floor rather than being half-grouped.
+   */
+  async applyBatch(args = {}) {
+    const operations = args.operations ?? [];
+    const groupable =
+      args.atomic &&
+      operations.length > 0 &&
+      operations.every((op) => op?.intent === 'content.update');
+    if (!groupable) return super.applyBatch(args);
+
+    // Preparation is reads, so it may run concurrently: resolve each path, and
+    // fetch current content only where blocks are being written (content.update
+    // preserves legacy markup alongside them).
+    const requests = await Promise.all(
+      operations.map(async ({ args: opArgs }) => {
+        const id = await this.resolvePath(opArgs.path);
+        const body = {};
+        if (opArgs.data.title !== undefined) body.title = opArgs.data.title;
+        if (opArgs.data.blocks !== undefined) {
+          const current = await this.fetchJson(`/wp/v2/${this.postType}/${id}`, {
+            params: { context: 'edit' },
+          });
+          const { legacy } = parseBlocks(current.content?.raw ?? '');
+          const serialized = serializeBlocks(
+            opArgs.data.blocks,
+            opArgs.data.blocksLayout ?? { items: [] },
+          );
+          body.content = legacy ? `${serialized}\n${legacy}` : serialized;
+        }
+        return { method: 'POST', path: `/wp/v2/${this.postType}/${id}`, body };
+      }),
+    );
+
+    // Chunked at 25, the endpoint's own limit. More than one chunk means the
+    // all-or-none promise holds WITHIN each chunk and not across them, so that is
+    // said out loud rather than left for a caller to discover.
+    if (requests.length > 25) {
+      throw new AdapterError(
+        `WordPress applies at most 25 requests atomically (asked for ` +
+          `${requests.length}). Split the batch, or drop atomic and handle ` +
+          `failedIndex.`,
+        { code: 'BATCH_TOO_LARGE', status: 400 },
+      );
+    }
+
+    const answer = await this.fetchJson('/batch/v1', {
+      method: 'POST',
+      body: { validation: 'require-all-or-none', requests },
+    });
+    const failed = (answer?.responses ?? []).findIndex(
+      (r) => r && r.status >= 400,
+    );
+    if (answer?.failed || failed !== -1) {
+      const error = new AdapterError(
+        `WordPress applied none of the ${requests.length} operations: ` +
+          `pre-flight rejected operation ${failed === -1 ? '(unknown)' : failed}`,
+        { code: 'BATCH_REJECTED', status: 400 },
+      );
+      error.failedIndex = failed === -1 ? undefined : failed;
+      error.applied = 0;
+      throw error;
+    }
+    return { results: (answer?.responses ?? []).map(() => null) };
   }
 
   async dispatchOnce(intent, args) {

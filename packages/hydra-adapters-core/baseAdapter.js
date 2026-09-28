@@ -312,11 +312,82 @@ export class BaseAdapter {
     this.invalidateReads();
   }
 
-  async dispatch(intent) {
+  async dispatch(intent, args) {
+    // Several operations, one intention — served here so EVERY adapter has it.
+    //
+    // Layered like expansion: the base class applies the operations itself, so a
+    // CMS with nothing bulk still answers `batch`, and one that has something
+    // (WordPress's /batch/v1 takes 25 requests per call; Plone's @import takes a
+    // whole subtree) overrides this and groups them. The caller asks the same
+    // thing either way and never keeps a fallback of its own — which is the whole
+    // point of putting it at this layer rather than in the importer.
+    if (intent === 'batch') return this.applyBatch(args);
     throw new AdapterError(`${this.name} does not implement '${intent}'`, {
       code: 'NOT_IMPLEMENTED',
       status: 501,
     });
+  }
+
+  /**
+   * The floor: apply them one at a time, in order, and stop at the first failure.
+   *
+   * Deliberately NOT like expandContext, which runs its intents concurrently and
+   * omits what a CMS cannot serve. Those are reads. These are writes:
+   *
+   *   - Order is part of the meaning. A parent has to exist before its child, and
+   *     an ordering has to be applied after the documents it orders. Promise.all
+   *     would make a batch that works and a batch that was reordered look alike.
+   *   - A failure is not omitted. Half-applied is a real state someone has to
+   *     recover from, so the error carries `failedIndex` and how many stood: an
+   *     importer can resume instead of starting over or, worse, reapplying.
+   *   - `atomic` is refused rather than faked. Rolling back cannot be emulated
+   *     from out here, and a caller believing in a guarantee it does not have is
+   *     worse off than one told no. An adapter whose CMS can promise it overrides
+   *     this method.
+   *
+   * Each operation goes through `this.dispatch`, not `dispatchOnce`, so it behaves
+   * exactly as it would on its own — same auth retry, same cache invalidation.
+   */
+  async applyBatch(args = {}) {
+    const operations = args.operations ?? [];
+    if (!Array.isArray(operations)) {
+      throw new AdapterError('batch requires an array of operations', {
+        code: 'INVALID_BATCH',
+        status: 400,
+      });
+    }
+    if (args.atomic) {
+      throw new AdapterError(
+        `${this.name} cannot apply a batch atomically: it is emulated one ` +
+          `operation at a time, so a failure part-way leaves what came before ` +
+          `it applied. Ask without atomic and handle failedIndex, or use an ` +
+          `adapter whose CMS can promise it.`,
+        { code: 'NOT_IMPLEMENTED', status: 501 },
+      );
+    }
+
+    const results = [];
+    for (const [index, operation] of operations.entries()) {
+      if (!operation?.intent) {
+        throw new AdapterError(`batch operation ${index} has no intent`, {
+          code: 'INVALID_BATCH',
+          status: 400,
+          failedIndex: index,
+          applied: results.length,
+        });
+      }
+      try {
+        results.push(await this.dispatch(operation.intent, operation.args ?? {}));
+      } catch (error) {
+        // Rethrown with WHERE it stopped attached, rather than wrapped: the
+        // original code and status are what the caller decides on.
+        error.failedIndex = index;
+        error.applied = results.length;
+        error.failedIntent = operation.intent;
+        throw error;
+      }
+    }
+    return { results };
   }
 
   /**

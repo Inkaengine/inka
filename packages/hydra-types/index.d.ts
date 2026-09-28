@@ -62,6 +62,16 @@ export type Capability =
    */
   | 'expand-native'
   /**
+   * Grouping writes into one request actually saves round trips here.
+   *
+   * Every adapter SERVES `batch` — the base class applies the operations one at a
+   * time — so this is not about support, it is about cost, exactly as
+   * `expand-native` is. WordPress core takes 25 requests per /batch/v1 call;
+   * Plone can take a whole subtree through @import; Drupal's JSON:API has neither
+   * a batch route nor the atomic-operations extension, so it never claims this.
+   */
+  | 'batch-native'
+  /**
    * A document can be kept OUT of navigation without being unpublished.
    *
    * A different claim from any workflow state: the document stays readable by
@@ -188,6 +198,20 @@ export type Intent =
    */
   | 'state.getForms'
   | 'state.transition'
+  /**
+   * Several operations as one intention.
+   *
+   * Served by every adapter: BaseAdapter applies them in order itself, so a CMS
+   * with nothing bulk still answers. An adapter whose CMS can group them
+   * overrides that and declares `batch-native`.
+   *
+   * Order is part of the meaning, so they are applied sequentially and stop at
+   * the first failure — the error carries `failedIndex` and how many stood, so an
+   * importer can resume. `atomic: true` is a separate promise: honoured by an
+   * adapter whose CMS can make it, refused with NOT_IMPLEMENTED by one that
+   * cannot, never quietly ignored.
+   */
+  | 'batch'
   | 'http';
 
 export interface Document {

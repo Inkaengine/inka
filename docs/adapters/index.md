@@ -1,5 +1,5 @@
 ---
-"@type": Document
+'@type': Document
 UID: docs-adapters-000000000000001
 allow_discussion: false
 contributors: []
@@ -12,12 +12,12 @@ effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
 is_folderish: true
-language: "##DEFAULT##"
+language: '##DEFAULT##'
 layout: document_view
 preview_caption: null
 preview_image: null
 review_state: published
-rights: ""
+rights: ''
 subjects:
   - adapters
   - frontend
@@ -87,7 +87,9 @@ const cmsBaseUrl = 'https://cms.example.com';
 // a renewed token is picked up without rebuilding the adapter.
 const token = new URLSearchParams(window.location.search).get('access_token');
 
-connectProxy(new PloneAdapter({ cmsBaseUrl, getAuthToken: () => token }), { cmsBaseUrl });
+connectProxy(new PloneAdapter({ cmsBaseUrl, getAuthToken: () => token }), {
+  cmsBaseUrl,
+});
 ```
 
 The admin loads this page once, in a hidden iframe, and sends every CMS request to it for the whole editing session. It is a page of its own, rather than part of the page being edited, so that it survives whatever the editor navigates to: the preview is replaced as the editor moves around, and an adapter living there would take its in-flight requests with it. Keep it minimal: it should render nothing and navigate nowhere.
@@ -127,7 +129,9 @@ import { WordPressAdapter } from '@volto-hydra/hydra-adapters-wordpress';
 
 const adapter = new WordPressAdapter({ cmsBaseUrl, credentials });
 
-const content = await adapterGetContent(adapter, path, { expand: ['navigation'] });
+const content = await adapterGetContent(adapter, path, {
+  expand: ['navigation'],
+});
 const fetchItems = adapterFetchItems({ adapter }); // same contract as ploneFetchItems
 ```
 
@@ -136,10 +140,17 @@ The example listing variants take the adapter too. Pass `adapter` where a Plone 
 ### Js
 
 ```js
-import { relatedItemsFetcher, searchShortcutsFetcher } from '@volto-hydra/helpers';
+import {
+  relatedItemsFetcher,
+  searchShortcutsFetcher,
+} from '@volto-hydra/helpers';
 
 const relatedItems = relatedItemsFetcher({ adapter, contextPath });
-const searchShortcuts = searchShortcutsFetcher({ adapter, contextPath, vocabularies: { Subject: 'tags' } });
+const searchShortcuts = searchShortcutsFetcher({
+  adapter,
+  contextPath,
+  vocabularies: { Subject: 'tags' },
+});
 ```
 
 The credential is the frontend's own. A published page needs none; showing a draft in the preview needs one for your CMS, because the admin's session is not something WordPress or Drupal would accept.
@@ -226,7 +237,7 @@ Throw `AdapterError` with a code. Returning an empty result for something you ca
 
 ```js
 throw new AdapterError('my-cms: no workflow on this content', {
-  code: 'UNAUTHORIZED',   // NOT_IMPLEMENTED, BAD_REQUEST, UNKNOWN_EXPANSION, …
+  code: 'UNAUTHORIZED', // NOT_IMPLEMENTED, BAD_REQUEST, UNKNOWN_EXPANSION, …
   status: 401,
 });
 ```
@@ -235,7 +246,7 @@ throw new AdapterError('my-cms: no workflow on this content', {
 
 Adapters are held to one shared suite rather than per-CMS tests. Every target seeds itself from the same fixture and the assertions refer to that seed, so a test that needs a CMS-specific value to pass has found a leak in the abstraction.
 
-Register a target that boots your CMS, seeds it and exposes your adapter, then run the suite against it. A capability you do not declare must be *rejected*, and the suite checks that too.
+Register a target that boots your CMS, seeds it and exposes your adapter, then run the suite against it. A capability you do not declare must be _rejected_, and the suite checks that too.
 
 ### Bash
 
@@ -245,24 +256,54 @@ ADAPTER_TARGET=my-cms npx vitest run --config vitest.adapters.config.mjs
 
 The suite covers content CRUD, listings, search, navigation, breadcrumbs, schemas, vocabularies, references, assets, workflow, moves, auth and expansion. Getting it green is what "supports this CMS" means here.
 
+## Several operations at once
+
+`batch` takes a list of operations and applies them as one intention:
+
+<block type="slateTable" table.fixed table.celled>
+
+| You send                                       | What happens                                                                                  |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `batch` with `operations: [{intent, args}, …]` | applied in the order given; the answer is `results`, one per operation, in that order         |
+| a failure part-way                             | the error carries `failedIndex` and `applied`, so a caller can resume rather than start again |
+| `atomic: true`                                 | honoured by a CMS that can promise it, refused with `NOT_IMPLEMENTED` by one that cannot      |
+
+</block>
+
+You do not implement this. `BaseAdapter` applies the operations one at a time, so
+your adapter answers `batch` the day you write it. Override it only if your CMS
+can genuinely group writes — WordPress core takes 25 requests per `/batch/v1`
+call, Plone can take a whole subtree through `@import` — and then declare
+`batch-native`, which tells callers that grouping is worth doing here. Drupal's
+JSON:API has neither a batch route nor the atomic-operations extension, so it
+keeps the floor and never claims the capability.
+
+This is the same layering as expansion, with one deliberate difference: expansion
+is reads, so it runs concurrently and omits what a CMS cannot serve. A batch is
+writes. Order carries meaning — a parent before its child, an ordering after the
+documents it orders — so operations are never reordered, a failure stops the run
+rather than being skipped, and atomicity is asked for explicitly because it
+cannot be emulated from outside the CMS.
+
 ## Reference
 
 ### Intents
 
 <block type="slateTable" table.fixed table.celled>
 
-| Group | Intents |
-| --- | --- |
-| Content | `content.get`, `content.create`, `content.update`, `content.delete`, `content.order`, `content.sort`, `content.move`, `content.copy` |
-| Types | `types.list`, `types.getSchema` |
-| Reading | `search`, `querystringSearch`, `querystring.getIndexes`, `tree.list`, `navigation.get`, `breadcrumbs.get`, `reference.resolve`, `vocabulary.get` |
-| Assets | `asset.upload`, `asset.imageUrl` |
-| Session | `auth.whoami`, `auth.logout` |
-| Workflow | `state.get`, `state.getForms`, `state.transition` |
-| Navigation | `navigation.setExcluded`, `navigation.setTitle` |
-| The site | `site.get` |
-| Translations | `translations.get`, `translations.create`, `translations.link`, `translations.unlink`, `translations.locate` |
-| Escape hatch | `http` |
+| Group           | Intents                                                                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Content         | `content.get`, `content.create`, `content.update`, `content.delete`, `content.order`, `content.sort`, `content.move`, `content.copy`             |
+| Types           | `types.list`, `types.getSchema`                                                                                                                  |
+| Reading         | `search`, `querystringSearch`, `querystring.getIndexes`, `tree.list`, `navigation.get`, `breadcrumbs.get`, `reference.resolve`, `vocabulary.get` |
+| Assets          | `asset.upload`, `asset.imageUrl`                                                                                                                 |
+| Session         | `auth.whoami`, `auth.logout`                                                                                                                     |
+| Workflow        | `state.get`, `state.getForms`, `state.transition`                                                                                                |
+| Navigation      | `navigation.setExcluded`, `navigation.setTitle`                                                                                                  |
+| The site        | `site.get`                                                                                                                                       |
+| Translations    | `translations.get`, `translations.create`, `translations.link`, `translations.unlink`, `translations.locate`                                     |
+| Several at once | `batch`                                                                                                                                          |
+| Escape hatch    | `http`                                                                                                                                           |
 
 </block>
 
@@ -270,20 +311,21 @@ The suite covers content CRUD, listings, search, navigation, breadcrumbs, schema
 
 <block type="slateTable" table.fixed table.celled>
 
-| Capability | The admin turns on |
-| --- | --- |
-| `content` | Editing at all — every adapter needs it |
-| `search-fulltext`, `search-filter` | Text search, and server-side filtering |
-| `schema` | Type-driven edit forms |
-| `vocabulary` | Choice widgets backed by CMS vocabularies |
-| `asset` | Image and file upload |
-| `state` | The workflow menu |
-| `sharing`, `per-content-permissions`, `hierarchical-permissions` | The access dialog |
-| `versioning` | History and revisions |
-| `comments` | Reader comments and moderation |
-| `multilingual` | Manage Translations, and the translate/link controls |
-| `navigation-exclusion`, `navigation-title` | Per-item navigation controls |
-| `http-passthrough` | Forwarding Plone-dialect requests unchanged |
-| `expand-native` | The admin asks for its expander bundle inside the content response |
+| Capability                                                       | The admin turns on                                                              |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `content`                                                        | Editing at all — every adapter needs it                                         |
+| `search-fulltext`, `search-filter`                               | Text search, and server-side filtering                                          |
+| `schema`                                                         | Type-driven edit forms                                                          |
+| `vocabulary`                                                     | Choice widgets backed by CMS vocabularies                                       |
+| `asset`                                                          | Image and file upload                                                           |
+| `state`                                                          | The workflow menu                                                               |
+| `sharing`, `per-content-permissions`, `hierarchical-permissions` | The access dialog                                                               |
+| `versioning`                                                     | History and revisions                                                           |
+| `comments`                                                       | Reader comments and moderation                                                  |
+| `multilingual`                                                   | Manage Translations, and the translate/link controls                            |
+| `navigation-exclusion`, `navigation-title`                       | Per-item navigation controls                                                    |
+| `http-passthrough`                                               | Forwarding Plone-dialect requests unchanged                                     |
+| `expand-native`                                                  | The admin asks for its expander bundle inside the content response              |
+| `batch-native`                                                   | Grouping writes into one request saves round trips, so callers may batch freely |
 
 </block>
