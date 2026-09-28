@@ -24,7 +24,7 @@ subjects:
   - listings
 title: Listing
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
@@ -40,7 +40,7 @@ blocks-tagged: |
   </block>
   <block type="slider">
     <region name="slides" widget="object_list" idField="@id" typeField="@type">
-      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/text}" buttonText="${p?[2]/text}" href="${p?[2]/link}" preview_image="${img/link}" />
+      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/text}" buttonText="${a?/text}" href="${a?/link}" preview_image="${img/link}" />
     </region>
   </block>
 ---

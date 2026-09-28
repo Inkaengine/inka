@@ -51,13 +51,13 @@ function referenceRenderers(markdown, destDir) {
 const PROTO_TEXT = {
   // slate is the catch-all; more specific same-specificity prototypes (title on an
   // h1) are declared AFTER it so they win the CSS cascade tie.
-  slate: '<block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em/text}" />',
+  slate: '<block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />',
   title: '<block type="title" _="${h1}" />',
   // `align: full` is the default separator style (34 of 56); declaring it here
   // makes those emit as a bare `---` and be restored on decode, while left/center
   // /background variants keep their explicit `<fields>`.
   separator: '<block type="separator" _="${hr}" styles={"align":"full"} />',
-  button: '<block type="button" title="${p/text}" href="${p/link}" />',
+  button: '<block type="button" title="${a/text}" href="${a/link}" />',
   // href is @id-only (the heading's link); the teaser's rendered title/
   // description/hasPreviewImage are RESOLVED from the target by the mount, not
   // stored redundantly here. block.title (the heading text) is the teaser's own
