@@ -108,6 +108,11 @@ export class DrupalAdapter extends BaseAdapter {
         // A Drupal menu link carries an enabled flag and a title of its own,
         // so it can keep a document out of the menu and label it differently
         // there. Neither is a property of the node.
+        // Drupal cannot see links inside our blocks the way it sees entity
+        // reference fields — they live in a JSON text field — but JSON:API's
+        // CONTAINS filter can search that field server-side, which is enough to
+        // answer what points at a document. See reference.dependents.
+        'link-integrity',
         'navigation-exclusion',
         'navigation-title',
       ],
@@ -510,6 +515,54 @@ export class DrupalAdapter extends BaseAdapter {
             slug: (await this.freeAlias(parent, id)).split('/').pop(),
           },
         });
+      }
+
+      case 'reference.dependents': {
+        // Drupal's own back-reference tracking only covers entity reference
+        // FIELDS. Our blocks are a JSON string in field_hydra_blocks, so Drupal
+        // does not know they contain links — but JSON:API will search that field
+        // with a CONTAINS filter, which keeps the work on the server instead of
+        // fetching every node and scanning here.
+        //
+        // nodeByAlias first, so a path that does not exist is NOT_FOUND rather
+        // than an empty list: "nothing links to it" must not be the answer to a
+        // typo.
+        const node = await this.nodeByAlias(args.path);
+        const alias = aliasOf(node);
+        const nid = node.attributes.drupal_internal__nid;
+        // Both encodings a Drupal link can carry: the alias an author sees, and
+        // the /node/<id> form that survives an alias change.
+        const needles = [alias, `/node/${nid}`].filter(Boolean);
+
+        const byId = new Map();
+        for (const needle of needles) {
+          const params = new URLSearchParams();
+          params.set('filter[l][condition][path]', 'field_hydra_blocks');
+          params.set('filter[l][condition][operator]', 'CONTAINS');
+          params.set('filter[l][condition][value]', needle);
+          const found = flattenPayload(
+            await this.fetchJson(`/jsonapi/node/${this.bundle}?${params}`),
+          ) ?? [];
+          for (const candidate of found) {
+            if (candidate.id === node.id) continue;
+            // CONTAINS is a substring match, so /about also matches /about-us —
+            // and /news matches /news/first-post, which would make a link to a
+            // CHILD look like a link to its parent. Re-check with a boundary that
+            // excludes a path separator too, still without knowing any block's
+            // shape, which is the engine's rule here as well.
+            const blocks = candidate.attributes.field_hydra_blocks ?? '';
+            const bounded = new RegExp(
+              `${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w\\-/])`,
+            );
+            if (!bounded.test(blocks)) continue;
+            byId.set(candidate.id, {
+              id: candidate.id,
+              path: aliasOf(candidate),
+              title: candidate.attributes.title,
+            });
+          }
+        }
+        return { references: [...byId.values()] };
       }
 
       case 'content.sort': {

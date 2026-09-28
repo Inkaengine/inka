@@ -97,6 +97,48 @@ describe('reference.dependents', () => {
     expect(found.references).toEqual([]);
   });
 
+  it('does not count a link to a child as a link to the parent', async () => {
+    if (!advertises('link-integrity')) return;
+    // The trap for any implementation that matches on substrings: '/news' is a
+    // prefix of '/news/first-post'. A delete warning that fires because something
+    // links to a CHILD teaches editors to dismiss it.
+    await target.adapter.dispatch('content.update', {
+      path: '/about',
+      data: {
+        blocks: {
+          linker: {
+            '@type': 'slate',
+            value: [
+              {
+                type: 'p',
+                children: [
+                  {
+                    type: 'link',
+                    data: { url: '/news/first-post' },
+                    children: [{ text: 'a child' }],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        blocksLayout: { items: ['linker'] },
+      },
+    });
+
+    const parent: any = await target.adapter.dispatch('reference.dependents', {
+      path: '/news',
+    });
+    expect(parent.references.map((r: any) => r.path)).not.toContain('/about');
+
+    // And the child itself IS reported, so this is a boundary rather than a
+    // scanner that found nothing.
+    const child: any = await target.adapter.dispatch('reference.dependents', {
+      path: '/news/first-post',
+    });
+    expect(child.references.map((r: any) => r.path)).toContain('/about');
+  });
+
   it('rejects a path that does not exist, rather than answering empty', async () => {
     if (!advertises('link-integrity')) return;
     // "Nothing links to it" and "it isn't there" are different answers, and a

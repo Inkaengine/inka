@@ -4922,7 +4922,18 @@ app.get(/^(?:\/\+\+api\+\+)?\/@linkintegrity$/, (req, res) => {
       // this file needing to know any block's shape, which is the same reason
       // the block engine holds no block knowledge.
       const haystack = JSON.stringify(source.blocks ?? {});
-      if (!needles.some((needle) => haystack.includes(needle))) continue;
+      // A BOUNDARY, not a substring. '/news' occurs inside
+      // '/news/first-post', so includes() reported a link to a CHILD as a link
+      // to its parent — a delete warning that fires for that teaches editors to
+      // dismiss it. Excluding a following path separator (as well as word
+      // characters) is what plone.app.linkintegrity gets for free from its
+      // relation catalogue.
+      const linked = needles.some((needle) =>
+        new RegExp(`${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w\\-/])`).test(
+          haystack,
+        ),
+      );
+      if (!linked) continue;
       breaches.push({
         '@id': `${API_ORIGIN}${candidate}`,
         title: source.title ?? candidate,
