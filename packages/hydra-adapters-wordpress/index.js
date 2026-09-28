@@ -718,6 +718,25 @@ export class WordPressAdapter extends BaseAdapter {
     return { results: (answer?.responses ?? []).map(() => null) };
   }
 
+  /**
+   * Signing out has to drop the NONCE as well as the credential.
+   *
+   * BaseAdapter.logout clears authToken, credentials and csrfToken — enough for a
+   * bearer-token CMS, where forgetting the token is the whole of it. WordPress
+   * authenticates a session with a cookie plus this nonce, and every request
+   * sends `X-WP-Nonce: this.nonce`, so a logout that left it set kept presenting
+   * a working session: whoami still answered as the signed-in user afterwards.
+   *
+   * That is the shared-machine case the contract warns about — the admin looks
+   * signed out while the credential that reaches content still works — and it was
+   * failing in CI unseen, because the contract step piped vitest through tee and
+   * reported tee's exit status.
+   */
+  async logout() {
+    await super.logout();
+    this.nonce = null;
+  }
+
   async dispatchOnce(intent, args) {
     switch (intent) {
       case 'content.get': {

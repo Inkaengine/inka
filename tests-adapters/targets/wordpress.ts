@@ -191,6 +191,15 @@ const target: Target = {
    * blueprint's PHP never becomes a second definition of the fixture.
    */
   async seed() {
+    // Put the SESSION back too, not just the content.
+    //
+    // expireSession poisons adapter.nonce on purpose, to prove a CMS 401 becomes
+    // UNAUTHORIZED. Nothing restored it, so every test after that one in the file
+    // ran with a dead session — auth.logout's own whoami then failed before it
+    // had signed out of anything. It went unnoticed because the CI step piped
+    // vitest through tee and reported tee's exit status.
+    adapter.nonce = nonce;
+
     const documents = seed.documents
       .filter((d) => d.path !== '/')
       .sort((a, b) => a.path.split('/').length - b.path.split('/').length)

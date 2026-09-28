@@ -315,6 +315,12 @@ jobs:
         if: matrix.target == 'wordpress'
         run: pnpm dlx @wp-playground/cli@3.1.51 --version || true
       - name: Run the contract suite
+        # `shell: bash` is load-bearing, not tidiness: GitHub's default shell has
+        # no pipefail, so `vitest | tee` exited with TEE's status and every
+        # contract failure was invisible. test-contract (wordpress) reported
+        # success for at least the last several runs while auth.logout was failing
+        # in it. With this, the pipeline's status is the suite's again.
+        shell: bash
         run: TARGET=${{ matrix.target }} pnpm test:contract 2>&1 | tee /tmp/contract-${{ matrix.target }}.log
       - name: Upload the log
         if: always()
