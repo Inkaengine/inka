@@ -64,7 +64,7 @@ A prominent content section with a background image, overlay, title, rich text b
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-highlight" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-highlight" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

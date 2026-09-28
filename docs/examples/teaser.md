@@ -117,7 +117,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-teaser" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-teaser" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

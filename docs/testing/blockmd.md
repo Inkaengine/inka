@@ -137,9 +137,28 @@ An `object_list` region must declare **`idField`**, the field each item's id is 
 
 You never author item ids or block uids — the loader mints them, deterministically.
 
-## Headings inside a table cell
+## Tables
 
-A table is written as a markdown table, its first row the header. A markdown cell is one line of inline content, so `## ` cannot go in one — but a cell's value can hold several blocks, such as a heading above its text. Those blocks are marked with inline HTML tags, which a markdown cell allows, and the markdown between them reads as usual:
+A table is mapped by its prototype like any other block — the engine knows what a markdown table is, but nothing about any block's table JSON. The rule names the node each item is: a row is a `${tr}`, and a cell a `${th/…}` (the header row) or a `${td/…}` (any other row). Two item prototypes for the cells, each with its own type, say how a header cell is stored differently from a data cell:
+
+### Markdown
+
+```markdown
+<block type="slateTable">
+  <region name="table.rows" idField="key">
+    <block type="row" _="${tr}">
+      <region name="cells" idField="key" typeField="type">
+        <block type="header" value="${th/slate}" />
+        <block type="data" value="${td/slate}" />
+      </region>
+    </block>
+  </region>
+</block>
+```
+
+Read left to right: the rows at `table.rows` are the table's `tr`s; each row's `cells` are its `th`s and `td`s, stored with `type` set to `header` or `data` and the cell's content in `value`. The same rules are read backwards to write the table. The table object's other fields — `celled`, `striped` — are written as dotted attributes, `<block type="slateTable" table.celled>`. A markdown table's header is exactly its first row, so a table whose header cells are anywhere else keeps the `data-json` form.
+
+A markdown cell is one line of inline content, so `## ` cannot go in one — but a cell can hold several blocks, such as a heading above its text. Those are written as inline HTML tags, which a markdown cell allows, and the markdown between them reads as usual:
 
 ### Markdown
 
@@ -162,7 +181,7 @@ The `<fields>` tag sets field values on the blocks in its scope, and its form ch
 
 An attribute's type comes from how it is written, with no schema involved:
 
-- a bare name, `collapsed`, is boolean `true`
+- a bare name, `collapsed`, is boolean `true`, and `collapsed=false` is `false` — a false value is written like any other, never dropped as if absent
 - an unquoted value, `size=3`, is coerced — number, boolean, null, or JSON
 - a double-quoted value, `title="Hi ${1/text}"`, is a string (so any references inside it survive)
 - a single-quoted `data='{ … }'` carries raw JSON object fields verbatim

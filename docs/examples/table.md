@@ -38,9 +38,10 @@ blocks-matched: |
 blocks-tagged: |
   <block type="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row">
-        <region name="cells" idField="key">
-          <block type="cell" value="${td/slate}" />
+      <block type="row" _="${tr}">
+        <region name="cells" idField="key" typeField="type">
+          <block type="header" value="${th/slate}" />
+          <block type="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -111,7 +112,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-table" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-table" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

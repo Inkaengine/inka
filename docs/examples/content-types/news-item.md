@@ -46,7 +46,7 @@ blocks-tagged: |
 
 </fields>
 
-<fields slotId="content" fixed=false>
+<fields slotId="content" fixed=false readOnly=false>
 
 <block type="image">
 
@@ -72,7 +72,7 @@ Der Inhaltstyp Bild kann verwendet werden um ein Bild in verschiedenen Formate (
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.&#x20;
 
-<fields templateId="/templates/newsitem-view" templateInstanceId="tpl-ni-def" slotId="content" fixed=false>
+<fields templateId="/templates/newsitem-view" templateInstanceId="tpl-ni-def" slotId="content" fixed=false readOnly=false>
 
 ---
 

@@ -46,7 +46,7 @@ A multi-field form with configurable field types, validation, and email submissi
 
 <block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-form" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-form" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

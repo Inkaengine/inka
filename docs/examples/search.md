@@ -59,7 +59,7 @@ A search interface with faceted filtering. Contains a child listing block for re
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-search" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-search" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

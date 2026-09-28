@@ -50,6 +50,8 @@ blocks-tagged: |
 
 </fields>
 
+<fields readOnly=false>
+
 <block type="introduction">
 
 Cinnamon skinny medium panna americano spice affogato froth frappuccino that.
@@ -58,7 +60,7 @@ Cinnamon skinny medium panna americano spice affogato froth frappuccino that.
 
 </block>
 
-<block type="leadimage" align="center" slotId="lead-image" fixed=true readOnly=false />
+<block type="leadimage" align="center" slotId="lead-image" fixed=true />
 
 <block type="slate">
 
@@ -67,5 +69,7 @@ Ristretto so chicory skinny ristretto au decaffeinated sugar that spoon shop cre
 <fields slotId="content" fixed=false />
 
 </block>
+
+</fields>
 
 </fields>

@@ -77,7 +77,7 @@ Displays a list of content items from a query. The listing block fetches items f
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-listing" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-listing" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

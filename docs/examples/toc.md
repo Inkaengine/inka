@@ -111,7 +111,7 @@ Text can be **bold** or *italic*.
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-toc" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-toc" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

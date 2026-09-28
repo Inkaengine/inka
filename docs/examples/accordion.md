@@ -35,9 +35,10 @@ blocks-tagged: |
   <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/text}" />
   <block type="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row">
-        <region name="cells" idField="key">
-          <block type="cell" value="${td/slate}" />
+      <block type="row" _="${tr}">
+        <region name="cells" idField="key" typeField="type">
+          <block type="header" value="${th/slate}" />
+          <block type="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -243,7 +244,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ## Accordion with table
 
-<block type="slateTable" styles:backgroundColor="transparent" table.celled table.fixed table.striped>
+<block type="slateTable" styles:backgroundColor="transparent" table.basic=false table.celled table.compact=false table.fixed table.hideHeaders=false table.inverted=false table.striped>
 
 | Title Tablehead&#x20; | Title Tablehead&#x20; | Title Tablehead&#x20; |
 | --- | --- | --- |
@@ -255,7 +256,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-accordion" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-accordion" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

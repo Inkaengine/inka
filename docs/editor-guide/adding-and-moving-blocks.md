@@ -29,9 +29,10 @@ blocks-matched: |
 blocks-tagged: |
   <block type="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row">
-        <region name="cells" idField="key">
-          <block type="cell" value="${td/slate}" />
+      <block type="row" _="${tr}">
+        <region name="cells" idField="key" typeField="type">
+          <block type="header" value="${th/slate}" />
+          <block type="data" value="${td/slate}" />
         </region>
       </block>
     </region>

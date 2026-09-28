@@ -37,7 +37,7 @@ A consent banner and a preferences dialog, written by one block. It is the worke
 
 <block type="cookieConsent" data-json='{"analyticsPurpose":"Counts visits and pages, so we can see what is worth improving. Never used to identify you.","message":[{"type":"p","children":[{"text":"We use essential cookies to make this site work, and analytics cookies to see how it is used."}]}]}' />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

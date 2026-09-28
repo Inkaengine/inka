@@ -99,7 +99,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="heading" heading="Getting Started" tag="h2" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-heading" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-heading" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

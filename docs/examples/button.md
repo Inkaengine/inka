@@ -234,7 +234,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-button" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-button" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

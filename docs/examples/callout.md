@@ -68,7 +68,7 @@ This is an **important** — for a must-know gotcha.
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-callout" fixed=false>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-callout" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 
