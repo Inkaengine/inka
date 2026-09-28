@@ -22,7 +22,7 @@ subjects:
   - frontend
 title: Build a frontend
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em/text}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -32,7 +32,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em/text}" />
     </region>
   </block>
 ---

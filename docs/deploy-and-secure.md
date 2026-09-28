@@ -23,7 +23,7 @@ subjects:
   - security
 title: Deploy and secure Inka
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em/text}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">

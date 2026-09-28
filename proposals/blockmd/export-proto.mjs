@@ -51,7 +51,7 @@ function referenceRenderers(markdown, destDir) {
 const PROTO_TEXT = {
   // slate is the catch-all; more specific same-specificity prototypes (title on an
   // h1) are declared AFTER it so they win the CSS cascade tie.
-  slate: '<block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />',
+  slate: '<block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em/text}" />',
   title: '<block type="title" _="${h1}" />',
   // `align: full` is the default separator style (34 of 56); declaring it here
   // makes those emit as a bare `---` and be restored on decode, while left/center
