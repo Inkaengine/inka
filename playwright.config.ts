@@ -76,6 +76,26 @@ export default defineConfig({
   /* Maximum time one test can run for */
   timeout: 45 * 1000, // 45s - bridge tests complete in 2-5s, integration tests need more for page nav + re-renders
 
+  /**
+   * Stop before the CI job is killed, and stop early when the run is a rout.
+   *
+   * test-nuxt-admin had ~450 failing tests for at least three days and every run
+   * reported "cancelled", because the job's 45-minute budget ran out while
+   * Playwright was still retrying — so the summary, the failure list and the
+   * slow-test report were never printed. A job that dies at its GitHub timeout
+   * tells you nothing at all; the one thing you must not do with a long suite is
+   * let the runner be the thing that stops it.
+   *
+   * globalTimeout is under the job budget so Playwright is always the one to
+   * stop, with its own output. maxFailures ends a cascade in minutes instead of
+   * spending the budget retrying 450 tests three times each — 25 is enough to
+   * see the pattern. reportSlowTests names the slowest FILES on every run, which
+   * is the signal that something is getting gradually worse rather than broken.
+   */
+  globalTimeout: process.env.CI ? 35 * 60 * 1000 : undefined,
+  maxFailures: process.env.CI ? 25 : undefined,
+  reportSlowTests: { max: 10, threshold: 20 * 1000 },
+
   /* Run tests in files in parallel */
   fullyParallel: true,
 
