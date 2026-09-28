@@ -58,7 +58,9 @@ A responsive grid that lays out child blocks in equal-width cells. The block use
 
 <block type="listing" data-json='{"block":"616b625c-b79f-4881-8536-b67a9e401a7d","headlineTag":"h2","variation":"default","query":[]}' />
 
-<block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
+<block type="slate">
+
+</block>
 
 <block type="gridBlock">
 

@@ -145,4 +145,6 @@ Caption Description (14/18px). The Image content type can be used to upload an i
 
 </block>
 
-<block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
+<block type="slate">
+
+</block>

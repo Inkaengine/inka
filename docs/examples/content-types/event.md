@@ -60,6 +60,10 @@ blocks-matched: |
 
 </fields>
 
-<block type="slate" data-json='{"slotId":"content","value":[{"children":[{"text":""}],"type":"p"}],"fixed":false,"readOnly":false}' />
+<block type="slate">
+
+<fields slotId="content" fixed=false readOnly=false />
+
+</block>
 
 </fields>

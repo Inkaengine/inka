@@ -62,7 +62,9 @@ Wings fair wings doppio sit irish americano galão eu variety affogato.
 
 </block>
 
-<block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
+<block type="slate">
+
+</block>
 
 Percolator and extraction press luwak press aroma foam eu panna spoon espresso iced sit americano. Saucer beans kopi froth to au lait dark panna café iced cup instant au lait. Id origin decaffeinated aromatic in rich sit mocha caramelization café doppio spoon. Strong steamed crema mountain ristretto coffee sweet black aromatic white beans shop. Id pumpkin extraction robusta est white extra organic panna as turkish.
 
