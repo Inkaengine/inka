@@ -1997,6 +1997,20 @@ function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId, params
   return out;
 }
 
+/**
+ * A folder's `items` as Plone serves them: batched (plone.restapi's
+ * HypermediaBatch), 25 by default, from the request's `b_start` / `b_size`,
+ * with `items_total` still the whole folder. ploneFetchItems answers a
+ * folder-contents listing from here, so every child on every page would page
+ * nothing.
+ */
+function batchFolderItems(content, query = {}) {
+  if (!Array.isArray(content.items)) return content;
+  const start = Number(query.b_start ?? 0);
+  const size = Number(query.b_size ?? 25);
+  return { ...content, items: content.items.slice(start, start + size) };
+}
+
 function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, expandParams = {}) {
   // Always use urlPath for @id (includes mount prefix), normalize trailing slash
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
@@ -5890,7 +5904,7 @@ app.get('*', (req, res, next) => {
       console.log(`[DEBUG] Query params:`, req.query);
       console.log(`[DEBUG] Response preview:`, JSON.stringify(filteredContent).substring(0, 500));
     }
-    res.json(filteredContent);
+    res.json(batchFolderItems(filteredContent, req.query));
   } else {
     // plone.app.redirector: moved content 302s (GET) to the new path, keeping
     // the ++api++ namespace. The frontend (ploneApi) upgrades this to a 301.
