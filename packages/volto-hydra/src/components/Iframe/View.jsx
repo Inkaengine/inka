@@ -4004,6 +4004,29 @@ const Iframe = (props) => {
           // and the save carries no title at all. That cost a day to find,
           // through the menu it made look broken.
           //
+          // Not here YET is not the same as not here. The content type is
+          // fetched alongside the page, and on a cold edit route the frontend
+          // can finish booting and send INIT before it lands — which the guard
+          // below would turn into a thrown handshake, and INIT is one-shot, so
+          // nothing redelivers it. Postpone instead, into the same stash the
+          // missing-form case uses, replayed by the effect at the bottom of
+          // this one as soon as both are in.
+          //
+          // This sits BEFORE the guard deliberately: the `!form` deferral is
+          // two hundred lines further down, so anything hung off it never runs.
+          if (
+            history.location.pathname.endsWith('/edit') &&
+            !schema?.properties
+          ) {
+            log('INIT: content type not loaded yet, deferring INITIAL_DATA');
+            pendingInitEventRef.current = {
+              source: event.source,
+              origin: event.origin,
+              data: event.data,
+            };
+            break;
+          }
+
           // Editing needs the content type. If it is not here, say so.
           if (
             history.location.pathname.endsWith('/edit') &&
@@ -4287,10 +4310,11 @@ const Iframe = (props) => {
     // Listen for messages from the iframe
     window.addEventListener('message', messageHandler);
 
-    // Answer an INIT that arrived before there was a form to answer it with.
-    // This effect re-runs when `form` changes, so this is the first moment the
-    // handshake can be completed.
-    if (form && pendingInitEventRef.current) {
+    // Answer an INIT that arrived before there was a form — or a content type —
+    // to answer it with. This effect re-runs when either changes, so this is the
+    // first moment the handshake can be completed. Replaying while the content
+    // type is still missing would walk straight into the guard.
+    if (form && schema?.properties && pendingInitEventRef.current) {
       const pending = pendingInitEventRef.current;
       pendingInitEventRef.current = null;
       messageHandler(

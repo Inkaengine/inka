@@ -53,6 +53,15 @@ export class BridgeApi {
     // that never arrived, and an edit form with no fields — while the calls
     // made after the announcement worked perfectly, which made it look
     // intermittent rather than wrong.
+    //
+    // Overridable so the cost of the INTENT path can be measured rather than
+    // argued about: against Plone, passthrough relays the admin's own HTTP
+    // calls verbatim, so a bridge-vs-direct comparison measures one extra hop
+    // and nothing of routeToIntent. RAZZLE_BRIDGE_PASSTHROUGH=false forces the
+    // same run down the intents, which is the path every non-Plone CMS takes.
+    // Validated in playwright.config.ts, like RAZZLE_BRIDGE_EXPANDERS: a typo
+    // must fail rather than quietly pick a side.
+    if (process.env.RAZZLE_BRIDGE_PASSTHROUGH === 'false') return false;
     return Boolean(info?.capabilities?.includes('http-passthrough'));
   }
 

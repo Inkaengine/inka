@@ -65,6 +65,18 @@ const useBridgeBackend = bridgeOverride ?? 'true';
 // this file — which is how the cost of expansion gets measured rather than
 // assumed. Validated rather than defaulted: a typo must fail, not silently
 // pick a side.
+// Against Plone the adapter advertises http-passthrough, so the admin's own HTTP
+// calls are relayed verbatim and the intent router never runs — which makes a
+// bridge-vs-direct measurement a measurement of one extra hop. Setting this to
+// 'false' forces the intent path, the one every other CMS takes.
+const passthroughOverride = process.env.RAZZLE_BRIDGE_PASSTHROUGH;
+if (passthroughOverride && !['true', 'false'].includes(passthroughOverride)) {
+  throw new Error(
+    `RAZZLE_BRIDGE_PASSTHROUGH must be 'true' or 'false', got '${passthroughOverride}'`,
+  );
+}
+const bridgePassthrough = passthroughOverride ?? 'true';
+
 const expandersOverride = process.env.RAZZLE_BRIDGE_EXPANDERS;
 if (expandersOverride && !['true', 'false'].includes(expandersOverride)) {
   throw new Error(
@@ -362,6 +374,19 @@ export default defineConfig({
 
     // --- Admin integration tests — fully implemented frontends only ---
     // Mock frontend
+    // Measurement, not verification: asserts nothing, run by hand, never in CI.
+    // Its own project so no CI job's --project list can pick it up by accident,
+    // and so it can be pointed at either backend:
+    //   RAZZLE_USE_BRIDGE_BACKEND=false pnpm exec playwright test --project=measure
+    {
+      name: 'measure',
+      testDir: 'tests-playwright/measure',
+      retries: 0,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+      },
+    },
     {
       name: 'admin-mock',
       testDir: 'tests-playwright/integration',
@@ -613,6 +638,7 @@ export default defineConfig({
             VOLTOCONFIG: process.cwd() + '/volto.config.js',
             RAZZLE_USE_BRIDGE_BACKEND: useBridgeBackend,
             RAZZLE_BRIDGE_EXPANDERS: bridgeExpanders,
+            RAZZLE_BRIDGE_PASSTHROUGH: bridgePassthrough,
           },
         }
       : {
@@ -641,6 +667,7 @@ export default defineConfig({
             VOLTOCONFIG: process.cwd() + '/volto.config.js',
             RAZZLE_USE_BRIDGE_BACKEND: useBridgeBackend,
             RAZZLE_BRIDGE_EXPANDERS: bridgeExpanders,
+            RAZZLE_BRIDGE_PASSTHROUGH: bridgePassthrough,
             // Prevent parcel from trying to access TTY (fixes segfault in background process)
             CI: process.env.CI || 'true',
           },

@@ -1,14 +1,19 @@
 #!/usr/bin/env node
 /**
- * Put a markdown content tree into a CMS, through an adapter.
+ * Put a content tree into a CMS, through an adapter.
  *
  *   import-content --from docs --cms plone --url http://localhost:8080/Plone
+ *   import-content --from dist --cms wordpress --url http://localhost:8790
  *   import-content --from docs --cms plone --url … --dry-run
  *
  * No admin and no browser: adapters are plain JS and run under Node, which is how
- * the contract suite already drives real Plone, Drupal and WordPress. The tree is
- * read with the same readTree the mock API serves from, so what lands in the CMS
- * is what the tests run against.
+ * the contract suite already drives real Plone, Drupal and WordPress.
+ *
+ * `--from` takes either a markdown tree — read with the same readTree the mock API
+ * serves from, so what lands in the CMS is what the tests run against — or a
+ * plone.exportimport distribution, which is what `@export` produces when you take
+ * one site's content to another. Plone does that round trip itself; this is the
+ * missing half for a CMS that has no import endpoint.
  *
  * Credentials come from the environment, and a missing one is a hard stop rather
  * than an anonymous attempt that half-works:
@@ -17,9 +22,10 @@
  *   wordpress  HYDRA_CMS_USER + HYDRA_CMS_APP_PASSWORD  (application password)
  *   drupal     HYDRA_CMS_USER + HYDRA_CMS_PASSWORD
  */
-import { readFileSync } from 'node:fs';
-import { basename, extname } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
+import { basename, extname, join } from 'node:path';
 import { readTree } from '../lib/markdown-mount.mjs';
+import { readDistribution } from '../lib/read-distribution.mjs';
 import {
   planImport,
   readExisting,
@@ -36,6 +42,31 @@ const MIME = {
   '.pdf': 'application/pdf',
   '.mp4': 'video/mp4',
 };
+
+/**
+ * A distribution or a markdown tree, whichever `--from` holds.
+ *
+ * The two are the same job seen from either end: export from one site, import
+ * into another, or build the tree from markdown and import that. Both read into
+ * `{items, order, blobFiles}`, so nothing below this line knows the difference.
+ * Detection is the presence of the metadata file exportimport cannot do without,
+ * not a flag — a wrong flag against the right directory is a confusing failure,
+ * and the directory already says what it is.
+ */
+function readSource({ from, prefix }) {
+  if (existsSync(join(from, 'content', '__metadata__.json'))) {
+    if (prefix) {
+      // A distribution carries its own paths, including the site root. Shifting
+      // them under a prefix would put the root somewhere it cannot be created.
+      console.error('--prefix applies to a markdown tree, not a distribution');
+      process.exit(2);
+    }
+    console.log('[import] source is an exportimport distribution');
+    return readDistribution(from);
+  }
+  console.log('[import] source is a markdown tree');
+  return readTree(from, { prefix: prefix ?? '' });
+}
 
 function argv() {
   const args = process.argv.slice(2);
@@ -115,7 +146,7 @@ async function main() {
     process.exit(2);
   }
 
-  const tree = readTree(options.from, { prefix: options.prefix ?? '' });
+  const tree = readSource(options);
   console.log(
     `[import] read ${tree.items.size} documents and ${tree.blobFiles.size} files ` +
       `from ${options.from}`,
