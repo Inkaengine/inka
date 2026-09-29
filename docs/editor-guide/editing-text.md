@@ -23,20 +23,21 @@ rights: ""
 subjects: []
 title: Editing text
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
     </region>
   </block>
   <block type="slateTable">
-    <region name="table.rows">
-      <block type="row">
-        <region name="cells">
-          <block type="cell" value="${td/slate}" />
+    <region name="table.rows" idField="key">
+      <block type="row" _="${tr}">
+        <region name="cells" idField="key" typeField="type">
+          <block type="header" value="${th/slate}" />
+          <block type="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -61,7 +62,7 @@ Click and type. `Enter` splits the field into two text blocks (when supported); 
 
 Slate fields are richer:
 
-- Select text → the Quanta toolbar shows formatting options.
+- Select text → the block toolbar shows formatting options.
 - Apply marks: **Bold**, *Italic*, \~\~Strikethrough\~\~ via toolbar buttons or keyboard shortcuts.
 - Select text and click the link button to attach a URL or pick another page.
 - The toolbar also surfaces paragraph-level type changes (heading, list, blockquote, etc.).

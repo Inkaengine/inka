@@ -36,7 +36,7 @@ sync_uid: null
 title: Another Event
 whole_day: true
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
 blocks-tagged: |
   <block type="introduction" value="${p,h*/slate}" />
@@ -48,13 +48,13 @@ blocks-tagged: |
 
 # Another Event
 
-<fields slotId="title" data-json='{"fixed":true,"readOnly":true}' />
+<fields slotId="title" fixed=true readOnly=true />
 
 </block>
 
-<fields data-json='{"readOnly":false}'>
+<fields readOnly=false>
 
-<fields slotId="content" data-json='{"fixed":false}'>
+<fields slotId="content" fixed=false>
 
 <block type="introduction">
 
@@ -62,15 +62,17 @@ Wings fair wings doppio sit irish americano galão eu variety affogato.
 
 </block>
 
-<block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
+<block type="slate">
+
+</block>
 
 Percolator and extraction press luwak press aroma foam eu panna spoon espresso iced sit americano. Saucer beans kopi froth to au lait dark panna café iced cup instant au lait. Id origin decaffeinated aromatic in rich sit mocha caramelization café doppio spoon. Strong steamed crema mountain ristretto coffee sweet black aromatic white beans shop. Id pumpkin extraction robusta est white extra organic panna as turkish.
 
 </fields>
 
-<block type="eventMetadata" data-json='{"slotId":"event-metadata","fixed":true,"required":true}' />
+<block type="eventMetadata" slotId="event-metadata" fixed=true required=true />
 
-<block type="slate" data-json='{"slotId":"content","fixed":false}' />
+<block type="slate" slotId="content" fixed=false />
 
 </fields>
 

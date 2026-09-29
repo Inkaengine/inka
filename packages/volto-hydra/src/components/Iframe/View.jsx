@@ -20,6 +20,7 @@ import { validateAndLog, validateTemplatePlaceholders } from '../../utils/formDa
 import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
+import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
 import {
   getBridgeRpc,
   setBridgeTargetOrigin,
@@ -273,7 +274,7 @@ import slateTransforms from '../../utils/slateTransforms';
 import OpenObjectBrowser from './OpenObjectBrowser';
 import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
 import { getBlockTypeSchema } from '../../utils/blockPath';
-import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
+import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { canContainAll, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
@@ -451,7 +452,8 @@ const extractBlockFieldTypes = (intl, contentTypeSchema = null) => {
 
           blockFieldTypes[typeKey][`${fieldPrefix}${fieldName}`] = getFieldTypeString(field);
 
-          if (field.widget === 'object_list' && field.schema?.properties) {
+          // A plain list's items (`subBlocks: false`) are not blocks.
+          if (isObjectListRegion(field) && field.schema?.properties) {
             // Virtual type key is object-transparent (no prefix).
             const itemTypeKey = `${typeKey}:${fieldName}`;
             if (!config.blocks.blocksConfig[itemTypeKey]) {
@@ -703,6 +705,7 @@ const Iframe = (props) => {
     closeObjectBrowser,
     schema, // Content type schema for page-level field types
     saveTemplatesRef, // Ref that Form.jsx uses to trigger template save
+    flushEditsRef, // Ref that Form.jsx awaits before validating a save
     multiSelected = [], // Array of block UIDs in multi-selection
     blocksErrors = {}, // blockId → { field: [messages] } from a refused save
     onSetMultiSelected, // Callback to set multi-selection in Redux
@@ -1440,6 +1443,38 @@ const Iframe = (props) => {
   // This causes the effect to run and fetch templates, then send deferred INITIAL_DATA
   const [templateSyncTrigger, setTemplateSyncTrigger] = useState(0);
 
+  // Flush any pending inline edit text from the iframe. Text typed in the
+  // iframe is debounced, so it may not have been sent via INLINE_EDIT_DATA yet;
+  // this resolves once it has, and React has processed the state update.
+  const flushIframeEdits = useCallback(async () => {
+    if (!referenceElement?.contentWindow) return;
+    await new Promise((resolve) => {
+      const requestId = `save-flush-${Date.now()}`;
+      const handleMessage = (event) => {
+        if (
+          (event.data.type === 'BUFFER_FLUSHED' && event.data.requestId === requestId) ||
+          (event.data.type === 'INLINE_EDIT_DATA' && event.data.flushRequestId === requestId)
+        ) {
+          window.removeEventListener('message', handleMessage);
+          // Let React process the INLINE_EDIT_DATA state update
+          setTimeout(resolve, 0);
+        }
+      };
+      window.addEventListener('message', handleMessage);
+      referenceElement.contentWindow.postMessage(
+        { type: 'FLUSH_BUFFER', requestId },
+        '*'
+      );
+    });
+  }, [referenceElement]);
+
+  // Form.jsx awaits this BEFORE it validates a save, so a required field typed
+  // on the canvas and saved inside the debounce is validated with its value.
+  useEffect(() => {
+    if (!flushEditsRef) return;
+    flushEditsRef.current = flushIframeEdits;
+  }, [flushEditsRef, flushIframeEdits]);
+
   // Set up saveTemplatesRef function for Form.jsx to call before page save
   // Templates are merged into cache when exiting template edit mode
   // This function just persists whatever is in cache to the backend
@@ -1476,28 +1511,7 @@ const Iframe = (props) => {
       }
 
       // Flush any pending inline edit text from the iframe before saving.
-      // Text typed in the iframe is debounced, so it may not have been sent
-      // via INLINE_EDIT_DATA yet. The flush ensures formData is up to date.
-      if (referenceElement?.contentWindow) {
-        await new Promise((resolve) => {
-          const requestId = `save-flush-${Date.now()}`;
-          const handleMessage = (event) => {
-            if (
-              (event.data.type === 'BUFFER_FLUSHED' && event.data.requestId === requestId) ||
-              (event.data.type === 'INLINE_EDIT_DATA' && event.data.flushRequestId === requestId)
-            ) {
-              window.removeEventListener('message', handleMessage);
-              // Let React process the INLINE_EDIT_DATA state update
-              setTimeout(resolve, 0);
-            }
-          };
-          window.addEventListener('message', handleMessage);
-          referenceElement.contentWindow.postMessage(
-            { type: 'FLUSH_BUFFER', requestId },
-            '*'
-          );
-        });
-      }
+      await flushIframeEdits();
 
       const templateCache = templateCacheRef.current;
 
@@ -1582,7 +1596,7 @@ const Iframe = (props) => {
       // `formData` param lacks).
       return pageFormData !== formData ? pageFormData : undefined;
     };
-  }, [saveTemplatesRef, referenceElement, persistTemplateDoc, iframeSyncState.templateEditMode]);
+  }, [saveTemplatesRef, flushIframeEdits, persistTemplateDoc, iframeSyncState.templateEditMode]);
 
   // v2 lock-commit ("Change on all pages"): after the iframe flushes pending
   // inline edits, reverse-merge the instance's blocks back into the template
@@ -4163,6 +4177,16 @@ const Iframe = (props) => {
             config.blocks.blocksConfig,
             { intl, metadata, properties: formWithPageFields },
           );
+          // ...and every region nested in a block. The Form seeded those when it
+          // loaded, but a frontend's own container schemas only arrive with its
+          // INIT, so a nested region saved empty (placeholders are stripped on
+          // save) would open with nothing in it to click or type into.
+          formWithPageFields = ensureAllContainersHaveBlocks(
+            formWithPageFields,
+            config.blocks.blocksConfig,
+            intl,
+            uuid,
+          );
           // Rebuild blockPathMap only if empty blocks were actually added
           if (formWithPageFields !== preEnsureForm) {
             initialBlockPathMap = buildBlockPathMap(
@@ -4478,6 +4502,13 @@ const Iframe = (props) => {
             config.blocks.blocksConfig,
             { intl, metadata, properties: mergedFormData },
           );
+          // ...and every region nested in a block (see INIT).
+          formDataToSend = ensureAllContainersHaveBlocks(
+            formDataToSend,
+            config.blocks.blocksConfig,
+            intl,
+            uuid,
+          );
           if (formDataToSend !== mergedFormData) {
             blockPathMap = buildBlockPathMap(formDataToSend, config.blocks.blocksConfig, intl);
           }
@@ -4573,6 +4604,13 @@ const Iframe = (props) => {
           uuid,
           config.blocks.blocksConfig,
           { intl, metadata, properties: mergedFormData },
+        );
+        // ...and every region nested in a block (see INIT).
+        formDataToSend = ensureAllContainersHaveBlocks(
+          formDataToSend,
+          config.blocks.blocksConfig,
+          intl,
+          uuid,
         );
         if (formDataToSend !== mergedFormData) {
           blockPathMap = buildBlockPathMap(formDataToSend, config.blocks.blocksConfig, intl);
@@ -5039,12 +5077,14 @@ const Iframe = (props) => {
       getBlockById(properties, bpm, selectedBlock)?.['@type'] === 'empty';
     if (selectedIsEmpty && allowed?.length === 1) {
       const newFormData = convertBlockInPlace(properties, bpm, selectedBlock, allowed[0]);
-      const newBpm = buildBlockPathMap(newFormData, blocksConfig, intl);
       onChangeFormData(newFormData);
+      // Only the pending selection here, as insertAndSelectBlock does: the
+      // props sync sends the new data to the iframe, and it skips a send when
+      // iframeSyncState.formData already equals it. Setting formData here made
+      // it equal, so unless schema defaults happened to change the block, the
+      // canvas never got the typed item.
       setIframeSyncState(prev => ({
         ...prev,
-        formData: newFormData,
-        blockPathMap: newBpm,
         pendingSelectBlockUid: selectedBlock,
       }));
     } else if (allowed?.length === 1) {
@@ -5078,6 +5118,14 @@ const Iframe = (props) => {
     // would become per-page (and lose its lock). No-op for normal page blocks.
     for (const k of ['templateId', 'templateInstanceId', 'slotId', 'fixed', 'readOnly']) {
       if (blockData[k] !== undefined) newBlockData = { ...newBlockData, [k]: blockData[k] };
+    }
+    // An object_list item is found by its idField, which is not one of its
+    // type's fields, so a conversion with no field mapping (filling an empty
+    // placeholder) drops it: the item then has no id and cannot be rendered,
+    // selected or edited. It is the same item, typed in place — keep its id.
+    const idField = bpm?.[blockId]?.isObjectListItem ? bpm[blockId].idField : null;
+    if (idField && blockData[idField] !== undefined) {
+      newBlockData = { ...newBlockData, [idField]: blockData[idField] };
     }
     return updateBlockById(props, bpm, blockId, newBlockData);
   };

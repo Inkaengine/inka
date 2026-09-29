@@ -25,20 +25,21 @@ subjects:
   - frontend
 title: Listings & Dynamic Blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
 blocks-tagged: |
   <block type="slateTable">
-    <region name="table.rows">
-      <block type="row">
-        <region name="cells">
-          <block type="cell" value="${td/slate}" />
+    <region name="table.rows" idField="key">
+      <block type="row" _="${tr}">
+        <region name="cells" idField="key" typeField="type">
+          <block type="header" value="${th/slate}" />
+          <block type="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -77,7 +78,7 @@ A grid can have a mix of listing and static blocks sharing a single paging. The 
 
 ```jsx
 import { Suspense, useState } from 'react';
-import { staticBlocks, expandListingBlocks, ploneFetchItems } from '@hydra-js/hydra.js';
+import { staticBlocks, expandListingBlocks, ploneFetchItems } from '@hydra-js/helpers';
 
 function Grid({ blocks, blocks_layout, pageNum, apiUrl, contextPath }) {
   const pagingInput = { start: pageNum * 6, size: 6 };
@@ -191,7 +192,7 @@ const { items } = await expandListingBlocks(layout, {
 });
 ```
 
-The **Search Shortcuts** link target reads Volto's search-block facet params — a page with a `search` block picks up `?facet.<index>=<value>` from the URL. The block's *index* uses the existing `select_querystring_field` widget; the optional *this-page field* uses `schemaFieldSelect` (a `/@types`-backed field dropdown, parameterized by `fieldType`), which **Related Items** also uses with `fieldType: 'relation'`.
+The **Search Shortcuts** link target reads the search block's facet params — a page with a `search` block picks up `?facet.<index>=<value>` from the URL. The block's *index* uses the existing `select_querystring_field` widget; the optional *this-page field* uses `schemaFieldSelect` (a `/@types`-backed field dropdown, parameterized by `fieldType`), which **Related Items** also uses with `fieldType: 'relation'`.
 
 ## Field Mapping
 

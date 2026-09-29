@@ -40,26 +40,30 @@ sync_uid: null
 title: Event
 whole_day: false
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
 ---
 
 <fields templateId="/templates/event-view" templateInstanceId="tpl-ev-def">
 
-<fields data-json='{"fixed":true}'>
+<fields fixed=true>
 
 <block type="title">
 
 # Event
 
-<fields slotId="title" data-json='{"readOnly":true}' />
+<fields slotId="title" readOnly=true />
 
 </block>
 
-<block type="eventMetadata" data-json='{"slotId":"event-metadata","readOnly":false}' />
+<block type="eventMetadata" slotId="event-metadata" readOnly=false />
 
 </fields>
 
-<block type="slate" data-json='{"slotId":"content","value":[{"children":[{"text":""}],"type":"p"}],"fixed":false,"readOnly":false}' />
+<block type="slate">
+
+<fields slotId="content" fixed=false readOnly=false />
+
+</block>
 
 </fields>

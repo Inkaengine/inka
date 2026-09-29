@@ -20,31 +20,23 @@
  *   then `pnpm demo:encode` re-muxes that into docs/_static/hydra-demo.mp4
  *   for embedding in docs/index.md.
  *
- * Each `step()` block is a beat in the demo with a fixed pause afterwards
- * so a viewer can follow what happened. Resist the urge to make individual
- * actions fast — the storytelling cadence matters more than realism here.
+ * Pacing comes from DEMO_PACING (set by `pnpm demo:capture`), never from a
+ * fixed pause: each caption holds for as long as its words take to read, and a
+ * beat with nothing to read ends on `holdOn(page, glance())`. Resist the urge to
+ * make individual actions fast — the storytelling cadence matters more than
+ * realism here.
  */
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { glance, holdOn, readFor } from '../helpers/demoPacing';
 import { PORTS, URLS } from '../ports';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_PATH = '/demo-video-page';
-const BEAT_MS = 900;
 const TRIM_MARKER_FILE = path.join(SCRIPT_DIR, '.recordings', 'trim-ms.txt');
-
-async function beat(page: import('@playwright/test').Page) {
-  // Paces the recording so a viewer can absorb what just happened. Narration is
-  // NOT done here — each beat opens with `helper.caption()`, which renders through
-  // Playwright's screencast overlay and therefore composites over the admin iframe
-  // too. (An earlier DOM-injected caption overlay lived in ./caption.ts; it was
-  // trapped in whichever document it was injected into, so it couldn't caption the
-  // iframe swap at the end of this demo. Removed in favour of the screencast one.)
-  await page.waitForTimeout(BEAT_MS);
-}
 
 test.describe.configure({ mode: 'serial' });
 
@@ -90,12 +82,12 @@ test('hydra-demo — homepage hero loop', async ({ page }) => {
   await helper.login();
   await helper.navigateToEdit(DEMO_PATH);
 
-  // Wait for a fully-settled editor before any beats — the recording
-  // includes login + iframe load, but those are visually noisy and
-  // shouldn't be in the published clip. Network idle + a small buffer
-  // gives the iframe time to finish layout/paint.
+  // A settled editor before any beats — the recording includes login + iframe
+  // load, which are visually noisy and are trimmed off the published clip.
+  const iframe = page.frameLocator('#previewIframe');
   await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(2_000);
+  await expect(iframe.locator('[data-block-uid="intro"]')).toBeVisible();
+  await expect(iframe.locator('[data-block-uid="columns-1"]')).toBeVisible();
 
   // Stamp the timestamp where beats begin so encode can -ss-trim the
   // loading prefix off the .webm. Playwright videos start at t=0 when
@@ -105,8 +97,6 @@ test('hydra-demo — homepage hero loop', async ({ page }) => {
   fs.mkdirSync(path.dirname(TRIM_MARKER_FILE), { recursive: true });
   fs.writeFileSync(TRIM_MARKER_FILE, String(trimMs));
   console.log(`[demo-video] trim point: ${trimMs.toFixed(0)} ms`);
-
-  const iframe = page.frameLocator('#previewIframe');
 
   // Playwright 1.61 screencast: an animated pointer that tracks between action points,
   // over the iframe too. Per-action labels are suppressed — caption() narrates each beat.
@@ -121,7 +111,7 @@ test('hydra-demo — homepage hero loop', async ({ page }) => {
   await page.keyboard.type(' Edit anywhere.', { delay: 40 });
   await expect(iframe.locator('[data-block-uid="intro"]'))
     .toContainText('Edit anywhere.', { timeout: 5_000 });
-  await beat(page);
+  await holdOn(page, readFor('Edit anywhere.'));
 
   await helper.caption('Format with the toolbar');
   // Beat 2 — bold the phrase we just typed (Quanta toolbar).
@@ -129,26 +119,28 @@ test('hydra-demo — homepage hero loop', async ({ page }) => {
   // (could be <strong>, <b>, or a styled span); the visual recording
   // captures the formatting toolbar interaction either way.
   await page.keyboard.press('Shift+Home');
-  await page.waitForTimeout(200);
+  await expect
+    .poll(() => iframe.locator('body').evaluate(() => document.getSelection()?.toString() ?? ''))
+    .toContain('Edit anywhere.');
   await page.keyboard.press('Meta+B');
-  await beat(page);
+  await holdOn(page, glance());
 
   // Beat 3 — drop into block mode, drag the intro paragraph past the
   // adjacent column block to show DnD reflow. The dragBlockAfter helper
   // asserts the drop completed; the post-drop DOM order is implicit.
   await helper.caption('Switch to block mode');
   await helper.escapeFromEditing();
-  await beat(page);
+  await holdOn(page, glance());
   await helper.caption('Drag blocks to reorder');
   await helper.dragBlockAfter('intro', 'after-columns');
-  await beat(page);
+  await holdOn(page, glance());
 
   await helper.caption('Blocks nest in containers');
   // Beat 4 — click into the columns container. waitForBlockSelectedInAdmin
   // is the assertion; the helper fails if the selection state doesn't land.
   await helper.clickBlockInIframe('columns-1');
   await helper.waitForBlockSelectedInAdmin('columns-1');
-  await beat(page);
+  await holdOn(page, glance());
 
   // Beat 5 — open the frontend switcher panel, switch to mobile
   // viewport, then click F7 Mobile. The iframe swaps to the F7
@@ -157,34 +149,32 @@ test('hydra-demo — homepage hero loop', async ({ page }) => {
   // Requires the F7 dev frontend on its dedicated port (pnpm --filter hydra-vue-f7
   // run dev:test) and the start:test env var to map "F7 Mobile" to
   // that URL.
-  // The pauses around the panel are deliberately slow so a viewer can
-  // read the entry names (each frontend has a label like "Nuxt blog"
-  // or "F7 Mobile") and see the mobile-width transition land before
-  // the F7 frontend loads.
+  // The panel is held long enough to read its entry names (each frontend has
+  // a label like "Nuxt blog" or "F7 Mobile") before anything is picked.
   await helper.caption('Preview in any frontend');
   await page.locator('#toolbar-frontend-switcher').click();
   const panel = page.locator('.frontend-switcher-panel');
   await panel.waitFor({ state: 'visible' });
-  // Long pause so viewers can read the frontend names in the panel.
-  await page.waitForTimeout(2_500);
+  await holdOn(page, readFor(await panel.innerText()));
 
   // Switch to mobile viewport first so the F7 frontend lands at the
   // intended phone width rather than full-bleed desktop.
   await helper.caption('Switch to a mobile view');
   await panel.getByLabel('Mobile').click();
-  // Allow the iframe-max-width transition to finish visibly.
-  await page.waitForTimeout(1_500);
+  await expect(panel.getByLabel('Mobile')).toHaveClass(/\bactive\b/);
+  await holdOn(page, glance());
 
   const f7Item = panel.locator('.frontend-switcher-url-item', { hasText: 'F7 Mobile' });
   await f7Item.waitFor({ state: 'visible', timeout: 5_000 });
-  await page.waitForTimeout(1_000);
+  await holdOn(page, readFor('F7 Mobile'));
   await f7Item.click();
   await expect(async () => {
     const src = await page.locator('#previewIframe').getAttribute('src');
     expect(src).toContain(`localhost:${PORTS.f7}`);
   }).toPass({ timeout: 5_000 });
-  // Let the F7 frontend finish loading inside the iframe so the swap
-  // is visibly captured (not just the URL change).
+  // The F7 frontend has drawn the same content, so the swap is captured and not
+  // just the URL change — then the closing caption holds for its words.
+  await expect(page.frameLocator('#previewIframe').locator('[data-block-uid="intro"]')).toBeVisible();
   await helper.caption('Same content, another design system');
-  await page.waitForTimeout(3_000);
+  await holdOn(page, glance());
 });

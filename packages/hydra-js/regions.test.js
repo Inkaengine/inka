@@ -96,6 +96,15 @@ describe('buildBlockPathMap — page blocks fields', () => {
     expect(map['footer-1'].region).toBe('footer');
   });
 
+  test('a region that names no allowedBlocks marks its list as derived', () => {
+    // `items` names none, so its list is "every type not restricted" — its add
+    // menu, which a listing's item-type picker must not mistake for the only
+    // types allowed there. `footer` names its own, so it decides alone.
+    const map = buildBlockPathMap(formData, blocksConfig);
+    expect(map['hero-1'].allowedSiblingTypesDerived).toBe(true);
+    expect(map['footer-1'].allowedSiblingTypesDerived).toBeUndefined();
+  });
+
   test('all blocks-field children share the one blocks dict', () => {
     const map = buildBlockPathMap(formData, blocksConfig);
     // Every blocks-field child (any region) lives in the shared `blocks` dict;

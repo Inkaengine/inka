@@ -42,6 +42,7 @@ import { normalizeSlateFields, undefinedSlateTypes } from '../../../hydra-js/sla
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
   deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
 import { addableSiblingTypes, buildBlockPathMap } from '../../../hydra-js/buildBlockPathMap.js';
+import { isObjectListRegion } from '../../../hydra-js/regionWidgets.js';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
   convertFieldValue,
@@ -692,16 +693,31 @@ export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFi
         intl,
       );
 
+      // The default is a PREFERENCE, not a pin. Choices come from what this
+      // position allows (`blocksField: '..'` = the enclosing container's
+      // allowed types), and a default outside them is a value the container
+      // forbids — or, on a frontend that has no such block, a type that does not
+      // exist. Keep it where it is allowed; otherwise take the container's first
+      // allowed type; with nothing allowed, set none rather than an invalid one.
+      // Schema defaults are written into block data on load
+      // (applySchemaDefaultsToFormData), so this is what the listing becomes.
+      const allowed = choices.map(([value]) => value);
+      const resolvedDefault = allowed.includes(defaultValue)
+        ? defaultValue
+        : allowed[0];
+      const { default: _staleDefault, ...priorField } =
+        schema.properties?.[typeField] || {};
+
       // Create or update the typeField
       schema = {
         ...schema,
         properties: {
           ...schema.properties,
           [typeField]: {
-            ...(schema.properties?.[typeField] || {}),
+            ...priorField,
             title: title || schema.properties?.[typeField]?.title || 'Item Type',
             choices,
-            ...(defaultValue ? { default: defaultValue } : {}),
+            ...(resolvedDefault ? { default: resolvedDefault } : {}),
           },
         },
       };
@@ -2217,7 +2233,8 @@ function resolveWhenField(fieldPath, formData, args) {
   // rather than throwing on a numeric op, mirroring object_list). A typed
   // object_list stores its type in a `typeField`; blocks_layout children carry
   // `@type` — getBlockType handles both.
-  const isObjectList = def?.widget === 'object_list';
+  // A plain list (`subBlocks: false`) is a value, not a region.
+  const isObjectList = isObjectListRegion(def);
   const isBlocksLayoutRegion =
     def?.widget === 'blocks_layout' ||
     Array.isArray(block?.blocks_layout?.[fieldName]);
@@ -2611,14 +2628,22 @@ export function getBlockTypeChoices(options, blocksConfig, blockPathMap, blockId
   }
 
   let types;
+  // Set when the '..' parent list was derived rather than written out — see below.
+  let derivedDisallow = null;
   if (effectiveBlocksField) {
     if (effectiveBlocksField === '..') {
       // ".." means get sibling allowed types from parent container
       // This is available via blockPathMap[blockId].allowedSiblingTypes
       if (blockPathMap && blockId) {
         const pathInfo = blockPathMap[blockId];
-        if (pathInfo?.allowedSiblingTypes) {
+        if (pathInfo?.allowedSiblingTypes && !pathInfo.allowedSiblingTypesDerived) {
           types = pathInfo.allowedSiblingTypes;
+        } else if (pathInfo?.allowedSiblingTypesDerived) {
+          // A derived list is the region's ADD MENU — every type that is not
+          // `restricted`. Restriction keeps a type out of the menu, not out of
+          // the region, so as ITEM types every convertible type is offered
+          // (the fallback below), minus anything disallowed below this block.
+          derivedDisallow = pathInfo.descendantDisallowedTypes || [];
         }
       }
     } else if (formData) {
@@ -2638,7 +2663,7 @@ export function getBlockTypeChoices(options, blocksConfig, blockPathMap, blockId
   }
 
   // Try parent's allowedSiblingTypes from pathMap
-  if (!types && blockPathMap && blockId) {
+  if (!types && !derivedDisallow && blockPathMap && blockId) {
     const pathInfo = blockPathMap[blockId];
     if (pathInfo?.allowedSiblingTypes) {
       types = pathInfo.allowedSiblingTypes;
@@ -2650,6 +2675,9 @@ export function getBlockTypeChoices(options, blocksConfig, blockPathMap, blockId
     types = Object.keys(blocksConfig).filter(
       (type) => blocksConfig[type] && (filterConvertibleFrom || !blocksConfig[type].restricted),
     );
+    if (derivedDisallow?.length) {
+      types = types.filter((type) => !derivedDisallow.includes(type));
+    }
   }
 
   // Filter by filterConvertibleFrom (types with fieldMappings[source])
@@ -2846,7 +2874,7 @@ function resolveRegionDescriptor(blockType, path, blocksConfig, intl) {
       if (fieldDef.widget === 'blocks_layout') {
         return { ...base, isObjectList: false };
       }
-      if (fieldDef.widget === 'object_list') {
+      if (isObjectListRegion(fieldDef)) {
         return {
           ...base,
           isObjectList: true,

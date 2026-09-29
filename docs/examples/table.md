@@ -27,20 +27,21 @@ subjects:
   - blocks
 title: Table
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
 blocks-tagged: |
   <block type="slateTable">
-    <region name="table.rows">
-      <block type="row">
-        <region name="cells">
-          <block type="cell" value="${td/slate}" />
+    <region name="table.rows" idField="key">
+      <block type="row" _="${tr}">
+        <region name="cells" idField="key" typeField="type">
+          <block type="header" value="${th/slate}" />
+          <block type="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -74,10 +75,10 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 | Title Tablehead | Title Tablehead | Title Tablehead | Title Tablehead |
 | --- | --- | --- | --- |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md)&#x20; | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md)&#x20; | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
 
 </block>
 
@@ -89,10 +90,10 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 | Title Tablehead | Title Tablehead | Title Tablehead | Title Tablehead |
 | --- | --- | --- | --- |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md)&#x20; | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md)&#x20; | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
 
 </block>
 
@@ -102,16 +103,16 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 | Title Tablehead | Title Tablehead | Title Tablehead | Title Tablehead |
 | --- | --- | --- | --- |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md)&#x20; | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
-| Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) | Heading H2Heading H3Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md)&#x20; | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
+| <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) | <h2>Heading H2</h2><h3>Heading H3</h3>Text can be **bold** or *italic* or a [Link](./index.md) |
 
 </block>
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-table" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-table" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

@@ -38,7 +38,7 @@
     "docs:assets": "node scripts/regen-doc-assets.mjs",
     "docs:assets:missing": "node scripts/missing-doc-assets.mjs",
     "docs:assets:check": "node scripts/missing-doc-assets.mjs --check",
-    "demo:capture": "playwright test --project=demo-video",
+    "demo:capture": "DEMO_PACING=900 playwright test --project=demo-video",
     "demo:encode": "bash tests-playwright/demo-video/encode.sh",
     "lint": "eslint --max-warnings=0 'packages/**/src/**/*.{js,jsx,ts,tsx}'",
     "lint:fix": "eslint --fix 'packages/**/src/**/*.{js,jsx,ts,tsx}'",

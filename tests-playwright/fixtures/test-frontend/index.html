@@ -266,12 +266,17 @@
 
         // Render content, expanding top-level listings
         // Container renderers (like renderGridBlock) call window._expandListingBlocks for nested content
+        window.supportsRenderGate = true;
         async function renderContentWithListings(content) {
             const myGeneration = ++window._renderGeneration;
-            // Test hook: a slow frontend (one fetching data, a heavy framework).
-            // A test sets window.renderDelayMs to make each render land later.
-            if (window.renderDelayMs) {
-                await new Promise((resolve) => setTimeout(resolve, window.renderDelayMs));
+            // Test hook: a render that lands only when the test says (a slow
+            // frontend, on cue rather than on a timer). A test sets
+            // window.renderGate to a promise; the render waits on it, with
+            // window.renderWaiting set meanwhile.
+            if (window.renderGate) {
+                window.renderWaiting = true;
+                await window.renderGate;
+                window.renderWaiting = false;
             }
 
             // ONE shared template-merge state for the WHOLE page render — created by the
@@ -647,6 +652,14 @@
                     // /_test_data depending on how the mock API is mounted, so
                     // match on the page id rather than one of the two prefixes.
                     const restrictStyles = /\/restricted-styles-page(\/|$)/.test(pagePath);
+                    // A hero with a plain list of tags (`subBlocks: false`): edited
+                    // in the sidebar, not a region of sub-blocks.
+                    const plainListField = /\/object-list-plain-page(\/|$)/.test(pagePath);
+                    // A form whose fields allow ONE type and start empty: the '+'
+                    // on the empty field types it in place with no chooser. The
+                    // type is static_text because it has no schema defaults, so
+                    // the typed item differs from the empty only by its type.
+                    const singleTypeFields = /\/form-single-type-page(\/|$)/.test(pagePath);
 
                     // Listen for changes from the admin UI and update blocks
                     // Return promise from async render so hydra.js can wait for DOM updates
@@ -713,6 +726,86 @@
                             // PAGE denies. Deny accumulates down the tree and cannot be
                             // re-allowed by a nested region; `h2` proves the allow half
                             // still takes effect.
+                            ...(singleTypeFields ? {
+                                form: {
+                                    ...sharedBlocksConfig.form,
+                                    blockSchema: {
+                                        ...sharedBlocksConfig.form.blockSchema,
+                                        properties: {
+                                            ...sharedBlocksConfig.form.blockSchema.properties,
+                                            subblocks: {
+                                                ...sharedBlocksConfig.form.blockSchema.properties.subblocks,
+                                                allowedBlocks: ['static_text'],
+                                                defaultBlockType: 'empty',
+                                            },
+                                        },
+                                    },
+                                },
+                            } : {}),
+                            ...(plainListField ? {
+                                // A form question whose options are a plain list
+                                // of value and label, as a form block offers them.
+                                single_choice: {
+                                    ...sharedBlocksConfig.single_choice,
+                                    blockSchema: {
+                                        ...sharedBlocksConfig.single_choice.blockSchema,
+                                        fieldsets: [
+                                            {
+                                                ...sharedBlocksConfig.single_choice.blockSchema.fieldsets[0],
+                                                fields: [...sharedBlocksConfig.single_choice.blockSchema.fieldsets[0].fields, 'display_values'],
+                                            },
+                                            ...sharedBlocksConfig.single_choice.blockSchema.fieldsets.slice(1),
+                                        ],
+                                        properties: {
+                                            ...sharedBlocksConfig.single_choice.blockSchema.properties,
+                                            display_values: {
+                                                title: 'Options',
+                                                widget: 'object_list',
+                                                subBlocks: false,
+                                                schema: {
+                                                    title: 'Option',
+                                                    fieldsets: [{ id: 'default', title: 'Option', fields: ['label', 'value'] }],
+                                                    properties: {
+                                                        label: { title: 'Label', type: 'string' },
+                                                        value: { title: 'Value', type: 'string' },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                                hero: {
+                                    ...sharedBlocksConfig.hero,
+                                    blockSchema: {
+                                        ...sharedBlocksConfig.hero.blockSchema,
+                                        fieldsets: [
+                                            {
+                                                ...sharedBlocksConfig.hero.blockSchema.fieldsets[0],
+                                                fields: [...sharedBlocksConfig.hero.blockSchema.fieldsets[0].fields, 'tags'],
+                                            },
+                                        ],
+                                        properties: {
+                                            ...sharedBlocksConfig.hero.blockSchema.properties,
+                                            tags: {
+                                                title: 'Tags',
+                                                widget: 'object_list',
+                                                subBlocks: false,
+                                                schema: {
+                                                    title: 'Tag',
+                                                    // `heading` shares its name with the hero's own
+                                                    // canvas field, as a form option's `label` does
+                                                    // with its question's.
+                                                    fieldsets: [{ id: 'default', title: 'Tag', fields: ['value', 'heading'] }],
+                                                    properties: {
+                                                        value: { title: 'Value', type: 'string' },
+                                                        heading: { title: 'Label', type: 'string' },
+                                                    },
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            } : {}),
                             ...(restrictStyles ? {
                                 column: {
                                     ...sharedBlocksConfig.column,

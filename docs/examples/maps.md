@@ -22,17 +22,17 @@ subjects:
   - media
 title: Maps
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="maps" title="${p/text}" url="${p/href}" />
+  <block type="maps" title="${a/text}" url="${a/href}" />
 ---
 
 # Maps
@@ -117,7 +117,7 @@ blandit praesent luptatum zzril qui.
 
 <block type="slate" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-maps" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-maps" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

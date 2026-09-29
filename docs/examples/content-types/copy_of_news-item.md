@@ -28,7 +28,7 @@ subjects:
   - news
 title: Another News Item
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
 blocks-tagged: |
   <block type="introduction" value="${p,h*/slate}" />
@@ -36,9 +36,9 @@ blocks-tagged: |
 
 <fields templateId="/templates/newsitem-view" templateInstanceId="tpl-ni-def">
 
-<fields data-json='{"fixed":true,"readOnly":true}'>
+<fields fixed=true readOnly=true>
 
-<block type="dateField" data-json='{"dateField":"effective","slotId":"date","showTime":false}' />
+<block type="dateField" dateField="effective" slotId="date" showTime=false />
 
 <block type="title">
 
@@ -50,23 +50,23 @@ blocks-tagged: |
 
 </fields>
 
-<fields data-json='{"readOnly":false}'>
+<fields readOnly=false>
 
 <block type="introduction">
 
 Cinnamon skinny medium panna americano spice affogato froth frappuccino that.
 
-<fields slotId="content" data-json='{"fixed":false}' />
+<fields slotId="content" fixed=false />
 
 </block>
 
-<block type="leadimage" data-json='{"align":"center","slotId":"lead-image","fixed":true}' />
+<block type="leadimage" align="center" slotId="lead-image" fixed=true />
 
 <block type="slate">
 
 Ristretto so chicory skinny ristretto au decaffeinated sugar that spoon shop crema ut pot lungo. Flavour that milk brewed flavour whipped kopi black and robusta. Bar sugar americano eu froth variety brewed acerbic steamed. Aroma est milk doppio frappuccino half cream filter french froth luwak. Acerbic plunger au barista flavour in froth trade.
 
-<fields slotId="content" data-json='{"fixed":false}' />
+<fields slotId="content" fixed=false />
 
 </block>
 

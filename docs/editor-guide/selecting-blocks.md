@@ -22,25 +22,26 @@ rights: ""
 subjects: []
 title: Selecting blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
     </region>
   </block>
   <block type="slateTable">
-    <region name="table.rows">
-      <block type="row">
-        <region name="cells">
-          <block type="cell" value="${td/slate}" />
+    <region name="table.rows" idField="key">
+      <block type="row" _="${tr}">
+        <region name="cells" idField="key" typeField="type">
+          <block type="header" value="${th/slate}" />
+          <block type="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -57,7 +58,7 @@ Click on a block in the preview. If the frontend marks any of its fields as inli
 
 - A subtle border appears around the block.
 - The field you're editing gets a faint underline.
-- The Quanta toolbar appears above the block (formatting, convert-to, delete, etc.).
+- The block toolbar appears above the block (formatting, convert-to, delete, etc.).
 - The sidebar switches to that block's settings.
 
 ![Slate paragraph in text mode — cursor in the field, sidebar showing block's settings.](../images/block-selected.png)
@@ -68,8 +69,9 @@ Press `Escape` to leave text editing. The block stays selected, but you're no lo
 
 - A full border appears around the block (visually stronger than the text-mode hint).
 - Keyboard shortcuts now operate on the whole block:
-
-\- **Arrow Up / Down** — move selection to the previous / next sibling block (container-aware: jumps into and out of containers).   - **Enter** — add a new block after this one.   - **Delete / Backspace** — remove the selected block.
+- **Arrow Up / Down** — move selection to the previous / next sibling block (container-aware: jumps into and out of containers).
+- **Enter** — add a new block after this one.
+- **Delete / Backspace** — remove the selected block.
 
 Press `Escape` again to **deselect** (or go up to the parent container if this block is inside one). Each `Escape` walks one step up the hierarchy.
 
@@ -98,7 +100,7 @@ While multiple blocks are selected:
 
 - A combined bounding box is drawn around them.
 - `Delete` / `Backspace` removes all of them.
-- The Quanta toolbar dropdown offers actions that apply to all (e.g. "Wrap in...", see [Containers](./containers.md)).
+- The block toolbar dropdown offers actions that apply to all (e.g. "Wrap in...", see [Containers](./containers.md)).
 - The sidebar shows the count and lists each selected block by type.
 
 ![Two adjacent paragraphs multi-selected — combined bounding box, sidebar shows "2 selected", toolbar shows count badge.](../images/multi-select.png)
@@ -130,7 +132,11 @@ When a block is selected, the sidebar shows the **chain of parent containers** f
 
 Click any `‹` arrow to **navigate up** to that level. This does the same thing as pressing `Escape` repeatedly, but visibly — you can see what each parent is named, jump several levels in one click, and edit the parent's own settings (alignment, padding, …) inline without leaving the current selection.
 
-<block type="image" data-json='{"url":"../images/parent-chain.png","align":"center","size":"l","alt":"Sidebar showing parent chain for a slate inside a column inside columns. Three sections each with a `‹` arrow: Columns (\"My Columns Section\"), Column (\"Left Column\"), Text (current, body field shown)."}' />
+<block type="image">
+
+![Sidebar showing parent chain for a slate inside a column inside columns. Three sections each with a \`‹\` arrow: Columns ("My Columns Section"), Column ("Left Column"), Text (current, body field shown).](../images/parent-chain.png)
+
+</block>
 
 This works for any depth — nested columns, slider with templated children, accordion inside a section inside the page. The chain reflects the real DOM hierarchy.
 
@@ -153,7 +159,11 @@ Slides                    [+]
 
 If the container has multiple blocks fields (e.g. a header field and a body field), each appears as a separate section with its own children list and add button.
 
-<block type="image" data-json='{"url":"../images/children-list.png","align":"center","size":"l","alt":"Sidebar with a search container selected, showing two children-list sections — Facets (with three facet rows) and Results Listing (with one Listing row). Each row has a `⋮⋮` drag handle and a `>` drill-in arrow; each section has a `+` add button."}' />
+<block type="image">
+
+![Sidebar with a search container selected, showing two children-list sections — Facets (with three facet rows) and Results Listing (with one Listing row). Each row has a \`⋮⋮\` drag handle and a \`>\` drill-in arrow; each section has a \`+\` add button.](../images/children-list.png)
+
+</block>
 
 ### Picking from the outline (for paged containers)
 

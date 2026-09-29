@@ -6,7 +6,7 @@ contributors: []
 creators:
   - admin
 description: "Advanced topics for optimising your Inka integration: lazy loading
-  the bridge, authentication, and preventing reloads."
+  the bridge, authentication, and customising the editor."
 effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
@@ -22,31 +22,31 @@ subjects:
   - frontend
 title: Advanced
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
     </region>
   </block>
 ---
 
 # Advanced
 
-Advanced topics for optimising your Inka integration: lazy loading the bridge, authentication, and preventing reloads.
+Advanced topics for optimising your Inka integration: lazy loading the bridge, authentication, and customising the editor.
 
 <block type="separator" />
 
 <block type="callout" variation="note">
 
-Volto is built as a monolith CMS framework, so ignore the parts of the documentation that apply to its presentation layer — Inka replaces that piece.
+Inka's editor builds on Volto, Plone's React editor. Volto's own documentation also covers its presentation layer; ignore those parts, because your front end replaces it.
 
 </block>
 
@@ -96,9 +96,9 @@ if (inAdminIframe) {
 
 ## Authentication
 
-As soon as the editor logs into the hydra editor, your frontend should use the same auth token to access the REST API with the same privileges and render private content.
+As soon as an editor signs in to Inka, your frontend should use the same auth token to access the CMS API with the same privileges and render private content.
 
-The `access_token` is passed as a URL parameter on initial load and automatically stored in `sessionStorage` by hydra.js. On SPA navigation, the URL param is gone but the token persists in `sessionStorage`. Use the `getAccessToken()` helper:
+The `access_token` is passed as a URL parameter on initial load and automatically stored in `sessionStorage` by hydra.js. On SPA navigation, the URL param is gone but the token persists in `sessionStorage`. Use the `getAccessToken()` helper. For what this means for security, and how to limit it, see [Deploy and secure Inka](../deploy-and-secure.md#how-an-editors-login-reaches-the-front-end).
 
 ### Javascript
 
@@ -137,23 +137,15 @@ export default function Blog({ params }) {
 }
 ```
 
-## Preventing Reloads
-
-If you wish to make the editing experience smoother you can register for `onRoute` callbacks to prevent the frontend being forced to reload at certain times using the hydra editor. (TODO)
-
 ## Custom Sidebar and CMS UI
 
-If the auto-generated sidebar UI from your block or content schemas isn't suitable, the React Volto framework has an addon system that lets you override CMS components — at widget level, block-settings level, or even whole views like Contents or Site Settings. For example, you might want to replace the image picker with a custom map editor.
+If the auto-generated sidebar UI from your block or content schemas isn't suitable, Volto's add-on system lets you override the editor's components — at widget level, block-settings level, or even whole views like Contents or Site Settings. For example, you might want to replace the image picker with a custom map editor.
 
 - [Volto Block Edit Component documentation](https://6.docs.plone.org/volto/blocks/editcomponent.html)
 
-## Custom Visual Editing (TODO)
+## Custom Visual Editing
 
-In some cases you might want to provide editors with more visual editing inside the preview than Inka currently supports out of the box. For example, a newly created table block might display a form to set the initial number of columns and rows. The bridge exposes the following hooks to make this possible:
-
-- **\`sendBlockUpdate\`** — send an updated version of the block back to the admin after frontend-side changes (TODO).
-- **\`sendBlockAction\`** — perform actions like select, add, move, copy or remove blocks, or invoke custom actions on the Volto block edit component.
-- You can disable Inka's default handling of selection, DnD, or other interactions if you want to replace some parts of Inka and not others (TODO).
+Some editing needs a UI that a schema can't describe, such as a map picker, or a form to choose the rows and columns of a new table. Build that UI as the block's edit component in the editor, as above, and send `disableCustomSidebarEditForm: false` for that block (see [Custom Blocks](./custom-blocks.md)). Your front end then only renders the result.
 
 ## Custom API Endpoints
 

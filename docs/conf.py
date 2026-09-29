@@ -3,9 +3,9 @@
 
 # -- Project information -----------------------------------------------------
 
-project = "Volto Hydra"
-copyright = "2024, Plone Collective"
-author = "Plone Collective"
+project = "Inka"
+copyright = "2024-2026, PretaGov and contributors"
+author = "PretaGov"
 
 # -- General configuration ---------------------------------------------------
 
@@ -50,16 +50,15 @@ exclude_patterns = [
 html_theme = "sphinx_book_theme"
 
 html_theme_options = {
-    "repository_url": "https://github.com/collective/volto-hydra",
+    "repository_url": "https://github.com/Inkaengine/inka",
     "use_repository_button": True,
     "use_edit_page_button": True,
     "path_to_docs": "docs",
     "show_toc_level": 2,
     "navigation_with_keys": True,
-    "announcement": "⚠️ Volto Hydra is a Work in Progress — not yet recommended for production use.",
 }
 
-html_title = "Volto Hydra Documentation"
+html_title = "Inka Documentation"
 html_logo = None
 html_favicon = None
 

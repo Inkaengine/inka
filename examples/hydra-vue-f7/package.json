@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Hydra Vue Framework7",
   "repository": "",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "copy:hydra": "pnpm -F @volto-hydra/hydra-js build && cp ../../packages/hydra-js/hydra.js ./src/js/hydra.js",
     "start": "pnpm run dev",

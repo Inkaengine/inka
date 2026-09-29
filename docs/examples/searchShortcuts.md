@@ -22,10 +22,10 @@ subjects:
   - listings
 title: Search Shortcuts Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
@@ -39,7 +39,7 @@ Renders a set of values as links into a faceted search — a "tag cloud" of shor
 
 <block type="searchShortcuts" index="Subject" searchUrl="/search" variation="default" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

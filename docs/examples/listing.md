@@ -24,11 +24,11 @@ subjects:
   - listings
 title: Listing
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
-    <region name="tabs" widget="object_list">
+    <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
     </region>
   </block>
@@ -39,8 +39,8 @@ blocks-tagged: |
     </region>
   </block>
   <block type="slider">
-    <region name="slides" widget="object_list">
-      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/text}" buttonText="${p[2]/text}" href="${p[2]/link}" preview_image="${img/link}" />
+    <region name="slides" widget="object_list" idField="@id" typeField="@type">
+      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/text}" buttonText="${a?/text}" href="${a?/link}" preview_image="${img/link}" />
     </region>
   </block>
 ---
@@ -57,11 +57,11 @@ Displays a list of content items from a query. The listing block fetches items f
 
 <fields headlineTag="h2">
 
-<fields block="24280e07-e962-4414-8ee5-cdaf58ca5f35" data-json='{"query":[]}'>
+<fields block="24280e07-e962-4414-8ee5-cdaf58ca5f35">
 
-<block type="listing" data-json='{"headline":"Listing: Default","variation":"default","styles":{"backgroundColor":"transparent"},"querystring":{"b_size":"4","limit":"10","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}}' />
+<block type="listing" data-json='{"headline":"Listing: Default","variation":"default","styles":{"backgroundColor":"transparent"},"querystring":{"b_size":"4","limit":"10","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"query":[]}' />
 
-<block type="listing" data-json='{"headline":"Listing: Summary","variation":"summary","styles":{"backgroundColor":"grey"},"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}}' />
+<block type="listing" data-json='{"headline":"Listing: Summary","variation":"summary","styles":{"backgroundColor":"grey"},"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"query":[]}' />
 
 </fields>
 
@@ -77,7 +77,7 @@ Displays a list of content items from a query. The listing block fetches items f
 
 </fields>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-listing" data-json='{"fixed":false,"readOnly":false}'>
+<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-listing" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

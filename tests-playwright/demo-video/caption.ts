@@ -8,3 +8,4 @@
  * the same implementation with the page already bound.
  */
 export { showCaption, clearCaption } from '../helpers/caption';
+export { glance, holdOn, readFor } from '../helpers/demoPacing';
