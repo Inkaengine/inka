@@ -925,10 +925,64 @@ async function fetchQuerystringSearch(url, headers, payload) {
  * @param {Object} [options.extraCriteria={}] - Additional query params (SearchableText, facet.*, sort_on, sort_order)
  * @returns {Function} fetchItems(block, { start, size }) => Promise<{ items, total }>
  */
+const FOLDER_CONTENTS_CRITERION = {
+  i: 'path',
+  o: 'plone.app.querystring.operation.string.relativePath',
+  v: '.::1',
+};
+
+/** Is this search body exactly "this folder's children, in folder order"? */
+function isFolderContentsQuery(body) {
+  const [only, ...rest] = body.query;
+  return (
+    rest.length === 0 &&
+    only?.i === FOLDER_CONTENTS_CRITERION.i &&
+    only?.o === FOLDER_CONTENTS_CRITERION.o &&
+    only?.v === FOLDER_CONTENTS_CRITERION.v &&
+    body.sort_on === 'getObjPositionInParent' &&
+    body.sort_order === 'ascending' &&
+    body.limit === undefined
+  );
+}
+
+/**
+ * A folder's children, `start`..`start + size`, as `{ items, total }`.
+ *
+ * From `contextContent` (the page's content response, already fetched) when
+ * its `items` cover that range and carry every field the listing maps — the
+ * content's items are the default summary, and `image` is built from its
+ * image fields. Otherwise from the content endpoint, asking for all fields.
+ */
+async function fetchFolderContents({ apiUrl, contextPath, contextContent, mapped, start, size }) {
+  const have = contextContent?.items;
+  const total = contextContent?.items_total ?? have?.length;
+  const covered = Array.isArray(have) && (start + size <= have.length || have.length === total);
+  const carried = (item) => mapped.every((field) => field === 'image' || field in item);
+  if (covered && have.every(carried)) {
+    return { items: have.slice(start, start + size).map(normalizeCatalogImage), total };
+  }
+  const params = new URLSearchParams({
+    b_start: String(start),
+    b_size: String(size),
+    metadata_fields: '_all',
+  });
+  const url = `${apiUrl}${contextPath.replace(/\/$/, '')}/++api++?${params}`;
+  const res = await fetch(url, { headers: _getAuthHeaders() });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`${url} answered ${res.status}: ${data?.message ?? ''}`);
+  }
+  return {
+    items: (data.items || []).map(normalizeCatalogImage),
+    total: data.items_total ?? (data.items || []).length,
+  };
+}
+
 export function ploneFetchItems({
   apiUrl,
   contextPath = '/',
   extraCriteria = {},
+  contextContent,
 } = {}) {
   if (!apiUrl) {
     throw new Error('ploneFetchItems requires apiUrl');
@@ -943,6 +997,23 @@ export function ploneFetchItems({
       },
       extraCriteria,
     );
+
+    // This folder's children in folder order, and nothing else, is the
+    // question plone.restapi answers for every folderish page: its content
+    // response's `items` (the folder serializer queries path depth 1,
+    // getObjPositionInParent, no other criteria). Answer it from there — the
+    // page's own content when it covers the page asked for, else a content GET
+    // a CDN can cache, where a @querystring-search POST it cannot.
+    if (isFolderContentsQuery(body)) {
+      return fetchFolderContents({
+        apiUrl,
+        contextPath,
+        contextContent,
+        mapped: Object.keys(block.fieldMapping ?? {}),
+        start,
+        size,
+      });
+    }
 
     const headers = _getAuthHeaders();
     headers['Content-Type'] = 'application/json';

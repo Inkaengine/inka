@@ -644,3 +644,33 @@ describe('internal references under a prefix mount', () => {
     assert.ok(text.includes('"/image-scales-test/test-image.png"'));
   });
 });
+
+// Plone batches a folder's `items` (plone.restapi's HypermediaBatch): 25 by
+// default, from `b_start` / `b_size`, with `items_total` the whole folder.
+// ploneFetchItems now answers a folder-contents listing from here, so a mock
+// that returned every child on every page would page nothing.
+describe('folder items batching', () => {
+  const items = async (query) => {
+    const res = await fetch(`${baseUrl}/_test_data${query}`, { headers: { Accept: 'application/json' } });
+    assert.equal(res.status, 200);
+    return res.json();
+  };
+
+  it('pages the children by b_start / b_size', async () => {
+    const all = await items('?b_size=100');
+    assert.ok(all.items_total > 3, 'the fixture folder needs more than 3 children');
+    const first = await items('?b_start=0&b_size=2');
+    const second = await items('?b_start=2&b_size=2');
+    assert.equal(first.items.length, 2);
+    assert.equal(first.items_total, all.items_total);
+    assert.deepEqual(
+      [...first.items, ...second.items].map((i) => i['@id']),
+      all.items.slice(0, 4).map((i) => i['@id']),
+    );
+  });
+
+  it('gives the first 25 when not asked', async () => {
+    const data = await items('');
+    assert.equal(data.items.length, Math.min(25, data.items_total));
+  });
+});
