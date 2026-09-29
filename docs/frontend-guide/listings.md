@@ -349,6 +349,8 @@ already answers for every folderish page: the content response's `items`. So
 - **Otherwise from the content endpoint**: `GET <context>/++api++?b_start=&b_size=&metadata_fields=_all`,
   a GET a CDN can cache (a `@querystring-search` POST it cannot).
 
+### Javascript
+
 ```javascript
 const fetchItems = {
   listing: ploneFetchItems({ apiUrl, contextPath, contextContent: content }),
