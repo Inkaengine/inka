@@ -2931,7 +2931,7 @@ app.post('/@export', async (req, res) => {
   if (format === 'markdown') {
     const { emitPage, parsePrototypes } = await getEngine();
     const YAML = (await import('yaml')).default;
-    const { SERVER_STATE } = await import('../../lib/blockmd.mjs');
+    const { SERVER_STATE } = await import('../../lib/server-state.mjs');
     const { BLOB_FIELD, blobDefaults } = await import('../../lib/markdown-mount.mjs');
 
     // The CALLER supplies the readability rules; this endpoint writes each page
