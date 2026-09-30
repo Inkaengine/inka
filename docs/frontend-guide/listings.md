@@ -30,7 +30,7 @@ blocks-matched: |
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
@@ -337,17 +337,10 @@ The `pathToApiPath` function is called whenever hydra.js sends a `PATH_CHANGE` m
 
 ## Folder contents come with the page
 
-A listing asking for exactly **this folder's children, in folder order** (the
-default for a listing with no criteria: `path` `.::1`, sorted
-`getObjPositionInParent`, nothing else) is asking the question plone.restapi
-already answers for every folderish page: the content response's `items`. So
-`ploneFetchItems` answers it from there instead of `@querystring-search`:
+A listing asking for exactly **this folder's children, in folder order** (the default for a listing with no criteria: `path` `.::1`, sorted `getObjPositionInParent`, nothing else) is asking the question plone.restapi already answers for every folderish page: the content response's `items`. So `ploneFetchItems` answers it from there instead of `@querystring-search`:
 
-- **From the page's own content, with no request**, when you pass it as
-  `contextContent` and its `items` cover the page asked for and carry every
-  field the listing maps.
-- **Otherwise from the content endpoint**: `GET <context>/++api++?b_start=&b_size=&metadata_fields=_all`,
-  a GET a CDN can cache (a `@querystring-search` POST it cannot).
+- **From the page's own content, with no request**, when you pass it as `contextContent` and its `items` cover the page asked for and carry every field the listing maps.
+- **Otherwise from the content endpoint**: `GET <context>/++api++?b_start=&b_size=&metadata_fields=_all`, a GET a CDN can cache (a `@querystring-search` POST it cannot).
 
 ### Javascript
 
@@ -357,8 +350,7 @@ const fetchItems = {
 };
 ```
 
-Any other question (a type filter, search text or a facet from a search block,
-another sort, a limit, a depth other than 1) is still a `@querystring-search`.
+Any other question (a type filter, search text or a facet from a search block, another sort, a limit, a depth other than 1) is still a `@querystring-search`.
 
 ## Paging Values
 

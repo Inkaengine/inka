@@ -28,7 +28,7 @@ blocks-matched: |
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 ---
@@ -104,12 +104,15 @@ The node kinds a reference can target are the familiar Markdown ones: `p`, `h1`�
 
 The accessor after the slash says what to read:
 
-- `text` — the node's text (from any node)
+- `text` — the node's text read as prose (from any node), for a one-line text field
+- `textarea` — the node's text line for line (from any node), for a textarea field
 - `slate` — the node as a rich value (from any node)
 - `src`, `alt`, `title` — an image's url, alt text, or title string
 - `link` — a link target, stored as the object-browser form (`[{"@id": url}]`)
-- `lang`, `text`, `meta` — a fenced block's language, code, or info string
+- `lang`, `textarea`, `meta` — a fenced block's language, code, or info string
 - `level` — a heading's depth, for composing a tag name
+
+Pick `text` or `textarea` by the widget of the field it fills. They differ only in a paragraph wrapped across lines: `text` reads the wrap as a space, as markdown and a rich value do, while `textarea` keeps every line, because a textarea's newlines are the author's own. A hard break (a trailing `\`) is a newline in both. A slate block's `plaintext` uses `text`, so it always matches its value.
 
 Note that `src` and `link` name different fields, not two spellings of one: `src` is a bare source url (an image's `url`), while `link` is a link target in the object-browser form (a button or teaser `href`).
 
