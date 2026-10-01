@@ -107,6 +107,9 @@ importers:
 
   .:
     dependencies:
+      '@adobe/remark-gridtables':
+        specifier: 3.0.20
+        version: 3.0.20
       '@plone/volto':
         specifier: workspace:*
         version: link:core/packages/volto
@@ -982,7 +985,7 @@ importers:
         version: 7.18.0(eslint@8.57.1)(typescript@5.9.3)
       '@vitejs/plugin-react':
         specifier: ^4.3.4
-        version: 4.7.0(vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.44.1)(yaml@2.8.2))
+        version: 4.7.0(vite@5.4.21(@types/node@24.12.4)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.44.1))
       '@vitest/ui':
         specifier: 'catalog:'
         version: 3.2.6(vitest@3.2.6)
@@ -1591,6 +1594,12 @@ packages:
   '@adobe/css-tools@4.5.0':
     resolution: {integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==}
 
+  '@adobe/mdast-util-gridtables@4.0.19':
+    resolution: {integrity: sha512-Rsl9v3kbz5vGzyROjIhq4m/qriwvU1iu4DTMWAHAnVEC87uTzELf5pqcsJ5GSOdEFhfmHn4MtKd2ALZZ81q5kw==}
+
+  '@adobe/micromark-extension-gridtables@2.0.4':
+    resolution: {integrity: sha512-mzyRI2d0StuUv75VFnffYsHXRUo8J9RlK1EvjfmgHahwda1gNwe1Fqh4AYEZSWChf1HD/QBRcL6hEnxj9hedMg==}
+
   '@adobe/react-spectrum-ui@1.2.1':
     resolution: {integrity: sha512-wcrbEE2O/9WnEn6avBnaVRRx88S5PLFsPLr4wffzlbMfXeQsy+RMQwaJd3cbzrn18/j04Isit7f7Emfn0dhrJA==}
     peerDependencies:
@@ -1608,6 +1617,9 @@ packages:
     peerDependencies:
       react: 18.2.0
       react-dom: 18.2.0
+
+  '@adobe/remark-gridtables@3.0.20':
+    resolution: {integrity: sha512-avkCL+619sLX0eQA2oavf3jg0op4m/DCMNZy/9lx7Xv66bSngHHFICYYgL4nfX0k10yRxw8a3EvvMRbCegkXBQ==}
 
   '@ampproject/remapping@2.3.0':
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
@@ -15227,6 +15239,24 @@ snapshots:
 
   '@adobe/css-tools@4.5.0': {}
 
+  '@adobe/mdast-util-gridtables@4.0.19':
+    dependencies:
+      '@adobe/micromark-extension-gridtables': 2.0.4
+      mdast-util-from-markdown: 2.0.3
+      mdast-util-to-hast: 13.2.1
+      mdast-util-to-markdown: 2.1.2
+      unist-util-visit: 5.1.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@adobe/micromark-extension-gridtables@2.0.4':
+    dependencies:
+      micromark: 4.0.2
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
+    transitivePeerDependencies:
+      - supports-color
+
   '@adobe/react-spectrum-ui@1.2.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)':
     dependencies:
       react: 18.2.0
@@ -15253,6 +15283,13 @@ snapshots:
       react-stately: 3.47.0(react@18.2.0)
       react-transition-group: 4.4.5(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       use-sync-external-store: 1.6.0(react@18.2.0)
+
+  '@adobe/remark-gridtables@3.0.20':
+    dependencies:
+      '@adobe/mdast-util-gridtables': 4.0.19
+      '@adobe/micromark-extension-gridtables': 2.0.4
+    transitivePeerDependencies:
+      - supports-color
 
   '@ampproject/remapping@2.3.0':
     dependencies:
@@ -20480,7 +20517,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitejs/plugin-react@4.7.0(vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.44.1)(yaml@2.8.2))':
+  '@vitejs/plugin-react@4.7.0(vite@5.4.21(@types/node@24.12.4)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.44.1))':
     dependencies:
       '@babel/core': 7.28.5
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.28.5)
@@ -20488,7 +20525,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 6.4.3(@types/node@24.12.4)(jiti@2.7.0)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.44.1)(yaml@2.8.2)
+      vite: 5.4.21(@types/node@24.12.4)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.44.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -20609,7 +20646,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 2.0.0
-      vitest: 3.2.6(@types/debug@4.1.13)(@types/node@24.12.4)(@vitest/ui@3.2.6)(jsdom@28.1.0(@noble/hashes@1.8.0))(less@3.13.1)(lightningcss@1.32.0)(sass@1.97.1)(terser@5.44.1)
+      vitest: 3.2.6(@types/debug@4.1.13)(@types/node@22.19.3)(@vitest/ui@3.2.6)(jsdom@28.1.0(@noble/hashes@1.8.0))(less@3.11.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.44.1)
 
   '@vitest/utils@2.0.5':
     dependencies:
@@ -32151,24 +32188,6 @@ snapshots:
       lightningcss: 1.32.0
       sass: 1.97.1
       terser: 5.44.1
-
-  vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.44.1)(yaml@2.8.2):
-    dependencies:
-      esbuild: 0.25.12
-      fdir: 6.5.0(picomatch@4.0.3)
-      picomatch: 4.0.3
-      postcss: 8.5.6
-      rollup: 4.59.0
-      tinyglobby: 0.2.15
-    optionalDependencies:
-      '@types/node': 24.12.4
-      fsevents: 2.3.3
-      jiti: 2.7.0
-      less: 3.13.1
-      lightningcss: 1.32.0
-      sass: 1.58.0
-      terser: 5.44.1
-      yaml: 2.8.2
 
   vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(less@3.13.1)(lightningcss@1.32.0)(sass@1.97.1)(terser@5.44.1)(yaml@2.8.2):
     dependencies:
