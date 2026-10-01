@@ -3,6 +3,12 @@ name: Build and test
 on:
   push:
 
+# The browser jobs run in a container, where a step's default shell is sh: bash
+# ranges like {1..30} would not expand, and a wait loop would try once.
+defaults:
+  run:
+    shell: bash
+
 # Every test port, stated. `tests-playwright/ports.ts` has no defaults on
 # purpose — a checkout that fell back to these numbers could take over another
 # checkout's servers without saying so — so CI declares them like any other
@@ -181,6 +187,10 @@ jobs:
           pnpm install --frozen-lockfile
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd docs/examples/test-react && npx vite --port ${{ env.HYDRA_REACT_DOC_PORT }} --strictPort &
@@ -219,6 +229,9 @@ jobs:
           # Per-frontend discovery would remove the need to choose.
           FRONTEND_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}
           MOCK_PARENT_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}/mock-parent.html
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -281,11 +294,15 @@ jobs:
           path: build/
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
-            VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
+            VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
             pnpm start:prod &
           sleep 3
       - name: Wait for servers
@@ -301,6 +318,9 @@ jobs:
           CI: true
           NO_WEBSERVER: true
           USE_PREBUILT: true
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -372,11 +392,15 @@ jobs:
           path: build/
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
-            VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
+            VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
             pnpm start:prod &
           (cd examples/hydra-nextjs && pnpm run start:test) &
           sleep 3
@@ -404,6 +428,9 @@ jobs:
           CI: true
           NO_WEBSERVER: true
           USE_PREBUILT: true
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -459,6 +486,10 @@ jobs:
         run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace && pnpm run build:test
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
@@ -491,6 +522,9 @@ jobs:
           # above) — the variable was simply never passed, while FRONTEND_URL
           # beside it was. globalSetup now fails rather than run type-only.
           MOCK_PARENT_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}/mock-parent.html
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -555,11 +589,15 @@ jobs:
         run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace && pnpm run build:test
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
-            VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
+            VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
             pnpm start:prod &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
           sleep 3
@@ -576,6 +614,9 @@ jobs:
           CI: true
           NO_WEBSERVER: true
           USE_PREBUILT: true
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -639,6 +680,10 @@ jobs:
         run: cd docs/quickstart/astro && pnpm install --ignore-workspace
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/hydra-nextjs && pnpm run start:test &
@@ -687,6 +732,9 @@ jobs:
           # two, and nominates nextjs.
           FRONTEND_URL: http://localhost:${{ env.HYDRA_NEXTJS_PORT }}
           MOCK_PARENT_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}/mock-parent.html
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4

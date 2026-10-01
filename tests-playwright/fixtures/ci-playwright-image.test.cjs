@@ -19,3 +19,20 @@ test("the CI Playwright image matches @playwright/test's version", () => {
   assert.ok(tags.length > 0, 'the browser jobs run in the Playwright image');
   for (const tag of tags) assert.equal(tag, version, `image v${tag} vs @playwright/test ${version}`);
 });
+
+// A step's stdout closes when the step ends (in a container, the `docker exec`
+// returns), so a server backgrounded with `&` that still logs to it dies of
+// EPIPE on its next line — every test after that is "connection refused".
+test('steps that background a server send its output to a file first', () => {
+  const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/test.yaml'), 'utf8');
+  const steps = workflow.split(/\n(?=\s+- name: )/);
+  const backgrounding = steps.filter((step) => /&\s*$/m.test(step));
+  assert.ok(backgrounding.length > 0, 'some step starts servers in the background');
+  for (const step of backgrounding) {
+    const name = step.match(/- name: (.*)/)[1];
+    const lines = step.split('\n');
+    const redirect = lines.findIndex((line) => /^\s*exec >\s*\S+ 2>&1\s*$/.test(line));
+    const firstBackground = lines.findIndex((line) => /&\s*$/.test(line));
+    assert.ok(redirect !== -1 && redirect < firstBackground, `"${name}" redirects output before its first \`&\``);
+  }
+});
