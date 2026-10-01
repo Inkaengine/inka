@@ -113,15 +113,51 @@ importers:
       '@plone/volto':
         specifier: workspace:*
         version: link:core/packages/volto
+      hast-util-from-html:
+        specifier: 2.0.3
+        version: 2.0.3
+      hast-util-to-html:
+        specifier: 9.0.5
+        version: 9.0.5
+      hast-util-to-mdast:
+        specifier: 10.1.2
+        version: 10.1.2
+      htmlparser2:
+        specifier: 6.1.0
+        version: 6.1.0
+      ignore:
+        specifier: 5.3.2
+        version: 5.3.2
+      mdast-util-to-hast:
+        specifier: 13.2.1
+        version: 13.2.1
+      mdast-util-to-markdown:
+        specifier: 2.1.2
+        version: 2.1.2
       remark-definition-list:
         specifier: ^2.0.0
         version: 2.0.0
+      remark-gfm:
+        specifier: 4.0.1
+        version: 4.0.1
+      remark-parse:
+        specifier: 11.0.0
+        version: 11.0.0
+      remark-stringify:
+        specifier: 11.0.0
+        version: 11.0.0
       send:
         specifier: ~0.19.0
         version: 0.19.2
+      unified:
+        specifier: 11.0.5
+        version: 11.0.5
       volto-hydra:
         specifier: workspace:*
         version: link:packages/volto-hydra
+      yaml:
+        specifier: 1.10.2
+        version: 1.10.2
     devDependencies:
       '@babel/core':
         specifier: ^7.0.0
@@ -207,6 +243,9 @@ importers:
       css-loader:
         specifier: 5.2.7
         version: 5.2.7(webpack@5.90.1)
+      express:
+        specifier: 4.22.1
+        version: 4.22.1
       html-webpack-plugin:
         specifier: 5.5.0
         version: 5.5.0(webpack@5.90.1)

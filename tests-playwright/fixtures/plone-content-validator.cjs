@@ -886,11 +886,28 @@ function imageDimensions(file) {
       }
     }
   }
+  // A block id names ONE block on its page: the editor maps an id to a block, so
+  // of two blocks sharing an id only one can be selected or edited. Each
+  // container's own layout can resolve perfectly (every summary-list row's value
+  // block was "v1"), so the layout checks above can't see it.
+  function checkUniqueIds(rel, blocks, parent, firstIn) {
+    for (const [bid, block] of Object.entries(blocks || {})) {
+      if (!block || typeof block !== 'object') continue;
+      const where = parent ?? 'the page';
+      if (firstIn.has(bid)) {
+        errors.push(`  ${rel}: block id ${bid} is used twice (in ${firstIn.get(bid)} and ${where}) — a block id must be unique on its page, or the editor can select and edit only one of them`);
+      } else {
+        firstIn.set(bid, where);
+      }
+      if (block.blocks && typeof block.blocks === 'object') checkUniqueIds(rel, block.blocks, bid, firstIn);
+    }
+  }
   for (const { rel, data } of items) {
     checkLayout(rel, null, data);  // page-level blocks_layout
     for (const [bid, block] of walkBlocks(data.blocks)) {
       if (block.blocks && typeof block.blocks === 'object') checkLayout(rel, bid, block);
     }
+    checkUniqueIds(rel, data.blocks, null, new Map());
   }
 
   // Parent containers (metadata cross-check for completeness). Uses the `@id`
