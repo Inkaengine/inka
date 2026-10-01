@@ -712,9 +712,13 @@ jobs:
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/hydra-nextjs && pnpm run start:test &
           cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} npx vite --port ${{ env.HYDRA_F7_PORT }} --strictPort --config vite.config.test.mjs &
-          npx vite --port ${{ env.HYDRA_VANILLA_DOC_PORT }} --strictPort --config docs/quickstart/vanilla/vite.config.mjs &
-          cd docs/quickstart/svelte && npx vite --port ${{ env.HYDRA_SVELTE_QS_PORT }} --strictPort &
-          cd docs/quickstart/astro && npx astro dev --port ${{ env.HYDRA_ASTRO_QS_PORT }} &
+          # The quick starts listen on every interface (--host, as the F7 app's
+          # config does): in the container `localhost` is both 127.0.0.1 and ::1,
+          # a dev server bound to "localhost" takes one of them, and Node's fetch
+          # (the tests' reachability probe) can pick the other: ECONNREFUSED.
+          npx vite --host --port ${{ env.HYDRA_VANILLA_DOC_PORT }} --strictPort --config docs/quickstart/vanilla/vite.config.mjs &
+          cd docs/quickstart/svelte && npx vite --host --port ${{ env.HYDRA_SVELTE_QS_PORT }} --strictPort &
+          cd docs/quickstart/astro && npx astro dev --host --port ${{ env.HYDRA_ASTRO_QS_PORT }} &
           sleep 3
       - name: Wait for servers
         run: |
