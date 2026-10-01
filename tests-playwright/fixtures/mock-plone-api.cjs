@@ -794,6 +794,18 @@ function loadRawContentFromDisk(urlPath) {
   // Miss: reload the mount that owns this path (format-agnostic -- markdown
   // re-reads its tree, JSON rescans) and retry once. Content added since startup
   // is picked up here rather than needing a restart.
+  //
+  // LOCAL-DEV ONLY, for the same reason the content watcher is (see
+  // setupContentWatchers): in CI the fixtures are a static checkout, so nothing
+  // is ever added to disk mid-run and a reload can only re-find what's already
+  // cached. But search/listing specs look up many synthetic paths (resolveuid,
+  // query results) that aren't content dirs -- every one misses, and an
+  // unconditional reload runs a full scanContentDir over the whole mount,
+  // re-logging ~260 lines PER MISS. That floods the CI log into the hundreds of
+  // thousands of lines and pins the CPU rescanning, which starves concurrent
+  // requests (truncated responses -> flaky search/listing failures). In CI a
+  // miss is just a miss.
+  if (process.env.CI) return null;
   const mount = mountFor(urlPath);
   if (mount) {
     reloadMount(mount);
@@ -1537,8 +1549,8 @@ function templateIdToPath(templateId) {
     let resolved = uidToPathMap[uidMatch[1]];
     if (!resolved) {
       // Same fallback resolveUidUrls uses: a template added after startup isn't in the
-      // index yet, so rescan before calling it missing.
-      initContentDirMap();
+      // index yet, so rescan before calling it missing (local dev only; see rescanOnMiss).
+      rescanOnMiss();
       resolved = uidToPathMap[uidMatch[1]];
     }
     return resolved ? resolved.replace(/\/+$/, '') || '/' : null;
@@ -1721,7 +1733,8 @@ function resolveUidUrls(obj, parentKey = null) {
       let resolvedPath = uidToPathMap[uid];
       if (!resolvedPath) {
         // UID not found — rescan content dirs in case new files were added
-        initContentDirMap();
+        // (local dev only; see rescanOnMiss).
+        rescanOnMiss();
         resolvedPath = uidToPathMap[uid];
       }
       if (!resolvedPath) return match;
@@ -2427,6 +2440,20 @@ function initContentDirMap() {
     scanContentDir(dirPath, mountPath);
   });
   console.log(`Registered ${Object.keys(contentDirMap).length} content paths`);
+}
+
+// A cache MISS used to rescan the whole tree in case a fixture was added after
+// startup. That's a LOCAL-DEV convenience only -- the same reason the content
+// watcher is gated (see setupContentWatchers). In CI the fixtures are a static
+// checkout; nothing is added mid-run, so a rescan can only re-find what's
+// already registered. But resolveuid lookups, depth-less listings, and image
+// serving all rescan on EVERY miss, and the search/listing specs generate many
+// synthetic misses -- each one ran a full scanContentDir (~260 log lines) and
+// pinned the CPU, flooding the CI log and starving concurrent requests
+// (truncated responses -> flaky failures). So on a miss, only rescan locally.
+function rescanOnMiss() {
+  if (process.env.CI) return;
+  initContentDirMap();
 }
 
 // Initialize on startup
@@ -5135,8 +5162,9 @@ app.get('*/@search', (req, res) => {
   } else {
     // No depth filter - return all content items from disk.
     // Rescan so newly-added fixture directories surface without a server
-    // restart — same "rescan on miss" pattern as resolveUidUrls() above.
-    initContentDirMap();
+    // restart — same "rescan on miss" pattern as resolveUidUrls() above
+    // (local dev only; see rescanOnMiss).
+    rescanOnMiss();
     items = Object.keys(contentDirMap)
       .filter((itemPath) => itemPath !== '/')
       .map((itemPath) => loadContentFromDisk(itemPath))
@@ -5706,7 +5734,7 @@ app.get('*/@@images/*', (req, res) => {
   // If not found, rescan in case content was added after startup
   let dirInfo = contentDirMap[contentPath];
   if (!dirInfo) {
-    initContentDirMap();
+    rescanOnMiss(); // local dev only; see rescanOnMiss
     dirInfo = contentDirMap[contentPath];
   }
   const imageDir = dirInfo ? path.join(dirInfo.dirPath, fieldName) : null;
