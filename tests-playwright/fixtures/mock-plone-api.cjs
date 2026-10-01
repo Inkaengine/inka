@@ -2462,7 +2462,14 @@ function setupContentWatchers() {
     }
   }
 }
-setupContentWatchers();
+// Live reload is a LOCAL-DEV convenience: edit a fixture, see it served without a
+// restart. In CI the fixtures are checked-out source that nothing edits mid-run,
+// so the watch has no value — and it actively hurts: ANY write under the content
+// dir fires the watcher, and one change re-runs scanContentDir over the WHOLE
+// tree, re-logging every mount (~260 lines per change), flooding the CI log into
+// the tens of thousands of lines and slowing the suite. No spec writes a disk
+// fixture and expects a reload, so don't watch in CI.
+if (!process.env.CI) setupContentWatchers();
 
 /**
  * Get content for a path
