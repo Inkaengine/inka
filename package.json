@@ -55,6 +55,7 @@
     "example:nuxt": "pnpm --filter nuxt-blog-starter install && pnpm --filter nuxt-blog-starter run dev"
   },
   "dependencies": {
+    "@adobe/remark-gridtables": "3.0.20",
     "@plone/volto": "workspace:*",
     "remark-definition-list": "^2.0.0",
     "send": "~0.19.0",
