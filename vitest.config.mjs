@@ -40,10 +40,8 @@ export default defineConfig({
       'packages/volto-hydra/**/*.{test,spec}.{js,jsx,ts,tsx}',
       // any docs-tree unit tests
       'docs/**/*.{test,spec}.mjs',
-      // the block <-> markdown converter and the prototype-mapping spike
+      // blockmd: the prototype engine and the slate <-> markdown core
       'lib/**/*.{test,spec}.mjs',
-      // blockmd tooling: exporters, checks, and content migrations
-      'proposals/blockmd/**/*.{test,spec}.mjs',
       // The pure data helpers (buildQuerystringSearchBody etc.) — server-safe,
       // no DOM, so their unit tests live alongside them here.
       'packages/helpers/**/*.{test,spec}.{js,jsx,ts,tsx}',

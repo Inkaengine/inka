@@ -1,5 +1,18 @@
 # blockmd cutover — one format, loader + Sphinx on the same files
 
+> **Status: done (2026-09-30).** The cutover is complete and the scaffolding
+> this describes has been deleted, including the old engine (`lib/blockmd.mjs`)
+> and the scripts that lived here (`export-tree`, `import-tree`, `convert`,
+> `diag`, `check-parity`, `export-proto`, the migrations). Kept as the design
+> history. What is live:
+>
+> - Engine: `lib/prototype-mapping.mjs`, over the markdown layer in `lib/slate-md.mjs`;
+>   default prototypes in `lib/default-prototypes.mjs`.
+> - Loader: `lib/markdown-mount.mjs` (the mock API serves markdown mounts through it).
+> - Export to markdown: `POST /@export` with `format: 'markdown'` and the
+>   prototypes from `lib/default-prototypes.mjs`.
+> - Authoring guide: `docs/testing/blockmd.md`.
+
 ## Goal / end state
 
 **Two mount formats, one content model.** The loader reads a mount as either
