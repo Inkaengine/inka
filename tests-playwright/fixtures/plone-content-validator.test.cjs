@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { validate, checkIntegrity, checkBlockSchemas } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom } = require('./plone-content-validator.cjs');
 
 /**
  * Build a minimal plone.exportimport content tree under a temp dir.
@@ -1376,3 +1376,48 @@ describe('checkIntegrity — every list item has its own id', () => {
     assert.deepEqual(idErrors(r), []);
   });
 });
+
+// A site's block schemas, as the site stores them (one JSON file the frontend's
+// config also loads) -- the ONE source both checks read: what fields a block
+// declares, and what shape each field's value must have.
+describe('validating against a site\'s schemas', () => {
+  const SCHEMAS = {
+    card: {
+      blockSchema: { properties: { title: { type: 'string' }, body: { widget: 'slate' } } },
+    },
+    grid: {
+      blockSchema: {
+        properties: {
+          headline: { type: 'string' },
+          cells: { widget: 'object_list', idField: 'key', typeField: '@type' },
+        },
+      },
+      schemaEnhancer: { inheritSchemaFrom: { defaultsField: 'itemDefaults' } },
+    },
+  };
+  const page = (blocks) => [{ rel: 'content/x', data: { blocks } }];
+
+  it('derives the field map from the schemas: fields, defaults prefix, identity fields', () => {
+    const map = fieldMapFromSchemas(SCHEMAS);
+    assert.deepEqual(map.blocks.card, { fields: ['title', 'body'] });
+    assert.deepEqual(map.blocks.grid, { fields: ['headline', 'cells'], defaultsPrefix: 'itemDefaults' });
+    assert.deepEqual([...map.identityFields].sort(), ['@id', '@type', 'key']);
+  });
+
+  it('reports a field the schemas do not declare', () => {
+    const r = checkBlockSchemas(page({ b1: { '@type': 'card', title: 'T', url: '/x' } }), fieldMapFromSchemas(SCHEMAS));
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /card\.url/);
+  });
+
+  it('checks a site block\'s field values against its schema, not just its field names', () => {
+    // A slate field holding a {value:[...]} wrapper has the right NAME; only the
+    // schema says it must be a bare array of nodes.
+    const r = checkIntegrity(
+      page({ b1: { '@type': 'card', title: 'T', body: { value: [{ type: 'p', children: [{ text: 'x' }] }] } } }),
+      { schemaFor: schemaForFrom(SCHEMAS) },
+    );
+    assert.ok(r.errors.some((e) => /card\) field "body" is widget:slate/.test(e)), r.errors.join('\n'));
+  });
+});
+

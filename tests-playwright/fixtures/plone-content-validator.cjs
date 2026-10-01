@@ -1059,4 +1059,38 @@ function formatReport(title, result) {
   return lines.join('\n');
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, formatReport };
+/**
+ * A site's block schemas -- `{ blockType: { blockSchema, schemaEnhancer? } }`,
+ * the JSON its frontend config loads -- read for the two questions content is
+ * checked against: which fields a block declares (checkBlockSchemas) and what
+ * shape each field's value has (checkIntegrity's `schemaFor`). One source; no
+ * map derived from it and stored.
+ */
+function schemaForFrom(schemas) {
+  return (type) => schemas[type]?.blockSchema ?? null;
+}
+
+/** The field map checkBlockSchemas reads, derived from the schemas: each
+ *  block's declared fields (its schema properties), the prefix its per-item
+ *  defaults are stored under (`<defaultsField>_<field>`), and the keys a
+ *  container stamps on its children (every object_list's idField/typeField). */
+function fieldMapFromSchemas(schemas) {
+  const blocks = {};
+  const identityFields = new Set(['@id', '@type']);
+  const stamps = (node) => {
+    if (Array.isArray(node)) { node.forEach(stamps); return; }
+    if (!node || typeof node !== 'object') return;
+    for (const key of ['idField', 'typeField']) if (typeof node[key] === 'string') identityFields.add(node[key]);
+    Object.values(node).forEach(stamps);
+  };
+  for (const [type, def] of Object.entries(schemas)) {
+    const entry = { fields: Object.keys(def?.blockSchema?.properties ?? {}) };
+    const defaultsField = def?.schemaEnhancer?.inheritSchemaFrom?.defaultsField;
+    if (defaultsField) entry.defaultsPrefix = defaultsField;
+    blocks[type] = entry;
+    stamps(def?.blockSchema);
+  }
+  return { blocks, identityFields: [...identityFields] };
+}
+
+module.exports = { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, formatReport };
