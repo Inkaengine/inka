@@ -234,6 +234,42 @@ test.describe('Empty slate typing', () => {
     }
   });
 
+  test('text typed after the browser placeholder <br> replaces it', async ({ helper, page }) => {
+    // A select-all delete leaves the browser's placeholder: `<p><br></p>`. In
+    // the CI container the caret then sometimes sat in a text node AFTER it
+    // (the frontend's re-render or a caret target put one there), the browser
+    // typed after the placeholder instead of replacing it, and the line gained
+    // a break nobody typed: the admin got "\nFresh" and the reader saw an empty
+    // line above "Fresh". Build that state directly, so the test doesn't depend
+    // on the timing that produced it.
+    const field = await helper.getEditorLocator('mock-block-1', 'value');
+    await field.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('Backspace');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('');
+    await field.evaluate((el) => {
+      const line = el.querySelector('[data-node-id]') ?? el;
+      line.insertBefore(document.createElement('br'), line.firstChild);
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      let last: Text | null = null;
+      let t;
+      while ((t = walker.nextNode())) last = t as Text;
+      if (!last) {
+        last = document.createTextNode('\uFEFF');
+        line.appendChild(last);
+      }
+      const range = document.createRange();
+      range.setStart(last, last.length);
+      range.collapse(true);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await page.keyboard.type('Fresh');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('Fresh');
+    expect(await field.evaluate((el) => el.querySelectorAll('br').length), 'the placeholder <br> is gone').toBe(0);
+  });
+
   test('bold typed into an empty slate shows once after the next FORM_DATA', async ({
     helper,
     page,

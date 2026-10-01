@@ -315,6 +315,12 @@ const CONTROL_TAGS = new Set([
 ]);
 const CONTROL_SELECTOR = 'button, summary, a[href], [role="button"]';
 
+/** Inline elements: a line runs through them (see isPlaceholderBr). */
+const INLINE_TAGS = new Set([
+  'A', 'ABBR', 'B', 'CODE', 'DEL', 'EM', 'I', 'MARK', 'S', 'SMALL', 'SPAN',
+  'STRONG', 'SUB', 'SUP', 'U',
+]);
+
 /**
  * Virtual block UID for page-level fields (title, description, preview_image, etc.)
  * Used to distinguish "page field selected" from "nothing selected" (null)
@@ -325,6 +331,7 @@ export const PAGE_BLOCK_UID = '_page';
  * Bridge class creating a two-way link between the Hydra and the frontend.
  * @exports Bridge - Exported for testing purposes
  */
+
 export class Bridge {
   /**
    * Constructor for the Bridge class.
@@ -3297,6 +3304,7 @@ export class Bridge {
     const insertionText = text.replace(/^ /, '\u00A0').replace(/ $/, '\u00A0');
 
     if (!range.collapsed) range.deleteContents();
+    this.dropPlaceholderBrBeforeCaret();
 
     // Type into the text node the caret is in: the frontend drew it (from the
     // render data's zero-width space when the element was empty), so its next
@@ -8277,10 +8285,6 @@ export class Bridge {
    * `<strong>…<br></strong>more` is real, because "more" follows it.
    */
   isPlaceholderBr(br) {
-    const INLINE = new Set([
-      'A', 'ABBR', 'B', 'CODE', 'DEL', 'EM', 'I', 'MARK', 'S', 'SMALL', 'SPAN',
-      'STRONG', 'SUB', 'SUP', 'U',
-    ]);
     let node = br;
     while (node) {
       for (let n = node.nextSibling; n; n = n.nextSibling) {
@@ -8293,10 +8297,46 @@ export class Bridge {
         if (!empty) return false;
       }
       const parent = node.parentElement;
-      if (!parent || !INLINE.has(parent.tagName)) return true;
+      if (!parent || !INLINE_TAGS.has(parent.tagName)) return true;
       node = parent;
     }
     return true;
+  }
+
+  /**
+   * Remove the browser's placeholder <br> when text is about to go in AFTER it.
+   *
+   * A select-all delete leaves `<p><br></p>`. The browser replaces that <br>
+   * when the caret is before it, but the caret can sit in a text node after it
+   * (the frontend's re-render, or a caret target, put one there): the browser
+   * then types after the placeholder, which stops being one — the line gains a
+   * break nobody typed, and the admin gets "\nFresh" with an empty line above.
+   * So: a line with no visible content whose only <br> is before the caret
+   * loses that <br> before the text goes in. A line with real breaks has two
+   * <br>s (a break at the end of a line needs a second one to show), or text.
+   */
+  dropPlaceholderBrBeforeCaret() {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    let line = range.startContainer.nodeType === Node.ELEMENT_NODE
+      ? range.startContainer
+      : range.startContainer.parentElement;
+    while (line && INLINE_TAGS.has(line.tagName)) line = line.parentElement;
+    if (!line) return;
+    const brs = [];
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.nodeType === Node.TEXT_NODE) {
+        if (this.stripZeroWidthSpaces(n.textContent || '') !== '') return;
+      } else if (n.tagName === 'BR') {
+        brs.push(n);
+      } else if (!INLINE_TAGS.has(n.tagName)) {
+        return; // an image or a nested block is content
+      }
+    }
+    if (brs.length !== 1 || range.comparePoint(brs[0], 0) !== -1) return;
+    brs[0].remove();
   }
 
   domNodeToSlate(el, metadataMap, matchMetadataFromDom = false, keepCaretTargets = false) {
@@ -11811,6 +11851,9 @@ export class Bridge {
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
           this.correctInvalidWhitespaceSelection();
           this.ensureValidInsertionTarget();
+          // Here, not in beforeinput: by beforeinput the character is already
+          // in the DOM. Replayed keys get the same in _insertTextAtCursor.
+          this.dropPlaceholderBrBeforeCaret();
         }
   }
 
