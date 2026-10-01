@@ -3297,14 +3297,16 @@ export class Bridge {
   _insertTextAtCursor(text, editableField) {
     const sel = window.getSelection();
     if (!sel?.rangeCount) return;
-    const range = sel.getRangeAt(0);
 
     // NBSP for spaces to prevent CSS whitespace collapse in inline elements.
     // handleTextChange converts NBSP back to regular space in the model.
     const insertionText = text.replace(/^ /, '\u00A0').replace(/ $/, '\u00A0');
 
-    if (!range.collapsed) range.deleteContents();
+    if (!sel.getRangeAt(0).collapsed) sel.getRangeAt(0).deleteContents();
+    this.adoptFrontendCaretTarget();
     this.dropPlaceholderBrBeforeCaret();
+    // Both may have moved the caret: read the range after them.
+    const range = sel.getRangeAt(0);
 
     // Type into the text node the caret is in: the frontend drew it (from the
     // render data's zero-width space when the element was empty), so its next
@@ -8304,6 +8306,42 @@ export class Bridge {
   }
 
   /**
+   * Move the caret out of a caret node the bridge made into the frontend's own.
+   *
+   * restoreSlateSelection parks the caret in a U+FEFF text node of its own when
+   * the element has nowhere to put it. If the frontend has since drawn its own
+   * caret target (U+200B, from the render data) on the same line, text typed
+   * into the bridge's node is text the frontend doesn't know about: its next
+   * render draws the same text again in its own node ("FreshFresh"). So before
+   * a character goes in, the caret moves to the end of the frontend's node and
+   * the bridge's node goes — the same cleanup _insertTextAtCursor does after.
+   */
+  adoptFrontendCaretTarget() {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !sel.isCollapsed) return;
+    const bridgeNode = sel.anchorNode;
+    if (bridgeNode?.nodeType !== Node.TEXT_NODE || !/^\uFEFF+$/.test(bridgeNode.data)) return;
+    let line = bridgeNode.parentElement;
+    while (line && INLINE_TAGS.has(line.tagName)) line = line.parentElement;
+    if (!line) return;
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+    let target = null;
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n !== bridgeNode && /^\u200B+$/.test(n.data)) {
+        target = n;
+        break;
+      }
+    }
+    if (!target) return;
+    const range = document.createRange();
+    range.setStart(target, target.length);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    bridgeNode.remove();
+  }
+
+  /**
    * Remove the browser's placeholder <br> when text is about to go in AFTER it.
    *
    * A select-all delete leaves `<p><br></p>`. The browser replaces that <br>
@@ -11853,6 +11891,7 @@ export class Bridge {
           this.ensureValidInsertionTarget();
           // Here, not in beforeinput: by beforeinput the character is already
           // in the DOM. Replayed keys get the same in _insertTextAtCursor.
+          this.adoptFrontendCaretTarget();
           this.dropPlaceholderBrBeforeCaret();
         }
   }

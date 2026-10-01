@@ -270,6 +270,39 @@ test.describe('Empty slate typing', () => {
     expect(await field.evaluate((el) => el.querySelectorAll('br').length), 'the placeholder <br> is gone').toBe(0);
   });
 
+  test("text typed while the caret is in the bridge's caret node, beside the frontend's, shows once", async ({
+    helper,
+    page,
+  }) => {
+    // After a clear the frontend draws its own zero-width caret target (U+200B,
+    // from the render data). In the CI container the caret was sometimes still
+    // in a caret node the bridge had made (U+FEFF) before that render: the
+    // typing went into the bridge's node, the frontend drew the text again in
+    // its own, and the admin got "FreshFresh". Build that state directly.
+    const field = await helper.getEditorLocator('mock-block-1', 'value');
+    await field.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('Backspace');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('');
+    await field.evaluate((el) => {
+      const line = el.querySelector('[data-node-id]') ?? el;
+      const bridgeNode = document.createTextNode('\uFEFF');
+      line.insertBefore(bridgeNode, line.firstChild);
+      const range = document.createRange();
+      range.setStart(bridgeNode, 1);
+      range.collapse(true);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await page.keyboard.type('Fresh');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('Fresh');
+    await sendAdminUpdate(page, helper, 'mock-empty-slate', 'Changed by the admin');
+    expect(await visibleText(field)).toBe('Fresh');
+    const nodes = await textNodesWith(field, 'Fresh');
+    expect(nodes.found, `text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+  });
+
   test('bold typed into an empty slate shows once after the next FORM_DATA', async ({
     helper,
     page,
