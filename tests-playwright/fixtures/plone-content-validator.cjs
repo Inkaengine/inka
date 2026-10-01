@@ -1066,6 +1066,16 @@ function formatReport(title, result) {
  * shape each field's value has (checkIntegrity's `schemaFor`). One source; no
  * map derived from it and stored.
  */
+/** Load a site's schemas: a JS module (`.mjs`/`.js`, its default export) --
+ *  plain data the frontend config also imports, so shared pieces are written
+ *  once -- or a `.json` file. */
+async function loadSchemas(file) {
+  const abs = require('path').resolve(file);
+  if (abs.endsWith('.json')) return JSON.parse(require('fs').readFileSync(abs, 'utf8'));
+  const mod = await import(require('url').pathToFileURL(abs).href);
+  return mod.default ?? mod;
+}
+
 function schemaForFrom(schemas) {
   return (type) => schemas[type]?.blockSchema ?? null;
 }
@@ -1093,4 +1103,4 @@ function fieldMapFromSchemas(schemas) {
   return { blocks, identityFields: [...identityFields] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, formatReport };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };

@@ -2343,15 +2343,20 @@ function isHydraOwned(urlPath) {
 }
 
 /**
- * A consumer's own block schemas, from CONTENT_SCHEMAS: the JSON its frontend
- * config loads, `{ blockType: { blockSchema, schemaEnhancer? } }`. Its content is
- * checked against them -- each field's value against its widget, and every
- * field against what the block declares. Without it a consumer's blocks are not
- * schema-checked (hydra's own schemas describe hydra's test frontend, not theirs).
+ * A consumer's own block schemas, from CONTENT_SCHEMAS: the module its frontend
+ * config loads (`.mjs`/`.js`, default export) or a `.json` file, either shaped
+ * `{ blockType: { blockSchema, schemaEnhancer? } }`. Its content is checked
+ * against them -- each field's value against its widget, and every field
+ * against what the block declares. Without it a consumer's blocks are not
+ * schema-checked (hydra's own schemas describe hydra's test frontend, not
+ * theirs). Loaded at startup, before the served content is validated.
  */
-const siteSchemas = process.env.CONTENT_SCHEMAS
-  ? JSON.parse(fs.readFileSync(path.resolve(process.env.CONTENT_SCHEMAS), 'utf8'))
-  : null;
+let siteSchemas = null;
+async function loadSiteSchemas() {
+  if (!process.env.CONTENT_SCHEMAS) return;
+  const { loadSchemas } = require('./plone-content-validator.cjs');
+  siteSchemas = await loadSchemas(process.env.CONTENT_SCHEMAS);
+}
 
 function reportContentErrors(errors) {
   console.error(`[content-check] ${errors.length} problem(s) in the served content:`);
@@ -2456,7 +2461,7 @@ initContentDirMap();
 // Markdown mounts need a dynamic import, so loading them is async. Anything
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
-ready = loadBlockSchemas().then(initMarkdownMounts).then(assertServedContentValid);
+ready = loadBlockSchemas().then(loadSiteSchemas).then(initMarkdownMounts).then(assertServedContentValid);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —

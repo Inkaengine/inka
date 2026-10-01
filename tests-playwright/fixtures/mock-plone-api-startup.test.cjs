@@ -174,6 +174,21 @@ describe('mock API content validation', () => {
     assert.equal(run.status, 0, run.stderr.slice(-2000));
   });
 
+  it('takes the schemas as a JS module, whose shared pieces are written once', () => {
+    // A frontend keeps its schemas as plain JS data so a field set shared by
+    // several blocks is named once and spread into each -- no copy per block.
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'site-schemas-')), 'schemas.mjs');
+    fs.writeFileSync(file, [
+      "const SHARED = { description: { widget: 'slate' } };",
+      "export default {",
+      "  hero: { blockSchema: { properties: { heading: { type: 'string' }, ...SHARED } } },",
+      "};",
+    ].join('\n'));
+    const run = loadAndAwaitReady(`/:${heroPage({ description: 'plain text' })}`, { CONTENT_SCHEMAS: file });
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
+  });
+
   it("judges content shipped in this checkout by hydra's schemas", () => {
     // The same block, mounted from inside hydra, IS hydra's test content.
     const dir = fs.mkdtempSync(path.join(__dirname, '.content-check-'));

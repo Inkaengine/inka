@@ -49,7 +49,7 @@ These commands run from a checkout of the Inka repository. By default the mock A
 
 To serve your own content instead, set `CONTENT_MOUNTS`, for example `CONTENT_MOUNTS=/:/path/to/your/content`.
 
-Before it starts, the mock checks the content it will serve, and refuses to start on content with a broken link, a list item without an id, and the like. To have your own blocks checked against their schemas too (each field's value against its widget, and every field against what the block declares), set `CONTENT_SCHEMAS` to the JSON file your frontend stores its block schemas in, shaped `{ "blockType": { "blockSchema": …, "schemaEnhancer": … } }`. `bin/plone-content.cjs served` runs the same check without starting a server.
+Before it starts, the mock checks the content it will serve, and refuses to start on content with a broken link, a list item without an id, and the like. To have your own blocks checked against their schemas too (each field's value against its widget, and every field against what the block declares), set `CONTENT_SCHEMAS` to the file your frontend keeps its block schemas in: a JavaScript module (its default export, plain data your config also imports, so a field set shared by several blocks is written once) or a JSON file, shaped `{ "blockType": { "blockSchema": …, "schemaEnhancer": … } }`. `bin/plone-content.cjs served` runs the same check without starting a server.
 
 The scripts take their ports from environment variables and have no defaults, so set them first:
 

@@ -11,7 +11,8 @@
  *                                              same check that stops the mock starting
  *
  * <content-dir> defaults to cwd/content. `--schemas` takes the site's block
- * schemas, the JSON its frontend config loads ({ blockType: { blockSchema,
+ * schemas -- the JS module (default export) or JSON file its frontend config
+ * loads ({ blockType: { blockSchema,
  * schemaEnhancer? } }): `check` then also checks each field's value against its
  * schema, and `schema` reports fields a block doesn't declare. (`--fields`, a
  * names-only map, still works until every frontend ships schemas.)
@@ -20,7 +21,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, formatReport } = require(
+const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport } = require(
   path.join(__dirname, '..', 'tests-playwright', 'fixtures', 'plone-content-validator.cjs'),
 );
 
@@ -56,7 +57,9 @@ const takeFlag = (name) => {
 };
 const schemasPath = takeFlag('--schemas');
 const fieldsPath = takeFlag('--fields');
-const schemas = schemasPath ? JSON.parse(fs.readFileSync(path.resolve(schemasPath), 'utf8')) : null;
+
+(async () => {
+const schemas = schemasPath ? await loadSchemas(schemasPath) : null;
 
 const [cmd, dirArg] = argv;
 if (!cmd || !['validate', 'check', 'schema', 'all'].includes(cmd)) usage();
@@ -89,3 +92,4 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
 }
 
 process.exit(hasErrors ? 1 : 0);
+})();
