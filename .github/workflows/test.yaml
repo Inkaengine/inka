@@ -197,10 +197,13 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
-          cd docs/examples/test-react && npx vite --port ${{ env.HYDRA_REACT_DOC_PORT }} --strictPort &
-          cd docs/examples/test-svelte && npx vite --port ${{ env.HYDRA_SVELTE_DOC_PORT }} --strictPort &
-          cd docs/examples/test-vue && npx vite --port ${{ env.HYDRA_VUE_DOC_PORT }} --strictPort &
-          cd docs/examples/test-astro && pnpm run dev:test &
+          # Every interface (--host): in the container `localhost` is both
+          # 127.0.0.1 and ::1, a server bound to "localhost" takes one, and the
+          # tests' Node-side reachability probe can pick the other.
+          cd docs/examples/test-react && npx vite --host --port ${{ env.HYDRA_REACT_DOC_PORT }} --strictPort &
+          cd docs/examples/test-svelte && npx vite --host --port ${{ env.HYDRA_SVELTE_DOC_PORT }} --strictPort &
+          cd docs/examples/test-vue && npx vite --host --port ${{ env.HYDRA_VUE_DOC_PORT }} --strictPort &
+          cd docs/examples/test-astro && pnpm run dev:test --host &
           sleep 3
       - name: Wait for servers
         run: |

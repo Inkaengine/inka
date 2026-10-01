@@ -35,3 +35,22 @@ export function requireEnvironment(
   }
   testInfo.skip(true, reason);
 }
+
+/**
+ * Why `url` can't be fetched, or null when it answers 2xx. Says WHY — a bare
+ * "not reachable" hid a server that was up on the other address family (in a
+ * container `localhost` is both 127.0.0.1 and ::1), which curl reached and
+ * Node's fetch didn't.
+ */
+export async function unreachable(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+    return res.ok ? null : `HTTP ${res.status}`;
+  } catch (err) {
+    // fetch rejects with a TypeError on a network failure (the cause holds the
+    // errno) and a DOMException when the timeout aborts it.
+    if (!(err instanceof TypeError || err instanceof DOMException)) throw err;
+    const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+    return `${err.name}: ${cause?.code ?? cause?.message ?? err.message}`;
+  }
+}
