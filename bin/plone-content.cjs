@@ -3,28 +3,32 @@
  * CLI for the plone-content-validator. Usage:
  *   plone-content validate [<content-dir>]   — export-shape validation
  *   plone-content check    [<content-dir>]   — graph integrity check
- *   plone-content schema   [<content-dir>] --fields <block-fields.json>
+ *   plone-content schema   [<content-dir>] --schemas <schemas.json>
  *                                            — every block field no schema declares
- *   plone-content all      [<content-dir>]   — validate + check (+ schema with --fields)
+ *   plone-content all      [<content-dir>]   — validate + check (+ schema with --schemas)
  *   plone-content served                     — the whole site the mock API serves for
  *                                              CONTENT_MOUNTS (every mount together), the
  *                                              same check that stops the mock starting
  *
- * <content-dir> defaults to cwd/content. `--fields` takes the map a frontend
- * emits from its own block schemas: { blockType: ["field", ...] }.
+ * <content-dir> defaults to cwd/content. `--schemas` takes the site's block
+ * schemas -- the JS module (default export) or JSON file its frontend config
+ * loads ({ blockType: { blockSchema,
+ * schemaEnhancer? } }): `check` then also checks each field's value against its
+ * schema, and `schema` reports fields a block doesn't declare. (`--fields`, a
+ * names-only map, still works until every frontend ships schemas.)
  */
 'use strict';
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, formatReport } = require(
+const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport } = require(
   path.join(__dirname, '..', 'tests-playwright', 'fixtures', 'plone-content-validator.cjs'),
 );
 
 function usage() {
   console.error(
     'Usage: plone-content <validate|check|schema|all> [<content-dir>] ' +
-      '[--fields <block-fields.json>]\n' +
+      '[--schemas <schemas.json>]\n' +
       '       plone-content served   (reads CONTENT_MOUNTS)',
   );
   process.exit(2);
@@ -44,14 +48,23 @@ if (argv[0] === 'served') {
   return;
 }
 
-const fieldsIndex = argv.indexOf('--fields');
-const fieldsPath = fieldsIndex === -1 ? null : argv[fieldsIndex + 1];
-if (fieldsIndex !== -1) argv.splice(fieldsIndex, 2);
+const takeFlag = (name) => {
+  const i = argv.indexOf(name);
+  if (i === -1) return null;
+  const value = argv[i + 1];
+  argv.splice(i, 2);
+  return value;
+};
+const schemasPath = takeFlag('--schemas');
+const fieldsPath = takeFlag('--fields');
+
+(async () => {
+const schemas = schemasPath ? await loadSchemas(schemasPath) : null;
 
 const [cmd, dirArg] = argv;
 if (!cmd || !['validate', 'check', 'schema', 'all'].includes(cmd)) usage();
-if (cmd === 'schema' && !fieldsPath) {
-  console.error('schema needs --fields <block-fields.json>');
+if (cmd === 'schema' && !schemas && !fieldsPath) {
+  console.error('schema needs --schemas <schemas.json>');
   process.exit(2);
 }
 
@@ -65,17 +78,18 @@ if (cmd === 'validate' || cmd === 'all') {
 }
 if (cmd === 'check' || cmd === 'all') {
   if (cmd === 'all') console.log('');
-  const r = checkIntegrity(contentDir);
+  const r = checkIntegrity(contentDir, schemas ? { schemaFor: schemaForFrom(schemas) } : {});
   console.log(formatReport('check', r));
   if (r.errors.length) hasErrors = true;
 }
 
-if (cmd === 'schema' || (cmd === 'all' && fieldsPath)) {
+if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
   if (cmd === 'all') console.log('');
-  const fields = JSON.parse(fs.readFileSync(path.resolve(fieldsPath), 'utf8'));
+  const fields = schemas ? fieldMapFromSchemas(schemas) : JSON.parse(fs.readFileSync(path.resolve(fieldsPath), 'utf8'));
   const r = checkBlockSchemas(contentDir, fields);
   console.log(formatReport('schema', r));
   if (r.errors.length) hasErrors = true;
 }
 
 process.exit(hasErrors ? 1 : 0);
+})();

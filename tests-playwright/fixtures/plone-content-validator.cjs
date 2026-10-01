@@ -1059,4 +1059,48 @@ function formatReport(title, result) {
   return lines.join('\n');
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, formatReport };
+/**
+ * A site's block schemas -- `{ blockType: { blockSchema, schemaEnhancer? } }`,
+ * the JSON its frontend config loads -- read for the two questions content is
+ * checked against: which fields a block declares (checkBlockSchemas) and what
+ * shape each field's value has (checkIntegrity's `schemaFor`). One source; no
+ * map derived from it and stored.
+ */
+/** Load a site's schemas: a JS module (`.mjs`/`.js`, its default export) --
+ *  plain data the frontend config also imports, so shared pieces are written
+ *  once -- or a `.json` file. */
+async function loadSchemas(file) {
+  const abs = require('path').resolve(file);
+  if (abs.endsWith('.json')) return JSON.parse(require('fs').readFileSync(abs, 'utf8'));
+  const mod = await import(require('url').pathToFileURL(abs).href);
+  return mod.default ?? mod;
+}
+
+function schemaForFrom(schemas) {
+  return (type) => schemas[type]?.blockSchema ?? null;
+}
+
+/** The field map checkBlockSchemas reads, derived from the schemas: each
+ *  block's declared fields (its schema properties), the prefix its per-item
+ *  defaults are stored under (`<defaultsField>_<field>`), and the keys a
+ *  container stamps on its children (every object_list's idField/typeField). */
+function fieldMapFromSchemas(schemas) {
+  const blocks = {};
+  const identityFields = new Set(['@id', '@type']);
+  const stamps = (node) => {
+    if (Array.isArray(node)) { node.forEach(stamps); return; }
+    if (!node || typeof node !== 'object') return;
+    for (const key of ['idField', 'typeField']) if (typeof node[key] === 'string') identityFields.add(node[key]);
+    Object.values(node).forEach(stamps);
+  };
+  for (const [type, def] of Object.entries(schemas)) {
+    const entry = { fields: Object.keys(def?.blockSchema?.properties ?? {}) };
+    const defaultsField = def?.schemaEnhancer?.inheritSchemaFrom?.defaultsField;
+    if (defaultsField) entry.defaultsPrefix = defaultsField;
+    blocks[type] = entry;
+    stamps(def?.blockSchema);
+  }
+  return { blocks, identityFields: [...identityFields] };
+}
+
+module.exports = { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };

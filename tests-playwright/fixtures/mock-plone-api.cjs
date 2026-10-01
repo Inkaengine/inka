@@ -2283,6 +2283,11 @@ function validateServedContent() {
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
   errors.push(...checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent }).errors);
+  if (siteSchemas) {
+    const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+    const own = source.filter((item) => !isHydraOwned(item.rel));
+    errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas)).errors);
+  }
   return withoutExpectedErrors(errors.map((m) => m.trim()));
 }
 
@@ -2324,11 +2329,33 @@ function withoutExpectedErrors(errors) {
  */
 const HYDRA_ROOT = path.resolve(__dirname, '..', '..');
 function hydraSchemaForOwnContent(type, urlPath) {
+  if (isHydraOwned(urlPath)) return blockSchemaFor(type);
+  return siteSchemas ? siteSchemas[type]?.blockSchema ?? null : null;
+}
+
+/** Whether the content at `urlPath` is served from inside this hydra checkout
+ *  (hydra's own test content) rather than a consumer's mount. */
+function isHydraOwned(urlPath) {
   const mount = CONTENT_MOUNTS
     .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(m.mountPath + '/'))
     .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
-  const owned = path.resolve(mount.dirPath).startsWith(HYDRA_ROOT + path.sep);
-  return owned ? blockSchemaFor(type) : null;
+  return path.resolve(mount.dirPath).startsWith(HYDRA_ROOT + path.sep);
+}
+
+/**
+ * A consumer's own block schemas, from CONTENT_SCHEMAS: the module its frontend
+ * config loads (`.mjs`/`.js`, default export) or a `.json` file, either shaped
+ * `{ blockType: { blockSchema, schemaEnhancer? } }`. Its content is checked
+ * against them -- each field's value against its widget, and every field
+ * against what the block declares. Without it a consumer's blocks are not
+ * schema-checked (hydra's own schemas describe hydra's test frontend, not
+ * theirs). Loaded at startup, before the served content is validated.
+ */
+let siteSchemas = null;
+async function loadSiteSchemas() {
+  if (!process.env.CONTENT_SCHEMAS) return;
+  const { loadSchemas } = require('./plone-content-validator.cjs');
+  siteSchemas = await loadSchemas(process.env.CONTENT_SCHEMAS);
 }
 
 function reportContentErrors(errors) {
@@ -2434,7 +2461,7 @@ initContentDirMap();
 // Markdown mounts need a dynamic import, so loading them is async. Anything
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
-ready = loadBlockSchemas().then(initMarkdownMounts).then(assertServedContentValid);
+ready = loadBlockSchemas().then(loadSiteSchemas).then(initMarkdownMounts).then(assertServedContentValid);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
