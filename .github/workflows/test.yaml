@@ -158,6 +158,10 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.61.0-noble
       options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -256,6 +260,10 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.61.0-noble
       options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -350,6 +358,10 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.61.0-noble
       options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -455,6 +467,10 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.61.0-noble
       options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -549,6 +565,10 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.61.0-noble
       options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -641,6 +661,10 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.61.0-noble
       options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:

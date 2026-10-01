@@ -36,3 +36,15 @@ test('steps that background a server send its output to a file first', () => {
     assert.ok(redirect !== -1 && redirect < firstBackground, `"${name}" redirects output before its first \`&\``);
   }
 });
+
+// Firefox won't launch as root with a $HOME owned by someone else, and the
+// image's /github/home belongs to pwuser: every Firefox test fails to launch.
+test('jobs in the Playwright image set HOME to root\'s own', () => {
+  const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/test.yaml'), 'utf8');
+  const jobs = workflow.split(/\n(?=  [\w-]+:\n)/).filter((job) => job.includes('mcr.microsoft.com/playwright'));
+  assert.ok(jobs.length > 0, 'some job runs in the Playwright image');
+  for (const job of jobs) {
+    const name = job.match(/^\s*([\w-]+):/)[1];
+    assert.match(job, /\n    env:\n(      .*\n)*      HOME: \/root\n/, `${name} sets HOME: /root`);
+  }
+});

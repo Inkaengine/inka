@@ -70,13 +70,23 @@ test.describe('Quick Start starter: selecting a block in edit mode', () => {
     // These frontends are opt-in — their server only starts when the project is
     // requested. On a full local run it is down: skip. On CI it must be up (the
     // workflow starts it), so an unreachable frontend is a failure, not a skip.
-    let reachable = false;
+    // Say WHY it isn't: "not reachable" alone hid a failure whose server was up.
+    let unreachable: string | null = null;
     try {
-      reachable = (await fetch(frontend!, { signal: AbortSignal.timeout(2000) })).ok;
-    } catch {
-      reachable = false;
+      const res = await fetch(frontend!, { signal: AbortSignal.timeout(2000) });
+      if (!res.ok) unreachable = `HTTP ${res.status}`;
+    } catch (err) {
+      // fetch rejects with a TypeError on a network failure (the cause holds
+      // the errno) and a DOMException when the timeout aborts it.
+      if (!(err instanceof TypeError || err instanceof DOMException)) throw err;
+      const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+      unreachable = `${err.name}: ${cause?.code ?? cause?.message ?? err.message}`;
     }
-    requireEnvironment(testInfo, reachable, `${testInfo.project.name} frontend on ${frontend} not reachable`);
+    requireEnvironment(
+      testInfo,
+      unreachable === null,
+      `${testInfo.project.name} frontend on ${frontend} not reachable (${unreachable})`,
+    );
 
     await page.goto(parentUrl(frontend!, QUICKSTART_FRONTENDS[testInfo.project.name].contentPath));
     await helper.waitForIframeReady();
