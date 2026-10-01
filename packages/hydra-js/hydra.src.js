@@ -8321,16 +8321,19 @@ export class Bridge {
     if (!sel?.rangeCount || !sel.isCollapsed) return;
     const bridgeNode = sel.anchorNode;
     if (bridgeNode?.nodeType !== Node.TEXT_NODE || !/^\uFEFF+$/.test(bridgeNode.data)) return;
-    let line = bridgeNode.parentElement;
-    while (line && INLINE_TAGS.has(line.tagName)) line = line.parentElement;
-    if (!line) return;
+    // Only a bare caret node sitting in the line itself. One inside a <strong>
+    // or <em> is a prospective format (bold toggled on, nothing typed yet): the
+    // caret is there on purpose, and moving it would drop the format.
+    const line = bridgeNode.parentElement;
+    if (!line || INLINE_TAGS.has(line.tagName)) return;
+    // And only on an empty line — where the frontend's caret target is what it
+    // draws for "nothing here yet". In a line with text, a bare caret node is a
+    // format the author just toggled off at the caret, and it stays put.
     const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
     let target = null;
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-      if (n !== bridgeNode && /^\u200B+$/.test(n.data)) {
-        target = n;
-        break;
-      }
+      if (this.stripZeroWidthSpaces(n.data) !== '') return;
+      if (!target && n !== bridgeNode && /^\u200B+$/.test(n.data)) target = n;
     }
     if (!target) return;
     const range = document.createRange();

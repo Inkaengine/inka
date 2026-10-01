@@ -736,15 +736,17 @@ export class AdminUIHelper {
     // is added asynchronously by materializeHydraComments after render.
     await block.waitFor({ state: 'attached', timeout: 10000 });
 
+    // No scrollIntoViewIfNeeded first: it doesn't re-find an element the
+    // frontend re-rendered while it waited for it to settle, and failed with
+    // "Element is not attached to the DOM" when a block re-rendered just after
+    // being added. click() scrolls by itself and does re-find it.
     if (selector) {
       const clickTarget = block.locator(selector);
-      await clickTarget.scrollIntoViewIfNeeded();
       await clickTarget.waitFor({ state: 'visible', timeout: 5000 });
       await this.demoStep(clickTarget);
       await clickTarget.click();
     } else if ((await blockLocator.count()) === 1) {
       // One element: its centre, as it always was.
-      await block.scrollIntoViewIfNeeded();
       await block.waitFor({ state: 'visible', timeout: 5000 });
       await this.demoStep(block);
       await block.click();

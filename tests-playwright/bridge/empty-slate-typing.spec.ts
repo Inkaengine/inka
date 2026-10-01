@@ -249,17 +249,29 @@ test.describe('Empty slate typing', () => {
     await expect.poll(() => adminText(page, 'mock-block-1')).toBe('');
     await field.evaluate((el) => {
       const line = el.querySelector('[data-node-id]') ?? el;
-      line.insertBefore(document.createElement('br'), line.firstChild);
+      // Some frontends' lines already hold the browser's placeholder after the
+      // delete; add one only where there isn't one, so there is exactly one.
+      if (!line.querySelector('br')) line.insertBefore(document.createElement('br'), line.firstChild);
+      const br = line.querySelector('br')!;
+      // The caret goes where the failures had it: in a zero-width caret target
+      // AFTER the <br> — the frontend's if it drew one there, else one like the
+      // bridge parks (U+FEFF). Never an empty text node: the browser doesn't
+      // keep a caret in one, so no user can type there.
       const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-      let last: Text | null = null;
+      let target: Text | null = null;
       let t;
-      while ((t = walker.nextNode())) last = t as Text;
-      if (!last) {
-        last = document.createTextNode('\uFEFF');
-        line.appendChild(last);
+      while ((t = walker.nextNode())) {
+        if (br.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING && /^[\u200B\uFEFF]+$/.test(t.textContent || '')) {
+          target = t as Text;
+          break;
+        }
+      }
+      if (!target) {
+        target = document.createTextNode('\uFEFF');
+        br.after(target);
       }
       const range = document.createRange();
-      range.setStart(last, last.length);
+      range.setStart(target, target.length);
       range.collapse(true);
       const selection = window.getSelection()!;
       selection.removeAllRanges();
