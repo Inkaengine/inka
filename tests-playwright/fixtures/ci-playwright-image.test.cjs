@@ -48,3 +48,17 @@ test('jobs in the Playwright image set HOME to root\'s own', () => {
     assert.match(job, /\n    env:\n(      .*\n)*      HOME: \/root\n/, `${name} sets HOME: /root`);
   }
 });
+
+// An example installed without a lockfile resolves fresh on every run, so CI
+// picks up whatever npm published a moment ago: hydra-vue-f7 resolved a
+// browserslist dependency seconds after its release, before the tarball reached
+// the CDN, and the job failed on a 404 that had nothing to do with the change.
+test('every example CI installs has a committed lockfile and installs frozen', () => {
+  const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/test.yaml'), 'utf8');
+  const installs = [...workflow.matchAll(/cd (\S+) && pnpm install([^\n&]*)/g)];
+  assert.ok(installs.length > 0, 'the workflow installs some examples');
+  for (const [, dir, flags] of installs) {
+    assert.ok(fs.existsSync(path.join(ROOT, dir, 'pnpm-lock.yaml')), `${dir} has a pnpm-lock.yaml`);
+    assert.match(flags, /--frozen-lockfile/, `${dir} installs with --frozen-lockfile`);
+  }
+});

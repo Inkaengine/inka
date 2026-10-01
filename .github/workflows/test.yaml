@@ -397,7 +397,7 @@ jobs:
         # their dist/ output must exist or the SSR server fails to boot.
         run: pnpm build:deps
       - name: Build Next.js example
-        run: cd examples/hydra-nextjs && pnpm install --ignore-workspace && pnpm run build:test
+        run: cd examples/hydra-nextjs && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
         env:
           NEXT_PUBLIC_BACKEND_BASE_URL: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
       - name: Download Volto build
@@ -502,7 +502,7 @@ jobs:
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
       - name: Install and build Nuxt
-        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace && pnpm run build:test
+        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
       - name: Start servers
         run: |
           # The servers outlive this step, but its stdout does not: in a container
@@ -609,7 +609,7 @@ jobs:
           name: volto-build
           path: build/
       - name: Install and build Nuxt
-        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace && pnpm run build:test
+        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
       - name: Start servers
         run: |
           # The servers outlive this step, but its stdout does not: in a container
@@ -696,15 +696,15 @@ jobs:
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
       - name: Build Next.js example
-        run: cd examples/hydra-nextjs && pnpm install --ignore-workspace && pnpm run build:test
+        run: cd examples/hydra-nextjs && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
         env:
           NEXT_PUBLIC_BACKEND_BASE_URL: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
       - name: Install F7 example
-        run: cd examples/hydra-vue-f7 && pnpm install --ignore-workspace
+        run: cd examples/hydra-vue-f7 && pnpm install --ignore-workspace --frozen-lockfile
       - name: Install Svelte Quick Start
-        run: cd docs/quickstart/svelte && pnpm install --ignore-workspace
+        run: cd docs/quickstart/svelte && pnpm install --ignore-workspace --frozen-lockfile
       - name: Install Astro Quick Start
-        run: cd docs/quickstart/astro && pnpm install --ignore-workspace
+        run: cd docs/quickstart/astro && pnpm install --ignore-workspace --frozen-lockfile
       - name: Start servers
         run: |
           # The servers outlive this step, but its stdout does not: in a container
