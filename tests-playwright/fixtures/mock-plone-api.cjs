@@ -1187,9 +1187,14 @@ function getRootNavigationItems(sessionId) {
 // /@actions endpoint had only `view + edit`, so reducers seeing the same
 // "actions" data via different code paths got different results.
 
+// plone.restapi's shape: `items` are the page's ancestors and the page, root
+// first-ancestor-first — the site root itself is NOT an item, it is `root`. A
+// frontend that wants a Home crumb adds it from `root` (as Volto's Breadcrumbs
+// does). The mock used to put {title: 'Home'} first, so a frontend rendering
+// `items` as given looked right here and lost its Home crumb against Plone.
 function buildBreadcrumbsComponent(cleanPath, baseUrl) {
   const pathParts = cleanPath.split('/').filter(Boolean);
-  const items = [{ '@id': baseUrl, title: 'Home' }];
+  const items = [];
   let currentPath = '';
   for (const part of pathParts) {
     currentPath += '/' + part;

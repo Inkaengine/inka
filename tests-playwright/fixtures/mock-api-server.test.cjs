@@ -674,3 +674,35 @@ describe('folder items batching', () => {
     assert.equal(data.items.length, Math.min(25, data.items_total));
   });
 });
+
+describe('@breadcrumbs', () => {
+  // plone.restapi's breadcrumbs list the page's ancestors and the page — NOT
+  // the site root, which comes separately as `root`. The mock used to put a
+  // {title: 'Home'} first, so a frontend that renders `items` as given passed
+  // every test here and lost its Home crumb against a real Plone.
+  // (Compared by path: the mock builds its urls from its configured PORT.)
+  const paths = (items) => items.map((i) => new URL(i['@id']).pathname);
+  const pathOf = (url) => new URL(url).pathname;
+
+  it('lists the ancestors and the page, not the site root', async () => {
+    const res = await fetch(`${baseUrl}/_test_data/@breadcrumbs`, {
+      headers: { Accept: 'application/json' },
+    });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.deepEqual(paths(data.items), ['/_test_data']);
+    assert.equal(pathOf(data.root), '/');
+  });
+
+  it('the site root has no crumbs', async () => {
+    const res = await fetch(`${baseUrl}/@breadcrumbs`, { headers: { Accept: 'application/json' } });
+    const data = await res.json();
+    assert.deepEqual(data.items, []);
+    assert.equal(pathOf(data.root), '/');
+  });
+
+  it('the expanded component matches the endpoint', async () => {
+    const page = await getContent('/_test_data?expand=breadcrumbs');
+    assert.deepEqual(paths(page['@components'].breadcrumbs.items), ['/_test_data']);
+  });
+});
