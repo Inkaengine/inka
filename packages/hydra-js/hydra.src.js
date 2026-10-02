@@ -12495,6 +12495,8 @@ export class Bridge {
     let navigationTriggered = false;
     let contentRetryBudget = 0; // set when target becomes visible after navigation
     const CONTENT_RETRIES = 60; // ~1s at rAF rate
+    // How long a render may take to draw the node a transform's caret goes in.
+    const TRANSFORM_RENDER_LIMIT_MS = 10000;
     const NAV_CONTENT_RETRIES = 60; // fresh budget after navigation completes
 
     const pollBlocksReady = (retries = CONTENT_RETRIES) => {
@@ -12535,6 +12537,23 @@ export class Bridge {
         }
       } else if (retries <= 0) {
         const elapsed = this._renderStartTime ? (performance.now() - this._renderStartTime).toFixed(0) : '?';
+        // The admin sent a caret position with this render (Ctrl+B with no
+        // selection puts it in a new, empty bold node). It can only go into a
+        // node the frontend has drawn. Proceeding before then put it back where
+        // it was — outside the new node — and unblocked typing there, so on a
+        // slow frontend (a busy CI runner) bold text came out plain. Input is
+        // still blocked and keys are buffered, so wait for the node, however
+        // long the frontend takes, up to a limit that fails loudly.
+        const caretTarget = afterRenderOptions.transformedSelection;
+        if (caretTarget && !this._transformedCaretTargetDrawn(caretTarget)) {
+          const waited = this._renderStartTime ? performance.now() - this._renderStartTime : 0;
+          if (waited < TRANSFORM_RENDER_LIMIT_MS) {
+            requestAnimationFrame(() => pollBlocksReady(0));
+            return;
+          }
+          console.error(`[HYDRA] The frontend did not draw the node the admin's caret goes in within ${TRANSFORM_RENDER_LIMIT_MS / 1000}s:`,
+            JSON.stringify(caretTarget), '— is it rendering the data-node-id attributes from the edit data?');
+        }
         if (result.targetVisible || !newBlockId) {
           // No navigation needed, content just doesn't match — give up and proceed.
           log('pollBlocksReady: TIMEOUT +' + elapsed + 'ms proceeding anyway');
@@ -13497,6 +13516,28 @@ export class Bridge {
    * @param {Object} formData - Form data with Slate JSON (containing nodeIds)
    * @returns {boolean} true if selection was restored, false if it failed
    */
+  /**
+   * Has the frontend drawn the nodes this Slate selection points into? The
+   * same lookup restoreSlateSelection does: a slate field's anchor/focus path
+   * → nodeId → the [data-node-id] element in the selected block. True when the
+   * selection isn't one restoreSlateSelection looks up by nodeId (nothing to
+   * wait for).
+   */
+  _transformedCaretTargetDrawn(slateSelection) {
+    if (!slateSelection?.anchor || !slateSelection?.focus) return true;
+    if (!this.selectedBlockUid || !this.focusedFieldName) return true;
+    const blockElement = this.queryBlockElement(this.selectedBlockUid);
+    if (!blockElement) return false;
+    const resolved = this.resolveFieldPath(this.focusedFieldName, this.selectedBlockUid);
+    const fieldValue = getFieldValue(this.getBlockData(resolved.blockId), resolved.fieldName);
+    const fieldType = this.getFieldType(this.selectedBlockUid, this.focusedFieldName);
+    if (!this.fieldTypeIsSlate(fieldType) || !Array.isArray(fieldValue) || fieldValue[0]?.nodeId === undefined) return true;
+    return [slateSelection.anchor, slateSelection.focus].every((point) => {
+      const found = this.getNodeIdFromPath(fieldValue, point.path);
+      return !!found && !!blockElement.querySelector(`[data-node-id="${found.nodeId}"]`);
+    });
+  }
+
   restoreSlateSelection(slateSelection, formData) {
     log('restoreSlateSelection called with:', JSON.stringify(slateSelection));
     if (!slateSelection || !slateSelection.anchor || !slateSelection.focus) {
