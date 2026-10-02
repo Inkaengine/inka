@@ -59,9 +59,12 @@ import {
 } from '@volto-hydra/helpers';
 import { getHydraSchemaContext, setHydraSchemaContext, getLiveBlockData } from '../context/index.js';
 
+// Both looked up when a rule CALLS them, not now: reading the context module's
+// exports at load time would make every importer of blockSync depend on them
+// existing (a test that mocks the context without them fails on import).
 setFieldRulesContextProvider({
   context: () => getHydraSchemaContext?.(),
-  liveBlockData: getLiveBlockData,
+  liveBlockData: (blockId, fallback) => getLiveBlockData?.(blockId, fallback),
 });
 // Pure validation/default-application logic lives in schemaValidation.js
 // (no dependencies — safe to import from CI scripts and test runners).
