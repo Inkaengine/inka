@@ -59,7 +59,10 @@ import {
 } from '@volto-hydra/helpers';
 import { getHydraSchemaContext, setHydraSchemaContext, getLiveBlockData } from '../context/index.js';
 
-setFieldRulesContextProvider(() => getHydraSchemaContext?.());
+setFieldRulesContextProvider({
+  context: () => getHydraSchemaContext?.(),
+  liveBlockData: getLiveBlockData,
+});
 // Pure validation/default-application logic lives in schemaValidation.js
 // (no dependencies — safe to import from CI scripts and test runners).
 // Re-exported here for backward compat; schemaValidation.js is the SSOT.

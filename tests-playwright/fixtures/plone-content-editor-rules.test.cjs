@@ -29,7 +29,7 @@ const SCHEMAS = {
       properties: {
         items: {
           widget: 'blocks_layout',
-          allowedBlocks: ['slate', 'banner', 'section', 'columns', 'card', 'text', 'teaser'],
+          allowedBlocks: ['slate', 'banner', 'section', 'columns', 'card', 'text', 'teaser', 'gallery'],
           allowedStyles: ['p', 'h2', 'strong'],
         },
       },
@@ -45,6 +45,30 @@ const SCHEMAS = {
   // A schemaEnhancer RECIPE, as a frontend's config declares it (plain data —
   // what a schemas file can carry): the validator builds the enhancer from it
   // with the same fieldRules module the admin uses.
+  // A rule that reads a REGION (its child block types) and one that reads the
+  // PARENT block — the two `when` surfaces that reach beyond the block's own
+  // fields, and the ones that need block lookups outside the admin.
+  gallery: {
+    blockSchema: {
+      properties: {
+        caption: { title: 'Caption' },
+        items: { widget: 'blocks_layout', allowedBlocks: ['picture'] },
+      },
+    },
+    schemaEnhancer: {
+      fieldRules: {
+        caption: { when: { items: { gte: 3 } }, warning: 'A gallery this large needs a caption.' },
+      },
+    },
+  },
+  picture: {
+    blockSchema: { properties: { alt: { title: 'Alt' } } },
+    schemaEnhancer: {
+      fieldRules: {
+        alt: { when: { '../caption': { isSet: false }, alt: { isSet: false } }, error: 'An uncaptioned gallery needs alt text on every picture.' },
+      },
+    },
+  },
   teaser: {
     blockSchema: {
       properties: { title: { title: 'Title' }, image: { title: 'Image' }, count: { title: 'Count', type: 'integer' } },
@@ -187,5 +211,17 @@ describe('checkEditorRules()', () => {
     );
     assert.deepEqual(r.errors, []);
     assert.deepEqual(r.warnings, []);
+  });
+
+  it("evaluates rules that read a region and the parent block", async () => {
+    const pictures = { p1: { '@type': 'picture' }, p2: { '@type': 'picture', alt: 'A' }, p3: { '@type': 'picture', alt: 'B' } };
+    const gallery = { '@type': 'gallery', blocks: pictures, blocks_layout: { items: ['p1', 'p2', 'p3'] } };
+    const r = await checkEditorRules(page({ g: gallery }, ['g']), SCHEMAS);
+    // The region holds 3 pictures and there is no caption → the gallery warns.
+    assert.equal(r.warnings.length, 1);
+    assert.match(r.warnings[0], /gallery.*caption/);
+    // ../caption is unset and p1 has no alt → p1 (only) errors.
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /picture.*\(p1\).*alt/);
   });
 });

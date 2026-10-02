@@ -11,10 +11,11 @@
  * validator (`plone-content schema --schemas`), which reports every
  * `hydraRuleError` / `hydraRuleWarning` a rule sets on stored content.
  *
- * The admin keeps a live schema context (the block being edited, its path
- * map) that a rule falls back to when the caller passes none; it registers it
- * with setFieldRulesContextProvider. Offline callers always pass `blockId` and
- * `blockPathMap` in the enhancer args, so they need no provider.
+ * The admin keeps live state a rule can read — the schema context (the block
+ * being edited, its path map) and each block's unsaved form data — and
+ * registers it with setFieldRulesContextProvider. Offline callers pass
+ * `blockId`, `blockPathMap` and `pageFormData` in the enhancer args and need
+ * no provider.
  */
 
 import {
@@ -23,6 +24,7 @@ import {
   getFieldDef,
   getFieldTypeString,
   getBlockType,
+  getChildBlockEntries,
   isSlateFieldType,
   slateNodesText,
 } from '../helpers/index.js';
@@ -33,11 +35,26 @@ import { isObjectListRegion } from './regionWidgets.js';
 const PAGE_BLOCK_UID = '_page';
 
 let contextProvider = null;
+let liveBlockDataProvider = null;
 
-/** Register where a rule finds the current block and path map when the
- *  enhancer is called without them (the admin's live schema context). */
-export function setFieldRulesContextProvider(provider) {
-  contextProvider = provider;
+/**
+ * Register the admin's live state: `context()` is where a rule finds the
+ * current block and path map when the enhancer is called without them, and
+ * `liveBlockData(blockId, fallback)` returns a block's data as the form holds
+ * it right now (unsaved edits included). Offline callers register nothing: a
+ * rule then reads another block from the page data it was given, by the path
+ * buildBlockPathMap recorded for it.
+ */
+export function setFieldRulesContextProvider({ context, liveBlockData } = {}) {
+  contextProvider = context || null;
+  liveBlockDataProvider = liveBlockData || null;
+}
+
+/** A block's data, by the path the block path map recorded for it. */
+function blockFromPath(formData, blockPathMap, blockId) {
+  const path = blockPathMap?.[blockId]?.path;
+  if (!formData || !Array.isArray(path)) return null;
+  return path.reduce((node, key) => (node == null ? node : node[key]), formData);
 }
 
 /**
@@ -374,10 +391,9 @@ function resolveWhenField(fieldPath, formData, args) {
   } else if (targetBlockId === PAGE_BLOCK_UID) {
     block = args?.pageFormData || hydraContext?.formData;
   } else {
-    block = getLiveBlockData?.(targetBlockId, {
-      formData: args?.pageFormData,
-      blockPathMap,
-    });
+    block = liveBlockDataProvider
+      ? liveBlockDataProvider(targetBlockId, { formData: args?.pageFormData, blockPathMap })
+      : blockFromPath(args?.pageFormData, blockPathMap, targetBlockId);
   }
 
   // `a.b.0.c` addresses field `a` and then walks into its value. A field's own
