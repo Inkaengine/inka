@@ -1102,6 +1102,42 @@ describe('plone-content-validator checkIntegrity()', () => {
     );
   });
 
+  it('reports a block id used by two blocks on one page', () => {
+    // Every rows' value block was "v1" (r1/v1, r2/v1, r3/v1): each container's
+    // own layout resolves, so the layout checks pass, but the editor maps a
+    // block id to ONE block, so only one of them could be selected or edited.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a', UID: 'pageauid1234567',
+        parent: { '@id': '/' },
+        blocks: {
+          r1: { '@type': 'row', blocks: { v1: { '@type': 'slate' } }, blocks_layout: { items: ['v1'] } },
+          r2: { '@type': 'row', blocks: { v1: { '@type': 'slate' } }, blocks_layout: { items: ['v1'] } },
+        },
+        blocks_layout: { items: ['r1', 'r2'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('block id v1 is used twice (in r1 and r2)')),
+      r.errors.join('\n'),
+    );
+  });
+
+  it('accepts the same block id on two different pages', () => {
+    const page = (n) => ({
+      '@id': `/page-${n}`, '@type': 'Document', id: `page-${n}`, UID: `page${n}uid1234567`,
+      parent: { '@id': '/' },
+      blocks: { v1: { '@type': 'slate' } },
+      blocks_layout: { items: ['v1'] },
+    });
+    const { root, contentDir } = buildFixture({ pageA: page('a'), pageB: page('b') });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.deepEqual(r.errors, []);
+  });
+
   it('resolves valid resolveuid refs', () => {
     // UID must be hex ≥ 10 chars to match the /resolveuid/[a-f0-9]{10,}/ regex
     const uid = 'abcdef1234567890';
