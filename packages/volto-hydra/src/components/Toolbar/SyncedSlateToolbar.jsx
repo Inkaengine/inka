@@ -476,6 +476,10 @@ const SyncedSlateToolbar = ({
   // Refs for stable access inside the polling useEffect (avoids volatile deps that restart the interval)
   const currentSelectionRef = useRef(currentSelection);
   currentSelectionRef.current = currentSelection;
+  // The iframe's selection the sync effect last looked at. Each message brings a
+  // new selection object; an effect run that sees the SAME object again is a
+  // re-run on props that haven't caught up — see the selection-only sync.
+  const seenSelectionRef = useRef(null);
   const onChangeFormDataRef = useRef(onChangeFormData);
   onChangeFormDataRef.current = onChangeFormData;
 
@@ -1043,7 +1047,16 @@ const SyncedSlateToolbar = ({
       }
     }
 
-    if (!contentNeedsSync && !hasUnprocessedTransform && currentSelection && !isEqual(currentSelection, editor.selection)) {
+    // Only a selection the effect hasn't seen yet. A bold toggled off with
+    // nothing typed moves the caret out of the empty <strong> here, in the
+    // transform; the props still carry the selection from toggling it ON (inside
+    // the <strong>) until the exit's own update arrives, and a re-run in between
+    // put the caret straight back in: bold stayed on (1-5 in 10 in the CI
+    // container). A real click is a new message, so a new object, even where it
+    // lands on the same spot.
+    const selectionIsNew = currentSelection !== seenSelectionRef.current;
+    seenSelectionRef.current = currentSelection;
+    if (selectionIsNew && !contentNeedsSync && !hasUnprocessedTransform && currentSelection && !isEqual(currentSelection, editor.selection)) {
       // Check if selection needs update
       const isValid = isSelectionValidForDocument(currentSelection, editor.children);
       if (isValid) {

@@ -113,7 +113,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        bridge: [current, before-fixes]
+        bridge: [current]
     needs: build
     runs-on: 'ubuntu-latest'
     timeout-minutes: 45
@@ -190,7 +190,9 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-mock --reporter=line --retries=0 --repeat-each=10 tests-playwright/integration/inline-editing-formatting.spec.ts -g "toggle on then off without typing preserves cursor"
+        run: |
+          pnpm exec playwright test --project=admin-mock --reporter=line --retries=0 --repeat-each=20 tests-playwright/integration/inline-editing-formatting.spec.ts -g "toggle on then off without typing preserves cursor"
+          pnpm exec playwright test --project=admin-mock --reporter=line --retries=0 --repeat-each=3 tests-playwright/integration/inline-editing-formatting.spec.ts
         env:
           CI: true
           NO_WEBSERVER: true
