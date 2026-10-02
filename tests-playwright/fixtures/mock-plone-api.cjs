@@ -4445,10 +4445,22 @@ const VOCAB_ITEMS = {
   'plone.app.vocabularies.ReallyUserFriendlyTypes': ['Document', 'News Item'],
   // collective.volto.formsupport lists only the captcha providers a site has
   // configured (captcha/vocabularies.py keeps those whose isEnabled() is
-  // true). Honeypot needs nothing; reCAPTCHA and hCaptcha need keys and
-  // NoRobots questions, which a default site does not have.
-  'collective.volto.formsupport.captcha.providers': ['honeypot'],
+  // true): see CONFIGURED_CAPTCHAS.
+  'collective.volto.formsupport.captcha.providers': null,
 };
+
+// The captcha providers this site can verify. Honeypot needs nothing and is
+// always on; reCAPTCHA and hCaptcha need keys and NoRobots questions, which a
+// site has only once configured — MOCK_CAPTCHA_PROVIDERS names those (e.g.
+// "recaptcha,hcaptcha,hcaptcha_invisible,norobots-captcha").
+const CONFIGURED_CAPTCHAS = [
+  'honeypot',
+  ...String(process.env.MOCK_CAPTCHA_PROVIDERS || '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean),
+];
+VOCAB_ITEMS['collective.volto.formsupport.captcha.providers'] = CONFIGURED_CAPTCHAS;
 
 // Optional generated vocabularies, declared by a seed file and switched on
 // with VOCAB_SPEC. Used by the adapter contract suite, which needs a
@@ -5510,20 +5522,18 @@ app.post('*/@submit-form', (req, res) => {
     return res.status(400).json({ type: 'BadRequest', message: 'Empty form data.' });
   }
 
-  // HoneypotSupport.verify has two branches, and only one of them is about the
-  // `captcha` object. A frontend that sends one (volto-form-block, and our
-  // Next.js action) is checked on its `value`; a frontend that does not — the
-  // Nuxt example here, for instance — falls back to looking for a FILLED
-  // honeypot field among the submitted data. An absent captcha is not by itself
-  // a rejection, and treating it as one fails every frontend that does not
-  // implement the token.
-  //
-  // The real fallback is `found_honeypot(form, required=True)`, which also
-  // rejects a submission MISSING the field. That rule depends on
-  // collective.honeypot's HONEYPOT_FIELD being configured in the environment —
-  // when it is unset the whole check short-circuits to "pass" — and there is no
-  // such environment here, so this models the "field is present and filled"
-  // half only.
+  // formsupport looks the provider up by name — getMultiAdapter(name=
+  // block.captcha) — and verifies with it. A name nothing registers ("none",
+  // or a provider whose extra is not installed) raises ComponentLookupError,
+  // and a registered one this site has not configured raises ValueError
+  // (no keys / no questions): either way the submission is a 500.
+  if (block.captcha && !CONFIGURED_CAPTCHAS.includes(block.captcha)) {
+    return res.status(500).json({
+      type: 'ComponentLookupError',
+      message: `No captcha provider "${block.captcha}" is set up on this site.`,
+    });
+  }
+
   // The token-based providers, as their verify() checks before calling out:
   // no token is "No captcha token provided.", and NoRobots' token is the JSON
   // its widget builds ({id, id_check, value}), which verify() json.loads. The
@@ -5552,6 +5562,13 @@ app.post('*/@submit-form', (req, res) => {
     }
   }
 
+  // HoneypotSupport.verify has two branches. A frontend that sends the
+  // `captcha` object (volto-form-block) is checked on its `value`: missing or
+  // not empty is refused. One that does not falls back to
+  // found_honeypot(form, required=True) over the answers keyed by LABEL —
+  // collective.honeypot's HONEYPOT_FIELD defaults to "protected_1", so the
+  // trap must be there AND empty: missing is "misses required field", filled
+  // is "has forbidden field".
   if (block.captcha === 'honeypot') {
     const captcha = body.captcha;
     const reject = () =>
@@ -5559,11 +5576,9 @@ app.post('*/@submit-form', (req, res) => {
     if (captcha) {
       if (typeof captcha.value !== 'string' || captcha.value !== '') return reject();
     } else {
-      const honeypotId = (block.captcha_props || {}).id;
-      const trap = honeypotId
-        ? data.find((entry) => entry.field_id === honeypotId || entry.label === honeypotId)
-        : null;
-      if (trap && String(trap.value || '') !== '') return reject();
+      const honeypotId = (block.captcha_props || {}).id || 'protected_1';
+      const trap = data.find((entry) => entry.label === honeypotId);
+      if (!trap || String(trap.value || '') !== '') return reject();
     }
   }
 

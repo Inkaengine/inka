@@ -874,6 +874,13 @@
           </template>
         </div>
       </template>
+      <!-- collective.volto.formsupport's honeypot: a field no person fills in,
+           named by the backend (captcha_props.id, "protected_1" by default). -->
+      <div v-if="block.captcha === 'honeypot'" hidden aria-hidden="true">
+        <label :for="`${block_uid}-${honeypotName(block)}`">Leave this field empty</label>
+        <input type="text" :id="`${block_uid}-${honeypotName(block)}`" :name="honeypotName(block)"
+               tabindex="-1" autocomplete="off" />
+      </div>
       <div class="flex gap-3 pt-2">
         <button type="submit" data-edit-text="submit_label"
                 class="form-submit px-5 py-2.5 text-sm font-medium text-white bg-blue-700 rounded-lg hover:bg-blue-800 focus:ring-4 focus:ring-blue-300">
@@ -1666,6 +1673,9 @@ const validateFormValues = (blockUid, fields) => {
   return errors;
 };
 
+// The honeypot field's name, as formsupport serialises it.
+const honeypotName = (formBlock) => formBlock.captcha_props?.id || 'protected_1';
+
 const handleFormSubmit = async (event, formBlock) => {
   const fields = formBlock.subblocks || [];
   const uid = block_uid.value;
@@ -1692,7 +1702,15 @@ const handleFormSubmit = async (event, formBlock) => {
   const response = await fetch(`${apiUrl}${contextPath}/@submit-form`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({ block_id: uid, data: submitData }),
+    body: JSON.stringify({
+      block_id: uid,
+      data: submitData,
+      // The backend refuses a honeypot form unless this says the trap stayed
+      // empty (HoneypotSupport.verify).
+      ...(formBlock.captcha === 'honeypot'
+        ? { captcha: { provider: 'honeypot', token: '', value: event.target.elements[honeypotName(formBlock)]?.value ?? '' } }
+        : {}),
+    }),
   });
   if (response.ok || response.status === 204) {
     formState.value = { ...formState.value, [uid]: { success: true } };

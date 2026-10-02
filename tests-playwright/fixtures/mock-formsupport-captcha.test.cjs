@@ -19,11 +19,16 @@ const os = require('node:os');
 const path = require('node:path');
 
 const PROVIDERS = ['recaptcha', 'hcaptcha', 'hcaptcha_invisible', 'norobots-captcha'];
+// A site that has configured the token providers too (keys, questions); the
+// mock reads which from MOCK_CAPTCHA_PROVIDERS, honeypot being always on.
+process.env.MOCK_CAPTCHA_PROVIDERS = PROVIDERS.join(',');
 
 // One page per provider, mounted before the mock loads (it reads
 // CONTENT_MOUNTS at require time).
 const mount = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-captcha-'));
-for (const provider of PROVIDERS) {
+// `none` was a VALUE once: it names no adapter, and formsupport fails every
+// submission of a form set to it. `turnstile` is a provider no extra installs.
+for (const provider of [...PROVIDERS, 'honeypot', 'none', 'turnstile']) {
   fs.mkdirSync(path.join(mount, provider));
   fs.writeFileSync(
     path.join(mount, provider, 'data.json'),
@@ -74,11 +79,57 @@ const submit = (provider, captcha) =>
   });
 
 describe('formsupport captcha', () => {
-  it('a default site offers honeypot alone', async () => {
+  it('offers the providers this site has configured, honeypot always', async () => {
     const res = await fetch(`${baseUrl}/@vocabularies/collective.volto.formsupport.captcha.providers`);
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.deepEqual(body.items.map((i) => i.token), ['honeypot']);
+    assert.deepEqual(body.items.map((i) => i.token), ['honeypot', ...PROVIDERS]);
+  });
+
+  for (const provider of ['none', 'turnstile']) {
+    it(`a form set to "${provider}" cannot be submitted: no such provider here`, async () => {
+      // formsupport's getMultiAdapter(name=block.captcha) raises — a 500.
+      const res = await submit(provider, { provider, token: 'x', value: '' });
+      assert.equal(res.status, 500);
+      assert.match((await res.json()).message, new RegExp(provider));
+    });
+  }
+
+  it('honeypot: the empty trap passes, as volto-form-block sends it', async () => {
+    const res = await submit('honeypot', { provider: 'honeypot', token: '', value: '' });
+    assert.ok(res.ok, `${res.status} ${await res.text()}`);
+  });
+
+  it('honeypot: a filled trap is refused', async () => {
+    const res = await submit('honeypot', { provider: 'honeypot', token: '', value: 'spam' });
+    assert.equal(res.status, 400);
+  });
+
+  it('honeypot: a captcha with no value is refused', async () => {
+    // HoneypotSupport.verify: `"value" not in data` is a BadRequest.
+    const res = await submit('honeypot', { provider: 'honeypot', token: '' });
+    assert.equal(res.status, 400);
+  });
+
+  it('honeypot: with no captcha, the trap must be among the answers, empty', async () => {
+    // found_honeypot(form, required=True) over the answers by label: the
+    // field missing is "misses required field" (HONEYPOT_FIELD defaults to
+    // protected_1), filled is "has forbidden field".
+    assert.equal((await submit('honeypot')).status, 400);
+    const withTrap = (value) =>
+      fetch(`${baseUrl}/honeypot/@submit-form`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          block_id: 'f',
+          data: [
+            { field_id: 'q', label: 'Q', value: 'an answer' },
+            { field_id: 'protected_1', label: 'protected_1', value },
+          ],
+        }),
+      });
+    assert.ok((await withTrap('')).ok);
+    assert.equal((await withTrap('spam')).status, 400);
   });
 
   for (const provider of PROVIDERS) {

@@ -603,6 +603,13 @@ function FormBlock({ id, block, data, apiUrl, contextPath }) {
   const [formValues, setFormValues] = useState({});
   const [formErrors, setFormErrors] = useState({});
   const [success, setSuccess] = useState(false);
+  // collective.volto.formsupport's honeypot: a field no person fills in. Its
+  // name comes from the backend (`captcha_props.id`, collective.honeypot's
+  // HONEYPOT_FIELD — "protected_1" by default), and the backend refuses the
+  // submission unless the `captcha` it gets says the field stayed empty.
+  const [honeypot, setHoneypot] = useState("");
+  const honeypotId =
+    block.captcha === "honeypot" ? block.captcha_props?.id || "protected_1" : null;
 
   const getFormValue = (fieldId) => formValues[fieldId] ?? "";
 
@@ -665,7 +672,13 @@ function FormBlock({ id, block, data, apiUrl, contextPath }) {
     const response = await fetch(`${apiUrl}${cp}/@submit-form`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ block_id: id, data: submitData }),
+      body: JSON.stringify({
+        block_id: id,
+        data: submitData,
+        ...(honeypotId
+          ? { captcha: { provider: "honeypot", token: "", value: honeypot } }
+          : {}),
+      }),
     });
     if (response.ok || response.status === 204) {
       setSuccess(true);
@@ -854,6 +867,20 @@ function FormBlock({ id, block, data, apiUrl, contextPath }) {
               )}
             </div>
           ))}
+          {honeypotId && (
+            <div hidden aria-hidden="true">
+              <label htmlFor={`${id}-${honeypotId}`}>Leave this field empty</label>
+              <input
+                type="text"
+                id={`${id}-${honeypotId}`}
+                name={honeypotId}
+                tabIndex={-1}
+                autoComplete="off"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+              />
+            </div>
+          )}
           <div style={{ display: "flex", gap: "0.75rem", paddingTop: "0.5rem" }}>
             <button type="submit" className="form-submit" data-edit-text="submit_label">
               {block.submit_label || "Submit"}
