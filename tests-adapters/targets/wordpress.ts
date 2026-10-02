@@ -208,6 +208,16 @@ const target: Target = {
     }
   },
 
+  async publicNavigation() {
+    // What the adapter uses: top-level pages. Core WordPress has no public
+    // menu endpoint, so this is the page tree rather than a curated menu.
+    const res = await fetch(
+      `${BASE}/?rest_route=/wp/v2/pages&parent=0&status=publish&per_page=100`,
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as unknown[];
+  },
+
   async seed() {
     // Put the SESSION back too, not just the content.
     //

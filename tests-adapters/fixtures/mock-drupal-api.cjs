@@ -349,7 +349,13 @@ app.use((req, res, next) => {
     // stays forbidden. That distinction is load-bearing: auth.whoami reads
     // /jsonapi/user/user, and the contract requires it to fail after logout.
     // Allowing every anonymous GET made a logged-out session look signed in.
-    if (!req.path.startsWith('/jsonapi/node')) {
+    // Content, and the menu module's public route. `jsonapi_menu_items` exists
+    // to put menus on the public API — gating it here would defeat the only
+    // reason a decoupled site installs it.
+    const publicToAnonymous =
+      req.path.startsWith('/jsonapi/node') ||
+      req.path.startsWith('/jsonapi/menu_items');
+    if (!publicToAnonymous) {
       return res
         .status(403)
         .json({ errors: [{ status: '403', detail: 'Forbidden: anonymous' }] });
@@ -524,6 +530,46 @@ app.get('/jsonapi/taxonomy_term/:vocab', (req, res) => {
 });
 
 // --- menu links (the hierarchy) -----------------------------------------
+/**
+ * The `jsonapi_menu_items` contrib module, which is what a decoupled Drupal
+ * installs to put menus on the public API.
+ *
+ * Core's `menu_link_content` is an entity behind permissions, so an anonymous
+ * frontend cannot read it — which is precisely why this module exists and is
+ * widely used. The adapter keeps WRITING through core (the module is
+ * read-only); a visitor READS through here.
+ *
+ * MODELLED FROM THE MODULE'S DOCUMENTATION, not from running it: the resource
+ * type and attribute names are what it is believed to return. A real Drupal in
+ * CI would settle it.
+ */
+app.get('/jsonapi/menu_items/:menu', (req, res) => {
+  const { menuLinks, nodes } = stateFor(req);
+  const pathOf = (uuid) => {
+    const n = [...nodes.values()].find((x) => x.uuid === uuid);
+    return n ? n.alias : null;
+  };
+  res.json(
+    collection(
+      [...menuLinks.values()]
+        // Disabled links are out of the menu, and that is the whole point of
+        // the flag — a visitor must not see them.
+        .filter((l) => l.enabled !== false)
+        .map((l) => ({
+          type: 'menu_items--menu_items',
+          id: l.uuid,
+          attributes: {
+            title: l.title ?? null,
+            url: l.nodeUuid ? pathOf(l.nodeUuid) : null,
+            enabled: l.enabled !== false,
+            weight: l.weight,
+            parent: l.parentUuid ?? null,
+          },
+        })),
+    ),
+  );
+});
+
 app.get('/jsonapi/menu_link_content/menu_link_content', (req, res) => {
   const { menuLinks } = stateFor(req);
   const parent = filterValue(req, 'parent');

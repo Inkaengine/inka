@@ -137,6 +137,20 @@ const target: Target = {
     }
   },
 
+  async publicNavigation() {
+    // NOT the adapter's own source. The adapter edits through core's
+    // menu_link_content, which is behind permissions; a visitor reads through
+    // `jsonapi_menu_items`, the contrib module a decoupled Drupal installs for
+    // exactly this. Two surfaces over one set of links — the same split as
+    // WordPress, where public reads need WPGraphQL and writes use core REST.
+    const res = await fetch(`${BASE}/jsonapi/menu_items/main`, {
+      headers: { Accept: 'application/vnd.api+json' },
+    });
+    if (!res.ok) return null;
+    const body: any = await res.json();
+    return body.data ?? [];
+  },
+
   async seed() {
     adapter.credentials = { username: 'admin', password: 'admin' };
     // Must carry the SAME credentials the adapter uses: the mock scopes

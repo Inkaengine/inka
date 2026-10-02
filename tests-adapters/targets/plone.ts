@@ -162,6 +162,15 @@ const target: Target = {
     return body.blocks ?? {};
   },
 
+  async publicNavigation() {
+    const res = await fetch(`${BASE}/@navigation`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const body: any = await res.json();
+    return body.items ?? [];
+  },
+
   async seed() {
     sessionCounter += 1;
     // A JWT-shaped token, because that is what Plone issues and what the

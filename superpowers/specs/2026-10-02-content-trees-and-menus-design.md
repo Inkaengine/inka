@@ -1,6 +1,7 @@
 # Content trees and menus — options
 
-Status: **open, not decided.** Written down mid-discussion so the options survive
+Status: **partly decided.** The public-reading constraint below is settled and
+tested; the view model above is still open. Written down mid-discussion so the options survive
 the conversation. Nothing here is implemented.
 
 ## The problem
@@ -105,3 +106,75 @@ the URL you are on IS the tree you are browsing.
 3. Whether WordPress navigation moves off the page tree onto real WP menus —
    with a fallback, since the menu endpoints need `edit_theme_options` and a
    fresh site has no menus at all.
+
+
+## The public-reading constraint (settled 2026-10-02)
+
+The frontend renders the published site by reading the CMS **directly** — no
+adapter, no session. That turns out to constrain this whole design, because a
+curated menu is not publicly readable on either CMS that has one:
+
+| | public navigation source | needs an addition? |
+| --- | --- | --- |
+| Plone | `@navigation`, derived from content | no |
+| WordPress | page tree (`/wp/v2/pages?parent=0`) | no today — **yes** if we move to real menus |
+| Drupal | `menu_link_content` is permissioned | **yes** — `jsonapi_menu_items` |
+
+So WordPress passes today *because* it derives navigation from content. Moving
+it onto real menus — the thing that makes exclusion and nav-title possible —
+costs public readability unless something is installed. **Curated membership
+and public readability are in tension on both CMSes.** Plone escapes it only
+because its menu IS the content tree.
+
+Bigger than menus on Drupal: `allMenuLinks()` has SEVEN call sites —
+`tree.list`, ordering and path lookup as well as navigation. The whole content
+hierarchy comes from menu links, so "menus are not public" is really "the
+hierarchy is not public".
+
+### Decision: declare the dependency
+
+Requiring a plugin is normal for a headless site and reasonable to expect from a
+PaaS, so the adapters assume one rather than engineering around it:
+
+- **WordPress** — WPGraphQL for public reads. It also brings `nodeByUri`, a real
+  "what is at this path?" primitive, replacing the segment-by-segment slug walk
+  `resolvePath` does today.
+- **Drupal** — `jsonapi_menu_items` for public menu reads.
+
+### The split is READS vs WRITES, not public vs admin
+
+Editing is read-heavy, and the measured cost is in reads: the same editing work
+took 413 requests over the bridge against 220 direct, much of it N+1
+(`resolvePath` walking, `ancestryOf` per document, `pathOfPost` per row). So
+GraphQL is worth it for the admin's reads too, not only the frontend's — and if
+both use the same queries, what a visitor sees and what an editor sees cannot
+drift apart. That drift is exactly the bug we hit with blocks in an HTML
+comment: the authenticated read worked and the public one returned nothing.
+
+Writes stay on the core APIs, because the public/read-only surfaces cannot do
+them: media upload (no multipart over GraphQL) and menu mutations.
+
+### Tested
+
+`tests-adapters/contract/public-read.spec.ts` asserts, with NO credentials: a
+published document's blocks are readable, the navigation is readable, and an
+unpublished document is NOT. All three targets pass.
+
+What it does NOT assert, and should: that the public source and the adapter's
+source AGREE. The adapter may legitimately read a private API while the visitor
+reads a public one; nothing yet catches them diverging.
+
+### Unverified assumptions
+
+Each would change the design if wrong, and none has been measured:
+
+- that core `/wp/v2/menus` and `/wp/v2/menu-items` require `edit_theme_options`
+- that WPGraphQL's `menuItems` is anonymous-readable for a location-assigned menu
+- that WPGraphQL runs under PHP-WASM in Playground
+- the response shape of `jsonapi_menu_items`, which the Drupal mock now models
+  **from documentation, not from running it** — a fiction of a contrib module on
+  top of a fiction of Drupal
+
+The last is the third time the Drupal mock has been the limiting factor (after
+multilingual and anonymous access). A real `drupal:11` in CI would retire that
+whole class of doubt.

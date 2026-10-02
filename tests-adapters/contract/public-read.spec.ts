@@ -45,6 +45,23 @@ describe('public read', () => {
     expect(JSON.stringify(blocks)).toContain('Hello');
   });
 
+  it('serves the navigation to a client with no credentials', async () => {
+    // A frontend draws the menu on every page and holds no session.
+    //
+    // NOT necessarily the source the adapter reads: the adapter is the
+    // authenticated editing client and may use a private API, while the
+    // visitor uses whatever that CMS offers publicly — Plone's @navigation,
+    // WordPress's page tree, Drupal's jsonapi_menu_items. What matters is that
+    // a public route EXISTS and answers. The risk this leaves is the two
+    // disagreeing, which is a different test.
+    const items = await target.publicNavigation();
+    expect(
+      items,
+      'an anonymous client could not read the navigation source the adapter uses',
+    ).not.toBeNull();
+    expect(items!.length).toBeGreaterThan(0);
+  });
+
   it('does not serve an unpublished document to a client with no credentials', async () => {
     // The other half, and the one that matters more if we get it wrong: making
     // blocks public must not make DRAFTS public.

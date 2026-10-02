@@ -65,6 +65,19 @@ export interface Target {
    */
   publicBlocks(path: string): Promise<Record<string, unknown> | null>;
   /**
+   * The navigation, fetched with NO credentials, from the SAME source the
+   * adapter builds it from.
+   *
+   * A frontend renders the menu on every page, and it has no session. So it is
+   * not enough that `navigation.get` works for the admin: whatever the adapter
+   * reads has to be readable by a visitor too. Plone derives navigation from
+   * content, WordPress from the page tree, Drupal from menu links — and those
+   * three have very different default permissions.
+   *
+   * Returns null when an anonymous client cannot read it at all.
+   */
+  publicNavigation(): Promise<unknown[] | null>;
+  /**
    * Put the adapter into a state where the CMS rejects it as unauthenticated,
    * so the 401 path can be exercised for real rather than with a stub. The
    * callback receives every event the adapter emits while expired.
