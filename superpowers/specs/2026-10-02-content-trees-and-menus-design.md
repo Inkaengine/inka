@@ -178,3 +178,93 @@ Each would change the design if wrong, and none has been measured:
 The last is the third time the Drupal mock has been the limiting factor (after
 multilingual and anonymous access). A real `drupal:11` in CI would retire that
 whole class of doubt.
+
+
+## The model (2026-10-03)
+
+**Views.** The adapter advertises the ways its CMS organises content. The
+contents view and the picker both browse a named view; the view is a parameter
+of the browser, not a folder inside the content tree.
+
+Three shapes, and WordPress has all three at once:
+
+| shape | example | nodes are | total? | ordered? |
+| --- | --- | --- | --- | --- |
+| hierarchy | Plone's tree, WP pages | content | yes, unique | manual |
+| menu | WP nav menus, Drupal menus | **links** | no | manual |
+| collection | WP posts, by date or term | content | yes | by field |
+
+The CMSes differ on whether content has intrinsic hierarchy, which is the axis
+everything else follows from:
+
+- **Plone** — everything hierarchical; a news listing is a QUERY over a folder.
+- **WordPress** — pages hierarchical, posts flat, menus separate.
+- **Drupal** — nodes FLAT; hierarchy comes entirely from menu links.
+
+Worth stating plainly: **the contract is Plone-shaped.** It addresses by path and
+assumes a tree. Drupal satisfies that only because menu links supply the paths,
+and WordPress posts do not satisfy it at all — which is why they are excluded
+today rather than handled. Supporting the collection shape is the same work as
+supporting posts.
+
+**A menu contains LINKS, not content.** This is what the CMSes store —
+`nav_menu_item`, `menu_link_content`, and Plone's `Link` content type — and it
+settles how a page can be in two places: not the page twice, but two links to
+one page. Operations then need no special cases:
+
+- editing a link's title changes the NAV TITLE, not the page
+- removing a link unlinks; the page is untouched
+- the page's identity and URL live in the hierarchy view, where it actually is
+
+**Content-backed or not** is recorded by the CMS, not inferred: Drupal holds
+`entity:node/123` vs a plain `internal:/about`; WordPress holds
+`type: post_type` + `object_id` vs `type: custom`. The rule is that the CMS
+holds a REFERENCE — not that a URL string currently resolves, because
+`internal:/about` breaks on rename while `entity:node/123` survives. That is the
+same promise `reference.resolve` already makes. Both CMSes expose the choice in
+their authoring UI — pick from a list, or type a URL — so the picker must
+preserve it rather than flattening everything to a URL.
+
+A reference whose target was deleted should show as BROKEN, not vanish: a
+disappearing menu item is harder to diagnose than a visibly broken one.
+
+**Moving means different things per view, and some moves are refused.**
+
+| view | move within | remove | add |
+| --- | --- | --- | --- |
+| hierarchy | moves the CONTENT — path and URL change, links must follow | delete | create |
+| menu | reparents/reorders the LINK — no URL change | delete the link | create a link |
+| collection | usually REFUSED — order comes from a field; "moving" would mean editing the date | delete | create |
+
+So a view descriptor declares: what its nodes are, whether it is ordered, whether
+it is total, whether non-content entries are allowed, and what remove means. The
+contents view offers views that can hold content; the picker offers only views
+whose nodes resolve to content, or resolves a link to its target before
+returning.
+
+**Which menus to offer** is CMS knowledge and belongs in the adapter. Drupal
+ships system menus (Administration, Tools, User account) whose links are
+module-provided plugin definitions, not `menu_link_content` entities, and which
+point at routes rather than content — an editor must never be shown those. But
+membership cannot be the test, because an EMPTY footer menu should still be
+offerable; existence and editability is the test.
+
+### Prerequisites, in build order
+
+1. **`menu_name`.** It appears ZERO times in the Drupal adapter and mock, and the
+   WordPress adapter's only mention of `nav_menu` excludes it as a content type.
+   We currently model exactly one implicit menu and cannot say which menu a link
+   belongs to. Teach the adapters this first, still advertising a single view, so
+   nothing user-facing changes.
+2. A view list on the adapter, with the descriptor above.
+3. `tree.list({tree, parent})`, where `parent` is a node in the named view — not
+   a content path. Plone's `tree.list` is a context-scoped `@search` today, which
+   bakes in "the URL you are on IS the tree you are browsing".
+4. The selector in the contents view and picker.
+
+### Smaller things found on the way
+
+- WordPress has a purpose-built picker endpoint, `/wp/v2/search`, returning id,
+  title, url, type and subtype across post types. Our adapter does not use it
+  (`search` goes to `/wp/v2/{postType}?search=`, single-type, full payloads).
+  Drupal has no equivalent, so its CONTAINS filter is already right.
