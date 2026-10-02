@@ -1067,13 +1067,29 @@ async function checkEditorRules(source, schemas) {
     );
   const { buildBlockPathMap } = await hydraJs('buildBlockPathMap.js');
   const { normalizeSlateFields } = await hydraJs('slateStyles.js');
+  const { createFieldRulesEnhancer } = await hydraJs('fieldRules.js');
+  // A schemas file carries schemaEnhancer RECIPES (plain data), and
+  // buildBlockPathMap runs only enhancer FUNCTIONS — in the admin, blockSync
+  // turns recipes into functions at init. Do the same for `fieldRules`, with
+  // the same module, so a rule means here exactly what it means in the editor.
+  const withRules = Object.fromEntries(
+    Object.entries(schemas).map(([type, def]) => {
+      const recipe = def && def.schemaEnhancer;
+      if (!recipe || typeof recipe === 'function' || !recipe.fieldRules) return [type, def];
+      return [type, { ...def, schemaEnhancer: createFieldRulesEnhancer(recipe.fieldRules) }];
+    }),
+  );
   const onDisk = typeof source === 'string';
   const errors = [];
-  const stats = { items: 0, blocks: 0, misplaced: 0, overfull: 0, emptyRequired: 0, restyled: 0 };
+  const warnings = [];
+  const stats = {
+    items: 0, blocks: 0, misplaced: 0, overfull: 0, emptyRequired: 0, restyled: 0,
+    ruleErrors: 0, ruleWarnings: 0,
+  };
   for (const { rel, data } of onDisk ? walkData(source) : source) {
     stats.items += 1;
     if (!data || !data.blocks) continue;
-    const pathMap = buildBlockPathMap(data, schemas);
+    const pathMap = buildBlockPathMap(data, withRules);
     const overfull = new Map(); // `${parentId}.${region}` -> [count, max]
     for (const [uid, info] of Object.entries(pathMap)) {
       if (uid.startsWith('_') || !info || typeof info !== 'object' || !info.blockType) continue;
@@ -1115,6 +1131,18 @@ async function checkEditorRules(source, schemas) {
           );
         }
       }
+      // A fieldRules `error` / `warning` that fired on this block's data: the
+      // resolved schema carries it on the field, as the sidebar shows it.
+      for (const [field, def] of Object.entries((schema && schema.properties) || {})) {
+        if (def && def.hydraRuleError) {
+          stats.ruleErrors += 1;
+          errors.push(`  ${rel}: a "${info.blockType}" block (${uid}), ${field}: ${def.hydraRuleError}`);
+        }
+        if (def && def.hydraRuleWarning) {
+          stats.ruleWarnings += 1;
+          warnings.push(`  ${rel}: a "${info.blockType}" block (${uid}), ${field}: ${def.hydraRuleWarning}`);
+        }
+      }
       if (typeof info.maxSiblings === 'number' && info.siblingCount > info.maxSiblings) {
         overfull.set(`${where}`, [info.siblingCount, info.maxSiblings]);
       }
@@ -1127,7 +1155,7 @@ async function checkEditorRules(source, schemas) {
       );
     }
   }
-  return { errors, warnings: [], stats };
+  return { errors, warnings, stats };
 }
 
 function formatReport(title, result) {
@@ -1146,7 +1174,8 @@ function formatReport(title, result) {
     lines.push(`Content: ${result.stats.items} items, ${result.stats.blocks} blocks`);
     lines.push(
       `Rules:   ${result.stats.misplaced} misplaced, ${result.stats.overfull} over maxLength, ` +
-        `${result.stats.emptyRequired} required empty, ${result.stats.restyled} disallowed styles`,
+        `${result.stats.emptyRequired} required empty, ${result.stats.restyled} disallowed styles, ` +
+        `${result.stats.ruleErrors} rule errors, ${result.stats.ruleWarnings} rule warnings`,
     );
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);

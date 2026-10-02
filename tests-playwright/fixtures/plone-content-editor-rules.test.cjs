@@ -8,6 +8,7 @@
  *  - a region's `maxLength`
  *  - a block schema's `required` fields
  *  - a region's text styles (`allowedStyles` / `disallowedStyles`)
+ *  - a block's `fieldRules`: an `error` is an error, a `warning` a warning
  *
  * The validator used to check only that a block's FIELDS were declared, so a
  * block the editor would never let you put somewhere — inside a container
@@ -28,7 +29,7 @@ const SCHEMAS = {
       properties: {
         items: {
           widget: 'blocks_layout',
-          allowedBlocks: ['slate', 'banner', 'section', 'columns', 'card', 'text'],
+          allowedBlocks: ['slate', 'banner', 'section', 'columns', 'card', 'text', 'teaser'],
           allowedStyles: ['p', 'h2', 'strong'],
         },
       },
@@ -41,6 +42,20 @@ const SCHEMAS = {
     },
   },
   text: { blockSchema: { properties: { value: { title: 'Text', widget: 'slate' } } } },
+  // A schemaEnhancer RECIPE, as a frontend's config declares it (plain data —
+  // what a schemas file can carry): the validator builds the enhancer from it
+  // with the same fieldRules module the admin uses.
+  teaser: {
+    blockSchema: {
+      properties: { title: { title: 'Title' }, image: { title: 'Image' }, count: { title: 'Count', type: 'integer' } },
+    },
+    schemaEnhancer: {
+      fieldRules: {
+        title: { when: { title: { regex: 'TODO' } }, error: 'A teaser title must not say TODO.' },
+        image: { when: { image: { isSet: false } }, warning: 'A teaser reads better with an image.' },
+      },
+    },
+  },
   slate: { blockSchema: { properties: { value: { title: 'Text' } } } },
   banner: { blockSchema: { properties: {} } },
   section: {
@@ -143,5 +158,34 @@ describe('checkEditorRules()', () => {
     const value = [{ type: 'h2', children: [{ text: 'Allowed' }] }];
     const r = await checkEditorRules(page({ t: { '@type': 'text', value } }, ['t']), SCHEMAS);
     assert.deepEqual(r.errors, []);
+  });
+
+  it("reports a fieldRules error as an error — the editor will not save it", async () => {
+    const r = await checkEditorRules(
+      page({ t: { '@type': 'teaser', title: 'TODO write this', image: 'x.png' } }, ['t']),
+      SCHEMAS,
+    );
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /teaser/);
+    assert.match(r.errors[0], /title/);
+    assert.match(r.errors[0], /must not say TODO/);
+    assert.deepEqual(r.warnings, []);
+  });
+
+  it('reports a fieldRules warning as a warning, not an error', async () => {
+    const r = await checkEditorRules(page({ t: { '@type': 'teaser', title: 'Ready' } }, ['t']), SCHEMAS);
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.warnings.length, 1);
+    assert.match(r.warnings[0], /image/);
+    assert.match(r.warnings[0], /reads better with an image/);
+  });
+
+  it('says nothing when no rule fires', async () => {
+    const r = await checkEditorRules(
+      page({ t: { '@type': 'teaser', title: 'Ready', image: 'x.png' } }, ['t']),
+      SCHEMAS,
+    );
+    assert.deepEqual(r.errors, []);
+    assert.deepEqual(r.warnings, []);
   });
 });
