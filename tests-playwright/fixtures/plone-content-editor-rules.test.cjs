@@ -157,6 +157,14 @@ describe('checkEditorRules()', () => {
     assert.match(r.errors[0], /at most 2/);
   });
 
+  it('counts maxLength per container, not per container TYPE', async () => {
+    // Two sections, each within its maxLength of 2 — together they hold 4.
+    // (Distinct block ids: the path map is keyed by id.)
+    const two = (p) => section([[`${p}a`, { '@type': 'slate' }], [`${p}b`, { '@type': 'slate' }]]);
+    const r = await checkEditorRules(page({ s1: two('x'), s2: two('y') }, ['s1', 's2']), SCHEMAS);
+    assert.deepEqual(r.errors, []);
+  });
+
   it("reports a block at the page's top level its regions do not allow", async () => {
     const r = await checkEditorRules(page({ c: { '@type': 'column', blocks: {}, blocks_layout: { items: [] } } }, ['c']), SCHEMAS);
     assert.equal(r.errors.length, 1);
@@ -223,5 +231,74 @@ describe('checkEditorRules()', () => {
     // ../caption is unset and p1 has no alt → p1 (only) errors.
     assert.equal(r.errors.length, 1);
     assert.match(r.errors[0], /picture.*\(p1\).*alt/);
+  });
+
+  describe('exempt slots', () => {
+    // A template slot can hold blocks deliberately placed where the editor
+    // would not put them — a design system's documentation showing a component
+    // as an example. `exemptSlots` lets a caller name such slots: their blocks'
+    // PLACEMENT is not checked; every other rule still is.
+    const inSlot = (block) => ({ ...block, slotId: 'example', templateInstanceId: 'doc' });
+
+    it("does not report the placement of a block in an exempt slot", async () => {
+      const r = await checkEditorRules(
+        page({ s: section([['b', inSlot({ '@type': 'banner' })]]) }, ['s']),
+        SCHEMAS,
+        { exemptSlots: ['example'] },
+      );
+      assert.deepEqual(r.errors, []);
+    });
+
+    it('still reports it without the exemption', async () => {
+      const r = await checkEditorRules(page({ s: section([['b', inSlot({ '@type': 'banner' })]]) }, ['s']), SCHEMAS);
+      assert.equal(r.errors.length, 1);
+      assert.match(r.errors[0], /banner/);
+    });
+
+    it("still applies every other rule to an exempt slot's blocks", async () => {
+      const r = await checkEditorRules(
+        page({ c: inSlot({ '@type': 'card', description: 'D' }) }, ['c']),
+        SCHEMAS,
+        { exemptSlots: ['example'] },
+      );
+      assert.equal(r.errors.length, 1);
+      assert.match(r.errors[0], /title/);
+    });
+  });
+
+  describe('layout documents', () => {
+    // A layout document holds the blocks of the REGION that names it in
+    // `allowedLayouts` — a site footer's blocks belong to the footer region,
+    // not the page's content region — so it is held to that region's rules.
+    const WITH_FOOTER = {
+      ...SCHEMAS,
+      _page: {
+        blockSchema: {
+          properties: {
+            ...SCHEMAS._page.blockSchema.properties,
+            footer: { widget: 'blocks_layout', allowedBlocks: ['footerBar'], allowedLayouts: ['/templates/footer'] },
+          },
+        },
+      },
+      footerBar: { blockSchema: { properties: {} } },
+    };
+    const doc = (id, blocks, items) => [{ rel: `content${id}`, data: { '@id': id, blocks, blocks_layout: { items } } }];
+
+    it("checks a layout document against the region that names it", async () => {
+      const r = await checkEditorRules(doc('/templates/footer', { f: { '@type': 'footerBar' } }, ['f']), WITH_FOOTER);
+      assert.deepEqual(r.errors, []);
+    });
+
+    it("still reports a block that region does not allow", async () => {
+      const r = await checkEditorRules(doc('/templates/footer', { b: { '@type': 'banner' } }, ['b']), WITH_FOOTER);
+      assert.equal(r.errors.length, 1);
+      assert.match(r.errors[0], /banner/);
+    });
+
+    it('checks any other page against the content region as before', async () => {
+      const r = await checkEditorRules(doc('/about', { f: { '@type': 'footerBar' } }, ['f']), WITH_FOOTER);
+      assert.equal(r.errors.length, 1);
+      assert.match(r.errors[0], /footerBar/);
+    });
   });
 });

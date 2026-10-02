@@ -1056,9 +1056,13 @@ function checkBlockSchemas(source, fieldMap) {
  * in it is reported.
  *
  * `schemas` is the site's `{ type: { blockSchema, ... } }` with its page
- * regions under `_page` — the same file `--schemas` reads.
+ * regions under `_page` — the same file `--schemas` reads. `exemptSlots`
+ * names template slots whose blocks are placed deliberately where the editor
+ * would not put them (documentation examples): their placement and maxLength
+ * are not checked, every other rule is.
  */
-async function checkEditorRules(source, schemas) {
+async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
+  const exempt = new Set(exemptSlots);
   const hydraJs = (file) =>
     import(
       require('url').pathToFileURL(
@@ -1086,18 +1090,49 @@ async function checkEditorRules(source, schemas) {
     items: 0, blocks: 0, misplaced: 0, overfull: 0, emptyRequired: 0, restyled: 0,
     ruleErrors: 0, ruleWarnings: 0,
   };
+  // A LAYOUT document holds the blocks of the region that names it in
+  // `allowedLayouts` (a site footer's blocks are the footer region's, not the
+  // page content's), so it is held to that region's rules: its own `items` are
+  // checked with that region's definition in place of the page's.
+  const pageSchema = (withRules._page && withRules._page.blockSchema) || { properties: {} };
+  const layoutRegion = new Map(); // layout path -> region field definition
+  for (const def of Object.values(pageSchema.properties || {})) {
+    for (const layout of (def && def.allowedLayouts) || []) {
+      if (typeof layout === 'string') layoutRegion.set(layout.replace(/\/+$/, ''), def);
+    }
+  }
+  const schemasFor = (data) => {
+    const id = typeof data['@id'] === 'string' ? data['@id'].replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '') : '';
+    const region = layoutRegion.get(id);
+    if (!region) return withRules;
+    return {
+      ...withRules,
+      _page: { ...withRules._page, blockSchema: { ...pageSchema, properties: { items: region } } },
+    };
+  };
   for (const { rel, data } of onDisk ? walkData(source) : source) {
     stats.items += 1;
     if (!data || !data.blocks) continue;
-    const pathMap = buildBlockPathMap(data, withRules);
-    const overfull = new Map(); // `${parentId}.${region}` -> [count, max]
+    const pathMap = buildBlockPathMap(data, schemasFor(data));
+    const regionCounts = new Map(); // parent + region -> [counted blocks, max, where]
     for (const [uid, info] of Object.entries(pathMap)) {
       if (uid.startsWith('_') || !info || typeof info !== 'object' || !info.blockType) continue;
+      // A template instance's VIRTUAL container (no path: it groups the
+      // instance's blocks in the editor, it is not content) — its blocks are
+      // checked where they actually live.
+      if (!Array.isArray(info.path)) continue;
       stats.blocks += 1;
+      const blockData = info.path.reduce((node, key) => (node == null ? node : node[key]), data);
+      // A block in an exempt template slot is deliberately placed where the
+      // editor would not put it (an example on a documentation page): its
+      // PLACEMENT is not checked, and it does not count against maxLength.
+      // Every other rule below still applies to it.
+      const placementExempt = Boolean(blockData && exempt.has(blockData.slotId));
       const where = info.parentId === '_page'
         ? `the page's ${info.region}`
         : `${pathMap[info.parentId]?.blockType ?? info.parentId}.${info.region}`;
       if (
+        !placementExempt &&
         !info.allowedSiblingTypesDerived &&
         Array.isArray(info.allowedSiblingTypes) &&
         !info.allowedSiblingTypes.includes(info.blockType)
@@ -1120,8 +1155,7 @@ async function checkEditorRules(source, schemas) {
       // so the stored content is not what anyone will see or save.
       const schema = info._schemaRef ? pathMap._schemas[info._schemaRef] : null;
       if (info.slateRules && schema) {
-        const block = info.path.reduce((node, key) => (node == null ? node : node[key]), data);
-        const { changes } = normalizeSlateFields(block, schema, info.slateRules);
+        const { changes } = normalizeSlateFields(blockData, schema, info.slateRules);
         for (const c of changes) {
           stats.restyled += 1;
           errors.push(
@@ -1143,11 +1177,16 @@ async function checkEditorRules(source, schemas) {
           warnings.push(`  ${rel}: a "${info.blockType}" block (${uid}), ${field}: ${def.hydraRuleWarning}`);
         }
       }
-      if (typeof info.maxSiblings === 'number' && info.siblingCount > info.maxSiblings) {
-        overfull.set(`${where}`, [info.siblingCount, info.maxSiblings]);
+      if (typeof info.maxSiblings === 'number' && !placementExempt) {
+        // Per container INSTANCE: two blocks of the same type each have their
+        // own region, and its own limit.
+        const key = `${info.parentId}\u0000${info.region}`;
+        const [count] = regionCounts.get(key) || [0];
+        regionCounts.set(key, [count + 1, info.maxSiblings, where]);
       }
     }
-    for (const [where, [count, max]] of overfull) {
+    for (const [count, max, where] of regionCounts.values()) {
+      if (count <= max) continue;
       stats.overfull += 1;
       errors.push(
         `  ${rel}: ${where} holds ${count} blocks, but takes at most ${max} — ` +
