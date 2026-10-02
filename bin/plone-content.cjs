@@ -4,8 +4,11 @@
  *   plone-content validate [<content-dir>]   — export-shape validation
  *   plone-content check    [<content-dir>]   — graph integrity check
  *   plone-content schema   [<content-dir>] --schemas <schemas.json>
- *                                            — every block field no schema declares
+ *                                            — every block field no schema declares, and
+ *                                              everything the editor would refuse or rewrite
  *   plone-content all      [<content-dir>]   — validate + check (+ schema with --schemas)
+ *   --exempt-slot <slotId>                    — (repeatable) don't check the PLACEMENT of
+ *                                              blocks in that template slot
  *   plone-content served                     — the whole site the mock API serves for
  *                                              CONTENT_MOUNTS (every mount together), the
  *                                              same check that stops the mock starting
@@ -21,7 +24,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport } = require(
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport } = require(
   path.join(__dirname, '..', 'tests-playwright', 'fixtures', 'plone-content-validator.cjs'),
 );
 
@@ -57,6 +60,10 @@ const takeFlag = (name) => {
 };
 const schemasPath = takeFlag('--schemas');
 const fieldsPath = takeFlag('--fields');
+// Template slots whose blocks are placed deliberately where the editor would
+// not put them (a documentation page's examples). Repeatable.
+const exemptSlots = [];
+for (let slot = takeFlag('--exempt-slot'); slot; slot = takeFlag('--exempt-slot')) exemptSlots.push(slot);
 
 (async () => {
 const schemas = schemasPath ? await loadSchemas(schemasPath) : null;
@@ -89,6 +96,14 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
   const r = checkBlockSchemas(contentDir, fields);
   console.log(formatReport('schema', r));
   if (r.errors.length) hasErrors = true;
+  // The rules the editor enforces need the schemas themselves, not a names-only
+  // field map: placement, maxLength, required fields and region text styles.
+  if (schemas) {
+    console.log('');
+    const rules = await checkEditorRules(contentDir, schemas, { exemptSlots });
+    console.log(formatReport('rules', rules));
+    if (rules.errors.length) hasErrors = true;
+  }
 }
 
 process.exit(hasErrors ? 1 : 0);

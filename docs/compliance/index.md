@@ -95,7 +95,7 @@ A template or layout marks blocks as `fixed` (can't be moved) and `readOnly` (ca
 "footer": { "@type": "slate", "fixed": true, "readOnly": true, "slotId": "footer" }
 ```
 
-Block fields also take the usual schema rules, such as `required` and `maxLength`, and those block the save too. For the full rule language see [Schema enhancers](../frontend-guide/custom-blocks.md#schema-enhancers), [Container blocks](../frontend-guide/container-blocks.md) and [Templates](../frontend-guide/templates.md).
+Block fields also take the usual schema rules, such as `required` and `maxLength`, and those block the save too. Content that arrives some other way — an import, a migration, a fixture — is held to the same rules: `plone-content schema --schemas <schemas.json>` reports every block the editor would refuse or rewrite (a type its region does not allow, a region over its `maxLength`, an empty required field, a text style its region does not allow) and exits non-zero. For the full rule language see [Schema enhancers](../frontend-guide/custom-blocks.md#schema-enhancers), [Container blocks](../frontend-guide/container-blocks.md) and [Templates](../frontend-guide/templates.md).
 
 ## Sign-off and the record: Inka Assure
 
