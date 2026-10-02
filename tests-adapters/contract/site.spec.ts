@@ -41,7 +41,7 @@ describe('site.get', () => {
     expect(typeof site.features?.multilingual).toBe('boolean');
   });
 
-  it('says HOW it holds translations, where it holds them at all', async () => {
+  it('says HOW it holds translations, where it holds them at all', async (ctx) => {
     // Not a property of the CMS — a property of how this site is set up.
     //
     //   grouped  — one document per language, linked. Linking an existing page
@@ -57,7 +57,7 @@ describe('site.get', () => {
     // Asked of any adapter that can serve translations at all, not only of a
     // site that happens to have a second language configured today: the mode is
     // structural, and the admin needs it before an editor adds a language.
-    if (!target.adapter.capabilities.includes('multilingual' as never)) return;
+    if (!target.adapter.capabilities.includes('multilingual' as never)) ctx.skip();
     const site: any = await target.adapter.dispatch('site.get', {});
     expect(['grouped', 'variants']).toContain(site.features?.translations);
   });

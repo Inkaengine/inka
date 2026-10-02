@@ -31,8 +31,8 @@ const advertises = (capability: string) =>
  * translation that cannot exist wastes the editor's work at the save.
  */
 describe('translations', () => {
-  it('rejects the whole group when it does not claim multilingual', async () => {
-    if (advertises('multilingual')) return;
+  it('rejects the whole group when it does not claim multilingual', async (ctx) => {
+    if (advertises('multilingual')) ctx.skip();
     // Honest refusal, not an empty answer: an empty group reads as "this
     // document has no translations yet", which invites the editor to make one.
     await expect(
@@ -40,8 +40,8 @@ describe('translations', () => {
     ).rejects.toThrow();
   });
 
-  it('answers with a group, empty or not', async () => {
-    if (!advertises('multilingual')) return;
+  it('answers with a group, empty or not', async (ctx) => {
+    if (!advertises('multilingual')) ctx.skip();
     const group: any = await target.adapter.dispatch('translations.get', {
       path: '/news',
     });
@@ -54,8 +54,8 @@ describe('translations', () => {
     }
   });
 
-  it('says where a translation belongs rather than assuming', async () => {
-    if (!advertises('multilingual')) return;
+  it('says where a translation belongs rather than assuming', async (ctx) => {
+    if (!advertises('multilingual')) ctx.skip();
     // The CMS decides: plone.app.multilingual walks up for the closest
     // translated parent, which is not always the language's root folder.
     const place: any = await target.adapter.dispatch('translations.locate', {
@@ -66,8 +66,8 @@ describe('translations', () => {
     expect(place.path.startsWith('/')).toBe(true);
   });
 
-  it('refuses to create a translation it cannot link', async () => {
-    if (advertises('multilingual')) return;
+  it('refuses to create a translation it cannot link', async (ctx) => {
+    if (advertises('multilingual')) ctx.skip();
     // The admin asks for a translation only when the capability is claimed, so
     // this is the belt to that braces: a create that silently produced a loose,
     // unlinked document would cost the editor a whole page of typing before
@@ -82,8 +82,8 @@ describe('translations', () => {
     ).rejects.toThrow();
   });
 
-  it('creates a translation that is in the group, and keeps its body', async () => {
-    if (!advertises('multilingual')) return;
+  it('creates a translation that is in the group, and keeps its body', async (ctx) => {
+    if (!advertises('multilingual')) ctx.skip();
 
     // Where the CMS says it belongs, not where the caller guessed.
     const place: any = await target.adapter.dispatch('translations.locate', {

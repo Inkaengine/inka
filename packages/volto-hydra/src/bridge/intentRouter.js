@@ -397,6 +397,21 @@ export function routeToIntent({ op, path, data }) {
         },
       };
 
+    // Who is editing this right now. Volto takes the lock on entering edit and
+    // releases it on leaving, and asks for it ONLY when the content carried a
+    // `lock` field — so an adapter that returns one and cannot route this is
+    // not merely missing a feature. The throw becomes LOCK_CONTENT_FAIL, which
+    // shares a reducer branch with GET_CONTENT_FAIL and nulls `content.data`:
+    // a failed lock wipes the loaded CONTENT and the edit form never renders.
+    case 'lock':
+      return op === 'del'
+        ? {
+            intent: 'content.unlock',
+            // `force` steals someone else's lock. Volto sends it in the body.
+            args: { path: contextPath, force: Boolean(data?.force) },
+          }
+        : { intent: 'content.lock', args: { path: contextPath } };
+
     case 'workflow':
       return rest.length
         ? {

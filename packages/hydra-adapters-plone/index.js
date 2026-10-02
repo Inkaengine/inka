@@ -82,6 +82,15 @@ export class PloneAdapter extends BaseAdapter {
         // this CMS can answer what points AT a document — which is what a delete
         // warning needs. See reference.dependents.
         'link-integrity',
+        // Plone has real edit locks (plone.locking), and `content.get` returns
+        // the `lock` field that makes the admin ask for them. Advertising it is
+        // the other half of returning that field — see the lock contract spec.
+        'locking',
+        // `exclude_from_nav` is a field on the document in Plone, and
+        // navigation.setExcluded already writes it. The capability was simply
+        // never declared, so the two contract tests for it skipped on the one
+        // CMS here that can run them.
+        'navigation-exclusion',
       ],
     });
     this.cmsBaseUrl = cmsBaseUrl;
@@ -543,6 +552,29 @@ export class PloneAdapter extends BaseAdapter {
       case 'content.delete':
         await this.fetchJson(args.path, { method: 'DELETE' });
         return null;
+
+      /**
+       * Plone's own lock endpoint, as plone.restapi serves it: POST takes the
+       * lock, DELETE releases it, and both answer with the lock as it now
+       * stands — `{locked, stealable, creator, created, token, …}`, or the bare
+       * `{locked: false, stealable: true}` when nothing holds it.
+       *
+       * Returned verbatim because the admin merges it straight onto
+       * `content.lock`, and because every field here is one a second editor
+       * needs: who holds it, since when, and whether it can be stolen. There is
+       * nothing to canonicalise that would not just be this with fewer answers.
+       */
+      case 'content.lock':
+        return this.fetchJson(`${args.path}/@lock`, { method: 'POST' });
+
+      case 'content.unlock':
+        return this.fetchJson(`${args.path}/@lock`, {
+          method: 'DELETE',
+          // `force` is how a lock held by someone else is stolen; the CMS
+          // decides whether to allow it, which is why it is passed on rather
+          // than judged here.
+          body: args.force ? { force: true } : undefined,
+        });
 
       case 'auth.logout':
         return this.logout();

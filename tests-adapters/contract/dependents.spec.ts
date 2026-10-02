@@ -33,8 +33,8 @@ const advertises = (capability: string) =>
  * `resolveuid/<uid>` would be asserting Plone's mechanism on everyone.
  */
 describe('reference.dependents', () => {
-  it('refuses when the CMS cannot see incoming links', async () => {
-    if (advertises('link-integrity')) return;
+  it('refuses when the CMS cannot see incoming links', async (ctx) => {
+    if (advertises('link-integrity')) ctx.skip();
     // Honest refusal, not an empty list: "nothing links here" invites a delete
     // that breaks someone's page, which is precisely the warning's job.
     await expect(
@@ -42,8 +42,8 @@ describe('reference.dependents', () => {
     ).rejects.toMatchObject({ code: 'NOT_IMPLEMENTED' });
   });
 
-  it('names the document that links to this one', async () => {
-    if (!advertises('link-integrity')) return;
+  it('names the document that links to this one', async (ctx) => {
+    if (!advertises('link-integrity')) ctx.skip();
 
     const target_: any = await target.adapter.dispatch('content.get', {
       path: '/about',
@@ -89,16 +89,16 @@ describe('reference.dependents', () => {
     }
   });
 
-  it('answers empty for a document nothing links to', async () => {
-    if (!advertises('link-integrity')) return;
+  it('answers empty for a document nothing links to', async (ctx) => {
+    if (!advertises('link-integrity')) ctx.skip();
     const found: any = await target.adapter.dispatch('reference.dependents', {
       path: '/news/draft-post',
     });
     expect(found.references).toEqual([]);
   });
 
-  it('does not count a link to a child as a link to the parent', async () => {
-    if (!advertises('link-integrity')) return;
+  it('does not count a link to a child as a link to the parent', async (ctx) => {
+    if (!advertises('link-integrity')) ctx.skip();
     // The trap for any implementation that matches on substrings: '/news' is a
     // prefix of '/news/first-post'. A delete warning that fires because something
     // links to a CHILD teaches editors to dismiss it.
@@ -139,8 +139,8 @@ describe('reference.dependents', () => {
     expect(child.references.map((r: any) => r.path)).toContain('/about');
   });
 
-  it('rejects a path that does not exist, rather than answering empty', async () => {
-    if (!advertises('link-integrity')) return;
+  it('rejects a path that does not exist, rather than answering empty', async (ctx) => {
+    if (!advertises('link-integrity')) ctx.skip();
     // "Nothing links to it" and "it isn't there" are different answers, and a
     // delete dialog built on the first would be reassuring about a typo.
     await expect(

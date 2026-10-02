@@ -31,8 +31,8 @@ const advertises = (capability: string) =>
  * expensive part, the current grants, is shared between them.
  */
 describe('state.get', () => {
-  it('returns the canonical shape', async () => {
-    if (!advertises('state')) return;
+  it('returns the canonical shape', async (ctx) => {
+    if (!advertises('state')) ctx.skip();
     const pas: any = await target.adapter.dispatch('state.get', { path: PATH });
 
     expect(typeof pas.state.name).toBe('string');
@@ -58,8 +58,8 @@ describe('state.get', () => {
     }
   });
 
-  it('does not offer a transition it says the user cannot make', async () => {
-    if (!advertises('state')) return;
+  it('does not offer a transition it says the user cannot make', async (ctx) => {
+    if (!advertises('state')) ctx.skip();
     const pas: any = await target.adapter.dispatch('state.get', { path: PATH });
 
     // The suite runs as an administrator, so this is not a vacuous pass: it
@@ -74,8 +74,8 @@ describe('state.get', () => {
     if (publishes.length) expect(pas.effective.canPublish).toBe(true);
   });
 
-  it('offers a transition that actually moves the document', async () => {
-    if (!advertises('state')) return;
+  it('offers a transition that actually moves the document', async (ctx) => {
+    if (!advertises('state')) ctx.skip();
     const before: any = await target.adapter.dispatch('state.get', { path: PATH });
     const move = before.transitions[0];
     // A document with nowhere to go is a legitimate state, but not for the
@@ -97,8 +97,8 @@ describe('state.get', () => {
     }
   });
 
-  it('rejects cleanly where the capability is absent', async () => {
-    if (advertises('state')) return;
+  it('rejects cleanly where the capability is absent', async (ctx) => {
+    if (advertises('state')) ctx.skip();
     await expect(
       target.adapter.dispatch('state.get', { path: PATH }),
     ).rejects.toMatchObject({ code: 'NOT_IMPLEMENTED' });
@@ -106,8 +106,8 @@ describe('state.get', () => {
 });
 
 describe('state.getForms', () => {
-  it('answers for every transition state.get offered', async () => {
-    if (!advertises('state')) return;
+  it('answers for every transition state.get offered', async (ctx) => {
+    if (!advertises('state')) ctx.skip();
     const pas: any = await target.adapter.dispatch('state.get', { path: PATH });
     const forms: any = await target.adapter.dispatch('state.getForms', {
       path: PATH,
@@ -119,8 +119,8 @@ describe('state.getForms', () => {
     }
   });
 
-  it('returns a renderable schema and its current values', async () => {
-    if (!advertises('state')) return;
+  it('returns a renderable schema and its current values', async (ctx) => {
+    if (!advertises('state')) ctx.skip();
     const forms: any = await target.adapter.dispatch('state.getForms', {
       path: PATH,
     });
@@ -146,8 +146,8 @@ describe('state.getForms', () => {
     }
   });
 
-  it('puts principal fields in the stay-here form exactly where grants exist', async () => {
-    if (!advertises('state')) return;
+  it('puts principal fields in the stay-here form exactly where grants exist', async (ctx) => {
+    if (!advertises('state')) ctx.skip();
     const forms: any = await target.adapter.dispatch('state.getForms', {
       path: PATH,
     });
@@ -158,7 +158,7 @@ describe('state.getForms', () => {
     // may offer one — Drupal has an address to edit and no per-document grants
     // at all. What is gated is the PEOPLE half.
     const update = forms.update;
-    if (!update) return;
+    if (!update) ctx.skip();
 
     const principalFields = Object.entries<any>(update.schema.properties).filter(
       ([, p]) => p.vocabulary === 'principals',
@@ -183,8 +183,8 @@ describe('state.getForms', () => {
     }
   });
 
-  it('rejects cleanly where the capability is absent', async () => {
-    if (advertises('state')) return;
+  it('rejects cleanly where the capability is absent', async (ctx) => {
+    if (advertises('state')) ctx.skip();
     await expect(
       target.adapter.dispatch('state.getForms', { path: PATH }),
     ).rejects.toMatchObject({ code: 'NOT_IMPLEMENTED' });
@@ -200,8 +200,8 @@ describe('state.getForms', () => {
  * the one used when there IS a body to save at the same time.
  */
 describe('state.transition with data', () => {
-  it('accepts the values its own form asked for', async () => {
-    if (!advertises('state')) return;
+  it('accepts the values its own form asked for', async (ctx) => {
+    if (!advertises('state')) ctx.skip();
     const forms: any = await target.adapter.dispatch('state.getForms', {
       path: PATH,
     });
@@ -221,11 +221,11 @@ describe('state.transition with data', () => {
     expect(typeof after.state.name).toBe('string');
   });
 
-  it('a transition that relocates the session says where, and it resolves', async () => {
-    if (!advertises('state')) return;
+  it('a transition that relocates the session says where, and it resolves', async (ctx) => {
+    if (!advertises('state')) ctx.skip();
     const pas: any = await target.adapter.dispatch('state.get', { path: PATH });
     const move = pas.transitions.find((t: any) => t.relocates);
-    if (!move) return; // this CMS has nothing that moves you
+    if (!move) ctx.skip(); // this CMS has nothing that moves you
 
     const result: any = await target.adapter.dispatch('state.transition', {
       path: PATH,
@@ -240,11 +240,11 @@ describe('state.transition with data', () => {
     await target.adapter.dispatch('content.get', { path: result.redirect });
   });
 
-  it('refuses a field its form did not declare', async () => {
-    if (!advertises('state')) return;
+  it('refuses a field its form did not declare', async (ctx) => {
+    if (!advertises('state')) ctx.skip();
     const pas: any = await target.adapter.dispatch('state.get', { path: PATH });
     const move = pas.transitions[0];
-    if (!move) return;
+    if (!move) ctx.skip();
 
     // Silently dropping it is the failure mode worth preventing: the dialog
     // would report success for a setting that never took, and nobody finds
@@ -274,8 +274,8 @@ describe('state.transition with data', () => {
 describe('native screens', () => {
   const PANELS = ['profile', 'site-setup'];
 
-  it('marks at most one action per screen, and each has somewhere to go', async () => {
-    if (!advertises('state')) return;
+  it('marks at most one action per screen, and each has somewhere to go', async (ctx) => {
+    if (!advertises('state')) ctx.skip();
     const pas: any = await target.adapter.dispatch('state.get', { path: PATH });
     const declared = (pas.actions ?? []).filter((a: any) => a.panel);
 

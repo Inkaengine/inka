@@ -18,6 +18,17 @@ export type Capability =
   | 'asset'
   /** Has lifecycle states and transitions at all. */
   | 'state'
+  /**
+   * Can say who is editing a document right now, and stop a second editor
+   * silently overwriting the first.
+   *
+   * An obligation, not a feature flag: an adapter whose `content.get` returns
+   * `fields.lock` MUST advertise this and serve `content.lock`/`content.unlock`.
+   * The admin locks on `content.lock !== undefined` alone, and a lock it cannot
+   * take is worse than no locking at all — the failure clears the loaded
+   * content out of the store and the edit form never renders.
+   */
+  | 'locking'
   /** Supports per-document principal grants (Plone yes, Strapi no). */
   | 'per-content-permissions'
   /** Supports inherit-from-parent / break-inheritance. Plone-only in practice. */
@@ -241,6 +252,21 @@ export type Intent =
    * adapter whose CMS can make it, refused with NOT_IMPLEMENTED by one that
    * cannot, never quietly ignored.
    */
+  /**
+   * Take the edit lock on a document, so a second editor is warned rather than
+   * silently overwriting the first. Returns the lock as it now stands.
+   *
+   * Idempotent for the holder: re-locking something you already hold succeeds.
+   * Entering edit, leaving by a route that does not unlock, and entering again
+   * is ordinary, and refusing the second would strand an author out of their
+   * own document.
+   */
+  | 'content.lock'
+  /**
+   * Release the edit lock. `force` steals a lock held by someone else, which
+   * the CMS may refuse.
+   */
+  | 'content.unlock'
   | 'batch'
   | 'http';
 

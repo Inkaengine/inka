@@ -62,6 +62,14 @@ test('time to editable on an edit route', async ({ page }) => {
     requests.push(`${request.method()} [${origin}] ${url.slice(API.length)}`);
   });
 
+  // BridgeApi's own audit: every routed call and every failure, in order.
+  // MEASURE_AUDIT=1 turns it on — it is noisy, so it is off for timing runs.
+  if (process.env.MEASURE_AUDIT) {
+    await page.addInitScript(() => {
+      (window as any).__HYDRA_AUDIT = true;
+    });
+  }
+
   const helper = new AdminUIHelper(page);
   await helper.login();
   const base = new URL(page.url()).origin;

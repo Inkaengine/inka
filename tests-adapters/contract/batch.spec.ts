@@ -132,12 +132,12 @@ describe('batch', () => {
     }
   });
 
-  it('applies nothing when an atomic batch is refused by the CMS', async () => {
+  it('applies nothing when an atomic batch is refused by the CMS', async (ctx) => {
     // Only for an adapter that CLAIMS it can promise atomicity — the floor
     // refuses, and that is covered above. WordPress's /batch/v1 pre-flights every
     // request under require-all-or-none, so a batch containing one bad operation
     // must leave the good one unapplied too.
-    if (!target.adapter.capabilities.includes('batch-native' as never)) return;
+    if (!target.adapter.capabilities.includes('batch-native' as never)) ctx.skip();
 
     const before: any = await target.adapter.dispatch('content.get', {
       path: '/news/first-post',

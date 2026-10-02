@@ -119,6 +119,11 @@ export class WordPressAdapter extends BaseAdapter {
         // require-all-or-none mode is a real all-or-nothing promise — so unlike
         // the emulated floor, this adapter can honour `atomic`. See applyBatch.
         'batch-native',
+        // WordPress keeps no back-reference index, but its REST `search` is a
+        // LIKE over post_content — and our blocks live in the page content as a
+        // comment, so the links inside them are searchable server-side. Same
+        // shape as Drupal's CONTAINS filter, same boundary re-check after it.
+        'link-integrity',
         'search-fulltext',
         // WordPress filters by parent, type and status server-side; tree.list
         // relies on it, so claiming otherwise would be false advertising.
@@ -948,6 +953,56 @@ export class WordPressAdapter extends BaseAdapter {
           email: me.email,
           roles: me.roles ?? [],
         };
+      }
+
+      case 'reference.dependents': {
+        // WordPress indexes no back-references, but it does not need to: our
+        // blocks ride inside post_content as a comment, and REST `search` is a
+        // LIKE over post_content — so the server does the scanning. Same shape
+        // as Drupal's CONTAINS filter, and the same re-check afterwards.
+        //
+        // resolvePath first, so a path that does not exist is NOT_FOUND rather
+        // than an empty list: "nothing links to it" must not be the answer to a
+        // typo, which is the one answer a delete dialog must never give.
+        const id = await this.resolvePath(args.path);
+        const self = await this.fetchJson(`/wp/v2/${this.postType}/${id}`, {
+          params: { context: 'edit' },
+        });
+        const path = await this.pathOfPost(self);
+        // Both encodings a link here can carry: the path an author picks, and
+        // the ?page_id= form that survives a slug change.
+        const needles = [path, `?page_id=${id}`].filter(Boolean);
+
+        const byId = new Map();
+        for (const needle of needles) {
+          const found = await this.fetchJson(`/wp/v2/${this.postType}`, {
+            params: {
+              search: needle,
+              status: 'any',
+              context: 'edit',
+              per_page: '100',
+            },
+          });
+          for (const candidate of found ?? []) {
+            if (candidate.id === id) continue;
+            // `search` is a substring match, so /about also matches /about-us,
+            // and /news matches /news/first-post — which would make a link to a
+            // CHILD look like a link to its parent and teach editors to dismiss
+            // the warning. Re-check with a boundary that excludes a path
+            // separator too, without knowing any block's shape.
+            const content = candidate.content?.raw ?? '';
+            const bounded = new RegExp(
+              `${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w\\-/])`,
+            );
+            if (!bounded.test(content)) continue;
+            byId.set(candidate.id, {
+              id: String(candidate.id),
+              path: await this.pathOfPost(candidate),
+              title: candidate.title?.raw ?? candidate.title?.rendered ?? '',
+            });
+          }
+        }
+        return { references: [...byId.values()] };
       }
 
       case 'search': {

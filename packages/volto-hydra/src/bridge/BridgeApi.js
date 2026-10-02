@@ -120,6 +120,15 @@ export class BridgeApi {
       // No canonical equivalent and no passthrough to fall back on. Failing
       // loudly names the endpoint that needs one — silently returning empty
       // would surface later as an unexplained blank panel.
+      // Audited like any other call. This throw happens BEFORE the try/catch
+      // that logs [AUDIT-INTENT] FAILED, so without this an unroutable
+      // endpoint is the one kind of failure the audit cannot see — and Volto
+      // turns it into a FAIL action rather than an uncaught error, so it is
+      // invisible in the console too. That blind spot hid `@lock` for a while.
+      if (typeof window !== 'undefined' && window.__HYDRA_AUDIT) {
+        // eslint-disable-next-line no-console
+        console.log(`[AUDIT-INTENT] UNROUTABLE ${op.toUpperCase()} ${fullPath}`);
+      }
       throw new Error(
         `[hydra] No canonical intent for ${op.toUpperCase()} ${fullPath}, ` +
           `and this adapter does not implement the http passthrough. ` +

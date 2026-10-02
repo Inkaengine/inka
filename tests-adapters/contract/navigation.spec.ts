@@ -47,8 +47,8 @@ describe('navigation.get', () => {
     }
   });
 
-  it('can hide a document from the menu without unpublishing it', async () => {
-    if (!advertises('navigation-exclusion')) return;
+  it('can hide a document from the menu without unpublishing it', async (ctx) => {
+    if (!advertises('navigation-exclusion')) ctx.skip();
 
     const before: any = await target.adapter.dispatch('navigation.get', { path: '/' });
     const victim = before.items[0];
@@ -69,8 +69,8 @@ describe('navigation.get', () => {
     expect(doc.path).toBe(victim.path);
   });
 
-  it('a document kept out of the menu is still findable and editable', async () => {
-    if (!advertises('navigation-exclusion')) return;
+  it('a document kept out of the menu is still findable and editable', async (ctx) => {
+    if (!advertises('navigation-exclusion')) ctx.skip();
 
     const before: any = await target.adapter.dispatch('navigation.get', { path: '/' });
     const victim = before.items[0];
@@ -109,8 +109,8 @@ describe('navigation.get', () => {
     expect(after.title).toBe(`${doc.title} (edited while hidden)`);
   });
 
-  it('can call a document something else in the menu', async () => {
-    if (!advertises('navigation-title')) return;
+  it('can call a document something else in the menu', async (ctx) => {
+    if (!advertises('navigation-title')) ctx.skip();
 
     const before: any = await target.adapter.dispatch('navigation.get', { path: '/' });
     const item = before.items[0];

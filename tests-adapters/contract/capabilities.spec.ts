@@ -89,9 +89,9 @@ describe('advertised capabilities are real', () => {
  * for the user, and one that would only be discovered by clicking it.
  */
 describe('native actions', () => {
-  it('offer a way to manage your own profile', async () => {
+  it('offer a way to manage your own profile', async (ctx) => {
     // Declared actions currently ride on PermissionsAndState.
-    if (!target.adapter.capabilities.includes('state' as never)) return;
+    if (!target.adapter.capabilities.includes('state' as never)) ctx.skip();
 
     const pas: any = await target.adapter.dispatch('state.get', {
       path: '/news/first-post',
@@ -104,7 +104,7 @@ describe('native actions', () => {
     // there is nothing for the admin to fall back on — and a profile is not
     // something we reimplement. Changing your password or your email belongs to
     // the CMS that owns the account.
-    if (target.adapter.capabilities.includes('http-passthrough' as never)) return;
+    if (target.adapter.capabilities.includes('http-passthrough' as never)) ctx.skip();
 
     const profile = declared.filter((a: any) => a.category === 'user');
     expect(
@@ -119,12 +119,12 @@ describe('native actions', () => {
     }
   });
 
-  it('point somewhere followable, on the CMS', async () => {
+  it('point somewhere followable, on the CMS', async (ctx) => {
     // Declared actions currently ride on PermissionsAndState, so an adapter
     // without `state` has nowhere to put them and this asserts nothing about
     // it. (That they live there at all is a wart: a CMS can have its own
     // screens without having workflow.)
-    if (!target.adapter.capabilities.includes('state' as never)) return;
+    if (!target.adapter.capabilities.includes('state' as never)) ctx.skip();
 
     const pas: any = await target.adapter.dispatch('state.get', {
       path: '/news/first-post',

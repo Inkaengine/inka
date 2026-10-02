@@ -316,7 +316,7 @@ cannot be emulated from outside the CMS.
 
 | Group           | Intents                                                                                                                                                                  |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Content         | `content.get`, `content.create`, `content.update`, `content.delete`, `content.order`, `content.sort`, `content.move`, `content.copy`                                     |
+| Content         | `content.get`, `content.create`, `content.update`, `content.delete`, `content.order`, `content.sort`, `content.move`, `content.copy`, `content.lock`, `content.unlock` |
 | Types           | `types.list`, `types.getSchema`                                                                                                                                          |
 | Reading         | `search`, `querystringSearch`, `querystring.getIndexes`, `tree.list`, `navigation.get`, `breadcrumbs.get`, `reference.resolve`, `reference.dependents`, `vocabulary.get` |
 | Assets          | `asset.upload`, `asset.imageUrl`                                                                                                                                         |
@@ -351,5 +351,6 @@ cannot be emulated from outside the CMS.
 | `expand-native`                                                  | The admin asks for its expander bundle inside the content response              |
 | `batch-native`                                                   | Grouping writes into one request saves round trips, so callers may batch freely |
 | `link-integrity`                                                 | The CMS can say what links TO a document, so a delete can be warned about       |
+| `locking`                                                        | The CMS can say who is editing a document now, so a second editor is warned     |
 
 </block>
