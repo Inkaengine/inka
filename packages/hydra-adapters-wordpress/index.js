@@ -787,8 +787,10 @@ export class WordPressAdapter extends BaseAdapter {
           body: {
             title: args.data.title,
             // Explicit: a draft would otherwise have no slug at all, and the
-            // document would not be addressable by path until published.
-            slug: args.data.slug ?? slugify(args.data.title),
+            // document would not be addressable by path until published. The
+            // id the caller asked for comes before the title: an importer
+            // recreating a tree addresses the document by it next.
+            slug: args.data.slug ?? args.data.id ?? slugify(args.data.title),
             status: 'draft',
             parent: parentId,
             content: serializeBlocks(

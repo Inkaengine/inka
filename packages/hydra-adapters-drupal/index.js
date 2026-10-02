@@ -422,8 +422,11 @@ export class DrupalAdapter extends BaseAdapter {
         // deriving it from the title again would put the copy at the same alias
         // as the original — which Drupal accepts, then resolves to whichever
         // node it likes.
+        // Then the id the caller asked for, before the title: an importer
+        // recreating a tree addresses the document by it next.
         const slug =
           args.data.slug ??
+          args.data.id ??
           String(args.data.title)
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')
