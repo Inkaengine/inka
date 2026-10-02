@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PORTS } from '../ports';
+import { serializeBlocks } from '@volto-hydra/hydra-adapters-wordpress';
 
 /**
  * Put the canonical fixture into WordPress before a journey runs.
@@ -62,13 +63,10 @@ export async function seedWordPress(): Promise<void> {
       title: doc.title,
       state: doc.state,
       content:
-        '<!-- wp:hydra-blocks/document ' +
-        JSON.stringify({
-          v: 1,
-          blocks: (doc as any).blocks ?? {},
-          blocksLayout: (doc as any).blocksLayout ?? { items: [] },
-        }) +
-        ' /-->',
+        serializeBlocks(
+          (doc as any).blocks ?? {},
+          (doc as any).blocksLayout ?? { items: [] },
+        ),
     }));
 
   const res = await fetch(`${BASE}/?rest_route=/hydra-test/v1/reset`, {

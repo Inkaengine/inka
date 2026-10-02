@@ -119,6 +119,24 @@ const target: Target = {
     });
   },
 
+  async publicBlocks(path: string) {
+    const res = await fetch(
+      `${BASE}/jsonapi/node/page?filter[path.alias]=${encodeURIComponent(path)}`,
+      { headers: { Accept: 'application/vnd.api+json' } },
+    );
+    if (!res.ok) return null;
+    const body: any = await res.json();
+    const node = body?.data?.[0];
+    if (!node) return null;
+    const raw = node.attributes?.field_hydra_blocks;
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw).blocks ?? {};
+    } catch {
+      return {};
+    }
+  },
+
   async seed() {
     adapter.credentials = { username: 'admin', password: 'admin' };
     // Must carry the SAME credentials the adapter uses: the mock scopes

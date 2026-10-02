@@ -1,4 +1,4 @@
-import { WordPressAdapter } from '@volto-hydra/hydra-adapters-wordpress';
+import { WordPressAdapter , serializeBlocks, parseBlocks } from '@volto-hydra/hydra-adapters-wordpress';
 import type { Target } from './index';
 import seed from '../fixtures/seed.json';
 
@@ -87,13 +87,10 @@ async function seedContent(): Promise<void> {
           parent,
           status: doc.state === 'published' ? 'publish' : 'draft',
           content:
-            '<!-- wp:hydra-blocks/document ' +
-            JSON.stringify({
-              v: 1,
-              blocks: (doc as any).blocks ?? {},
-              blocksLayout: (doc as any).blocksLayout ?? { items: [] },
-            }) +
-            ' /-->',
+            serializeBlocks(
+              (doc as any).blocks ?? {},
+              (doc as any).blocksLayout ?? { items: [] },
+            ),
         }),
       },
     );
@@ -190,6 +187,27 @@ const target: Target = {
    * The documents still come from seed.json and travel in the body, so the
    * blueprint's PHP never becomes a second definition of the fixture.
    */
+  async publicBlocks(path: string) {
+    // No cookie, no nonce: a visitor's request. `context=edit` is deliberately
+    // NOT passed — asking for it is what requires a session, and the whole
+    // question is what is readable without one.
+    const slug = path.split('/').filter(Boolean).pop() ?? '';
+    const res = await fetch(
+      `${BASE}/?rest_route=/wp/v2/pages&slug=${encodeURIComponent(slug)}&status=publish`,
+    );
+    if (!res.ok) return null;
+    const [post]: any[] = await res.json();
+    if (!post) return null; // not readable by an anonymous client
+    // Whatever a public client can see, read with the adapter's own parser —
+    // so this tests the real carrier rather than a second guess at the format.
+    const rendered: string = post.content?.rendered ?? '';
+    try {
+      return parseBlocks(rendered).blocks ?? {};
+    } catch {
+      return {};
+    }
+  },
+
   async seed() {
     // Put the SESSION back too, not just the content.
     //
@@ -207,14 +225,10 @@ const target: Target = {
         path: doc.path,
         title: doc.title,
         state: doc.state,
-        content:
-          '<!-- wp:hydra-blocks/document ' +
-          JSON.stringify({
-            v: 1,
-            blocks: (doc as any).blocks ?? {},
-            blocksLayout: (doc as any).blocksLayout ?? { items: [] },
-          }) +
-          ' /-->',
+        content: serializeBlocks(
+          (doc as any).blocks ?? {},
+          (doc as any).blocksLayout ?? { items: [] },
+        ),
       }));
 
     const res = await originalFetch(

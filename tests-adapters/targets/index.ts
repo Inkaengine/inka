@@ -53,6 +53,18 @@ export interface Target {
   /** Reset content to the seed state between test files. */
   seed(): Promise<void>;
   /**
+   * The blocks of a published document, fetched with NO credentials.
+   *
+   * The frontend renders the public site by reading the CMS directly — no
+   * adapter, no session. So "can an anonymous client get the blocks?" is a
+   * property of the CMS and how we store them, and nothing else in this suite
+   * asks it: every other test holds the adapter's credentials.
+   *
+   * Returns null when the document is readable but carries no recoverable
+   * blocks, which is the interesting failure.
+   */
+  publicBlocks(path: string): Promise<Record<string, unknown> | null>;
+  /**
    * Put the adapter into a state where the CMS rejects it as unauthenticated,
    * so the 401 path can be exercised for real rather than with a stub. The
    * callback receives every event the adapter emits while expired.

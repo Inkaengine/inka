@@ -195,6 +195,14 @@ const uidPositionMap = {};
 /** Renewed token -> the session id its state lives under. */
 const sessionAliases = {};
 
+/**
+ * States an anonymous visitor may NOT see, from Plone's default workflows:
+ * simple_publication_workflow's `private` and `pending`, and the `draft` a
+ * fixture may use. Anything else — `published`, or no workflow at all — is
+ * public.
+ */
+const PRIVATE_STATES = new Set(['private', 'pending', 'draft']);
+
 function getSessionId(req) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -6379,6 +6387,28 @@ app.get('*', (req, res, next) => {
   if (content) {
     // Filter actions based on authentication
     const authenticated = isAuthenticated(req);
+
+    // Workflow decides what an anonymous visitor may see.
+    //
+    // The public site is read with NO credentials — the frontend fetches the
+    // CMS directly, with no adapter and no session — so what anonymous gets is
+    // not a detail, it is the whole published site. Serving a draft here made
+    // the mock a Plone with no access control at all, and a test asking "can a
+    // visitor see unpublished work?" could only ever answer no.
+    //
+    // Only an EXPLICITLY private state is refused. Content with no
+    // review_state is not workflowed (the site root, mounted fixtures), and
+    // denying that by default would say "unpublished" about things that were
+    // never subject to publication.
+    if (!authenticated && PRIVATE_STATES.has(content.review_state)) {
+      return res.status(401).json({
+        error: {
+          type: 'Unauthorized',
+          message: 'You are not authorized to access this resource.',
+        },
+      });
+    }
+
     const filteredContent = filterActionsForAuth(content, authenticated);
 
     if (process.env.DEBUG) {

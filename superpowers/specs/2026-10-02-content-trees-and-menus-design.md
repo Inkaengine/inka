@@ -1,0 +1,107 @@
+# Content trees and menus — options
+
+Status: **open, not decided.** Written down mid-discussion so the options survive
+the conversation. Nothing here is implemented.
+
+## The problem
+
+WordPress and Drupal both have more than one menu, and a menu is not the content
+hierarchy — it is a separate, curated ordering that may leave content out and may
+contain entries that are not content at all. Plone is the outlier: its navigation
+is derived from the content tree plus `exclude_from_nav`.
+
+Today the admin has exactly one notion of "the tree": content hierarchy. The
+contents view and the content picker both browse that and nothing else.
+
+What is wrong with each adapter today:
+
+- **WordPress** derives navigation from the page tree
+  (`GET /wp/v2/pages?parent=0`, sorted by `menu_order`) and never reads
+  `/wp/v2/menus` or `/wp/v2/menu-items`. On a site with a curated primary menu,
+  Inka's navigation and the site's own navigation disagree. There is also
+  nowhere to record "hide from nav", because core WordPress has no such field on
+  a page — which is why `navigation.setExcluded`/`setTitle` are unimplemented
+  there.
+- **Drupal** writes `menu_link_content`, so exclusion and title live on the LINK.
+  `linkIdForPath` takes the FIRST link for a path, so a node in two menus is
+  silently one of them.
+- **Plone** has no navigation title at all.
+
+## The model under discussion
+
+Content can be presented through several **views**, each a different organisation
+of the same material:
+
+- **hierarchy** — total, unique, nodes are documents. What we have now.
+- **menu** — one per site menu. Partial over content, and may contain entries
+  with no content behind them.
+- **collection** — a filter rather than a tree: all posts, by type, by taxonomy,
+  by language. WordPress posts have no parent at all, so this shape is flat.
+
+Two ideas make it tractable:
+
+1. **A virtual folder for everything not in the menu**, so each view is TOTAL.
+   Menu membership then stops being a verb: adding and removing are moves, which
+   the contents view can already do. No `setExcluded`, no `setTitle` — a menu
+   entry's title is just that node's title in that view.
+
+2. **Entries that are not content are presented AS content.** This is Plone's
+   own answer: a `Link` is a real content type with a URL, so a menu containing
+   an external link is just a Link document in the folder — which is why Plone
+   never needed menu-entry objects. An adapter can do the same without the thing
+   being stored as a post: a WordPress `nav_menu_item` of type `custom` presents
+   as a document of type `link`, keyed by the menu item's id; creating one in a
+   menu view creates a menu item, deleting one removes it. `types.list` already
+   varies by path, so a menu view can offer `link` where the content tree does
+   not.
+
+Together these mean the contents view and the picker need **no new verbs**.
+
+## Open question: one tree, or several views?
+
+**Virtual roots of one tree** — menus appear as folders you can navigate into.
+
+**Separate views with a selector** — the browser takes a view parameter.
+
+Leaning towards separate views, for three reasons:
+
+- *Destructive ambiguity.* "Remove" means delete in the content tree and unlink
+  in a menu. One tree makes the same gesture mean different things depending on
+  where you navigated from.
+- *The picker.* You pick a document. One merged tree shows the same page several
+  times, and you cannot tell whether you picked the page or an entry pointing at
+  it.
+- *Breadcrumbs.* In a merged tree "where am I" depends on the route taken.
+
+But keep what made roots attractive: the view must be **addressable**, so a
+refresh or a shared link lands in the same place. Concretely that is
+`tree.list({tree, parent})` — the view is a parameter of the browser's state,
+not a folder inside the content tree. Note `parent` then has to be a node in the
+named view, NOT a content path: the Plone adapter currently implements
+`tree.list` as a context-scoped `@search`, which bakes in the assumption that
+the URL you are on IS the tree you are browsing.
+
+## Consequences worth having
+
+- A view descriptor has to declare its **cardinality and verbs**: is it ordered,
+  is it total, may it hold non-content nodes, does "remove" unlink or delete.
+- If menu entries are content with a reference to their target, then
+  `reference.dependents` reports *"this page is in the main menu"* when someone
+  tries to delete it. Menu membership joins the delete warning for free.
+- **The surfaces differ.** The contents view is a manager and should offer every
+  view; the picker is a chooser and should only offer views whose nodes are
+  documents, or resolve an entry to its target before returning.
+- **Plone collapses cleanly.** Its main menu IS the content hierarchy, so it
+  legitimately has one view. The model must allow that rather than inventing a
+  second view that mirrors the first.
+
+## Decisions still needed
+
+1. Views or virtual roots (leaning: views).
+2. When a menu entry points at an existing page, is the node the page (per-view
+   position and title as view-scoped metadata, no duplicates) or the entry (can
+   represent the same page twice in one menu, at the cost of an ambiguous
+   picker)? Leaning: the page.
+3. Whether WordPress navigation moves off the page tree onto real WP menus —
+   with a fallback, since the menu endpoints need `edit_theme_options` and a
+   fresh site has no menus at all.

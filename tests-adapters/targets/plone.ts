@@ -151,6 +151,17 @@ const target: Target = {
     });
   },
 
+  async publicBlocks(path: string) {
+    // No Authorization header at all: this is what a visitor's browser sends.
+    const res = await fetch(`${BASE}${path}`, {
+      headers: { Accept: 'application/json' },
+    });
+    // null means NOT READABLE; {} means readable but carrying no blocks.
+    if (!res.ok) return null;
+    const body: any = await res.json();
+    return body.blocks ?? {};
+  },
+
   async seed() {
     sessionCounter += 1;
     // A JWT-shaped token, because that is what Plone issues and what the

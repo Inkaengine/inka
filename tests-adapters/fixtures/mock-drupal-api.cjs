@@ -324,8 +324,43 @@ function authed(req) {
   return req.headers['x-csrf-token'] === VALID_TOKEN;
 }
 
+/**
+ * No credentials is not the same as WRONG credentials.
+ *
+ * This used to 401 every unauthenticated /jsonapi request, which made the mock
+ * a Drupal that no visitor can read — and the public site is read by a
+ * frontend holding no session at all. A standard Drupal grants the anonymous
+ * role "access content", so anonymous GETs of PUBLISHED nodes succeed; writes
+ * are forbidden (403, not 401 — there is nothing wrong with the credentials,
+ * there are none); and bad credentials still fail everything.
+ */
 app.use((req, res, next) => {
-  if (req.path.startsWith('/jsonapi') && !authed(req)) {
+  if (!req.path.startsWith('/jsonapi')) return next();
+
+  const presented = req.headers.authorization || '';
+  if (!presented) {
+    if (req.method !== 'GET') {
+      return res
+        .status(403)
+        .json({ errors: [{ status: '403', detail: 'Forbidden: anonymous may not write' }] });
+    }
+    // CONTENT only. A standard Drupal grants the anonymous role "access
+    // content", which is nodes — not "access user profiles", so /jsonapi/user
+    // stays forbidden. That distinction is load-bearing: auth.whoami reads
+    // /jsonapi/user/user, and the contract requires it to fail after logout.
+    // Allowing every anonymous GET made a logged-out session look signed in.
+    if (!req.path.startsWith('/jsonapi/node')) {
+      return res
+        .status(403)
+        .json({ errors: [{ status: '403', detail: 'Forbidden: anonymous' }] });
+    }
+    // Readable, but only what is published — enforced in the node handlers,
+    // since that is where a node's status is known.
+    req.anonymous = true;
+    return next();
+  }
+
+  if (!authed(req)) {
     return res.status(401).json({ errors: [{ status: '401', detail: 'Unauthorized' }] });
   }
   next();
@@ -596,12 +631,22 @@ app.get('/jsonapi/node/:bundle/:uuid', (req, res) => {
   const { nodes } = stateFor(req);
   const n = nodes.get(req.params.uuid);
   if (!n) return notFound(res, req.params.uuid);
+  // Drupal answers 403 for an unpublished node the caller may not see, rather
+  // than 404 — it exists, you simply may not have it.
+  if (req.anonymous && !n.status) {
+    return res
+      .status(403)
+      .json({ errors: [{ status: '403', detail: 'Forbidden: unpublished' }] });
+  }
   res.json(single(toResource(n)));
 });
 
 app.get('/jsonapi/node/:bundle', (req, res) => {
   const { nodes } = stateFor(req);
   let list = [...nodes.values()].filter((n) => n.type === req.params.bundle);
+  // Unpublished nodes are not merely hidden from an anonymous caller — they are
+  // absent from the collection, which is how Drupal's node access works.
+  if (req.anonymous) list = list.filter((n) => n.status);
 
   list = applyFilters(list, req);
 

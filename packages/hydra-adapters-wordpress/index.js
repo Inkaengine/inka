@@ -60,9 +60,43 @@ export function slugify(title) {
   return slug;
 }
 
+/**
+ * An ELEMENT, not a comment, because the public site has to be able to read it.
+ *
+ * The comment form is stripped twice over: kses removes HTML comments on save
+ * for anyone without `unfiltered_html` (which is why the test seeder has to
+ * call kses_remove_filters), and `do_blocks` drops an unregistered block type
+ * on render. Measured against a real WordPress, a published page reached an
+ * anonymous reader with `content.rendered` EMPTY — the editor looked right and
+ * the site served nothing. The frontend reads the CMS directly, with no adapter
+ * and no session, so that is fatal rather than cosmetic.
+ *
+ * A `data-` attribute on a div survives both, byte-identical. The escaping is
+ * the whole risk: the payload is full of double quotes, so quoting the
+ * attribute with single quotes and dropping the JSON in works right up until
+ * someone types an apostrophe, and then the attribute ends early and the JSON
+ * truncates. Hence real entity escaping, `&` first so the others are not
+ * double-encoded.
+ */
+const BLOCKS_ATTR = 'data-hydra-blocks';
+
+const escapeAttr = (text) =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+const unescapeAttr = (text) =>
+  text
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&');
+
 export function serializeBlocks(blocks, blocksLayout) {
   const payload = JSON.stringify({ v: 1, blocks, blocksLayout });
-  return `<!-- ${BLOCK_MARKER} ${payload} /-->`;
+  return `<div ${BLOCKS_ATTR}="${escapeAttr(payload)}"></div>`;
 }
 
 /**
@@ -72,17 +106,30 @@ export function serializeBlocks(blocks, blocksLayout) {
  * preserved verbatim on write so Hydra never destroys work done in Gutenberg.
  */
 export function parseBlocks(content) {
-  const start = content.indexOf(`<!-- ${BLOCK_MARKER} `);
-  if (start === -1) {
-    return { blocks: {}, blocksLayout: { items: [] }, legacy: content };
+  // The element form first, then the comment a previous version wrote —
+  // refusing to open a site edited before this changed would turn a storage
+  // change into data loss.
+  const element = new RegExp(`<div ${BLOCKS_ATTR}="([^"]*)"></div>`).exec(content);
+  let json;
+  let start;
+  let end;
+  if (element) {
+    json = unescapeAttr(element[1]);
+    start = element.index;
+    end = element.index + element[0].length - 4;
+  } else {
+    start = content.indexOf(`<!-- ${BLOCK_MARKER} `);
+    if (start === -1) {
+      return { blocks: {}, blocksLayout: { items: [] }, legacy: content };
+    }
+    end = content.indexOf('/-->', start);
+    if (end === -1) {
+      throw new AdapterError('Unterminated hydra-blocks comment in post_content', {
+        code: 'MALFORMED_CONTENT',
+      });
+    }
+    json = content.slice(start + `<!-- ${BLOCK_MARKER} `.length, end).trim();
   }
-  const end = content.indexOf('/-->', start);
-  if (end === -1) {
-    throw new AdapterError('Unterminated hydra-blocks comment in post_content', {
-      code: 'MALFORMED_CONTENT',
-    });
-  }
-  const json = content.slice(start + `<!-- ${BLOCK_MARKER} `.length, end).trim();
   const parsed = JSON.parse(json);
   // PHP's json_encode cannot tell an empty map from an empty list, so a
   // document whose blocks were emptied comes back as [] rather than {}.
