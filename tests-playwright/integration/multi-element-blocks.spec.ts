@@ -17,7 +17,7 @@ test.describe('Multi-element blocks', () => {
     await helper.login();
     await helper.navigateToEdit('/test-page');
 
-    const iframe = page.frameLocator('iframe');
+    const iframe = page.frameLocator('#previewIframe');
 
     // Verify multiple elements have the same block UID (expanded from search results)
     const elements = iframe.locator(`[data-block-uid="${listingBlockId}"]`);
@@ -76,7 +76,7 @@ test.describe('Multi-element blocks', () => {
     await helper.login();
     await helper.navigateToEdit('/test-page');
 
-    const iframe = page.frameLocator('iframe');
+    const iframe = page.frameLocator('#previewIframe');
 
     // Verify multiple elements have the same block UID
     const elements = iframe.locator(`[data-block-uid="${listingBlockId}"]`);

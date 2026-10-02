@@ -40,7 +40,7 @@ test.describe('Field reveal', () => {
 
   const selectBlock = (page, uid: string) =>
     page.evaluate((id) => {
-      (document.querySelector('iframe') as HTMLIFrameElement).contentWindow!.postMessage(
+      (document.querySelector('#previewIframe') as HTMLIFrameElement).contentWindow!.postMessage(
         { type: 'SELECT_BLOCK', uid: id }, '*');
     }, uid);
 

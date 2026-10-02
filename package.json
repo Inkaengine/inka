@@ -26,6 +26,7 @@
     "i18n": "pnpm --filter volto-hydra i18n",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:contract": "vitest run --config vitest.adapters.config.mjs",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",

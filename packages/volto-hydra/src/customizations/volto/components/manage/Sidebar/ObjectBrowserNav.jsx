@@ -20,6 +20,26 @@ import config from '@plone/volto/registry';
 import rightArrowSVG from '@plone/volto/icons/right-key.svg';
 import homeSVG from '@plone/volto/icons/home.svg';
 
+/**
+ * A thumbnail URL that does not assume Plone.
+ *
+ * `/@@images/image/preview` is Plone's way of naming a scale. WordPress serves
+ * media from its own URLs and Drupal from another shape again, so appending it
+ * to any CMS's id produces a 404 with a Plone-shaped path in it.
+ *
+ * What every adapter DOES provide is a usable URL — image.download for an
+ * asset, and an @id that is already absolute when the CMS addresses things
+ * that way. Use those, and keep the Plone suffix only for a bare content path,
+ * which is the one case where it is the right guess.
+ */
+function thumbnailSrc(item) {
+  const direct = item?.image?.download ?? item?.url;
+  if (direct) return direct;
+  const id = item?.['@id'] ?? '';
+  if (/^https?:\/\//.test(id)) return id;
+  return `${id}/@@images/image/preview`;
+}
+
 const messages = defineMessages({
   browse: {
     id: 'Browse',
@@ -105,7 +125,7 @@ const ObjectBrowserNav = ({
               >
                 {item['@type'] === 'Image' ? (
                   <Image
-                    src={`${item['@id']}/@@images/image/preview`}
+                    src={thumbnailSrc(item)}
                     alt={item.title}
                     style={{
                       width: 143,

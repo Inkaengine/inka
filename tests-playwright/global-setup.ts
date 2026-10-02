@@ -34,7 +34,15 @@ async function fetchBlocksConfig(
     const page = await browser.newPage();
     const url = `${mockParentUrl}?api_path=${encodeURIComponent(`${apiUrl}/`)}&frontend=${encodeURIComponent(frontendUrl)}`;
     await page.goto(url, { timeout: 60000, waitUntil: 'load' });
-    for (let i = 0; i < 75; i++) {
+    // 225 × 200ms = 45s, not 15s.
+    //
+    // A dev server that has just started compiles on the first request, and the
+    // INIT that carries the block schemas cannot arrive before that finishes.
+    // At 15s a cold vite in CI reported zero schemas, every frontend was skipped
+    // and the whole job aborted with "No frontend yielded schemas" — while the
+    // server was up and perfectly healthy. The wait is only paid when something
+    // is wrong; a warm frontend answers in well under a second.
+    for (let i = 0; i < 225; i++) {
       const result = await page.evaluate(() => {
         const mp = (window as any).mockParent;
         const c = mp?.getBlocksConfig?.();
@@ -94,6 +102,16 @@ const STORAGE_FRONTENDS: Record<string, string> = {
   // F7 is hash-routed: the editor needs the `#!` or it loads the app shell
   // without a route.
   f7: `${URLS.f7}/#!`,
+  // The journeys pick their CMS through the FRONTEND's ?adapter= and ?cms=, so
+  // the saved frontend is the only thing that makes a journey Drupal rather than
+  // Plone. These used to be static files hardcoding iframe_url_3001, 8889 and
+  // 8794: on any other ports the cookie name missed, the admin loaded the
+  // default frontend with no ?adapter=, and the proxy silently built a Plone
+  // adapter for a Drupal journey — every request 404ing against the wrong CMS.
+  'journey-plone': `${URLS.testFrontend}/?adapter=plone&cms=${URLS.mockApi}`,
+  'journey-plone-seeded': `${URLS.testFrontend}/?adapter=plone&cms=http://localhost:${PORTS.plonSeeded}`,
+  'journey-drupal': `${URLS.testFrontend}/?adapter=drupal&cms=http://127.0.0.1:${PORTS.mockDrupal}`,
+  'journey-wordpress': `${URLS.testFrontend}/?adapter=wordpress&cms=http://127.0.0.1:${PORTS.wordpress}`,
 };
 
 export const GENERATED_DIR = path.resolve(__dirname, '.generated');
@@ -224,7 +242,23 @@ async function globalSetup() {
     // scanning it twice doubles the slowest part of setup and emits a second,
     // identical set of cases. Named projects are considered first so a frontend
     // is tagged with its project name rather than the anonymous '(env)'.
-    const normUrl = (u: string) => u.replace(/\/+$/, '');
+    // By PORT, not by spelling. URLS.testFrontend is 127.0.0.1 and FRONTEND_URL
+    // is usually localhost, so the same server was discovered twice — two browser
+    // launches and, when it was failing, two 45s waits.
+    const normUrl = (u: string) => {
+      try {
+        const parsed = new URL(u);
+        const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
+        const host = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(
+          parsed.hostname,
+        )
+          ? 'local'
+          : parsed.hostname;
+        return `${host}:${port}${parsed.pathname.replace(/\/+$/, '')}`;
+      } catch {
+        return u.replace(/\/+$/, '');
+      }
+    };
     // Only frontends block-sanity enforces. A frontend it skips yields cases
     // that are generated and then skipped — pure cost, and for the docs
     // frontends (which register a small registry, so most content reads as
@@ -249,14 +283,24 @@ async function globalSetup() {
     const mockParent = process.env.MOCK_PARENT_URL || `${URLS.testFrontend}/mock-parent.html`;
     const blocks: any[] = [];
     const perFrontend: Record<string, number> = {};
+    // Every target's outcome is recorded, including the ones passed over: an
+    // unreachable frontend used to be skipped in total silence, so a job with
+    // none of its frontends running looked identical to one whose frontend
+    // answered nothing.
+    const outcomes: string[] = [];
     for (const [project, url] of targets) {
-      if (!(await reachable(url))) continue;
+      if (!(await reachable(url))) {
+        outcomes.push(`${project} (${url}): not serving`);
+        continue;
+      }
       const { blocksConfig: cfg, frontendKeys: keys } = await fetchBlocksConfig(
         mockParent, url, schemaApi);
       if (Object.keys(cfg).length === 0) {
+        outcomes.push(`${project} (${url}): serving, but sent no schemas`);
         console.warn(`[SETUP] ${project} (${url}) returned no schemas — skipped`);
         continue;
       }
+      outcomes.push(`${project} (${url}): ${Object.keys(cfg).length} schemas`);
       const found = await discoverBlocks(discoverApi, maxPages, cfg, keys, styleMenuClasses);
       for (const b of found) blocks.push({ ...b, frontend: project });
       perFrontend[project] = found.length;
@@ -267,8 +311,13 @@ async function globalSetup() {
       throw new Error(
         '[SETUP] No frontend yielded schemas. Discovery would be type-only, and ' +
         'every schema-dependent check would pass by measuring nothing.\n' +
-        '  Start at least one frontend and set MOCK_PARENT_URL so globalSetup ' +
-        'can read its INIT.',
+        `  Tried:\n    ${outcomes.join('\n    ')}\n` +
+        '  A frontend that is "serving, but sent no schemas" was reached and did ' +
+        'not deliver an INIT within 45s — usually a dev server still compiling, ' +
+        'or a bridge that failed to register.\n' +
+        '  Only these projects are asked at all: ' +
+        `${[...SANITY_PROJECTS].join(', ')} (see SANITY_PROJECTS), so a job that ` +
+        'starts none of them has nothing to discover from.',
       );
     }
     console.log(

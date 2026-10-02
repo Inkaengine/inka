@@ -142,7 +142,66 @@
     <script src="/renderer.js"></script>
     <script type="module">
         import { initBridge, getAccessToken } from '/hydra.js';
-        import { expandListingBlocks, staticBlocks, ploneFetchItems, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
+        // The frontend owns the adapter: it is what answers the admin's
+        // BACKEND_REQUESTs, on the frontend's origin with the frontend's
+        // credentials. Without one, an admin running with
+        // useBridgeBackend=true gets NO_ADAPTER for every call.
+        import { PloneAdapter } from '/plone-adapter.js';
+        import { WordPressAdapter } from '/wordpress-adapter.js';
+        import { DrupalAdapter } from '/drupal-adapter.js';
+
+        // Which CMS this frontend talks to, chosen per test run. The whole
+        // point of the inversion is that the ADMIN does not know or care —
+        // it is the frontend that owns the adapter, so switching CMS is a
+        // frontend concern and nothing in Volto changes.
+        //
+        // A frontend's CMS is its own configuration. Here it is ?adapter= and
+        // ?cms=, because one fixture serves every CMS in the suite; the admin
+        // carries both onto the preview URL, since it builds that from the
+        // frontend URL. A Plone frontend reads Plone directly; anything else
+        // reads through its adapter (helpers' adapterGetContent), keeping the
+        // renderers, which were written against Plone's shape.
+        function frontendCms() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                which: params.get('adapter') || 'plone',
+                base: params.get('cms') || window._apiOrigin,
+            };
+        }
+        let cmsAdapterInstance = null;
+        function cmsAdapter() {
+            cmsAdapterInstance ??= buildAdapter();
+            return cmsAdapterInstance;
+        }
+        function buildAdapter() {
+            const { which, base: cmsBaseUrl } = frontendCms();
+            switch (which) {
+                case 'wordpress': {
+                    // The frontend's OWN credential, not the admin's: the admin's
+                    // token is Plone-shaped and means nothing to WordPress. Minted
+                    // by the sign-in (journey-wordpress-setup) into this origin's
+                    // storage. A published page needs none; a draft does.
+                    const stored = localStorage.getItem(`hydra_credentials:wordpress:${cmsBaseUrl}`);
+                    return new WordPressAdapter({
+                        cmsBaseUrl,
+                        ...(stored ? { credentials: JSON.parse(stored) } : {}),
+                    });
+                }
+                case 'drupal':
+                    return new DrupalAdapter({
+                        cmsBaseUrl,
+                        credentials: { username: 'admin', password: 'admin' },
+                    });
+                case 'plone':
+                    return new PloneAdapter({
+                        cmsBaseUrl,
+                        getAuthToken: () => getAccessToken(),
+                    });
+                default:
+                    throw new Error(`Unknown adapter '${which}'`);
+            }
+        }
+        import { expandListingBlocks, staticBlocks, ploneFetchItems, adapterFetchItems, adapterGetContent, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
         // Expose staticBlocks so the renderer's expandItems can window static
         // (non-listing) container children with combined paging, hand-in-hand with
         // expandListingBlocks — the two abstract object_list/blocks_layout and paging.
@@ -240,11 +299,20 @@
             const extraCriteria = getSearchCriteriaFromUrl();
             tfLog('extraCriteria from URL:', JSON.stringify(extraCriteria), 'search:', window.location.search);
             window._searchCriteria = extraCriteria; // Store for form handlers
-            const fetchItems = ploneFetchItems({ apiUrl: window._apiOrigin, contextPath, extraCriteria });
+            const cms = frontendCms();
+            const fetchItems = cms.which === 'plone'
+                ? ploneFetchItems({ apiUrl: cms.base, contextPath, extraCriteria })
+                : adapterFetchItems({ adapter: cmsAdapter(), extraCriteria });
             // Example listing-variant fetchers (see packages/helpers/index.js).
+            // They read the SAME CMS the page renders from: Plone directly, any
+            // other CMS through its adapter — whose keyword vocabulary is its
+            // own `tags`, not Plone's plone.app.vocabularies.Keywords.
+            const exampleSource = cms.which === 'plone'
+                ? { apiUrl: cms.base }
+                : { adapter: cmsAdapter(), vocabularies: { Subject: 'tags' } };
             const exampleFetchers = {
-                relatedItemsListing: relatedItemsFetcher({ apiUrl: window._apiOrigin, contextPath }),
-                searchShortcuts: searchShortcutsFetcher({ apiUrl: window._apiOrigin, contextPath }),
+                relatedItemsListing: relatedItemsFetcher({ ...exampleSource, contextPath }),
+                searchShortcuts: searchShortcutsFetcher({ ...exampleSource, contextPath }),
                 rssFeed: rssFetcher(),
             };
 
@@ -257,7 +325,9 @@
                 // from the PARENT folder (not the current page) so the current
                 // page isn't dropped as the query's excluded "self".
                 const fi = contextOverride
-                    ? ploneFetchItems({ apiUrl: window._apiOrigin, contextPath: contextOverride, extraCriteria })
+                    ? (cms.which === 'plone'
+                        ? ploneFetchItems({ apiUrl: cms.base, contextPath: contextOverride, extraCriteria })
+                        : adapterFetchItems({ adapter: cmsAdapter(), extraCriteria }))
                     : fetchItems;
                 // Forward `seen` so a listing run continues the SAME page window
                 // that a preceding staticBlocks run started — combined paging over a
@@ -385,8 +455,16 @@
                 // the per-page allowedLayouts config that other tests rely
                 // on stays in effect. Same idea as the footer's
                 // forceFooterLayout flag, just keyed off URL depth.
+                // /news is the journey's fixture root on Drupal and WordPress.
+                // Excluded for the same reason as /_test_data: a forced layout
+                // injects fixed, read-only blocks into the page, and the
+                // journey's add-a-block step then selects and diffs against
+                // template blocks rather than its own. Forced layouts are
+                // covered by the context-navigation-forced-folder tests; the
+                // journey is testing create, link, image and move.
                 const contextNavLayoutForced =
                     !contentPath.startsWith('/_test_data/')
+                    && !contentPath.startsWith('/news/')
                     && contentPath.split('/').filter(Boolean).length >= 2
                         ? ['/templates/context-navigation-layout']
                         : null;
@@ -455,8 +533,31 @@
                 if (token) {
                     fetchHeaders['Authorization'] = `Bearer ${token}`;
                 }
-                const response = await fetch(`${window._apiOrigin}/++api++${contentPath}?expand=navigation,translations`, { headers: fetchHeaders });
-                let content = await response.json();
+                // The frontend reads its CMS itself here, in view mode as in edit
+                // (edit then overlays what the admin sends). It used to read
+                // window._apiOrigin whatever ?cms= said, so a second Plone site
+                // rendered nothing, and a WordPress or Drupal page 404'd against
+                // the Plone mock.
+                const pageCms = frontendCms();
+                let content;
+                if (pageCms.which === 'plone') {
+                    const response = await fetch(`${pageCms.base}/++api++${contentPath}?expand=navigation,translations`, { headers: fetchHeaders });
+                    content = await response.json();
+                } else {
+                    try {
+                        content = await adapterGetContent(cmsAdapter(), contentPath, { expand: ['navigation'] } /* no translations: not an adapter concept yet */);
+                    } catch (err) {
+                        // A path that is not a page in the CMS — an add form's
+                        // `/news/add` above all. The Plone branch gets a 404 body
+                        // back and carries on, because in edit mode the admin
+                        // supplies the page over the bridge; an adapter throws
+                        // instead, and letting that abort init broke every
+                        // journey step that creates a page. Hand init the same
+                        // thing the Plone branch would. Anything else is real.
+                        if (err?.code !== 'NOT_FOUND') throw err;
+                        content = { error: { type: 'NotFound', message: err.message } };
+                    }
+                }
 
                 // Helper to load templates
                 const loadTemplate = async (templateId) => {
@@ -511,12 +612,14 @@
                     // Show top-level items; only expand children for the current folder
                     const currentPath = contentPath.replace(/\/$/, '');
                     navElement.innerHTML = navItems.map(item => {
-                        const path = new URL(item['@id']).pathname;
+                        // Relative to the page's origin, so a bare-path @id (what an adapter
+                        // gives, via plonify) parses as well as Plone's absolute one.
+                        const path = new URL(item['@id'], window.location.origin).pathname;
                         const children = item.items || [];
                         const isCurrent = currentPath === path || currentPath.startsWith(path + '/');
                         if (children.length > 0 && isCurrent) {
                             const childLinks = children.map(child =>
-                                `<a href="${new URL(child['@id']).pathname}">${child.title}</a>`
+                                `<a href="${new URL(child['@id'], window.location.origin).pathname}">${child.title}</a>`
                             ).join('');
                             return `<a href="${path}">${item.title}</a> ${childLinks}`;
                         }
@@ -562,7 +665,16 @@
                     // Return promise from async render so hydra.js can wait for DOM updates
                     window._formDataCount = 0;
 
+                    // NO adapter here. This is the PREVIEW: it renders, and it
+                    // navigates as the editor moves around. Serving CMS calls
+                    // from a window whose lifetime is driven by what is being
+                    // looked at is what orphaned in-flight requests when it was
+                    // replaced mid-edit. The adapter lives in the proxy frame
+                    // (hydra-proxy.html), which never navigates.
                     window.bridge = initBridge({
+                        cmsBaseUrl:
+                            new URLSearchParams(window.location.search).get('cms') ||
+                            window._apiOrigin,
                         page: {
                             schema: {
                                 // Blocks fields: each is a key in the shared blocks_layout dict.
