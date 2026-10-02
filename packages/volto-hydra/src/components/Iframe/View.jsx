@@ -22,11 +22,6 @@ import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
 import {
-  getBridgeRpc,
-  setBridgeTargetOrigin,
-  setEditingIframeMounted,
-} from '../../bridge/client';
-import {
   isSlateFieldType,
   formDataContentEqual,
   getUniqueTemplateIds,
@@ -307,11 +302,7 @@ import {
   pullLinkedFields,
   pullAllLinkedFields,
 } from '../../utils/copyFromTarget';
-import {
-  flattenToAppURL,
-  isInternalURL,
-  getBaseUrl,
-} from '@plone/volto/helpers/Url/Url';
+import { flattenToAppURL, isInternalURL } from '@plone/volto/helpers/Url/Url';
 import { searchContent } from '@plone/volto/actions/search/search';
 import ChildBlocksWidget from '../Sidebar/ChildBlocksWidget';
 import ParentBlocksWidget from '../Sidebar/ParentBlocksWidget';
@@ -694,7 +685,7 @@ const Iframe = (props) => {
     onChangeFormData,
     metadata,
     formData: form, // Keep for compatibility, but we'll use Redux selector for sync
-    token: tokenFromProps,
+    token,
     allowedBlocks,
     showRestricted,
     blocksConfig = config.blocks.blocksConfig,
@@ -874,34 +865,7 @@ const Iframe = (props) => {
     }
   }, [selectedBlock]);
 
-  // The session token, from the store rather than from props.
-  //
-  // Routes differ in whether they thread it down: the Add route renders this
-  // through Form without one, so the iframe was built with
-  // "access_token=undefined" and the adapter could not authenticate — its
-  // whoami() threw, registration was abandoned, and the gate never opened.
-  // The store always has it, and it is the same value every caller was
-  // passing anyway.
-  const tokenFromStore = useSelector((state) => state.userSession?.token);
-  const token = tokenFromStore || tokenFromProps;
-
   const iframeOriginRef = useRef(null); // Store actual iframe origin from received messages
-  // Backend RPC client. The frontend's adapter answers these over the bridge;
-  // the admin holds no CMS credentials and makes no direct CMS request.
-  // The one client, created at module load so the editor bootstrap's @types
-  // and @querystring calls find it. Creating another here would leave those
-  // queued on an instance nobody ever releases.
-  const rpcRef = useRef(getBridgeRpc());
-
-  // Tell the adapter host to stand down while the editor owns an iframe.
-  useEffect(() => {
-    setEditingIframeMounted(true);
-    return () => setEditingIframeMounted(false);
-  }, []);
-
-  // What the frontend's adapter told us it is and can do (ADAPTER_READY).
-  // Null until the handshake completes; UI affordances gate on it.
-  const [adapterInfo, setAdapterInfo] = useState(null);
   // Note: iframePath is stored in module-level persistedIframePath to survive component remounts
   const inlineEditCounterRef = useRef(0); // Count INLINE_EDIT_DATA messages from iframe
   const processedInlineEditCounterRef = useRef(0); // Count how many we've seen come back through Redux
@@ -1665,16 +1629,6 @@ const Iframe = (props) => {
   // Sync effect will send INITIAL_DATA after templates are merged
   const pendingInitialDataRef = useRef(null);
 
-  // An INIT that arrived before the form existed, waiting to be answered.
-  //
-  // The admin used to have content in the store before the iframe ever
-  // mounted, because SSR fetched it. A bridge-backed admin cannot fetch on the
-  // server — the adapter lives in this iframe — so content now loads in the
-  // browser and INIT can win the race. Dropping it left the frontend on
-  // "Loading..." permanently, reporting "INIT was sent but admin did not
-  // respond with INITIAL_DATA", with no blocks to edit.
-  const pendingInitEventRef = useRef(null);
-
   // Handle Escape key in Admin UI — three-state machine (same as iframe):
   //   Text mode (sidebar field focused) → Block mode (blur field, stay on block)
   //   Block mode → Parent block (or deselect if at page level)
@@ -1778,14 +1732,6 @@ const Iframe = (props) => {
   // (which would cause a duplicate iframe load for the same URL).
   // On first-ever load, persistedIframe.src is null (safe for SSR hydration).
   const [iframeSrc, setIframeSrc] = useState(persistedIframe.src);
-
-  // Once this iframe exists there is a transport again, so release anything
-  // that queued while the previous host was going away. Declared HERE, after
-  // iframeSrc: referencing it earlier is a temporal dead zone error that only
-  // shows up during SSR.
-  useEffect(() => {
-    if (iframeSrc) rpcRef.current.markReady();
-  }, [iframeSrc]);
 
   // Note: window.name inside iframe is set via the `name` attribute on the <iframe> element.
   // When iframe reloads (e.g., on mode switch), it picks up the current `name` attribute value.
@@ -2413,37 +2359,11 @@ const Iframe = (props) => {
         if (comparePane && event.source === comparePane.contentWindow) return;
       }
 
-      // Note there is no general sender filtering beyond that. It was tried
-      // and removed: the adapter host is confined to routes that render no
-      // editor, so the two never coexist, and comparing against
-      // contentWindow dropped legitimate INIT and PATH_CHANGE — during an
-      // iframe navigation the element's contentWindow can already be the new
-      // document while a message from the old one is still in flight.
       // Store the actual iframe origin from the first message we receive
       if (!iframeOriginRef.current) {
         iframeOriginRef.current = event.origin;
-        setBridgeTargetOrigin(event.origin);
       }
       const { type } = event.data;
-
-      // Backend RPC and the adapter handshake are handled before anything
-      // else: they carry no form data and must not fall through the
-      // edit-sequence bookkeeping below.
-      if (type === 'BACKEND_RESPONSE') {
-        rpcRef.current.handleMessage(event.data);
-        return;
-      }
-      if (type === 'ADAPTER_READY') {
-        rpcRef.current.markReady();
-        setAdapterInfo({
-          name: event.data.name,
-          capabilities: event.data.capabilities,
-          protocolVersion: event.data.protocolVersion,
-          cmsBaseUrl: event.data.cmsBaseUrl,
-          user: event.data.user,
-        });
-        return;
-      }
 
       // Save pre-message sequence for echo detection (used by INLINE_EDIT_DATA).
       const preMessageSeq = editSequenceRef.current;
@@ -2461,19 +2381,6 @@ const Iframe = (props) => {
 
       switch (type) {
         case 'PATH_CHANGE': { // PATH change from the iframe (SPA navigation)
-          // NOT markNotReady() any more. That dated from when the adapter
-          // lived in this preview iframe, so navigating it really did cost us
-          // the adapter and everything had to be held until a new one
-          // announced. The adapter now lives in the proxy frame, which is
-          // mounted for the whole session and never navigates — gating here
-          // just held requests the proxy could already serve.
-          //
-          // What a navigation DOES mean is that reads for the previous
-          // document are no longer wanted. Discard them rather than letting
-          // them finish and resolve into unmounted components.
-          rpcRef.current.discardReads(
-            'the preview navigated to another document',
-          );
           // Check if this is in-page navigation (e.g., paging) - just resend form data
           if (event.data.inPage) {
             log('PATH_CHANGE: in-page navigation (paging), resending form data');
@@ -2509,29 +2416,6 @@ const Iframe = (props) => {
           let navPath = event.data.path;
           if (iframeBasePath && navPath.startsWith(iframeBasePath)) {
             navPath = navPath.slice(iframeBasePath.length) || '/';
-          }
-          // An announcement of the page the admin is ALREADY showing is not a
-          // navigation.
-          //
-          // /en/services/manage-translations is the admin's view OF
-          // /en/services, so pushing /en/services there is not following the
-          // editor anywhere — it drops them out of the sub-view they opened,
-          // while they are using it. Caught as a 1-in-3 flake: the translations
-          // table was rebuilt under the pointer and the click on Link landed on
-          // a button that had just been detached. Same for Contents, Sharing and
-          // History, which all keep a preview of the same document.
-          //
-          // getBaseUrl is Volto's own answer to "which content is this admin
-          // route about" (nonContentRoutes lists manage-translations), so a real
-          // navigation to a CHILD — /en/services/consulting — still differs and
-          // is still followed.
-          const adminContentPath = getBaseUrl(history.location.pathname) || '/';
-          if (adminContentPath === navPath) {
-            log(
-              'PATH_CHANGE: the preview announced the page we are already on; staying in',
-              history.location.pathname,
-            );
-            break;
           }
           // Update module-level state BEFORE history.push so useEffect knows iframe already has this path
           persistedIframe = { frontendUrl: u, path: navPath, isEdit: false };
@@ -3750,15 +3634,7 @@ const Iframe = (props) => {
             if (iframeBasePath && contentPath.startsWith(iframeBasePath)) {
               contentPath = contentPath.slice(iframeBasePath.length) || '/';
             }
-            // Which CONTENT the admin is on, not which route. Stripping only
-            // '/edit' left every other admin view of the same document looking
-            // like a different page, so the iframe's first INIT pushed the admin
-            // out of it: opening Manage Translations bounced straight back to the
-            // view, and the translations table was torn down under the pointer
-            // between linking and unlinking. getBaseUrl is Volto's own answer,
-            // and it knows manage-translations (nonContentRoutes), so following
-            // the editor to a real CHILD page still works.
-            const adminPath = getBaseUrl(history.location.pathname) || '/';
+            const adminPath = history.location.pathname.replace(/\/edit$/, '') || '/';
             if (contentPath !== adminPath) {
               log('INIT: iframe navigated to different page, following to view mode:', contentPath, '(raw:', event.data.currentPath, ', base:', iframeBasePath, ')');
               // Update persistedIframe BEFORE history.push so useEffect won't reload iframe
@@ -4004,29 +3880,6 @@ const Iframe = (props) => {
           // and the save carries no title at all. That cost a day to find,
           // through the menu it made look broken.
           //
-          // Not here YET is not the same as not here. The content type is
-          // fetched alongside the page, and on a cold edit route the frontend
-          // can finish booting and send INIT before it lands — which the guard
-          // below would turn into a thrown handshake, and INIT is one-shot, so
-          // nothing redelivers it. Postpone instead, into the same stash the
-          // missing-form case uses, replayed by the effect at the bottom of
-          // this one as soon as both are in.
-          //
-          // This sits BEFORE the guard deliberately: the `!form` deferral is
-          // two hundred lines further down, so anything hung off it never runs.
-          if (
-            history.location.pathname.endsWith('/edit') &&
-            !schema?.properties
-          ) {
-            log('INIT: content type not loaded yet, deferring INITIAL_DATA');
-            pendingInitEventRef.current = {
-              source: event.source,
-              origin: event.origin,
-              data: event.data,
-            };
-            break;
-          }
-
           // Editing needs the content type. If it is not here, say so.
           if (
             history.location.pathname.endsWith('/edit') &&
@@ -4249,14 +4102,7 @@ const Iframe = (props) => {
             break;
           }
           if (!form) {
-            // Deferred, not dropped: replayed by the effect below as soon as
-            // the form arrives. The iframe sends INIT once and waits forever.
-            log('INIT: form not available yet, deferring INITIAL_DATA');
-            pendingInitEventRef.current = {
-              source: event.source,
-              origin: event.origin,
-              data: event.data,
-            };
+            log('INIT: form data not available yet, skipping INITIAL_DATA');
             break;
           }
 
@@ -4309,22 +4155,6 @@ const Iframe = (props) => {
 
     // Listen for messages from the iframe
     window.addEventListener('message', messageHandler);
-
-    // Answer an INIT that arrived before there was a form — or a content type —
-    // to answer it with. This effect re-runs when either changes, so this is the
-    // first moment the handshake can be completed. Replaying while the content
-    // type is still missing would walk straight into the guard.
-    if (form && schema?.properties && pendingInitEventRef.current) {
-      const pending = pendingInitEventRef.current;
-      pendingInitEventRef.current = null;
-      messageHandler(
-        new MessageEvent('message', {
-          data: pending.data,
-          origin: pending.origin,
-          source: pending.source,
-        }),
-      );
-    }
 
     // Clean up the event listener on unmount
     return () => {

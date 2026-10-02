@@ -12,12 +12,6 @@ env:
   HYDRA_MOCK_API_PORT: 8888
   HYDRA_TEST_FRONTEND_PORT: 8889
   HYDRA_MOCK_PARENT_PORT: 8891
-  # The three-CMS journey's backends. Declared here with everything else
-  # because PORTS is built eagerly: one missing name throws on import, so a
-  # run that never touches Drupal still needs the name to exist.
-  HYDRA_MOCK_DRUPAL_PORT: 8794
-  HYDRA_WORDPRESS_PORT: 8795
-  HYDRA_PLONE_SEED_PORT: 8898
   HYDRA_VOLTO_SSR_PORT: 3001
   HYDRA_VOLTO_WEBPACK_PORT: 3002
   HYDRA_NUXT_PORT: 3003
@@ -99,12 +93,6 @@ jobs:
           # suffix so the switch lands on a rendered page, not a blank one.
           RAZZLE_DEFAULT_IFRAME_URL: "Test frontend|http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},Nuxt blog|http://localhost:${{ env.HYDRA_NUXT_PORT }},http://localhost:${{ env.HYDRA_REACT_DOC_PORT }},http://localhost:${{ env.HYDRA_VUE_DOC_PORT }},http://localhost:${{ env.HYDRA_SVELTE_DOC_PORT }},http://localhost:${{ env.HYDRA_NEXTJS_PORT }},F7 Mobile|http://localhost:${{ env.HYDRA_F7_PORT }}/#!"
           VOLTOCONFIG: ${{ github.workspace }}/volto.config.js
-          # Also inlined at build time, so it has to be set HERE: the jobs that
-          # download this bundle can set it in their own env and it changes
-          # nothing. Without it the admin suites ran every test on the legacy
-          # direct-fetch path — 893 passed, and none of them went through an
-          # adapter; only the three auth tests that assert the bridge noticed.
-          RAZZLE_USE_BRIDGE_BACKEND: 'true'
       - name: Upload Volto build
         uses: actions/upload-artifact@v4
         with:
@@ -187,7 +175,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
@@ -265,162 +253,6 @@ jobs:
           retention-days: 7
 
   # ── Admin integration tests (mock frontend) ─────────────────────────────
-  # One contract suite, three CMSes, run at the same time.
-  #
-  # These assert that an adapter answers the canonical intents correctly against
-  # a REAL backend for its CMS — the suite is identical per target, so a failure
-  # names which CMS diverged rather than which test is flaky. Nothing here
-  # touches the admin: it is the adapter contract alone.
-  #
-  # fail-fast is off because "WordPress broke" and "Drupal broke" are separate
-  # findings, and cancelling the others hides the second one.
-  test-adapter-contract:
-    runs-on: 'ubuntu-latest'
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [plone, wordpress, drupal]
-    name: test-contract (${{ matrix.target }})
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Setup pnpm
-        run: |
-          npm install -g corepack
-          corepack cache clean
-          corepack enable
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'pnpm'
-      - name: Get pnpm store directory
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-      - uses: actions/cache@v4
-        name: Setup pnpm cache
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-      - name: Install dependencies
-        run: |
-          pnpm dlx mrs-developer missdev --no-config --fetch-https
-          pnpm install --frozen-lockfile
-      # WordPress is PHP-WASM fetched at boot, so it needs its own download and
-      # is the slow one; the mock-backed targets skip this entirely.
-      - name: Warm the WordPress Playground package
-        if: matrix.target == 'wordpress'
-        run: pnpm dlx @wp-playground/cli@3.1.51 --version || true
-      - name: Run the contract suite
-        # `shell: bash` is load-bearing, not tidiness: GitHub's default shell has
-        # no pipefail, so `vitest | tee` exited with TEE's status and every
-        # contract failure was invisible. test-contract (wordpress) reported
-        # success for at least the last several runs while auth.logout was failing
-        # in it. With this, the pipeline's status is the suite's again.
-        shell: bash
-        run: TARGET=${{ matrix.target }} pnpm test:contract 2>&1 | tee /tmp/contract-${{ matrix.target }}.log
-      - name: Upload the log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: contract-${{ matrix.target }}
-          path: /tmp/contract-${{ matrix.target }}.log
-          if-no-files-found: ignore
-
-  # The same editorial journey, walked in a browser against each CMS.
-  #
-  # Where the contract suite proves an adapter answers correctly, these prove the
-  # ADMIN works over it: create a page, link to another, move it, upload an
-  # image, change its state. Playwright's own config starts the right backend per
-  # project (Drupal's mock, WordPress Playground), so the job only has to supply
-  # a built Volto.
-  #
-  # WordPress is serialised inside its own project — PHP-WASM answers about one
-  # request a second, and nine specs in parallel starve each other — but the
-  # three CMSes still run as separate jobs at the same time here.
-  test-adapter-journey:
-    # Deliberately NOT `needs: build`. Depending on the shared build job means
-    # the whole matrix skips whenever that job is red for reasons of its own —
-    # which is what happened first time out, so adapter journeys were gated
-    # behind breakage they have nothing to do with. Building Volto here costs a
-    # few minutes per leg and buys a signal that is actually independent.
-    runs-on: 'ubuntu-latest'
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        project: [journey-plone-seeded, journey-drupal, journey-wordpress]
-    name: test-journey (${{ matrix.project }})
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Setup pnpm
-        run: |
-          npm install -g corepack
-          corepack cache clean
-          corepack enable
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'pnpm'
-      - name: Get pnpm store directory
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-      - uses: actions/cache@v4
-        name: Setup pnpm cache
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-      - name: Install dependencies
-        run: |
-          pnpm dlx mrs-developer missdev --no-config --fetch-https
-          pnpm install --frozen-lockfile
-      - name: Build workspace deps (@plone/registry, @plone/components)
-        run: pnpm build:deps
-      # No production build: these run against the DEV server, which is the
-      # only mode the bridge currently works in. With USE_PREBUILT the prod
-      # server SSRs while the client is set up to createRoot, and every test
-      # failed on React hydration errors #418/#423 — the app never came up.
-      # That is a real gap worth closing, but it is a product bug, not a reason
-      # for CI to test a configuration nothing else does.
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          # Its own key: this job installs Chromium only, and it finishes before
-          # the build-gated jobs start. Sharing their key saved a Chromium-only
-          # cache they then restored as a hit, skipped installing, and had no Firefox.
-          key: ${{ runner.os }}-playwright-chromium-v1-${{ hashFiles('**/pnpm-lock.yaml') }}
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install Playwright deps only
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
-      # No separate auth step for WordPress: journey-wordpress declares
-      # `dependencies: ['journey-wordpress-setup']`, so Playwright mints the
-      # credential itself with the servers this project needs already up.
-      # Running the setup project on its own first made it fail three times over
-      # before the real run started.
-      - name: Run the journey
-        run: pnpm exec playwright test --project=${{ matrix.project }} --reporter=github,list,html
-        env:
-          CI: true
-      - name: Upload test results
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-${{ matrix.project }}
-          path: playwright-report/
-          if-no-files-found: ignore
-
   test-admin-mock:
     needs: build
     runs-on: 'ubuntu-latest'
@@ -466,7 +298,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
@@ -690,7 +522,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
@@ -809,7 +641,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
@@ -916,7 +748,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v3-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |

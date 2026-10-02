@@ -94,7 +94,7 @@ test.describe('Editor Guide screenshots', () => {
     await helper.escapeFromEditing();
 
     // Shift+Click in iframe to extend selection across to another-paragraph.
-    const iframe = helper.getIframe();
+    const iframe = helper.page.frameLocator('iframe');
     const target = iframe.locator('[data-block-uid="another-paragraph"]');
     await target.click({ modifiers: ['Shift'] });
 

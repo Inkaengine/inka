@@ -34,81 +34,43 @@ export default defineConfig({
     alias: ploneAliases,
   },
   test: {
-    // Two projects, because these are two different kinds of test and jsdom is
-    // not free. The addon's component tests need a DOM and Volto's config
-    // registry; the block/markdown engine, the adapters and the pure helpers
-    // are data in, data out, and paying for jsdom plus Volto's setup on every
-    // one of them cost more than the tests themselves.
-    //
-    // Measured on the docs corpus round-trip, the slowest file in the suite:
-    // ~156s under jsdom, ~78s under node for exactly the same assertions. The
-    // rest of its cost is the engine's own — verify-on-emit is O(n²) per page by
-    // design — and that is not this config's business; paying for a DOM none of
-    // it touches was.
-    projects: [
-      {
-        resolve: { alias: ploneAliases },
-        test: {
-          name: 'addon',
-          globals: true,
-          environment: 'jsdom',
-          root: __dirname,
-          include: [
-            'packages/volto-hydra/**/*.{test,spec}.{js,jsx,ts,tsx}',
-            // The playwright suites' own helpers, tested directly rather than
-            // inferred from a green e2e run. They build real DOM fixtures —
-            // selectablePoint picks a click target, measureStylesInPage reads
-            // computed styles — so they need jsdom as much as the addon does.
-            // `.test.` only: the specs themselves are `.spec.ts`.
-            'tests-playwright/helpers/**/*.test.{js,ts}',
-            // The coverage REPORTER (tests-playwright/coverage-reporter.ts)
-            // lives at the suite root, next to playwright.config's reference to
-            // it. Its unit test proves onEnd actually fails the run on a gap.
-            'tests-playwright/*.test.{js,ts}',
-          ],
-          exclude: ['**/node_modules/**'],
-          // Volto's own setup: the shared config registry
-          // (settings.slate.extensions etc.) and the DOM shims (matchMedia,
-          // IntersectionObserver), so tests don't bootstrap Volto themselves.
-          setupFiles: [
-            path.resolve(__dirname, 'core/packages/volto/test-setup-globals.js'),
-            path.resolve(__dirname, 'core/packages/volto/test-setup-config.jsx'),
-            // Hydra-specific: invoke volto-slate's applyConfig so the slate
-            // plugin chain (Markdown etc.) populates settings.slate.extensions.
-            // Volto's setup files initialise the bare config registry but don't
-            // invoke addon applyConfig chains.
-            path.resolve(__dirname, 'vitest-setup-hydra.js'),
-          ],
-        },
-      },
-      {
-        resolve: { alias: ploneAliases },
-        test: {
-          name: 'node',
-          globals: true,
-          environment: 'node',
-          root: __dirname,
-          // No setupFiles: none of these import @plone/*, and Volto's
-          // test-setup-globals.js assigns to `window` on load, which is the one
-          // thing a node environment does not have.
-          include: [
-            // any docs-tree unit tests
-            'docs/**/*.{test,spec}.mjs',
-            // blockmd: the prototype engine and the slate <-> markdown core
-            'lib/**/*.{test,spec}.mjs',
-            // The pure data helpers (buildQuerystringSearchBody etc.) —
-            // server-safe, no DOM.
-            'packages/helpers/**/*.{test,spec}.{js,jsx,ts,tsx}',
-            // The CMS adapters' own unit tests (no CMS needed). They had
-            // per-package jest configs that no CI step ever invoked, so they
-            // never ran there.
-            'packages/hydra-adapters-*/**/*.test.js',
-          ],
-          // hydra-js has its own jest harness; covered by
-          // `cd packages/hydra-js && pnpm test` in CI.
-          exclude: ['**/node_modules/**', 'packages/hydra-js/**'],
-        },
-      },
+    globals: true,
+    environment: 'jsdom',
+    include: [
+      'packages/volto-hydra/**/*.{test,spec}.{js,jsx,ts,tsx}',
+      // any docs-tree unit tests
+      'docs/**/*.{test,spec}.mjs',
+      // blockmd: the prototype engine and the slate <-> markdown core
+      'lib/**/*.{test,spec}.mjs',
+      // The pure data helpers (buildQuerystringSearchBody etc.) — server-safe,
+      // no DOM, so their unit tests live alongside them here.
+      'packages/helpers/**/*.{test,spec}.{js,jsx,ts,tsx}',
+      // Pure aggregation helpers used BY the playwright suites (coverage
+      // bookkeeping, no browser). Their contract — "one example is enough",
+      // "reported only when no example covers it" — is worth testing directly
+      // rather than inferring it from a green e2e run. `.test.` only: the
+      // playwright specs themselves are `.spec.ts` and must not be collected.
+      'tests-playwright/helpers/**/*.test.{js,ts}',
+      // The coverage REPORTER (tests-playwright/coverage-reporter.ts) lives at
+      // the suite root, next to playwright.config's reference to it. Its unit
+      // test proves onEnd actually fails the run on a gap. `.test.` only, so
+      // the `.spec.ts` playwright specs at this level are never collected.
+      'tests-playwright/*.test.{js,ts}',
+    ],
+    // hydra-js has its own jest harness; covered by `cd packages/hydra-js && pnpm test` in CI.
+    exclude: ['**/node_modules/**', 'packages/hydra-js/**'],
+    // Reuse Volto's setup files via the workspace. These initialise the
+    // shared config registry (settings.slate.extensions etc.) and DOM
+    // shims (matchMedia, IntersectionObserver) so tests don't have to
+    // bootstrap Volto themselves.
+    setupFiles: [
+      path.resolve(__dirname, 'core/packages/volto/test-setup-globals.js'),
+      path.resolve(__dirname, 'core/packages/volto/test-setup-config.jsx'),
+      // Hydra-specific: invoke volto-slate's applyConfig so the slate
+      // plugin chain (Markdown etc.) populates settings.slate.extensions.
+      // Volto's setup files initialise the bare config registry but don't
+      // invoke addon applyConfig chains.
+      path.resolve(__dirname, 'vitest-setup-hydra.js'),
     ],
   },
 });
