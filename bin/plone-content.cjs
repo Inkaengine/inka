@@ -4,7 +4,8 @@
  *   plone-content validate [<content-dir>]   — export-shape validation
  *   plone-content check    [<content-dir>]   — graph integrity check
  *   plone-content schema   [<content-dir>] --schemas <schemas.json>
- *                                            — every block field no schema declares
+ *                                            — every block field no schema declares, and
+ *                                              everything the editor would refuse or rewrite
  *   plone-content all      [<content-dir>]   — validate + check (+ schema with --schemas)
  *   plone-content served                     — the whole site the mock API serves for
  *                                              CONTENT_MOUNTS (every mount together), the
@@ -21,7 +22,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport } = require(
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport } = require(
   path.join(__dirname, '..', 'tests-playwright', 'fixtures', 'plone-content-validator.cjs'),
 );
 
@@ -89,6 +90,14 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
   const r = checkBlockSchemas(contentDir, fields);
   console.log(formatReport('schema', r));
   if (r.errors.length) hasErrors = true;
+  // The rules the editor enforces need the schemas themselves, not a names-only
+  // field map: placement, maxLength, required fields and region text styles.
+  if (schemas) {
+    console.log('');
+    const rules = await checkEditorRules(contentDir, schemas);
+    console.log(formatReport('rules', rules));
+    if (rules.errors.length) hasErrors = true;
+  }
 }
 
 process.exit(hasErrors ? 1 : 0);

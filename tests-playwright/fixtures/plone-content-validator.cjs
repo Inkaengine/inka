@@ -1037,6 +1037,99 @@ function checkBlockSchemas(source, fieldMap) {
   return { errors, warnings, stats };
 }
 
+/**
+ * Everything in the content the editor would refuse or rewrite.
+ *
+ * The schemas already say where a block may go — a region's `allowedBlocks`,
+ * an ancestor's `disallowDescendantBlocks`, a region's `maxLength` — and the
+ * editor enforces them on every add, drag and convert. Content that reached
+ * Plone some other way (an import, a conversion, a fixture) was never held to
+ * them: checkBlockSchemas only asks whether a block's FIELDS are declared, so
+ * a block written into a container that does not allow it passed validation.
+ *
+ * It asks buildBlockPathMap, the module the editor itself reads, rather than
+ * re-deriving the rules: each block's `allowedSiblingTypes` (its region's
+ * allowedBlocks less anything an ancestor disallows), `maxSiblings` and
+ * `emptyRequiredFields`, and its region's slate rules run through the same
+ * normalizeSlateFields the editor applies on load. A region that names no
+ * allowedBlocks (`allowedSiblingTypesDerived`) restricts nothing, so nothing
+ * in it is reported.
+ *
+ * `schemas` is the site's `{ type: { blockSchema, ... } }` with its page
+ * regions under `_page` — the same file `--schemas` reads.
+ */
+async function checkEditorRules(source, schemas) {
+  const hydraJs = (file) =>
+    import(
+      require('url').pathToFileURL(
+        require('path').join(__dirname, '..', '..', 'packages', 'hydra-js', file),
+      ).href
+    );
+  const { buildBlockPathMap } = await hydraJs('buildBlockPathMap.js');
+  const { normalizeSlateFields } = await hydraJs('slateStyles.js');
+  const onDisk = typeof source === 'string';
+  const errors = [];
+  const stats = { items: 0, blocks: 0, misplaced: 0, overfull: 0, emptyRequired: 0, restyled: 0 };
+  for (const { rel, data } of onDisk ? walkData(source) : source) {
+    stats.items += 1;
+    if (!data || !data.blocks) continue;
+    const pathMap = buildBlockPathMap(data, schemas);
+    const overfull = new Map(); // `${parentId}.${region}` -> [count, max]
+    for (const [uid, info] of Object.entries(pathMap)) {
+      if (uid.startsWith('_') || !info || typeof info !== 'object' || !info.blockType) continue;
+      stats.blocks += 1;
+      const where = info.parentId === '_page'
+        ? `the page's ${info.region}`
+        : `${pathMap[info.parentId]?.blockType ?? info.parentId}.${info.region}`;
+      if (
+        !info.allowedSiblingTypesDerived &&
+        Array.isArray(info.allowedSiblingTypes) &&
+        !info.allowedSiblingTypes.includes(info.blockType)
+      ) {
+        stats.misplaced += 1;
+        errors.push(
+          `  ${rel}: a "${info.blockType}" block (${uid}) is in ${where}, which ` +
+            `does not allow it there — the editor would refuse to put it there`,
+        );
+      }
+      // A required field left empty: the editor will not save the block.
+      for (const { fieldName } of info.emptyRequiredFields || []) {
+        stats.emptyRequired += 1;
+        errors.push(
+          `  ${rel}: a "${info.blockType}" block (${uid}) has no ${fieldName}, ` +
+            `which its schema requires — the editor will not save it`,
+        );
+      }
+      // A text style the region does not allow: the editor rewrites it on load,
+      // so the stored content is not what anyone will see or save.
+      const schema = info._schemaRef ? pathMap._schemas[info._schemaRef] : null;
+      if (info.slateRules && schema) {
+        const block = info.path.reduce((node, key) => (node == null ? node : node[key]), data);
+        const { changes } = normalizeSlateFields(block, schema, info.slateRules);
+        for (const c of changes) {
+          stats.restyled += 1;
+          errors.push(
+            `  ${rel}: a "${info.blockType}" block (${uid}) uses "${c.from}" in ${c.field}, ` +
+              `which ${where} does not allow — the editor rewrites it ` +
+              `${c.to ? `as "${c.to}"` : 'away'} on load`,
+          );
+        }
+      }
+      if (typeof info.maxSiblings === 'number' && info.siblingCount > info.maxSiblings) {
+        overfull.set(`${where}`, [info.siblingCount, info.maxSiblings]);
+      }
+    }
+    for (const [where, [count, max]] of overfull) {
+      stats.overfull += 1;
+      errors.push(
+        `  ${rel}: ${where} holds ${count} blocks, but takes at most ${max} — ` +
+          `the editor would refuse to add the extra ones`,
+      );
+    }
+  }
+  return { errors, warnings: [], stats };
+}
+
 function formatReport(title, result) {
   const lines = [];
   if (title === 'schema') {
@@ -1048,6 +1141,12 @@ function formatReport(title, result) {
         (result.stats.unknownTypes
           ? `, ${result.stats.unknownTypes} block type(s) not in the field map`
           : ''),
+    );
+  } else if (title === 'rules') {
+    lines.push(`Content: ${result.stats.items} items, ${result.stats.blocks} blocks`);
+    lines.push(
+      `Rules:   ${result.stats.misplaced} misplaced, ${result.stats.overfull} over maxLength, ` +
+        `${result.stats.emptyRequired} required empty, ${result.stats.restyled} disallowed styles`,
     );
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
@@ -1120,4 +1219,4 @@ function fieldMapFromSchemas(schemas) {
   return { blocks, identityFields: [...identityFields] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };
