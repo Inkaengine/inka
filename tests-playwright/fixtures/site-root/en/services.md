@@ -17,7 +17,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" description="${p/text}" />
+      <block type="teaser" title="${h/text}" description="${p/textarea}" />
     </region>
   </block>
 ---

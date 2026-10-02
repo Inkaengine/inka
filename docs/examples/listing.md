@@ -26,21 +26,21 @@ title: Listing
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />
-  <block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
+      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
     </region>
   </block>
   <block type="slider">
     <region name="slides" widget="object_list" idField="@id" typeField="@type">
-      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/text}" buttonText="${a?/text}" href="${a?/link}" preview_image="${img/link}" />
+      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/textarea}" buttonText="${a?/text}" href="${a?/link}" preview_image="${img/link}" />
     </region>
   </block>
 ---

@@ -1,5 +1,18 @@
 # blockmd — two-way markdown ⇄ block documents
 
+> **Status: done (2026-09-30).** The cutover is complete and the scaffolding
+> this describes has been deleted, including the old engine (`lib/blockmd.mjs`)
+> and the scripts that lived here (`export-tree`, `import-tree`, `convert`,
+> `diag`, `check-parity`, `export-proto`, the migrations). Kept as the design
+> history. What is live:
+>
+> - Engine: `lib/prototype-mapping.mjs`, over the markdown layer in `lib/slate-md.mjs`;
+>   default prototypes in `lib/default-prototypes.mjs`.
+> - Loader: `lib/markdown-mount.mjs` (the mock API serves markdown mounts through it).
+> - Export to markdown: `POST /@export` with `format: 'markdown'` and the
+>   prototypes from `lib/default-prototypes.mjs`.
+> - Authoring guide: `docs/testing/blockmd.md`.
+
 The readable format that is the single source of truth for Plone block content:
 the **loader** turns it into the block JSON the mock API serves (and deploy
 builds from), and **Sphinx** renders the same files as docs. Engine:

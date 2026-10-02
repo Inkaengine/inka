@@ -886,3 +886,65 @@ describe('@users', () => {
     assert.equal((await res.json()).id, 'newcomer');
   });
 });
+
+// Plone batches a folder's `items` (plone.restapi's HypermediaBatch): 25 by
+// default, from `b_start` / `b_size`, with `items_total` the whole folder.
+// ploneFetchItems now answers a folder-contents listing from here, so a mock
+// that returned every child on every page would page nothing.
+describe('folder items batching', () => {
+  const items = async (query) => {
+    const res = await fetch(`${baseUrl}/_test_data${query}`, { headers: { Accept: 'application/json' } });
+    assert.equal(res.status, 200);
+    return res.json();
+  };
+
+  it('pages the children by b_start / b_size', async () => {
+    const all = await items('?b_size=100');
+    assert.ok(all.items_total > 3, 'the fixture folder needs more than 3 children');
+    const first = await items('?b_start=0&b_size=2');
+    const second = await items('?b_start=2&b_size=2');
+    assert.equal(first.items.length, 2);
+    assert.equal(first.items_total, all.items_total);
+    assert.deepEqual(
+      [...first.items, ...second.items].map((i) => i['@id']),
+      all.items.slice(0, 4).map((i) => i['@id']),
+    );
+  });
+
+  it('gives the first 25 when not asked', async () => {
+    const data = await items('');
+    assert.equal(data.items.length, Math.min(25, data.items_total));
+  });
+});
+
+describe('@breadcrumbs', () => {
+  // plone.restapi's breadcrumbs list the page's ancestors and the page — NOT
+  // the site root, which comes separately as `root`. The mock used to put a
+  // {title: 'Home'} first, so a frontend that renders `items` as given passed
+  // every test here and lost its Home crumb against a real Plone.
+  // (Compared by path: the mock builds its urls from its configured PORT.)
+  const paths = (items) => items.map((i) => new URL(i['@id']).pathname);
+  const pathOf = (url) => new URL(url).pathname;
+
+  it('lists the ancestors and the page, not the site root', async () => {
+    const res = await fetch(`${baseUrl}/_test_data/@breadcrumbs`, {
+      headers: { Accept: 'application/json' },
+    });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.deepEqual(paths(data.items), ['/_test_data']);
+    assert.equal(pathOf(data.root), '/');
+  });
+
+  it('the site root has no crumbs', async () => {
+    const res = await fetch(`${baseUrl}/@breadcrumbs`, { headers: { Accept: 'application/json' } });
+    const data = await res.json();
+    assert.deepEqual(data.items, []);
+    assert.equal(pathOf(data.root), '/');
+  });
+
+  it('the expanded component matches the endpoint', async () => {
+    const page = await getContent('/_test_data?expand=breadcrumbs');
+    assert.deepEqual(paths(page['@components'].breadcrumbs.items), ['/_test_data']);
+  });
+});

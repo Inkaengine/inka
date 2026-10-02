@@ -28,15 +28,15 @@ blocks-matched: |
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/text}" />
+  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
   <block type="introduction" value="${p,h*/slate}" />
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />
+      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
     </region>
   </block>
 ---

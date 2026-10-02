@@ -148,6 +148,47 @@ describe('mock API content validation', () => {
     assert.equal(run.status, 0, run.stderr.slice(-2000));
   });
 
+  // A consumer's content is judged by ITS schemas when it says where they are:
+  // CONTENT_SCHEMAS names the JSON its frontend config loads.
+  const siteSchemas = () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'site-schemas-')), 'schemas.json');
+    fs.writeFileSync(file, JSON.stringify({
+      hero: { blockSchema: { properties: { heading: { type: 'string' }, description: { widget: 'slate' } } } },
+    }));
+    return file;
+  };
+  const heroPage = (hero) => jsonMount({ blocks: { h: { '@type': 'hero', ...hero } }, blocks_layout: { items: ['h'] } });
+
+  it("judges a consumer's blocks by its own schemas: field shapes and undeclared fields", () => {
+    const run = loadAndAwaitReady(`/:${heroPage({ description: 'plain text', url: '/x' })}`, { CONTENT_SCHEMAS: siteSchemas() });
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
+    assert.match(run.stderr, /hero\.url/);
+  });
+
+  it("is ready when a consumer's blocks match its schemas", () => {
+    const run = loadAndAwaitReady(
+      `/:${heroPage({ heading: 'H', description: [{ type: 'p', children: [{ text: 'x' }] }] })}`,
+      { CONTENT_SCHEMAS: siteSchemas() },
+    );
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+  });
+
+  it('takes the schemas as a JS module, whose shared pieces are written once', () => {
+    // A frontend keeps its schemas as plain JS data so a field set shared by
+    // several blocks is named once and spread into each -- no copy per block.
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'site-schemas-')), 'schemas.mjs');
+    fs.writeFileSync(file, [
+      "const SHARED = { description: { widget: 'slate' } };",
+      "export default {",
+      "  hero: { blockSchema: { properties: { heading: { type: 'string' }, ...SHARED } } },",
+      "};",
+    ].join('\n'));
+    const run = loadAndAwaitReady(`/:${heroPage({ description: 'plain text' })}`, { CONTENT_SCHEMAS: file });
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
+  });
+
   it("judges content shipped in this checkout by hydra's schemas", () => {
     // The same block, mounted from inside hydra, IS hydra's test content.
     const dir = fs.mkdtempSync(path.join(__dirname, '.content-check-'));

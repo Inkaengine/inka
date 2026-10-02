@@ -1339,9 +1339,14 @@ function getRootNavigationItems(sessionId) {
 // /@actions endpoint had only `view + edit`, so reducers seeing the same
 // "actions" data via different code paths got different results.
 
+// plone.restapi's shape: `items` are the page's ancestors and the page, root
+// first-ancestor-first — the site root itself is NOT an item, it is `root`. A
+// frontend that wants a Home crumb adds it from `root` (as Volto's Breadcrumbs
+// does). The mock used to put {title: 'Home'} first, so a frontend rendering
+// `items` as given looked right here and lost its Home crumb against Plone.
 function buildBreadcrumbsComponent(cleanPath, baseUrl) {
   const pathParts = cleanPath.split('/').filter(Boolean);
-  const items = [{ '@id': baseUrl, title: 'Home' }];
+  const items = [];
   let currentPath = '';
   for (const part of pathParts) {
     currentPath += '/' + part;
@@ -2186,6 +2191,20 @@ function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId, params
   return out;
 }
 
+/**
+ * A folder's `items` as Plone serves them: batched (plone.restapi's
+ * HypermediaBatch), 25 by default, from the request's `b_start` / `b_size`,
+ * with `items_total` still the whole folder. ploneFetchItems answers a
+ * folder-contents listing from here, so every child on every page would page
+ * nothing.
+ */
+function batchFolderItems(content, query = {}) {
+  if (!Array.isArray(content.items)) return content;
+  const start = Number(query.b_start ?? 0);
+  const size = Number(query.b_size ?? 25);
+  return { ...content, items: content.items.slice(start, start + size) };
+}
+
 function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, expandParams = {}) {
   // Always use urlPath for @id (includes mount prefix), normalize trailing slash
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
@@ -2462,6 +2481,11 @@ function validateServedContent() {
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
   errors.push(...checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent }).errors);
+  if (siteSchemas) {
+    const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+    const own = source.filter((item) => !isHydraOwned(item.rel));
+    errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas)).errors);
+  }
   return withoutExpectedErrors(errors.map((m) => m.trim()));
 }
 
@@ -2503,11 +2527,33 @@ function withoutExpectedErrors(errors) {
  */
 const HYDRA_ROOT = path.resolve(__dirname, '..', '..');
 function hydraSchemaForOwnContent(type, urlPath) {
+  if (isHydraOwned(urlPath)) return blockSchemaFor(type);
+  return siteSchemas ? siteSchemas[type]?.blockSchema ?? null : null;
+}
+
+/** Whether the content at `urlPath` is served from inside this hydra checkout
+ *  (hydra's own test content) rather than a consumer's mount. */
+function isHydraOwned(urlPath) {
   const mount = CONTENT_MOUNTS
     .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(m.mountPath + '/'))
     .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
-  const owned = path.resolve(mount.dirPath).startsWith(HYDRA_ROOT + path.sep);
-  return owned ? blockSchemaFor(type) : null;
+  return path.resolve(mount.dirPath).startsWith(HYDRA_ROOT + path.sep);
+}
+
+/**
+ * A consumer's own block schemas, from CONTENT_SCHEMAS: the module its frontend
+ * config loads (`.mjs`/`.js`, default export) or a `.json` file, either shaped
+ * `{ blockType: { blockSchema, schemaEnhancer? } }`. Its content is checked
+ * against them -- each field's value against its widget, and every field
+ * against what the block declares. Without it a consumer's blocks are not
+ * schema-checked (hydra's own schemas describe hydra's test frontend, not
+ * theirs). Loaded at startup, before the served content is validated.
+ */
+let siteSchemas = null;
+async function loadSiteSchemas() {
+  if (!process.env.CONTENT_SCHEMAS) return;
+  const { loadSchemas } = require('./plone-content-validator.cjs');
+  siteSchemas = await loadSchemas(process.env.CONTENT_SCHEMAS);
 }
 
 function reportContentErrors(errors) {
@@ -2613,7 +2659,7 @@ initContentDirMap();
 // Markdown mounts need a dynamic import, so loading them is async. Anything
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
-ready = loadBlockSchemas().then(initMarkdownMounts).then(assertServedContentValid);
+ready = loadBlockSchemas().then(loadSiteSchemas).then(initMarkdownMounts).then(assertServedContentValid);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
@@ -2646,7 +2692,14 @@ function setupContentWatchers() {
     }
   }
 }
-setupContentWatchers();
+// Live reload is a LOCAL-DEV convenience: edit a fixture, see it served without a
+// restart. In CI the fixtures are checked-out source that nothing edits mid-run,
+// so the watch has no value — and it actively hurts: ANY write under the content
+// dir fires the watcher, and one change re-runs scanContentDir over the WHOLE
+// tree, re-logging every mount (~260 lines per change), flooding the CI log into
+// the tens of thousands of lines and slowing the suite. No spec writes a disk
+// fixture and expects a reload, so don't watch in CI.
+if (!process.env.CI) setupContentWatchers();
 
 /**
  * Get content for a path
@@ -3149,7 +3202,7 @@ app.post('/@export', async (req, res) => {
   if (format === 'markdown') {
     const { emitPage, parsePrototypes } = await getEngine();
     const YAML = (await import('yaml')).default;
-    const { SERVER_STATE } = await import('../../lib/blockmd.mjs');
+    const { SERVER_STATE } = await import('../../lib/server-state.mjs');
     const { BLOB_FIELD, blobDefaults } = await import('../../lib/markdown-mount.mjs');
 
     // The CALLER supplies the readability rules; this endpoint writes each page
@@ -6333,7 +6386,7 @@ app.get('*', (req, res, next) => {
       console.log(`[DEBUG] Query params:`, req.query);
       console.log(`[DEBUG] Response preview:`, JSON.stringify(filteredContent).substring(0, 500));
     }
-    res.json(filteredContent);
+    res.json(batchFolderItems(filteredContent, req.query));
   } else {
     // plone.app.redirector: moved content 302s (GET) to the new path, keeping
     // the ++api++ namespace. The frontend (ploneApi) upgrades this to a 301.

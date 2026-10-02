@@ -886,11 +886,28 @@ function imageDimensions(file) {
       }
     }
   }
+  // A block id names ONE block on its page: the editor maps an id to a block, so
+  // of two blocks sharing an id only one can be selected or edited. Each
+  // container's own layout can resolve perfectly (every summary-list row's value
+  // block was "v1"), so the layout checks above can't see it.
+  function checkUniqueIds(rel, blocks, parent, firstIn) {
+    for (const [bid, block] of Object.entries(blocks || {})) {
+      if (!block || typeof block !== 'object') continue;
+      const where = parent ?? 'the page';
+      if (firstIn.has(bid)) {
+        errors.push(`  ${rel}: block id ${bid} is used twice (in ${firstIn.get(bid)} and ${where}) — a block id must be unique on its page, or the editor can select and edit only one of them`);
+      } else {
+        firstIn.set(bid, where);
+      }
+      if (block.blocks && typeof block.blocks === 'object') checkUniqueIds(rel, block.blocks, bid, firstIn);
+    }
+  }
   for (const { rel, data } of items) {
     checkLayout(rel, null, data);  // page-level blocks_layout
     for (const [bid, block] of walkBlocks(data.blocks)) {
       if (block.blocks && typeof block.blocks === 'object') checkLayout(rel, bid, block);
     }
+    checkUniqueIds(rel, data.blocks, null, new Map());
   }
 
   // Parent containers (metadata cross-check for completeness). Uses the `@id`
@@ -1059,4 +1076,48 @@ function formatReport(title, result) {
   return lines.join('\n');
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, formatReport };
+/**
+ * A site's block schemas -- `{ blockType: { blockSchema, schemaEnhancer? } }`,
+ * the JSON its frontend config loads -- read for the two questions content is
+ * checked against: which fields a block declares (checkBlockSchemas) and what
+ * shape each field's value has (checkIntegrity's `schemaFor`). One source; no
+ * map derived from it and stored.
+ */
+/** Load a site's schemas: a JS module (`.mjs`/`.js`, its default export) --
+ *  plain data the frontend config also imports, so shared pieces are written
+ *  once -- or a `.json` file. */
+async function loadSchemas(file) {
+  const abs = require('path').resolve(file);
+  if (abs.endsWith('.json')) return JSON.parse(require('fs').readFileSync(abs, 'utf8'));
+  const mod = await import(require('url').pathToFileURL(abs).href);
+  return mod.default ?? mod;
+}
+
+function schemaForFrom(schemas) {
+  return (type) => schemas[type]?.blockSchema ?? null;
+}
+
+/** The field map checkBlockSchemas reads, derived from the schemas: each
+ *  block's declared fields (its schema properties), the prefix its per-item
+ *  defaults are stored under (`<defaultsField>_<field>`), and the keys a
+ *  container stamps on its children (every object_list's idField/typeField). */
+function fieldMapFromSchemas(schemas) {
+  const blocks = {};
+  const identityFields = new Set(['@id', '@type']);
+  const stamps = (node) => {
+    if (Array.isArray(node)) { node.forEach(stamps); return; }
+    if (!node || typeof node !== 'object') return;
+    for (const key of ['idField', 'typeField']) if (typeof node[key] === 'string') identityFields.add(node[key]);
+    Object.values(node).forEach(stamps);
+  };
+  for (const [type, def] of Object.entries(schemas)) {
+    const entry = { fields: Object.keys(def?.blockSchema?.properties ?? {}) };
+    const defaultsField = def?.schemaEnhancer?.inheritSchemaFrom?.defaultsField;
+    if (defaultsField) entry.defaultsPrefix = defaultsField;
+    blocks[type] = entry;
+    stamps(def?.blockSchema);
+  }
+  return { blocks, identityFields: [...identityFields] };
+}
+
+module.exports = { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };

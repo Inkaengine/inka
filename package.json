@@ -53,15 +53,26 @@
     "storybook": "VOLTOCONFIG=$(pwd)/volto.config.js storybook dev -p 6006 -c $(pwd)/.storybook",
     "build-storybook": "VOLTOCONFIG=$(pwd)/volto.config.js storybook build -c $(pwd)/.storybook",
     "example:nextjs": "pnpm --filter hydra-nextjs run dev",
-    "example:nuxt": "pnpm --filter nuxt-blog-starter install && pnpm --filter nuxt-blog-starter run dev",
-    "check:content-md": "node proposals/blockmd/import-tree.mjs --diff",
-    "check:content-parity": "node proposals/blockmd/check-parity.mjs"
+    "example:nuxt": "pnpm --filter nuxt-blog-starter install && pnpm --filter nuxt-blog-starter run dev"
   },
   "dependencies": {
+    "@adobe/remark-gridtables": "3.0.20",
     "@plone/volto": "workspace:*",
+    "hast-util-from-html": "2.0.3",
+    "hast-util-to-html": "9.0.5",
+    "hast-util-to-mdast": "10.1.2",
+    "htmlparser2": "6.1.0",
+    "ignore": "5.3.2",
+    "mdast-util-to-hast": "13.2.1",
+    "mdast-util-to-markdown": "2.1.2",
     "remark-definition-list": "^2.0.0",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "remark-stringify": "11.0.0",
     "send": "~0.19.0",
-    "volto-hydra": "workspace:*"
+    "unified": "11.0.5",
+    "volto-hydra": "workspace:*",
+    "yaml": "1.10.2"
   },
   "peerDependencies": {
     "@playwright/test": "1.61.0"
@@ -100,6 +111,7 @@
     "circular-dependency-plugin": "5.2.2",
     "cors": "^2.8.5",
     "css-loader": "5.2.7",
+    "express": "4.22.1",
     "html-webpack-plugin": "5.5.0",
     "jsdom": "catalog:",
     "less": "3.11.1",
