@@ -122,6 +122,27 @@ describe('content.create / content.delete', () => {
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
+  it('creates a document at the id it is asked for, not one derived from its title', async () => {
+    // An importer recreating a tree, or a copy keeping its id, says where the
+    // document goes. WordPress and Drupal used to ignore it and slugify the
+    // title: /templates/component-doc, titled "Component doc layout", landed at
+    // .../component-doc-layout, and the importer's next call to the path it had
+    // asked for was a 404.
+    const created: any = await target.adapter.dispatch('content.create', {
+      parentPath: '/news',
+      data: { type: target.types.page, title: 'Not the id at all', id: 'asked-for-id' },
+    });
+    try {
+      expect(created.path).toBe('/news/asked-for-id');
+      const fetched: any = await target.adapter.dispatch('content.get', {
+        path: '/news/asked-for-id',
+      });
+      expect(fetched.title).toBe('Not the id at all');
+    } finally {
+      await target.adapter.dispatch('content.delete', { path: created.path });
+    }
+  });
+
   it('creates a document WITH its blocks, in one call', async () => {
     // Creating and then updating is not the same thing. Translating a page
     // copies the original's blocks into the new document, and the admin posts
