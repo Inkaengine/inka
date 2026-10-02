@@ -148,7 +148,12 @@ const target: Target = {
     });
     if (!res.ok) return null;
     const body: any = await res.json();
-    return body.data ?? [];
+    return (body.data ?? [])
+      .filter((i: any) => !i.attributes?.parent)
+      .map((i: any) => ({
+        path: i.attributes?.url ?? '',
+        title: i.attributes?.title ?? '',
+      }));
   },
 
   async seed() {

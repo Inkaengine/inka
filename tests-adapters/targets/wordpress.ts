@@ -215,7 +215,11 @@ const target: Target = {
       `${BASE}/?rest_route=/wp/v2/pages&parent=0&status=publish&per_page=100`,
     );
     if (!res.ok) return null;
-    return (await res.json()) as unknown[];
+    const posts: any[] = await res.json();
+    return posts.map((post) => ({
+      path: new URL(post.link, BASE).pathname.replace(/\/+$/, '') || '/',
+      title: post.title?.rendered ?? '',
+    }));
   },
 
   async seed() {

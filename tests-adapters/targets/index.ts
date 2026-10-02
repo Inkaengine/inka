@@ -76,7 +76,7 @@ export interface Target {
    *
    * Returns null when an anonymous client cannot read it at all.
    */
-  publicNavigation(): Promise<unknown[] | null>;
+  publicNavigation(): Promise<{ path: string; title: string }[] | null>;
   /**
    * Put the adapter into a state where the CMS rejects it as unauthenticated,
    * so the 401 path can be exercised for real rather than with a stub. The

@@ -62,6 +62,28 @@ describe('public read', () => {
     expect(items!.length).toBeGreaterThan(0);
   });
 
+  it('shows a visitor the same navigation the editor sees', async () => {
+    // The gap the two tests above leave. Each proves its own side works; this
+    // is the only one that fails when they DISAGREE — which is the shape of the
+    // bug that started all this, where the authenticated read of a page
+    // succeeded and the public one came back empty.
+    //
+    // They may legitimately come from different APIs (the adapter is
+    // authenticated and may use a private one), so what is compared is the
+    // ANSWER, not the route.
+    const publicItems = (await target.publicNavigation()) ?? [];
+    const editor: any = await target.adapter.dispatch('navigation.get', {
+      path: '/',
+    });
+    const editorPaths = (editor.items ?? []).map((i: any) => i.path).sort();
+    const publicPaths = publicItems.map((i) => i.path).sort();
+
+    expect(
+      publicPaths,
+      'the published menu and the one the editor manages do not match',
+    ).toEqual(editorPaths);
+  });
+
   it('does not serve an unpublished document to a client with no credentials', async () => {
     // The other half, and the one that matters more if we get it wrong: making
     // blocks public must not make DRAFTS public.

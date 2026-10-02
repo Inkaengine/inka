@@ -168,7 +168,10 @@ const target: Target = {
     });
     if (!res.ok) return null;
     const body: any = await res.json();
-    return body.items ?? [];
+    return (body.items ?? []).map((i: any) => ({
+      path: new URL(i['@id'], BASE).pathname.replace(/\/+$/, '') || '/',
+      title: i.title,
+    }));
   },
 
   async seed() {
