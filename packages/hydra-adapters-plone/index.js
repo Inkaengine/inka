@@ -1050,7 +1050,7 @@ export class PloneAdapter extends BaseAdapter {
 
       case 'state.transition': {
         const forms = await this.transitionForms(args.path);
-        this.assertDeclared(args.data, forms[args.id]?.schema, args.id);
+        this.assertDeclared(args.data, this.offeredTransition(forms, args.id).schema, args.id);
         const d = args.data ?? {};
 
         if (args.id === 'update') {

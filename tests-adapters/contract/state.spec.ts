@@ -257,6 +257,15 @@ describe('state.transition with data', () => {
       }),
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   });
+
+  it('refuses a transition the document does not offer', async () => {
+    // WordPress took a missing id as status undefined, ignored it with a 200,
+    // and reported the transition done: an import left every page a draft
+    // while saying it had published them.
+    await expect(
+      target.adapter.dispatch('state.transition', { path: PATH, id: 'no-such-transition' }),
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+  });
 });
 
 /**

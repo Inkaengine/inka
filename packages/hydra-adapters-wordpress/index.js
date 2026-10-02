@@ -912,7 +912,7 @@ export class WordPressAdapter extends BaseAdapter {
       case 'state.transition': {
         const id = await this.resolvePath(args.path);
         const forms = await this.transitionForms(args.path);
-        this.assertDeclared(args.data, forms[args.id]?.schema, args.id);
+        this.assertDeclared(args.data, this.offeredTransition(forms, args.id).schema, args.id);
         const d = args.data ?? {};
 
         // WordPress has no transition call: state, schedule and visibility are
