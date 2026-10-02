@@ -4443,6 +4443,11 @@ const VOCAB_ITEMS = {
   // BETWEEN — with one entry, "offers the right list" and "offers any list at
   // all" are the same assertion.
   'plone.app.vocabularies.ReallyUserFriendlyTypes': ['Document', 'News Item'],
+  // collective.volto.formsupport lists only the captcha providers a site has
+  // configured (captcha/vocabularies.py keeps those whose isEnabled() is
+  // true). Honeypot needs nothing; reCAPTCHA and hCaptcha need keys and
+  // NoRobots questions, which a default site does not have.
+  'collective.volto.formsupport.captcha.providers': ['honeypot'],
 };
 
 // Optional generated vocabularies, declared by a seed file and switched on
@@ -5450,6 +5455,9 @@ function runFieldValidations(field, value) {
  *    collective.volto.formsupport's post adapter does;
  *  - the honeypot captcha -> 400 unless `captcha.value` is the empty string,
  *    matching HoneypotSupport.verify;
+ *  - a token captcha (reCAPTCHA, hCaptcha, NoRobots) -> 400 with no
+ *    `captcha.token`, and NoRobots' token must be its {id, id_check, value}
+ *    JSON — the checks their verify() makes before calling out;
  *  - a `from` field whose value is not an address -> 400, matching
  *    validate_email_fields.
  *
@@ -5463,6 +5471,8 @@ function runFieldValidations(field, value) {
  * The resolved block is also recorded as `block_found`, so a multi-form test can
  * assert the id pointed at the form it meant.
  */
+const TOKEN_CAPTCHAS = new Set(['recaptcha', 'hcaptcha', 'hcaptcha_invisible', 'norobots-captcha']);
+
 app.post('*/@submit-form', (req, res) => {
   const contentPath = req.path.replace(/\/@submit-form$/, '') || '/';
   const body = req.body || {};
@@ -5514,6 +5524,34 @@ app.post('*/@submit-form', (req, res) => {
   // when it is unset the whole check short-circuits to "pass" — and there is no
   // such environment here, so this models the "field is present and filled"
   // half only.
+  // The token-based providers, as their verify() checks before calling out:
+  // no token is "No captcha token provided.", and NoRobots' token is the JSON
+  // its widget builds ({id, id_check, value}), which verify() json.loads. The
+  // third-party check (Google, hCaptcha) is not reproduced — a token that is
+  // there is accepted.
+  if (TOKEN_CAPTCHAS.has(block.captcha)) {
+    const token = body.captcha && body.captcha.token;
+    if (!token) {
+      return res
+        .status(400)
+        .json({ type: 'BadRequest', message: 'No captcha token provided.' });
+    }
+    if (block.captcha === 'norobots-captcha') {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(token);
+      } catch (e) {
+        parsed = null;
+      }
+      if (!parsed || !parsed.id || !parsed.id_check || typeof parsed.value !== 'string') {
+        return res.status(400).json({
+          type: 'BadRequest',
+          message: 'The code you entered was wrong, please enter the new one.',
+        });
+      }
+    }
+  }
+
   if (block.captcha === 'honeypot') {
     const captcha = body.captcha;
     const reject = () =>
