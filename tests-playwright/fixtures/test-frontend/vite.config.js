@@ -24,6 +24,10 @@ const envPort = (name, fallback) => {
 };
 const TEST_FRONTEND_PORT = envPort('HYDRA_TEST_FRONTEND_PORT', 8889);
 const MOCK_API_ORIGIN = `http://localhost:${envPort('HYDRA_MOCK_API_PORT', 8888)}`;
+// Same reasoning for the frontend: mock-parent.html defaulted its iframe to a
+// literal localhost:8889, so any run on an overridden port framed a dead server
+// unless the caller remembered to pass ?frontend=.
+const TEST_FRONTEND_ORIGIN = `http://localhost:${TEST_FRONTEND_PORT}`;
 
 export default defineConfig({
   root: __dirname,
@@ -42,7 +46,8 @@ export default defineConfig({
             tag: 'script',
             injectTo: 'head-prepend',
             children:
-              `window._apiOrigin = ${JSON.stringify(MOCK_API_ORIGIN)};`,
+              `window._apiOrigin = ${JSON.stringify(MOCK_API_ORIGIN)};` +
+              `window._frontendOrigin = ${JSON.stringify(TEST_FRONTEND_ORIGIN)};`,
           },
         ];
       },
@@ -76,13 +81,6 @@ export default defineConfig({
       '/hydra.js': path.resolve(__dirname, '../../../packages/hydra-js/hydra.src.js'),
       '/helpers.js': path.resolve(__dirname, '../../../packages/helpers/index.js'),
       '/build-block-path-map.js': path.resolve(__dirname, '../../../packages/hydra-js/buildBlockPathMap.js'),
-      // The CMS adapters the fixture and the proxy frame import. The frontend
-      // owns the adapter under the inversion, so these are the fixture's own
-      // dependency — without them hydra-proxy.html fails to build and the admin
-      // gets no adapter at all.
-      '/plone-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-plone/index.js'),
-      '/wordpress-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-wordpress/index.js'),
-      '/drupal-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-drupal/index.js'),
       // The same merge the admin runs before it posts INITIAL_DATA (View.jsx),
       // so the mock parent hands the bridge a page with its forced layouts and
       // templates already stamped on — see mock-parent.html's INIT handler.

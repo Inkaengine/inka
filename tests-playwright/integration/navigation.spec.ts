@@ -22,11 +22,9 @@ test.describe('Navigation and URL Handling', () => {
     const iframeElement = page.locator('#previewIframe');
     const iframeSrc = await iframeElement.getAttribute('src');
 
-    // Iframe src should exist and point at a local frontend (the test frontend
-    // is served on 127.0.0.1 so WordPress's SSRF guard accepts it; others on
-    // localhost).
+    // Iframe src should exist and point to localhost
     expect(iframeSrc, 'Iframe src attribute should exist').toBeTruthy();
-    expect(['localhost', '127.0.0.1']).toContain(new URL(iframeSrc!).hostname);
+    expect(iframeSrc).toContain('localhost');
     expect(iframeSrc).not.toContain('example.com');
   });
 
@@ -423,12 +421,10 @@ test.describe('Navigation and URL Handling', () => {
 
     // Go to view mode
     await page.goto(helper.contentUrl('/test-page'));
-    // Wait for content rather than network silence: under the inversion the
-    // iframe carries the CMS traffic, so 'networkidle' never arrives even
-    // though the page is fully rendered. The assertion below is the real
-    // readiness signal.
+    await page.waitForLoadState('networkidle');
+
     const iframe = helper.getIframe();
-    await expect(iframe.locator('text=This is a test paragraph')).toBeVisible({ timeout: 15000 });
+    await expect(iframe.locator('text=This is a test paragraph')).toBeVisible({ timeout: 10000 });
 
     // Click nav link to navigate
     const navLink = iframe.locator('a').filter({ hasText: 'Another Page' }).first();
@@ -467,12 +463,7 @@ test.describe('Navigation and URL Handling', () => {
     // Get the current iframe src (should be path-based: test-frontend host/test-page)
     const iframeElement = page.locator('#previewIframe');
     const srcBefore = await iframeElement.getAttribute('src');
-    // The admin's configured frontend host is localhost in CI and 127.0.0.1
-    // locally; what this test cares about is the path-based URL on that frontend.
-    const before = new URL(srcBefore!);
-    expect(['localhost', '127.0.0.1']).toContain(before.hostname);
-    expect(before.port).toBe(String(PORTS.testFrontend));
-    expect(before.pathname).toBe(`${TEST_DATA_PREFIX}/test-page`);
+    expect(srcBefore).toContain(`localhost:${PORTS.testFrontend}${TEST_DATA_PREFIX}/test-page`);
     expect(srcBefore).not.toContain('#');
 
     // Open frontend switcher panel
@@ -499,7 +490,7 @@ test.describe('Navigation and URL Handling', () => {
       await page.locator('#toolbar-frontend-switcher').click();
       await expect(panel).toBeVisible({ timeout: 5000 });
     }
-    const hashUrlItem = panel.locator('.frontend-switcher-url-item', { hasText: `${new URL(URLS.testFrontend).host}/#/` });
+    const hashUrlItem = panel.locator('.frontend-switcher-url-item', { hasText: `localhost:${PORTS.testFrontend}/#/` });
     await expect(hashUrlItem).toBeVisible({ timeout: 5000 });
     await hashUrlItem.click();
 
@@ -659,11 +650,8 @@ test.describe('Navigation and URL Handling', () => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await page.goto(`${URLS.voltoSsr}/test-page`);
-    // Wait for the thing under test, not for network silence. With the
-    // backend inversion on, CMS traffic moves from the admin page into the
-    // iframe, so 'networkidle' is no longer reachable — while the page itself
-    // is fully functional (verified: switcher visible, zero requests in
-    // flight). Playwright discourages networkidle for exactly this reason.
+    await page.waitForLoadState('networkidle');
+
     const switcherBtn = page.locator('#toolbar-frontend-switcher');
     await expect(switcherBtn).toBeVisible({ timeout: 10000 });
   });
@@ -728,17 +716,11 @@ test.describe('Page Creation', () => {
     await page.locator(tc.submenuItem).click();
     await page.waitForURL(new RegExp(`\\/add\\?type=${tc.typeId}`), { timeout: 10000 });
 
-    // Fill Title and save. The Add route renders its fields IN THE FORM, not in
-    // the sidebar: there is nothing to preview before the document exists, which
-    // is why Inka creates and then edits.
-    //
-    // This test used to wait for the sidebar, because the route was briefly made
-    // visual to give getSchema an adapter to reach over the bridge. AdapterHost
-    // hosts one on every route now, so the route went back to a plain form —
-    // and the two specs disagreed until then, this one waiting for a sidebar
-    // while multilingual.spec waited for `#page-add #field-title`.
-    const titleField = page.locator('#page-add #field-title');
-    await expect(titleField).toBeVisible({ timeout: 15000 });
+    // Fill Title and save. Add shadow forces `visual = false` so the form
+    // renders the flat schema input (a real <input> for title), not
+    // Volto's in-page visual block editor.
+    const titleField = page.locator('#field-title input, input[name="title"]').first();
+    await expect(titleField).toBeVisible({ timeout: 5000 });
     await titleField.fill(tc.titleFieldFill);
     await page.locator('#toolbar-save, button:has-text("Save")').click();
 

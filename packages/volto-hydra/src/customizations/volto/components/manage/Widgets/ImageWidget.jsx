@@ -47,24 +47,6 @@ import clearSVG from '@plone/volto/icons/clear.svg';
 // Import AddLinkForm for consistent UI
 import AddLinkForm from '../AnchorPlugin/components/LinkButton/AddLinkForm';
 
-/**
- * The src for an image value, WITHOUT assuming how the CMS names scales.
- *
- * `/@@images/image/<size>` is Plone's convention. WordPress serves its media
- * from its own URLs and Drupal from another shape again, and the adapter
- * already hands back a URL that works — asset.upload returns one, and
- * asset.imageUrl exists precisely to ask for a scale the CMS's own way.
- *
- * So an absolute URL is used as-is: it IS the image. Only a bare content path
- * gets Plone's scale suffix, which is the one case where the convention is the
- * right guess.
- */
-function imageSrc(value, size) {
-  if (!value) return value;
-  if (/^https?:\/\//.test(value)) return value;
-  return `${flattenToAppURL(value)}/@@images/image/${size}`;
-}
-
 const Dropzone = loadable(() => import('react-dropzone'));
 
 /**
@@ -420,7 +402,11 @@ const UnconnectedImageInput = (props) => {
         ) : (
           <Image
             className={props.className}
-            src={imageSrc(imageValue, imageSize)}
+            src={
+              isInternalURL(imageValue)
+                ? `${flattenToAppURL(imageValue)}/@@images/image/${imageSize}`
+                : imageValue
+            }
             alt=""
           />
         )}

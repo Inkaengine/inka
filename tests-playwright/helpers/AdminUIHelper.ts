@@ -1,7 +1,7 @@
 /**
  * Helper class for interacting with Volto Hydra admin UI in tests.
  */
-import { Page, Frame, Locator, FrameLocator, expect, ElementHandle } from '@playwright/test';
+import { Page, Locator, FrameLocator, expect, ElementHandle } from '@playwright/test';
 import { TEST_DATA_PREFIX } from './test-paths';
 import { showCaption, clearCaption } from './caption';
 import { glance, holdOn, pacingUnitMs, readFor } from './demoPacing';
@@ -9,36 +9,11 @@ import { URLS } from '../ports';
 import { randomUUID } from 'node:crypto';
 import { selectablePoint } from './selectablePoint';
 
-/**
- * The preview iframe's Frame, for evaluating against the bridge's window
- * globals (a FrameLocator can find elements but not evaluate). Found by id:
- * the admin also hosts a hidden CMS proxy frame, so "the first child frame"
- * is not the preview.
- */
-export async function previewFrame(page: Page): Promise<Frame> {
-  const handle = await page.locator('#previewIframe').elementHandle();
-  if (!handle) throw new Error('No #previewIframe on the page');
-  const frame = await handle.contentFrame();
-  if (!frame) throw new Error('#previewIframe has no content frame');
-  return frame;
-}
-
 // Base test JWT — the mock API only checks for the "Bearer " prefix, never
 // validates. sub=admin, exp=4102444800 (2100-01-01). Each AdminUIHelper
 // appends a unique suffix (see `authToken`) so every test gets its own
 // mock-api session — the mock keys session content by the Bearer token.
 export const TEST_AUTH_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6NDEwMjQ0NDgwMH0.fake-signature';
-
-/**
- * How long to wait for a NAMED object-browser row.
- *
- * Every wait here is for a specific row the caller is about to act on, never
- * for "the listing changed" — the previous folder's rows stay in the DOM until
- * the new response replaces them, so waiting on mere presence can be satisfied
- * by stale content. Matching on the row you want lets Playwright retry through
- * that window. 10s is what the existing object-browser specs use.
- */
-const OB_LISTING_TIMEOUT = 10_000;
 
 export class AdminUIHelper {
   // Per-test auth token. The mock API keys its session content store by
@@ -2303,65 +2278,17 @@ export class AdminUIHelper {
     const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
 
     let text = '';
-    const read = async () => {
-      let value = (await editor.textContent()) || '';
+    await expect(async () => {
+      text = (await editor.textContent()) || '';
       // Strip only truly invisible characters (ZWS, word joiner) - don't convert to space
       // Keep NBSP as regular space since it's a visible space character
       // Don't collapse multiple spaces - that could hide missing space bugs
-      return value
+      text = text
         .replace(/[\uFEFF\u200B\u2060]/g, '') // Remove invisible chars
         .replace(/\u00A0/g, ' ') // Convert NBSP to regular space
         .trim();
-    };
-    try {
-      await expect(async () => {
-        text = await read();
-        expect(text).toMatch(regex);
-      }).toPass({ timeout });
-    } catch (error) {
-      // An empty editor is the failure that says least and happens most.
-      //
-      // CI has failed here with Received string: "" — the element existed and
-      // stayed empty for the whole timeout, which rules out a bad locator and
-      // says nothing else. The two candidate explanations need different fixes:
-      // the keystrokes went NOWHERE (slate had no selection in this block), or
-      // they went into ANOTHER block (selection restore put the caret back where
-      // it was before a split — the frontend logs "restoreSlateSelection failed:
-      // could not find positions by visible offset" on exactly this flow).
-      //
-      // Whichever it was is visible in the DOM at the moment of failure, so it is
-      // collected here rather than guessed at later. Only on the failure path:
-      // the happy path is untouched.
-      const diagnosis = await editor
-        .evaluate((el) => {
-          const root = el.closest('[data-block-uid]');
-          const doc = el.ownerDocument;
-          const active = doc.activeElement as HTMLElement | null;
-          const siblings = Array.from(
-            doc.querySelectorAll('[data-block-uid]'),
-          ).map((b) => ({
-            uid: (b as HTMLElement).dataset.blockUid,
-            text: (b.textContent || '').replace(/[\uFEFF\u200B]/g, '').trim().slice(0, 40),
-          }));
-          return {
-            blockUid: (root as HTMLElement | null)?.dataset.blockUid ?? '(none)',
-            contentEditable: el.getAttribute('contenteditable'),
-            focusInside: !!active && el.contains(active),
-            activeElement: active
-              ? `${active.tagName}${active.getAttribute('data-block-uid') ? `[${active.getAttribute('data-block-uid')}]` : ''}`
-              : '(none)',
-            html: el.innerHTML.slice(0, 200),
-            blocks: siblings,
-          };
-        })
-        .catch((e) => ({ diagnosticsFailed: String(e).slice(0, 120) }));
-      throw new Error(
-        `${(error as Error).message}\n` +
-          `  editor state at failure: ${JSON.stringify(diagnosis, null, 2)}\n` +
-          `  If the expected text appears in ANOTHER block above, the keystrokes\n` +
-          `  went to the wrong block — a selection-restore fault, not a slow test.`,
-      );
-    }
+      expect(text).toMatch(regex);
+    }).toPass({ timeout });
     return text;
   }
 
@@ -5521,47 +5448,6 @@ export class AdminUIHelper {
    *
    * @throws Error if logout UI elements cannot be found
    */
-  /**
-   * What the proxy frame's adapter has announced to the admin: whether it is
-   * connected, which adapter it is, and who (if anyone) is signed in.
-   *
-   * Read from hydra's own bridge (`window.__hydraBridge`, set by connectProxy),
-   * not from anything the proxy page renders. The test fixture's proxy draws a
-   * sign-in panel; a real frontend's proxy — Nuxt, Next.js, F7 — draws nothing,
-   * because its Plone adapter takes the admin's token. The announcement is the
-   * part every frontend has in common.
-   */
-  async proxyAdapterState(): Promise<{
-    connected: boolean;
-    adapter: string | null;
-    user: unknown;
-  }> {
-    const notConnected = { connected: false, adapter: null, user: null };
-    const handle = await this.page.locator('#hydraProxyFrame').elementHandle();
-    const frame = await handle?.contentFrame();
-    if (!frame) return notConnected;
-    try {
-      return await frame.evaluate(() => {
-        const bridge = (window as any).__hydraBridge;
-        const announced = bridge?.adapterReadyMessage;
-        return {
-          connected: Boolean(bridge?.isProxy && announced),
-          adapter: announced?.name ?? null,
-          user: announced?.user ?? null,
-        };
-      });
-    } catch (err) {
-      // The proxy reloads when the session changes — logging out re-mounts it
-      // without the token — and a frame mid-navigation has no bridge yet. That
-      // is a real "not connected", so report it and let the caller's poll ask
-      // again. Anything else is a genuine failure.
-      if (/Execution context was destroyed|Frame was detached/.test(String(err))) {
-        return notConnected;
-      }
-      throw err;
-    }
-  }
-
   async logout(): Promise<void> {
     // Look for PersonalTools button in the left toolbar
     // The button has class="user" and id="toolbar-personal"
@@ -5621,17 +5507,20 @@ export class AdminUIHelper {
 
     await logoutButton.click();
 
-    // Deliberately does NOT assert where the admin lands.
-    //
-    // It used to wait for a /login URL. Volto's Logout replaces history with
-    // the RETURN url, not /login, and a client-side replace does no SSR round
-    // trip, so nothing bounces an anonymous request to the login form. Under
-    // the bridge that is correct rather than broken: signing in happens in the
-    // proxy frame, so /login is the one screen that cannot sign you back in.
-    //
-    // What logging out has to achieve — the adapter's session ending — is the
-    // caller's assertion to make, because only the caller knows which frame
-    // holds that session.
+    // Wait for redirect to login page
+    try {
+      await this.page.waitForURL(/.*login.*/, { timeout: 5000 });
+    } catch (e) {
+      // Check if we're on login page by looking for login form
+      const loginForm = this.page.locator('input[type="password"]');
+      const isOnLoginPage = await loginForm.isVisible();
+
+      if (!isOnLoginPage) {
+        throw new Error(
+          'Logout did not redirect to login page. Check that logout is working correctly.'
+        );
+      }
+    }
   }
 
   /**
@@ -6156,12 +6045,8 @@ export class AdminUIHelper {
     await homeBreadcrumb.waitFor({ state: 'visible', timeout: 2000 });
     await homeBreadcrumb.click();
 
-    // Wait for a REAL row, not the loading placeholder, and allow for a slow
-    // CMS: WordPress answers in about a second per request, so 5s covered the
-    // mock servers but not a real backend.
-    await expect(
-      objectBrowser.locator('.object-listing li:not(.ob-loading-indicator)').first(),
-    ).toBeVisible({ timeout: OB_LISTING_TIMEOUT });
+    // Wait for the listing to update by checking for list items
+    await expect(objectBrowser.locator('li[role="listitem"]').first()).toBeVisible({ timeout: 5000 });
   }
 
   /**
@@ -6200,10 +6085,7 @@ export class AdminUIHelper {
     await this.waitForObjectBrowserLevel();
     const folderItem = this.page.locator('.object-listing li').filter({ hasText: folderName });
 
-    // Give the listing time to arrive before deciding the folder is absent.
-    // At 500ms a slow CMS reliably "lost" a folder that was simply still
-    // loading, which sent the walk-up fallback below off to another level.
-    const found = await folderItem.first().waitFor({ state: 'visible', timeout: OB_LISTING_TIMEOUT })
+    const found = await folderItem.first().waitFor({ state: 'visible', timeout: 500 })
       .then(() => true)
       .catch(() => false);
 
@@ -6235,7 +6117,7 @@ export class AdminUIHelper {
     }
 
     // Try to find and click the folder; if still not found, we're already inside it
-    const nowFound = await folderItem.first().waitFor({ state: 'visible', timeout: OB_LISTING_TIMEOUT })
+    const nowFound = await folderItem.first().waitFor({ state: 'visible', timeout: 5000 })
       .then(() => true)
       .catch(() => false);
 
@@ -6258,23 +6140,10 @@ export class AdminUIHelper {
    * @param itemName - The name of the item to select (e.g., "Test Image 1" or /test-image-1/i)
    */
   async objectBrowserSelectItem(_objectBrowser: Locator, itemName: string | RegExp): Promise<void> {
-    const item = this.page.locator('.object-listing li:not(.ob-loading-indicator)').filter({ hasText: itemName });
+    const item = this.page.locator('.object-listing li').filter({ hasText: itemName });
 
-    // Wait the FULL budget for the row before concluding it is not here.
-    //
-    // The walk-up below navigates away and closes the browser, so running it
-    // early throws away the folder the caller just navigated to. A 1.5s probe
-    // did exactly that on WordPress: the listing was still in flight, the
-    // fallback clicked a breadcrumb, the browser unmounted, and the response
-    // arrived into a dead component — which read as "the CMS never returned
-    // the target".
-    //
-    // Waiting on the loading indicator instead does NOT work: it only renders
-    // when the listing has no items at all, and during a navigation the
-    // previous folder's rows are still there.
-    const itemQuickFound = await item
-      .first()
-      .waitFor({ state: 'visible', timeout: OB_LISTING_TIMEOUT })
+    // Give the initial @search (componentDidMount) time to populate the listing.
+    const itemQuickFound = await item.first().waitFor({ state: 'visible', timeout: 1500 })
       .then(() => true)
       .catch(() => false);
 

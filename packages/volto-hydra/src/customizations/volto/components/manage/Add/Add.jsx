@@ -278,272 +278,236 @@ class Add extends Component {
    * @returns {string} Markup for the component.
    */
   render() {
-    // HYDRA: render the form shell — and therefore the iframe inside it —
-    // WITHOUT waiting for the schema.
-    //
-    // With the backend inversion on, getSchema travels over the bridge to the
-    // frontend's adapter, and that adapter lives in the iframe that Form
-    // renders. Gating this render on schemaRequest.loaded therefore deadlocks:
-    // the schema request waits for an adapter that only exists inside the
-    // component the schema request is blocking. Volto's stock Add returns
-    // <div /> here, which is exactly the empty <main> that symptom presents as.
-    //
-    // An empty schema renders an empty field set for one paint; the fields
-    // appear as soon as the request it just unblocked comes back.
-    // Render nothing until the schema is real.
-    //
-    // This briefly rendered a placeholder empty schema so the iframe would
-    // mount and host the adapter that answers getSchema. That had a cost only
-    // an end-to-end test could show: the form accepted a title, then
-    // re-initialised when the real schema arrived and threw the typed value
-    // away — the page saved untitled.
-    //
-    // It is no longer needed. AdapterHost covers this route, so the schema
-    // request is answered without the form existing yet.
-    if (!this.props.schemaRequest.loaded) return <div />;
-    const schema = this.props.schema;
+    if (this.props.schemaRequest.loaded) {
+      // HYDRA: force the flat (non-visual) Add form. Hydra owns block editing
+      // through the bridge/iframe; Volto's in-page visual mode would compete
+      // for control of selection and rendering.
+      const visual = false;
+      const blocksFieldname = getBlocksFieldname(this.props.schema.properties);
+      const blocksLayoutFieldname = getBlocksLayoutFieldname(
+        this.props.schema.properties,
+      );
+      const translationObject = this.props.location?.state?.translationObject;
+      const translateTo = translationObject
+        ? langmap?.[this.props.location?.state?.language]?.nativeName ||
+          this.props.location?.state?.language
+        : null;
 
-
-    // HYDRA: the Add route has no preview, so the form's fields render inline.
-    //
-    // This was briefly `true`, to make the route render Hydra's <Iframe> and so
-    // host an adapter that getSchema could reach over the bridge. AdapterHost
-    // supplies that on every route now (see App.jsx), and flipping the branch
-    // had a cost the deadlock hid: the visual branch moves every field out of
-    // the form and into the Sidebar portal, so the add form silently changed
-    // shape — `#page-add #field-title` no longer exists — for a reason that no
-    // longer applies.
-    //
-    // There is nothing to preview before the document exists, which is why
-    // Inka creates and then edits.
-    const visual = false;
-    const blocksFieldname = getBlocksFieldname(schema.properties);
-    const blocksLayoutFieldname = getBlocksLayoutFieldname(
-      schema.properties,
-    );
-    const translationObject = this.props.location?.state?.translationObject;
-    const translateTo = translationObject
-      ? langmap?.[this.props.location?.state?.language]?.nativeName ||
-        this.props.location?.state?.language
-      : null;
-
-    // Get initial blocks from local config, if any
-    let initialBlocks, initialBlocksLayout;
-    const initialContentTypeBlocks =
-      config.blocks?.initialBlocks[this.props.type];
-    if (initialContentTypeBlocks) {
-      if (typeof initialContentTypeBlocks?.[0] === 'string') {
-        // Simple (legacy) default blocks definition
-        [initialBlocks, initialBlocksLayout] = getSimpleDefaultBlocks(
-          initialContentTypeBlocks,
-        );
-      } else {
-        [initialBlocks, initialBlocksLayout] = getDefaultBlocks(
-          initialContentTypeBlocks,
-        );
-      }
-    }
-
-    // Lookup initialBlocks and initialBlocksLayout within schema, if any
-    const schemaBlocks =
-      schema.properties[blocksFieldname]?.default;
-    const schemaBlocksLayout =
-      schema.properties[blocksLayoutFieldname]?.default?.items;
-
-    if (!isEmpty(schemaBlocksLayout) && !isEmpty(schemaBlocks)) {
-      initialBlocks = {};
-      initialBlocksLayout = [];
-      schemaBlocksLayout.forEach((value) => {
-        if (!isEmpty(schemaBlocks[value])) {
-          let newUid = uuid();
-          initialBlocksLayout.push(newUid);
-          initialBlocks[newUid] = schemaBlocks[value];
-          initialBlocks[newUid].block = newUid;
-
-          // Layout ID - keep a reference to the original block id within layout
-          initialBlocks[newUid]['@layout'] = value;
-        }
-      });
-    }
-
-    // Copy the original's blocks for the translator to work on.
-    //
-    // HYDRA: through the container API, so a container's CHILDREN are copied
-    // under new ids too. Volto's own loop renames only what blocks_layout
-    // lists, which leaves every nested block sharing its id with the block it
-    // was copied from — and a uid that names a block on two pages breaks
-    // selection, inline editing and the bridge, all of which address blocks
-    // by uid. Each copy keeps `@canonical`, the id it came from.
-    if (translationObject && blocksFieldname && blocksLayoutFieldname) {
-      const copied = cloneBlocksForTranslation(
-        translationObject[blocksFieldname],
-        translationObject[blocksLayoutFieldname]?.items || [],
-        uuid,
-        buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
-        // What each copy was made FROM, so the editor can later be told which
-        // blocks the original has moved on from. A type with no schema here
-        // records nothing rather than a fingerprint over fields we cannot
-        // tell apart.
-        (sourceBlock, id, type) => {
-          // The BLOCK's schema, not the page's — `schema` above is the content
-          // type's, and shadowing it here would read as the same thing.
-          const blockSchema = getBlockTypeSchema(
-            type,
-            this.props.intl,
-            config.blocks.blocksConfig,
+      // Get initial blocks from local config, if any
+      let initialBlocks, initialBlocksLayout;
+      const initialContentTypeBlocks =
+        config.blocks?.initialBlocks[this.props.type];
+      if (initialContentTypeBlocks) {
+        if (typeof initialContentTypeBlocks?.[0] === 'string') {
+          // Simple (legacy) default blocks definition
+          [initialBlocks, initialBlocksLayout] = getSimpleDefaultBlocks(
+            initialContentTypeBlocks,
           );
-          return blockSchema
-            ? sourceFingerprint(sourceBlock, blockSchema)
-            : null;
-        },
-      );
-      initialBlocks = copied.blocks;
-      initialBlocksLayout = copied.layout;
-      // Volto's copy also stamps each block's own `block` key with its uid.
-      for (const [uid, block] of Object.entries(initialBlocks)) {
-        block.block = uid;
+        } else {
+          [initialBlocks, initialBlocksLayout] = getDefaultBlocks(
+            initialContentTypeBlocks,
+          );
+        }
       }
-    }
 
-    const languageIndependentFields = translationObject
-      ? getLanguageIndependentFields(this.props.schema)
-      : [];
+      // Lookup initialBlocks and initialBlocksLayout within schema, if any
+      const schemaBlocks =
+        this.props.schema.properties[blocksFieldname]?.default;
+      const schemaBlocksLayout =
+        this.props.schema.properties[blocksLayoutFieldname]?.default?.items;
 
-    const lifData = () => {
-      const data = {};
-      languageIndependentFields.forEach(
-        (lif) => (data[lif] = translationObject[lif]),
+      if (!isEmpty(schemaBlocksLayout) && !isEmpty(schemaBlocks)) {
+        initialBlocks = {};
+        initialBlocksLayout = [];
+        schemaBlocksLayout.forEach((value) => {
+          if (!isEmpty(schemaBlocks[value])) {
+            let newUid = uuid();
+            initialBlocksLayout.push(newUid);
+            initialBlocks[newUid] = schemaBlocks[value];
+            initialBlocks[newUid].block = newUid;
+
+            // Layout ID - keep a reference to the original block id within layout
+            initialBlocks[newUid]['@layout'] = value;
+          }
+        });
+      }
+
+      // Copy the original's blocks for the translator to work on.
+      //
+      // HYDRA: through the container API, so a container's CHILDREN are copied
+      // under new ids too. Volto's own loop renames only what blocks_layout
+      // lists, which leaves every nested block sharing its id with the block it
+      // was copied from — and a uid that names a block on two pages breaks
+      // selection, inline editing and the bridge, all of which address blocks
+      // by uid. Each copy keeps `@canonical`, the id it came from.
+      if (translationObject && blocksFieldname && blocksLayoutFieldname) {
+        const copied = cloneBlocksForTranslation(
+          translationObject[blocksFieldname],
+          translationObject[blocksLayoutFieldname]?.items || [],
+          uuid,
+          buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
+          // What each copy was made FROM, so the editor can later be told which
+          // blocks the original has moved on from. A type with no schema here
+          // records nothing rather than a fingerprint over fields we cannot
+          // tell apart.
+          (sourceBlock, id, type) => {
+            const schema = getBlockTypeSchema(
+              type,
+              this.props.intl,
+              config.blocks.blocksConfig,
+            );
+            return schema ? sourceFingerprint(sourceBlock, schema) : null;
+          },
+        );
+        initialBlocks = copied.blocks;
+        initialBlocksLayout = copied.layout;
+        // Volto's copy also stamps each block's own `block` key with its uid.
+        for (const [uid, block] of Object.entries(initialBlocks)) {
+          block.block = uid;
+        }
+      }
+
+      const languageIndependentFields = translationObject
+        ? getLanguageIndependentFields(this.props.schema)
+        : [];
+
+      const lifData = () => {
+        const data = {};
+        languageIndependentFields.forEach(
+          (lif) => (data[lif] = translationObject[lif]),
+        );
+        return data;
+      };
+
+      // HYDRA: a language-independent field is the SAME value in every
+      // language, so the translation inherits it — shown, so the translator
+      // knows what the tags are, but not editable, because there is one place
+      // that value lives. Volto only fades these with CSS and still posts
+      // whatever the input holds; `readOnly` — the same flag a locked block
+      // carries — means the form renders the value instead of a control.
+      const formSchema = withFieldsReadOnly(
+        this.props.schema,
+        languageIndependentFields,
       );
-      return data;
-    };
 
-    // HYDRA: a language-independent field is the SAME value in every
-    // language, so the translation inherits it — shown, so the translator
-    // knows what the tags are, but not editable, because there is one place
-    // that value lives. Volto only fades these with CSS and still posts
-    // whatever the input holds; `readOnly` — the same flag a locked block
-    // carries — means the form renders the value instead of a control.
-    const formSchema = withFieldsReadOnly(
-      this.props.schema,
-      languageIndependentFields,
-    );
-
-    const pageAdd = (
-      <div id="page-add">
-        <Helmet
-          title={this.props.intl.formatMessage(messages.add, {
-            type: this.props?.schema?.title || this.props.type,
-          })}
-        />
-        <Form
-          ref={this.form}
-          key="translated-or-new-content-form"
-          navRoot={
-            this.props.content?.['@components']?.navroot?.navroot || {}
-          }
-          schema={formSchema}
-          type={this.props.type}
-          formData={
-            this.props.location?.state?.initialFormData || {
-              ...(blocksFieldname && {
-                [blocksFieldname]:
-                  initialBlocks ||
-                  schema.properties[blocksFieldname]?.default,
-              }),
-              ...(blocksLayoutFieldname && {
-                [blocksLayoutFieldname]: {
-                  items:
-                    initialBlocksLayout ||
-                    schema.properties[blocksLayoutFieldname]
-                      ?.default?.items,
-                },
-              }),
-              // Copy the Language Independent Fields values from the to-be translated content
-              // into the default values of the translated content Add form.
-              ...lifData(),
-              parent: {
-                '@id': this.props.content?.['@id'] || '',
-              },
+      const pageAdd = (
+        <div id="page-add">
+          <Helmet
+            title={this.props.intl.formatMessage(messages.add, {
+              type: this.props?.schema?.title || this.props.type,
+            })}
+          />
+          <Form
+            ref={this.form}
+            key="translated-or-new-content-form"
+            navRoot={
+              this.props.content?.['@components']?.navroot?.navroot || {}
             }
-          }
-          requestError={this.state.error}
-          onSubmit={this.onSubmit}
-          hideActions
-          pathname={this.props.pathname}
-          visual={visual}
-          title={
-            this.props?.schema?.title
-              ? this.props.intl.formatMessage(messages.add, {
-                  type: this.props.schema.title,
-                })
-              : null
-          }
-          loading={this.props.createRequest.loading}
-          isFormSelected={this.state.formSelected === 'addForm'}
-          onSelectForm={() => {
-            this.setState({ formSelected: 'addForm' });
-          }}
-          global
-          // Properties to pass to the BlocksForm to match the View ones
-          history={this.props.history}
-          location={this.props.location}
-          token={this.props.token}
-        />
-        {this.state.isClient &&
-          createPortal(
-            <Toolbar
-              pathname={this.props.pathname}
-              hideDefaultViewButtons
-              inner={
-                <>
-                  <Button
-                    id="toolbar-save"
-                    className="save"
-                    aria-label={this.props.intl.formatMessage(messages.save)}
-                    onClick={() => this.form.current.onSubmit()}
-                    loading={this.props.createRequest.loading}
-                    disabled={this.props.createRequest.loading}
-                  >
-                    <Icon
-                      name={saveSVG}
-                      className="circled"
-                      size="30px"
-                      title={this.props.intl.formatMessage(messages.save)}
-                    />
-                  </Button>
-                  <Button
-                    className="cancel"
-                    onClick={() => this.onCancel()}
-                    type="button"
-                  >
-                    <Icon
-                      name={clearSVG}
-                      className="circled"
-                      aria-label={this.props.intl.formatMessage(
-                        messages.cancel,
-                      )}
-                      size="30px"
-                      title={this.props.intl.formatMessage(messages.cancel)}
-                    />
-                  </Button>
-                </>
+            schema={formSchema}
+            type={this.props.type}
+            formData={
+              this.props.location?.state?.initialFormData || {
+                ...(blocksFieldname && {
+                  [blocksFieldname]:
+                    initialBlocks ||
+                    this.props.schema.properties[blocksFieldname]?.default,
+                }),
+                ...(blocksLayoutFieldname && {
+                  [blocksLayoutFieldname]: {
+                    items:
+                      initialBlocksLayout ||
+                      this.props.schema.properties[blocksLayoutFieldname]
+                        ?.default?.items,
+                  },
+                }),
+                // Copy the Language Independent Fields values from the to-be translated content
+                // into the default values of the translated content Add form.
+                ...lifData(),
+                parent: {
+                  '@id': this.props.content?.['@id'] || '',
+                },
               }
-            />,
-            document.getElementById('toolbar'),
-          )}
-        {visual &&
-          this.state.isClient &&
-          createPortal(<Sidebar />, document.getElementById('sidebar'))}
-      </div>
-    );
+            }
+            requestError={this.state.error}
+            onSubmit={this.onSubmit}
+            hideActions
+            pathname={this.props.pathname}
+            visual={visual}
+            title={
+              this.props?.schema?.title
+                ? this.props.intl.formatMessage(messages.add, {
+                    type: this.props.schema.title,
+                  })
+                : null
+            }
+            loading={this.props.createRequest.loading}
+            isFormSelected={this.state.formSelected === 'addForm'}
+            onSelectForm={() => {
+              this.setState({ formSelected: 'addForm' });
+            }}
+            global
+            // Properties to pass to the BlocksForm to match the View ones
+            history={this.props.history}
+            location={this.props.location}
+            token={this.props.token}
+          />
+          {this.state.isClient &&
+            createPortal(
+              <Toolbar
+                pathname={this.props.pathname}
+                hideDefaultViewButtons
+                inner={
+                  <>
+                    <Button
+                      id="toolbar-save"
+                      className="save"
+                      aria-label={this.props.intl.formatMessage(messages.save)}
+                      onClick={() => this.form.current.onSubmit()}
+                      loading={this.props.createRequest.loading}
+                      disabled={this.props.createRequest.loading}
+                    >
+                      <Icon
+                        name={saveSVG}
+                        className="circled"
+                        size="30px"
+                        title={this.props.intl.formatMessage(messages.save)}
+                      />
+                    </Button>
+                    <Button
+                      className="cancel"
+                      onClick={() => this.onCancel()}
+                      type="button"
+                    >
+                      <Icon
+                        name={clearSVG}
+                        className="circled"
+                        aria-label={this.props.intl.formatMessage(
+                          messages.cancel,
+                        )}
+                        size="30px"
+                        title={this.props.intl.formatMessage(messages.cancel)}
+                      />
+                    </Button>
+                  </>
+                }
+              />,
+              document.getElementById('toolbar'),
+            )}
+          {visual &&
+            this.state.isClient &&
+            createPortal(<Sidebar />, document.getElementById('sidebar'))}
+        </div>
+      );
 
-    // Volto pairs two FORMS here: the source's fields beside the new page's,
-    // each with its own blocks editor. Inka has neither half of that — a
-    // page's fields are in the sidebar and its blocks are drawn by the
-    // frontend — so the source form would only repeat the sidebar, in a
-    // second place, for a page nobody is editing. The original appears where
-    // it is useful instead: the read-only pane beside the draft.
-    return pageAdd;
+      // Volto pairs two FORMS here: the source's fields beside the new page's,
+      // each with its own blocks editor. Inka has neither half of that — a
+      // page's fields are in the sidebar and its blocks are drawn by the
+      // frontend — so the source form would only repeat the sidebar, in a
+      // second place, for a page nobody is editing. The original appears where
+      // it is useful instead: the read-only pane beside the draft.
+      return pageAdd;
+    }
+    return <div />;
   }
 }
 
