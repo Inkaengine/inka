@@ -1,0 +1,19 @@
+{
+  "name": "@volto-hydra/hydra-adapters-drupal",
+  "version": "1.0.0",
+  "description": "Hydra adapter for Drupal via JSON:API. Hierarchy comes from menu links.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./normalize": "./normalize.js"
+  },
+  "files": [
+    "index.js",
+    "normalize.js"
+  ],
+  "dependencies": {
+    "@volto-hydra/hydra-adapters-core": "workspace:*",
+    "@volto-hydra/hydra-types": "workspace:*"
+  },
+  "license": "MIT"
+}

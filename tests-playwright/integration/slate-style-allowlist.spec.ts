@@ -12,7 +12,7 @@
  * turn on a bridge predicate, not on admin rendering.
  */
 import { test, expect } from '../fixtures';
-import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { AdminUIHelper, previewFrame } from '../helpers/AdminUIHelper';
 
 /** Titles offered by the block-format dropdown for the given block. */
 async function formatOptions(page, helper: AdminUIHelper, blockId: string) {
@@ -435,7 +435,7 @@ test.describe('disallowed leaf marks', () => {
 
     // Ask the bridge for the block as the editor now holds it — the mark is a
     // data concern, and this frontend has no rendering for it to observe.
-    const frame = page.frames().find((f) => f !== page.mainFrame())!;
+    const frame = await previewFrame(page);
     const leaves = await frame.evaluate(() => {
       const data = (window as any).__hydraBridge?.getBlockData('marked');
       const out: any[] = [];

@@ -20,7 +20,7 @@
  * Works against any Plone API — mock or remote.
  */
 import { test as base, expect } from '../fixtures';
-import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { AdminUIHelper, previewFrame } from '../helpers/AdminUIHelper';
 import { verifyBlockRendering } from '../helpers/BlockVerificationHelper';
 import { drainFieldCoverage } from '../helpers/field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../helpers/text-style-coverage';
@@ -276,7 +276,7 @@ test.describe('Block sanity (auto-discovered)', () => {
       // "locked with nothing able to unlock it" a legible failure instead of a
       // silent mismatch.
       if (block.needsUnlock) {
-        const frame = page.frames().find((f) => f !== page.mainFrame())!;
+        const frame = await previewFrame(page);
 
         // A block whose CONTENTS are generated is not authored inline, and
         // unlocking its template instance must not make them editable: the
@@ -485,10 +485,10 @@ test.describe('Template slots', () => {
       await helper.waitForBridgeConnected();
 
       // The expanded tree, exactly as the editor would validate it.
-      // page.frames(), not getIframe(): the latter is a FrameLocator, which
+      // previewFrame(), not getIframe(): the latter is a FrameLocator, which
       // finds elements but cannot evaluate — the bridge is a window global, not
       // a DOM node.
-      const frame = page.frames().find((f) => f !== page.mainFrame())!;
+      const frame = await previewFrame(page);
       const formData = await frame.evaluate(
         () => (window as any).__hydraBridge?.formData ?? null,
       );

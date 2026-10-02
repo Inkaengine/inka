@@ -225,6 +225,58 @@ function setSessionContent(sessionId, urlPath, content) {
 let tokenCounter = 0;
 
 /**
+ * Who is calling, from the token's `sub`.
+ *
+ * Locks belong to a person, not a session id: Volto only warns "locked by
+ * someone else" when the lock's creator differs from the logged-in user, so a
+ * lock recorded against an opaque session hash would read as another editor's.
+ */
+function currentUser(req) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) return null;
+  const [, payload] = header.slice(7).split('.');
+  if (!payload) return null;
+  // Not verified — this is a mock, and the signature is the string
+  // "fake-signature". Malformed base64 means no user, not a crash.
+  try {
+    return JSON.parse(Buffer.from(payload, 'base64').toString('utf-8')).sub ?? null;
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
+
+/**
+ * Locks, per session and path.
+ *
+ * plone.locking's model, as plone.restapi exposes it: a lock has a creator, a
+ * token the holder must present to write, a timeout, and `stealable` saying
+ * whether another user may break it. Content carries {locked, stealable} at all
+ * times — that is how Volto's Edit route knows locking EXISTS at all
+ * (`content?.lock !== undefined`), and why leaving it out meant no edit in this
+ * mock ever took one.
+ */
+const sessionLocks = {};
+
+function lockInfoFor(sessionId, cleanPath) {
+  const held = sessionLocks[sessionId]?.[cleanPath];
+  // The unlocked shape is exactly two keys — see plone.restapi's lock_get.resp.
+  if (!held) return { locked: false, stealable: true };
+  return {
+    locked: true,
+    stealable: true,
+    creator: held.creator,
+    creator_name: held.creator,
+    creator_url: `${API_ORIGIN}/author/${held.creator}`,
+    created: held.created,
+    name: 'plone.locking.stealable',
+    time: held.time,
+    timeout: held.timeout,
+    token: held.token,
+  };
+}
+
+/**
  * Mint a session token.
  *
  * The `jti` is not decoration: every mutation in this mock is scoped to the
@@ -651,6 +703,90 @@ function matchSearchableText(searchTerm, item) {
 }
 
 /**
+ * What a search result carries when the query did not ask for more.
+ *
+ * plone.restapi builds a summary from `default_metadata_fields` and adds only
+ * what `metadata_fields` requests, intersected with the catalog schema
+ * (serializer/summary.py). The defaults are six:
+ *   @id, @type, description, review_state, title, type_title
+ * and plone.volto — which this backend has — registers an
+ * IJSONSummarySerializerMetadata utility adding ten more:
+ *   effective, end, getObjSize, getRemoteUrl, head_title, image_field,
+ *   image_scales, mime_type, nav_title, start
+ * Verified against a live Plone 6 (demo.plone.org/++api++/@search), which
+ * answers with exactly these.
+ *
+ * Everything else — UID, id, created, is_folderish, exclude_from_nav,
+ * getObjPositionInParent, Subject — is real catalog metadata that arrives ONLY
+ * when asked for. This file used to hand out the lot unasked, and that is not a
+ * harmless generosity: the Plone adapter reads raw.UID in toBrief without
+ * requesting it, so every listed document had an id here and a URL against a
+ * real Plone. Same shape of bug as the invented @order, one field down.
+ */
+const DEFAULT_SUMMARY_FIELDS = new Set([
+  '@id',
+  '@type',
+  'description',
+  'review_state',
+  'title',
+  'type_title',
+  // plone.volto's additions
+  'effective',
+  'end',
+  'getObjSize',
+  'getRemoteUrl',
+  'head_title',
+  'image_field',
+  'image_scales',
+  'mime_type',
+  'nav_title',
+  'start',
+]);
+
+/**
+ * Trim a search item to what the request is entitled to.
+ *
+ * `metadata_fields` may be a single name, a list, or '_all'. Unknown names are
+ * ignored rather than refused, as Plone ignores fields outside the catalog
+ * schema.
+ */
+function applyMetadataFields(item, requested) {
+  const asked = requested === undefined || requested === null
+    ? []
+    : Array.isArray(requested)
+      ? requested
+      : [requested];
+  if (asked.includes('_all')) return item;
+  const keep = new Set([...DEFAULT_SUMMARY_FIELDS, ...asked]);
+  return Object.fromEntries(
+    Object.entries(item).filter(([name]) => keep.has(name)),
+  );
+}
+
+/**
+ * The human title of a content type, as a catalog brain's `type_title` carries
+ * it. Memoised: this is read once per search RESULT, and hitting the schema
+ * files per item made a listing of 50 do 50 stats.
+ */
+const typeTitleCache = new Map();
+function typeTitleOf(typeName) {
+  if (!typeName) return undefined;
+  if (typeTitleCache.has(typeName)) return typeTitleCache.get(typeName);
+  let title = typeName;
+  const schemaPath = path.join(
+    __dirname,
+    'api',
+    `schema-${String(typeName).toLowerCase()}.json`,
+  );
+  if (fs.existsSync(schemaPath)) {
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8'));
+    if (schema.title) title = schema.title;
+  }
+  typeTitleCache.set(typeName, title);
+  return title;
+}
+
+/**
  * Format a content item for search results
  * Includes image_field and image_scales matching real Plone API structure
  * Includes is_folderish for folder navigation in object browser
@@ -672,6 +808,11 @@ function formatSearchItem(content, baseUrl) {
   const item = {
     '@id': content['@id'],
     '@type': content['@type'],
+    // The human name of the type, which every catalog brain carries and
+    // plone.restapi's search serializer always emits. Volto's Links-and-
+    // references view prints it, so omitting it showed a blank column here and
+    // a filled one against a real Plone.
+    'type_title': typeTitleOf(content['@type']),
     'id': content.id,
     'title': content.title,
     'description': content.description || '',
@@ -1049,21 +1190,32 @@ function translationLocation(urlPath, targetLanguage, baseUrl, sessionId) {
   return `${baseUrl}/${targetLanguage}`;
 }
 
+/**
+ * A navigation entry, with EXACTLY the fields plone.restapi's navigation
+ * serializer emits: @id, title, description, review_state, and items for the
+ * level below (see its services/navigation/get.py, which builds entries from
+ * `url`, `Title`, `Description`, `review_state` and nothing else).
+ *
+ * It used to add @type, id, UID, is_folderish and hasPreviewImage. None of them
+ * is in a real navigation response — hasPreviewImage is a plone.volto CATALOG
+ * column, so it reaches search results and listings, not the menu — and a mock
+ * that offers a field the CMS does not is an invitation to read it. That is the
+ * @order mistake in a smaller shape: code written against this file, correct
+ * here, wrong against Plone. Nothing read them, which is the only reason this
+ * was cheap to correct.
+ *
+ * is_folderish stays as an INPUT, deciding whether to recurse, because the mock
+ * knows it from the content it holds. It just does not travel in the reply.
+ */
 function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth, sessionId) {
-  const hasPreviewImage = !!(rawContent.preview_image || rawContent['@type'] === 'Image');
   const children = (remainingDepth > 0 && rawContent.is_folderish !== false)
     ? getNavigationItems(urlPath, remainingDepth, baseUrl, sessionId)
     : [];
   return {
     '@id': `${baseUrl}${urlPath}`,
-    '@type': rawContent['@type'],
-    'id': rawContent.id,
     'title': rawContent.title,
     'description': rawContent.description || '',
     'review_state': rawContent.review_state || 'published',
-    'UID': rawContent.UID || `${rawContent.id}-uid`,
-    'is_folderish': rawContent.is_folderish !== undefined ? rawContent.is_folderish : true,
-    'hasPreviewImage': hasPreviewImage,
     'items': children,
   };
 }
@@ -1214,8 +1366,12 @@ function buildBreadcrumbsComponent(cleanPath, baseUrl) {
 
 function buildActionsComponent(cleanPath, baseUrl, sessionId) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  // No '@id'. plone.restapi's ActionsGet replies with the category map alone
+  // (Actions.__call__(expand=True) returns {actions: data}), and the expanded
+  // @components.actions is that same map. The '@id' belongs only to the
+  // UNEXPANDED stub, which enrichContent builds itself — carrying it here put a
+  // key in the reply that no real Plone sends in that shape.
   return {
-    '@id': `${fullUrl}/@actions`,
     document_actions: [],
     // Two sources, and they disagree. plone.restapi's own recorded example
     // (actions_get.resp) has keys [icon, id, title]; a live Plone 6
@@ -1652,36 +1808,31 @@ function buildTemplatesComponent(cleanPath, baseUrl, sessionId, extraIds = []) {
  * expand-aware caller (enrichContent) decides which entries are included
  * vs left as @id stubs.
  */
-function generateComponents(urlPath, baseUrl, sessionId, params = {}) {
-  const cleanPath = urlPath.replace(/\/$/, '') || '/';
-  return {
-    // Lazy, unlike its siblings: resolving templates walks the page's references and
-    // reads each template from disk, so building it for every GET would make unexpanded
-    // reads pay for a component nobody asked for. expandComponents calls the thunk only
-    // for a component actually named in ?expand=.
-    templates: () =>
-      buildTemplatesComponent(
-        cleanPath,
-        baseUrl,
-        sessionId,
-        // Plone spells component options `expand.<component>.<param>` — the same shape
-        // as `expand.navigation.depth`. Comma-separated, since a frontend forces several
-        // layouts (a page layout and a footer layout).
-        splitList(params['expand.templates.extra']),
-      ),
-    // @actions has no session here on purpose: the adapter reads @actions
-    // directly, and that route IS session-aware, so a working copy still
-    // reports iterate_checkin.
-    actions: buildActionsComponent(cleanPath, baseUrl),
-    breadcrumbs: buildBreadcrumbsComponent(cleanPath, baseUrl),
-    // navigation DOES need it. A frontend reads the menu from `?expand=
-    // navigation` on the page it is rendering, not from the /@navigation
-    // route — so leaving the session out here means the menu is the one on
-    // disk no matter what the editing session has done to it. The route was
-    // made session-aware and this path was not, which is the same bug one
-    // layer up: the two paths this file exists to keep identical drifted
-    // again, and only the one nothing reads was fixed.
-    navigation: buildNavigationComponent(
+// One builder per @components entry, so a caller can build exactly the entries
+// it was asked for. Plone's serializer only runs the expanders named in
+// ?expand=; building the whole set and discarding the rest made asking for one
+// cheap component cost the same as asking for all of them — measured on this
+// mock at 111ms plain vs 223ms for ?expand=breadcrumbs alone, against 17ms for
+// fetching all four as separate endpoints.
+//
+// Every entry is a function, so every entry is lazy. That subsumes the thunk
+// `templates` used to need for being expensive: nothing here is built unless it
+// was asked for, whatever it costs.
+const COMPONENT_BUILDERS = {
+  // @actions has no session here on purpose: the adapter reads @actions
+  // directly, and that route IS session-aware, so a working copy still
+  // reports iterate_checkin.
+  actions: (cleanPath, baseUrl) => buildActionsComponent(cleanPath, baseUrl),
+  breadcrumbs: (cleanPath, baseUrl) => buildBreadcrumbsComponent(cleanPath, baseUrl),
+  // navigation DOES need it. A frontend reads the menu from `?expand=
+  // navigation` on the page it is rendering, not from the /@navigation
+  // route — so leaving the session out here means the menu is the one on
+  // disk no matter what the editing session has done to it. The route was
+  // made session-aware and this path was not, which is the same bug one
+  // layer up: the two paths this file exists to keep identical drifted
+  // again, and only the one nothing reads was fixed.
+  navigation: (cleanPath, baseUrl, sessionId, params = {}) =>
+    buildNavigationComponent(
       cleanPath,
       baseUrl,
       sessionId,
@@ -1689,14 +1840,37 @@ function generateComponents(urlPath, baseUrl, sessionId, params = {}) {
         ? parseInt(params['expand.navigation.depth'], 10)
         : undefined,
     ),
-    navroot: buildNavrootComponent(cleanPath, baseUrl, sessionId),
-    types: buildTypesComponent(),
-    // Always built, never always sent: enrichContent only includes a component
-    // the request expanded, and Volto's api middleware drops the
-    // `translations` expander entirely on a site that is not multilingual.
-    translations: buildTranslationsComponent(cleanPath, baseUrl, sessionId),
-    workflow: buildWorkflowComponent(cleanPath, baseUrl),
-  };
+  // navroot is session-aware because a language root folder is the navroot for
+  // everything inside it, and which folder that is depends on content the
+  // session may have created.
+  navroot: (cleanPath, baseUrl, sessionId) =>
+    buildNavrootComponent(cleanPath, baseUrl, sessionId),
+  templates: (cleanPath, baseUrl, sessionId, params = {}) =>
+    buildTemplatesComponent(
+      cleanPath,
+      baseUrl,
+      sessionId,
+      // Plone spells component options `expand.<component>.<param>` — the same shape
+      // as `expand.navigation.depth`. Comma-separated, since a frontend forces several
+      // layouts (a page layout and a footer layout).
+      splitList(params['expand.templates.extra']),
+    ),
+  // Volto's api middleware drops the `translations` expander entirely on a site
+  // that is not multilingual, so asking for it is itself the signal.
+  translations: (cleanPath, baseUrl, sessionId) =>
+    buildTranslationsComponent(cleanPath, baseUrl, sessionId),
+  types: () => buildTypesComponent(),
+  workflow: (cleanPath, baseUrl) => buildWorkflowComponent(cleanPath, baseUrl),
+};
+
+function generateComponents(urlPath, baseUrl, sessionId, params = {}) {
+  const cleanPath = urlPath.replace(/\/$/, '') || '/';
+  return Object.fromEntries(
+    Object.entries(COMPONENT_BUILDERS).map(([name, build]) => [
+      name,
+      build(cleanPath, baseUrl, sessionId, params),
+    ]),
+  );
 }
 
 /**
@@ -1926,11 +2100,25 @@ function resolveHrefLinks(obj, baseUrl) {
  * Get folder child items sorted by __metadata__.json ordering.
  * Like Plone's content serializer, returns summary representations of children.
  */
-function getFolderChildItems(folderPath, baseUrl) {
+/**
+ * A folder's immediate children — disk AND the session.
+ *
+ * It read contentDirMap alone, so anything this session created was invisible
+ * here: a folder's `items` came back empty, and — worse, because it reported
+ * success — the ordering PATCH had nothing to reorder. Its base order was the
+ * empty disk listing, the moved id was not in it, and the reorder silently did
+ * nothing. Found by importing a tree and watching the importer say "ordered" while
+ * the order never changed.
+ *
+ * Same fix the navigation path already had, for the same reason: the two callers
+ * this file exists to keep identical had drifted, and only the one nothing read
+ * was corrected.
+ */
+function getFolderChildItems(folderPath, baseUrl, sessionId) {
   const normalizedFolder = folderPath.replace(/\/$/, '') || '/';
   const folderDepth = normalizedFolder === '/' ? 0 : normalizedFolder.split('/').filter(Boolean).length;
 
-  const items = Object.keys(contentDirMap)
+  const items = allContentPaths(sessionId)
     .filter((itemPath) => {
       if (itemPath === '/') return false;
       if (itemPath === normalizedFolder) return false;
@@ -1939,7 +2127,8 @@ function getFolderChildItems(folderPath, baseUrl) {
       return itemParts.length === folderDepth + 1;
     })
     .map((itemPath) => {
-      const rawContent = loadRawContentFromDisk(itemPath);
+      // Session first, then disk — the reader a @components builder may use.
+      const rawContent = rawContentForComponents(itemPath, sessionId);
       if (!rawContent) return null;
       return {
         '@id': `${baseUrl}${itemPath}`,
@@ -1991,13 +2180,13 @@ function stubComponents(fullUrl) {
  */
 function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId, params = {}) {
   if (!expandList || expandList.length === 0) return stubs;
-  const expanded = generateComponents(urlPath, baseUrl, sessionId, params);
+  const cleanPath = urlPath.replace(/\/$/, '') || '/';
   const out = { ...stubs };
   for (const name of expandList) {
-    if (expanded[name] === undefined) continue;
-    // A component may be a thunk (deferred because building it is expensive) — calling
-    // it only here is what keeps an unexpanded read from paying for it.
-    out[name] = typeof expanded[name] === 'function' ? expanded[name]() : expanded[name];
+    // Only the named entries are built. An unknown name leaves its stub, which
+    // is what Plone does with an expander it has no registration for.
+    const build = COMPONENT_BUILDERS[name];
+    if (build) out[name] = build(cleanPath, baseUrl, sessionId, params);
   }
   return out;
 }
@@ -2048,7 +2237,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
   // Dynamically build items (folder children) like Plone does,
   // sorted by __metadata__.json ordering
   const isFolderish = transformed.is_folderish !== undefined ? transformed.is_folderish : true;
-  const childItems = isFolderish ? getFolderChildItems(cleanPath, baseUrl) : [];
+  const childItems = isFolderish ? getFolderChildItems(cleanPath, baseUrl, sessionId) : [];
 
   const enriched = {
     ...transformed,
@@ -2060,7 +2249,16 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     'exclude_from_nav': transformed.exclude_from_nav || false,
     'created': transformed.created || '2025-01-01T12:00:00+00:00',
     'modified': transformed.modified || '2025-01-01T12:00:00+00:00',
-    'lock': transformed.lock || { 'locked': false, 'stealable': true },
+    // The ACTUAL lock, not a fixed "nobody holds this".
+    //
+    // Volto's Edit route locks on entry (it does so whenever content.lock
+    // exists, which is why this key matters), unlocks on unmount if
+    // content.lock.locked, and sends content.lock.token as a Lock-Token header
+    // on every write. With a constant {locked:false} here, POST @lock wrote to
+    // nowhere a reader could see: the unlock never fired and the token never
+    // travelled. A fixture may still set `lock` itself, to model a document
+    // someone ELSE is holding.
+    'lock': transformed.lock || lockInfoFor(sessionId, cleanPath),
     'parent': parent,
     // Plone serialises `language` as a vocabulary term, never the bare code a
     // fixture writes — and Volto reads `content.language.token` throughout its
@@ -2590,15 +2788,15 @@ app.post('/@login', (req, res) => {
   if (login && password) {
     // Generate fresh token with new expiration
     const token = generateAuthToken(login);
+    // A login that succeeds means the CMS HAS this account, so @users has to
+    // agree: it answers 404 for an id it does not know, and every test that logs
+    // in under its own name would otherwise be unable to identify itself. This
+    // mock accepts any credentials by design; registering the account keeps the
+    // two endpoints telling the same story.
+    rememberUser(login);
     const response = {
       token,
-      user: {
-        '@id': `${API_ORIGIN}/@users/${login}`,
-        id: login,
-        fullname: 'Admin User',
-        email: 'admin@example.com',
-        roles: ['Manager', 'Authenticated'],
-      },
+      user: userRecord(MOCK_USERS.find((user) => user.id === login)),
     };
 
     if (process.env.DEBUG) {
@@ -2690,7 +2888,13 @@ app.post('*/@move', (req, res) => {
     if (raw.UID) uidToPathMap[raw.UID] = `${destPath}${suffix}`;
   }
 
-  results.push({ source: sourcePath, target: destPath });
+  // Absolute URLs, as plone.restapi's copymove formats them from
+  // absolute_url(). Bare paths here meant the adapter's URL handling was never
+  // exercised against the shape a real Plone answers with.
+  results.push({
+    source: `http://localhost:${PORT}${sourcePath}`,
+    target: `http://localhost:${PORT}${destPath}`,
+  });
   }
 
   return res.json(results);
@@ -2722,32 +2926,60 @@ app.post('*/@copy', (req, res) => {
     });
   }
   const id = sourcePath.split('/').filter(Boolean).pop();
-  const destPath = `${targetPath === '/' ? '' : targetPath}/${id}`;
+  const base = targetPath === '/' ? '' : targetPath;
+
+  // Plone RENAMES rather than overwriting: copy_of_<id>, then copy2_of_<id>,
+  // copy3_of_<id>. This wrote over whatever was at the destination, so pasting
+  // the same page twice silently left one copy — and the reply still named a
+  // path, so nothing upstream could tell.
+  let newId = id;
+  for (let n = 1; getContent(`${base}/${newId}`, sessionId); n += 1) {
+    newId = `${n === 1 ? 'copy' : `copy${n}`}_of_${id}`;
+    if (n > 50) {
+      return res.status(409).json({
+        error: { type: 'Conflict', message: `No free id for ${id} in ${targetPath}` },
+      });
+    }
+  }
+  const destPath = `${base}/${newId}`;
+
   const raw = JSON.parse(JSON.stringify(source));
   delete raw['@components'];
+  raw.id = newId;
   raw.UID = `${raw.UID || id}-copy-${Object.keys(sessionContent[sessionId] || {}).length}`;
   setSessionContent(sessionId, destPath, raw);
   uidToPathMap[raw.UID] = destPath;
-  return res.json([{ source: sourcePath, target: destPath }]);
+  // Absolute URLs, as plone.restapi's copymove formats them from
+  // absolute_url() — a bare path here let the adapter's own URL handling go
+  // untested against the shape a real Plone answers with.
+  const origin = `http://localhost:${PORT}`;
+  return res.json([
+    { source: `${origin}${sourcePath}`, target: `${origin}${destPath}` },
+  ]);
 });
 
-app.post('*/@order', (req, res) => {
-  const parentPath = req.path.replace('/@order', '') || '/';
-  const sessionId = getSessionId(req);
-  const { obj_id: objId, delta } = req.body || {};
-  if (!objId) {
-    return res.status(400).json({
-      error: { type: 'BadRequest', message: '@order requires obj_id' },
-    });
-  }
-  if (!sessionOrder[sessionId]) sessionOrder[sessionId] = {};
-  const current = sessionOrder[sessionId][parentPath] || [];
-  const without = current.filter((entry) => entry !== objId);
-  const index = delta === 'top' ? 0 : Math.max(0, without.length);
-  without.splice(index, 0, objId);
-  sessionOrder[sessionId][parentPath] = without;
-  return res.status(204).send();
-});
+/**
+ * POST /:parent/@order — 404, because plone.restapi has no such endpoint.
+ *
+ * It used to be implemented here, and only here. Ordering in Plone is a PATCH on
+ * the container carrying `ordering` (its OrderingMixin); this route was invented
+ * by an earlier version of this mock, our Plone adapter was written against the
+ * invention, and the contract suite stayed green while every reorder against a
+ * real Plone 404'd. Answering as Plone does is what caught it.
+ *
+ * Named rather than left to Express's catch-all so the next caller is told where
+ * to go instead of guessing at a bare 404.
+ */
+app.post('*/@order', (req, res) =>
+  res.status(404).json({
+    error: {
+      type: 'NotFound',
+      message:
+        'plone.restapi has no @order endpoint. Reorder with PATCH on the ' +
+        'container: {"ordering": {"obj_id": "<id>", "delta": "top"|"bottom"|<int>}}',
+    },
+  }),
+);
 
 /**
  * DELETE /:path (content removal)
@@ -3361,6 +3593,21 @@ app.post('/*', (req, res, next) => {
   if (!body || !body['@type']) {
     // No @type means this isn't a content creation request - pass to next handler
     return next();
+  }
+
+  // A type this deployment does not have is a 400, as plone.restapi's add
+  // service answers when the FTI is missing. Accepting anything meant the mock
+  // would create a "Newsletter" or a misspelled "Documnet" and serve it back
+  // happily, so nothing could tell a type the CMS has from one an adapter
+  // invented — and the set the mock CREATES could drift from the set it
+  // DECLARES in @types, which is the same drift one layer down.
+  if (!isKnownType(body['@type'])) {
+    return res.status(400).json({
+      error: {
+        type: 'BadRequest',
+        message: `Invalid type: ${body['@type']}`,
+      },
+    });
   }
 
   const parentPath = req.path || '/';
@@ -4300,17 +4547,111 @@ app.post(/.*\/@sharing$/, (req, res) => {
 /**
  * GET /@users/:userid
  * Get user information
+ *
+ * A regex, not a path pattern, because the adapter asks for this with the
+ * ++api++ prefix the rest of its requests carry — and Express reads `+` as a
+ * repeat modifier, so '/++api++/@users/:userid' can never match as a path.
  */
-app.get('/@users/:userid', (req, res) => {
-  const { userid } = req.params;
-  res.json({
-    '@id': `${API_ORIGIN}/@users/${userid}`,
-    id: userid,
+/**
+ * The users this site has.
+ *
+ * Shape from plone.restapi's own users.resp: the collection is an envelope, and
+ * each member carries description, email, fullname, groups, home_page, id,
+ * location, portrait, roles and username. Two of them, because one user cannot
+ * show whether a picker filters — and the sharing screen's search is the caller
+ * that asks this a real question.
+ */
+const MOCK_USERS = [
+  {
+    id: 'admin',
     fullname: 'Admin User',
     email: 'admin@example.com',
+    description: 'The site administrator',
+    location: 'Berlin',
+    home_page: 'https://example.com',
     roles: ['Manager', 'Authenticated'],
-    username: userid,
+  },
+  {
+    id: 'editor',
+    fullname: 'Edith Editor',
+    email: 'editor@example.com',
+    description: 'Writes and publishes',
+    location: 'Bangkok',
+    home_page: '',
+    roles: ['Editor', 'Authenticated'],
+  },
+];
+
+/** Register an account this mock has seen authenticate. */
+function rememberUser(id) {
+  if (MOCK_USERS.some((user) => user.id === id)) return;
+  MOCK_USERS.push({
+    id,
+    fullname: id === 'admin' ? 'Admin User' : id,
+    email: `${id}@example.com`,
+    description: '',
+    location: '',
+    home_page: '',
+    roles: ['Manager', 'Authenticated'],
   });
+}
+
+function userRecord(user) {
+  return {
+    '@id': `${API_ORIGIN}/@users/${user.id}`,
+    id: user.id,
+    username: user.id,
+    fullname: user.fullname,
+    email: user.email,
+    description: user.description,
+    location: user.location,
+    home_page: user.home_page,
+    portrait: null,
+    roles: user.roles,
+    groups: {
+      '@id': `${API_ORIGIN}/@users`,
+      items: [{ id: 'AuthenticatedUsers', title: 'AuthenticatedUsers' }],
+      items_total: 1,
+    },
+  };
+}
+
+/**
+ * GET /@users (and /@users?query=) — the collection.
+ *
+ * `query` matches id, fullname and email, which is what plone.restapi's user
+ * search does. This did not exist: only /@users/<id> did, so anything that
+ * listed or searched users got a 404 here and a list from a real Plone.
+ */
+app.get(/^(?:\/\+\+api\+\+)?\/@users$/, (req, res) => {
+  const query = String(req.query.query ?? '').toLowerCase();
+  const matches = query
+    ? MOCK_USERS.filter((user) =>
+        [user.id, user.fullname, user.email]
+          .join(' ')
+          .toLowerCase()
+          .includes(query),
+      )
+    : MOCK_USERS;
+  res.json({
+    '@id': `${API_ORIGIN}/@users`,
+    items: matches.map(userRecord),
+    items_total: matches.length,
+  });
+});
+
+app.get(/^(?:\/\+\+api\+\+)?\/@users\/([^/]+)$/, (req, res) => {
+  const userid = req.params[0];
+  // An id nobody has is a 404, not a synthesised user. The adapter identifies
+  // the session by asking for its own id, and inventing an answer for any name
+  // would have that succeed against a CMS where the account does not exist.
+  const known = MOCK_USERS.find((user) => user.id === userid);
+  if (!known) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `No such user: ${userid}` },
+    });
+  }
+  return res.json(userRecord(known));
 });
 
 /**
@@ -4602,6 +4943,84 @@ app.get('*/@breadcrumbs', (req, res) => {
  * Get available actions for content (Edit, View, etc.)
  * Use regex to ensure matching with ++api++ prefix
  */
+/**
+ * GET /@linkintegrity?uids=<uid> — what links TO these documents.
+ *
+ * plone.app.linkintegrity keeps a relation catalogue of stored links, which is
+ * what makes Plone's delete confirmation able to say "three pages point here".
+ * Emulated by SCANNING: walk everything this session can see and look in its
+ * blocks for the target — by `resolveuid/<uid>`, which is what Plone rewrites a
+ * link to on save, and by the plain path, which is what an authoring tool has
+ * before any rewriting. Both, because the contract deliberately does not dictate
+ * which encoding a CMS uses.
+ *
+ * Shape from plone.restapi's LinkIntegrityGet: one entry per uid, the item's own
+ * summary plus `breaches` (the SOURCES that link to it, each with an '@id') and
+ * `items_total` (how many things are inside it). A missing `uids` is a 400 there,
+ * so it is one here.
+ */
+app.get(/^(?:\/\+\+api\+\+)?\/@linkintegrity$/, (req, res) => {
+  const sessionId = getSessionId(req);
+  const raw = req.query.uids;
+  const uids = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  if (uids.length === 0) {
+    return res.status(400).json({
+      error: { type: 'BadRequest', message: 'Missing parameter "uids"' },
+    });
+  }
+
+  const paths = allContentPaths(sessionId);
+  const out = [];
+  for (const uid of uids) {
+    const targetPath = uidToPathMap[uid]
+      || paths.find((p) => getContent(p, sessionId)?.UID === uid);
+    if (!targetPath) {
+      return res.status(404).json({
+        error: { type: 'NotFound', message: `No object with UID ${uid}` },
+      });
+    }
+    const needles = [`resolveuid/${uid}`, targetPath];
+    const breaches = [];
+    for (const candidate of paths) {
+      if (candidate === targetPath) continue;
+      const source = getContent(candidate, sessionId);
+      if (!source) continue;
+      // The blocks as stored — a link lives inside slate values, teaser hrefs,
+      // listing criteria. Serialising and searching finds all of them without
+      // this file needing to know any block's shape, which is the same reason
+      // the block engine holds no block knowledge.
+      const haystack = JSON.stringify(source.blocks ?? {});
+      // A BOUNDARY, not a substring. '/news' occurs inside
+      // '/news/first-post', so includes() reported a link to a CHILD as a link
+      // to its parent — a delete warning that fires for that teaches editors to
+      // dismiss it. Excluding a following path separator (as well as word
+      // characters) is what plone.app.linkintegrity gets for free from its
+      // relation catalogue.
+      const linked = needles.some((needle) =>
+        new RegExp(`${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w\\-/])`).test(
+          haystack,
+        ),
+      );
+      if (!linked) continue;
+      breaches.push({
+        '@id': `${API_ORIGIN}${candidate}`,
+        title: source.title ?? candidate,
+        '@type': source['@type'],
+      });
+    }
+    const contained = paths.filter((p) => p.startsWith(`${targetPath}/`)).length;
+    const item = getContent(targetPath, sessionId);
+    out.push({
+      '@id': `${API_ORIGIN}${targetPath}`,
+      title: item?.title ?? targetPath,
+      '@type': item?.['@type'],
+      breaches,
+      items_total: contained,
+    });
+  }
+  return res.json(out);
+});
+
 app.get(/.*\/@actions$/, (req, res) => {
   const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@actions$/, '') || '/').replace(/\/+$/, '') || '/';
   res.json(buildActionsComponent(cleanPath, `http://localhost:${PORT}`, getSessionId(req)));
@@ -4974,17 +5393,33 @@ app.post('*/@querystring-search', (req, res) => {
     ? `${baseUrl}${contextPath}/@querystring-search`
     : `${baseUrl}/@querystring-search`;
 
+  // ONLY when the results are actually batched. plone.restapi's
+  // HypermediaBatch.links returns nothing when items_total <= b_size — "Don't
+  // provide batching links if resultset isn't batched" — and Volto renders its
+  // paging controls on `search?.batching &&`, so sending the key always put
+  // paging under a single page of results.
+  // Trimmed at the RESPONSE, not at formatSearchItem: the filtering and
+  // sorting above read fields (Subject for facets, effective for sort) that the
+  // caller may not have asked to see.
+  const requestedFields = req.body?.metadata_fields ?? req.query?.metadata_fields;
   res.json({
     '@id': searchUrl,
-    items,
+    items: items.map((item) => applyMetadataFields(item, requestedFields)),
     items_total: itemsTotal,
-    batching: {
-      '@id': searchUrl,
-      first: `${searchUrl}?b_start=0`,
-      last: `${searchUrl}?b_start=${Math.max(0, itemsTotal - b_size)}`,
-      next: b_start + b_size < itemsTotal ? `${searchUrl}?b_start=${b_start + b_size}` : null,
-      prev: b_start > 0 ? `${searchUrl}?b_start=${Math.max(0, b_start - b_size)}` : null,
-    },
+    ...(itemsTotal > b_size
+      ? {
+          batching: {
+            '@id': searchUrl,
+            first: `${searchUrl}?b_start=0`,
+            last: `${searchUrl}?b_start=${Math.max(0, itemsTotal - b_size)}`,
+            next:
+              b_start + b_size < itemsTotal
+                ? `${searchUrl}?b_start=${b_start + b_size}`
+                : null,
+            prev: b_start > 0 ? `${searchUrl}?b_start=${Math.max(0, b_start - b_size)}` : null,
+          },
+        }
+      : {}),
   });
 });
 
@@ -5220,87 +5655,32 @@ app.get('*/@search', (req, res) => {
     ? `${API_ORIGIN}/@search`
     : `${API_ORIGIN}${searchPath}/@search`;
 
+  // No batching key: this route returns every match in one go, which is the
+  // unbatched case, and Plone sends no links for that. See the note on
+  // @querystring-search above.
   res.json({
     '@id': searchUrl,
-    'items': items,
+    'items': items.map((item) =>
+      applyMetadataFields(item, req.query?.metadata_fields),
+    ),
     'items_total': items.length,
-    'batching': {
-      '@id': searchUrl,
-      'first': `${searchUrl}?b_start=0`,
-      'last': `${searchUrl}?b_start=0`,
-      'next': null,
-      'prev': null,
-    },
   });
 });
 
-/**
- * GET /:path/@contents or /@contents
- * Get folder contents for content browsing
- * Returns items at the parent folder level (siblings of current content)
+/*
+ * There is no @contents endpoint here, and there is none in Plone.
+ *
+ * This file used to serve one. Nothing called it — not Volto, not an adapter,
+ * not a test — and plone.restapi has no such service: a folder's children come
+ * from @search with path.depth=1, which is what the contents view asks for.
+ *
+ * Removed rather than left dormant, because a route in this file reads as
+ * evidence that Plone has one. That is precisely how the @order endpoint came
+ * about: invented here, then an adapter was written against it and passed its
+ * contract for two weeks while every real Plone 404'd. See
+ * mock-serves-no-invented-endpoints.test.cjs, which now refuses to let a new
+ * route in without saying where it comes from.
  */
-app.get('*/@contents', (req, res) => {
-  const contentPath = req.path.replace('/@contents', '') || '/';
-
-  // Helper to format content item for response
-  const formatItem = (itemPath) => {
-    const content = loadContentFromDisk(itemPath);
-    if (!content) return null;
-    return {
-      '@id': content['@id'],
-      '@type': content['@type'],
-      'id': content.id,
-      'title': content.title,
-      'description': content.description || '',
-      'review_state': content.review_state || 'published',
-      'UID': content.UID,
-      'is_folderish': content.is_folderish !== undefined ? content.is_folderish : true,
-    };
-  };
-
-  // For Documents, we return siblings (contents of parent folder)
-  // For the site root, we return all root-level items
-  let items;
-
-  if (contentPath === '' || contentPath === '/') {
-    // Root level - return all root-level items
-    items = Object.keys(contentDirMap)
-      .filter((itemPath) => {
-        if (itemPath === '/') return false;
-        const pathParts = itemPath.split('/').filter(p => p);
-        return pathParts.length === 1;
-      })
-      .map(formatItem)
-      .filter(Boolean);
-  } else {
-    // Get parent folder's contents (siblings of this content)
-    const pathParts = contentPath.split('/').filter(p => p);
-    const parentPath = pathParts.length > 1
-      ? '/' + pathParts.slice(0, -1).join('/')
-      : '/';
-
-    items = Object.keys(contentDirMap)
-      .filter((itemPath) => {
-        if (itemPath === '/') return false;
-        const itemParts = itemPath.split('/').filter(p => p);
-        // Same depth as current content and same parent
-        if (parentPath === '/') {
-          return itemParts.length === 1;
-        } else {
-          return itemPath.startsWith(parentPath + '/') &&
-                 itemParts.length === pathParts.length;
-        }
-      })
-      .map(formatItem)
-      .filter(Boolean);
-  }
-
-  res.json({
-    '@id': `${API_ORIGIN}${contentPath}/@contents`,
-    'items': items,
-    'items_total': items.length,
-  });
-});
 
 /**
  * POST /:path/@submit-form
@@ -5632,25 +6012,88 @@ app.delete('*/@form-data', (req, res) => {
 });
 
 /**
- * POST /:path/@lock
- * Lock content for editing
+ * GET /:path/@lock — who holds this, if anyone.
+ *
+ * Two keys when nobody does, the full record when someone does. This route did
+ * not exist, so nothing could read back what POST had written: the lock was
+ * write-only, and a test could not tell a lock that was taken from one that was
+ * quietly dropped.
  */
-app.post('*/@lock', (req, res) => {
-  res.json({
-    locked: true,
-    stealable: true,
-    creator: 'admin',
-    time: new Date().toISOString(),
-    timeout: 600
-  });
+app.get('*/@lock', (req, res) => {
+  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
+  const sessionId = getSessionId(req);
+  if (getContent(cleanPath, sessionId) === null) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `No such resource: ${cleanPath}` },
+    });
+  }
+  return res.json(lockInfoFor(sessionId, cleanPath));
 });
 
 /**
- * DELETE /:path/@lock
- * Unlock content after editing
+ * POST /:path/@lock — take the lock.
+ *
+ * Answers the full record, including the `token` the holder then sends back as
+ * a Lock-Token header on every write (Volto's Edit does exactly that). It used
+ * to answer a fixed object with creator 'admin' and no token at all, so the
+ * token round trip — the part that actually protects anything — was untested.
+ */
+app.post('*/@lock', (req, res) => {
+  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
+  const sessionId = getSessionId(req);
+  if (getContent(cleanPath, sessionId) === null) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `No such resource: ${cleanPath}` },
+    });
+  }
+  const creator = currentUser(req) ?? 'anonymous';
+  if (!sessionLocks[sessionId]) sessionLocks[sessionId] = {};
+  const existing = sessionLocks[sessionId][cleanPath];
+  // Re-locking your own document refreshes it rather than failing: Plone's
+  // lockable.lock() on an already-held lock by the same creator is a no-op, and
+  // Volto locks again on every entry into edit.
+  sessionLocks[sessionId][cleanPath] = {
+    creator,
+    created: existing?.created ?? new Date().toISOString(),
+    time: Date.now() / 1000,
+    timeout: Number(req.body?.timeout ?? 600),
+    token: existing?.token ?? `${Math.random().toString(36).slice(2)}-${Date.now()}`,
+  };
+  return res.json(lockInfoFor(sessionId, cleanPath));
+});
+
+/**
+ * PATCH /:path/@lock — refresh a lock you already hold.
+ *
+ * Volto's long edits call this to keep the lock alive. Refusing to refresh a
+ * lock nobody holds, rather than inventing one, because a refresh that silently
+ * CREATES a lock would hide a client that lost its own.
+ */
+app.patch('*/@lock', (req, res) => {
+  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
+  const sessionId = getSessionId(req);
+  const held = sessionLocks[sessionId]?.[cleanPath];
+  if (!held) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `Not locked: ${cleanPath}` },
+    });
+  }
+  held.time = Date.now() / 1000;
+  held.timeout = Number(req.body?.timeout ?? held.timeout);
+  return res.json(lockInfoFor(sessionId, cleanPath));
+});
+
+/**
+ * DELETE /:path/@lock — release it.
+ *
+ * Answers lock_info for the now-unlocked object, which is what plone.restapi's
+ * unlock service returns — not the bare {locked:false} this used to send.
  */
 app.delete('*/@lock', (req, res) => {
-  res.json({ locked: false });
+  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
+  const sessionId = getSessionId(req);
+  if (sessionLocks[sessionId]) delete sessionLocks[sessionId][cleanPath];
+  return res.json(lockInfoFor(sessionId, cleanPath));
 });
 
 /**
@@ -6046,10 +6489,37 @@ app.patch('*', (req, res) => {
   // back, and the site menu — which the order IS — never moved.
   if (content && req.body?.ordering?.obj_id) {
     const { obj_id: objId, delta, subset_ids: subsetIds } = req.body.ordering;
-    const naturalIds = getFolderChildItems(cleanPath, `http://localhost:${PORT}`)
+    // Plone raises BadRequest("Content ordering is not supported by this
+    // resource") when the context has no ordering adapter — an Image, a File,
+    // anything that holds no children. Accepting it here recorded an order
+    // nobody could ever read back, so an adapter aiming a reorder at the wrong
+    // object was told it had worked.
+    if (content.is_folderish === false) {
+      return res.status(400).json({
+        error: {
+          type: 'BadRequest',
+          message: 'Content ordering is not supported by this resource',
+        },
+      });
+    }
+    const naturalIds = getFolderChildItems(cleanPath, `http://localhost:${PORT}`, sessionId)
       .map((item) => String(item['@id'] || '').split('/').filter(Boolean).pop())
       .filter(Boolean);
     const current = sessionOrder[sessionId]?.[cleanPath] || naturalIds;
+    // Plone checks that the client is seeing the same order it is, and refuses
+    // when it is not: a reorder computed against a stale table would move the
+    // wrong row. The check is on the ORDER of the named ids, not their presence.
+    if (Array.isArray(subsetIds) && subsetIds.length) {
+      const positions = subsetIds.map((id) => current.indexOf(id));
+      const mismatched =
+        positions.some((i) => i === -1) ||
+        positions.some((i, n) => n > 0 && i < positions[n - 1]);
+      if (mismatched) {
+        return res.status(400).json({
+          error: { type: 'BadRequest', message: 'Client/server ordering mismatch' },
+        });
+      }
+    }
     // A subset reorders only among the rows it names, leaving the rest put —
     // the contents view sends one when a filter is on.
     const scope = Array.isArray(subsetIds) && subsetIds.length ? subsetIds : current;
@@ -6071,6 +6541,50 @@ app.patch('*', (req, res) => {
       if (!sessionOrder[sessionId]) sessionOrder[sessionId] = {};
       sessionOrder[sessionId][cleanPath] = next;
     }
+  }
+
+  // Sorting a folder's children is the other half of the same PATCH, and it is
+  // PERSISTENT: plone.restapi's resortAllItemsInContext catalogues the children,
+  // sorts them by the index asked for and writes the new position of every one
+  // (its OrderingMixin). So a sort is not a query — reload with no sort and the
+  // children come back in the order that was written, which is what the contents
+  // view's sort dropdown means and what makes it show up in the site menu.
+  if (content && req.body?.sort?.on) {
+    const { on, order } = req.body.sort;
+    if (content.is_folderish === false) {
+      return res.status(400).json({
+        error: {
+          type: 'BadRequest',
+          message: 'Content ordering is not supported by this resource',
+        },
+      });
+    }
+    const children = getFolderChildItems(cleanPath, `http://localhost:${PORT}`, sessionId);
+    // The catalog indexes the contents view offers. sortable_title is Plone's
+    // case-insensitive title index, which is why it is not just `title`.
+    const keyOf = (item) => {
+      switch (on) {
+        case 'sortable_title':
+          return String(item.title ?? '').toLowerCase();
+        case 'effective':
+        case 'created':
+        case 'modified':
+        case 'expires':
+          return String(item[on] ?? '');
+        default:
+          return String(item[on] ?? '');
+      }
+    };
+    const sorted = [...children].sort((a, b) => {
+      const x = keyOf(a);
+      const y = keyOf(b);
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
+    if (order === 'reverse' || order === 'descending') sorted.reverse();
+    if (!sessionOrder[sessionId]) sessionOrder[sessionId] = {};
+    sessionOrder[sessionId][cleanPath] = sorted
+      .map((item) => String(item['@id'] || '').split('/').filter(Boolean).pop())
+      .filter(Boolean);
   }
 
   if (content) {

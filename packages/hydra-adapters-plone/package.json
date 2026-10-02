@@ -1,0 +1,17 @@
+{
+  "name": "@volto-hydra/hydra-adapters-plone",
+  "version": "1.0.0",
+  "description": "Hydra adapter for Plone (plone.restapi). Serves both the raw http passthrough and semantic intents.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "dependencies": {
+    "@volto-hydra/hydra-adapters-core": "workspace:*",
+    "@volto-hydra/hydra-types": "workspace:*"
+  },
+  "license": "MIT"
+}

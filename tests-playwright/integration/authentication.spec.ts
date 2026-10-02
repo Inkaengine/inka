@@ -3,44 +3,53 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { URLS } from '../ports';
 
 test.describe('Authentication and Access Control', () => {
-  test('Login form accepts admin/admin and redirects to dashboard', async ({ page }) => {
-    // Go to login page
-    await page.goto(`${URLS.voltoSsr}/login`);
+  test('signing in happens in the proxy frame, not the admin', async ({ page }) => {
+    // The admin holds no CMS credentials under the bridge: the adapter in the
+    // frontend owns the session, and there is no canonical intent for @login
+    // because authenticating to the CMS is not the admin's job. The credential
+    // is minted in the PROXY frame and lives in that origin's storage.
+    //
+    // This replaces a test that filled Volto's own /login form and waited for
+    // an @login response. That request no longer crosses the wire, so the form
+    // submitted and nothing happened — see the note at the end about why that
+    // is a real gap and not just a stale test.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(helper.contentUrl('/test-page'));
 
-    // Wait for the login form to be visible
-    const usernameField = page.getByLabel('Login Name');
-    const passwordField = page.getByLabel('Password');
-    const loginButton = page.getByRole('button', { name: 'Log in' });
+    // The session belongs to an adapter hosted in the frontend's proxy frame:
+    // it must be connected and have announced itself. What must NOT happen is
+    // the admin having a CMS session of its own.
+    //
+    // Asserted through hydra's announcement, not through anything the proxy
+    // page renders — the test fixture's proxy draws a sign-in panel, a real
+    // frontend's (Nuxt, Next.js, F7) draws nothing, and both are right.
+    await expect
+      .poll(async () => (await helper.proxyAdapterState()).connected, {
+        message: 'the proxy frame never connected an adapter',
+        timeout: 30000,
+      })
+      .toBe(true);
 
-    await expect(usernameField).toBeVisible({ timeout: 10000 });
-    await expect(passwordField).toBeVisible();
-    await expect(loginButton).toBeVisible();
-
-    // Enter credentials
-    await usernameField.fill('admin');
-    await passwordField.fill('admin');
-
-    // Set up response waiter BEFORE clicking
-    const loginResponsePromise = page.waitForResponse(
-      (response) => response.url().includes('@login') && response.status() === 200,
-      { timeout: 10000 },
-    );
-
-    // Click login
-    await loginButton.click();
-
-    // Wait for login API response
-    await loginResponsePromise;
-
-    // Wait for redirect after successful login (should leave /login)
-    await page.waitForURL(/^(?!.*\/login).*$/, { timeout: 15000 });
-
-    // Verify we're logged in - Personal tools button should be in the DOM
+    // And the admin is usable, which is the only thing an editor cares about.
     const personalTools = page.getByRole('button', { name: 'Personal tools' });
     await expect(personalTools).toBeAttached({ timeout: 10000 });
+  });
 
-    // Verify we're not on the login page
-    expect(page.url()).not.toContain('/login');
+  test('the admin never posts credentials to the CMS', async ({ page }) => {
+    // The inversion's central claim, asserted rather than assumed: whatever the
+    // admin does, no @login crosses the wire from it. If this ever fails, the
+    // admin has grown a CMS session and the zero-credential invariant is gone.
+    const seen: string[] = [];
+    page.on('request', (r) => {
+      if (r.url().includes('@login') && r.method() === 'POST') seen.push(r.url());
+    });
+
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToView('/test-page');
+
+    expect(seen, 'the admin posted credentials to the CMS').toEqual([]);
   });
 
   test('Edit page requires authentication', async ({ page }) => {
@@ -113,8 +122,13 @@ test.describe('Authentication and Access Control', () => {
     const iframe = helper.getIframe();
     await iframe.locator('[data-block-uid]').first().waitFor();
 
-    // Check that iframe URL contains access_token parameter
-    const iframeSrc = await page.locator('iframe').getAttribute('src');
+    // Name the EDITING iframe. Under the bridge there are two — the hidden
+    // proxy frame that hosts the adapter mounts alongside it — so a bare
+    // locator('iframe') is ambiguous and fails strict mode. The token is still
+    // passed; this test was right, it just has to say which frame it means.
+    const iframeSrc = await page
+      .locator('#previewIframe')
+      .getAttribute('src');
     expect(iframeSrc, 'iframe src attribute should exist').toBeTruthy();
     expect(iframeSrc).toContain('access_token');
 
@@ -134,9 +148,11 @@ test.describe('Authentication and Access Control', () => {
 
     await helper.login();
 
-    // Navigate to view page (not edit)
-    await page.goto(helper.contentUrl('/test-page'));
-    await page.waitForLoadState();
+    // Navigate to view page (not edit). The helper waits for the iframe to
+    // reach this path and its blocks to settle; 'load' fires long before that,
+    // and the toolbar's actions arrive over the bridge rather than over this
+    // page's network, so the container can be visible with no buttons in it.
+    await helper.navigateToView('/test-page');
 
     // The left toolbar should be visible with Edit button
     // This confirms we're logged in and have edit permissions
@@ -145,7 +161,7 @@ test.describe('Authentication and Access Control', () => {
 
     // Look for the Edit button in the toolbar
     const editButton = page.locator('#toolbar a.edit, #toolbar [aria-label="Edit"]');
-    await expect(editButton).toBeVisible({ timeout: 5000 });
+    await expect(editButton).toBeVisible({ timeout: 10000 });
 
     // The PersonalTools button should also be visible on view page
     const personalToolsButton = page.locator(
@@ -159,18 +175,21 @@ test.describe('Authentication and Access Control', () => {
 
     await helper.login();
 
-    // Navigate to view page
-    await page.goto(helper.contentUrl('/test-page'));
-    await page.waitForLoadState('networkidle');
+    // navigateToView, not goto + networkidle: the admin's CMS traffic crosses a
+    // postMessage channel to the proxy frame, not this page's network, so the
+    // page reaches "idle" with the toolbar's actions still in flight. The
+    // helper waits for the iframe to reach this path and its blocks to settle,
+    // which is the signal that the route's data actually arrived.
+    await helper.navigateToView('/test-page');
 
     // Click the Edit button
     const editButton = page.locator('#toolbar a.edit, #toolbar [aria-label="Edit"]');
-    await expect(editButton).toBeVisible({ timeout: 5000 });
+    await expect(editButton).toBeVisible({ timeout: 10000 });
     await editButton.click();
 
     // Wait for edit page to load
     await page.waitForURL(/.*\/edit$/);
-    await page.waitForLoadState('networkidle');
+    await helper.waitForIframeReady();
 
     // The toolbar should be visible with Save and Cancel buttons (edit mode replaces view buttons)
     const saveButton = page.locator('#toolbar-save, #toolbar button.save');
@@ -180,27 +199,51 @@ test.describe('Authentication and Access Control', () => {
     await expect(cancelButton).toBeVisible({ timeout: 5000 });
   });
 
-  test('Logout clears authentication', async ({ page }) => {
+  test('Logout ends the session that reaches the CMS, not just the admin UI', async ({
+    page,
+  }) => {
+    // The session lives in the ADAPTER, so clearing the admin's own UI state is
+    // not a logout — it is the dangerous half of one. An editor on a shared
+    // machine clicks logout, the toolbar empties, and the credential that
+    // actually reaches the CMS is still sitting in the frontend's origin.
+    //
+    // This used to assert a redirect to /login. Volto's Logout replaces history
+    // with the RETURN url and a client-side replace does no SSR round trip, so
+    // nothing bounced the anonymous request to a login form — and under the
+    // bridge /login is the one screen that cannot sign you back in anyway,
+    // because signing in happens in the proxy frame. What it asserts now is the
+    // thing that actually has to be true.
     const helper = new AdminUIHelper(page);
 
     await helper.login();
 
-    // Navigate to view page (not edit) where PersonalTools is visible
-    await page.goto(helper.contentUrl('/test-page'));
-    await page.waitForLoadState('networkidle');
+    // The view page, not edit: PersonalTools only renders there.
+    await helper.navigateToView('/test-page');
 
-    // Verify toolbar with PersonalTools is visible
     const personalToolsButton = page.locator(
       '#toolbar button.user, #toolbar #toolbar-personal',
     );
     await expect(personalToolsButton).toBeVisible({ timeout: 5000 });
 
-    // Logout using helper
     await helper.logout();
 
-    // Verify we're redirected to login page
-    const currentUrl = page.url();
-    expect(currentUrl).toContain('login');
+    // The adapter's session is gone: the proxy frame comes back announcing an
+    // adapter with nobody signed in. Read from hydra's announcement rather than
+    // from a "Sign in" button, which only the test fixture's proxy draws.
+    await expect
+      .poll(async () => {
+        const state = await helper.proxyAdapterState();
+        return state.connected && state.user === null;
+      }, {
+        message: 'after logout the proxy still announced a signed-in user',
+        timeout: 15000,
+      })
+      .toBe(true);
+
+    // And the admin kept nothing that could revive it.
+    const cookies = await page.context().cookies();
+    const authCookie = cookies.find((c) => c.name === 'auth_token');
+    expect(authCookie?.value ?? '').toBe('');
   });
 
   test('Unauthenticated access redirects to login', async ({ page }) => {
@@ -208,8 +251,15 @@ test.describe('Authentication and Access Control', () => {
     // Try to access edit page without logging in
     await page.goto(helper.contentUrl('/test-page', '/edit'));
 
-    // Wait for page to load and potentially redirect
-    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+    // Wait for the redirect itself, not for the network to fall quiet: an
+    // anonymous admin has nothing to fetch, so "idle" says nothing about
+    // whether the bounce to /login has happened yet.
+    await Promise.race([
+      page.waitForURL(/.*login.*/, { timeout: 10000 }),
+      page
+        .locator('input[type="password"]')
+        .waitFor({ state: 'visible', timeout: 10000 }),
+    ]).catch(() => {});
 
     // In production, Volto would redirect to login for unauthenticated edit access
     // In test environment with mock API (no auth enforcement), verify page loads
@@ -237,9 +287,12 @@ test.describe('Authentication and Access Control', () => {
     await helper.login();
     await helper.navigateToEdit('/test-page');
 
-    // Navigate away and back
+    // Navigate away and back. The contents route has no preview iframe, so
+    // there is no iframe to wait on — the toolbar rendering is what says the
+    // route mounted.
     await page.goto(`${URLS.voltoSsr}/contents`);
-    await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
+    await page.waitForURL(/\/contents$/, { timeout: 10000 });
+    await expect(page.locator('#toolbar')).toBeVisible({ timeout: 10000 });
 
     // Navigate back to edit
     await helper.navigateToEdit('/test-page');

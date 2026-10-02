@@ -1,0 +1,446 @@
+/**
+ * Translate Volto's Plone-shaped requests into canonical intents.
+ *
+ * Volto's ~30 action creators emit raw Plone REST paths — /@types/Document,
+ * /@querystring, /@search?path.depth=1. Carried verbatim over the `http`
+ * passthrough they only mean anything to a Plone adapter, so on WordPress or
+ * Drupal every call fails and the CMS is never contacted.
+ *
+ * Rewriting every action creator is the alternative; routing here is not. This
+ * is the single point every admin request already passes through, so one
+ * translation table serves all of them, and the action creators stay untouched.
+ *
+ * Returns null when a path has no semantic equivalent — the caller then falls
+ * back to the passthrough, which is exactly what Plone wants anyway. Returns an
+ * array of {intent, args} when one request is several canonical operations
+ * (a bulk @move); the caller performs them in order.
+ */
+
+const stripQuery = (path) => String(path).split('?')[0];
+
+function queryOf(path) {
+  const q = String(path).split('?')[1];
+  return new URLSearchParams(q || '');
+}
+
+/**
+ * A plain search string, from whatever Plone-flavoured text Volto sent.
+ *
+ * Only the trailing wildcard is removed: it is what the contents filter always
+ * appends, and it is unambiguous. Anything more elaborate — field:value, AND/OR
+ * — is left alone rather than half-translated, so an adapter that cannot honour
+ * it fails visibly instead of quietly searching for the wrong thing.
+ */
+function normaliseSearchText(raw) {
+  if (!raw) return undefined;
+  return raw.replace(/\*+$/, '') || undefined;
+}
+
+/** Volto addresses content by path; everything after the last @foo is the verb. */
+function splitEndpoint(path) {
+  const clean = stripQuery(path);
+  const at = clean.lastIndexOf('/@');
+  if (at === -1) return { contextPath: clean || '/', endpoint: null, rest: [] };
+  const contextPath = clean.slice(0, at) || '/';
+  const [endpoint, ...rest] = clean.slice(at + 2).split('/');
+  return { contextPath, endpoint, rest };
+}
+
+/**
+ * Find a file upload inside a create payload.
+ *
+ * Plone serialises an upload as a field holding
+ * {data, encoding, 'content-type', filename}. The field NAME varies (image,
+ * file, …) and the '@type' is CMS-specific, so match on the value's shape:
+ * base64 data plus a filename is unambiguous.
+ */
+function findFilePayload(data) {
+  for (const value of Object.values(data ?? {})) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      typeof value.data === 'string' &&
+      typeof value.filename === 'string'
+    ) {
+      return {
+        filename: value.filename,
+        contentType: value['content-type'] ?? 'application/octet-stream',
+        data: value.data,
+      };
+    }
+  }
+  return null;
+}
+
+export function routeToIntent({ op, path, data }) {
+  const { contextPath, endpoint, rest } = splitEndpoint(path);
+  const params = queryOf(path);
+
+  // Plain content operations: no @endpoint at all.
+  if (!endpoint) {
+    if (op === 'get') {
+      // Volto's api middleware serialises expanders as ?expand=a,b,c. Passed
+      // through verbatim rather than filtered to a known list: an expansion no
+      // adapter implements must fail loudly as UNKNOWN_EXPANSION, because the
+      // component that asked for it has already skipped its own fetch and
+      // would otherwise just never receive the data.
+      const expand = (params.get('expand') ?? '')
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean);
+      return {
+        intent: 'content.get',
+        args: { path: contextPath, ...(expand.length ? { expand } : {}) },
+      };
+    }
+    if (op === 'patch') {
+      // Reordering and sorting a folder are not field writes, however they are
+      // spelled. Volto PATCHes the PARENT with {ordering: …} or {sort: …} and no
+      // @endpoint, so both landed in the branch below and became
+      // content.update — adapters dutifully tried to write a field called
+      // `ordering` on the folder. Every adapter implements content.order and
+      // nothing could reach it, so dragging a row in the contents view, or
+      // choosing a sort, did nothing an editor could see.
+      //
+      // Detected by the shape of the payload, like the upload check on create:
+      // `ordering` and `sort` are Plone's spelling of an operation, not fields
+      // any of these CMSes store.
+      if (data?.ordering?.obj_id) {
+        const { obj_id: objId, delta } = data.ordering;
+        const path = `${contextPath === '/' ? '' : contextPath}/${objId}`;
+        // The two ENDS are positions any CMS can name, so they travel as one:
+        // -1 counts from the end, as a slice does. A drag gives a signed step
+        // instead, and there is no sibling list here to resolve it against, so
+        // it travels as the relative move it is.
+        if (delta === 'top')
+          return { intent: 'content.order', args: { path, targetIndex: 0 } };
+        if (delta === 'bottom')
+          return { intent: 'content.order', args: { path, targetIndex: -1 } };
+        return {
+          intent: 'content.order',
+          args: { path, delta: Number(delta) },
+        };
+      }
+      if (data?.sort?.on) {
+        return {
+          intent: 'content.sort',
+          args: {
+            path: contextPath,
+            sortOn: data.sort.on,
+            sortOrder: data.sort.order,
+          },
+        };
+      }
+      const { blocks, blocks_layout: blocksLayout, ...fields } = data ?? {};
+      return {
+        intent: 'content.update',
+        args: {
+          path: contextPath,
+          data: {
+            ...fields,
+            ...(blocks !== undefined ? { blocks } : {}),
+            ...(blocksLayout !== undefined ? { blocksLayout } : {}),
+          },
+        },
+      };
+    }
+    if (op === 'post') {
+      // An upload, not a content create. Volto's image widget posts
+      // {'@type':'Image', image: {data, encoding, 'content-type', filename}},
+      // and routing that to content.create makes the CMS build a PAGE named
+      // after the file: on Drupal it produced a node instead of a media entity,
+      // so asset.upload — implemented by every adapter and covered by the
+      // contract — was never exercised by the editor at all.
+      //
+      // Detected by the SHAPE of the payload rather than by '@type': 'Image',
+      // which is a Plone type name and means nothing to the other two.
+      const file = findFilePayload(data);
+      if (file) {
+        return {
+          intent: 'asset.upload',
+          args: {
+            parentPath: contextPath,
+            filename: file.filename,
+            contentType: file.contentType,
+            data: file.data,
+          },
+          endpoint: 'upload',
+        };
+      }
+      // Everything the form collected. Naming four keys here dropped the
+      // rest — description, tags, the '@static_behaviors' Plone needs — and a
+      // create that quietly saves less than it was given looks like a create
+      // that worked.
+      const {
+        '@type': type,
+        blocks_layout: blocksLayout,
+        translation_of: translationOf,
+        language,
+        ...fields
+      } = data ?? {};
+      const payload = {
+        ...fields,
+        ...(type !== undefined ? { type } : {}),
+        ...(blocksLayout !== undefined ? { blocksLayout } : {}),
+      };
+
+      // Creating a translation is its own intention, not a create with an
+      // extra field.
+      //
+      // 'translation_of' assumes the grouped model — a document per language,
+      // pointing at a sibling — which is how Plone and WordPress+Polylang work
+      // and is not how Drupal's content translation does. There the page
+      // already exists and translating it means writing the German values onto
+      // the entity that is already there; there is no second document for
+      // 'translation_of' to name.
+      //
+      // Naming the SOURCE and the LANGUAGE says what the editor asked for and
+      // leaves the mechanism to the adapter. parentPath is carried because
+      // translations.locate has already asked the CMS where a translation
+      // belongs, and that answer should not be re-derived.
+      if (translationOf) {
+        return {
+          intent: 'translations.create',
+          args: {
+            sourcePath: translationOf,
+            language,
+            parentPath: contextPath,
+            data: payload,
+          },
+        };
+      }
+
+      return {
+        intent: 'content.create',
+        args: {
+          parentPath: contextPath,
+          data: { ...payload, ...(language !== undefined ? { language } : {}) },
+        },
+      };
+    }
+    if (op === 'del')
+      return { intent: 'content.delete', args: { path: contextPath } };
+    return null;
+  }
+
+  switch (endpoint) {
+    case 'types':
+      return rest.length
+        ? {
+            intent: 'types.getSchema',
+            args: { type: decodeURIComponent(rest[0]) },
+          }
+        : // The PATH matters: Volto asks /news/@types to mean "what can be
+          // created HERE", and dropping it left the adapter answering with
+          // every registered type. On WordPress the first of those was `post`,
+          // which is non-hierarchical and cannot take a parent at all, so the
+          // journey's add step created something that could never appear under
+          // the folder it was added to.
+          { intent: 'types.list', args: { path: contextPath } };
+
+    // What the deployment is, as opposed to what any document is: the default
+    // language, the languages offered, and which features are on. The admin
+    // gates real affordances on this — `features.multilingual` decides whether
+    // Manage Translations exists — so with no case here every one of them
+    // silently disappeared in a bridge session, because the read fell to the
+    // default below and returned null.
+    case 'site':
+      return { intent: 'site.get', args: {}, endpoint };
+
+    // The translation group, both ways. Volto's translation table sends all
+    // four of these; with no case here they fell to the default, returned null,
+    // and the table rendered against a group that had never been fetched.
+    case 'translations':
+      if (op === 'post') {
+        // Volto sends the document to bring INTO the group, as a path.
+        return {
+          intent: 'translations.link',
+          args: { path: contextPath, target: data?.id },
+          endpoint,
+        };
+      }
+      if (op === 'del') {
+        // Leaving names a LANGUAGE, not a path: the group holds one item per
+        // language, so the language identifies which to drop.
+        return {
+          intent: 'translations.unlink',
+          args: { path: contextPath, language: data?.language },
+          endpoint,
+        };
+      }
+      return {
+        intent: 'translations.get',
+        args: { path: contextPath },
+        endpoint,
+      };
+
+    // Where a translation belongs, which the CMS decides — plone.app.multilingual
+    // walks up for the closest translated parent rather than assuming the
+    // language's root folder.
+    case 'translation-locator':
+      return {
+        intent: 'translations.locate',
+        // A URLSearchParams, so ask it — property access reads undefined and
+        // the locator would be asked to find "a translation into nothing".
+        args: { path: contextPath, language: params.get('target_language') },
+        endpoint,
+      };
+
+    case 'querystring':
+      return { intent: 'querystring.getIndexes', args: {} };
+
+    case 'querystring-search':
+      return {
+        intent: 'querystringSearch',
+        args: {
+          query: data?.query ?? [],
+          sortOn: data?.sort_on,
+          sortOrder: data?.sort_order,
+          limit: data?.b_size,
+        },
+      };
+
+    case 'users':
+      // Volto asks for a specific user, but the only one it ever needs in the
+      // editor is the current session's.
+      return { intent: 'auth.whoami', args: {} };
+
+    case 'search': {
+      // path.depth=1 is a folder listing, not a search — the contents view and
+      // the object browser both use it that way.
+      // WHICH folder is named in path.query, not in the URL. Volto's object
+      // browser asks /@search?path.query=/news&path.depth=1 from whatever
+      // route it happens to be on, so reading only the URL context listed the
+      // SITE ROOT no matter where the editor navigated: the breadcrumb said
+      // /news while the items were the root's children, and picking a link
+      // target was impossible.
+      const scope = params.get('path.query') || contextPath;
+
+      const query = normaliseSearchText(params.get('SearchableText'));
+
+      // A folder listing is tree.list — but only while it is UNFILTERED and
+      // UNSORTED.
+      //
+      // The contents view always sends path.depth=1, including when the editor
+      // has typed in its filter box, so routing on depth alone threw the search
+      // term away and returned the whole folder. Typing in the filter narrowed
+      // nothing, on every CMS, and looked like a broken adapter rather than a
+      // dropped parameter.
+      //
+      // A requested ORDER travels WITH it. tree.list is the folder listing,
+      // and a folder listing can be ordered; getObjPositionInParent names the
+      // folder's own order, the sibling order an editor arranges by hand,
+      // which is what an adapter returns when nothing else is asked for.
+      //
+      // Not routed to `search` instead: that is full-text search, and asking
+      // it for an empty query scoped to a path returned nothing at all.
+      const sortOn = params.get('sort_on');
+      if (params.get('path.depth') === '1' && !query) {
+        return {
+          intent: 'tree.list',
+          args: {
+            parent: scope,
+            sortOn: sortOn || undefined,
+            sortOrder: params.get('sort_order') || undefined,
+          },
+        };
+      }
+      return {
+        intent: 'search',
+        args: {
+          // Stripped of Plone's trailing wildcard.
+          //
+          // The contents view's filter box sends SearchableText as
+          // `${filter}*` — catalog syntax, which Plone's own passthrough is
+          // welcome to, but which means nothing to anyone else. Passed through
+          // verbatim it reached the adapters as a literal asterisk: filtering
+          // the listing for "first" searched for "first*", matched nothing on
+          // WordPress and Drupal, and the listing silently did not narrow.
+          //
+          // Translating it here is exactly this router's job — turning
+          // Plone-shaped REST into a canonical intent.
+          query,
+          path: scope === '/' ? undefined : scope,
+          // The ordering the editor asked for, named as an index the way the
+          // contents view names it; each adapter maps it to whatever its CMS
+          // calls that field.
+          sortOn: sortOn || undefined,
+          sortOrder: params.get('sort_order') || undefined,
+          limit: params.get('b_size')
+            ? Number(params.get('b_size'))
+            : undefined,
+        },
+      };
+    }
+
+    case 'actions':
+      // Plone's way of asking "what may I do here". The canonical form is
+      // PermissionsAndState.effective, which is the same question — CMSes
+      // without two separate concepts should not have to invent one.
+      return { intent: 'state.get', args: { path: contextPath }, endpoint };
+
+    case 'breadcrumbs':
+      return { intent: 'breadcrumbs.get', args: { path: contextPath } };
+
+    case 'navigation':
+      return { intent: 'navigation.get', args: { path: contextPath } };
+
+    case 'vocabularies':
+      return {
+        intent: 'vocabulary.get',
+        args: {
+          name: decodeURIComponent(rest.join('/')),
+          title: params.get('title') ?? undefined,
+          limit: params.get('b_size')
+            ? Number(params.get('b_size'))
+            : undefined,
+        },
+      };
+
+    // Who is editing this right now. Volto takes the lock on entering edit and
+    // releases it on leaving, and asks for it ONLY when the content carried a
+    // `lock` field — so an adapter that returns one and cannot route this is
+    // not merely missing a feature. The throw becomes LOCK_CONTENT_FAIL, which
+    // shares a reducer branch with GET_CONTENT_FAIL and nulls `content.data`:
+    // a failed lock wipes the loaded CONTENT and the edit form never renders.
+    case 'lock':
+      return op === 'del'
+        ? {
+            intent: 'content.unlock',
+            // `force` steals someone else's lock. Volto sends it in the body.
+            args: { path: contextPath, force: Boolean(data?.force) },
+          }
+        : { intent: 'content.lock', args: { path: contextPath } };
+
+    case 'workflow':
+      return rest.length
+        ? {
+            intent: 'state.transition',
+            args: { path: contextPath, id: rest[0] },
+          }
+        : { intent: 'state.get', args: { path: contextPath } };
+
+    // Paste is one of these two, decided by whether the clipboard was cut or
+    // copied. Both carry every item the selection held, and both mean one
+    // canonical operation per document.
+    case 'move':
+    case 'copy':
+      // One request carries every item a cut-and-paste selected; the canonical
+      // intent handles one document. Several steps, not source[0]: taking only
+      // the first silently dropped the rest of a bulk move.
+      return (Array.isArray(data?.source) ? data.source : [data?.source]).map(
+        (source) => ({
+          intent: endpoint === 'copy' ? 'content.copy' : 'content.move',
+          args: { path: source, targetParentPath: contextPath },
+        }),
+      );
+
+    default:
+      // Anything else — @history, @sharing, @controlpanels — has no canonical
+      // equivalent yet. Returning null lets the caller decide; it must not
+      // silently pretend to have handled it.
+      return null;
+  }
+}
+
+export default routeToIntent;
