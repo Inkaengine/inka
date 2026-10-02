@@ -367,10 +367,10 @@ test.describe('Inline Editing - Formatting', () => {
       expect(await helper.isActiveFormatButton('bold')).toBe(true);
     }).toPass({ timeout: 5000 });
 
-    // TODO: Flaky in CI - first character after hotkey can be lost ("Hello orld" instead of "Hello world").
-    // The system should buffer keystrokes and never miss input, but there appears to be
-    // a gap where focus is lost during hotkey processing. Needs investigation.
-    // Wait for editor focus before typing (hotkey processing may temporarily shift focus)
+    // Wait for editor focus before typing (hotkey processing may temporarily shift focus).
+    // The CI flake once noted here (text typed after the hotkey landing outside the bold)
+    // was the bridge proceeding before the frontend drew the new node — fixed in #441;
+    // the "renders slowly" test below covers it.
     await helper.waitForEditorFocus(editor);
 
     // Type "world" - this should be bold
