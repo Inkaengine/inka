@@ -363,6 +363,7 @@ test.describe('Sidebar pickers', () => {
       offered.filter((o) => !isEmptyEntry(o)).sort(),
       'every vocabulary the site lists',
     ).toEqual([
+      'collective.volto.formsupport.captcha.providers',
       'plone.app.vocabularies.Keywords',
       'plone.app.vocabularies.ReallyUserFriendlyTypes',
     ]);

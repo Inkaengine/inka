@@ -555,6 +555,13 @@
           </template>
         </div>
       </template>
+      <!-- collective.volto.formsupport's honeypot: a field no person fills in,
+           named by the backend (captcha_props.id, "protected_1" by default). -->
+      <div v-if="block.captcha === 'honeypot'" hidden aria-hidden="true">
+        <label :for="`${block_uid}-${honeypotName(block)}`">Leave this field empty</label>
+        <input type="text" :id="`${block_uid}-${honeypotName(block)}`" :name="honeypotName(block)"
+               tabindex="-1" autocomplete="off" />
+      </div>
       <div style="display:flex; gap:0.75rem; padding-top:0.5rem">
         <f7-button type="submit" fill data-edit-text="submit_label">{{ block.submit_label || 'Submit' }}</f7-button>
         <f7-button v-if="block.show_cancel" type="reset" outline data-edit-text="cancel_label">{{ block.cancel_label || 'Cancel' }}</f7-button>
@@ -832,6 +839,10 @@ export default {
     this.stampQuickAnswerReveal();
   },
   methods: {
+    // The honeypot field's name, as formsupport serialises it.
+    honeypotName(formBlock) {
+      return formBlock.captcha_props?.id || 'protected_1';
+    },
     // f7-searchbar owns its inner <input>, so the reveal attributes can't be
     // written in the template — stamp them on after render. The searchbar IS a
     // <form>, so hydra's no-activator branch submits it after filling.
@@ -1168,7 +1179,15 @@ export default {
       const response = await fetch(`${apiUrl}${ctxPath}/@submit-form`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ block_id: uid, data: submitData }),
+        body: JSON.stringify({
+          block_id: uid,
+          data: submitData,
+          // The backend refuses a honeypot form unless this says the trap
+          // stayed empty (HoneypotSupport.verify).
+          ...(formBlock.captcha === 'honeypot'
+            ? { captcha: { provider: 'honeypot', token: '', value: event.target.elements[this.honeypotName(formBlock)]?.value ?? '' } }
+            : {}),
+        }),
       });
       if (response.ok || response.status === 204) {
         this.formState[uid] = { success: true };
