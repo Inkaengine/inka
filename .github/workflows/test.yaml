@@ -220,6 +220,9 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           SKIP_VOLTO_CHECK: true
           # The editor screenshots the docs embed are git-ignored and generated
           # in the PARENT repo's deploy now, not recorded here — so they are
@@ -247,6 +250,17 @@ jobs:
           path: |
             playwright-report/
             test-results/**/*.png
+          retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-bridge-unit
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
           retention-days: 7
 
   # ── Admin integration tests (mock frontend) ─────────────────────────────
@@ -328,6 +342,9 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           USE_PREBUILT: true
       - name: Server logs
         if: failure()
@@ -340,6 +357,17 @@ jobs:
           path: |
             playwright-report/
             test-results/**/*.png
+          retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-admin-mock
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
           retention-days: 7
 
   # ── Admin typing specs on the Next.js example ───────────────────────────
@@ -442,6 +470,9 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           USE_PREBUILT: true
       - name: Server logs
         if: failure()
@@ -454,6 +485,17 @@ jobs:
           path: |
             playwright-report/
             test-results/**/*.png
+          retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-admin-nextjs
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
           retention-days: 7
 
   # ── Nuxt bridge tests (no Volto needed) ─────────────────────────────────
@@ -525,6 +567,9 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           SKIP_VOLTO_CHECK: true
           # The editor screenshots the docs embed are git-ignored and generated
           # in the PARENT repo's deploy now, not recorded here — so they are
@@ -552,6 +597,17 @@ jobs:
           path: |
             playwright-report/
             test-results/**/*.png
+          retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-nuxt-bridge
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
           retention-days: 7
 
   # ── Nuxt integration tests (needs Volto) ────────────────────────────────
@@ -636,6 +692,9 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           USE_PREBUILT: true
       - name: Server logs
         if: failure()
@@ -648,6 +707,17 @@ jobs:
           path: |
             playwright-report/
             test-results/**/*.png
+          retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-nuxt-admin
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
           retention-days: 7
 
   # ── Next.js + F7 bridge tests (no Volto needed) ─────────────────────────
@@ -747,6 +817,9 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           SKIP_VOLTO_CHECK: true
           # The editor screenshots the docs embed are git-ignored and generated
           # in the PARENT repo's deploy now, not recorded here — so they are
@@ -774,4 +847,15 @@ jobs:
           path: |
             playwright-report/
             test-results/**/*.png
+          retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-nextjs-f7
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
           retention-days: 7
