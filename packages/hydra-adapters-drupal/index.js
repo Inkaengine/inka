@@ -887,7 +887,7 @@ export class DrupalAdapter extends BaseAdapter {
       case 'state.transition': {
         const node = await this.nodeByAlias(args.path);
         const forms = await this.transitionForms(args.path);
-        this.assertDeclared(args.data, forms[args.id]?.schema, args.id);
+        this.assertDeclared(args.data, this.offeredTransition(forms, args.id).schema, args.id);
 
         const nextAlias = args.data?.path_alias;
         const moved = nextAlias !== undefined && nextAlias !== args.path;

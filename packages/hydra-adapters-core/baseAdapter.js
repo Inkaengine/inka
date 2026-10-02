@@ -279,6 +279,26 @@ export class BaseAdapter {
    * success for a setting that never took, and the first sign of trouble is
    * the wrong audience seeing the document.
    */
+  /**
+   * The form of a transition the document offers, or BAD_REQUEST.
+   *
+   * Every CMS here moves a document by writing something; a transition id it
+   * does not know becomes nothing to write. WordPress sent `status: undefined`,
+   * which it ignored with a 200, and Drupal wrote nothing and answered null:
+   * the caller was told the document moved and it never did. An import
+   * reported every page published and left them all drafts.
+   */
+  offeredTransition(forms, transitionId) {
+    const form = forms?.[transitionId];
+    if (!form) {
+      throw new AdapterError(
+        `${this.name}: no transition '${transitionId}' is offered here (offered: ${Object.keys(forms ?? {}).join(', ') || 'none'})`,
+        { code: 'BAD_REQUEST', status: 400 },
+      );
+    }
+    return form;
+  }
+
   assertDeclared(data, schema, transitionId) {
     if (!data) return;
     const declared = schema?.properties ?? {};
