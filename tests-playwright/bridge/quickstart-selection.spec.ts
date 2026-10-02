@@ -17,7 +17,7 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { getFrontendUrl } from './fixtures';
-import { requireEnvironment } from '../helpers/preconditions';
+import { requireEnvironment, unreachable } from '../helpers/preconditions';
 import { URLS } from '../ports';
 
 // The quickstart frontends this spec runs on, each with the route its app serves
@@ -70,13 +70,8 @@ test.describe('Quick Start starter: selecting a block in edit mode', () => {
     // These frontends are opt-in — their server only starts when the project is
     // requested. On a full local run it is down: skip. On CI it must be up (the
     // workflow starts it), so an unreachable frontend is a failure, not a skip.
-    let reachable = false;
-    try {
-      reachable = (await fetch(frontend!, { signal: AbortSignal.timeout(2000) })).ok;
-    } catch {
-      reachable = false;
-    }
-    requireEnvironment(testInfo, reachable, `${testInfo.project.name} frontend on ${frontend} not reachable`);
+    const why = await unreachable(frontend!);
+    requireEnvironment(testInfo, why === null, `${testInfo.project.name} frontend on ${frontend} not reachable (${why})`);
 
     await page.goto(parentUrl(frontend!, QUICKSTART_FRONTENDS[testInfo.project.name].contentPath));
     await helper.waitForIframeReady();

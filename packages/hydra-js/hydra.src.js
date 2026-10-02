@@ -315,6 +315,12 @@ const CONTROL_TAGS = new Set([
 ]);
 const CONTROL_SELECTOR = 'button, summary, a[href], [role="button"]';
 
+/** Inline elements: a line runs through them (see isPlaceholderBr). */
+const INLINE_TAGS = new Set([
+  'A', 'ABBR', 'B', 'CODE', 'DEL', 'EM', 'I', 'MARK', 'S', 'SMALL', 'SPAN',
+  'STRONG', 'SUB', 'SUP', 'U',
+]);
+
 /**
  * Virtual block UID for page-level fields (title, description, preview_image, etc.)
  * Used to distinguish "page field selected" from "nothing selected" (null)
@@ -325,6 +331,7 @@ export const PAGE_BLOCK_UID = '_page';
  * Bridge class creating a two-way link between the Hydra and the frontend.
  * @exports Bridge - Exported for testing purposes
  */
+
 export class Bridge {
   /**
    * Constructor for the Bridge class.
@@ -3290,13 +3297,16 @@ export class Bridge {
   _insertTextAtCursor(text, editableField) {
     const sel = window.getSelection();
     if (!sel?.rangeCount) return;
-    const range = sel.getRangeAt(0);
 
     // NBSP for spaces to prevent CSS whitespace collapse in inline elements.
     // handleTextChange converts NBSP back to regular space in the model.
     const insertionText = text.replace(/^ /, '\u00A0').replace(/ $/, '\u00A0');
 
-    if (!range.collapsed) range.deleteContents();
+    if (!sel.getRangeAt(0).collapsed) sel.getRangeAt(0).deleteContents();
+    this.adoptFrontendCaretTarget();
+    this.dropPlaceholderBrBeforeCaret();
+    // Both may have moved the caret: read the range after them.
+    const range = sel.getRangeAt(0);
 
     // Type into the text node the caret is in: the frontend drew it (from the
     // render data's zero-width space when the element was empty), so its next
@@ -8277,10 +8287,6 @@ export class Bridge {
    * `<strong>…<br></strong>more` is real, because "more" follows it.
    */
   isPlaceholderBr(br) {
-    const INLINE = new Set([
-      'A', 'ABBR', 'B', 'CODE', 'DEL', 'EM', 'I', 'MARK', 'S', 'SMALL', 'SPAN',
-      'STRONG', 'SUB', 'SUP', 'U',
-    ]);
     let node = br;
     while (node) {
       for (let n = node.nextSibling; n; n = n.nextSibling) {
@@ -8293,10 +8299,85 @@ export class Bridge {
         if (!empty) return false;
       }
       const parent = node.parentElement;
-      if (!parent || !INLINE.has(parent.tagName)) return true;
+      if (!parent || !INLINE_TAGS.has(parent.tagName)) return true;
       node = parent;
     }
     return true;
+  }
+
+  /**
+   * Move the caret out of a caret node the bridge made into the frontend's own.
+   *
+   * restoreSlateSelection parks the caret in a U+FEFF text node of its own when
+   * the element has nowhere to put it. If the frontend has since drawn its own
+   * caret target (U+200B, from the render data) on the same line, text typed
+   * into the bridge's node is text the frontend doesn't know about: its next
+   * render draws the same text again in its own node ("FreshFresh"). So before
+   * a character goes in, the caret moves to the end of the frontend's node and
+   * the bridge's node goes — the same cleanup _insertTextAtCursor does after.
+   */
+  adoptFrontendCaretTarget() {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !sel.isCollapsed) return;
+    const bridgeNode = sel.anchorNode;
+    if (bridgeNode?.nodeType !== Node.TEXT_NODE || !/^\uFEFF+$/.test(bridgeNode.data)) return;
+    // Only a bare caret node sitting in the line itself. One inside a <strong>
+    // or <em> is a prospective format (bold toggled on, nothing typed yet): the
+    // caret is there on purpose, and moving it would drop the format.
+    const line = bridgeNode.parentElement;
+    if (!line || INLINE_TAGS.has(line.tagName)) return;
+    // And only on an empty line — where the frontend's caret target is what it
+    // draws for "nothing here yet". In a line with text, a bare caret node is a
+    // format the author just toggled off at the caret, and it stays put.
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+    let target = null;
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (this.stripZeroWidthSpaces(n.data) !== '') return;
+      if (!target && n !== bridgeNode && /^\u200B+$/.test(n.data)) target = n;
+    }
+    if (!target) return;
+    const range = document.createRange();
+    range.setStart(target, target.length);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    bridgeNode.remove();
+  }
+
+  /**
+   * Remove the browser's placeholder <br> when text is about to go in AFTER it.
+   *
+   * A select-all delete leaves `<p><br></p>`. The browser replaces that <br>
+   * when the caret is before it, but the caret can sit in a text node after it
+   * (the frontend's re-render, or a caret target, put one there): the browser
+   * then types after the placeholder, which stops being one — the line gains a
+   * break nobody typed, and the admin gets "\nFresh" with an empty line above.
+   * So: a line with no visible content whose only <br> is before the caret
+   * loses that <br> before the text goes in. A line with real breaks has two
+   * <br>s (a break at the end of a line needs a second one to show), or text.
+   */
+  dropPlaceholderBrBeforeCaret() {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    let line = range.startContainer.nodeType === Node.ELEMENT_NODE
+      ? range.startContainer
+      : range.startContainer.parentElement;
+    while (line && INLINE_TAGS.has(line.tagName)) line = line.parentElement;
+    if (!line) return;
+    const brs = [];
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.nodeType === Node.TEXT_NODE) {
+        if (this.stripZeroWidthSpaces(n.textContent || '') !== '') return;
+      } else if (n.tagName === 'BR') {
+        brs.push(n);
+      } else if (!INLINE_TAGS.has(n.tagName)) {
+        return; // an image or a nested block is content
+      }
+    }
+    if (brs.length !== 1 || range.comparePoint(brs[0], 0) !== -1) return;
+    brs[0].remove();
   }
 
   domNodeToSlate(el, metadataMap, matchMetadataFromDom = false, keepCaretTargets = false) {
@@ -11811,6 +11892,10 @@ export class Bridge {
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
           this.correctInvalidWhitespaceSelection();
           this.ensureValidInsertionTarget();
+          // Here, not in beforeinput: by beforeinput the character is already
+          // in the DOM. Replayed keys get the same in _insertTextAtCursor.
+          this.adoptFrontendCaretTarget();
+          this.dropPlaceholderBrBeforeCaret();
         }
   }
 
