@@ -312,3 +312,96 @@ offerable; existence and editability is the test.
   title, url, type and subtype across post types. Our adapter does not use it
   (`search` goes to `/wp/v2/{postType}?search=`, single-type, full payloads).
   Drupal has no equivalent, so its CONTAINS filter is already right.
+
+
+## Addressing, advertising, and the selector (2026-10-03)
+
+### The adapter returns a view's nodes AS CONTENT
+
+A placement is returned as a content object at a path the adapter owns. Then
+**no contract change is needed**: `content.get` reads a node, `content.move`
+reparents it (the adapter turns that into menu reparenting), `content.create`
+with type `link` adds an entry, `content.delete` unlinks. The contents view,
+breadcrumbs and ordering need no new concepts — it is Plone's `Link` trick
+generalised.
+
+URLs follow from that. The main hierarchy keeps today's `/some/folder/contents`,
+since node path IS content path there. Other views live under a reserved
+namespace, `/@@menu/main/...`, because a reserved PREFIX costs one token content
+could never contain, where a reserved SUFFIX costs a word authors cannot use —
+and `nonContentRoutes` already carries the scar: a page at
+`/docs/examples/search` resolved to its parent because `/search` was reserved,
+and "the admin edits the wrong object".
+
+Nodes in non-hierarchy views are addressed by PLACEMENT ID. A heading has no
+slug and a page can appear twice; slugs that silently resolve to the wrong node
+after a retitle are worse than ugly ids.
+
+### Synthetic paths must never escape
+
+They are an addressing convenience for browsing. They resolve to real content
+wherever a path is written down, rendered, or handed outside:
+
+- **the preview iframe** — `getUrlWithAdminParams` builds the frontend URL from
+  `window.location.pathname`, stripping only `/edit`. It is not view-aware. A
+  menu placement must preview its REFERENCED page.
+- **the picker's return value** — must come structurally from the node's
+  reference, never from the browse location. Reusing the "current location"
+  variable as the return value is the most likely bug in this whole design: it
+  would look right in the editor, because the adapter resolves the address
+  happily, and break only on the public site. Worth a test that picks from a
+  menu view and asserts the stored value is the content path.
+- **search results and stored references** generally.
+
+Browse address and picked value are different KINDS of thing — ephemeral UI
+state versus durable data — which is why they can differ safely. The cost is
+that "where does this value live?" becomes a reverse lookup that may answer with
+SEVERAL placements (the same question `reference.dependents` answers), and
+"open where I left off" is per-user UI state, not part of the value.
+
+A placement with a URL but no reference can return that URL. One with neither —
+a heading — is not selectable.
+
+### Advertising: `views` on `site.get`
+
+It already carries `languages` and `features.translations: 'grouped'`, it is
+fetched once per session, and it needs no new intent.
+
+```
+views: [
+  { id: 'content', title: 'Pages', shape: 'hierarchy', main: true,
+    prefix: '', ordered: true, holdsContent: true, remove: 'delete' },
+  { id: 'menu:main', title: 'Main menu', shape: 'hierarchy',
+    prefix: '@@menu/main', ordered: true, holdsContent: true,
+    allowsLinks: true, remove: 'unlink' },
+  { id: 'tax:category', title: 'Categories', shape: 'taxonomy',
+    prefix: '@@tax/category', ordered: false, holdsContent: true,
+    remove: 'unlink' },
+]
+```
+
+The fields that change behaviour: `main` (which opens by default — Drupal has no
+content tree, so it must be able to name a menu), `prefix` (empty for the main
+hierarchy, so today's URLs are untouched), `remove` (delete vs unlink — the
+difference between losing a page and tidying a menu), `allowsLinks` (whether
+"add a link" is offered).
+
+Caveat: `site.get` is session-cached, so a menu created in the CMS will not
+appear until reload.
+
+### The selector sits at the ROOT OF THE BREADCRUMB
+
+`[Main menu v] / Products / Widgets`. Not decoration: it says the trail is
+RELATIVE TO THE VIEW, which is literally true, and keeps "where am I" in one
+place instead of splitting it between a dropdown and a path. With one view it
+renders as today's Home crumb with no dropdown, so Plone sees no change.
+
+The picker gets the identical control, filtered to views whose nodes resolve to
+content.
+
+Rejected: a left rail of "places" (spends real estate on something most sites
+have one of) and tabs (imply peers, when the main hierarchy is privileged).
+
+This lands on the crumb an upstream commit just changed — the mock no longer
+injects a synthetic `Home`, because Plone's `items` are ancestors and the root
+comes from `root`. Same crumb; look at them together.
