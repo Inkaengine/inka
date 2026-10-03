@@ -186,13 +186,32 @@ whole class of doubt.
 contents view and the picker both browse a named view; the view is a parameter
 of the browser, not a folder inside the content tree.
 
-Three shapes, and WordPress has all three at once:
+**There is no single hierarchy.** Counting them:
 
-| shape | example | nodes are | total? | ordered? |
-| --- | --- | --- | --- | --- |
-| hierarchy | Plone's tree, WP pages | content | yes, unique | manual |
-| menu | WP nav menus, Drupal menus | **links** | no | manual |
-| collection | WP posts, by date or term | content | yes | by field |
+- **Drupal** — ZERO intrinsic content hierarchies (nodes are flat); five menus
+  by default, each a tree; one tree per hierarchical vocabulary.
+- **WordPress** — one page tree; one tree per nav menu; categories are a
+  hierarchical taxonomy (tags are flat); posts have no tree at all.
+- **Plone** — one content tree, and everything lives in it.
+
+So: **one MAIN hierarchy, plus whatever else the adapter defines.** The adapter
+declares which view is the main one rather than the admin assuming a content
+tree exists — which matters because Drupal has none to assume. Our Drupal
+adapter already picks one implicitly: `allMenuLinks()` backs `tree.list`,
+ordering and path lookup, so a menu is already wearing that hat.
+
+Shapes:
+
+| shape | example | total? | ordered? |
+| --- | --- | --- | --- |
+| hierarchy | Plone's tree, WP pages, a menu, a Drupal Book | yes within the view | manual |
+| taxonomy | WP categories, Drupal vocabularies | no — content may be in several | by term |
+| collection | WP posts by date, "recently modified" | yes | by field |
+
+Taxonomy is a hierarchy too, and it is where content is routinely in several
+places at once — a page sits in one spot in the page tree but in three
+categories, and that is normal rather than an edge case. Plone can offer extra
+views cheaply, since they are all catalog queries.
 
 The CMSes differ on whether content has intrinsic hierarchy, which is the axis
 everything else follows from:
@@ -207,14 +226,39 @@ and WordPress posts do not satisfy it at all — which is why they are excluded
 today rather than handled. Supporting the collection shape is the same work as
 supporting posts.
 
-**A menu contains LINKS, not content.** This is what the CMSes store —
-`nav_menu_item`, `menu_link_content`, and Plone's `Link` content type — and it
-settles how a page can be in two places: not the page twice, but two links to
-one page. Operations then need no special cases:
+**A node is a PLACEMENT that may reference content.** Node identity is the
+placement, not the content — which is what makes "the same page twice" a
+non-question: two placements referencing one page are simply two nodes, and
+nothing has to arbitrate which is canonical. An earlier draft had two node
+KINDS (content vs link) and an exception for duplicates; that was an artefact of
+keying nodes by content.
 
-- editing a link's title changes the NAV TITLE, not the page
-- removing a link unlinks; the page is untouched
-- the page's identity and URL live in the hierarchy view, where it actually is
+One shape, with an optional reference:
+
+- has a reference -> the browser shows and opens that page
+- no reference, has a URL -> an external or custom link
+- no reference, no URL -> a heading or separator
+
+So "link" is not a type, it is the ABSENCE of a reference. Plone modelling it as
+a real `Link` content type is consistent rather than contradictory: in Plone
+everything in a tree is content, so its Link is a node referencing itself whose
+URL field is the payload.
+
+The hierarchy view keeps uniqueness for free rather than by rule — a page has
+one parent, so it appears once. Duplicates arise only in menu and taxonomy
+views, where nodes were placements all along.
+
+Per-placement properties (position, parent, nav-title override) live on the
+node, which is where WordPress and Drupal already store them — two placements of
+one page can carry two different labels, which a single content node could not.
+
+Two places this still matters:
+
+- **the picker** returns content, so it resolves through the reference, and a
+  node without one is not selectable
+- **the agreement test** compares sorted SETS of paths, so it would tolerate a
+  page appearing twice on one side and once on the other. A real hole now
+  rather than a hypothetical, same reason ordering is still missing.
 
 **Content-backed or not** is recorded by the CMS, not inferred: Drupal holds
 `entity:node/123` vs a plain `internal:/about`; WordPress holds
