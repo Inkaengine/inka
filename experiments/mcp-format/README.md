@@ -1,7 +1,7 @@
 # MCP page-format experiment
 
 Which page format and which kind of write an agent gets right, for the MCP
-design (pretagov/inka-site#24).
+design.
 
 ## What it compares
 
@@ -45,6 +45,5 @@ python3 summarise.py results/myrun.jsonl
 
 ## Results
 
-See §14 of pretagov/inka-site#24. Raw replies are in
-`results/*.jsonl`; `round2.lenient.jsonl` is round 2 re-scored ignoring a copied
+Raw replies are in `results/*.jsonl`; `round2.lenient.jsonl` is round 2 re-scored ignoring a copied
 `<<<PAGE` marker (a prompt artefact, now handled by default).

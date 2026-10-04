@@ -3,7 +3,7 @@
 How does an agent learn what blocks look like? Four cumulative setups (schema
 catalogue → + descriptions → + block screenshots → + render-and-revise loop),
 three page briefs, pages rendered by a real frontend and judged blind.
-Results: §15 of the MCP design ticket, pretagov/inka-site#24.
+Results are in `results/<run>.jsonl`; summarise with `summarise.py`.
 
 ## Files
 
