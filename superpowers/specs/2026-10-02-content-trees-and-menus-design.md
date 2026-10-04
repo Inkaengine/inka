@@ -118,13 +118,21 @@ curated menu is not publicly readable on either CMS that has one:
 | --- | --- | --- |
 | Plone | `@navigation`, derived from content | no |
 | WordPress | page tree (`/wp/v2/pages?parent=0`) | no today — **yes** if we move to real menus |
-| Drupal | `menu_link_content` is permissioned | **yes** — `jsonapi_menu_items` |
+| Drupal | `menu_link_content` — **anonymous-readable** (measured) | no |
 
 So WordPress passes today *because* it derives navigation from content. Moving
 it onto real menus — the thing that makes exclusion and nav-title possible —
-costs public readability unless something is installed. **Curated membership
-and public readability are in tension on both CMSes.** Plone escapes it only
-because its menu IS the content tree.
+may cost public readability, IF core's menu endpoints are really private; that
+is still unverified. Drupal has no such tension: measured against a real
+Drupal 11, `menu_link_content` is served to anonymous callers.
+
+**Corrected 2026-10-04.** This section previously claimed curated menus were
+private on BOTH CMSes and that Drupal needs `jsonapi_menu_items`. That came
+from a mock I had written the day before, not from Drupal. A spike against a
+real Drupal 11 showed anonymous callers may read `/jsonapi`,
+`/jsonapi/node`, `/jsonapi/menu_link_content` AND `/jsonapi/user/user`. The
+module presumably exists for convenience — resolved menu TREES rather than raw
+entities — not because core withholds the data.
 
 Bigger than menus on Drupal: `allMenuLinks()` has SEVEN call sites —
 `tree.list`, ordering and path lookup as well as navigation. The whole content
@@ -139,7 +147,7 @@ PaaS, so the adapters assume one rather than engineering around it:
 - **WordPress** — WPGraphQL for public reads. It also brings `nodeByUri`, a real
   "what is at this path?" primitive, replacing the segment-by-segment slug walk
   `resolvePath` does today.
-- **Drupal** — `jsonapi_menu_items` for public menu reads.
+- **Drupal** — nothing. Core serves menu links publicly.
 
 ### The split is READS vs WRITES, not public vs admin
 
@@ -169,15 +177,30 @@ reads a public one; nothing yet catches them diverging.
 Each would change the design if wrong, and none has been measured:
 
 - that core `/wp/v2/menus` and `/wp/v2/menu-items` require `edit_theme_options`
+  — the last load-bearing assumption still unmeasured, and the Drupal
+  equivalent turned out to be false
 - that WPGraphQL's `menuItems` is anonymous-readable for a location-assigned menu
 - that WPGraphQL runs under PHP-WASM in Playground
-- the response shape of `jsonapi_menu_items`, which the Drupal mock now models
-  **from documentation, not from running it** — a fiction of a contrib module on
-  top of a fiction of Drupal
+A real `drupal:11` in CI retires this whole class of doubt, and a spike shows it
+is cheap: install on SQLite in **38s** with core's own `dr install` (no drush, no
+composer), enable JSON:API with a short bootstrap script, and reset between
+tests by copying the SQLite file — **~174ms** including `docker exec`, verified
+to revert a change and leave the site healthy. Delete the `-wal`/`-shm`
+sidecars with the copy or a stale write-ahead log survives the restore.
 
-The last is the third time the Drupal mock has been the limiting factor (after
-multilingual and anonymous access). A real `drupal:11` in CI would retire that
-whole class of doubt.
+Image quirks to encode: `vendor/` sits beside the webroot so `core/scripts/dr`
+needs a symlink; `settings.php` ships read-only so the installer cannot persist
+the DB config; `standard` enables neither `jsonapi` nor any content type, so a
+real target must provision the bundle and `field_hydra_blocks` the mock gives
+for free.
+
+What the spike found is the argument for doing it: a mock does not merely fail
+to catch bugs, it can CREATE them. `auth.whoami` read `/jsonapi/user/user` and
+took row [0]; the mock returned one user so that was always the admin, while a
+real Drupal returns every user with Anonymous FIRST — so whoami reported
+"Anonymous" while signed in as admin. Now it reads `meta.links.me` from the
+`/jsonapi` index, which is where Drupal names the current user and nowhere else
+does, and which is absent when anonymous so logout stays observable.
 
 
 ## The model (2026-10-03)

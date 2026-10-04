@@ -349,12 +349,18 @@ app.use((req, res, next) => {
     // stays forbidden. That distinction is load-bearing: auth.whoami reads
     // /jsonapi/user/user, and the contract requires it to fail after logout.
     // Allowing every anonymous GET made a logged-out session look signed in.
-    // Content, and the menu module's public route. `jsonapi_menu_items` exists
-    // to put menus on the public API — gating it here would defeat the only
-    // reason a decoupled site installs it.
+    // MEASURED against a real Drupal 11, not reasoned about: a stock install
+    // serves /jsonapi, /jsonapi/node, /jsonapi/menu_link_content AND
+    // /jsonapi/user/user to anonymous callers. An earlier version of this mock
+    // allowed only /jsonapi/node, on the theory that anonymous gets "access
+    // content" but not "access user profiles". That was wrong, and the views
+    // spec drew a conclusion from it — that Drupal needs jsonapi_menu_items to
+    // make menus public — which did not survive contact with the real thing.
     const publicToAnonymous =
+      req.path === '/jsonapi' ||
       req.path.startsWith('/jsonapi/node') ||
-      req.path.startsWith('/jsonapi/menu_items');
+      req.path.startsWith('/jsonapi/menu_link_content') ||
+      req.path.startsWith('/jsonapi/user');
     if (!publicToAnonymous) {
       return res
         .status(403)
@@ -385,26 +391,68 @@ app.get('/session/token', (req, res) => res.type('text').send(VALID_TOKEN));
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // --- root ----------------------------------------------------------------
-app.get('/jsonapi', (req, res) =>
-  res.json({ jsonapi: { version: '1.0' }, data: [], links: { self: { href: `${BASE()}/jsonapi` } } }),
-);
+app.get('/jsonapi', (req, res) => {
+  // Drupal names the current user here and nowhere else: `meta.links.me` is
+  // present when authenticated and ABSENT when anonymous. Verified against a
+  // real Drupal 11; it is what makes logout observable without pretending the
+  // user collection is private.
+  const meta = req.anonymous
+    ? {}
+    : {
+        links: {
+          me: {
+            meta: { id: ADMIN_UUID },
+            href: `${BASE()}/jsonapi/user/user/${ADMIN_UUID}`,
+          },
+        },
+      };
+  res.json({
+    jsonapi: { version: '1.0' },
+    data: [],
+    links: { self: { href: `${BASE()}/jsonapi` } },
+    meta,
+  });
+});
 
 // --- users ---------------------------------------------------------------
+const ADMIN_UUID = 'user-admin';
+
+const adminUser = () => ({
+  type: 'user--user',
+  id: ADMIN_UUID,
+  attributes: {
+    display_name: 'admin',
+    name: 'admin',
+    mail: 'admin@example.com',
+    roles: ['authenticated', 'administrator'],
+  },
+});
+
+// Every user, Anonymous FIRST — which is what a real Drupal 11 returns, and
+// why taking row [0] here reported "Anonymous" while signed in as admin. The
+// mock used to return the admin alone, so the adapter's bug was invisible.
 app.get('/jsonapi/user/user', (req, res) =>
   res.json(
     collection([
       {
         type: 'user--user',
-        id: 'user-admin',
+        id: 'user-anonymous',
         attributes: {
-          display_name: 'admin',
-          name: 'admin',
-          mail: 'admin@example.com',
-          roles: ['authenticated', 'administrator'],
+          display_name: 'Anonymous',
+          name: '',
+          mail: null,
+          roles: ['anonymous'],
         },
       },
+      adminUser(),
     ]),
   ),
+);
+
+app.get('/jsonapi/user/user/:uuid', (req, res) =>
+  req.params.uuid === ADMIN_UUID
+    ? res.json(single(adminUser()))
+    : notFound(res, req.params.uuid),
 );
 
 // --- types & schema ------------------------------------------------------
@@ -530,46 +578,6 @@ app.get('/jsonapi/taxonomy_term/:vocab', (req, res) => {
 });
 
 // --- menu links (the hierarchy) -----------------------------------------
-/**
- * The `jsonapi_menu_items` contrib module, which is what a decoupled Drupal
- * installs to put menus on the public API.
- *
- * Core's `menu_link_content` is an entity behind permissions, so an anonymous
- * frontend cannot read it — which is precisely why this module exists and is
- * widely used. The adapter keeps WRITING through core (the module is
- * read-only); a visitor READS through here.
- *
- * MODELLED FROM THE MODULE'S DOCUMENTATION, not from running it: the resource
- * type and attribute names are what it is believed to return. A real Drupal in
- * CI would settle it.
- */
-app.get('/jsonapi/menu_items/:menu', (req, res) => {
-  const { menuLinks, nodes } = stateFor(req);
-  const pathOf = (uuid) => {
-    const n = [...nodes.values()].find((x) => x.uuid === uuid);
-    return n ? n.alias : null;
-  };
-  res.json(
-    collection(
-      [...menuLinks.values()]
-        // Disabled links are out of the menu, and that is the whole point of
-        // the flag — a visitor must not see them.
-        .filter((l) => l.enabled !== false)
-        .map((l) => ({
-          type: 'menu_items--menu_items',
-          id: l.uuid,
-          attributes: {
-            title: l.title ?? null,
-            url: l.nodeUuid ? pathOf(l.nodeUuid) : null,
-            enabled: l.enabled !== false,
-            weight: l.weight,
-            parent: l.parentUuid ?? null,
-          },
-        })),
-    ),
-  );
-});
-
 app.get('/jsonapi/menu_link_content/menu_link_content', (req, res) => {
   const { menuLinks } = stateFor(req);
   const parent = filterValue(req, 'parent');

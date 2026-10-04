@@ -138,22 +138,33 @@ const target: Target = {
   },
 
   async publicNavigation() {
-    // NOT the adapter's own source. The adapter edits through core's
-    // menu_link_content, which is behind permissions; a visitor reads through
-    // `jsonapi_menu_items`, the contrib module a decoupled Drupal installs for
-    // exactly this. Two surfaces over one set of links — the same split as
-    // WordPress, where public reads need WPGraphQL and writes use core REST.
-    const res = await fetch(`${BASE}/jsonapi/menu_items/main`, {
-      headers: { Accept: 'application/vnd.api+json' },
-    });
+    // The same source the adapter uses. A stock Drupal 11 serves
+    // menu_link_content to anonymous callers — MEASURED, after an earlier
+    // version of this mock wrongly forbade it and a module was invented to
+    // work around the restriction.
+    const res = await fetch(
+      `${BASE}/jsonapi/menu_link_content/menu_link_content`,
+      { headers: { Accept: 'application/vnd.api+json' } },
+    );
     if (!res.ok) return null;
     const body: any = await res.json();
-    return (body.data ?? [])
-      .filter((i: any) => !i.attributes?.parent)
-      .map((i: any) => ({
-        path: i.attributes?.url ?? '',
+    const nodePath = async (uuid: string) => {
+      const r = await fetch(`${BASE}/jsonapi/node/page/${uuid}`, {
+        headers: { Accept: 'application/vnd.api+json' },
+      });
+      if (!r.ok) return '';
+      const n: any = await r.json();
+      return n?.data?.attributes?.path?.alias ?? '';
+    };
+    const top = (body.data ?? []).filter(
+      (i: any) => !i.relationships?.parent?.data && i.attributes?.enabled !== false,
+    );
+    return Promise.all(
+      top.map(async (i: any) => ({
+        path: await nodePath(i.relationships?.node?.data?.id),
         title: i.attributes?.title ?? '',
-      }));
+      })),
+    );
   },
 
   async seed() {

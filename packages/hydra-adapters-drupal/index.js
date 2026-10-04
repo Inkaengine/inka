@@ -763,8 +763,27 @@ export class DrupalAdapter extends BaseAdapter {
         return this.logout();
 
       case 'auth.whoami': {
-        const payload = await this.fetchJson('/jsonapi/user/user');
-        const flat = (flattenPayload(payload) ?? [])[0];
+        // The JSON:API index names the current user and nothing else does:
+        // `meta.links.me` carries their uuid when authenticated and is ABSENT
+        // when anonymous, which is also what makes logout observable.
+        //
+        // This used to read /jsonapi/user/user and take the first row. Against
+        // the mock that was the admin, because the mock returned exactly one
+        // user. Against a real Drupal 11 it returns EVERY user with Anonymous
+        // first, so whoami reported "Anonymous" while signed in as admin — and
+        // anonymous callers may read that collection too, so it could never
+        // have detected a logged-out session either.
+        const index = await this.fetchJson('/jsonapi');
+        const me = index?.meta?.links?.me?.meta?.id;
+        if (!me) {
+          throw new AdapterError('No user for this session', {
+            code: 'UNAUTHORIZED',
+            status: 401,
+          });
+        }
+        // A SINGLE resource, so flattenPayload returns the object itself —
+        // indexing [0] here silently yields undefined.
+        const flat = flattenPayload(await this.fetchJson(`/jsonapi/user/user/${me}`));
         if (!flat) {
           throw new AdapterError('No user for this session', {
             code: 'UNAUTHORIZED',
