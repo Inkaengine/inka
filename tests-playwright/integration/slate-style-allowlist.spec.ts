@@ -504,3 +504,39 @@ test.describe('a frontend rendering design-system styles', () => {
     await expect(block).toContainText('Design-system styles');
   });
 });
+
+test.describe('block formats declared as data', () => {
+  // Declared by the mock test frontend only, for /block-formats-page.
+  test.beforeEach(({}, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'admin-mock',
+      'the block formats are declared by the mock frontend',
+    );
+  });
+
+  test('the dropdown offers exactly the declared formats, by their labels', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    const titles = await formatOptions(page, helper, 'target');
+    // Paragraph is always first; then the declared formats in their order —
+    // h5 included, which volto-slate has no button for. Nothing of volto-slate's
+    // own ("Title", "Subtitle", lists) is left.
+    expect(titles).toEqual(['Paragraph', 'Heading 2', 'Heading 3', 'Heading 5']);
+    await expect(page.locator('.format-dropdown-menu [data-format="h2"] svg path')).toHaveCount(1);
+  });
+
+  test('a declared format applies', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    await formatOptions(page, helper, 'target');
+    await page.locator('.format-dropdown-menu [data-format="h5"]').click();
+    const iframe = helper.getIframe();
+    await expect(iframe.locator('[data-block-uid="target"] h5')).toHaveText('Some text to format');
+  });
+});

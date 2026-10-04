@@ -342,6 +342,106 @@ export function evaluateFieldRule(rule, formData, args) {
  * has none, so its non-region value defaults to the string surface.
  * @private
  */
+/**
+ * The element types in a slate value, in document order (a node before the
+ * nodes inside it): `[p, strong]` for a paragraph with bold text in it. Text
+ * leaves have no type and are not listed.
+ * @private
+ */
+function slateElementTypes(value) {
+  const out = [];
+  const walk = (nodes) => {
+    for (const n of nodes || []) {
+      if (n && typeof n === 'object' && Array.isArray(n.children)) {
+        if (typeof n.type === 'string') out.push(n.type);
+        walk(n.children);
+      }
+    }
+  };
+  walk(value);
+  return out;
+}
+
+/** A slate value: a non-empty list of element nodes. @private */
+function isSlateValue(value) {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((n) => n && typeof n === 'object' && Array.isArray(n.children))
+  );
+}
+
+/**
+ * The element types of every slate field a block holds — its own fields only;
+ * the blocks inside a container are visited as blocks in their own right.
+ *
+ * Read off the VALUE: a rule about another block has no schema for it (only
+ * the current block's is in `args.schema`), and a slate value is unambiguous
+ * by shape — a list of nodes that each have `children`.
+ * @private
+ */
+function blockStyles(block) {
+  if (!block || typeof block !== 'object') return [];
+  const out = [];
+  for (const [key, value] of Object.entries(block)) {
+    if (key === 'blocks' || key === 'blocks_layout') continue;
+    if (isSlateValue(value)) out.push(...slateElementTypes(value));
+  }
+  return out;
+}
+
+/**
+ * The page's blocks in READING ORDER: the order the page lays them out —
+ * regions in the order the parent's data lists them, each region's blocks in
+ * order, and a container before the blocks inside it. Built from the block
+ * path map (every block's parent and region) and the parents' own layout.
+ * Cached per path map: the map is rebuilt whenever the structure changes.
+ * @private
+ */
+const readingOrderCache = new WeakMap();
+
+function readingOrder(pageFormData, blockPathMap, blockData) {
+  if (!blockPathMap || !pageFormData) return null;
+  const cached = readingOrderCache.get(blockPathMap);
+  if (cached) return cached;
+  const children = new Map();
+  for (const [id, entry] of Object.entries(blockPathMap)) {
+    if (id === '_schemas' || !entry || typeof entry !== 'object' || !entry.parentId) continue;
+    if (!children.has(entry.parentId)) children.set(entry.parentId, []);
+    children.get(entry.parentId).push(id);
+  }
+  const placeOf = (parentId, id) => {
+    const entry = blockPathMap[id];
+    const parent = parentId === PAGE_BLOCK_UID ? pageFormData : blockData(parentId);
+    const holder = (entry.regionPath || []).reduce((n, k) => (n == null ? n : n[k]), parent);
+    const regions = Object.keys(holder?.blocks_layout || {});
+    if (entry.isObjectListItem) {
+      const tail = entry.path[entry.path.length - 1];
+      const rank = Object.keys(holder || {}).indexOf(entry.region);
+      return [regions.length + Math.max(rank, 0), typeof tail === 'number' ? tail : 0];
+    }
+    return [
+      Math.max(regions.indexOf(entry.region), 0),
+      (holder?.blocks_layout?.[entry.region] || []).indexOf(id),
+    ];
+  };
+  const order = [];
+  const visit = (parentId) => {
+    const kids = (children.get(parentId) || [])
+      .map((id) => [id, placeOf(parentId, id)])
+      .sort((a, b) => a[1][0] - b[1][0] || a[1][1] - b[1][1]);
+    for (const [id] of kids) {
+      order.push(id);
+      visit(id);
+    }
+  };
+  visit(PAGE_BLOCK_UID);
+  readingOrderCache.set(blockPathMap, order);
+  return order;
+}
+
+const READING_ORDER_FIELDS = /^@(styles|types)(Before|After)$/;
+
 function resolveWhenField(fieldPath, formData, args) {
   const hydraContext = contextProvider?.();
   const blockPathMap = args?.blockPathMap || hydraContext?.blockPathMap;
@@ -372,6 +472,32 @@ function resolveWhenField(fieldPath, formData, args) {
   // (every comparison false), never a throw. Pass 2 re-runs the enhancer WITH the
   // blockPathMap, where `../@index` resolves to the parent block and this reads
   // its real index. So strip any unresolved leading `../` before matching.
+  // Reading-order surfaces — what comes before / after this block on the page,
+  // nearest first: `@stylesBefore`/`@stylesAfter` list the slate element types
+  // of that text, `@typesBefore`/`@typesAfter` the block types. They read the
+  // whole page, so they need the path map and the page's data; without them
+  // (buildBlockPathMap's generic first pass) the answer is unknown — unset.
+  const readingField = fieldName.replace(/^(?:\.\.\/)+/, '').match(READING_ORDER_FIELDS);
+  if (readingField) {
+    const pageFormData = args?.pageFormData || hydraContext?.formData;
+    const dataOf = (id) =>
+      liveBlockDataProvider
+        ? liveBlockDataProvider(id, { formData: pageFormData, blockPathMap })
+        : blockFromPath(pageFormData, blockPathMap, id);
+    const order = readingOrder(pageFormData, blockPathMap, dataOf);
+    const at = order ? order.indexOf(targetBlockId) : -1;
+    if (at < 0) return { kind: 'unset', fieldPath };
+    const [, what, side] = readingField;
+    const ids = side === 'Before' ? order.slice(0, at).reverse() : order.slice(at + 1);
+    const value = ids.flatMap((id) => {
+      const data = dataOf(id);
+      if (what === 'types') return [getBlockType(data)];
+      const styles = blockStyles(data);
+      return side === 'Before' ? styles.reverse() : styles;
+    });
+    return { kind: 'array', value, fieldPath };
+  }
+
   if (fieldName === '@index' || fieldName.replace(/^(?:\.\.\/)+/, '') === '@index') {
     const p = blockPathMap?.[targetBlockId]?.path;
     const last = Array.isArray(p) && p.length ? p[p.length - 1] : undefined;
@@ -400,6 +526,12 @@ function resolveWhenField(fieldPath, formData, args) {
   // name never contains a dot, so the split is unambiguous.
   const [headField, ...valuePath] = fieldName.split('.');
   if (valuePath.length > 0) fieldName = headField;
+
+  // `<field>@styles` — the element types in a slate field, in document order.
+  if (fieldName.endsWith('@styles')) {
+    const value = block ? getFieldValue(block, fieldName.slice(0, -'@styles'.length)) : undefined;
+    return { kind: 'array', value: slateElementTypes(value), fieldPath };
+  }
 
   const def = schema ? getFieldDef(schema, fieldName) : undefined;
 
@@ -618,6 +750,8 @@ function toRegExp(op, operand) {
  *   (+ inverses)
  *   regex / notRegex  — string: matches a pattern (`'re'` or `{ pattern, flags }`)
  *   gt/gte/lt/lte     — number: compare · array: COUNT its items
+ *   firstOf           — array: narrow to its first item in the set; the other
+ *                       operators then apply to that item (unset when none)
  * @private
  */
 function evaluateOperators(surface, operators) {
@@ -631,6 +765,22 @@ function evaluateOperators(surface, operators) {
     if ('isSet' in operators) return operators.isSet === false;
     return false;
   }
+  // firstOf — narrow a list to its first item that is in the set; the other
+  // operators then apply to that item ("the nearest heading before me is an
+  // h2"). No such item is unset, so only the presence questions can match.
+  if ('firstOf' in operators) {
+    assertKind('firstOf', surface, ['array']);
+    const set = requireSet('firstOf', operators.firstOf);
+    const found = value.find((v) => set.includes(v));
+    const { firstOf: _firstOf, ...rest } = operators;
+    return evaluateOperators(
+      found === undefined
+        ? { kind: 'unset', fieldPath: surface.fieldPath }
+        : { kind: 'string', value: found, fieldPath: surface.fieldPath },
+      rest,
+    );
+  }
+
   const {
     is,
     isNot,

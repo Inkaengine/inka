@@ -1,0 +1,27 @@
+{
+  "@id": "http://localhost:8888/block-formats-page",
+  "@type": "Document",
+  "UID": "block-formats-page-uid",
+  "id": "block-formats-page",
+  "title": "Block Formats Page",
+  "description": "The test frontend declares settings.slate.blockFormats on this page only: the format dropdown offers exactly the declared formats, with their labels and icons, in their order, filtered by the region's allowed styles.",
+  "review_state": "published",
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "target": {
+      "@type": "slate",
+      "value": [{ "type": "p", "children": [{ "text": "Some text to format" }] }],
+      "plaintext": "Some text to format"
+    }
+  },
+  "blocks_layout": {
+    "items": ["title-block", "target"]
+  }
+}
