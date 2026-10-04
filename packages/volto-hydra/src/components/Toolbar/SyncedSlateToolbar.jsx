@@ -10,7 +10,7 @@ import slateTransforms, { withEmptyInlineRemoval } from '../../utils/slateTransf
 import { syncCreateSlateBlock } from '@plone/volto-slate/utils/volto-blocks';
 import { getBlockById, updateBlockById, getResolvedSchema } from '../../utils/blockPath';
 import { calculateDragHandlePosition, PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef } from '@volto-hydra/helpers';
+import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef, isStarterUiField } from '@volto-hydra/helpers';
 import { isStyleAllowed } from '../../../../hydra-js/slateStyles.js';
 import { blockFormatButtons, paragraphStyleItems } from '../../utils/blockFormats';
 import { useDispatch, useSelector } from 'react-redux';
@@ -2125,8 +2125,9 @@ const SyncedSlateToolbar = ({
 
     {/* Starter UI Overlay - for blocks with empty required fields */}
     {blockPathMap?.[selectedBlock]?.emptyRequiredFields?.map(({ fieldName, fieldDef }) => {
-      // For now, only render for object_browser link fields
-      if (fieldDef?.widget !== 'object_browser' || fieldDef?.mode !== 'link') {
+      // Only fields filled through the starter UI; the bridge shows the
+      // others on the canvas (see isStarterUiField).
+      if (!isStarterUiField(fieldDef)) {
         return null;
       }
 

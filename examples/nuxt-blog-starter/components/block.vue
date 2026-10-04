@@ -32,8 +32,8 @@
       </template>
       <img v-else-if="isInListing" data-edit-media="url" src="/placeholder.svg"
         :alt="block.alt" class="w-full h-48 object-cover rounded bg-gray-200" />
-      <div v-else data-edit-media="url" class="w-full h-48 bg-gray-100 rounded flex items-center justify-center text-gray-400">
-      </div>
+      <!-- Otherwise no image ⇒ no element (#296). `url` is required, so while
+           editing the bridge hands an empty one a stand-in image to click. -->
     </template>
   </div>
 

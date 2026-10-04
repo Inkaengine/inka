@@ -3185,6 +3185,19 @@ export function isBlockInEditedTemplate(blockData, templateEditMode) {
 }
 
 /**
+ * Is an empty required field filled through the admin's block-level STARTER UI
+ * (a "pick a target" overlay) rather than an element on the canvas?
+ *
+ * Today that is a required link (object_browser in link mode, a teaser's
+ * `href`). The admin draws the starter UI for these, and the bridge leaves them
+ * out when it shows empty required fields on the canvas — one answer, so the
+ * two never offer both, or neither.
+ */
+export function isStarterUiField(fieldDef) {
+  return fieldDef?.widget === 'object_browser' && fieldDef?.mode === 'link';
+}
+
+/**
  * Check if a block should be readonly. Shared by the admin (sidebar/toolbar) and
  * the hydra.js Bridge.
  *

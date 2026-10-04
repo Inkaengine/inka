@@ -255,7 +255,7 @@ function syncCnavOpenState() {
  * @param {Object} block - Block data
  * @returns {Promise<HTMLElement>} Rendered block element
  */
-async function renderBlock(blockId, block) {
+async function renderBlock(blockId, block, { inListing = false } = {}) {
     const wrapper = document.createElement('div');
     wrapper.setAttribute('data-block-uid', blockId);
     // NOTE: a real frontend does NOT mark template read-only — hydra owns that
@@ -281,7 +281,7 @@ async function renderBlock(blockId, block) {
             wrapper.innerHTML = renderTextareaBlock(block);
             break;
         case 'image':
-            wrapper.innerHTML = renderImageBlock(block);
+            wrapper.innerHTML = renderImageBlock(block, { inListing });
             break;
         case 'video':
             wrapper.innerHTML = renderVideoBlock(block);
@@ -1069,9 +1069,16 @@ function renderSummaryItemBlock(block, blockUid) {
  * @param {Object} block - Image block data
  * @returns {string} HTML string
  */
-function renderImageBlock(block) {
+function renderImageBlock(block, { inListing = false } = {}) {
     tfLog('renderImageBlock:', { url: block.url, type: typeof block.url, hasImageScales: !!block.url?.image_scales });
-    const imageSrc = getImageUrl(block.url) || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23e5e7eb%22/%3E%3C/svg%3E';
+    // An image block with no image renders nothing (#296: no data ⇒ no element).
+    // `url` is required, so while editing the bridge hands an empty one a
+    // stand-in image to click; a visitor sees nothing. A LISTING item is different:
+    // a result with no image keeps its image slot so the cards line up (as the
+    // Nuxt frontend's isInListing placeholder does).
+    const imageSrc = getImageUrl(block.url)
+        || (inListing ? 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23e5e7eb%22/%3E%3C/svg%3E' : '');
+    if (!imageSrc) return '';
     // Volto's image block uses 'placeholder' for alt text, not 'alt'
     const alt = block.placeholder || block.alt || '';
     const href = getLinkUrl(block.href);
@@ -2026,7 +2033,7 @@ async function renderListingBlock(block, blockId) {
 
     for (const childBlock of expandedItems) {
         if (!childBlock) continue;
-        const itemEl = await renderBlock(childBlock['@uid'], childBlock);
+        const itemEl = await renderBlock(childBlock['@uid'], childBlock, { inListing: true });
         if (itemEl) {
             fragment.appendChild(itemEl);
         }
