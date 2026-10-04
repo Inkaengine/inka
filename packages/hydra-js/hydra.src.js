@@ -12196,7 +12196,12 @@ export class Bridge {
     const widget = def?.widget;
     fieldDef = def;
 
-    if (widget === 'object_browser') return [{ '@id': Z, title: Z }];
+    // An image picker (object_browser in image mode, e.g. a teaser's
+    // preview_image) is rendered as an <img> from its @id, so its @id must be an
+    // image that loads — a ZWS @id renders a broken image.
+    if (widget === 'object_browser') {
+      return [{ '@id': fieldDef?.mode === 'image' ? Bridge.REVEAL_PIXEL : Z, title: Z }];
+    }
     if (widget === 'image' || fieldDef?.type === 'image') return Bridge.REVEAL_PIXEL;
     if (widget === 'url' || fieldDef?.type === 'url') return Z;
     if (isSlateFieldType(fieldType)) return [{ type: 'p', children: [{ text: Z }] }];
@@ -12210,7 +12215,7 @@ export class Bridge {
     if (value === Z || value === Bridge.REVEAL_PIXEL) return true;
     if (Array.isArray(value) && value.length === 1) {
       const only = value[0];
-      if (only && only['@id'] === Z) return true;
+      if (only && (only['@id'] === Z || only['@id'] === Bridge.REVEAL_PIXEL)) return true;
       if (only?.children?.length === 1 && only.children[0]?.text === Z) return true;
     }
     return false;

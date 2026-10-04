@@ -79,6 +79,57 @@ test.describe('Optional fields — empty means absent (#296)', () => {
 });
 
 /**
+ * The same contract for a teaser's image. `preview_image` is an object_browser
+ * field in image mode, a different sentinel shape from hero's string `image`.
+ * The teaser used to render a grey "Click to add image" box whenever it had no
+ * image — in view markup too, so visitors saw it on published pages.
+ */
+test.describe('Optional fields — teaser image (#296)', () => {
+  const IMAGE = '[data-edit-media="preview_image"]';
+
+  test('a teaser with no image renders no image element', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/optional-fields-page');
+
+    const iframe = helper.getIframe();
+    await expect(
+      iframe.locator(`[data-block-uid="teaser-full"] ${IMAGE}`),
+      'a teaser with an image should render it — if this fails the selector or fixture is wrong, not the feature',
+    ).toHaveCount(1);
+    await expect(
+      iframe.locator(`[data-block-uid="teaser-empty"] ${IMAGE}`),
+      'a teaser with no image must not render an image element (no "Click to add image" stand-in)',
+    ).toHaveCount(0);
+  });
+
+  test('the reveal toggle gives an empty teaser image an element to click', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/optional-fields-page');
+
+    const iframe = helper.getIframe();
+    await helper.clickBlockInIframe('teaser-empty');
+    await expect(iframe.locator(`[data-block-uid="teaser-empty"] ${IMAGE}`)).toHaveCount(0);
+
+    const toggle = page.locator('.optional-fields-toggle');
+    await expect(toggle, 'quanta toolbar should offer the reveal toggle').toBeVisible({ timeout: 5000 });
+    await toggle.click();
+
+    const revealed = iframe.locator(`[data-block-uid="teaser-empty"] ${IMAGE}`);
+    await expect(revealed, 'preview_image should be revealed after pressing the toggle').toHaveCount(1);
+    const box = await revealed.boundingBox();
+    expect(box && box.width > 0 && box.height > 0, `revealed image must be a clickable target, got ${JSON.stringify(box)}`).toBe(true);
+    // A broken <img> also has a box (the browser's broken-image icon): the reveal
+    // must hand the renderer something that actually loads.
+    const loaded = await revealed.evaluate((el) => (el.tagName === 'IMG'
+      ? { ok: el.complete && el.naturalWidth > 0, src: el.getAttribute('src') }
+      : { ok: true, src: null }));
+    expect(loaded.ok, `revealed image must load, src=${loaded.src}`).toBe(true);
+  });
+});
+
+/**
  * The reveal affordance itself. Reveal is ALWAYS EXPLICIT — no auto-reveal on
  * selection or on insert — so an all-empty block stays an empty box until the
  * editor presses the toggle.

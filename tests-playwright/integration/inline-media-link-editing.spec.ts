@@ -992,23 +992,29 @@ test.describe('Slider image positioning', () => {
     const slideBox = await slide1.boundingBox();
     expect(slideBox).not.toBeNull();
 
+    // Get iframe position for debugging
+    const iframeBox = await iframeElement.boundingBox();
+    expect(iframeBox).not.toBeNull();
+
+    // Click on the slide to select it
+    // Use force:true in case the edit-media overlay intercepts clicks
+    await slide1.click({ force: true });
+
+    // The slide has no image, so it renders no image element (#296) until the
+    // editor reveals its empty fields with the toolbar toggle.
+    const mediaField = slide1.locator('[data-edit-media="preview_image"]');
+    await expect(mediaField).toHaveCount(0);
+    await page.locator('.optional-fields-toggle').click();
+    await expect(mediaField).toHaveCount(1);
+
     // Try to get the media field element's box if it has dimensions
     // Some frontends use absolute inset-0 (zero dimensions), others have explicit dimensions
-    const mediaField = slide1.locator('[data-edit-media="preview_image"]');
     const mediaFieldBox = await mediaField.boundingBox();
 
     // Determine the expected position - use media field if it has dimensions, else slide
     const expectedBox = (mediaFieldBox && mediaFieldBox.width > 0 && mediaFieldBox.height > 0)
       ? mediaFieldBox
       : slideBox;
-
-    // Get iframe position for debugging
-    const iframeBox = await iframeElement.boundingBox();
-    expect(iframeBox).not.toBeNull();
-
-    // Click on the slide to select it and show the starter widget
-    // Use force:true in case the edit-media overlay intercepts clicks
-    await slide1.click({ force: true });
 
     // Wait for the starter widget (empty image overlay) to appear
     const starterWidget = page.locator('.empty-image-overlay');
@@ -1204,7 +1210,10 @@ test.describe('Teaser starter UI and overwrite', () => {
     // After enabling customize, block should no longer be readonly
     await expect(filledTeaser).not.toHaveAttribute('data-block-readonly', { timeout: 10000 });
 
-    // Media overlay should be visible since there's no block-level preview_image
+    // There's no block-level preview_image, so the teaser renders no image element
+    // (#296) until the editor reveals its empty fields; then the add-image overlay shows.
+    await expect(filledTeaser.locator('[data-edit-media="preview_image"]')).toHaveCount(0);
+    await page.locator('.optional-fields-toggle').click();
     const mediaOverlay = page.locator('.empty-image-overlay');
     await expect(mediaOverlay).toBeVisible({ timeout: 5000 });
 
