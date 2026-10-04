@@ -53,10 +53,13 @@ export default function SwiperSlider({ slides, apiUrl, imageProps, getUrl }) {
         return (
         <SwiperSlide key={slide["@id"] ?? `${slide["@uid"] ?? "slide"}-${slideIndex}`}>
           <div data-block-uid={slide["@uid"]} data-block-add="right">
+            {/* No image ⇒ no image element (#296): the dark box is the slide's
+                design when it has no picture, not an edit target — the reveal
+                toggle adds the image while editing. */}
             {mediaUrl ? (
               <img data-edit-media={mediaField} src={mediaUrl} alt="" style={{ width: "100%" }} />
             ) : (
-              <div data-edit-media={mediaField} style={{ width: "100%", height: "300px", backgroundColor: "#374151" }} />
+              <div style={{ width: "100%", height: "300px", backgroundColor: "#374151" }} />
             )}
             {slide.head_title && <div data-edit-text="head_title">{slide.head_title}</div>}
             {slide.title && <h2 data-edit-text="title">{slide.title}</h2>}

@@ -23,7 +23,10 @@
   <!-- Image -->
   <f7-block v-else-if="block['@type'] == 'image'" :data-block-uid="block_uid"
             :class="['image-size-' + (block.size || 'l'), 'image-align-' + (block.align || 'center')]">
-    <a v-if="block.href" :href="getUrl(block.href)" data-edit-link="href">
+    <!-- No image ⇒ no element (#296). `url` is required, so while editing the
+         bridge hands an empty one a stand-in image to click; a visitor sees nothing. -->
+    <template v-if="!imageProps(block).url"></template>
+    <a v-else-if="block.href" :href="getUrl(block.href)" data-edit-link="href">
       <img v-for="props in [imageProps(block)]" :key="props.url" data-edit-media="url"
            :src="props.url" :srcset="props.srcset || undefined" :sizes="props.sizes || undefined"
            :alt="block.alt || ''" />
@@ -48,8 +51,8 @@
 
   <!-- Hero -->
   <div v-else-if="block['@type'] == 'hero'" :data-block-uid="block_uid" class="hero-block">
+    <!-- No image ⇒ no element (#296); the reveal toggle adds one while editing. -->
     <img v-if="block.image" class="hero-image" data-edit-media="image" :src="getImageUrl(block.image)" alt="Hero image" />
-    <div v-else class="hero-image hero-placeholder" data-edit-media="image"></div>
     <h1 class="hero-heading" data-edit-text="heading">{{ block.heading }}</h1>
     <p class="hero-subheading" data-edit-text="subheading">{{ block.subheading }}</p>
     <div class="hero-description" data-edit-text="description">
@@ -78,9 +81,7 @@
         </a>
       </f7-card-header>
     </template>
-    <div v-else data-edit-media="preview_image" style="height:200px; background:#e5e5e5; display:flex; align-items:center; justify-content:center; cursor:pointer;">
-      <span style="color:#999">Click to add image</span>
-    </div>
+    <!-- No image ⇒ no element (#296); the reveal toggle adds one while editing. -->
     <f7-card-content>
       <div v-if="block.head_title" data-edit-text="head_title">{{ block.head_title }}</div>
       <h3 v-if="getTeaserTitle(block)" :key="`title-${block.overwrite}`" data-edit-text="title">

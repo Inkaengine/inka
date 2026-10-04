@@ -10,11 +10,13 @@ const href = block.href?.[0]?.['@id'] || block.href;
 const imgSrc = getImageUrl(block.url);
 ---
 <div>
-  {href ? (
+  {/* No image ⇒ no element. While editing, Inka hands an empty image a
+      stand-in to click; a visitor sees nothing. */}
+  {imgSrc && (href ? (
     <a href={href} data-edit-link="href">
       <img data-edit-media="url" src={imgSrc} alt={block.alt} />
     </a>
   ) : (
     <img data-edit-media="url" src={imgSrc} alt={block.alt} />
-  )}
+  ))}
 </div>
