@@ -209,7 +209,37 @@ initBridge({
 });
 ```
 
-The dropdown then lists Paragraph and exactly these, in this order, filtered by the region's `allowedStyles`. An icon is **data** — a `viewBox` and path outlines — drawn by the editor; it is never markup, because the editor runs in a different origin from your frontend and must not run what it sends. With no `blockFormats`, the dropdown is volto-slate's, as before.
+The dropdown then lists Paragraph and exactly these, in this order, filtered by the region's `allowedStyles`, followed by the design system's paragraph styles (below). An icon is **data** — a `viewBox` and path outlines — drawn by the editor; it is never markup, because the editor runs in a different origin from your frontend and must not run what it sends. With no `blockFormats`, the dropdown is volto-slate's, as before.
+
+### Paragraph styles and text styles
+
+A design system's own styles are declared in `styleMenu`, by CSS class:
+
+### Javascript
+
+```javascript
+initBridge({
+    voltoConfig: {
+        settings: {
+            slate: {
+                styleMenu: {
+                    // A KIND of paragraph: one per block, chosen like a heading.
+                    blockStyles: [
+                        { cssClass: 'lead', label: 'Lead', icon: { viewBox: '0 0 24 24', paths: ['M…'] } },
+                        { cssClass: 'aside', label: 'Aside', type: 'div' },
+                    ],
+                    // Applied to selected text; several can stack.
+                    inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }],
+                },
+            },
+        },
+    },
+});
+```
+
+On the canvas toolbar, **paragraph styles are in the format dropdown**, after the formats. Choosing one makes the block the cursor is in a `p` (or the entry's `type`) carrying that class, replacing any other paragraph style; choosing a heading or Paragraph removes it. The **style menu** there holds the text (inline) styles only, and is not shown when there are none. The sidebar's toolbar, which has no format dropdown, offers both groups in its style menu.
+
+Either kind may take an `icon`, in the same data shape as a format's. Stored content is unchanged: a style is the element's `styleName`.
 
 ### What a disallowed style becomes
 

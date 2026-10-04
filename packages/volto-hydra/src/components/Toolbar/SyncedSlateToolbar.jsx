@@ -12,7 +12,7 @@ import { getBlockById, updateBlockById, getResolvedSchema } from '../../utils/bl
 import { calculateDragHandlePosition, PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef } from '@volto-hydra/helpers';
 import { isStyleAllowed } from '../../../../hydra-js/slateStyles.js';
-import { blockFormatButtons } from '../../utils/blockFormats';
+import { blockFormatButtons, paragraphStyleItems } from '../../utils/blockFormats';
 import { useDispatch, useSelector } from 'react-redux';
 import FormatDropdown from './FormatDropdown';
 import DropdownMenu from './DropdownMenu';
@@ -1261,7 +1261,15 @@ const SyncedSlateToolbar = ({
     // button: a plain format button is already gated by name above, but the
     // style menu holds MANY styles behind one button and has to filter its own
     // entries. Ignored by the buttons that don't take it.
-    const element = <Btn slateRules={slateRules} />;
+    // The style menu here offers TEXT styles only: this toolbar's format
+    // dropdown carries the paragraph styles (see below). The sidebar's
+    // volto-slate toolbar has no format dropdown, so there it keeps both.
+    const element =
+      name === 'styleMenu' ? (
+        <Btn slateRules={slateRules} inlineOnly />
+      ) : (
+        <Btn slateRules={slateRules} />
+      );
 
     // Check if this is a BlockButton (block-level format like h2, h3, ul, ol)
     // isBlockButton compares element.type to imported BlockButton reference
@@ -1293,6 +1301,13 @@ const SyncedSlateToolbar = ({
       );
       blockButtons.push({ name: f.name, element: <Btn slateRules={slateRules} /> });
     }
+
+  // Paragraph styles (styleMenu.blockStyles) are chosen like a heading — one
+  // kind of paragraph per block, applied where the cursor is — so they are
+  // entries in the same dropdown; the style menu keeps text styles only.
+  for (const item of paragraphStyleItems(config.settings.slate?.styleMenu, { slateRules })) {
+    blockButtons.push({ name: item.name, styleItem: item });
+  }
   }
 
   // Multi-selection: simplified toolbar with drag handle + count

@@ -18,6 +18,8 @@
  * never markup from the frontend: the admin renders an icon's content as HTML,
  * and markup arriving from the iframe would be script running in the admin.
  */
+import { Editor, Element, Transforms } from 'slate';
+
 import { isStyleAllowed } from '../../../hydra-js/slateStyles.js';
 
 const HEADING = /^h[1-6]$/;
@@ -30,7 +32,7 @@ const escapeAttr = (s) =>
     .replace(/>/g, '&gt;');
 
 /** Icon data → the `{ attributes, content }` shape Volto's Icon component draws. */
-function iconOf(icon, type) {
+export function iconOf(icon, type) {
   if (icon === undefined) return undefined;
   if (
     !icon ||
@@ -85,4 +87,69 @@ export function blockFormatButtons(
         ? allowedHeadlineElements
         : undefined,
     }));
+}
+
+/**
+ * The paragraph styles (`styleMenu.blockStyles`) as format-dropdown entries:
+ * { name, cssClass, type, title, icon }. A paragraph style is a KIND of
+ * paragraph — chosen like a heading, one per block — so it belongs beside the
+ * headings, not in the style menu with the text (inline) styles. `type` is the
+ * element it makes: `p` unless the style says otherwise (`type: 'div'`).
+ */
+export function paragraphStyleItems(styleMenu, { slateRules } = {}) {
+  return (styleMenu?.blockStyles || [])
+    .filter(
+      (d) =>
+        isStyleAllowed(`.${d.cssClass}`, slateRules) &&
+        isStyleAllowed(d.type || 'p', slateRules),
+    )
+    .map((d) => ({
+      name: `style-${d.cssClass}`,
+      cssClass: d.cssClass,
+      type: d.type || 'p',
+      title: d.label || d.cssClass,
+      icon: iconOf(d.icon, d.cssClass),
+    }));
+}
+
+/** The highest blocks the selection is in — a cursor is enough. */
+function* selectedBlocks(editor) {
+  yield* Editor.nodes(editor, {
+    mode: 'highest',
+    match: (n) => Element.isElement(n) && Editor.isBlock(editor, n),
+  });
+}
+
+/** Set a block's style classes, removing the key when there are none. */
+function setClasses(editor, path, classes) {
+  if (classes.length) {
+    Transforms.setNodes(editor, { styleName: classes.join(' ') }, { at: path });
+  } else {
+    Transforms.unsetNodes(editor, 'styleName', { at: path });
+  }
+}
+
+/**
+ * Make the block(s) at the cursor `item.type` with paragraph style
+ * `item.cssClass`, replacing any other paragraph style (`allClasses`) and
+ * keeping classes that are not paragraph styles.
+ */
+export function applyParagraphStyle(editor, item, allClasses) {
+  for (const [node, path] of [...selectedBlocks(editor)]) {
+    const keep = (node.styleName || '')
+      .split(/\s+/)
+      .filter((c) => c && !allClasses.includes(c));
+    if (node.type !== item.type)
+      Transforms.setNodes(editor, { type: item.type }, { at: path });
+    setClasses(editor, path, [...keep, item.cssClass]);
+  }
+}
+
+/** Remove paragraph styles from the block(s) at the cursor: a heading or plain paragraph was chosen. */
+export function clearParagraphStyles(editor, allClasses) {
+  for (const [node, path] of [...selectedBlocks(editor)]) {
+    const classes = (node.styleName || '').split(/\s+/).filter(Boolean);
+    const keep = classes.filter((c) => !allClasses.includes(c));
+    if (keep.length !== classes.length) setClasses(editor, path, keep);
+  }
 }

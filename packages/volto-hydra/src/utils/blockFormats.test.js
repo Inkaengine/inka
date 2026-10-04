@@ -12,7 +12,14 @@
  */
 import { describe, test, expect } from 'vitest';
 
-import { blockFormatButtons } from './blockFormats.js';
+import { createEditor, Transforms } from 'slate';
+
+import {
+  applyParagraphStyle,
+  blockFormatButtons,
+  clearParagraphStyles,
+  paragraphStyleItems,
+} from './blockFormats.js';
 
 const H = { viewBox: '0 0 24 24', paths: ['M5 4v16h2v-7h6v7h2V4h-2v7H7V4z'] };
 const formats = [
@@ -102,5 +109,81 @@ describe('blockFormatButtons', () => {
         { slateRules: null },
       ),
     ).toThrow(/paths/);
+  });
+});
+
+// ── paragraph styles in the format dropdown ─────────────────────────────────
+//
+// A paragraph style ("Lead") is a KIND of paragraph, chosen the way a heading
+// is: one per block, applied to the block the cursor is in. It sits in the
+// format dropdown beside the headings; the style menu keeps text (inline)
+// styles only. Stored as before: the block's `styleName`.
+
+const styleMenu = {
+  blockStyles: [
+    { cssClass: 'lead', label: 'Lead', icon: H },
+    { cssClass: 'aside', label: 'Aside', type: 'div' },
+  ],
+  inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }],
+};
+
+const editorWith = (nodes) => {
+  const editor = createEditor();
+  editor.children = nodes;
+  Transforms.select(editor, { path: [0, 0], offset: 0 });
+  return editor;
+};
+
+describe('paragraphStyleItems', () => {
+  test('the paragraph styles, as dropdown entries: label, icon, the type they make', () => {
+    const items = paragraphStyleItems(styleMenu, { slateRules: null });
+    expect(items.map((i) => [i.name, i.cssClass, i.type, i.title])).toEqual([
+      ['style-lead', 'lead', 'p', 'Lead'],
+      ['style-aside', 'aside', 'div', 'Aside'],
+    ]);
+    expect(items[0].icon.content).toContain('<path d=');
+    expect(items[1].icon).toBeUndefined();
+  });
+
+  test('a style the region does not allow is not offered; inline styles never are', () => {
+    const slateRules = { allowedStyles: null, disallowedStyles: ['.aside'] };
+    expect(
+      paragraphStyleItems(styleMenu, { slateRules }).map((i) => i.cssClass),
+    ).toEqual(['lead']);
+  });
+
+  test('no paragraph styles declared, no entries', () => {
+    expect(paragraphStyleItems({}, { slateRules: null })).toEqual([]);
+  });
+});
+
+describe('applyParagraphStyle', () => {
+  const all = ['lead', 'aside'];
+
+  test('makes the block at the cursor that type, with that style — no text selection needed', () => {
+    const editor = editorWith([{ type: 'h2', children: [{ text: 'Hello' }] }]);
+    applyParagraphStyle(editor, { cssClass: 'lead', type: 'p' }, all);
+    expect(editor.children).toEqual([
+      { type: 'p', styleName: 'lead', children: [{ text: 'Hello' }] },
+    ]);
+  });
+
+  test('replaces another paragraph style, and keeps any style that is not one', () => {
+    const editor = editorWith([
+      { type: 'p', styleName: 'aside custom', children: [{ text: 'x' }] },
+    ]);
+    applyParagraphStyle(editor, { cssClass: 'lead', type: 'p' }, all);
+    expect(editor.children[0].styleName).toBe('custom lead');
+  });
+
+  test('choosing a heading or Paragraph clears the paragraph style', () => {
+    const editor = editorWith([
+      { type: 'p', styleName: 'lead', children: [{ text: 'x' }] },
+    ]);
+    clearParagraphStyles(editor, all);
+    expect(editor.children[0]).toEqual({
+      type: 'p',
+      children: [{ text: 'x' }],
+    });
   });
 });

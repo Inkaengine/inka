@@ -44,8 +44,29 @@ describe('StyleDropdown', () => {
     expect(render(<StyleDropdown />).container.innerHTML).toBe('');
   });
 
-  test('renders the trigger once a style is declared', () => {
+  test('on the canvas toolbar (inlineOnly) paragraph styles are not here: the format dropdown has them', () => {
+    // One kind of paragraph per block, like a heading (utils/blockFormats.js).
     withMenu({ blockStyles: [{ cssClass: 'lead', label: 'Lead' }], inlineStyles: [] });
+    expect(render(<StyleDropdown inlineOnly />).container.innerHTML).toBe('');
+  });
+
+  test('the sidebar toolbar, with no format dropdown, still offers paragraph styles', () => {
+    withMenu({ blockStyles: [{ cssClass: 'lead', label: 'Lead' }], inlineStyles: [] });
+    expect(render(<StyleDropdown />).container.querySelector('#style-menu')).not.toBeNull();
+  });
+
+  test('a declared icon is drawn beside the label', () => {
+    withMenu({
+      blockStyles: [],
+      inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap', icon: { viewBox: '0 0 24 24', paths: ['M0 0h24v24H0z'] } }],
+    });
+    const { container } = render(<StyleDropdown />);
+    fireEvent.mouseDown(container.querySelector('#style-menu'));
+    expect(document.querySelector('.inline-style-dropcap [data-icon]')).not.toBeNull();
+  });
+
+  test('renders the trigger once a text style is declared', () => {
+    withMenu({ blockStyles: [], inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }] });
     const { container } = render(<StyleDropdown />);
     expect(container.querySelector('#style-menu')).not.toBeNull();
   });
@@ -79,11 +100,11 @@ describe('StyleDropdown', () => {
 
   test('a style this region disallows is not offered', () => {
     withMenu({
-      blockStyles: [
+      blockStyles: [],
+      inlineStyles: [
         { cssClass: 'lead', label: 'Lead' },
         { cssClass: 'small', label: 'Small' },
       ],
-      inlineStyles: [],
     });
     expect(openedLabels(render(<StyleDropdown slateRules={RULES} />))).toEqual([
       'Lead',
@@ -103,11 +124,11 @@ describe('StyleDropdown', () => {
 
   test('with no rules every declared style is offered, as before', () => {
     withMenu({
-      blockStyles: [
+      blockStyles: [],
+      inlineStyles: [
         { cssClass: 'lead', label: 'Lead' },
         { cssClass: 'small', label: 'Small' },
       ],
-      inlineStyles: [],
     });
     expect(openedLabels(render(<StyleDropdown />))).toEqual(['Lead', 'Small']);
   });

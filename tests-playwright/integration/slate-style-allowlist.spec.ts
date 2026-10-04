@@ -198,17 +198,41 @@ test.describe('design-system style menu', () => {
     const editor = await helper.getEditorLocator('target');
     await editor.click();
 
-    const trigger = page.locator('.quanta-toolbar #style-menu');
-    await expect(trigger, 'the style menu is in toolbarButtons — it should render').toBeVisible();
-    await trigger.click();
-
-    const lead = page.locator('.block-style-lead');
+    // A paragraph style is a kind of paragraph, chosen like a heading: it is in
+    // the canvas toolbar's FORMAT dropdown, applied where the cursor is.
+    const formats = page.locator('.quanta-toolbar .format-dropdown-trigger');
+    await expect(formats).toBeVisible();
+    await formats.click();
+    const lead = page.locator('.format-dropdown-menu [data-style="lead"]');
     await expect(lead).toBeVisible();
     await lead.click();
 
     // The class the design system styles on, on the element the author edited.
-    await expect(iframe.locator('[data-block-uid="target"] .lead, [data-block-uid="target"].lead'))
-      .toHaveCount(1, { timeout: 5000 });
+    const styled = iframe.locator('[data-block-uid="target"] .lead, [data-block-uid="target"].lead');
+    await expect(styled).toHaveCount(1, { timeout: 5000 });
+
+    // Choosing a heading replaces it: one kind of block at a time.
+    await formats.click();
+    await page.locator('.format-dropdown-menu [data-format="h2"]').click();
+    await expect(iframe.locator('[data-block-uid="target"] h2')).toHaveCount(1, { timeout: 5000 });
+    await expect(styled).toHaveCount(0);
+  });
+
+  test('the canvas style menu offers text styles only', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    await helper.clickBlockInIframe('target');
+    const editor = await helper.getEditorLocator('target');
+    await editor.click();
+
+    const trigger = page.locator('.quanta-toolbar #style-menu');
+    await expect(trigger, 'the fixture declares a text style, so the menu renders').toBeVisible();
+    await trigger.click();
+    await expect(page.locator('.style-dropdown-menu .inline-style-dropcap')).toBeVisible();
+    await expect(page.locator('.style-dropdown-menu .block-style-lead')).toHaveCount(0);
   });
 });
 
@@ -522,9 +546,10 @@ test.describe('block formats declared as data', () => {
 
     const titles = await formatOptions(page, helper, 'target');
     // Paragraph is always first; then the declared formats in their order —
-    // h5 included, which volto-slate has no button for. Nothing of volto-slate's
-    // own ("Title", "Subtitle", lists) is left.
-    expect(titles).toEqual(['Paragraph', 'Heading 2', 'Heading 3', 'Heading 5']);
+    // h5 included, which volto-slate has no button for — then the paragraph
+    // styles (this frontend declares "Lead"). Nothing of volto-slate's own
+    // ("Title", "Subtitle", lists) is left.
+    expect(titles).toEqual(['Paragraph', 'Heading 2', 'Heading 3', 'Heading 5', 'Lead']);
     await expect(page.locator('.format-dropdown-menu [data-format="h2"] svg path')).toHaveCount(1);
   });
 
