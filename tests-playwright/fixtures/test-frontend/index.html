@@ -549,6 +549,10 @@
                     // /_test_data depending on how the mock API is mounted, so
                     // match on the page id rather than one of the two prefixes.
                     const restrictStyles = /\/restricted-styles-page(\/|$)/.test(pagePath);
+                    // Formats declared as data (settings.slate.blockFormats): the
+                    // dropdown lists exactly these, by these labels, with h5 offered
+                    // although volto-slate has no button for it.
+                    const declareFormats = /\/block-formats-page(\/|$)/.test(pagePath);
                     // A hero with a plain list of tags (`subBlocks: false`): edited
                     // in the sidebar, not a region of sub-blocks.
                     const plainListField = /\/object-list-plain-page(\/|$)/.test(pagePath);
@@ -728,6 +732,13 @@
                                     // the restriction specs vary, and every other spec
                                     // must keep seeing an unrestricted editor.
                                     ...(restrictStyles ? { styleAliases: { b: 'strong' } } : {}),
+                                    ...(declareFormats ? {
+                                        blockFormats: [
+                                            { type: 'h2', label: 'Heading 2', icon: { viewBox: '0 0 24 24', paths: ['M3 4h2v7h6V4h2v16h-2v-7H5v7H3z'] } },
+                                            { type: 'h3', label: 'Heading 3', icon: { viewBox: '0 0 24 24', paths: ['M3 4h2v7h6V4h2v16h-2v-7H5v7H3z'] } },
+                                            { type: 'h5', label: 'Heading 5' },
+                                        ],
+                                    } : {}),
                                 },
                             },
                         },

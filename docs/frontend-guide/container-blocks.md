@@ -187,6 +187,60 @@ Rules fold from the outermost region inwards:
 - **\`disallowedStyles\` accumulates.** A style banned at the page level stays banned for everything nested inside it — a child region cannot re-enable it by listing it in `allowedStyles`.
 - **\`allowedStyles\` replaces.** A nested region restates the list for its own subtree, and may deliberately widen it — an article region can allow `h4` even when the page's default list stops at `h3`.
 
+### Naming the formats: `blockFormats`
+
+The block-format dropdown otherwise names its entries — and decides which exist — from volto-slate's own buttons ("Title", "Subtitle", …). Declare the formats as data to choose their labels, icons and order, and to offer a format volto-slate has no button for:
+
+### Javascript
+
+```javascript
+initBridge({
+    voltoConfig: {
+        settings: {
+            slate: {
+                blockFormats: [
+                    { type: 'h2', label: 'Heading 2', icon: { viewBox: '0 0 24 24', paths: ['M3 4h2v7h6V4h2v16h-2v-7H5v7H3z'] } },
+                    { type: 'h3', label: 'Heading 3' },
+                    { type: 'blockquote', label: 'Quote' },
+                ],
+            },
+        },
+    },
+});
+```
+
+The dropdown then lists Paragraph and exactly these, in this order, filtered by the region's `allowedStyles`, followed by the design system's paragraph styles (below). An icon is **data** — a `viewBox` and path outlines — drawn by the editor; it is never markup, because the editor runs in a different origin from your frontend and must not run what it sends. With no `blockFormats`, the dropdown is volto-slate's, as before.
+
+### Paragraph styles and text styles
+
+A design system's own styles are declared in `styleMenu`, by CSS class:
+
+### Javascript
+
+```javascript
+initBridge({
+    voltoConfig: {
+        settings: {
+            slate: {
+                styleMenu: {
+                    // A KIND of paragraph: one per block, chosen like a heading.
+                    blockStyles: [
+                        { cssClass: 'lead', label: 'Lead', icon: { viewBox: '0 0 24 24', paths: ['M…'] } },
+                        { cssClass: 'aside', label: 'Aside', type: 'div' },
+                    ],
+                    // Applied to selected text; several can stack.
+                    inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }],
+                },
+            },
+        },
+    },
+});
+```
+
+On the canvas toolbar, **paragraph styles are in the format dropdown**, after the formats. Choosing one makes the block the cursor is in a `p` (or the entry's `type`) carrying that class, replacing any other paragraph style; choosing a heading or Paragraph removes it. The **style menu** there holds the text (inline) styles only, and is not shown when there are none. The sidebar's toolbar, which has no format dropdown, offers both groups in its style menu.
+
+Either kind may take an `icon`, in the same data shape as a format's. Stored content is unchanged: a style is the element's `styleName`.
+
 ### What a disallowed style becomes
 
 `config.settings.slate.styleAliases` maps a style to what it should become. It is a rename, not a permission — one global map, because a downgrade target has to be valid wherever the downgrade lands:

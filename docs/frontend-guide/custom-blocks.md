@@ -473,7 +473,7 @@ const bridge = initBridge({
 - `'parent.child': false` — hide a field inside a widget's inner schema
 - `{ when: { ... }, error: 'message' }` — mark the field invalid when the condition holds
 
-Condition operators: `is`, `isNot`, `isSet`, `isNotSet`, `oneOf`, `notOneOf`, `contains`, `notContains`, `containsAny`, `notContainsAny`, `containsAll`, `notContainsAll`, `regex`, `notRegex`, `gt`, `gte`, `lt`, `lte`. A bare value (`{ mode: 'advanced' }`) is shorthand for `is`. An operand may be a literal or `{ field: '<path>' }` — see [compare against another field](#compare-against-another-field).
+Condition operators: `is`, `isNot`, `isSet`, `isNotSet`, `oneOf`, `notOneOf`, `contains`, `notContains`, `containsAny`, `notContainsAny`, `containsAll`, `notContainsAll`, `regex`, `notRegex`, `gt`, `gte`, `lt`, `lte`, `firstOf`. A bare value (`{ mode: 'advanced' }`) is shorthand for `is`. An operand may be a literal or `{ field: '<path>' }` — see [compare against another field](#compare-against-another-field).
 
 Each operator is driven by the field's **declared type**, never the value shape. A field reduces to one of four **surfaces**, and an operator used off its surface raises an error (a mis-authored rule fails loudly rather than silently mismatching):
 
@@ -641,6 +641,50 @@ schemaEnhancer: {
 A block that isn't an `object_list` item yields an unset `@index`, so comparisons are simply false (never an error). `lt: 1` is "first"; `lt: 2` is "first two", etc.
 
 Field paths: `../field` for the parent block's field (and `@index` / `../@index` for position), `/field` for a page metadata field.
+
+### Reading order and text structure
+
+A rule can also ask what a block's **text** is made of, and what comes **before or after it** on the page. These virtual fields are lists (an `array` surface), so `contains`, `containsAny` and the counts work on them:
+
+- **`<field>@styles`** — the element types in a slate field, in document order: a paragraph with bold text in it is `['p', 'strong']`.
+- **`@stylesBefore`** / **`@stylesAfter`** — the element types of all text before / after this block, **nearest first**.
+- **`@typesBefore`** / **`@typesAfter`** — the block types before / after this block, nearest first.
+
+Before and after follow the page's **reading order**: regions in the order the parent's data lists them, each region's blocks in order, and a container before the blocks inside it — across every region and container on the page, not just this block's siblings.
+
+**`firstOf: [types]`** narrows a list to its first item that is in the set, and the other operators then apply to that one item; when no item is in the set it is unset, so only `isSet` / `isNotSet` can match. "The nearest heading before me" is `{ '@stylesBefore': { firstOf: ['h2', 'h3', 'h4'] } }`.
+
+### Javascript
+
+```javascript
+schemaEnhancer: {
+    fieldRules: {
+        value: [
+            // A level-3 heading needs a level-2 heading somewhere above it.
+            { when: { 'value@styles': { contains: 'h3' },
+                      '@stylesBefore': { firstOf: ['h2', 'h3', 'h4'], isSet: false } },
+              warning: 'A Heading 3 needs a Heading 2 above it.' },
+            // A level-4 heading must not come straight after a level-2 one.
+            { when: { 'value@styles': { contains: 'h4' },
+                      '@stylesBefore': { firstOf: ['h2', 'h3', 'h4'], oneOf: ['h2'] } },
+              warning: 'A Heading 4 needs a Heading 3 above it.' },
+        ],
+    },
+}
+```
+
+Block types work the same way — a button that opens the page, an image with a caption block after it:
+
+### Javascript
+
+```javascript
+fieldRules: {
+    href: { when: { '@typesBefore': { isSet: false } },
+            warning: 'A button is rarely the first thing on a page.' },
+}
+```
+
+Without a block path map and the page's data (the generic schema pass), these fields are unset.
 
 **Worked examples:** two blocks in the reference carry rules for their own reasons — the [Teaser Block](../examples/teaser.md) has nothing to ask for while it borrows the linked page's wording (`overwrite` off), and the [Image Block](../examples/image-block.md) offers no size for a full-width image, written as a list of rules with a bare `false` as the catch-all.
 

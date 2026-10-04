@@ -9492,6 +9492,14 @@ export class Bridge {
               log('selectionchange: admin placing the caret, suppressing');
             }
             return;
+          } else if (this.pendingTransform) {
+            // A transform this bridge asked for (Ctrl+B, a toolbar format) is
+            // still with the admin, and its answer places the caret. A caret
+            // reported meanwhile — the bridge's own restore, a re-render — is
+            // older than the admin's, and arriving after it put the admin's
+            // caret back: toggling a format off then left it on.
+            log('selectionchange: transform pending, the admin places the caret — suppressing');
+            return;
           } else {
             log('selectionchange: no expectedSelectionFromAdmin, sending new selection');
           }

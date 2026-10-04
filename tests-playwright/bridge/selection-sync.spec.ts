@@ -50,6 +50,10 @@ function moveCaretQuietly(field: Locator, offset: number) {
   }, offset);
 }
 
+/** Whether the bridge is waiting for the admin to answer a transform it asked for. */
+const transformPending = (field: Locator) =>
+  field.evaluate((el) => !!(el.ownerDocument.defaultView as any).__hydraBridge.pendingTransform);
+
 const reportedOffsets = (page: Page) =>
   page.evaluate(() => ((window as any).__selectionChanges as any[]).map((s) => s.anchor.offset));
 
@@ -125,6 +129,33 @@ test.describe('Caret sync after the admin places the caret', () => {
 
     await expect(field).toContainText('Second text');
     await caretLandsAfter(helper, field, 'Seco');
+    expect(await reportedOffsets(page)).not.toContain(1);
+  });
+
+  test('a caret move while a format the bridge asked for is pending is not reported', async ({
+    helper,
+    page,
+  }) => {
+    // Ctrl+B asks the admin for the format; until it answers, the admin owns
+    // the caret — its answer places it. A caret the bridge reported meanwhile
+    // (its own restore, a re-render) arrived AFTER the admin had moved past it
+    // and put the admin's caret back: toggling bold off then left it on.
+    const field = await helper.getEditorLocator(BLOCK, 'value');
+    await startRecording(page, field);
+    await adminPlacesCaret(page, 'First text', 4);
+    await caretLandsAfter(helper, field, 'Firs');
+
+    await page.evaluate(() => {
+      (window as any).mockTransformDelay = 1500;
+    });
+    await page.keyboard.press('ControlOrMeta+b');
+    await expect.poll(() => transformPending(field)).toBe(true);
+    await moveCaretQuietly(field, 1);
+    // The bridge reports a caret move as soon as selectionchange fires.
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    expect(await reportedOffsets(page)).not.toContain(1);
+
+    await expect.poll(() => transformPending(field)).toBe(false);
     expect(await reportedOffsets(page)).not.toContain(1);
   });
 });
