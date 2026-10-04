@@ -21,6 +21,7 @@ import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
+import { mergeFrontendBlock } from '../../../../hydra-js/mergeFrontendBlock.js';
 import {
   isSlateFieldType,
   formDataContentEqual,
@@ -3656,16 +3657,22 @@ const Iframe = (props) => {
               if (!blockConfig.id) {
                 blockConfig.id = blockType;
               }
-              // Default title from the key name (e.g. 'single_choice' -> 'Single Choice')
-              if (!blockConfig.title) {
-                blockConfig.title = blockType.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-              }
-              if (!blockConfig.view) {
-                blockConfig.view = NoPreview;
-              }
-              // Default group to 'common' so blocks appear in the block chooser
-              if (!blockConfig.group) {
-                blockConfig.group = 'common';
+              // Defaults for a block the admin does NOT have. An entry for one it
+              // has keeps the admin's title/view/group unless it sends its own:
+              // each key sent replaces the admin's (mergeFrontendBlock), so a
+              // default filled in here would overwrite them.
+              if (!config.blocks.blocksConfig[blockType]) {
+                // Default title from the key name (e.g. 'single_choice' -> 'Single Choice')
+                if (!blockConfig.title) {
+                  blockConfig.title = blockType.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                }
+                if (!blockConfig.view) {
+                  blockConfig.view = NoPreview;
+                }
+                // Default group to 'common' so blocks appear in the block chooser
+                if (!blockConfig.group) {
+                  blockConfig.group = 'common';
+                }
               }
               // Show sidebar settings tab when block has a schema
               if (blockConfig.blockSchema && blockConfig.sidebarTab === undefined) {
@@ -3742,18 +3749,22 @@ const Iframe = (props) => {
               // Validate fieldMappings: warn about invalid @default keys
               validateFieldMappings(blockType, blockConfig);
             });
-            // Save existing function-type schemaEnhancers before deepMerge overwrites them.
-            // When the frontend sends a recipe object for a block that already has a function
-            // enhancer (e.g., listing's fieldMapping/b_size logic from our plugin), deepMerge
-            // would corrupt the function. We chain them back in step 1b.
+            // Each frontend entry applied to the admin's own (mergeFrontendBlock —
+            // the mock parent applies the same rule): a key the frontend sends
+            // replaces the admin's, a schema included; keys it doesn't send keep
+            // the admin's; an enhancer chains. An admin enhancer that is a
+            // function (e.g. listing's fieldMapping/b_size logic) comes back to be
+            // chained with the frontend's recipe in step 1b.
+            processBlockIcons(blocksConfig);
             const savedEnhancers = {};
-            for (const blockType of Object.keys(blocksConfig)) {
-              const existing = config.blocks.blocksConfig[blockType]?.schemaEnhancer;
-              if (typeof existing === 'function') {
-                savedEnhancers[blockType] = existing;
-              }
+            for (const [blockType, blockDef] of Object.entries(blocksConfig)) {
+              const { entry, previousEnhancer } = mergeFrontendBlock(
+                config.blocks.blocksConfig[blockType],
+                blockDef,
+              );
+              config.blocks.blocksConfig[blockType] = entry;
+              if (previousEnhancer) savedEnhancers[blockType] = previousEnhancer;
             }
-            recurseUpdateVoltoConfig({ blocks: { blocksConfig } });
 
             // Variations follow the schema. They are a SECOND registry the admin
             // fills in (core attaches ToCVariations, ListingVariations, … in
@@ -3784,8 +3795,8 @@ const Iframe = (props) => {
             // chain it with any existing function enhancer from admin plugins (e.g., listing's
             // fieldMapping/b_size removal) rather than replacing it.
             const recipeKeys = ['inheritSchemaFrom', 'fieldRules'];
-            for (const [blockType, blockConfig] of Object.entries(blocksConfig)) {
-              const recipe = blockConfig.schemaEnhancer;
+            for (const blockType of Object.keys(blocksConfig)) {
+              const recipe = config.blocks.blocksConfig[blockType].schemaEnhancer;
               // Check if it's a recipe (has known enhancer keys, type property, or is array)
               const isRecipe =
                 recipe &&

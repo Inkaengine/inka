@@ -1920,19 +1920,20 @@ export const sharedBlocksConfig = {
             },
         },
     },
+    // No schema: the title and description blocks are windows onto the PAGE's
+    // own fields, and the admin's schema for them carries the field and its
+    // canvas placeholder. A schema sent here would replace it.
     title: {
       id: 'title',
       title: 'Title',
       group: 'text',
       restricted: true,
-      blockSchema: { fieldsets: [], properties: {}, required: [] },
     },
     description: {
       id: 'description',
       title: 'Description',
       group: 'text',
       restricted: true,
-      blockSchema: { fieldsets: [], properties: {}, required: [] },
     },
     leadimage: {
       id: 'leadimage',
