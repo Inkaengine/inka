@@ -117,14 +117,22 @@ curated menu is not publicly readable on either CMS that has one:
 | | public navigation source | needs an addition? |
 | --- | --- | --- |
 | Plone | `@navigation`, derived from content | no |
-| WordPress | page tree (`/wp/v2/pages?parent=0`) | no today — **yes** if we move to real menus |
+| WordPress | page tree (`/wp/v2/pages?parent=0`) | no today — **yes** if we move to real menus (measured: menus 401 anonymous) |
 | Drupal | `menu_link_content` — **anonymous-readable** (measured) | no |
 
 So WordPress passes today *because* it derives navigation from content. Moving
 it onto real menus — the thing that makes exclusion and nav-title possible —
-may cost public readability, IF core's menu endpoints are really private; that
-is still unverified. Drupal has no such tension: measured against a real
-Drupal 11, `menu_link_content` is served to anonymous callers.
+DOES cost public readability. Measured against a real WordPress:
+
+    /wp/v2/menus           anonymous=401   authenticated=ok
+    /wp/v2/menu-items      anonymous=401   authenticated=ok
+    /wp/v2/menu-locations  anonymous=401   authenticated=ok
+    /wp/v2/pages           anonymous=200   authenticated=ok
+    /wp/v2/search          anonymous=200   authenticated=ok
+
+Drupal has no such tension: `menu_link_content` is served to anonymous callers.
+So the tension is real but **WordPress-only**, which narrows the WPGraphQL case
+to curated menus on WordPress rather than a general requirement.
 
 **Corrected 2026-10-04.** This section previously claimed curated menus were
 private on BOTH CMSes and that Drupal needs `jsonapi_menu_items`. That came
@@ -176,9 +184,9 @@ reads a public one; nothing yet catches them diverging.
 
 Each would change the design if wrong, and none has been measured:
 
-- that core `/wp/v2/menus` and `/wp/v2/menu-items` require `edit_theme_options`
-  — the last load-bearing assumption still unmeasured, and the Drupal
-  equivalent turned out to be false
+- ~~that core `/wp/v2/menus` and `/wp/v2/menu-items` are private~~ **MEASURED
+  2026-10-04 and TRUE**: all three menu endpoints 401 anonymous, while
+  `/wp/v2/pages` and `/wp/v2/search` are public
 - that WPGraphQL's `menuItems` is anonymous-readable for a location-assigned menu
 - that WPGraphQL runs under PHP-WASM in Playground
 A real `drupal:11` in CI retires this whole class of doubt, and a spike shows it
@@ -334,7 +342,9 @@ offerable; existence and editability is the test.
 - WordPress has a purpose-built picker endpoint, `/wp/v2/search`, returning id,
   title, url, type and subtype across post types. Our adapter does not use it
   (`search` goes to `/wp/v2/{postType}?search=`, single-type, full payloads).
-  Drupal has no equivalent, so its CONTAINS filter is already right.
+  Drupal has no equivalent, so its CONTAINS filter is already right. Measured
+  public (200 anonymous), so it serves a public frontend's picker as well as
+  the admin's.
 
 
 ## Addressing, advertising, and the selector (2026-10-03)
