@@ -46,7 +46,9 @@ export function validate(blocks) {
           for (const [ik, iv] of Object.entries(it)) {
             if (ik === 'blocks' && Array.isArray(iv)) walk(iv, `${path}[${i}].${k}[${j}].blocks`);
             else if (Array.isArray(iv) && it['@type'] && isLayoutField(it['@type'], ik)) walk(iv, `${path}[${i}].${k}[${j}].${ik}`);
-            else if (itemProps[ik]) checkField(itemProps[ik], iv, `${where}.${k}[${j}].${ik}`, errors);
+            else if (itemProps[ik]?.widget === 'blocks_layout' || (Array.isArray(iv) && iv.some((x) => x?.['@type']) && !(it['@type'] && isLayoutField(it['@type'], ik)))) {
+              errors.push(`${where}.${k}[${j}].${ik}: child blocks of an item go in its "blocks" list`);
+            } else if (itemProps[ik]) checkField(itemProps[ik], iv, `${where}.${k}[${j}].${ik}`, errors);
           }
         });
       }

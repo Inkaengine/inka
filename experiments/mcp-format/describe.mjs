@@ -13,6 +13,9 @@ function fieldLine(name, f) {
   if (f.choices) bits.push(`one of ${f.choices.map((c) => JSON.stringify(c[0])).join(', ')}`);
   if (f.default !== undefined) bits.push(`default ${JSON.stringify(f.default)}`);
   if (f.allowedBlocks) bits.push(`children: ${f.allowedBlocks.join(', ')}`);
+  // A blocks_layout field named `items` is the block's child list, which every
+  // format writes as "blocks" — say so, or agents write "items" (schema) vs "blocks" (format).
+  if (f.widget === 'blocks_layout' && name === 'items') return `blocks (child blocks, a list): ${bits.filter((b) => !b.startsWith('widget')).join('; ') || 'any'}`;
   return `${name}${f.title ? ` (${f.title})` : ''}: ${bits.join('; ') || 'string'}`;
 }
 
