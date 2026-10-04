@@ -126,9 +126,9 @@ blocks: {
 Per-block options (most are passed through to Volto's block config):
 
 - **\`id\`** — block type identifier (matches the key).
-- **\`title\`** — display name in the BlockChooser.
+- **\`title\`** — display name in the BlockChooser. **Required for a new block type** — nothing makes one up from the key; a block without one fails to register with an error naming it.
 - **\`icon\`** — icon shown in the BlockChooser (data URL or SVG component).
-- **\`group\`** — chooser group (e.g. `'common'`).
+- **\`group\`** — chooser group (e.g. `'common'`). **Required for a new block type**, like `title`.
 - **\`restricted\`** — `true` hides the block from the chooser; can also be a function for conditional restrictions.
 - **\`mostUsed\`** — pin to the top of the chooser.
 - **\`disableCustomSidebarEditForm\`** — use only the schema form in the sidebar (no custom edit component). **Defaults to \`true\` for any block you give a \`blockSchema\`** — see [Overriding a built-in block](#overriding-a-built-in-block). Set `false` to keep the admin's own edit component for a block whose sidebar does something a JSON schema cannot express.
@@ -161,6 +161,31 @@ blocks: {
 That sidebar offers `levels`. It does not offer the admin's `hide_title`, `ordered`, `title` or `variation`, because your frontend never said it renders them.
 
 This is deliberate: before, the admin's fields were merged in and its edit component kept rendering the sidebar, so an author was offered settings the frontend could not honour — they ticked a box and the page did not change.
+
+### Adding to a built-in block
+
+An entry for a block the admin already has applies key by key:
+
+- **`blockSchema` / `schema`** — replaces the admin's schema, as above; your fields are not merged into its.
+- **`schemaEnhancer`** — **adds**: it runs after the admin's own enhancer, so you can add `fieldRules` to a built-in block without replacing it.
+- **Any other key** (`title`, `group`, `fieldMappings`, `allowedBlocks`…) — replaces that key. Send every `fieldMappings` source type you want, including the admin's own conversions.
+- **A key you don't send** — the admin's value stands: a built-in block keeps its name, group and schema.
+
+Don't send an empty `blockSchema` just to register a built-in block: it replaces the admin's (for `title` and `description`, the page field and its placeholder). An entry carrying only rules adds them:
+
+### Js
+
+```js
+blocks: {
+  slate: {
+    schemaEnhancer: {
+      fieldRules: {
+        value: { when: { 'value@styles': { contains: 'h5' } }, warning: 'Use Heading 4 or above.' },
+      },
+    },
+  },
+}
+```
 
 Two consequences worth knowing:
 
@@ -754,7 +779,7 @@ button: {
 },
 ```
 
-Declaring `@target` is the **only** opt-in — no per-block enhancer wiring. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected). Every mapped field is one of two states:
+It is **on by default** for a block with a link field and a `fieldMappings['@default']`: the `@default` mapping doubles as the `@target` one (`@id` aside, since that is the link itself). Declare `@target` to map differently; either way there is no per-block enhancer wiring. A field a block-type conversion fills is **custom** from the start, so converting a block keeps what it held. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected). Every mapped field is one of two states:
 
 - **Linked** (default, toggle ticked) — the field *pulls from the linked item*. Its value is filled from the target's snapshot when the page opens for editing and re-pulled when you change the link, so it always mirrors the linked content.
 - **Custom** (toggle unticked) — your own value, ignored by the target. A field becomes custom the moment you edit it, or when you untick the toggle; re-ticking re-pulls the target value. Custom fields are recorded in the block's `_customFields` array (absence ⇒ linked), so the state persists with the block.

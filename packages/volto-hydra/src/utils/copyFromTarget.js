@@ -89,6 +89,23 @@ export function getTargetMapping(blockConfig) {
   return Object.keys(synthesized).length > 0 ? synthesized : null;
 }
 
+/**
+ * The fields of a block's schema, whether it is an object or a FUNCTION of the
+ * block's data (an admin block's often is: Volto's teaser and image). Only the
+ * fields' kinds are read here — which is the link, which widget a destination
+ * has — so labels are irrelevant and a schema function is given an `intl`
+ * that answers with each message's default text.
+ */
+const DEFAULT_TEXT_INTL = { formatMessage: (message) => message.defaultMessage };
+function schemaProperties(blockConfig, blockData) {
+  const schema = blockConfig?.blockSchema;
+  const resolved =
+    typeof schema === 'function'
+      ? schema({ formData: blockData, data: blockData, intl: DEFAULT_TEXT_INTL })
+      : schema;
+  return resolved?.properties || {};
+}
+
 /** Destination (block) field names the @target mapping writes to. */
 function targetDestinations(mapping) {
   return new Set(
@@ -102,7 +119,7 @@ function targetDestinations(mapping) {
  * the fieldmapping"). Returns the field name or null.
  */
 export function getUrlField(blockConfig) {
-  const props = blockConfig?.blockSchema?.properties || {};
+  const props = schemaProperties(blockConfig, {});
   for (const [name, def] of Object.entries(props)) {
     if (getFieldType(def) === 'link') return name;
   }
@@ -206,7 +223,7 @@ export function getTargetValueForField(field, blockConfig, blockData, liveTarget
 
   // Derive the conversion type from the DESTINATION field's widget (the same
   // rule block-type conversion uses), so we never hard-code per-field behaviour.
-  const rawDef = blockConfig?.blockSchema?.properties?.[field];
+  const rawDef = schemaProperties(blockConfig, blockData)[field];
   const destDef = rawDef?.widget === COPY_FROM_TARGET_WIDGET ? rawDef.baseWidget : rawDef;
   const type = entry.type ?? widgetToTargetType(destDef?.widget, destDef);
   return convertFieldValue(raw, type);

@@ -551,7 +551,7 @@ test.describe('Multilingual editing', () => {
 
     const marker = page
       .locator('.parent-block-section')
-      .filter({ hasText: 'GridBlock' })
+      .filter({ has: page.locator('.nav-title', { hasText: /^Grid$/ }) })
       .locator('.nested-status[data-nested-status="untranslated"]');
     await expect(
       marker.first(),
@@ -898,7 +898,7 @@ test.describe('Multilingual editing', () => {
 
     const marker = page
       .locator('.parent-block-section')
-      .filter({ hasText: 'GridBlock' })
+      .filter({ has: page.locator('.nav-title', { hasText: /^Grid$/ }) })
       .locator('.nested-status[data-nested-status="stale"]');
     await expect(
       marker.first(),
@@ -1037,7 +1037,7 @@ test.describe('Multilingual editing', () => {
 
     const marker = page
       .locator('.parent-block-section')
-      .filter({ hasText: 'GridBlock' })
+      .filter({ has: page.locator('.nav-title', { hasText: /^Grid$/ }) })
       .locator('.nested-status[data-nested-status="untranslated"]');
     await expect(
       marker.first(),

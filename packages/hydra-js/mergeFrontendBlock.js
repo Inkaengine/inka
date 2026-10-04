@@ -15,10 +15,22 @@
  *   back as `previousEnhancer` for the caller to chain (the admin's
  *   createSchemaEnhancerFromRecipe takes it).
  *
+ * A block the admin does NOT have takes the frontend entry as it is, and
+ * needs a `title` and a `group` from it — compulsory, never made up from the
+ * key: a chooser entry with an invented name is a bug hidden, not fixed.
+ *
  * @returns {{ entry: object, previousEnhancer: Function | undefined }}
  */
-export function mergeFrontendBlock(adminEntry, frontendEntry) {
-  if (!adminEntry) return { entry: frontendEntry, previousEnhancer: undefined };
+export function mergeFrontendBlock(blockType, adminEntry, frontendEntry) {
+  if (!adminEntry) {
+    if (!frontendEntry.title || !frontendEntry.group) {
+      throw new Error(
+        `Block "${blockType}" from the frontend needs a \`title\` and a \`group\` ` +
+          `(got title: ${JSON.stringify(frontendEntry.title)}, group: ${JSON.stringify(frontendEntry.group)})`,
+      );
+    }
+    return { entry: frontendEntry, previousEnhancer: undefined };
+  }
   const entry = { ...adminEntry, ...frontendEntry };
   const before = adminEntry.schemaEnhancer;
   const added = frontendEntry.schemaEnhancer;

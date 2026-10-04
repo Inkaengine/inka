@@ -185,6 +185,18 @@
     // cssClasses of the style menu the frontend declares at INIT (#295).
     const styleMenuClasses = new Set();
 
+    // The block types the real admin has built in (Volto core's blocksConfig +
+    // volto-hydra's index.js). A frontend entry for one of these ADDS to the
+    // admin's block, so it needs no title or group of its own; one for any
+    // other type is a new block and must bring both (mergeFrontendBlock).
+    // The baseline below stands in for only some of them.
+    const ADMIN_BUILT_IN_BLOCK_TYPES = new Set([
+      'checkboxFacet', 'daterangeFacet', 'default', 'description', 'gridBlock',
+      'html', 'image', 'leadimage', 'listing', 'maps', 'search', 'selectFacet',
+      'slate', 'slateTable', 'summary', 'teaser', 'title', 'toc', 'toggleFacet',
+      'video',
+    ]);
+
     // blocksConfig for schema-driven buildBlockPathMap (no Volto deps)
     const mockBlocksConfig = {
       _page: {
@@ -684,7 +696,9 @@
               // not send keep the baseline's, and an enhancer chains. A slate entry
               // carrying only `fieldRules` therefore keeps slate's `value` field.
               mockBlocksConfig[blockType] = mergeFrontendBlock(
-                mockBlocksConfig[blockType],
+                blockType,
+                mockBlocksConfig[blockType] ??
+                  (ADMIN_BUILT_IN_BLOCK_TYPES.has(blockType) ? { id: blockType } : undefined),
                 blockDef,
               ).entry;
             }

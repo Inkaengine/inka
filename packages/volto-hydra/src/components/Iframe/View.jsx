@@ -3657,21 +3657,15 @@ const Iframe = (props) => {
               if (!blockConfig.id) {
                 blockConfig.id = blockType;
               }
-              // Defaults for a block the admin does NOT have. An entry for one it
-              // has keeps the admin's title/view/group unless it sends its own:
-              // each key sent replaces the admin's (mergeFrontendBlock), so a
-              // default filled in here would overwrite them.
+              // A block the admin does NOT have needs a name and a chooser group
+              // from its frontend — compulsory, never made up from the key. Its
+              // view is the admin's NoPreview: a frontend cannot send a component.
+              // An entry for a block the admin has keeps the admin's title, group
+              // and view unless it sends its own (mergeFrontendBlock).
+              // (mergeFrontendBlock throws for a missing title or group.)
               if (!config.blocks.blocksConfig[blockType]) {
-                // Default title from the key name (e.g. 'single_choice' -> 'Single Choice')
-                if (!blockConfig.title) {
-                  blockConfig.title = blockType.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                }
                 if (!blockConfig.view) {
                   blockConfig.view = NoPreview;
-                }
-                // Default group to 'common' so blocks appear in the block chooser
-                if (!blockConfig.group) {
-                  blockConfig.group = 'common';
                 }
               }
               // Show sidebar settings tab when block has a schema
@@ -3759,6 +3753,7 @@ const Iframe = (props) => {
             const savedEnhancers = {};
             for (const [blockType, blockDef] of Object.entries(blocksConfig)) {
               const { entry, previousEnhancer } = mergeFrontendBlock(
+                blockType,
                 config.blocks.blocksConfig[blockType],
                 blockDef,
               );
@@ -3821,6 +3816,7 @@ const Iframe = (props) => {
             }
           }
 
+            for (const t of ['teaser', 'image', 'hero', 'gridBlock']) { const c = config.blocks.blocksConfig[t] || {}; console.log('[DBGMERGE]', t, JSON.stringify({ keys: Object.keys(c).sort(), title: c.title, group: c.group, fm: c.fieldMappings, se: typeof c.schemaEnhancer, bs: typeof c.blockSchema, s: typeof c.schema, bcKeys: c.blocksConfig ? Object.keys(c.blocksConfig).length : null, allowed: c.allowedBlocks })); }
           // 1c. Merge any additional voltoConfig (non-block settings)
           if (event.data.voltoConfig) {
             recurseUpdateVoltoConfig(event.data.voltoConfig);

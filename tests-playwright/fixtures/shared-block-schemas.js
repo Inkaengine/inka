@@ -58,6 +58,8 @@ export const sharedBlocksConfig = {
     },
     slate: {
         id: 'slate',
+        // The chooser group, stated: a block's group is never made up.
+        group: 'common',
         title: 'Text',
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['value'] }],
@@ -738,6 +740,7 @@ export const sharedBlocksConfig = {
     cookieConsent: {
         id: 'cookieConsent',
         title: 'Cookie consent',
+        group: 'common',
         blockSchema: {
             fieldsets: [
                 { id: 'default', title: 'Default', fields: ['message', 'analyticsPurpose'] },
@@ -849,6 +852,8 @@ export const sharedBlocksConfig = {
     // include @default as a source (i.e., can convert from catalog brain fields)
     listing: {
         id: 'listing',
+        // The chooser group, stated: a block's group is never made up.
+        group: 'common',
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['variation', 'fieldMapping', 'headline', 'headlineTag', 'querystring'] }],
             properties: {
@@ -922,6 +927,7 @@ export const sharedBlocksConfig = {
     suggest: {
         id: 'suggest',
         title: 'Suggest',
+        group: 'common',
         blockSchema: {
             fieldsets: [
                 { id: 'default', title: 'Default', fields: ['label', 'suggestFrom', 'value'] },
@@ -1032,6 +1038,8 @@ export const sharedBlocksConfig = {
     },
     toc: {
         id: 'toc',
+        // The chooser group, stated: a block's group is never made up.
+        group: 'common',
         title: 'Table of Contents',
         blockSchema: {
             title: 'Table of Contents',
@@ -1054,6 +1062,8 @@ export const sharedBlocksConfig = {
     },
     gridBlock: {
         id: 'gridBlock',
+        // The chooser group, stated: a block's group is never made up.
+        group: 'common',
         // Match Volto core's grid (allowedBlocks: ['image','listing','slate','teaser']).
         // gridBlock is used with slate cards and listings throughout the content
         // (e.g. docs/examples/grid/text, docs/examples/grid/listing, the homepage
@@ -1089,7 +1099,6 @@ export const sharedBlocksConfig = {
         },
     },
     // Teaser block: use Volto's TeaserSchema (has href with object_browser)
-    // fieldMappings come from volto-hydra index.js (merged via deepMerge)
     // No childBlockConfig — installChildBlockEnhancers auto-applies
     // hideParentOwnedFields. Parents declare what they additionally claim
     // for teasers via inheritSchemaFrom.parentControlled.teaser.
@@ -1098,28 +1107,45 @@ export const sharedBlocksConfig = {
         // A listing renders each result as this type, so it must declare how a
         // result's fields land on it — that mapping is also what makes it
         // selectable in the Item Type widget (filterConvertibleFrom: '@default').
+        // A frontend's fieldMappings REPLACE the admin's (mergeFrontendBlock),
+        // so the admin's conversion from an image is listed here too.
         fieldMappings: {
             '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
+            image: { 'href': 'href', 'alt': 'title', 'url': 'preview_image' },
         },
         title: 'Teaser',
         icon: teaserIcon,
         group: 'common',
-        // Mirrors Volto's own teaser schema (core Teaser/schema.js), because a
-        // fixture blockSchema WINS over the admin's. A PARTIAL copy is what
+        // Mirrors Volto's own teaser schema (core Teaser/schema.js) IN FULL,
+        // because a frontend's blockSchema replaces the admin's (nothing of
+        // Volto's is merged in). A PARTIAL copy is what
         // broke the starter UI: declaring title/description without `overwrite`
         // — the "customize" checkbox those fields hang off — left the bridge
         // with a teaser whose link and toggle did not exist.
         blockSchema: {
             fieldsets: [
-                { id: 'default', title: 'Default', fields: ['href', 'overwrite', 'title', 'head_title', 'description', 'preview_image'] },
+                { id: 'default', title: 'Default', fields: ['href', 'overwrite', 'title', 'head_title', 'description', 'preview_image', 'openLinkInNewTab'] },
+                { id: 'styling', title: 'Styling', fields: ['styles'] },
             ],
             properties: {
-                href: { title: 'Target', widget: 'object_browser', mode: 'link', allowExternals: true },
+                href: { title: 'Target', widget: 'object_browser', mode: 'link', allowExternals: true, selectedItemAttrs: ['Title', 'head_title', 'Description', 'hasPreviewImage', 'image_field', 'image_scales', '@type'] },
                 overwrite: { title: 'Customize teaser content', type: 'boolean', default: false },
                 title: { title: 'Title' },
                 head_title: { title: 'Kicker' },
                 description: { title: 'Description', widget: 'textarea' },
-                preview_image: { title: 'Image override', widget: 'object_browser', mode: 'image', allowExternals: true },
+                preview_image: { title: 'Image override', widget: 'object_browser', mode: 'image', allowExternals: true, selectedItemAttrs: ['image_field', 'image_scales'] },
+                openLinkInNewTab: { title: 'Open in a new tab', type: 'boolean' },
+                styles: {
+                    widget: 'object',
+                    title: 'Styling',
+                    schema: {
+                        fieldsets: [{ id: 'default', title: 'Default', fields: ['align'] }],
+                        properties: {
+                            align: { widget: 'align', title: 'Alignment', actions: ['left', 'right', 'center'], default: 'left' },
+                        },
+                        required: [],
+                    },
+                },
             },
             required: ['href'],
         },
@@ -1146,6 +1172,8 @@ export const sharedBlocksConfig = {
     // Image block: parents declare claims via inheritSchemaFrom.parentControlled.image.
     image: {
         id: 'image',
+        // The chooser group, stated: a block's group is never made up.
+        group: 'common',
         title: 'Image',
         // Mirrors Volto's ImageSchema (core Image/schema.jsx), with two
         // deliberate differences.
@@ -1178,7 +1206,7 @@ export const sharedBlocksConfig = {
                 credit: { title: 'Credit' },
                 copyright_and_sources: { title: 'Copyright and sources' },
                 allow_image_download: { title: 'Allow image download', type: 'boolean' },
-                url: { title: 'Image', widget: 'image' },
+                url: { title: 'Image', widget: 'image', placeholder: 'Browse the site or type a URL' },
                 alt: { title: 'Alt text' },
                 align: { title: 'Alignment', widget: 'align', default: 'center' },
                 size: { title: 'Size', widget: 'image_size', default: 'l' },
@@ -1210,8 +1238,11 @@ export const sharedBlocksConfig = {
                 openLinkInNewTab: { when: { url: { isSet: true } }, else: false },
             },
         },
+        // A frontend's fieldMappings REPLACE the admin's (mergeFrontendBlock),
+        // so the admin's conversion from a teaser is listed here too.
         fieldMappings: {
             '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },
+            teaser: { 'href': 'href', 'title': 'alt', 'preview_image': 'url' },
         },
     },
     // Form block: uses typed object_list for field types (like search block facets)
@@ -1369,6 +1400,7 @@ export const sharedBlocksConfig = {
     // are not canonical @default fields (@id, title, description, image).
     text: {
         id: 'text',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1413,6 +1445,7 @@ export const sharedBlocksConfig = {
     },
     textarea: {
         id: 'textarea',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1457,6 +1490,7 @@ export const sharedBlocksConfig = {
     },
     number: {
         id: 'number',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1501,6 +1535,7 @@ export const sharedBlocksConfig = {
     },
     select: {
         id: 'select',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1564,6 +1599,7 @@ export const sharedBlocksConfig = {
     },
     single_choice: {
         id: 'single_choice',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1609,6 +1645,7 @@ export const sharedBlocksConfig = {
     },
     multiple_choice: {
         id: 'multiple_choice',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1654,6 +1691,7 @@ export const sharedBlocksConfig = {
     },
     checkbox: {
         id: 'checkbox',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1698,6 +1736,7 @@ export const sharedBlocksConfig = {
     },
     date: {
         id: 'date',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1742,6 +1781,7 @@ export const sharedBlocksConfig = {
     },
     from: {
         id: 'from',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1788,6 +1828,7 @@ export const sharedBlocksConfig = {
     },
     static_text: {
         id: 'static_text',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1831,6 +1872,7 @@ export const sharedBlocksConfig = {
     },
     hidden: {
         id: 'hidden',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
@@ -1878,6 +1920,7 @@ export const sharedBlocksConfig = {
     },
     attachment: {
         id: 'attachment',
+        group: 'common',
         schemaEnhancer: {
             fieldRules: {
                 // The comparison only means anything once a question is named.
