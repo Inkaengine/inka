@@ -79,7 +79,7 @@ import {
   applySchemaDefaultsToBlock,
   applySchemaDefaultsToBlockWithContext,
 } from './schemaValidation.mjs';
-import { getTargetMapping, withFieldCustom } from './copyFromTarget';
+import { getTargetMapping, withFieldCustom } from './copyFromTargetMapping';
 
 // Conversion-graph logic lives in conversionValidation.mjs so it stays free of
 // the React context barrel (a Playwright gate imports it directly).
