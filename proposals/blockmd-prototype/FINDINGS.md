@@ -2,7 +2,7 @@
 
 > **Status: historical.** The Python prototype these findings came from has been deleted; the engine it led to is `lib/prototype-mapping.mjs` (see `proposals/blockmd/README.md`).
 
-Prototype for the markdown/directive format in `../mcp-content-authoring.md`.
+Prototype for the markdown/directive format in the 2026-09 MCP proposal (since removed).
 Measured against all real content: **74 pages, 1546 blocks, 30 block types**
 (inka-site's site tree plus the docs tree).
 
