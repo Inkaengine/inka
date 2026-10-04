@@ -405,7 +405,7 @@ function ListingBlock({ id, block, data, apiUrl, contextPath }) {
           React duplicates or omits children. @id is the content each item is.
           The uid still goes to `id`, which is what the bridge reads. */}
       {items.map((item, index) => (
-        <Block key={item["@id"] ?? `${item["@uid"] ?? "item"}-${index}`} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+        <Block key={item["@id"] ?? `${item["@uid"] ?? "item"}-${index}`} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} inListing />
       ))}
       <Paging paging={paging} buildUrl={buildPagingUrl} onNavigate={handleNavigate} />
     </>
@@ -1151,9 +1151,17 @@ function SearchBlock({ id, block, data, apiUrl, contextPath }) {
   );
 }
 
+/**
+ * The image slot of a listing result that has no image: a neutral grey SVG with
+ * real intrinsic dimensions, so the cards line up. Kept at module scope — a
+ * data URI rebuilt per render would change identity and churn the DOM.
+ */
+const LISTING_IMAGE_SLOT =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect width='400' height='300' fill='%23e5e7eb'/%3E%3C/svg%3E";
+
 // ─── Block Component ─────────────────────────────────────────────────────────
 
-function Block({ block, id, data, apiUrl, contextPath }) {
+function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
   const type = block["@type"];
   const expand = useExpand();
 
@@ -1203,8 +1211,10 @@ function Block({ block, id, data, apiUrl, contextPath }) {
       const imgProps = imageProps(block, apiUrl);
       // No image ⇒ no element (#296). `url` is required, so while editing the
       // bridge hands an empty one a stand-in image to click (as the reveal
-      // toggle does for an optional field); a visitor sees nothing.
-      const src = imgProps.url;
+      // toggle does for an optional field); a visitor sees nothing. A LISTING
+      // result is different: one with no image keeps its image slot so the
+      // cards line up (as the Nuxt frontend's isInListing placeholder does).
+      const src = imgProps.url || (inListing ? LISTING_IMAGE_SLOT : null);
       if (!src) return <div data-block-uid={id} />;
       const href = getUrl(block.href, apiUrl);
       return (
