@@ -564,4 +564,28 @@ test.describe('block formats declared as data', () => {
     const iframe = helper.getIframe();
     await expect(iframe.locator('[data-block-uid="target"] h5')).toHaveText('Some text to format');
   });
+
+  test("a rule's warning shows for a block with its own edit component", async ({ page }) => {
+    // The text block's sidebar is its own Edit component, not a form built
+    // from its schema — and the warnings were only drawn beside the latter, so
+    // advice about a text block (the validator reports it) never reached the
+    // author. This page's frontend warns about a Heading 5.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    const warning = page.locator('.hydra-field-warning').filter({ hasText: /Heading 5 is advice-worthy/ });
+    await formatOptions(page, helper, 'target');
+    await expect(warning).toHaveCount(0);
+    await page.locator('.format-dropdown-menu [data-format="h5"]').click();
+    await expect(helper.getIframe().locator('[data-block-uid="target"] h5')).toHaveCount(1);
+    await expect(warning).toHaveCount(1);
+
+    // And it goes when the heading does.
+    await formatOptions(page, helper, 'target');
+    await page.locator('.format-dropdown-menu [data-format="h2"]').click();
+    await expect(helper.getIframe().locator('[data-block-uid="target"] h2')).toHaveCount(1);
+    await expect(warning).toHaveCount(0);
+  });
 });

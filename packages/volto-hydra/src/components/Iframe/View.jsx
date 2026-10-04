@@ -5853,6 +5853,13 @@ const Iframe = (props) => {
                   const block = getBlockById(fd, bpm, selectedBlock);
                   const updatedBlock = { ...block, [fieldName]: newFieldValue };
                   fd = updateBlockById(fd, bpm, selectedBlock, updatedBlock);
+                  // The path map holds each block's schema RESOLVED against its
+                  // data (field rules' warnings and visibility), so a value the
+                  // toolbar changed — a heading chosen, a style applied — needs
+                  // it rebuilt, as text typed in the iframe does
+                  // (INLINE_EDIT_DATA). Otherwise the sidebar showed the rules
+                  // as they were before the change.
+                  bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
                   dataChanged = true;
                 }
 
