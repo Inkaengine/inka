@@ -143,28 +143,25 @@ const target: Target = {
     // version of this mock wrongly forbade it and a module was invented to
     // work around the restriction.
     const res = await fetch(
-      `${BASE}/jsonapi/menu_link_content/menu_link_content`,
+      // `include=node` resolves every link's target in ONE request — JSON:API's
+      // answer to N+1. Without it this fetched each referenced node separately.
+      `${BASE}/jsonapi/menu_link_content/menu_link_content?include=node`,
       { headers: { Accept: 'application/vnd.api+json' } },
     );
     if (!res.ok) return null;
     const body: any = await res.json();
-    const nodePath = async (uuid: string) => {
-      const r = await fetch(`${BASE}/jsonapi/node/page/${uuid}`, {
-        headers: { Accept: 'application/vnd.api+json' },
-      });
-      if (!r.ok) return '';
-      const n: any = await r.json();
-      return n?.data?.attributes?.path?.alias ?? '';
-    };
-    const top = (body.data ?? []).filter(
-      (i: any) => !i.relationships?.parent?.data && i.attributes?.enabled !== false,
+    const aliasByUuid = new Map<string, string>(
+      (body.included ?? []).map((n: any) => [n.id, n.attributes?.path?.alias ?? '']),
     );
-    return Promise.all(
-      top.map(async (i: any) => ({
-        path: await nodePath(i.relationships?.node?.data?.id),
+    return (body.data ?? [])
+      .filter(
+        (i: any) =>
+          !i.relationships?.parent?.data && i.attributes?.enabled !== false,
+      )
+      .map((i: any) => ({
+        path: aliasByUuid.get(i.relationships?.node?.data?.id) ?? '',
         title: i.attributes?.title ?? '',
-      })),
-    );
+      }));
   },
 
   async seed() {

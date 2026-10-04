@@ -162,11 +162,12 @@ function toResource(n) {
   };
 }
 
-const collection = (items) => ({
+const collection = (items, included) => ({
   jsonapi: { version: '1.0' },
   data: items,
   links: { self: { href: BASE() } },
   meta: { count: items.length },
+  ...(included ? { included } : {}),
 });
 
 const single = (item) => ({ jsonapi: { version: '1.0' }, data: item });
@@ -579,7 +580,7 @@ app.get('/jsonapi/taxonomy_term/:vocab', (req, res) => {
 
 // --- menu links (the hierarchy) -----------------------------------------
 app.get('/jsonapi/menu_link_content/menu_link_content', (req, res) => {
-  const { menuLinks } = stateFor(req);
+  const { menuLinks, nodes } = stateFor(req);
   const parent = filterValue(req, 'parent');
   const list = [...menuLinks.values()].filter((l) =>
     parent === undefined ? true : (l.parentUuid ?? '') === (parent === 'null' ? '' : parent),
@@ -607,6 +608,17 @@ app.get('/jsonapi/menu_link_content/menu_link_content', (req, res) => {
           },
         },
       })),
+      // JSON:API's answer to N+1: `?include=node` returns the referenced
+      // entities alongside, so a caller resolving every link's target does one
+      // request instead of one per link. Real Drupal supports this on any
+      // relationship; modelled here for `node`, which is the one we use.
+      String(req.query.include ?? '')
+        .split(',')
+        .includes('node')
+        ? [...nodes.values()]
+            .filter((n) => list.some((l) => l.nodeUuid === n.uuid))
+            .map((n) => toResource(n))
+        : undefined,
     ),
   );
 });
