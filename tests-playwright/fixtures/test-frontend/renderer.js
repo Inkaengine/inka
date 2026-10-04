@@ -976,10 +976,12 @@ function renderTeaserBlock(block, blockUid) {
         `;
     }
 
-    // Show teaser content when href has value
+    // Show teaser content when href has value. No image ⇒ no element (#296): the
+    // editor reveals an empty image with the toolbar toggle, not a grey stand-in
+    // that also shows on the published page.
     const imageHtml = imageSrc
         ? `<img data-edit-media="preview_image" src="${imageSrc}" alt="" style="max-width: 100%; height: auto; margin-bottom: 10px; border-radius: 4px;" />`
-        : `<div data-edit-media="preview_image" style="height: 100px; background: #ddd; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; border-radius: 4px; cursor: pointer;">Click to add image</div>`;
+        : '';
 
     // When overwrite is false, add data-block-readonly to prevent editing
     // User must check "Customize teaser content" checkbox to enable editing
@@ -2423,9 +2425,8 @@ function renderSlideBlock(block) {
     // Preview image (background image area)
     if (imageSrc) {
         html += `<div data-edit-media="preview_image" style="height: 100px; background: url('${imageSrc}') center/cover; margin-bottom: 8px; border-radius: 4px;"></div>`;
-    } else {
-        html += `<div data-edit-media="preview_image" style="height: 100px; background: #ddd; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; border-radius: 4px; cursor: pointer;">Click to add image</div>`;
     }
+    // No image ⇒ no element (#296); revealed with the toolbar toggle while editing.
 
     if (headTitle) {
         html += `<div data-edit-text="head_title" style="font-size: 12px; color: #888; margin-bottom: 4px;">${headTitle}</div>`;

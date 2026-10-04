@@ -211,9 +211,8 @@
       <NuxtImg class="rounded-t-lg" data-edit-media="preview_image" v-if="block.preview_image" v-for="props in [imageProps(block.preview_image)]" :src="props.url" alt="" />
       <NuxtImg class="rounded-t-lg" data-edit-media="preview_image" v-else-if="hrefHasImage(block)" v-for="props in [imageProps(block.href[0])]" :src="props.url" alt="" />
     </NuxtLink>
-    <div v-else data-edit-media="preview_image" class="rounded-t-lg bg-gray-200 flex items-center justify-center" style="height: 200px; cursor: pointer;">
-      <span class="text-gray-400">Click to add image</span>
-    </div>
+    <!-- No image ⇒ no element (#296): the editor reveals an empty image with the
+         toolbar toggle; a grey "Click to add image" stand-in showed on published pages. -->
     <div class="p-5">
       <!-- data-block-readonly on the wrapper controls editability — hydra.js respects it -->
       <!-- Key forces Vue to recreate element when overwrite changes (clears stale contenteditable text) -->
@@ -276,12 +275,14 @@
             data-carousel-item
             :style="entry.slide.preview_image ? imageProps(entry.slide, true).class : ''"
             data-block-add="right">
-            <!-- Clickable overlay for editing the slide's image. WHICH field that
+            <!-- Clickable overlay for editing the slide's image — only when the slide
+                 has one (#296: no data ⇒ no element; the reveal toggle adds it). WHICH field that
                  is depends on the slide: a teaser-ish slide carries
                  preview_image, but a slide that is an image block carries `url`,
                  and hardcoding preview_image left image slides with no edit
                  target at all — uneditable wherever a slider held one. -->
-            <div :data-edit-media="entry.slide['@type'] === 'image' ? 'url' : 'preview_image'"
+            <div v-if="entry.slide['@type'] === 'image' ? entry.slide.url : entry.slide.preview_image"
+                 :data-edit-media="entry.slide['@type'] === 'image' ? 'url' : 'preview_image'"
                  class="absolute inset-0 cursor-pointer" style="z-index: 1;"></div>
             <div
               class="max-w-sm p-6 bg-slate-200/90 border border-gray-200 m-12 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 absolute"
