@@ -1071,7 +1071,10 @@ function renderSummaryItemBlock(block, blockUid) {
  */
 function renderImageBlock(block) {
     tfLog('renderImageBlock:', { url: block.url, type: typeof block.url, hasImageScales: !!block.url?.image_scales });
-    const imageSrc = getImageUrl(block.url) || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23e5e7eb%22/%3E%3C/svg%3E';
+    // No image ⇒ no element (#296). `url` is required, so while editing the
+    // bridge hands an empty one a stand-in image to click; a visitor sees nothing.
+    const imageSrc = getImageUrl(block.url);
+    if (!imageSrc) return '';
     // Volto's image block uses 'placeholder' for alt text, not 'alt'
     const alt = block.placeholder || block.alt || '';
     const href = getLinkUrl(block.href);

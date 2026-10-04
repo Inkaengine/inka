@@ -27,6 +27,7 @@ import {
   setFieldValue,
   getFieldDef,
   resolveFieldPath as resolveFieldPathHelper,
+  isStarterUiField,
 } from '@volto-hydra/helpers';
 import { expelAllowedTypes, findOnlyEmptyChildUid } from './containerOps.js';
 import { acceptableAt } from './conversionMap.js';
@@ -12268,12 +12269,10 @@ export class Bridge {
         if (!this._revealSentinelFor(fieldDef, fieldType)) {
           return false;
         }
-        // A REQUIRED field is rendered unconditionally by the frontend (a value
-        // is guaranteed, so no `{field && …}` guard), which means its element
-        // always exists and there is nothing to reveal. Excluding it keeps the
-        // button's "N empty optional fields" count honest. If a required field
-        // ever IS missing an element, that's a renderer bug for the dev-warning
-        // to shout about — not something reveal should paper over.
+        // A REQUIRED field is never toggled: while it is empty it is always
+        // shown (emptyRequiredFields, seeded on every render), so there is
+        // nothing for the toggle to do, and excluding it keeps the button's
+        // "N empty optional fields" count honest.
         if (schema.required?.includes(fieldName)) return false;
         // A slate field is never absent — it defaults to one empty paragraph —
         // so its empty is that paragraph, the same test a renderer hides it by.
@@ -12281,6 +12280,29 @@ export class Bridge {
         return isEmpty(block[fieldName]);
       })
       .map(([fieldName]) => fieldName);
+  }
+
+  /**
+   * The block's REQUIRED fields that are empty and are filled on the canvas.
+   *
+   * While editing these are always shown, exactly like a revealed field: the
+   * same sentinel is seeded on every render, no toggle needed. A required field
+   * has to be filled, so its target should be there from the start — an image
+   * block with nothing to click would be impossible to fill in. Frontends draw
+   * no placeholder of their own (#296: no data ⇒ no element), so a visitor never
+   * sees one; and the admin refuses to save an empty required field.
+   *
+   * Reads the block path map's emptyRequiredFields — the same list the admin's
+   * starter UI uses — and leaves out the fields that starter UI fills
+   * (isStarterUiField), plus any with no inline affordance (sidebar-only).
+   */
+  emptyRequiredFields(blockUid) {
+    const empty = this.blockPathMap?.[blockUid]?.emptyRequiredFields;
+    if (!empty) return [];
+    return empty
+      .filter(({ fieldName, fieldDef }) => !isStarterUiField(fieldDef)
+        && this._revealSentinelFor(fieldDef, this.getFieldType(blockUid, fieldName)) !== undefined)
+      .map(({ fieldName }) => fieldName);
   }
 
   /**
@@ -12305,8 +12327,9 @@ export class Bridge {
   }
 
   /**
-   * Toggle reveal for a block. Reveal is ALWAYS EXPLICIT — nothing here runs on
-   * selection, on insert, or on a field becoming empty.
+   * Toggle reveal for a block. Reveal of OPTIONAL fields is always explicit —
+   * nothing here runs on selection, on insert, or on a field becoming empty.
+   * (Empty REQUIRED fields are shown without it: emptyRequiredFields.)
    */
   toggleOptionalFields(blockUid) {
     if (this.revealedBlocks.has(blockUid)) this.revealedBlocks.delete(blockUid);
@@ -12401,11 +12424,17 @@ export class Bridge {
       // the answer doesn't change once revealed. (The old DOM-based rule asked "is
       // there no element?" — a question revealing itself falsified, so the field
       // flickered back out on the next render.)
-      if (!this._revealedBlocks?.has(blockUid)) continue;
-      // revealableFields is already "empty AND has an inline affordance", so a
-      // field the editor has since filled drops out on its own and no sentinel is
+      //
+      // Empty REQUIRED fields are seeded the same way on every render, revealed
+      // or not (see emptyRequiredFields).
+      // Both lists are already "empty AND has an inline affordance", so a field
+      // the editor has since filled drops out on its own and no sentinel is
       // written over real content.
-      for (const fieldName of this.revealableFields(blockUid)) {
+      const toSeed = [
+        ...(this._revealedBlocks?.has(blockUid) ? this.revealableFields(blockUid) : []),
+        ...this.emptyRequiredFields(blockUid),
+      ];
+      for (const fieldName of toSeed) {
         const fieldDef = properties[fieldName];
         const fieldType = this.getFieldType(blockUid, fieldName);
         let sentinel = this._revealSentinelFor(fieldDef, fieldType);

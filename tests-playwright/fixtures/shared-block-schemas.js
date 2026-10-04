@@ -1156,12 +1156,14 @@ export const sharedBlocksConfig = {
         //    data-edit-media="url" an editable target rather than an unknown
         //    attribute. Undeclared, the image is uneditable on the canvas.
         //
-        // 2. `url` is REQUIRED. An image block exists to hold an image, so it
-        //    renders one either way — a grey placeholder until the author picks
-        //    a real one, giving them something to click. Marking it required is
-        //    what tells reveal to leave it alone: reveal is for OPTIONAL fields
-        //    that are absent until asked for (a hero's image), and offering to
-        //    "reveal" a field whose element is already on screen is nonsense.
+        // 2. `url` is REQUIRED. An image block exists to hold an image, so while
+        //    editing an empty one is always shown, like a revealed field: the
+        //    bridge seeds the same stand-in the reveal toggle uses, with no
+        //    toggle needed, giving the author something to click. The frontend
+        //    draws no placeholder of its own (no data ⇒ no element), so a visitor
+        //    never sees one; the admin refuses to save it empty anyway. Reveal's
+        //    toggle is for OPTIONAL fields that are absent until asked for (a
+        //    hero's image).
         //
         // Volto states the rest as a schema FUNCTION of formData (alt/align/size
         // and the link fieldset appear only once a url exists). A function can't

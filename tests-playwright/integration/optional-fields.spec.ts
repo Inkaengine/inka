@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { URLS } from '../ports';
 
 /**
  * Issue #296 — "empty means absent" for optional block fields.
@@ -134,6 +135,53 @@ test.describe('Optional fields — teaser image (#296)', () => {
  * selection or on insert — so an all-empty block stays an empty box until the
  * editor presses the toggle.
  */
+/**
+ * REQUIRED fields behave like a revealed field while they are empty. An image
+ * block's `url` is required: while editing, its empty image is shown without
+ * the toggle (the bridge seeds the same stand-in reveal uses), and on the
+ * published page an empty one renders nothing. The frontend draws no
+ * placeholder of its own, so visitors never see one. (The admin refuses to save
+ * an empty required field, so empty ones reach a page only from outside the
+ * editor — an import, the API, an agent.)
+ */
+test.describe('Required fields — shown while empty, like a revealed field (#296)', () => {
+  const IMAGE = '[data-edit-media="url"]';
+
+  test('an empty required image is shown while editing, without the toggle', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/required-fields-page');
+
+    const iframe = helper.getIframe();
+    await expect(
+      iframe.locator(`[data-block-uid="image-full"] ${IMAGE}`),
+      'an image block with an image should render it — if this fails the selector or fixture is wrong, not the feature',
+    ).toHaveCount(1);
+
+    // Nothing selected, nothing toggled: the empty required image is already there.
+    const empty = iframe.locator(`[data-block-uid="image-empty"] ${IMAGE}`);
+    await expect(empty, 'an empty required image must be shown while editing').toHaveCount(1);
+    const loaded = await empty.evaluate((el) => (el.tagName === 'IMG'
+      ? { ok: el.complete && el.naturalWidth > 0, src: el.getAttribute('src') }
+      : { ok: true, src: null }));
+    expect(loaded.ok, `the shown image must load, src=${loaded.src}`).toBe(true);
+  });
+
+  test('an empty required image renders nothing on the published page', async ({ page }, testInfo) => {
+    const frontend = testInfo.project.name.includes('nuxt') ? URLS.nuxt : URLS.testFrontend;
+    await page.goto(`${frontend}/_test_data/required-fields-page`);
+
+    await expect(
+      page.locator('[data-block-uid="image-full"] img'),
+      'the published page should show the filled image block — if this fails the page did not render',
+    ).toHaveCount(1, { timeout: 15000 });
+    await expect(
+      page.locator('[data-block-uid="image-empty"] img'),
+      'an empty image block must render no image (no grey placeholder) for visitors',
+    ).toHaveCount(0);
+  });
+});
+
 test.describe('Optional fields — reveal toggle (#296)', () => {
   test('toggle reveals every empty inline-editable field on the selected block', async ({ page }) => {
     const helper = new AdminUIHelper(page);
