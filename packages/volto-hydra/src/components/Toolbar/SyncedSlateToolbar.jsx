@@ -1301,13 +1301,14 @@ const SyncedSlateToolbar = ({
       );
       blockButtons.push({ name: f.name, element: <Btn slateRules={slateRules} /> });
     }
+  }
 
   // Paragraph styles (styleMenu.blockStyles) are chosen like a heading — one
   // kind of paragraph per block, applied where the cursor is — so they are
-  // entries in the same dropdown; the style menu keeps text styles only.
+  // entries in the same dropdown, whether or not blockFormats is declared; the
+  // style menu keeps text styles only.
   for (const item of paragraphStyleItems(config.settings.slate?.styleMenu, { slateRules })) {
     blockButtons.push({ name: item.name, styleItem: item });
-  }
   }
 
   // Multi-selection: simplified toolbar with drag handle + count
