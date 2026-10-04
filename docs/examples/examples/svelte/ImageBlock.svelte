@@ -5,12 +5,14 @@
   $: imgSrc = getImageUrl(block.url);
 </script>
 
+<!-- No image ⇒ no element. While editing, Inka hands an empty image a
+     stand-in to click; a visitor sees nothing. -->
 <div data-block-uid={block['@uid']}>
-  {#if href}
+  {#if imgSrc && href}
     <a {href} data-edit-link="href">
       <img data-edit-media="url" src={imgSrc} alt={block.alt} />
     </a>
-  {:else}
+  {:else if imgSrc}
     <img data-edit-media="url" src={imgSrc} alt={block.alt} />
   {/if}
 </div>
