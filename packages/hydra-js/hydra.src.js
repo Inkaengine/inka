@@ -12269,10 +12269,10 @@ export class Bridge {
         if (!this._revealSentinelFor(fieldDef, fieldType)) {
           return false;
         }
-        // A REQUIRED field is never toggled: while it is empty it is always
-        // shown (emptyRequiredFields, seeded on every render), so there is
-        // nothing for the toggle to do, and excluding it keeps the button's
-        // "N empty optional fields" count honest.
+        // A REQUIRED field is never toggled: an empty required image is always
+        // shown (emptyRequiredFields, seeded on every render), and a required
+        // text field is drawn by the frontend itself. Excluding them keeps the
+        // button's "N empty optional fields" count honest.
         if (schema.required?.includes(fieldName)) return false;
         // A slate field is never absent — it defaults to one empty paragraph —
         // so its empty is that paragraph, the same test a renderer hides it by.
@@ -12283,7 +12283,7 @@ export class Bridge {
   }
 
   /**
-   * The block's REQUIRED fields that are empty and are filled on the canvas.
+   * The block's REQUIRED IMAGE fields that are empty.
    *
    * While editing these are always shown, exactly like a revealed field: the
    * same sentinel is seeded on every render, no toggle needed. A required field
@@ -12292,16 +12292,26 @@ export class Bridge {
    * no placeholder of their own (#296: no data ⇒ no element), so a visitor never
    * sees one; and the admin refuses to save an empty required field.
    *
+   * IMAGE fields only, for now: their sentinel is a real, sized (transparent)
+   * image, so the target is always clickable. A text sentinel is a zero-width
+   * space, which only gives a clickable target when the frontend lays the field
+   * out as a block — an empty inline element (a nav item's label link) has no
+   * width at all. Required text fields keep the frontend's own placeholder until
+   * empty inline fields get a click target (which the reveal toggle needs too).
+   *
    * Reads the block path map's emptyRequiredFields — the same list the admin's
    * starter UI uses — and leaves out the fields that starter UI fills
-   * (isStarterUiField), plus any with no inline affordance (sidebar-only).
+   * (isStarterUiField).
    */
   emptyRequiredFields(blockUid) {
     const empty = this.blockPathMap?.[blockUid]?.emptyRequiredFields;
     if (!empty) return [];
     return empty
-      .filter(({ fieldName, fieldDef }) => !isStarterUiField(fieldDef)
-        && this._revealSentinelFor(fieldDef, this.getFieldType(blockUid, fieldName)) !== undefined)
+      .filter(({ fieldName, fieldDef }) => {
+        if (isStarterUiField(fieldDef)) return false;
+        const sentinel = this._revealSentinelFor(fieldDef, this.getFieldType(blockUid, fieldName));
+        return sentinel === Bridge.REVEAL_PIXEL || sentinel?.[0]?.['@id'] === Bridge.REVEAL_PIXEL;
+      })
       .map(({ fieldName }) => fieldName);
   }
 
@@ -12329,7 +12339,7 @@ export class Bridge {
   /**
    * Toggle reveal for a block. Reveal of OPTIONAL fields is always explicit —
    * nothing here runs on selection, on insert, or on a field becoming empty.
-   * (Empty REQUIRED fields are shown without it: emptyRequiredFields.)
+   * (Empty REQUIRED image fields are shown without it: emptyRequiredFields.)
    */
   toggleOptionalFields(blockUid) {
     if (this.revealedBlocks.has(blockUid)) this.revealedBlocks.delete(blockUid);
@@ -12425,8 +12435,8 @@ export class Bridge {
       // there no element?" — a question revealing itself falsified, so the field
       // flickered back out on the next render.)
       //
-      // Empty REQUIRED fields are seeded the same way on every render, revealed
-      // or not (see emptyRequiredFields).
+      // Empty REQUIRED image fields are seeded the same way on every render,
+      // revealed or not (see emptyRequiredFields).
       // Both lists are already "empty AND has an inline affordance", so a field
       // the editor has since filled drops out on its own and no sentinel is
       // written over real content.
