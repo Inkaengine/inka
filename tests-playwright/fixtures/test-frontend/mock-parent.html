@@ -677,7 +677,16 @@
               // mock test-frontend's `sharedBlocksConfig` hero keeps `description`),
               // and baseline-only types (mock-*) are left untouched since the
               // frontend simply doesn't send them.
-              mockBlocksConfig[blockType] = blockDef;
+              //
+              // An entry WITHOUT a schema of its own does not replace a block the
+              // admin has — it adds to it, as the admin merges it: a frontend's
+              // slate entry carrying only `fieldRules` keeps slate's `value`
+              // field. Replacing it left a slate block with no slate field, so
+              // nothing on the page rendered node ids.
+              const baseline = mockBlocksConfig[blockType];
+              const ownsSchema = !!(blockDef?.blockSchema || blockDef?.schema);
+              mockBlocksConfig[blockType] =
+                baseline && !ownsSchema ? { ...baseline, ...blockDef } : blockDef;
             }
           }
 
