@@ -1,17 +1,23 @@
 /**
  * Auto-discovered "empty container region" sanity tests.
  *
- * Reads .discovered-empty-regions.json (written by globalSetup): one entry per
- * blocks_layout region that seeds an `@type:"empty"` placeholder when emptied
- * (no defaultBlockType + >1 allowedBlocks), paired with a real container example.
+ * Reads .discovered-empty-regions.json (written by globalSetup): every region of
+ * every container block type (blocks_layout, and object_list items that hold
+ * blocks), paired with a real container example, plus the page's own regions.
  *
- * For each, we load that container's page but page.route the fetch to strip the
- * region down to a single seeded `@type:"empty"` — the exact state Hydra leaves
- * a no-default, multi-allowed region in when its last child is deleted — and
- * assert the region still renders a `[data-block-uid]` placeholder rather than
- * throwing or going blank. This catches the class of bug where a custom
- * container renderer rejects a seeded empty child (e.g. a contextNavigation that
- * only expects navItem/listing).
+ * For each, load that container's page in the mock parent and empty the region
+ * the way an editor's delete does — the admin's own deleteBlockFromContainer +
+ * ensureEmptyBlockIfEmpty (mockParent.emptyRegion). When the region names no
+ * default and allows more than one type, the admin seeds the special
+ * `@type:"empty"` placeholder: the editor's only way to add the first block.
+ * Assert it is drawn, visible, with a size to click. This catches the class of
+ * bug where a container renderer rejects the empty child (e.g. a
+ * contextNavigation that only expects navItem/listing) or draws it with no size.
+ *
+ * A region that seeds an ordinary block (its default, or its single allowed
+ * type) is skipped: that block renders like any other, which block-sanity
+ * covers. The admin's seeding decides which regions those are, so no copy of
+ * that rule lives here.
  *
  * Run with:
  *   DISCOVER_BLOCKS_API=<mock-api-url> pnpm exec playwright test empty-region-sanity
@@ -24,6 +30,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { requireEnvironment } from '../helpers/preconditions';
+import { revealBlock } from '../helpers/BlockVerificationHelper';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface EmptyRegionCase {
@@ -46,39 +53,6 @@ cases = cases.filter((c) => !c.parentType.startsWith('conv'));
 
 // Same frontends as block-sanity — the ones with full block coverage.
 const SANITY_PROJECTS = new Set(['mock', 'nuxt', 'nextjs']);
-const EMPTY_CHILD_ID = 'sanity-empty-child';
-
-/**
- * Find the container `blockId` anywhere in a page's block tree (nested blocks
- * dicts + arrays like accordion panels / slides) and strip its `field` region
- * to a single seeded `@type:"empty"` child. Returns true if found + emptied.
- */
-function emptyRegionInPage(node: any, blockId: string, field: string): boolean {
-  if (!node || typeof node !== 'object') return false;
-  const blocks = node.blocks;
-  if (blocks && typeof blocks === 'object') {
-    const container = blocks[blockId];
-    if (container && typeof container === 'object') {
-      container.blocks = container.blocks || {};
-      container.blocks[EMPTY_CHILD_ID] = { '@type': 'empty' };
-      container.blocks_layout = container.blocks_layout || {};
-      container.blocks_layout[field] = [EMPTY_CHILD_ID];
-      return true;
-    }
-    for (const id of Object.keys(blocks)) {
-      if (emptyRegionInPage(blocks[id], blockId, field)) return true;
-    }
-  }
-  for (const value of Object.values(node)) {
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        if (item && typeof item === 'object' && emptyRegionInPage(item, blockId, field)) return true;
-      }
-    }
-  }
-  return false;
-}
-
 base.beforeEach(async ({}, testInfo) => {
   // Scope first, environment second — see block-sanity for why the order matters.
   if (!SANITY_PROJECTS.has(testInfo.project.name)) {
@@ -99,38 +73,65 @@ const test = base.extend<{ helper: AdminUIHelper }>({
 
 test.describe('Empty container region renders (auto-discovered)', () => {
   for (const c of cases) {
-    test(`${c.parentType}.${c.field} renders a placeholder when its region is empty`, async ({ page, helper }, testInfo) => {
+    const what = c.field === '*' ? `every ${c.parentType} region` : `${c.parentType}.${c.field}`;
+    test(`${what} renders a placeholder when its region is empty`, async ({ page, helper }, testInfo) => {
       const frontendUrl = process.env.FRONTEND_URL || getFrontendUrl(testInfo.project.name);
       const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
       const apiOrigin = process.env.DISCOVER_BLOCKS_API || URLS.mockApi;
       const mockParentUrl = process.env.MOCK_PARENT_URL || `${URLS.testFrontend}/mock-parent.html`;
-      const apiPath = `${apiOrigin}${c.pagePath}`;
-
-      // Intercept the mock-parent's page fetch and empty the target region.
-      let emptied = false;
-      await page.route(apiPath, async (route) => {
-        const resp = await route.fetch();
-        const json = await resp.json();
-        emptied = emptyRegionInPage(json, c.blockId, c.field);
-        await route.fulfill({ response: resp, json });
-      });
-
-      await page.goto(`${mockParentUrl}?api_path=${encodeURIComponent(apiPath)}${frontend}`);
+      await page.goto(`${mockParentUrl}?api_path=${encodeURIComponent(`${apiOrigin}${c.pagePath}`)}${frontend}`);
       await helper.waitForIframeReady();
+      await helper.waitForBridgeConnected();
       const iframe = helper.getIframe();
+      // The page itself is no block element; a container is.
+      if (c.blockId !== '_page') {
+        await expect(iframe.locator(`[data-block-uid="${c.blockId}"]`).first(), `container ${c.blockId} did not render on ${c.pagePath}`)
+          .toBeAttached({ timeout: 10000 });
+      }
 
-      // Sanity that the fixture actually got emptied (else the assertions below
-      // would pass/fail for the wrong reason).
-      expect(
-        emptied,
-        `container ${c.blockId} (${c.parentType}) not found in ${c.pagePath} to empty its ${c.field} region`,
-      ).toBe(true);
+      const regions: string[] = c.field === '*'
+        ? (await page.evaluate((id) => (window as any).mockParent.listRegions(id), c.blockId)).map((r: { region: string }) => r.region)
+        : [c.field];
+      expect(regions.length, `${c.parentType} [${c.blockId}] lists no regions`).toBeGreaterThan(0);
 
-      // The container must render, and its emptied region must contain the
-      // seeded placeholder (with its data-block-uid) — proof the renderer
-      // tolerated the empty child rather than throwing or going blank.
-      await expect(iframe.locator(`[data-block-uid="${c.blockId}"]`)).toBeAttached({ timeout: 10000 });
-      await expect(iframe.locator(`[data-block-uid="${EMPTY_CHILD_ID}"]`)).toBeAttached({ timeout: 10000 });
+      let checked = 0;
+      for (const region of regions) {
+        const where = `${c.parentType} [${c.blockId}] region "${region}" on ${c.pagePath}`;
+        // Empty it with the admin's own code — delete each child, then seed.
+        const result: { skipped?: string; seeded?: { uid: string; type: string | null }[] } = await page.evaluate(
+          ([id, r]) => (window as any).mockParent.emptyRegion(id, r), [c.blockId, region] as const,
+        );
+        if (result.skipped) {
+          testInfo.annotations.push({ type: 'region-skipped', description: `${where}: ${result.skipped}` });
+          continue;
+        }
+        const seeded = result.seeded ?? [];
+        expect.soft(seeded.length, `${where}: emptying it left nothing to click`).toBeGreaterThan(0);
+        const placeholders = seeded.filter((b) => b.type === 'empty');
+        if (seeded.length && !placeholders.length) {
+          testInfo.annotations.push({
+            type: 'region-skipped',
+            description: `${where}: seeds ${seeded.map((b) => b.type).join(', ')}, not the empty placeholder`,
+          });
+          continue;
+        }
+        checked++;
+        for (const { uid, type } of placeholders) {
+          const el = iframe.locator(`[data-block-uid="${uid}"]`).first();
+          // Show it first: it may sit in a collapsed panel or an inactive slide,
+          // or in a region a frontend draws only once asked (a search's answer).
+          await revealBlock(iframe, uid);
+          await expect.soft(el, `${where}: the frontend did not draw the seeded ${type} placeholder (${uid})`)
+            .toBeAttached({ timeout: 10000 });
+          if ((await iframe.locator(`[data-block-uid="${uid}"]`).count()) === 0) continue;
+          const box = await el.boundingBox();
+          expect.soft(
+            !!box && box.width > 0 && box.height > 0,
+            `${where}: the seeded ${type} placeholder (${uid}) has no size to click, got ${JSON.stringify(box)}`,
+          ).toBe(true);
+        }
+      }
+      test.skip(checked === 0, `no region of ${c.parentType} [${c.blockId}] seeds the empty placeholder`);
     });
   }
 });
