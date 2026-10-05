@@ -79,6 +79,7 @@ import {
   applySchemaDefaultsToBlock,
   applySchemaDefaultsToBlockWithContext,
 } from './schemaValidation.mjs';
+import { getTargetMapping, withFieldCustom } from './copyFromTargetMapping';
 
 // Conversion-graph logic lives in conversionValidation.mjs so it stays free of
 // the React context barrel (a Playwright gate imports it directly).
@@ -2405,11 +2406,23 @@ export function convertBlockType(blockData, newType, blocksConfig, typeFieldName
   }
 
   // Merge: original fields as base, converted fields take priority
-  return {
+  let result = {
     ...originalFields,
     ...convertedFields,
     [typeFieldName]: finalType,
   };
+  // A field copy-from-target would pull from the link, that the conversion
+  // filled from the source block, is the author's: custom, so the linked
+  // item's value does not replace it the next time the block is edited.
+  const targetMapping = getTargetMapping(blocksConfig?.[finalType]);
+  if (targetMapping) {
+    for (const dest of new Set(Object.values(targetMapping).map(getMappingTarget))) {
+      if (dest && result[dest] !== undefined && result[dest] !== '') {
+        result = withFieldCustom(result, dest);
+      }
+    }
+  }
+  return result;
 }
 
 /**

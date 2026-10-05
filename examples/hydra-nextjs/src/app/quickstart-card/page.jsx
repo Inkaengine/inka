@@ -14,7 +14,7 @@ export default function Page({ params }) {
       initBridge({
         // Declare the one block type we render richly.
         blocks: {
-          card: { blockSchema: { properties: {
+          card: { title: 'Card', group: 'common', blockSchema: { properties: {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },

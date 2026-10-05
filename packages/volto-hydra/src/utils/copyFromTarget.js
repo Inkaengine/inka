@@ -30,6 +30,15 @@
 import { getMappingTarget, getFieldType, widgetToTargetType } from './blockSync';
 import { convertFieldValue, normalizeCatalogImage } from '@volto-hydra/helpers';
 import { isInternalURL } from '@plone/volto/helpers/Url/Url';
+import {
+  getTargetMapping,
+  getUrlField,
+  schemaProperties,
+  CUSTOM_FIELDS_KEY,
+  withFieldCustom,
+  targetDestinations,
+} from './copyFromTargetMapping';
+export { getTargetMapping, getUrlField, CUSTOM_FIELDS_KEY, withFieldCustom } from './copyFromTargetMapping';
 
 /** Widget name the mapped destination fields are swapped to (the wrapper). */
 export const COPY_FROM_TARGET_WIDGET = 'copyFromTargetField';
@@ -57,57 +66,6 @@ export const CANONICAL_SNAPSHOT_KEYS = [
   'end',
 ];
 
-/**
- * The `@target` mapping ({ sourceAttr: destField | {field,type} }) or null.
- *
- * Copy-from-target is ON BY DEFAULT: a block with a link field but no explicit
- * `@target` falls back to a normalized `@default` — so any link-bearing block
- * that already declares its canonical content shape pulls from the link without
- * extra wiring (the teaser case). An explicit `@target` always wins. A block
- * with no link field (nothing to pull from) returns null.
- */
-export function getTargetMapping(blockConfig) {
-  const explicit = blockConfig?.fieldMappings?.['@target'];
-  if (explicit && Object.keys(explicit).length > 0) return explicit;
-
-  const def = blockConfig?.fieldMappings?.['@default'];
-  if (!def || !getUrlField(blockConfig)) return null;
-
-  // Pass-through, same contract as the listing expander (helpers `convertFieldValue`
-  // + `widgetToTargetType`): copy every declared source key VERBATIM to its dest
-  // field; the value's type is derived from the dest field's widget at pull time,
-  // so `title`, `description`, `Subject`, `created`, `image`, … all flow with no
-  // per-field wiring. `@id` is the link itself (it already populates the url field),
-  // never a pulled display field, so it is the one key skipped.
-  const synthesized = {};
-  for (const [source, dest] of Object.entries(def)) {
-    if (source === '@id') continue;
-    const destField = getMappingTarget(dest);
-    if (!destField) continue;
-    synthesized[source] = destField;
-  }
-  return Object.keys(synthesized).length > 0 ? synthesized : null;
-}
-
-/** Destination (block) field names the @target mapping writes to. */
-function targetDestinations(mapping) {
-  return new Set(
-    Object.values(mapping).map(getMappingTarget).filter(Boolean),
-  );
-}
-
-/**
- * The block's link/url field — where the target snapshot (selectedItemAttrs)
- * lives. It's just the link-typed field in the schema ("the url is the link in
- * the fieldmapping"). Returns the field name or null.
- */
-export function getUrlField(blockConfig) {
-  const props = blockConfig?.blockSchema?.properties || {};
-  for (const [name, def] of Object.entries(props)) {
-    if (getFieldType(def) === 'link') return name;
-  }
-  return null;
-}
 
 /**
  * Swap each mapped destination field's widget to the wrapper, stashing the
@@ -206,14 +164,12 @@ export function getTargetValueForField(field, blockConfig, blockData, liveTarget
 
   // Derive the conversion type from the DESTINATION field's widget (the same
   // rule block-type conversion uses), so we never hard-code per-field behaviour.
-  const rawDef = blockConfig?.blockSchema?.properties?.[field];
+  const rawDef = schemaProperties(blockConfig, blockData)[field];
   const destDef = rawDef?.widget === COPY_FROM_TARGET_WIDGET ? rawDef.baseWidget : rawDef;
   const type = entry.type ?? widgetToTargetType(destDef?.widget, destDef);
   return convertFieldValue(raw, type);
 }
 
-/** Block key holding the set of fields the editor has taken CUSTOM (overridden). */
-export const CUSTOM_FIELDS_KEY = '_customFields';
 
 /**
  * A mapped field is either LINKED (tracks the target — default) or CUSTOM (the
@@ -238,12 +194,6 @@ export function isFieldLinked(field, blockConfig, blockData) {
   return !isFieldCustom(field, blockData);
 }
 
-/** Return blockData with `field` marked custom (immutable). */
-export function withFieldCustom(blockData, field) {
-  const set = new Set(blockData?.[CUSTOM_FIELDS_KEY] || []);
-  set.add(field);
-  return { ...blockData, [CUSTOM_FIELDS_KEY]: [...set] };
-}
 
 /** Return blockData with `field` marked linked again (removed from custom). */
 export function withFieldLinked(blockData, field) {

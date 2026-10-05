@@ -227,6 +227,8 @@ onMounted(() => {
                     },
                 },
                 socialLinks: {
+                    title: 'Social links',
+                    group: 'common',
                     restricted: true,  // Only used in footer template
                     blockSchema: {
                         properties: {
