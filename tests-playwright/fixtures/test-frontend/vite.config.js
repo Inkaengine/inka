@@ -86,6 +86,9 @@ export default defineConfig({
       // so the mock parent hands the bridge a page with its forced layouts and
       // templates already stamped on — see mock-parent.html's INIT handler.
       '/merge-templates.js': path.resolve(__dirname, '../../../packages/volto-hydra/src/utils/mergeTemplates.mjs'),
+      // The admin's own region helpers, so block-sanity can empty a region exactly
+      // as an editor's delete does (deleteBlockFromContainer + ensureEmptyBlockIfEmpty).
+      '/block-path.js': path.resolve(__dirname, '../../../packages/volto-hydra/src/utils/blockPath.js'),
       '/shared-block-schemas.js': path.resolve(__dirname, '../shared-block-schemas.js'),
       '/core-block-schemas.js': path.resolve(__dirname, '../core-block-schemas.js'),
     },
