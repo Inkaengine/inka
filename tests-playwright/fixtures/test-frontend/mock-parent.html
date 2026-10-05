@@ -1220,6 +1220,18 @@
         );
         return { seeded };
       },
+      // Change a block's fields (found by uid anywhere, nested included) and send
+      // the page to the frontend, as an edit in the sidebar would.
+      updateBlock: (blockId, fields) => {
+        const map = buildBlockPathMap(mockFormData, mockBlocksConfig);
+        if (!map[blockId]) throw new Error(`updateBlock: no block ${blockId}`);
+        const formData = JSON.parse(JSON.stringify(mockFormData));
+        Object.assign(getAtPath(formData, map[blockId].path), fields);
+        mockFormData = formData;
+        document.getElementById('previewIframe').contentWindow.postMessage(
+          { type: 'FORM_DATA', data: formData, blockPathMap: buildBlockPathMap(formData, mockBlocksConfig) }, '*',
+        );
+      },
       // Select a specific block by sending SELECT_BLOCK + FORM_DATA to iframe
       selectBlock: (blockId) => {
         const iframe = document.getElementById('previewIframe');

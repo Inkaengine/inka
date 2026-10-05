@@ -783,7 +783,22 @@ export async function expandListingBlocks(inputItems, options = {}) {
       const total = listingTotals[blockId];
       const blockStart = globalPos;
 
-      if (listingResults[blockId]) {
+      if (
+        total === 0 &&
+        _isEditMode() &&
+        blockStart >= paging.start &&
+        blockStart < paging.start + paging.size
+      ) {
+        // No results, while editing: the author still needs something with the
+        // listing's uid to click — to select it and fix its query. One `empty`
+        // placeholder (which frontends already draw as a clickable box in any
+        // container), carrying the listing's uid; the bridge doesn't treat it as
+        // an add-block slot because the stored block is still the listing.
+        // Published, nothing. Not a result, so paging doesn't count it.
+        // Decided by the TOTAL: listingResults can be an empty array (truthy)
+        // when static blocks come before the listing in the same window.
+        items.push({ '@uid': blockId, '@type': 'empty', readOnly: true });
+      } else if (listingResults[blockId]) {
         const itemType = block[itemTypeField] || defaultItemType;
         const fieldMapping = block.fieldMapping || {};
 
