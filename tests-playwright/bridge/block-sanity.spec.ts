@@ -21,7 +21,7 @@
  */
 import { test as base, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { verifyBlockRendering } from '../helpers/BlockVerificationHelper';
+import { verifyBlockRendering, revealBlock } from '../helpers/BlockVerificationHelper';
 import { drainFieldCoverage } from '../helpers/field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../helpers/text-style-coverage';
 import { axeCheckPage, formatViolations } from '../helpers/axe-sanity';
@@ -242,6 +242,68 @@ test.describe('Block sanity (auto-discovered)', () => {
       : '';
     const labelKind = block.kind ? ` [${block.kind}]` : '';
     const label = `${block.blockType}${labelVariation}${labelKind}`;
+    // A listing whose query matches nothing has no results to draw, but while
+    // editing it must still draw SOMETHING with its uid: otherwise the author has
+    // nothing to click to select it and fix the query. (Published, it may draw
+    // nothing — that is the frontend's edit-only placeholder.) Every listing
+    // example, with its query swapped for one that matches no content.
+    if (block.isListing) {
+      test(`${label} with no results still shows something to click while editing${src}`, async ({ page, helper }, testInfo) => {
+        test.skip(!belongsHere(testInfo.project.name), `discovered via ${block.frontend}`);
+        const frontendUrl = process.env.FRONTEND_URL || getFrontendUrl(testInfo.project.name);
+        const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
+        const apiOrigin = process.env.DISCOVER_BLOCKS_API || URLS.mockApi;
+        const mockParentUrl = process.env.MOCK_PARENT_URL || `${URLS.testFrontend}/mock-parent.html`;
+        await page.goto(`${mockParentUrl}?api_path=${encodeURIComponent(`${apiOrigin}${block.pagePath}`)}${frontend}`);
+        await helper.waitForIframeReady();
+        await helper.waitForBridgeConnected();
+        // Only a listing driven by a query (its schema declares `querystring`);
+        // one fed another way (a page's related items) can't be emptied by a query.
+        const queryDriven = await page.evaluate((id) => {
+          const mp = (window as any).mockParent;
+          const map = mp.buildBlockPathMap();
+          const type = map[id]?.blockType;
+          return !!mp.getBlocksConfig()?.[type]?.blockSchema?.properties?.querystring;
+        }, block.blockId);
+        test.skip(!queryDriven, `${block.blockId}'s results don't come from a query`);
+        const iframe = helper.getIframe();
+        const drawn = iframe.locator(`[data-block-uid="${block.blockId}"]`);
+        const textNow = () => drawn.evaluateAll((els) => els.map((e) => (e as HTMLElement).innerText).join('|'));
+        await expect(drawn.first(), `${label} [${block.blockId}] did not render with its results`).toBeAttached({ timeout: 15000 });
+        const before = await textNow();
+
+        const stored = (block.blockData?.querystring ?? {}) as Record<string, unknown>;
+        await page.evaluate(([id, querystring]) => (window as any).mockParent.updateBlock(id, { querystring }), [
+          block.blockId,
+          {
+            ...stored,
+            query: [{
+              i: 'SearchableText',
+              o: 'plone.app.querystring.operation.string.contains',
+              v: 'zzqx-no-content-matches-this',
+            }],
+          },
+        ] as const);
+
+        // The old results are still drawn until the frontend re-renders; wait for
+        // what the listing shows to change before judging it.
+        if (before) {
+          await expect.poll(textNow, { message: `${label} [${block.blockId}] never re-rendered after its query changed`, timeout: 15000 })
+            .not.toBe(before);
+        }
+        await expect(
+          drawn.first(),
+          `${label} [${block.blockId}] with no results drew nothing while editing — the author has nothing to click to select it`,
+        ).toBeAttached({ timeout: 10000 });
+        await revealBlock(iframe, block.blockId);
+        const box = await drawn.first().boundingBox();
+        expect(
+          !!box && box.width > 0 && box.height > 0,
+          `${label} [${block.blockId}] with no results has no size to click while editing, got ${JSON.stringify(box)}`,
+        ).toBe(true);
+      });
+    }
+
     test(`${label} block renders and has edit annotations${src}`, async ({ page, helper }, testInfo) => {
       test.skip(!belongsHere(testInfo.project.name), `discovered via ${block.frontend}`);
       const frontendUrl = process.env.FRONTEND_URL || getFrontendUrl(testInfo.project.name);
