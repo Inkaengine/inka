@@ -12,9 +12,9 @@
  *
  * `live.current` is refreshed by the editor on every render with its current
  * state and handlers: { properties, blockPathMap, insertAndSelectBlock,
- * onDeleteBlock, moveBlocks, onChangeFormData }.
+ * onDeleteBlock, moveBlocks, onChangeFormData, blocksConfig, intl }.
  */
-import { getBlockById, updateBlockById } from '../../utils/blockPath';
+import { getBlockById, updateBlockById, getBlockTypeSchema } from '../../utils/blockPath';
 
 const STATE_LIMIT_MS = 10000;
 const SAVE_LIMIT_MS = 15000;
@@ -71,6 +71,28 @@ export function registerAgentApi(live) {
     getPage() {
       const { properties: formData, blockPathMap } = live.current;
       return { path: contentPath(), version: formData.modified, formData, blockPathMap };
+    },
+
+    /**
+     * Each block type's fields and their widgets, from the block config the
+     * frontends registered — what an agent-side converter needs to know which
+     * fields hold child blocks (blocks_layout) and which are rich text (slate).
+     * Plain data: { type: { blockSchema: { properties: { field: { widget } } } } }.
+     */
+    getSchemaWidgets() {
+      const { blocksConfig, intl } = live.current;
+      const out = {};
+      for (const type of Object.keys(blocksConfig)) {
+        const properties = getBlockTypeSchema(type, intl, blocksConfig)?.properties ?? {};
+        out[type] = {
+          blockSchema: {
+            properties: Object.fromEntries(
+              Object.entries(properties).map(([field, def]) => [field, { widget: def?.widget ?? null }]),
+            ),
+          },
+        };
+      }
+      return out;
     },
 
     /**
