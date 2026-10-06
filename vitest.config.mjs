@@ -45,6 +45,8 @@ export default defineConfig({
       // The pure data helpers (buildQuerystringSearchBody etc.) — server-safe,
       // no DOM, so their unit tests live alongside them here.
       'packages/helpers/**/*.{test,spec}.{js,jsx,ts,tsx}',
+      // The MCP server: the agent page format and the tools.
+      'packages/inka-mcp/**/*.{test,spec}.mjs',
       // Pure aggregation helpers used BY the playwright suites (coverage
       // bookkeeping, no browser). Their contract — "one example is enough",
       // "reported only when no example covers it" — is worth testing directly
