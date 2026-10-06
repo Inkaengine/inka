@@ -565,6 +565,30 @@ test.describe('block formats declared as data', () => {
     await expect(iframe.locator('[data-block-uid="target"] h5')).toHaveText('Some text to format');
   });
 
+  test("a block's description and a warning link to their guidance", async ({ page }) => {
+    // This page's frontend says what its text block is for, where the block's
+    // guidance lives, and links its Heading 5 warning to the guidance on headings.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    await formatOptions(page, helper, 'target');
+    const about = page.locator('#sidebar-properties .hydra-block-about');
+    await expect(about).toContainText('Paragraphs, headings and lists.');
+    await expect(about.getByRole('link', { name: 'Guidance' })).toHaveAttribute(
+      'href',
+      'https://example.com/guidance/text',
+    );
+
+    await page.locator('.format-dropdown-menu [data-format="h5"]').click();
+    const warning = page.locator('.hydra-field-warning').filter({ hasText: /Heading 5 is advice-worthy/ });
+    await expect(warning.getByRole('link', { name: 'Guidance' })).toHaveAttribute(
+      'href',
+      'https://example.com/guidance/headings',
+    );
+  });
+
   test("a rule's warning shows for a block with its own edit component", async ({ page }) => {
     // The text block's sidebar is its own Edit component, not a form built
     // from its schema — and the warnings were only drawn beside the latter, so

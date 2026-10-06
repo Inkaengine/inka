@@ -128,6 +128,8 @@ Per-block options (most are passed through to Volto's block config):
 - **\`id\`** — block type identifier (matches the key).
 - **\`title\`** — display name in the BlockChooser. **Required for a new block type** — nothing makes one up from the key; a block without one fails to register with an error naming it.
 - **\`icon\`** — icon shown in the BlockChooser (data URL or SVG component).
+- **\`description\`** — what the block is for, in a sentence. The BlockChooser shows it on the block's button (as its tooltip), and the sidebar shows it at the top of the block's settings.
+- **\`docsUrl\`** — where the block's guidance lives. The sidebar links to it ("Guidance", opened in a new tab) after the description.
 - **\`group\`** — chooser group (e.g. `'common'`). **Required for a new block type**, like `title`.
 - **\`restricted\`** — `true` hides the block from the chooser; can also be a function for conditional restrictions.
 - **\`mostUsed\`** — pin to the top of the chooser.
@@ -552,6 +554,24 @@ fieldRules: {
 ```
 
 An `error` is **refused** — a registered validator turns it into a form error and `Form.onSubmit` will not submit. A `warning` is **said**: it is deliberately not a validator, so nothing blocks. The sidebar shows it beside the field, and the page saves.
+
+A warning can link to the guidance it comes from. Write it as `{ message, href }` instead of a string, and the sidebar adds a "Guidance" link (opened in a new tab) after the message:
+
+### Javascript
+
+```javascript
+fieldRules: {
+    image: {
+        when: { image: { regex: '\\.png$' } },
+        warning: {
+            message: 'A pictogram should be an SVG drawn to the 48×48 grid.',
+            href: 'https://example.com/guidance/pictograms',
+        },
+    },
+},
+```
+
+The resolved schema carries the message on the field as `hydraRuleWarning` either way, and the link as `hydraRuleWarningHref`. The content validator reports the link with the warning. A warning object without a `message` is refused with an error naming it.
 
 Use a warning when the value may well be right and the author should simply know: artwork a little off the 48×48 grid is still the right artwork, and refusing to save over it would be hostile. Use an error when the value cannot work at all — a raster where the design system inlines an SVG.
 

@@ -258,6 +258,11 @@ export function createFieldRulesEnhancer(rulesConfig) {
  *
  * Shared by both rule forms — a single `{ when, … }` and an entry in a switch —
  * so `error` and `warning` mean the same thing wherever they are written.
+ *
+ * A warning is a message, or `{ message, href }` when it should link to the
+ * guidance it comes from. The message lands on `hydraRuleWarning` either way
+ * (a string, so everything reading it reads it as before) and the link on
+ * `hydraRuleWarningHref`.
  * @private
  */
 function matchedRuleResult(rule) {
@@ -266,7 +271,21 @@ function matchedRuleResult(rule) {
   return {
     ...(set && typeof set === 'object' ? set : {}),
     ...('error' in rule ? { hydraRuleError: rule.error } : {}),
-    ...('warning' in rule ? { hydraRuleWarning: rule.warning } : {}),
+    ...('warning' in rule ? warningProps(rule.warning) : {}),
+  };
+}
+
+/** `hydraRuleWarning` (+ `hydraRuleWarningHref`) for a rule's `warning`. @private */
+function warningProps(warning) {
+  if (typeof warning === 'string') return { hydraRuleWarning: warning };
+  if (typeof warning?.message !== 'string') {
+    throw new Error(
+      `fieldRules: a warning is a string or { message, href }; got ${JSON.stringify(warning)} (no message)`,
+    );
+  }
+  return {
+    hydraRuleWarning: warning.message,
+    ...(warning.href ? { hydraRuleWarningHref: warning.href } : {}),
   };
 }
 

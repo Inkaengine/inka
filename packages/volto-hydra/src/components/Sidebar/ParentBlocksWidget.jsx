@@ -164,11 +164,23 @@ const getFilteredBlockSchema = (blockType, intl, blockPathMap, blockId, blockDat
 // checkboxes, with the inside-slot restriction) lives in the pure ./templateSettingsSchema
 // module so it can be unit-tested without the React tree. Imported at the top of this file.
 
-/** The rule warnings a resolved schema carries: `[{ field, title, message }]`. */
+/** The rule warnings a resolved schema carries: `[{ field, title, message, href }]`. */
 const ruleWarningsOf = (schema) =>
   Object.entries(schema?.properties || {})
     .filter(([, def]) => def?.hydraRuleWarning)
-    .map(([field, def]) => ({ field, title: def.title || field, message: def.hydraRuleWarning }));
+    .map(([field, def]) => ({
+      field,
+      title: def.title || field,
+      message: def.hydraRuleWarning,
+      href: def.hydraRuleWarningHref,
+    }));
+
+/** A link to guidance, opened beside the editor so the edit is not left. */
+const GuidanceLink = ({ href }) => (
+  <a href={href} target="_blank" rel="noopener noreferrer">
+    Guidance
+  </a>
+);
 
 /** Rule warnings, beside the fields they are about. */
 const RuleWarnings = ({ warnings }) =>
@@ -177,10 +189,38 @@ const RuleWarnings = ({ warnings }) =>
       {warnings.map((w) => (
         <p key={w.field} className="hydra-field-warning">
           <strong>{w.title}:</strong> {w.message}
+          {w.href && (
+            <>
+              {' '}
+              <GuidanceLink href={w.href} />
+            </>
+          )}
         </p>
       ))}
     </div>
   ) : null;
+
+/** What a block is for (its `description`) and where its guidance is (`docsUrl`). */
+const BlockAbout = ({ blockConfig }) =>
+  blockConfig?.description || blockConfig?.docsUrl ? (
+    <p className="hydra-block-about">
+      {blockConfig.description}
+      {blockConfig.docsUrl && (
+        <>
+          {' '}
+          <GuidanceLink href={blockConfig.docsUrl} />
+        </>
+      )}
+    </p>
+  ) : null;
+
+/** The advice at the top of a block's settings: what it is for, then any warnings. */
+const BlockAdvice = ({ blockConfig, warnings }) => (
+  <>
+    <BlockAbout blockConfig={blockConfig} />
+    <RuleWarnings warnings={warnings} />
+  </>
+);
 
 /**
  * Single parent block section with header and settings
@@ -492,12 +532,12 @@ const ParentBlockSection = ({
           Parent blocks: render to their own target div
           Current block: render to sidebar-properties */}
       {/* A block with its own Edit component renders its own sidebar, so the
-          rule warnings go beside it here (the schema form below draws them
+          block advice (what it is for, rule warnings) goes beside it here (the schema form below draws it
           inside itself). */}
-      {BlockEdit && ruleWarnings.length > 0 && (() => {
+      {BlockEdit && (() => {
         const targetElement = document.getElementById(targetId);
         return targetElement
-          ? createPortal(<RuleWarnings warnings={ruleWarnings} />, targetElement)
+          ? createPortal(<BlockAdvice blockConfig={blockConfig} warnings={ruleWarnings} />, targetElement)
           : null;
       })()}
       {BlockEdit && (
@@ -554,7 +594,7 @@ const ParentBlockSection = ({
         const formContent = (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
             <>
-            <RuleWarnings warnings={ruleWarnings} />
+            <BlockAdvice blockConfig={blockConfig} warnings={ruleWarnings} />
             <BlockDataForm
               errors={blocksErrors?.[blockId] ? { [blockId]: blocksErrors[blockId] } : {}}
               schema={formSchema}

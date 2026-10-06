@@ -134,6 +134,8 @@ const BlockChooser = ({
           icon
           basic
           className={block.id}
+          // What the block is for, where the author picks between blocks.
+          title={block.description}
           onClick={(e) => {
             onInsertBlock
               ? onInsertBlock(currentBlock, {

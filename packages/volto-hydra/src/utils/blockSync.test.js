@@ -1353,6 +1353,43 @@ describe('fieldRules — warning action', () => {
     // First matching rule wins in a switch — the error, here.
     expect(out.properties.image.hydraRuleError).toBe('Must be an SVG.');
   });
+
+  test('a warning can link to the guidance it comes from', () => {
+    const out = createSchemaEnhancerFromRecipe({
+      fieldRules: {
+        image: {
+          when: { image: { regex: '\\.png$' } },
+          warning: {
+            message: 'A pictogram should be an SVG.',
+            href: 'https://example.com/guidance/pictograms',
+          },
+        },
+      },
+    })({ schema: baseSchema(), formData: { image: '/images/photo.png' } });
+    // The message stays a string, so everything that reads it reads it as before.
+    expect(out.properties.image.hydraRuleWarning).toBe('A pictogram should be an SVG.');
+    expect(out.properties.image.hydraRuleWarningHref).toBe(
+      'https://example.com/guidance/pictograms',
+    );
+  });
+
+  test('a warning written as a string has no link', () => {
+    const out = createSchemaEnhancerFromRecipe(recipe)({
+      schema: baseSchema(),
+      formData: { image: '/images/photo.png' },
+    });
+    expect(out.properties.image.hydraRuleWarningHref).toBeUndefined();
+  });
+
+  test('a warning object without a message is refused', () => {
+    expect(() =>
+      createSchemaEnhancerFromRecipe({
+        fieldRules: {
+          image: { when: { image: { isSet: true } }, warning: { href: '/guidance' } },
+        },
+      })({ schema: baseSchema(), formData: { image: '/images/photo.png' } }),
+    ).toThrow(/warning.*message/);
+  });
 });
 
 /**
