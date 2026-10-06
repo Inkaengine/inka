@@ -778,21 +778,20 @@ export function getAllContainerFields(
       //   1. allowedBlocks set: typed items, each can have a different type via typeField
       //   2. schema set (no allowedBlocks): single-schema items, virtual type blockType:fieldName
       const hasAllowedBlocks = !!fieldDef.allowedBlocks;
-      const itemType = `${blockType}:${fieldName}`;
+      const { allowedBlocks, defaultBlockType, maxLength } =
+        resolveObjectListConstraints(fieldDef, blockType, fieldName);
       // Object prefix to the array (the `/`-path object hops): [] at the block
       // root, [table] when nested in a `table` object. The array is at
       // [...regionPath, fieldName].
-      const maxLength = fieldDef.maxLength || null;
       const currentCount = getFieldCount(fieldName, true, objectPath);
       const maxLengthOk = !maxLength || currentCount < maxLength;
       containerFields.push({
         region: fieldName,
         ...(objectPath.length > 0 && { regionPath: objectPath }),
         title: prefixTitle(fieldDef.title || fieldName, titlePath),
-        allowedBlocks: hasAllowedBlocks ? fieldDef.allowedBlocks : [itemType],
+        allowedBlocks,
         allowedTemplates: fieldDef.allowedTemplates || null,
-        defaultBlockType:
-          fieldDef.defaultBlockType || (hasAllowedBlocks ? null : itemType),
+        defaultBlockType,
         maxLength,
         currentCount,
         canAdd: !parentIsReadonly && maxLengthOk,
@@ -2025,6 +2024,23 @@ function getPageDefaults(blocksConfig, formData) {
       properties: formData,
     }),
     defaultBlockType: getDefaultBlockType(),
+  };
+}
+
+/**
+ * An object_list region's constraints. Its items never inherit the page's types: a list with
+ * its own allowedBlocks takes those (typed items); one without holds items of the single
+ * schema the field declares, the virtual type `<blockType>:<field>`.
+ *
+ * @returns {{ allowedBlocks: Array, defaultBlockType: string|null, maxLength: number|null }}
+ */
+export function resolveObjectListConstraints(fieldDef, blockType, fieldName) {
+  const itemType = `${blockType}:${fieldName}`;
+  const typed = !!fieldDef.allowedBlocks;
+  return {
+    allowedBlocks: typed ? fieldDef.allowedBlocks : [itemType],
+    defaultBlockType: fieldDef.defaultBlockType || (typed ? null : itemType),
+    maxLength: fieldDef.maxLength || null,
   };
 }
 
