@@ -22,7 +22,7 @@ const ADMIN_ORIGIN = `http://localhost:${process.env.HYDRA_VOLTO_SSR_PORT || 300
 // match the API the prerender pulls content from — a hardcoded host means the
 // build fetches /docs/images/*/@@images/* from the WRONG backend and every doc
 // image 404s, failing the prerender. Fallback is the historical default.
-const PUBLIC_BACKEND = process.env.NUXT_TEST_BACKEND || 'https://hydra-api.pretagov.com';
+const PUBLIC_BACKEND = process.env.NUXT_TEST_BACKEND || 'https://api.inka.sh';
 const PUBLIC_BACKEND_HOST = new URL(PUBLIC_BACKEND).host;
 
 export default defineNuxtConfig({
@@ -94,8 +94,8 @@ export default defineNuxtConfig({
           security: {
             headers: { // Edit site can be put in an iframe
               contentSecurityPolicy: {
-                'img-src': ["'self'", "data:", 'https://hydra.pretagov.com', 'https://hydra-api.pretagov.com', ADMIN_ORIGIN, MOCK_API_ORIGIN],
-                'connect-src': ["'self'", "data:", 'https://hydra.pretagov.com', 'https://hydra-api.pretagov.com', ADMIN_ORIGIN, MOCK_API_ORIGIN],
+                'img-src': ["'self'", "data:", 'https://admin.inka.sh', 'https://api.inka.sh', ADMIN_ORIGIN, MOCK_API_ORIGIN],
+                'connect-src': ["'self'", "data:", 'https://admin.inka.sh', 'https://api.inka.sh', ADMIN_ORIGIN, MOCK_API_ORIGIN],
                 'frame-ancestors': ['*']
               },
               crossOriginResourcePolicy: "cross-origin",
@@ -108,12 +108,12 @@ export default defineNuxtConfig({
         public: {
           image_alias: '',
           // Override API URL for test builds (NUXT_TEST_BACKEND env var)
-          backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://hydra-api.pretagov.com',
+          backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://api.inka.sh',
           // The admin's port is overridable like every other (ports.ts), and a
           // literal 3001 pointed test builds at whatever else was on it.
           adminUrl: process.env.NUXT_TEST_BACKEND
             ? `http://localhost:${process.env.HYDRA_VOLTO_SSR_PORT || 3001}`
-            : 'https://hydra.pretagov.com',
+            : 'https://admin.inka.sh',
         }
       },
       image: {
@@ -176,9 +176,9 @@ export default defineNuxtConfig({
       // the client bundle, so they must be the deploy's real backend — NOT a
       // hardcoded host. The builder sets NUXT_TEST_BACKEND (the API the
       // prerender also fetches from, see netlify-build.sh) and NUXT_ADMIN_URL.
-      // The hydra.pretagov.com fallbacks are only for a plain local build.
-      backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://hydra-api.pretagov.com',
-      adminUrl: process.env.NUXT_ADMIN_URL || 'https://hydra.pretagov.com',
+      // The api.inka.sh / admin.inka.sh fallbacks are only for a plain local build.
+      backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://api.inka.sh',
+      adminUrl: process.env.NUXT_ADMIN_URL || 'https://admin.inka.sh',
     },
   },
   css: ['/assets/css/main.css'],
@@ -197,7 +197,7 @@ export default defineNuxtConfig({
     provider: 'ipx',
     // The backend host must be allow-listed AND the `_plone_` alias must point at
     // it, or ipxStatic can't fetch the source doc images at build time.
-    domains: [PUBLIC_BACKEND_HOST, 'hydra-api.pretagov.com', 'hydra.pretagov.com'],
+    domains: [PUBLIC_BACKEND_HOST, 'api.inka.sh', 'admin.inka.sh'],
     alias: {
       '_plone_': PUBLIC_BACKEND,
     },
