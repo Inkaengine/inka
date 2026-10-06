@@ -511,16 +511,15 @@ export const sharedBlocksConfig = {
                                 widget: 'blocks_layout',
                                 // Accordion panels accept the general page-level content blocks
                                 // (the demo panels hold separator/teaser/listing/slateTable, not
-                                // just slate/image) — EXCEPT accordion itself, to prevent nesting
-                                // accordions inside accordions.
+                                // just slate/image), and accordion itself: panels can nest.
                                 allowedBlocks: [
                                     'slate', 'image', 'separator', 'teaser', 'listing', 'slateTable',
                                     'hero', 'columns', 'slider', 'gridBlock', 'section',
                                     'contextNavigation', 'codeExample', 'toc', 'highlight', 'introduction',
                                     // `button`'s id is also a class of every chooser button, so
                                     // it is picked by its label (block-add-remove.spec.ts).
-                                    'button',
-                                , 'accordion'],
+                                    'button', 'accordion',
+                                ],
                                 defaultBlockType: 'slate',
                             },
                         },
