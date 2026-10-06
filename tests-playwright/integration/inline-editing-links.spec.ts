@@ -503,4 +503,28 @@ test.describe('Inline Editing - Links', () => {
     }).toPass({ timeout: 5000 });
   });
 
+  test('a relative link typed into the link editor is accepted', async ({ page }) => {
+    // Typing a path relative to the current page (`./child`) used to leave the
+    // link editor's Submit doing nothing — the link was silently refused.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const blockId = 'block-1-uuid';
+    await helper.editBlockTextInIframe(blockId, 'Relative');
+    const editor = await helper.getEditorLocator(blockId);
+    await helper.selectAllTextInEditor(editor);
+    await helper.clickFormatButton('link');
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await linkUrlInput.fill('./another-page');
+    await linkUrlInput.press('Enter');
+    await helper.waitForLinkEditorToClose();
+
+    const link = editor.locator('a');
+    await expect(link).toHaveCount(1);
+    await expect(link).toHaveText('Relative');
+    // Resolved like a browser would on /_test_data/test-page: a sibling.
+    await expect(link).toHaveAttribute('href', /\/_test_data\/another-page$/);
+  });
+
 });
