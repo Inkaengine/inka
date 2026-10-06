@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { DrupalAdapter } from '@volto-hydra/hydra-adapters-drupal';
+import { createPublicReader } from '@volto-hydra/hydra-adapters-drupal/public';
 import type { Target } from './index';
 import seed from '../fixtures/seed.json';
 
@@ -49,6 +50,28 @@ async function assertPortFree(): Promise<void> {
     throw err;
   }
 }
+
+/**
+ * A request as a VISITOR: no Authorization header, so the mock permission-checks
+ * it as anonymous — but naming the session, so it reads the same content the
+ * adapter has been changing.
+ */
+const publicFetch: typeof globalThis.fetch = (input, init = {}) =>
+  fetch(input, {
+    ...init,
+    headers: {
+      ...(init.headers ?? {}),
+      // The session the ADAPTER's normal credentials key on, spelled the way the
+      // mock keys it — the Authorization header's own value. Fixed rather than
+      // read from adapter.credentials, which expireSession deliberately poisons.
+      'X-Hydra-Session': `Basic ${btoa('admin:admin')}`,
+    },
+  });
+
+const publicReader = createPublicReader({
+  cmsBaseUrl: BASE,
+  fetch: publicFetch,
+});
 
 const target: Target = {
   name: 'drupal',
@@ -119,50 +142,24 @@ const target: Target = {
     });
   },
 
+  // Delegated to the SHIPPED public reader — see the note in the Plone target.
+  async publicMenuEntries() {
+    // Drupal's menu_link_content, filtered by `enabled` — its nodes are flat, so
+    // the menu links ARE its hierarchy.
+    const items = await publicReader.navigation();
+    return items
+      ? items.map((i: any) => ({ label: i.title, path: i.path }))
+      : null;
+  },
+
   async publicBlocks(path: string) {
-    const res = await fetch(
-      `${BASE}/jsonapi/node/page?filter[path.alias]=${encodeURIComponent(path)}`,
-      { headers: { Accept: 'application/vnd.api+json' } },
-    );
-    if (!res.ok) return null;
-    const body: any = await res.json();
-    const node = body?.data?.[0];
-    if (!node) return null;
-    const raw = node.attributes?.field_hydra_blocks;
-    if (!raw) return {};
-    try {
-      return JSON.parse(raw).blocks ?? {};
-    } catch {
-      return {};
-    }
+    return publicReader.blocks(path);
   },
 
   async publicNavigation() {
-    // The same source the adapter uses. A stock Drupal 11 serves
-    // menu_link_content to anonymous callers — MEASURED, after an earlier
-    // version of this mock wrongly forbade it and a module was invented to
-    // work around the restriction.
-    const res = await fetch(
-      // `include=node` resolves every link's target in ONE request — JSON:API's
-      // answer to N+1. Without it this fetched each referenced node separately.
-      `${BASE}/jsonapi/menu_link_content/menu_link_content?include=node`,
-      { headers: { Accept: 'application/vnd.api+json' } },
-    );
-    if (!res.ok) return null;
-    const body: any = await res.json();
-    const aliasByUuid = new Map<string, string>(
-      (body.included ?? []).map((n: any) => [n.id, n.attributes?.path?.alias ?? '']),
-    );
-    return (body.data ?? [])
-      .filter(
-        (i: any) =>
-          !i.relationships?.parent?.data && i.attributes?.enabled !== false,
-      )
-      .map((i: any) => ({
-        path: aliasByUuid.get(i.relationships?.node?.data?.id) ?? '',
-        title: i.attributes?.title ?? '',
-      }));
+    return publicReader.navigation();
   },
+
 
   async seed() {
     adapter.credentials = { username: 'admin', password: 'admin' };

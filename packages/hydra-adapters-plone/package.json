@@ -4,7 +4,8 @@
   "description": "Hydra adapter for Plone (plone.restapi). Serves both the raw http passthrough and semantic intents.",
   "type": "module",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./public": "./publicRead.js"
   },
   "files": [
     "index.js"

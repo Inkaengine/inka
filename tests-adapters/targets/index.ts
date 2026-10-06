@@ -77,6 +77,36 @@ export interface Target {
    * Returns null when an anonymous client cannot read it at all.
    */
   publicNavigation(): Promise<{ path: string; title: string }[] | null>;
+
+  /**
+   * A CURATED menu, read with no credentials — a second hierarchy over the same
+   * content, not the page tree that `publicNavigation` returns.
+   *
+   * Optional because only some CMSes have one. WordPress and Drupal keep menus
+   * separately from the content hierarchy, so a frontend must read them to draw
+   * navigation at all; in Plone the content tree IS the menu. A target that has
+   * no second hierarchy leaves this undefined and the test skips explicitly
+   * rather than passing on an empty result.
+   */
+  /**
+   * What a VISITOR sees in the menu view.
+   *
+   * Entries rather than paths, because an EXTERNAL link has no content path — its
+   * label is the only thing identifying it in a public read.
+   *
+   * Required of every target, because the view model is the generalisation: each
+   * CMS reads its menu from a different place — Plone's @navigation (which honours
+   * exclude_from_nav), Drupal's menu_link_content (enabled), WordPress's WPGraphQL
+   * menuItems (core serves menus to nobody) — and the point of the test is that an
+   * edit reaches a visitor, whichever place that is.
+   */
+  publicMenuEntries(): Promise<
+    { label: string; path: string | null }[] | null
+  >;
+
+  publicMenu?(): Promise<
+    { label: string; path: string; parentLabel: string | null }[] | null
+  >;
   /**
    * Put the adapter into a state where the CMS rejects it as unauthenticated,
    * so the 401 path can be exercised for real rather than with a stub. The

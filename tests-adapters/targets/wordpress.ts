@@ -1,4 +1,5 @@
-import { WordPressAdapter , serializeBlocks, parseBlocks } from '@volto-hydra/hydra-adapters-wordpress';
+import { WordPressAdapter, serializeBlocks } from '@volto-hydra/hydra-adapters-wordpress';
+import { createPublicReader } from '@volto-hydra/hydra-adapters-wordpress/public';
 import type { Target } from './index';
 import seed from '../fixtures/seed.json';
 
@@ -7,8 +8,24 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 let nonce: string | null = null;
 let cookie = '';
+/**
+ * The same jar with WordPress's session removed.
+ *
+ * A visitor's request cannot simply send no cookies at all: the Playground CLI
+ * sets its own cookie on the first request and 302s to the same URL to pick it
+ * up, so a client with no cookie jar follows that redirect to itself forever
+ * ("redirect count exceeded"). That is the harness's transport, not WordPress
+ * auth — so public reads keep it and drop only the login cookies.
+ */
+let publicCookie = '';
 
-const adapter = new WordPressAdapter({ cmsBaseUrl: BASE });
+// `locking: true` because the mounted companion plugin exposes WordPress's
+// own edit lock over REST. See packages/hydra-adapters-wordpress/companion-plugin.
+const adapter = new WordPressAdapter({
+  cmsBaseUrl: BASE,
+  locking: true,
+  multilingual: true,
+});
 
 /**
  * WordPress cookie auth is not enough for the REST API on its own, and node's
@@ -18,7 +35,13 @@ const adapter = new WordPressAdapter({ cmsBaseUrl: BASE });
 async function login(): Promise<void> {
   const res = await fetch(`${BASE}/`, { redirect: 'manual' });
   const jar = res.headers.getSetCookie?.() ?? [];
-  cookie = jar.map((c) => c.split(';')[0]).join('; ');
+  const pairs = jar.map((c) => c.split(';')[0]);
+  cookie = pairs.join('; ');
+  // WordPress names every auth/preference cookie with one of these prefixes;
+  // anything else in the jar belongs to the Playground server itself.
+  const isWordPressSession = (pair: string) =>
+    /^(wordpress_|wp-settings)/.test(pair.trimStart());
+  publicCookie = pairs.filter((pair) => !isWordPressSession(pair)).join('; ');
 
   const nonceRes = await fetch(
     `${BASE}/wp-admin/admin-ajax.php?action=rest-nonce`,
@@ -103,6 +126,253 @@ async function seedContent(): Promise<void> {
   }
 }
 
+/**
+ * Fill the blueprint's "Primary" menu with the fixture's pages.
+ *
+ * Runs AFTER the reset, not during start(). The reset's rebuild branch removes
+ * pages with wp_delete_post, and WordPress's own `_wp_delete_post_menu_item`
+ * hook deletes any menu item pointing at a deleted post — so a menu seeded at
+ * startup came back empty the first time a test reset the content, and the
+ * public menu read then looked like a CMS limitation rather than a fixture
+ * being torn down underneath it.
+ *
+ * The menu itself is created by the blueprint, because assigning it to a theme
+ * location needs set_theme_mod and no REST endpoint offers that — and WPGraphQL
+ * only exposes a menu to anonymous callers once it is assigned to one. The ITEMS
+ * live here instead: they point at page ids, and putting them in the blueprint
+ * would pin them to pages that did not exist yet.
+ *
+ * Seeded once per boot rather than per reset: the fast reset restores
+ * `page`/`attachment` rows under their original ids, so the item -> page links
+ * stay valid, and `nav_menu_item` posts are not touched by it.
+ *
+ * Deliberately NOT the same shape as the page tree — `/news/first-post` is
+ * lifted to the top level. A menu that merely mirrored the hierarchy could not
+ * tell a real menu read apart from a page-tree read.
+ */
+async function seedMenu(): Promise<void> {
+  const authed = (path: string, init: RequestInit = {}) =>
+    originalFetch(`${BASE}${path}`, {
+      ...init,
+      headers: {
+        ...(init.headers ?? {}),
+        Cookie: cookie,
+        'X-WP-Nonce': nonce!,
+        'Content-Type': 'application/json',
+      },
+    });
+
+  const existingItems = await authed(
+    '/?rest_route=/wp/v2/menu-items&per_page=100&status=publish,draft&context=edit',
+  ).then((r) => r.json());
+
+  // Rebuild when the menu is not EXACTLY the fixture — not merely when it is
+  // empty.
+  //
+  // "Empty or leave it alone" was wrong: the navigation tests legitimately
+  // exclude and rename menu items, the reset's raw SQL does not touch
+  // nav_menu_item rows, so a dirtied menu survived into every later test. The
+  // public-read tests then read a menu two of whose items had been hidden by a
+  // test in another file. A signature comparison costs one request and rebuilds
+  // only when something actually changed it.
+  const pathOf = (url: string) =>
+    url ? new URL(url, BASE).pathname.replace(/\/+$/, '') || '/' : '';
+  const urlById = new Map<number, string>(
+    (existingItems as any[]).map((i) => [i.id, pathOf(i.url ?? '')]),
+  );
+  const signature = (existingItems as any[])
+    .slice()
+    .sort((a, b) => (a.menu_order ?? 0) - (b.menu_order ?? 0))
+    .map(
+      (i) =>
+        `${i.title?.rendered ?? ''}|${pathOf(i.url ?? '')}|` +
+        `${i.parent ? (urlById.get(i.parent) ?? '?') : ''}|${i.status}`,
+    )
+    .join(' ,');
+
+  const menus = await authed('/?rest_route=/wp/v2/menus&per_page=100').then(
+    (r) => r.json(),
+  );
+  const menu = (menus as any[]).find((m) => m.name === 'Primary');
+  if (!menu) {
+    throw new Error(
+      `The blueprint's "Primary" menu is missing; found: ` +
+        `${(menus as any[]).map((m) => m.name).join(', ') || 'none'}`,
+    );
+  }
+
+  // Parents before children, so a parent's id exists when the child needs it.
+  const wanted: Array<{ path: string; parent?: string }> = [
+    { path: '/news' },
+    { path: '/about' },
+    { path: '/news/first-post' },
+    { path: '/archive', parent: '/about' },
+  ];
+
+  const wantedSignature = wanted
+    .map(
+      (entry) =>
+        `${entry.path.split('/').filter(Boolean).pop()}|${entry.path}|` +
+        `${entry.parent ?? ''}|publish`,
+    )
+    .join(' ,');
+  if (signature === wantedSignature) return;
+
+  // Something changed it, so start from nothing rather than trying to patch the
+  // difference — the fixture is small and this keeps one definition of it.
+  for (const item of existingItems as any[]) {
+    await authed(`/?rest_route=/wp/v2/menu-items/${item.id}&force=true`, {
+      method: 'DELETE',
+    });
+  }
+
+  const itemIdByPath = new Map<string, number>();
+
+  for (const [index, entry] of wanted.entries()) {
+    const slug = entry.path.split('/').filter(Boolean).pop()!;
+    const [page] = await authed(
+      `/?rest_route=/wp/v2/pages&slug=${encodeURIComponent(slug)}&status=publish,draft`,
+    ).then((r) => r.json());
+    const pageId = page?.id;
+    if (!pageId) {
+      throw new Error(`Menu fixture names ${entry.path}, which was not seeded`);
+    }
+    const res = await authed('/?rest_route=/wp/v2/menu-items', {
+      method: 'POST',
+      body: JSON.stringify({
+        menus: menu.id,
+        title: entry.path.split('/').filter(Boolean).pop(),
+        type: 'post_type',
+        object: 'page',
+        object_id: pageId,
+        parent: entry.parent ? (itemIdByPath.get(entry.parent) ?? 0) : 0,
+        menu_order: index + 1,
+        status: 'publish',
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(
+        `Seeding menu item ${entry.path} failed: ${res.status} ${await res.text()}`,
+      );
+    }
+    itemIdByPath.set(entry.path, (await res.json()).id);
+  }
+}
+
+/**
+ * Give the site two languages, through Polylang's own REST route.
+ *
+ * Over HTTP, and not from a blueprint step, because Polylang only boots in one of
+ * a few CONTEXTS — admin, settings, a REST request, or a frontend request on a
+ * site that already HAS languages (Polylang::init_context). A bare PHP script is
+ * none of them, so with no languages yet it defines POLYLANG_ACTIVE and stops
+ * without ever loading src/api.php or registering its own REST routes: there is
+ * no way to create the first language from one. A real REST request is.
+ *
+ * The language slugs here must match the ones the blueprint assigns menu
+ * locations for; the check below is what catches them drifting apart.
+ */
+async function configureLanguages(): Promise<void> {
+  const wanted = [
+    { name: 'English', slug: 'en', locale: 'en_US' },
+    { name: 'Deutsch', slug: 'de', locale: 'de_DE' },
+  ];
+
+  const listed = await originalFetch(`${BASE}/?rest_route=/pll/v1/languages`, {
+    headers: { Cookie: cookie, 'X-WP-Nonce': nonce! },
+  }).then((r) => r.json());
+  const have = new Set(
+    (Array.isArray(listed) ? listed : []).map((l: any) => l.slug),
+  );
+
+  for (const language of wanted) {
+    if (have.has(language.slug)) continue;
+    const res = await originalFetch(`${BASE}/?rest_route=/pll/v1/languages`, {
+      method: 'POST',
+      headers: {
+        Cookie: cookie,
+        'X-WP-Nonce': nonce!,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(language),
+    });
+    if (!res.ok) {
+      throw new Error(
+        `Could not create the ${language.slug} language: ` +
+          `${res.status} ${(await res.text()).slice(0, 300)}`,
+      );
+    }
+  }
+
+  const now = await originalFetch(`${BASE}/?rest_route=/pll/v1/languages`, {
+    headers: { Cookie: cookie, 'X-WP-Nonce': nonce! },
+  }).then((r) => r.json());
+  const slugs = (Array.isArray(now) ? now : []).map((l: any) => l.slug);
+  for (const language of wanted) {
+    if (!slugs.includes(language.slug)) {
+      throw new Error(
+        `Polylang still has no ${language.slug} language; it reports: ` +
+          `${slugs.join(', ') || 'none'}. The blueprint assigns menu locations ` +
+          `for en and de, so these have to stay in step.`,
+      );
+    }
+  }
+}
+
+/**
+ * A request as a visitor: Playground's transport cookie, no WordPress session.
+ *
+ * fetch-SHAPED on purpose, so it can be handed to the shipped public reader. The
+ * cookie is Playground's, not WordPress's — see publicCookie — and it is a
+ * property of this harness, which is exactly why the reader takes an injectable
+ * fetch instead of knowing about it.
+ */
+const publicFetch: typeof globalThis.fetch = (input, init = {}) =>
+  originalFetch(input, {
+    ...init,
+    headers: { ...(init.headers ?? {}), Cookie: publicCookie },
+  });
+
+const publicReader = createPublicReader({
+  cmsBaseUrl: BASE,
+  fetch: publicFetch,
+});
+
+/**
+ * Confirm the blueprint's plugins actually came up.
+ *
+ * The suite's plugins are MOUNTED into the Playground from `tests-adapters/fixtures/
+ * wp-plugins` and activated here, over REST, once WordPress is up.
+ *
+ * Not a blueprint step. `installPlugin` fetches from wordpress.org and fails
+ * SILENTLY under PHP-WASM — you get a healthy WordPress with the plugin simply
+ * absent, which is how three probes drew conclusions from an endpoint that was
+ * never there. `activatePlugin` is no better: the mount is not in place when
+ * blueprint steps run, so there is nothing for it to activate. Activating after
+ * boot is ordering-independent, and it throws when the plugin is missing rather
+ * than leaving the suite to report a false negative on the CMS.
+ */
+async function verifyPluginsActive() {
+  const list = (await originalFetch(`${BASE}/?rest_route=/wp/v2/plugins`, {
+    headers: { Cookie: cookie, 'X-WP-Nonce': nonce! },
+  }).then((r) => r.json())) as Array<{ plugin: string; status: string }>;
+  for (const slug of [
+    'wp-graphql',
+    'polylang',
+    ...(process.env.WP_BRIDGE === '0' ? [] : ['wp-graphql-polylang']),
+  ]) {
+    const found = list.find((p) => p.plugin.startsWith(`${slug}/`));
+    if (!found || found.status !== 'active') {
+      throw new Error(
+        `${slug} is not active in the Playground. Plugins are mounted from ` +
+          `tests-adapters/fixtures/wp-plugins (run \`pnpm wp:plugins\` to ` +
+          `fetch them) and activated by a blueprint step. Installed: ` +
+          `${list.map((p) => `${p.plugin}=${p.status}`).join(', ') || 'none'}`,
+      );
+    }
+  }
+}
+
 const target: Target = {
   name: 'wordpress',
   capabilities: [
@@ -113,6 +383,8 @@ const target: Target = {
     'schema',
     'asset',
     'state',
+    'locking',
+    'multilingual',
   ],
   types: { folder: 'page', page: 'page', image: 'attachment' },
   vocabularies: { categories: 'categories' },
@@ -135,6 +407,8 @@ const target: Target = {
     await waitForReady();
     await login();
     installSessionFetch();
+    await verifyPluginsActive();
+    await configureLanguages();
     await seedContent();
     await adapter.init({ cmsBaseUrl: BASE, emit: () => {} });
     adapter.nonce = nonce;
@@ -143,11 +417,24 @@ const target: Target = {
       `${BASE}/?rest_route=/wp/v2/categories&per_page=1`,
       { headers: { Cookie: cookie, 'X-WP-Nonce': nonce! } },
     );
-    this.vocabularySize = Number(terms.headers.get('X-WP-Total') ?? '0');
-    if (this.vocabularySize < 100) {
+    // The number GENERATED, from the fixture — the same meaning the Plone and
+    // Drupal targets give it, so a contract test can name `Category <n>`.
+    //
+    // It used to be X-WP-Total, which counts WordPress's pre-existing
+    // "Uncategorized" as well, making the count one HIGHER than the largest
+    // generated term. `Category ${vocabularySize - 1}` then named a term that
+    // did not exist. That went unnoticed only because the vocabulary was read
+    // while the blueprint was still inserting: the count was some partial
+    // number whose predecessor did happen to exist.
+    this.vocabularySize = seed.vocabularies.categories.generate;
+
+    const present = Number(terms.headers.get('X-WP-Total') ?? '0');
+    if (present < this.vocabularySize) {
       throw new Error(
-        `Only ${this.vocabularySize} categories seeded; the type-ahead ` +
-          `assertion needs a vocabulary large enough to be meaningful.`,
+        `Only ${present} categories exist but the fixture generates ` +
+          `${this.vocabularySize}. The blueprint's vocabulary step did not ` +
+          `finish — the suite would measure type-ahead against a partial ` +
+          `vocabulary and name terms that do not exist.`,
       );
     }
   },
@@ -187,40 +474,32 @@ const target: Target = {
    * The documents still come from seed.json and travel in the body, so the
    * blueprint's PHP never becomes a second definition of the fixture.
    */
+
+
+  // Delegated to the SHIPPED public reader, so these tests exercise the code a
+  // frontend would import rather than a parallel implementation of it. All the
+  // per-CMS knowledge — the blocks carrier, status filtering, the navigation meta
+  // fields, the GraphQL menu — lives there, documented.
+  // See packages/hydra-adapters-wordpress/publicRead.js.
   async publicBlocks(path: string) {
-    // No cookie, no nonce: a visitor's request. `context=edit` is deliberately
-    // NOT passed — asking for it is what requires a session, and the whole
-    // question is what is readable without one.
-    const slug = path.split('/').filter(Boolean).pop() ?? '';
-    const res = await fetch(
-      `${BASE}/?rest_route=/wp/v2/pages&slug=${encodeURIComponent(slug)}&status=publish`,
-    );
-    if (!res.ok) return null;
-    const [post]: any[] = await res.json();
-    if (!post) return null; // not readable by an anonymous client
-    // Whatever a public client can see, read with the adapter's own parser —
-    // so this tests the real carrier rather than a second guess at the format.
-    const rendered: string = post.content?.rendered ?? '';
-    try {
-      return parseBlocks(rendered).blocks ?? {};
-    } catch {
-      return {};
-    }
+    return publicReader.blocks(path);
+  },
+
+  async publicMenuEntries() {
+    const items = await publicReader.menu();
+    return items
+      ? items.map((i: any) => ({ label: i.label, path: i.path }))
+      : null;
+  },
+
+  async publicMenu() {
+    return publicReader.menu();
   },
 
   async publicNavigation() {
-    // What the adapter uses: top-level pages. Core WordPress has no public
-    // menu endpoint, so this is the page tree rather than a curated menu.
-    const res = await fetch(
-      `${BASE}/?rest_route=/wp/v2/pages&parent=0&status=publish&per_page=100`,
-    );
-    if (!res.ok) return null;
-    const posts: any[] = await res.json();
-    return posts.map((post) => ({
-      path: new URL(post.link, BASE).pathname.replace(/\/+$/, '') || '/',
-      title: post.title?.rendered ?? '',
-    }));
+    return publicReader.navigation();
   },
+
 
   async seed() {
     // Put the SESSION back too, not just the content.
@@ -260,6 +539,8 @@ const target: Target = {
     if (!res.ok) {
       throw new Error(`Reset failed: ${res.status} ${await res.text()}`);
     }
+
+    await seedMenu();
 
     adapter.pathCache.clear();
     adapter.ancestorCache.clear();

@@ -1,4 +1,10 @@
-import { BaseAdapter, AdapterError } from '@volto-hydra/hydra-adapters-core';
+import {
+  BaseAdapter,
+  AdapterError,
+  VIEW_PREFIX,
+  EXCLUDED_NODE,
+  parseViewPath,
+} from '@volto-hydra/hydra-adapters-core';
 
 /**
  * Decode base64url without Node's Buffer.
@@ -86,11 +92,6 @@ export class PloneAdapter extends BaseAdapter {
         // the `lock` field that makes the admin ask for them. Advertising it is
         // the other half of returning that field — see the lock contract spec.
         'locking',
-        // `exclude_from_nav` is a field on the document in Plone, and
-        // navigation.setExcluded already writes it. The capability was simply
-        // never declared, so the two contract tests for it skipped on the one
-        // CMS here that can run them.
-        'navigation-exclusion',
       ],
     });
     this.cmsBaseUrl = cmsBaseUrl;
@@ -202,6 +203,114 @@ export class PloneAdapter extends BaseAdapter {
     const target = Array.isArray(result) ? result[0]?.target : null;
     if (!target) return null;
     return /^https?:/.test(target) ? this.toPath(target) : target;
+  }
+
+/* eslint-disable no-dupe-class-members */
+  /** A node in a menu view, which in Plone IS the document. */
+  toPlacement(menu, contentPath, title, excluded) {
+    const base = excluded
+      ? `/${VIEW_PREFIX}/${menu}/${EXCLUDED_NODE}`
+      : `/${VIEW_PREFIX}/${menu}`;
+    return {
+      id: contentPath,
+      path: `${base}${contentPath}`,
+      type: 'placement',
+      title,
+      blocks: {},
+      blocksLayout: { items: [] },
+      // The node and the content are the same object here, so a node always has
+      // a reference and it is itself — including a Link, whose URL field is the
+      // payload rather than a separate kind of node.
+      fields: { reference: contentPath, url: null },
+      state: 'published',
+      _adapter: { raw: null },
+    };
+  }
+
+  /**
+   * A menu view's nodes.
+   *
+   * The menu IS `@navigation`, which already honours `exclude_from_nav` — so the
+   * authenticated listing and what a visitor is served come from one place rather
+   * than two that have to agree.
+   *
+   * The Excluded node is the complement WITHIN this container: children that
+   * `@navigation` left out. Bounded by the tree, because in Plone every document
+   * is in it.
+   */
+  async listPlacements({ menu, excluded, rest }) {
+    const base = rest ? `/${rest}` : '';
+    const nav = await this.fetchJson(`${base}/@navigation`);
+    const inMenu = new Map(
+      (nav?.items ?? []).map((item) => [this.toPath(item['@id']), item.title]),
+    );
+
+    if (!excluded) {
+      const nodes = [...inMenu].map(([path, title]) =>
+        this.toPlacement(menu, path, title, false),
+      );
+      if (!rest) {
+        // Offered at the view's ROOT, so what was taken out of the menu is
+        // discoverable in the menu rather than only through the picker. Not
+        // selectable: it is a bucket, not content.
+        nodes.push({
+          id: EXCLUDED_NODE,
+          path: `/${VIEW_PREFIX}/${menu}/${EXCLUDED_NODE}`,
+          type: 'bucket',
+          title: 'Not in this menu',
+          blocks: {},
+          blocksLayout: { items: [] },
+          fields: { reference: null, url: null },
+          state: 'private',
+          _adapter: { raw: null },
+        });
+      }
+      return { items: nodes };
+    }
+
+    const listing = await this.dispatchOnce('tree.list', {
+      parent: base || '/',
+    });
+    return {
+      items: (listing.items ?? [])
+        // Assets are not menu candidates, and @navigation leaves them out — so
+        // counting them as "excluded" would report them as taken out of a menu
+        // they were never eligible for.
+        .filter((doc) => !['Image', 'File'].includes(doc.type))
+        .filter((doc) => !inMenu.has(doc.path))
+        .map((doc) => this.toPlacement(menu, doc.path, doc.title, true)),
+    };
+  }
+
+  /**
+   * Move a document into or out of the menu view's Excluded node.
+   *
+   * `exclude_from_nav` is the mapping. The document itself never moves: it keeps
+   * its place in the content tree and stays readable by anyone holding its
+   * address, which is what makes this a different claim from unpublishing.
+   */
+  async movePlacement(fromView, toView, args) {
+    if (!fromView || !fromView.rest) {
+      throw new AdapterError(
+        `plone: ${args.path} is not something in a menu view`,
+        { code: 'INVALID_MOVE', status: 400 },
+      );
+    }
+    if (!toView || toView.menu !== fromView.menu) {
+      throw new AdapterError(
+        'plone: a document can only move within its own menu view; its place ' +
+          'in the content tree is the main view\'s business',
+        { code: 'INVALID_MOVE', status: 400 },
+      );
+    }
+    await this.fetchJson(`/${fromView.rest}`, {
+      method: 'PATCH',
+      body: { exclude_from_nav: Boolean(toView.excluded) },
+    });
+    const base = toView.excluded
+      ? `/${VIEW_PREFIX}/${toView.menu}/${EXCLUDED_NODE}`
+      : `/${VIEW_PREFIX}/${toView.menu}`;
+    return { path: `${base}/${fromView.rest}` };
   }
 
   toDocument(raw) {
@@ -524,6 +633,45 @@ export class PloneAdapter extends BaseAdapter {
       }
 
       case 'content.create': {
+        const intoView = parseViewPath(args.parentPath);
+        if (intoView) {
+          const url = args.data?.url ?? null;
+          if (!url) {
+            // Nothing to create for a page. In Plone the node IS the content, so
+            // every document is already in this view's tree — either in the menu
+            // or in its Excluded node — and putting one back is a MOVE.
+            throw new AdapterError(
+              'plone: every document is already in the navigation view; move it ' +
+                `out of ${EXCLUDED_NODE} to put it back in the menu`,
+              { code: 'NOT_IMPLEMENTED', status: 501 },
+            );
+          }
+          // An EXTERNAL LINK, though, is a real `Link` document here. That is
+          // consistent rather than contradictory: in Plone everything in a tree is
+          // content, so its Link is a node referencing itself whose URL field is
+          // the payload. Created in the container the view is rooted at.
+          const container = intoView.rest ? `/${intoView.rest}` : '';
+          const raw = await this.fetchJson(container || '/', {
+            method: 'POST',
+            body: {
+              '@type': 'Link',
+              title: args.data?.title,
+              remoteUrl: url,
+            },
+          });
+          const created = this.toDocument(raw);
+          return {
+            ...this.toPlacement(
+              intoView.menu,
+              created.path,
+              created.title,
+              false,
+            ),
+            type: 'link',
+            fields: { reference: created.path, url },
+          };
+        }
+
         const raw = await this.fetchJson(args.parentPath, {
           method: 'POST',
           body: this.toCreateBody(args.data),
@@ -549,9 +697,28 @@ export class PloneAdapter extends BaseAdapter {
         return this.toDocument(raw);
       }
 
-      case 'content.delete':
+      case 'content.delete': {
+        const placement = parseViewPath(args.path);
+        if (placement) {
+          // REFUSED, with the content path to use instead.
+          //
+          // In Plone the node and the content are the same object, so deleting
+          // here would destroy the page — the one thing an editor tidying a menu
+          // never means. Taking something out of the menu is a move into the
+          // view's Excluded node; deleting the document is the main view's job,
+          // where the path says plainly what is about to be destroyed.
+          throw new AdapterError(
+            `plone: ${args.path} is this document's place in a menu, not a ` +
+              `separate object — deleting it would delete the page. Move it to ` +
+              `${EXCLUDED_NODE} to take it out of the menu, or delete ` +
+              `/${placement.rest} in the main view.`,
+            { code: 'BAD_REQUEST', status: 400 },
+          );
+        }
+
         await this.fetchJson(args.path, { method: 'DELETE' });
         return null;
+      }
 
       /**
        * Plone's own lock endpoint, as plone.restapi serves it: POST takes the
@@ -692,6 +859,12 @@ export class PloneAdapter extends BaseAdapter {
       }
 
       case 'content.move': {
+        const fromView = parseViewPath(args.path);
+        const toView = parseViewPath(args.targetParentPath);
+        if (fromView || toView) {
+          return this.movePlacement(fromView, toView, args);
+        }
+
         // plone.restapi posts to the TARGET container with the source in the
         // body; the object keeps its UID, which is what makes every stored
         // link to it survive the move.
@@ -819,6 +992,41 @@ export class PloneAdapter extends BaseAdapter {
           ...(site?.['plone.site_title']
             ? { title: site['plone.site_title'] }
             : {}),
+          // The views this CMS offers.
+          //
+          // Plone's menu is a VIEW over the content tree, and membership of it is
+          // `exclude_from_nav` — the field is the mapping, not a capability every
+          // CMS ought to have.
+          //
+          // `ordered: 'main'` because this view IS the content tree: reordering
+          // within the menu reorders the content, which is the whole point of the
+          // gesture here and is NOT true of a WordPress or Drupal menu, where the
+          // menu carries its own positions. `allowsLabels: false` because Plone
+          // has nowhere to put a per-menu label — which is what navigation-title
+          // should have been.
+          views: [
+            {
+              id: 'content',
+              title: 'Contents',
+              shape: 'hierarchy',
+              main: true,
+              prefix: '',
+              ordered: 'own',
+              holdsContent: true,
+              remove: 'delete',
+            },
+            {
+              id: 'menu:navigation',
+              title: 'Navigation',
+              shape: 'hierarchy',
+              prefix: `${VIEW_PREFIX}/navigation`,
+              ordered: 'main',
+              holdsContent: true,
+              allowsLinks: true,
+              allowsLabels: false,
+              remove: 'unlink',
+            },
+          ],
           features: {
             multilingual: Boolean(site?.features?.multilingual),
             // plone.app.multilingual links separate documents into a group, so
@@ -981,6 +1189,9 @@ export class PloneAdapter extends BaseAdapter {
       }
 
       case 'tree.list': {
+        const view = parseViewPath(args.parent);
+        if (view) return this.listPlacements(view);
+
         // plone.restapi's @search is context-scoped: searching on /news
         // restricts to that subtree, and path.depth=1 narrows it to direct
         // children. Passing path.query on an unscoped /@search is NOT
@@ -996,15 +1207,6 @@ export class PloneAdapter extends BaseAdapter {
           total: raw.items_total ?? 0,
         };
       }
-
-      case 'navigation.setExcluded':
-        // A field on the document, unlike Drupal where it lives on the menu
-        // link. Same claim either way: still readable, just not listed.
-        await this.fetchJson(args.path, {
-          method: 'PATCH',
-          body: { exclude_from_nav: Boolean(args.excluded) },
-        });
-        return null;
 
       case 'state.get': {
         const [wf, actions] = await Promise.all([

@@ -91,24 +91,27 @@ export type Capability =
    * a delete warning that cannot see incoming links is worse than none, because
    * it teaches editors the dialog means something.
    */
-  | 'link-integrity'
-  /**
-   * A document can be kept OUT of navigation without being unpublished.
-   *
-   * A different claim from any workflow state: the document stays readable by
-   * anyone who has its address, it is simply not listed. Plone spells it
-   * `exclude_from_nav` on the document; Drupal disables the menu link.
-   */
-  | 'navigation-exclusion'
-  /**
-   * A document can be called something else in the menu — "About" in the nav,
-   * "About our organisation" as the heading.
-   *
-   * Drupal has this natively, because its menu link is a separate object with
-   * its own title. Plone 6 has no equivalent: @navigation returns the
-   * document's own title and nothing else.
-   */
-  | 'navigation-title';
+  | 'link-integrity';
+
+/**
+ * RETIRED: `navigation-exclusion` and `navigation-title`.
+ *
+ * Both were Plone's `exclude_from_nav` promoted to something every CMS ought to
+ * have, and the promotion was the mistake. WordPress has no per-page equivalent
+ * to map, which ended in inventing post meta for it — a capability true only on
+ * sites running our own plugin. The evidence they were never universal:
+ * `navigation-exclusion` ran on 2 of 3 adapters and `navigation-title` on 1 of 3.
+ *
+ * What replaced them is VIEW MEMBERSHIP. A menu is a view over the same content,
+ * and what is in it is expressed by moving nodes in and out of the view's
+ * Excluded node — which all three CMSes satisfy through their own mechanisms
+ * (`exclude_from_nav`, a nav_menu_item's publish status, a menu link's
+ * `enabled`). A per-placement label became `allowsLabels` on the view
+ * descriptor, which is what `navigation-title` should have been: a property of
+ * the view, not of the document.
+ *
+ * See superpowers/specs/2026-10-02-content-trees-and-menus-design.md
+ */
 
 export type Intent =
   | 'content.get'
@@ -219,14 +222,13 @@ export type Intent =
   | 'querystringSearch'
   /** Lifecycle position, available transitions and effective permissions. */
   /**
-   * Keep a document out of the menu, or call it something else there.
+   * RETIRED: `navigation.setExcluded` and `navigation.setTitle`.
    *
-   * Separate from state on purpose: an excluded document is still readable by
-   * anyone holding its address. Only adapters advertising
-   * `navigation-exclusion` / `navigation-title` implement them.
+   * Membership of a menu is a MOVE into or out of the view's Excluded node, so
+   * `tree.list`, `content.move` and `content.create` already express it and
+   * `content.delete` keeps one meaning in every view. See the note on the retired
+   * capabilities above.
    */
-  | 'navigation.setExcluded'
-  | 'navigation.setTitle'
   | 'state.get'
   /**
    * Every transition's form, fetched once when the state menu opens.

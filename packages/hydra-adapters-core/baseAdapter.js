@@ -94,6 +94,75 @@ const WRITE_INTENTS = new Set([
   'permissions.update',
 ]);
 
+/**
+ * The reserved prefix a VIEW's nodes are addressed under.
+ *
+ * A view is a way the CMS organises the same content — the page tree, a menu, a
+ * taxonomy. Its nodes are returned AS CONTENT at paths the adapter owns, so no
+ * new intent is needed: tree.list browses a view, content.create adds to it,
+ * content.delete removes from it.
+ *
+ * A reserved PREFIX costs one token content could never contain, where a reserved
+ * SUFFIX costs a word authors cannot use. nonContentRoutes already carries that
+ * scar: a page at /docs/examples/search resolved to its parent because /search
+ * was reserved, and the admin edited the wrong object.
+ *
+ * These paths must never ESCAPE into stored data. They are an addressing
+ * convenience for browsing; anything written down, rendered, or handed outside
+ * resolves to the referenced content first.
+ */
+export const VIEW_PREFIX = '@@menu';
+
+/**
+ * The node inside a view that holds what has been TAKEN OUT of it.
+ *
+ * Removing a page from a menu is a MOVE into here, not a delete. `content.delete`
+ * then means "destroy this" in every view, and `content.move` means "relocate it"
+ * in every view — no verb whose blast radius depends on the path it was handed.
+ * That matters less for the button an editor sees than for every other caller: a
+ * retry, a bulk action, or a bug that loses view context would otherwise delete a
+ * page where it meant to tidy a menu.
+ *
+ * It holds DISABLED PLACEMENTS, not everything absent from the menu. Each CMS has
+ * a native one — an unpublished nav_menu_item, a Drupal link with enabled false, a
+ * Plone page with exclude_from_nav — so the set is bounded by the menu's own
+ * definition. "Everything not in the menu" would be nearly the whole site in
+ * WordPress, where a menu is a curated subset, and a handful in Plone, where it is
+ * the tree minus exceptions; the view would stop meaning the same thing per CMS.
+ *
+ * Adding something that was NEVER in the menu is therefore not a move from here —
+ * it comes from the picker, as a new placement.
+ */
+export const EXCLUDED_NODE = '@@excluded';
+
+/**
+ * Split a path addressed inside a view.
+ *
+ * `/@@menu/primary`                -> { menu, excluded: false, rest: '' }   the view
+ * `/@@menu/primary/17`             -> { menu, excluded: false, rest: '17' }  a node
+ * `/@@menu/primary/@@excluded`     -> { menu, excluded: true,  rest: '' }    the bucket
+ * `/@@menu/primary/@@excluded/17`  -> { menu, excluded: true,  rest: '17' }  in it
+ * anything else                    -> null
+ *
+ * `rest` is deliberately uninterpreted: what identifies a node differs per CMS.
+ * WordPress and Drupal address a PLACEMENT, which has its own id because a page
+ * can appear in a menu twice and a heading has no slug at all. In Plone the menu
+ * view IS the content tree, so the node path mirrors the content path.
+ */
+export function parseViewPath(path) {
+  const segments = String(path ?? '')
+    .split('/')
+    .filter(Boolean);
+  if (segments[0] !== VIEW_PREFIX || !segments[1]) return null;
+  const after = segments.slice(2);
+  const excluded = after[0] === EXCLUDED_NODE;
+  return {
+    menu: segments[1],
+    excluded,
+    rest: (excluded ? after.slice(1) : after).join(''),
+  };
+}
+
 export class BaseAdapter {
   constructor({ name, capabilities }) {
     this.name = name;

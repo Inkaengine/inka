@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { PloneAdapter } from '@volto-hydra/hydra-adapters-plone';
+import { createPublicReader } from '@volto-hydra/hydra-adapters-plone/public';
 import type { Target } from './index';
 
 const REPO_ROOT = path.resolve(
@@ -73,6 +74,26 @@ async function assertPortFree(): Promise<void> {
     throw err;
   }
 }
+
+/**
+ * A request as a VISITOR: no Authorization header, so the mock permission-checks
+ * it as anonymous — but naming the session, so it reads the same content the
+ * adapter has been changing. Session isolation is a property of the harness; being
+ * anonymous is the thing under test.
+ */
+const publicFetch: typeof globalThis.fetch = (input, init = {}) =>
+  fetch(input, {
+    ...init,
+    headers: {
+      ...(init.headers ?? {}),
+      'X-Hydra-Session': adapter.authToken ?? '',
+    },
+  });
+
+const publicReader = createPublicReader({
+  cmsBaseUrl: BASE,
+  fetch: publicFetch,
+});
 
 const target: Target = {
   name: 'plone',
@@ -151,28 +172,26 @@ const target: Target = {
     });
   },
 
+  // Delegated to the SHIPPED public reader, so these tests exercise the code a
+  // frontend would import rather than a second implementation of it that happens
+  // to agree. See packages/hydra-adapters-plone/publicRead.js.
+  async publicMenuEntries() {
+    // Plone's @navigation, which already honours exclude_from_nav — so the
+    // visitor's menu and the one the adapter manages come from one source.
+    const items = await publicReader.navigation();
+    return items
+      ? items.map((i: any) => ({ label: i.title, path: i.path }))
+      : null;
+  },
+
   async publicBlocks(path: string) {
-    // No Authorization header at all: this is what a visitor's browser sends.
-    const res = await fetch(`${BASE}${path}`, {
-      headers: { Accept: 'application/json' },
-    });
-    // null means NOT READABLE; {} means readable but carrying no blocks.
-    if (!res.ok) return null;
-    const body: any = await res.json();
-    return body.blocks ?? {};
+    return publicReader.blocks(path);
   },
 
   async publicNavigation() {
-    const res = await fetch(`${BASE}/@navigation`, {
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) return null;
-    const body: any = await res.json();
-    return (body.items ?? []).map((i: any) => ({
-      path: new URL(i['@id'], BASE).pathname.replace(/\/+$/, '') || '/',
-      title: i.title,
-    }));
+    return publicReader.navigation();
   },
+
 
   async seed() {
     sessionCounter += 1;

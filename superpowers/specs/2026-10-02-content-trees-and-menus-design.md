@@ -438,3 +438,149 @@ have one of) and tabs (imply peers, when the main hierarchy is privileged).
 This lands on the crumb an upstream commit just changed — the mock no longer
 injects a synthetic `Home`, because Plone's `items` are ancestors and the root
 comes from `root`. Same crumb; look at them together.
+
+## Plone's menu is a view too (2026-10-05)
+
+`exclude_from_nav` is not a capability. It is a field on Plone's content type
+schema — Plone's own way of answering "is this in the menu" — and treating it as
+something every CMS ought to have is what produced the mess below.
+
+**Plone gets a menu view like everyone else.** Its navigation is a view over the
+content tree, and MEMBERSHIP of that view is `exclude_from_nav`:
+
+- adding a document to the menu view → `exclude_from_nav = false`
+- removing it → `exclude_from_nav = true`
+- the document never moves, which is exactly what `remove: 'unlink'` already means
+
+So the same user action — drag a page out of "Main menu" — maps to a different
+native mechanism per CMS, and that mapping is the adapter's whole job:
+
+| | add to the menu view | remove from it |
+| --- | --- | --- |
+| **Plone** | `exclude_from_nav = false` | `exclude_from_nav = true` |
+| **WordPress** | create a `nav_menu_item` pointing at the post | unpublish or delete that item |
+| **Drupal** | create a `menu_link_content` for the node | `enabled = false`, or delete the link |
+
+### What this retires
+
+`navigation-exclusion` and `navigation-title` stop being contract capabilities,
+along with `navigation.setExcluded` and `navigation.setTitle`. They were a Plone
+field promoted to a universal feature, and the evidence that it never was one:
+`navigation-exclusion` ran on 2 of 3 adapters and `navigation-title` on 1 of 3. A
+contract test only one adapter executes is a feature test wearing a contract's
+clothes.
+
+Their replacement is view membership — one set of intents that all three satisfy
+through their own mechanisms.
+
+### Two differences the view has to declare
+
+1. **Whose order?** In Plone the menu view IS the content tree, so reordering
+   within the menu reorders the content. A WordPress nav menu and a Drupal menu
+   carry their own positions, independent of the page tree. So `ordered` is not
+   enough: a view has to say whether its order is its own or the main
+   hierarchy's, or "move up in the menu" will silently rearrange pages.
+2. **Can an item be relabelled?** A WordPress menu item and a Drupal menu link
+   each carry their own title, so a menu can say "About" where the page is
+   titled "About our organisation". Plone's menu view cannot — it has no place
+   to put a per-menu label. That is a property of the VIEW, which is what
+   `navigation-title` should have been.
+
+### The coverage gap this leaves, today
+
+Removing the invented WordPress fields was right, but it closed nothing: there is
+now NO test that changes what is in a WordPress menu. `publicMenu` proves the menu
+is readable; nothing exercises writing it. Drupal keeps coverage only because it
+still advertises the retiring capabilities. Until view membership exists, that is
+a gap rather than an inapplicable feature — so the three navigation tests should
+be replaced by view-membership tests rather than left skipping.
+
+## Removal is a MOVE, not a delete (2026-10-06, implemented)
+
+Taking a document out of a menu moves it into the view's **Excluded** node,
+addressed `/@@menu/<menu>/@@excluded`. So `content.delete` means "destroy this" in
+every view and `content.move` means "relocate it" in every view — no verb whose
+blast radius depends on the path it was handed.
+
+The risk that buys off is not an editor misreading a button. The UI can say
+"Remove from menu" perfectly well; the danger is every OTHER caller — a retry, a
+bulk action, a bug that loses view context — deleting a page where it meant to
+tidy a menu. `remove: 'delete' | 'unlink'` on the descriptor largely dissolves as
+a result, and so does the asymmetry of the first attempt, where adding was
+`content.create` and removing was `content.delete`: two different verbs for one
+reversible gesture.
+
+**Excluded holds DISABLED PLACEMENTS, not everything absent from the menu.** Each
+CMS has a native one, so the set is bounded by the menu's own definition:
+
+| | in the menu | in Excluded |
+| --- | --- | --- |
+| **Plone** | `exclude_from_nav` false | `exclude_from_nav` true |
+| **WordPress** | `nav_menu_item` published | the same item, status `draft` |
+| **Drupal** | `menu_link_content` enabled | the same link, `enabled: false` |
+
+"Everything not in the menu" would have been nearly the whole site in WordPress,
+where a menu is a curated subset, and a handful in Plone, where it is the tree
+minus exceptions — the view would have stopped meaning the same thing per CMS.
+Adding something that was NEVER in the menu is therefore not a move from Excluded;
+it comes from the picker, as a new placement. Plone has no such case, since every
+document is already in its tree.
+
+The bucket is listed at the view's ROOT so a removal is discoverable where it
+happened, rather than leaving an editor hunting through the picker to undo it. It
+is not selectable: a bucket is not content.
+
+### Where the node IS the content
+
+In Plone a menu node and the document are one object, so `content.delete` on a
+menu path would destroy the page. It is REFUSED there, naming the content path to
+use instead. WordPress and Drupal delete the placement, which is a separate row,
+so the page is untouched either way — delete still means "destroy the node you
+named" in all three, it is only that Plone's node is a page.
+
+### Descriptor fields this added
+
+- `ordered: 'own' | 'main'` — whose order the view carries. Plone's menu view IS
+  the content tree, so reordering in the menu reorders content; a WordPress or
+  Drupal menu has its own positions. `ordered: true` could not say which, and
+  "move up in the menu" would silently rearrange pages.
+- `allowsLabels` — whether a placement can be relabelled. This is what
+  `navigation-title` should have been.
+
+### Done since
+
+- **Retired `navigation-exclusion`, `navigation-title`,
+  `navigation.setExcluded` and `navigation.setTitle`** — gone from
+  `hydra-types`, from the Plone and Drupal adapters, and the three tests they
+  gated are gone from `navigation.spec.ts`, which now covers only the main
+  hierarchy. Membership is tested in `view-membership.spec.ts` against all three.
+- **The picker tests** are in `view-membership.spec.ts` under "picking from a
+  view": a node's reference exists, is DISTINCT from its browse path, and resolves
+  to real content; a view path read as content fails LOUDLY rather than resolving
+  to something plausible; and the Excluded bucket references nothing, so a picker
+  cannot offer it. That is the contract half — the picker component itself still
+  needs a browser test, since no contract test can prove the component returns the
+  reference rather than the browse location.
+
+### Still owed
+
+- **`menu_name`** (prerequisite 1). Drupal advertises `content` as its main view
+  and `menu:main` beside it, but for Drupal those are the SAME hierarchy: its nodes
+  are flat, so a menu is all it has. The honest descriptor needs `menu_name` first.
+- **Reparenting inside a menu.** `content.move` between the menu and its Excluded
+  node works; moving a placement UNDER another placement throws NOT_IMPLEMENTED in
+  the WordPress adapter, and Drupal's `addPlacement` takes a parent but no move
+  does.
+- **A real Drupal in CI.** Costed at ~38s install on SQLite and ~174ms reset by
+  file copy; the blocker is provisioning the content model, since the `standard`
+  profile ships no field matching the fixture.
+
+### Found while building it
+
+Both mocks keyed session isolation off the CREDENTIALS, so dropping the
+Authorization header to read as a visitor also dropped the session: a test could
+never see its own edit reach the public site. Neither CMS behaves that way — a
+PATCH is visible to everyone. Both now take `X-Hydra-Session` to say which session,
+while Authorization still decides whether the caller is authenticated. The existing
+public-read tests got stronger for free: they now read the adapter's own mutations
+rather than untouched fixture content.

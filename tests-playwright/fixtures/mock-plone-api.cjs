@@ -209,6 +209,22 @@ function getSessionId(req) {
     const token = authHeader.slice(7);
     return sessionIdentity(`token:${token}`);
   }
+  // An ANONYMOUS request may still name the session it is reading.
+  //
+  // Session isolation and authentication are different questions, and keying
+  // both on the Bearer token conflated them: a test that changed content and
+  // then read it as a visitor could never see its own change, because dropping
+  // the Authorization header also dropped the session. That is not how a CMS
+  // behaves — a PATCH is visible to everyone — so an edit could not be shown
+  // reaching the public site, which is the whole point of those tests.
+  //
+  // This header says WHICH session; the Authorization header still decides
+  // whether the caller is authenticated, so a request carrying only this one is
+  // anonymous and is permission-checked as such.
+  const named = req.headers['x-hydra-session'];
+  if (typeof named === 'string' && named !== '') {
+    return sessionIdentity(`token:${named}`);
+  }
   // Unauthenticated requests use default session (no persistence)
   return '_default';
 }
@@ -3838,6 +3854,39 @@ app.post('/*', (req, res, next) => {
     return res.status(201).json(enrichContent(rawFolder, folderPath, baseUrl, parseExpand(req)));
   }
 
+  if (contentType === 'Link') {
+    // A Link is how Plone holds an EXTERNAL link in a tree — including in the
+    // navigation, since here the menu IS the content tree. It is content like
+    // anything else, with no blocks and a `remoteUrl` as its payload, which is why
+    // "link" needs no special kind of node: a Plone Link is a node referencing
+    // itself whose URL field carries the destination.
+    const id = body.id || normalizeId(body.title) || `untitled-link-${Date.now()}`;
+    const linkPath = `${parentPath === '/' ? '' : parentPath}/${id}`.replace(/\/+/g, '/');
+    const now = new Date().toISOString();
+    const baseUrl = `http://localhost:${PORT}`;
+    const rawLink = {
+      '@type': 'Link',
+      id,
+      ...postedFields(body),
+      title: body.title || id,
+      description: body.description || '',
+      remoteUrl: body.remoteUrl || '',
+      created: now,
+      modified: now,
+      effective: now,
+      review_state: 'published',
+    };
+
+    const sessionId = getSessionId(req);
+    setSessionContent(sessionId, linkPath, rawLink);
+
+    if (process.env.DEBUG) {
+      console.log(`Created Link: ${linkPath}${sessionId ? ` (session: ${sessionId})` : ''}`);
+    }
+
+    return res.status(201).json(enrichContent(rawLink, linkPath, baseUrl, parseExpand(req)));
+  }
+
   // Unsupported content type - return 501 instead of passing to next
   return res.status(501).json({ error: `Content type '${contentType}' not supported` });
 });
@@ -4904,6 +4953,20 @@ app.get('/rss-stub', (req, res) => {
 // what Plone serves. `immediately_addable` mirrors `addable` for these two ordinary types.
 function listAddableTypes() {
   return [
+    {
+      // A standard Plone type this mock was missing.
+      //
+      // It matters for menus: an external link in the navigation is a real `Link`
+      // DOCUMENT in Plone, not a separate kind of menu entry — in Plone everything
+      // in a tree is content, so its Link is a node referencing itself whose
+      // remoteUrl is the payload. Without this type the mock could not hold one,
+      // and the adapter's create was refused as an invalid type.
+      '@id': `http://localhost:${PORT}/@types/Link`,
+      id: 'Link',
+      addable: true,
+      immediately_addable: true,
+      title: 'Link',
+    },
     {
       '@id': `http://localhost:${PORT}/@types/Document`,
       id: 'Document',

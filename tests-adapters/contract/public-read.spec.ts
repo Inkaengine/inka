@@ -84,7 +84,39 @@ describe('public read', () => {
     ).toEqual(editorPaths);
   });
 
-  it('does not serve an unpublished document to a client with no credentials', async () => {
+  it('serves a curated menu to a client with no credentials', async (ctx) => {
+    // The page tree is not the menu. WordPress and Drupal keep a menu as a
+    // SEPARATE hierarchy over the same content, so a frontend that only read
+    // the tree would draw the wrong navigation — and core WordPress's own menu
+    // endpoints answer 401 to an anonymous caller, which is the reason
+    // WPGraphQL is in the blueprint at all.
+    if (!target.publicMenu) {
+      ctx.skip(
+        `${target.name} has ONE hierarchy, which the navigation test above ` +
+          `already covers — in Plone the content tree the navigation is built ` +
+          `from, in Drupal the menu links that ARE its hierarchy, since its ` +
+          `nodes are flat. Neither has a second, curated menu over the same ` +
+          `content the way WordPress does.`,
+      );
+      return;
+    }
+
+    const items = await target.publicMenu();
+    expect(items, 'an anonymous client could not read the menu').not.toBeNull();
+
+    // The fixture menu is deliberately NOT the page tree: it lifts
+    // /news/first-post to the top level and nests /archive under /about. A read
+    // that returned the tree instead would fail here.
+    expect(items!.map((i) => i.path)).toEqual([
+      '/news',
+      '/about',
+      '/news/first-post',
+      '/archive',
+    ]);
+    expect(items!.find((i) => i.path === '/archive')?.parentLabel).toBe('about');
+  });
+
+  it('does not serve an unpublished document to a client with no credentials', async (ctx) => {
     // The other half, and the one that matters more if we get it wrong: making
     // blocks public must not make DRAFTS public.
     const blocks = await target.publicBlocks('/news/draft-post');

@@ -2,6 +2,9 @@ import {
   BaseAdapter,
   AdapterError,
   resolveOrderPosition,
+  VIEW_PREFIX,
+  EXCLUDED_NODE,
+  parseViewPath,
 } from '@volto-hydra/hydra-adapters-core';
 import { flattenPayload, aliasOf } from './normalize.js';
 
@@ -113,8 +116,6 @@ export class DrupalAdapter extends BaseAdapter {
         // CONTAINS filter can search that field server-side, which is enough to
         // answer what points at a document. See reference.dependents.
         'link-integrity',
-        'navigation-exclusion',
-        'navigation-title',
       ],
     });
     this.cmsBaseUrl = cmsBaseUrl;
@@ -250,6 +251,210 @@ export class DrupalAdapter extends BaseAdapter {
   async nodeByUuid(id) {
     const payload = await this.fetchJson(`/jsonapi/node/${this.bundle}/${id}`);
     return flattenPayload(payload);
+  }
+
+/**
+   * Menu links WITH the node each one points at, in one request.
+   *
+   * `include=node` is JSON:API's answer to N+1 — without it this fetched every
+   * referenced node separately.
+   */
+  async menuLinksWithNodes() {
+    const payload = await this.fetchJson(
+      '/jsonapi/menu_link_content/menu_link_content?include=node',
+    );
+    const aliasByUuid = new Map(
+      (payload?.included ?? []).map((node) => [node.id, aliasOf(node) ?? '']),
+    );
+    return { links: flattenPayload(payload) ?? [], aliasByUuid };
+  }
+
+  /** A node in a menu view: the LINK, which is a placement, not the node. */
+  toPlacement(menu, link, reference, excluded) {
+    const base = excluded
+      ? `/${VIEW_PREFIX}/${menu}/${EXCLUDED_NODE}`
+      : `/${VIEW_PREFIX}/${menu}`;
+    return {
+      id: link.id,
+      path: `${base}/${link.id}`,
+      // "link" is not a type, it is the ABSENCE of a reference.
+      type: reference ? 'placement' : 'link',
+      title: link.attributes?.title ?? '',
+      blocks: {},
+      blocksLayout: { items: [] },
+      fields: {
+        reference: reference || null,
+        // Only an EXTERNAL link has a url worth handing out. A node link's uri is
+        // `entity:node/<uuid>`, which is Drupal's internal form and not something
+        // a frontend could follow.
+        url: reference ? null : (link.attributes?.link?.uri ?? null),
+      },
+      state: link.attributes?.enabled === false ? 'private' : 'published',
+      _adapter: { raw: link },
+    };
+  }
+
+  /**
+   * A menu view's nodes.
+   *
+   * A DISABLED link is Drupal's own "in the menu's definition but not in the
+   * menu" — the same claim an unpublished nav_menu_item makes in WordPress — so
+   * that is what the view's Excluded node holds.
+   */
+  async listPlacements({ menu, excluded, rest }) {
+    const { links, aliasByUuid } = await this.menuLinksWithNodes();
+    const wantedParent = rest || null;
+    const children = links
+      .filter((link) => {
+        const disabled = link.attributes?.enabled === false;
+        if (disabled !== Boolean(excluded)) return false;
+        const parent = link.relationships?.parent?.id ?? null;
+        return (parent ?? null) === wantedParent;
+      })
+      .sort(
+        (a, b) =>
+          (a.attributes?.weight ?? 0) - (b.attributes?.weight ?? 0) ||
+          String(a.attributes?.title ?? '').localeCompare(
+            String(b.attributes?.title ?? ''),
+          ),
+      );
+
+    const nodes = children.map((link) =>
+      this.toPlacement(
+        menu,
+        link,
+        aliasByUuid.get(link.relationships?.node?.id),
+        Boolean(excluded),
+      ),
+    );
+
+    // Offered at the view's ROOT, so what was taken out of the menu is
+    // discoverable in the menu rather than only through the picker. Not
+    // selectable: it is a bucket, not content.
+    if (!excluded && !rest) {
+      nodes.push({
+        id: EXCLUDED_NODE,
+        path: `/${VIEW_PREFIX}/${menu}/${EXCLUDED_NODE}`,
+        type: 'bucket',
+        title: 'Not in this menu',
+        blocks: {},
+        blocksLayout: { items: [] },
+        fields: { reference: null, url: null },
+        state: 'private',
+        _adapter: { raw: null },
+      });
+    }
+
+    return { items: nodes };
+  }
+
+  /**
+   * Add a link to a menu.
+   *
+   * `data.reference` is a CONTENT path; the node itself is untouched. Appended
+   * last, because a position the caller did not ask for is not ours to invent.
+   */
+  async addPlacement({ menu, rest }, data) {
+    const reference = data.reference ?? data.path;
+    // A node with a URL and no reference is an EXTERNAL LINK. Drupal needs no
+    // special entity for one: menu_link_content holds a `link.uri` either way, so
+    // a menu entry does not have to be content.
+    const url = data.url ?? null;
+    if (!reference && !url) {
+      throw new AdapterError(
+        'drupal: a menu link needs either a reference to content or a url',
+        { code: 'BAD_REQUEST', status: 400 },
+      );
+    }
+    const node = reference ? await this.nodeByAlias(reference) : null;
+    const links = await this.allMenuLinks();
+    const lastWeight = links.reduce(
+      (highest, link) => Math.max(highest, Number(link.attributes?.weight ?? 0)),
+      0,
+    );
+
+    const created = await this.fetchJson(
+      '/jsonapi/menu_link_content/menu_link_content',
+      {
+        method: 'POST',
+        body: {
+          data: {
+            type: 'menu_link_content--menu_link_content',
+            attributes: {
+              title: data.title ?? null,
+              weight: lastWeight + 1,
+              enabled: true,
+              ...(reference ? {} : { link: { uri: url } }),
+            },
+            relationships: {
+              ...(node ? { node: { data: { type: node.type, id: node.id } } } : {}),
+              ...(rest
+                ? {
+                    parent: {
+                      data: {
+                        type: 'menu_link_content--menu_link_content',
+                        id: rest,
+                      },
+                    },
+                  }
+                : {}),
+            },
+          },
+        },
+      },
+    );
+
+    const id = created?.data?.id ?? created?.id;
+    return {
+      id,
+      path: `/${VIEW_PREFIX}/${menu}/${id}`,
+      type: reference ? 'placement' : 'link',
+      title: data.title ?? '',
+      blocks: {},
+      blocksLayout: { items: [] },
+      fields: { reference: reference ?? null, url: reference ? null : url },
+      state: 'published',
+      _adapter: { raw: created },
+    };
+  }
+
+  /**
+   * Move a link into or out of the menu view's Excluded node.
+   *
+   * `enabled` is the mapping. The NODE is never touched: it keeps its alias and
+   * stays readable by anyone holding its address, which is why taking something
+   * out of a menu is a different claim from unpublishing it.
+   */
+  async movePlacement(fromView, toView, args) {
+    if (!fromView || !fromView.rest) {
+      throw new AdapterError(
+        `drupal: ${args.path} is not something in a menu view`,
+        { code: 'INVALID_MOVE', status: 400 },
+      );
+    }
+    if (!toView || toView.menu !== fromView.menu) {
+      throw new AdapterError(
+        'drupal: a link can only move within its own menu',
+        { code: 'INVALID_MOVE', status: 400 },
+      );
+    }
+    await this.fetchJson(
+      `/jsonapi/menu_link_content/menu_link_content/${fromView.rest}`,
+      {
+        method: 'PATCH',
+        body: {
+          data: {
+            type: 'menu_link_content--menu_link_content',
+            id: fromView.rest,
+            attributes: { enabled: !toView.excluded },
+          },
+        },
+      },
+    );
+    const base = toView.excluded
+      ? `/${VIEW_PREFIX}/${toView.menu}/${EXCLUDED_NODE}`
+      : `/${VIEW_PREFIX}/${toView.menu}`;
+    return { path: `${base}/${fromView.rest}` };
   }
 
   async allMenuLinks() {
@@ -417,6 +622,9 @@ export class DrupalAdapter extends BaseAdapter {
       }
 
       case 'content.create': {
+        const intoView = parseViewPath(args.parentPath);
+        if (intoView) return this.addPlacement(intoView, args.data ?? {});
+
         // An explicit slug wins, as WordPress's create already allowed. A copy
         // needs it: the id an editor pasted is the one they expect to find, and
         // deriving it from the title again would put the copy at the same alias
@@ -463,6 +671,18 @@ export class DrupalAdapter extends BaseAdapter {
       }
 
       case 'content.delete': {
+        if (parseViewPath(args.path)) {
+          // Removal from a menu is a MOVE into the view's Excluded node, so that
+          // content.delete means "destroy this" in every view. Deleting the LINK
+          // row itself is a separate operation nothing needs yet.
+          throw new AdapterError(
+            `drupal: ${args.path} is a place in a menu — move it to ` +
+              `${EXCLUDED_NODE} to take it out of the menu, or delete the node ` +
+              `itself in the main view`,
+            { code: 'NOT_IMPLEMENTED', status: 501 },
+          );
+        }
+
         const node = await this.nodeByAlias(args.path);
         await this.fetchJson(`/jsonapi/node/${this.bundle}/${node.id}`, {
           method: 'DELETE',
@@ -471,6 +691,12 @@ export class DrupalAdapter extends BaseAdapter {
       }
 
       case 'content.move': {
+        const fromView = parseViewPath(args.path);
+        const toView = parseViewPath(args.targetParentPath);
+        if (fromView || toView) {
+          return this.movePlacement(fromView, toView, args);
+        }
+
         if (
           args.targetParentPath === args.path ||
           args.targetParentPath.startsWith(`${args.path}/`)
@@ -665,6 +891,9 @@ export class DrupalAdapter extends BaseAdapter {
       }
 
       case 'tree.list': {
+        const view = parseViewPath(args.parent);
+        if (view) return this.listPlacements(view);
+
         const links = await this.allMenuLinks();
 
         // The virtual folder: everything with no menu link. Without it a
@@ -1058,6 +1287,41 @@ export class DrupalAdapter extends BaseAdapter {
       // language is what makes a translation possible here, so it is derived
       // rather than declared, and a single-language Drupal reports false.
       case 'site.get': {
+        // The views this CMS offers.
+        //
+        // Drupal's nodes are FLAT: it has no intrinsic content hierarchy, and the
+        // paths a tree is browsed by come from menu links. So its menu is not a
+        // second view over a tree the way WordPress's is — it is where hierarchy
+        // lives at all. The descriptor still names it separately from `content`
+        // because `menu_name` is not modelled yet, so this adapter knows exactly
+        // one menu; see the build order in the design spec.
+        //
+        // `ordered: 'own'` — a link's weight is its own, independent of anything
+        // on the node. `allowsLabels: true` — a link carries its own title, so a
+        // menu can say "About" where the node is titled "About our organisation".
+        const views = [
+          {
+            id: 'content',
+            title: 'Content',
+            shape: 'hierarchy',
+            main: true,
+            prefix: '',
+            ordered: 'own',
+            holdsContent: true,
+            remove: 'delete',
+          },
+          {
+            id: 'menu:main',
+            title: 'Main menu',
+            shape: 'hierarchy',
+            prefix: `${VIEW_PREFIX}/main`,
+            ordered: 'own',
+            holdsContent: true,
+            allowsLinks: true,
+            allowsLabels: true,
+            remove: 'unlink',
+          },
+        ];
         let languages = [];
         let defaultLanguage = null;
         try {
@@ -1079,6 +1343,7 @@ export class DrupalAdapter extends BaseAdapter {
         defaultLanguage = defaultLanguage ?? languages[0] ?? 'en';
         if (!languages.length) languages = [defaultLanguage];
         return {
+          views,
           defaultLanguage,
           languages,
           features: {
@@ -1259,38 +1524,6 @@ export class DrupalAdapter extends BaseAdapter {
           url: `${this.cmsBaseUrl}${path}`,
           title: flat.attributes.title,
         };
-      }
-
-      case 'navigation.setExcluded':
-      case 'navigation.setTitle': {
-        // Both live on the LINK, not the node — which is what makes them
-        // different from anything workflow does. A node with no link is not in
-        // the menu to begin with, and saying so beats silently doing nothing.
-        const linkId = await this.linkIdForPath(args.path);
-        if (!linkId) {
-          throw new AdapterError(
-            `drupal: ${args.path} has no menu link, so it is not in the menu`,
-            { code: 'NOT_FOUND', status: 404 },
-          );
-        }
-        const attributes =
-          intent === 'navigation.setExcluded'
-            ? { enabled: !args.excluded }
-            : { title: args.title };
-        await this.fetchJson(
-          `/jsonapi/menu_link_content/menu_link_content/${linkId}`,
-          {
-            method: 'PATCH',
-            body: {
-              data: {
-                type: 'menu_link_content--menu_link_content',
-                id: linkId,
-                attributes,
-              },
-            },
-          },
-        );
-        return null;
       }
 
       default:

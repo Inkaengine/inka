@@ -54,6 +54,20 @@ function sessionIdFor(req) {
   const cookie = req.headers.cookie || '';
   const match = cookie.match(new RegExp(`${SESSION_COOKIE}=([^;]+)`));
   if (match) return match[1];
+  // An ANONYMOUS request may still name the session it is reading.
+  //
+  // Session isolation and authentication are different questions, and keying both
+  // on the credentials conflated them: a test that changed content and then read
+  // it as a visitor could never see its own change, because dropping the
+  // Authorization header also dropped the session. Drupal does not behave that
+  // way — a PATCH is visible to everyone — so an edit could not be shown reaching
+  // the public site, which is the whole point of those tests.
+  //
+  // This header says WHICH session; Authorization still decides whether the
+  // caller is authenticated, so a request carrying only this one is anonymous and
+  // is permission-checked as such.
+  const named = req.headers['x-hydra-session'];
+  if (typeof named === 'string' && named !== '') return `auth:${named}`;
   // Node callers (the contract suite) have no cookie jar; the credentials
   // they present are stable and unique enough to key on.
   return `auth:${req.headers.authorization || 'anonymous'}`;
@@ -598,6 +612,7 @@ app.get('/jsonapi/menu_link_content/menu_link_content', (req, res) => {
           weight: l.weight,
           enabled: l.enabled !== false,
           title: l.title ?? null,
+          link: { uri: l.uri ?? (l.nodeUuid ? `entity:node/${l.nodeUuid}` : null) },
         },
         relationships: {
           node: { data: { type: 'node--page', id: l.nodeUuid } },
@@ -653,6 +668,10 @@ app.post('/jsonapi/menu_link_content/menu_link_content', (req, res) => {
     weight: req.body?.data?.attributes?.weight ?? 0,
     enabled: req.body?.data?.attributes?.enabled ?? true,
     title: req.body?.data?.attributes?.title ?? null,
+    // An EXTERNAL link carries a uri and points at no node. Drupal stores both on
+    // the same entity — `link.uri` is `entity:node/12` for a node and a plain url
+    // for anything else — which is why a menu entry does not have to be content.
+    uri: req.body?.data?.attributes?.link?.uri ?? null,
   });
   res.status(201).json(single({ type: 'menu_link_content--menu_link_content', id }));
 });
