@@ -256,6 +256,47 @@ test.describe('Inline Editing - Links', () => {
     }).toPass({ timeout: 5000 });
   });
 
+  // Object browser search looks across the WHOLE site, not just the folder
+  // being browsed: an author linking to another page rarely knows which folder
+  // it lives in, and a page three levels away in another branch would
+  // otherwise be unfindable.
+  test('searching from the browse button finds a page in a different folder', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const blockId = 'block-1-uuid';
+    await helper.editBlockTextInIframe(blockId, 'Find me a page');
+    const editor = await helper.getEditorLocator(blockId);
+    await helper.selectAllTextInEditor(editor);
+    await helper.clickFormatButton('link');
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await expect(linkUrlInput).toBeFocused({ timeout: 2000 });
+    if ((await linkUrlInput.inputValue()).length > 0) await linkUrlInput.clear();
+    await (await helper.getLinkEditorBrowseButton()).click();
+
+    const objectBrowser = await helper.waitForObjectBrowser();
+    // The target is not in the folder the browser opens on (the page itself and
+    // its siblings): it is in another branch, three levels down.
+    const target = '/_test_data/context-navigation-forced-folder/page-b/under-b';
+    await expect(page.locator('.object-listing li').first()).toBeVisible();
+    await expect(page.locator('.object-listing li').filter({ hasText: 'Under B' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Search SVG' }).click();
+    const searchInput = page.getByPlaceholder('Search content');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill('Under');
+
+    const hit = page.locator('.object-listing li').filter({ hasText: 'Under B' });
+    await expect(hit).toHaveCount(1, { timeout: 10000 });
+
+    // Choosing it links to that page.
+    await helper.objectBrowserSelectItem(objectBrowser, /Under B/);
+    const submitButton = page.getByRole('button', { name: 'Submit' });
+    if (await submitButton.isVisible()) await submitButton.click();
+    await expect(editor.locator('a')).toHaveAttribute('href', new RegExp(`${target}$`));
+  });
+
   test('LinkEditor closes when focusing back on editor', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 
