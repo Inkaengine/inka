@@ -6144,7 +6144,9 @@ app.patch('*', (req, res) => {
     // they ride along inside a registered field and persist, whereas a separate
     // top-level region field would be discarded here.
     const registeredBody = dropUnregisteredFields(req.body, content);
-    const mergedContent = { ...content, ...registeredBody };
+    // Plone stamps `modified` on every save; a client comparing it before
+    // saving (the agent API's version check) relies on that.
+    const mergedContent = { ...content, ...registeredBody, modified: new Date().toISOString() };
 
     // Persist to session storage for test verification when session is provided
     // Default session doesn't persist to maintain backward compatibility

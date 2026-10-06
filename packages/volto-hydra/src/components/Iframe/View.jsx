@@ -1834,6 +1834,203 @@ const Iframe = (props) => {
    * @param {number} [options.selectChildIndex] - Select child at this index instead of the new block
    * @returns {string} The new block's ID
    */
+  /**
+   * Move blocks — the drag-and-drop move, as a named function. Runs
+   * every check and conversion a drop does. Returns what happened: 'moved', or
+   * why not: 'rejected' (not allowed or convertible there), 'needs-choice' (the
+   * editor must pick a conversion), 'needs-confirm' (a conversion awaits the
+   * confirm dialog), 'failed'.
+   */
+  const moveBlocks = (data) => {
+    // Handle drag-and-drop block moves (single or multi, supports containers)
+    // replaceTargetId is set when the drop landed on an 'empty' placeholder
+    // (the slot block ensureEmptyBlockIfEmpty creates when a container is
+    // empty). After the move, that placeholder is removed so the dropped
+    // block lives where the placeholder was instead of beside it.
+    const { blockIds: moveBlockIds, targetBlockId, insertAfter, targetParentId, selectAfterMove, replaceTargetId } = data;
+    log('MOVE_BLOCKS: received:', moveBlockIds?.length, 'blocks to', targetBlockId, 'insertAfter:', insertAfter, 'replaceTargetId:', replaceTargetId);
+
+    // Use properties (Redux) as source of truth for moves
+    const currentFormData = properties;
+    const currentBlockPathMap = buildBlockPathMap(currentFormData, config.blocks.blocksConfig, intl);
+
+    // Expand template instances: each template instance drags all its child blocks
+    const blocksToMove = [];
+    for (const bid of (moveBlockIds || [])) {
+      if (currentBlockPathMap[bid]?.isTemplateInstance) {
+        const parentId = currentBlockPathMap[bid]?.parentId || 'page';
+        const parentBlock = parentId === 'page' ? currentFormData : getBlockById(currentFormData, currentBlockPathMap, parentId);
+        const region = currentBlockPathMap[bid]?.region || 'items';
+        const layoutItems = parentBlock?.blocks_layout?.[region] || [];
+        const childBlocks = layoutItems.filter(id => currentBlockPathMap[id]?.parentId === bid);
+        log('MOVE_BLOCKS: template instance', bid, '- expanding to:', childBlocks);
+        blocksToMove.push(...childBlocks);
+      } else {
+        blocksToMove.push(bid);
+      }
+    }
+
+    // Derive sourceParentId from first block's pathMap entry
+    const firstBlockId = blocksToMove[0];
+    const sourceParentId = currentBlockPathMap[firstBlockId]?.parentId || null;
+
+    // Get source container config BEFORE the move (needed for ensureEmptyBlockIfEmpty)
+    const sourceContainerConfig = sourceParentId !== targetParentId && sourceParentId
+      ? getContainerFieldConfig(firstBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl)
+      : null;
+
+    // Resolve each block against the target container's allowedBlocks:
+    // native fit, or convertible (auto when one target type; a single-block
+    // drag with several options opens the chooser — ask-first). A block that
+    // can't be placed rejects the whole move. Multi-block is auto-only.
+    const targetContainerCfg = getContainerFieldConfig(targetBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl);
+    const targetAllowedTypes = targetContainerCfg?.allowedBlocks;
+    const dropConversions = {}; // bid -> type to convert to before moving
+    const membershipConversions = []; // {blockId, from, to} — surfaced in the confirm
+    let rejectMove = false;
+    let deferredToChooser = false;
+    if (targetAllowedTypes?.length > 0) {
+      const singleDrag = blocksToMove.length === 1;
+      for (const bid of blocksToMove) {
+        const bType = getBlockById(currentFormData, currentBlockPathMap, bid)?.['@type'];
+        if (targetAllowedTypes.includes(bType)) continue; // native fit
+        const options = getConvertibleTypes(bType, blocksConfig, targetAllowedTypes).map((t) => t.type);
+        if (options.length === 1) {
+          dropConversions[bid] = options[0]; // single target → convert to fit
+          membershipConversions.push({ blockId: bid, from: bType, to: options[0] });
+          continue;
+        }
+        if (options.length > 1 && singleDrag) {
+          // Ask-first: show the chooser; commitChooser converts + moves atomically.
+          setChooser({
+            kind: 'convert',
+            blockId: bid,
+            allowedBlocks: options,
+            pendingMove: { targetBlockId, insertAfter, targetParentId, replaceTargetId },
+          });
+          deferredToChooser = true;
+          break;
+        }
+        // 0 options, or a multi-option member of a multi-block batch → can't place.
+        log('MOVE_BLOCKS: blocked — type not allowed/convertible in target container');
+        rejectMove = true;
+        break;
+      }
+    }
+    if (rejectMove) return 'rejected';
+    if (deferredToChooser) return 'needs-choice';
+
+    // Move all blocks in sequence, each one after the previous
+    // Track insertAfter for each block (needed for template inheritance)
+    let newFormData = currentFormData;
+    // Auto-convert (single-option) blocks BEFORE moving so each already
+    // fits the target container's allowedBlocks.
+    for (const [bid, toType] of Object.entries(dropConversions)) {
+      const cbpm = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
+      newFormData = convertBlockInPlace(newFormData, cbpm, bid, toType);
+    }
+    let currentTarget = targetBlockId;
+    let currentInsertAfter = insertAfter;
+    const blockInsertAfterMap = {};
+
+    for (let i = 0; i < blocksToMove.length; i++) {
+      const moveBlockId = blocksToMove[i];
+      blockInsertAfterMap[moveBlockId] = currentInsertAfter;
+      const updatedPathMap = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
+
+      newFormData = moveBlockBetweenContainers(
+        newFormData,
+        updatedPathMap,
+        moveBlockId,
+        currentTarget,
+        currentInsertAfter,
+        sourceParentId,
+        targetParentId,
+        blocksConfig,
+        intl,
+      );
+
+      if (!newFormData) {
+        log('MOVE_BLOCKS: moveBlockBetweenContainers failed for:', moveBlockId);
+        break;
+      }
+
+      // After first block, subsequent blocks go after the previous one
+      currentTarget = moveBlockId;
+      currentInsertAfter = true;
+    }
+    log('MOVE_BLOCKS: moveBlockBetweenContainers returned:', newFormData ? 'formData' : 'null');
+
+    if (newFormData) {
+      // Everything a move owes afterwards, in the order it owes it:
+      // membership for what landed, THEN the placeholder it landed on,
+      // THEN a re-seed of the region it came out of. settleBlockStructure
+      // fixes that order in one place so the drag path and the chooser's
+      // ask-first drop cannot disagree about it again.
+      const settledMove = settleBlockStructure(
+        newFormData,
+        buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl),
+        {
+          landed: blocksToMove,
+          replacedPlaceholders: replaceTargetId ? [replaceTargetId] : [],
+          emptiedContainers:
+            sourceParentId !== targetParentId && sourceContainerConfig
+              ? [sourceContainerConfig]
+              : [],
+        },
+        {
+          blocksConfig,
+          intl,
+          uuidGenerator: uuid,
+          templateEditMode: templateEditModeRef.current,
+          metadata,
+          insertAfterById: blockInsertAfterMap,
+        },
+      );
+      newFormData = settledMove.formData;
+
+      // Commit + keep the moved block selected. Rebuild the pathMap for the
+      // new positions and flushSync so state is committed before the Redux
+      // update triggers the useEffect. Do NOT set formData here — the
+      // useEffect sends FORM_DATA. selectAfterMove pins selection on a
+      // specific block (edge-drag stays on the container); default = the
+      // first moved block (legacy DnD behaviour).
+      const selectUid = selectAfterMove || blocksToMove[0];
+      const commitMove = (fd) => {
+        const newBlockPathMap = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
+        flushSync(() => {
+          setIframeSyncState(prev => ({
+            ...prev,
+            blockPathMap: newBlockPathMap,
+            pendingSelectBlockUid: selectUid,
+          }));
+        });
+        onChangeFormData(fd);
+      };
+
+      // Trial the drop before committing: normalise the candidate (applies
+      // field defaults AND `@type` rules via the container⇄value bridge) and
+      // diff the @types. If ANY block converted — for any reason, any rule —
+      // confirm first. `membershipConversions` (single-target drops converted
+      // to fit the container above) are surfaced in the same confirm. Nothing
+      // converted → commit the raw move unchanged (no behaviour change).
+      const trialBpm = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
+      const { formData: normalizedFd, conversions: ruleConversions } =
+        previewSchemaDefaultConversions(newFormData, trialBpm, blocksConfig, intl);
+      const allConversions = [...membershipConversions, ...ruleConversions];
+      if (allConversions.length > 0) {
+        setConvertConfirm({
+          conversions: allConversions,
+          onConfirm: () => commitMove(normalizedFd),
+        });
+        return 'needs-confirm';
+      }
+      commitMove(newFormData);
+      return 'moved';
+    }
+    return 'failed';
+  };
+
   const insertAndSelectBlock = useCallback((blockId, blockType, action, fieldName, options = {}) => {
     const { blockData: customBlockData, formData: customFormData, blockPathMap: customBlockPathMap, formatRequestId, selectChildIndex, selectFirstLeaf, region: addRegion } = options;
     const formData = customFormData || properties;
@@ -2331,6 +2528,7 @@ const Iframe = (props) => {
     setAddNewBlockOpened(false);
     dispatch(setSidebarTab(1));
   };
+
 
   // Process pending delete from iframe DELETE_BLOCK message (same pattern as addNewBlockOpened)
   useEffect(() => {
@@ -3199,190 +3397,7 @@ const Iframe = (props) => {
           break;
 
         case 'MOVE_BLOCKS': {
-          // Handle drag-and-drop block moves (single or multi, supports containers)
-          // replaceTargetId is set when the drop landed on an 'empty' placeholder
-          // (the slot block ensureEmptyBlockIfEmpty creates when a container is
-          // empty). After the move, that placeholder is removed so the dropped
-          // block lives where the placeholder was instead of beside it.
-          const { blockIds: moveBlockIds, targetBlockId, insertAfter, targetParentId, selectAfterMove, replaceTargetId } = event.data;
-          log('MOVE_BLOCKS: received:', moveBlockIds?.length, 'blocks to', targetBlockId, 'insertAfter:', insertAfter, 'replaceTargetId:', replaceTargetId);
-
-          // Use properties (Redux) as source of truth for moves
-          const currentFormData = properties;
-          const currentBlockPathMap = buildBlockPathMap(currentFormData, config.blocks.blocksConfig, intl);
-
-          // Expand template instances: each template instance drags all its child blocks
-          const blocksToMove = [];
-          for (const bid of (moveBlockIds || [])) {
-            if (currentBlockPathMap[bid]?.isTemplateInstance) {
-              const parentId = currentBlockPathMap[bid]?.parentId || 'page';
-              const parentBlock = parentId === 'page' ? currentFormData : getBlockById(currentFormData, currentBlockPathMap, parentId);
-              const region = currentBlockPathMap[bid]?.region || 'items';
-              const layoutItems = parentBlock?.blocks_layout?.[region] || [];
-              const childBlocks = layoutItems.filter(id => currentBlockPathMap[id]?.parentId === bid);
-              log('MOVE_BLOCKS: template instance', bid, '- expanding to:', childBlocks);
-              blocksToMove.push(...childBlocks);
-            } else {
-              blocksToMove.push(bid);
-            }
-          }
-
-          // Derive sourceParentId from first block's pathMap entry
-          const firstBlockId = blocksToMove[0];
-          const sourceParentId = currentBlockPathMap[firstBlockId]?.parentId || null;
-
-          // Get source container config BEFORE the move (needed for ensureEmptyBlockIfEmpty)
-          const sourceContainerConfig = sourceParentId !== targetParentId && sourceParentId
-            ? getContainerFieldConfig(firstBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl)
-            : null;
-
-          // Resolve each block against the target container's allowedBlocks:
-          // native fit, or convertible (auto when one target type; a single-block
-          // drag with several options opens the chooser — ask-first). A block that
-          // can't be placed rejects the whole move. Multi-block is auto-only.
-          const targetContainerCfg = getContainerFieldConfig(targetBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl);
-          const targetAllowedTypes = targetContainerCfg?.allowedBlocks;
-          const dropConversions = {}; // bid -> type to convert to before moving
-          const membershipConversions = []; // {blockId, from, to} — surfaced in the confirm
-          let rejectMove = false;
-          let deferredToChooser = false;
-          if (targetAllowedTypes?.length > 0) {
-            const singleDrag = blocksToMove.length === 1;
-            for (const bid of blocksToMove) {
-              const bType = getBlockById(currentFormData, currentBlockPathMap, bid)?.['@type'];
-              if (targetAllowedTypes.includes(bType)) continue; // native fit
-              const options = getConvertibleTypes(bType, blocksConfig, targetAllowedTypes).map((t) => t.type);
-              if (options.length === 1) {
-                dropConversions[bid] = options[0]; // single target → convert to fit
-                membershipConversions.push({ blockId: bid, from: bType, to: options[0] });
-                continue;
-              }
-              if (options.length > 1 && singleDrag) {
-                // Ask-first: show the chooser; commitChooser converts + moves atomically.
-                setChooser({
-                  kind: 'convert',
-                  blockId: bid,
-                  allowedBlocks: options,
-                  pendingMove: { targetBlockId, insertAfter, targetParentId, replaceTargetId },
-                });
-                deferredToChooser = true;
-                break;
-              }
-              // 0 options, or a multi-option member of a multi-block batch → can't place.
-              log('MOVE_BLOCKS: blocked — type not allowed/convertible in target container');
-              rejectMove = true;
-              break;
-            }
-          }
-          if (rejectMove || deferredToChooser) break;
-
-          // Move all blocks in sequence, each one after the previous
-          // Track insertAfter for each block (needed for template inheritance)
-          let newFormData = currentFormData;
-          // Auto-convert (single-option) blocks BEFORE moving so each already
-          // fits the target container's allowedBlocks.
-          for (const [bid, toType] of Object.entries(dropConversions)) {
-            const cbpm = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
-            newFormData = convertBlockInPlace(newFormData, cbpm, bid, toType);
-          }
-          let currentTarget = targetBlockId;
-          let currentInsertAfter = insertAfter;
-          const blockInsertAfterMap = {};
-
-          for (let i = 0; i < blocksToMove.length; i++) {
-            const moveBlockId = blocksToMove[i];
-            blockInsertAfterMap[moveBlockId] = currentInsertAfter;
-            const updatedPathMap = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
-
-            newFormData = moveBlockBetweenContainers(
-              newFormData,
-              updatedPathMap,
-              moveBlockId,
-              currentTarget,
-              currentInsertAfter,
-              sourceParentId,
-              targetParentId,
-              blocksConfig,
-              intl,
-            );
-
-            if (!newFormData) {
-              log('MOVE_BLOCKS: moveBlockBetweenContainers failed for:', moveBlockId);
-              break;
-            }
-
-            // After first block, subsequent blocks go after the previous one
-            currentTarget = moveBlockId;
-            currentInsertAfter = true;
-          }
-          log('MOVE_BLOCKS: moveBlockBetweenContainers returned:', newFormData ? 'formData' : 'null');
-
-          if (newFormData) {
-            // Everything a move owes afterwards, in the order it owes it:
-            // membership for what landed, THEN the placeholder it landed on,
-            // THEN a re-seed of the region it came out of. settleBlockStructure
-            // fixes that order in one place so the drag path and the chooser's
-            // ask-first drop cannot disagree about it again.
-            const settledMove = settleBlockStructure(
-              newFormData,
-              buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl),
-              {
-                landed: blocksToMove,
-                replacedPlaceholders: replaceTargetId ? [replaceTargetId] : [],
-                emptiedContainers:
-                  sourceParentId !== targetParentId && sourceContainerConfig
-                    ? [sourceContainerConfig]
-                    : [],
-              },
-              {
-                blocksConfig,
-                intl,
-                uuidGenerator: uuid,
-                templateEditMode: templateEditModeRef.current,
-                metadata,
-                insertAfterById: blockInsertAfterMap,
-              },
-            );
-            newFormData = settledMove.formData;
-
-            // Commit + keep the moved block selected. Rebuild the pathMap for the
-            // new positions and flushSync so state is committed before the Redux
-            // update triggers the useEffect. Do NOT set formData here — the
-            // useEffect sends FORM_DATA. selectAfterMove pins selection on a
-            // specific block (edge-drag stays on the container); default = the
-            // first moved block (legacy DnD behaviour).
-            const selectUid = selectAfterMove || blocksToMove[0];
-            const commitMove = (fd) => {
-              const newBlockPathMap = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
-              flushSync(() => {
-                setIframeSyncState(prev => ({
-                  ...prev,
-                  blockPathMap: newBlockPathMap,
-                  pendingSelectBlockUid: selectUid,
-                }));
-              });
-              onChangeFormData(fd);
-            };
-
-            // Trial the drop before committing: normalise the candidate (applies
-            // field defaults AND `@type` rules via the container⇄value bridge) and
-            // diff the @types. If ANY block converted — for any reason, any rule —
-            // confirm first. `membershipConversions` (single-target drops converted
-            // to fit the container above) are surfaced in the same confirm. Nothing
-            // converted → commit the raw move unchanged (no behaviour change).
-            const trialBpm = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
-            const { formData: normalizedFd, conversions: ruleConversions } =
-              previewSchemaDefaultConversions(newFormData, trialBpm, blocksConfig, intl);
-            const allConversions = [...membershipConversions, ...ruleConversions];
-            if (allConversions.length > 0) {
-              setConvertConfirm({
-                conversions: allConversions,
-                onConfirm: () => commitMove(normalizedFd),
-              });
-            } else {
-              commitMove(newFormData);
-            }
-          }
+          moveBlocks(event.data);
           break;
         }
 
