@@ -2541,6 +2541,8 @@ const Iframe = (props) => {
     onDeleteBlock,
     moveBlocks,
     onChangeFormData,
+    blocksConfig: config.blocks.blocksConfig,
+    intl,
   };
   useEffect(() => registerAgentApi(agentLiveRef), []);
 
