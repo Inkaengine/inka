@@ -148,11 +148,30 @@ export function getBlockTypeSchema(blockType, intl, blocksConfig) {
   }
 
   if (typeof blockConfig.schemaEnhancer === 'function') {
+    const base = schema;
     schema = blockConfig.schemaEnhancer({
       schema,
       formData: {},
       intl,
     });
+    // This generic schema is what pass 1 walks containers by, and it was built
+    // with empty data. A fieldRule that shows a region only for some data
+    // (`links: { when: { mode: 'links' }, else: false }`) hides it here, and
+    // then no instance's children in that region reach the pathMap — they
+    // render, but cannot be selected. Hiding a field is the sidebar's concern
+    // (pass 2 resolves each instance's own schema); a region the schema
+    // declares is walked whatever empty data would show.
+    const removed = Object.entries(base?.properties || {}).filter(
+      ([name, fd]) =>
+        ['blocks_layout', 'object_list', 'object'].includes(fd?.widget) &&
+        !(name in (schema?.properties || {})),
+    );
+    if (removed.length > 0) {
+      schema = {
+        ...schema,
+        properties: { ...(schema?.properties || {}), ...Object.fromEntries(removed) },
+      };
+    }
   }
 
   const result = schema?.properties && Object.keys(schema.properties).length > 0
