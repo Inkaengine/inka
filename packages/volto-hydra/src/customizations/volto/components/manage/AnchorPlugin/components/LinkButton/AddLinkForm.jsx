@@ -28,6 +28,11 @@ import {
   flattenToAppURL,
   URLUtils,
 } from '@plone/volto/helpers';
+// HYDRA: not re-exported from '@plone/volto/helpers'; lives in the Url shadow.
+import {
+  getBaseUrl,
+  resolveRelativeUrl,
+} from '@plone/volto/helpers/Url/Url';
 
 import { doesNodeContainClick } from 'semantic-ui-react/dist/commonjs/lib';
 import { Button } from 'semantic-ui-react';
@@ -266,6 +271,12 @@ class AddLinkForm extends Component {
    */
   onSubmit() {
     let { value: url } = this.state;
+    // HYDRA: `./x` / `../x` are relative to the page being edited — resolve
+    // them to a site path the way a browser would resolve them on that page.
+    url = resolveRelativeUrl(
+      url,
+      getBaseUrl(flattenToAppURL(this.props.location.pathname)),
+    );
 
     const checkedURL = URLUtils.checkAndNormalizeUrl(url);
     url = checkedURL.url;
