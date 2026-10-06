@@ -6,6 +6,7 @@ import {
   getAllContainerFields,
   getEmptyBlockType,
   resolveRegionConstraints,
+  resolveObjectListConstraints,
 } from './blockPath.js';
 
 describe('resolveRegionConstraints — field → block → page precedence', () => {
@@ -124,5 +125,24 @@ describe('container config precedence — getContainerFieldConfig vs getAllConta
     expect(perBlock.defaultBlockType).toBe(PAGE_DEFAULT);
     // ...so the seeded empty-block type is the same by either path.
     expect(getEmptyBlockType(perBlock)).toBe(getEmptyBlockType(itemsField));
+  });
+});
+
+describe('resolveObjectListConstraints — a list never inherits the page', () => {
+  test('a list without its own types holds its <type>:<field> item type', () => {
+    expect(resolveObjectListConstraints({ widget: 'object_list', schema: {} }, 'accordion', 'panels')).toEqual({
+      allowedBlocks: ['accordion:panels'],
+      defaultBlockType: 'accordion:panels',
+      maxLength: null,
+    });
+  });
+
+  test('a typed list takes its own types, default and limit', () => {
+    expect(resolveObjectListConstraints(
+      { widget: 'object_list', allowedBlocks: ['slide', 'image'], defaultBlockType: 'slide', maxLength: 5 },
+      'slider',
+      'slides',
+    )).toEqual({ allowedBlocks: ['slide', 'image'], defaultBlockType: 'slide', maxLength: 5 });
+    expect(resolveObjectListConstraints({ allowedBlocks: ['slide'] }, 'slider', 'slides').defaultBlockType).toBeNull();
   });
 });
