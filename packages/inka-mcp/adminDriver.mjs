@@ -4,10 +4,12 @@
  */
 
 const READY_MS = 30000;
+// A cold admin can take a while to render its first page.
+const LOAD_MS = 60000;
 
 /** Open a page's editor and wait until the agent API and the block map are there. */
 export async function openForEdit(page, { adminUrl, path }) {
-  await page.goto(`${adminUrl}${path.replace(/\/$/, '')}/edit`);
+  await page.goto(`${adminUrl}${path.replace(/\/$/, '')}/edit`, { timeout: LOAD_MS });
   await waitForAgent(page);
 }
 
