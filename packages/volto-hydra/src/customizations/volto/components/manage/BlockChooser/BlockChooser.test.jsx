@@ -50,7 +50,7 @@ describe('BlockChooser (shadow) — empty sections', () => {
 
 /**
  * A block may say what it is for (`description`). The chooser is where an author
- * picks between blocks, so the description is there, on the block's button.
+ * picks between blocks, so the description is there, as the block button's tooltip.
  */
 describe('BlockChooser (shadow) — block descriptions', () => {
   it("gives a block's button its description", () => {
@@ -60,7 +60,10 @@ describe('BlockChooser (shadow) — block descriptions', () => {
           onInsertBlock={() => {}}
           currentBlock="theblockid"
           blocksConfig={{
-            text: { ...blocksConfig.text, description: 'Paragraphs, headings and lists.' },
+            text: {
+              ...blocksConfig.text,
+              description: 'Paragraphs, headings and lists. [Guidance](https://example.com/text)',
+            },
           }}
           allowedBlocks={['text']}
         />
@@ -68,7 +71,8 @@ describe('BlockChooser (shadow) — block descriptions', () => {
     );
     expect(screen.getByRole('button', { name: /Text/ })).toHaveAttribute(
       'title',
-      'Paragraphs, headings and lists.',
+      // A tooltip cannot hold a link: the link's words stay, its URL goes.
+      'Paragraphs, headings and lists. Guidance',
     );
   });
 });

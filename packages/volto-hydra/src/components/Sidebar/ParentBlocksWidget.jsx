@@ -44,6 +44,7 @@ import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
 import { isBlockReadonly } from '@volto-hydra/helpers';
 import { flattenToAppURL } from '@plone/volto/helpers';
+import { LinkedText } from '../../utils/linkedText';
 
 /**
  * Get the display title for a block type
@@ -164,23 +165,11 @@ const getFilteredBlockSchema = (blockType, intl, blockPathMap, blockId, blockDat
 // checkboxes, with the inside-slot restriction) lives in the pure ./templateSettingsSchema
 // module so it can be unit-tested without the React tree. Imported at the top of this file.
 
-/** The rule warnings a resolved schema carries: `[{ field, title, message, href }]`. */
+/** The rule warnings a resolved schema carries: `[{ field, title, message }]`. */
 const ruleWarningsOf = (schema) =>
   Object.entries(schema?.properties || {})
     .filter(([, def]) => def?.hydraRuleWarning)
-    .map(([field, def]) => ({
-      field,
-      title: def.title || field,
-      message: def.hydraRuleWarning,
-      href: def.hydraRuleWarningHref,
-    }));
-
-/** A link to guidance, opened beside the editor so the edit is not left. */
-const GuidanceLink = ({ href }) => (
-  <a href={href} target="_blank" rel="noopener noreferrer">
-    Guidance
-  </a>
-);
+    .map(([field, def]) => ({ field, title: def.title || field, message: def.hydraRuleWarning }));
 
 /** Rule warnings, beside the fields they are about. */
 const RuleWarnings = ({ warnings }) =>
@@ -188,29 +177,17 @@ const RuleWarnings = ({ warnings }) =>
     <div className="hydra-field-warnings" role="status">
       {warnings.map((w) => (
         <p key={w.field} className="hydra-field-warning">
-          <strong>{w.title}:</strong> {w.message}
-          {w.href && (
-            <>
-              {' '}
-              <GuidanceLink href={w.href} />
-            </>
-          )}
+          <strong>{w.title}:</strong> <LinkedText text={w.message} />
         </p>
       ))}
     </div>
   ) : null;
 
-/** What a block is for (its `description`) and where its guidance is (`docsUrl`). */
+/** What a block is for: its `description`, which may link to its guidance. */
 const BlockAbout = ({ blockConfig }) =>
-  blockConfig?.description || blockConfig?.docsUrl ? (
+  blockConfig?.description ? (
     <p className="hydra-block-about">
-      {blockConfig.description}
-      {blockConfig.docsUrl && (
-        <>
-          {' '}
-          <GuidanceLink href={blockConfig.docsUrl} />
-        </>
-      )}
+      <LinkedText text={blockConfig.description} />
     </p>
   ) : null;
 

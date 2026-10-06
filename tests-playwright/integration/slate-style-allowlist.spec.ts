@@ -566,8 +566,8 @@ test.describe('block formats declared as data', () => {
   });
 
   test("a block's description and a warning link to their guidance", async ({ page }) => {
-    // This page's frontend says what its text block is for, where the block's
-    // guidance lives, and links its Heading 5 warning to the guidance on headings.
+    // This page's frontend says what its text block is for, and both that
+    // description and its Heading 5 warning carry a markdown link to guidance.
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/block-formats-page');
@@ -575,15 +575,15 @@ test.describe('block formats declared as data', () => {
 
     await formatOptions(page, helper, 'target');
     const about = page.locator('#sidebar-properties .hydra-block-about');
-    await expect(about).toContainText('Paragraphs, headings and lists.');
-    await expect(about.getByRole('link', { name: 'Guidance' })).toHaveAttribute(
+    await expect(about).toHaveText('Paragraphs, headings and lists. Text guidance');
+    await expect(about.getByRole('link', { name: 'Text guidance' })).toHaveAttribute(
       'href',
       'https://example.com/guidance/text',
     );
 
     await page.locator('.format-dropdown-menu [data-format="h5"]').click();
     const warning = page.locator('.hydra-field-warning').filter({ hasText: /Heading 5 is advice-worthy/ });
-    await expect(warning.getByRole('link', { name: 'Guidance' })).toHaveAttribute(
+    await expect(warning.getByRole('link', { name: 'Heading guidance' })).toHaveAttribute(
       'href',
       'https://example.com/guidance/headings',
     );

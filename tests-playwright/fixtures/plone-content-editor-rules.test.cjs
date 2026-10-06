@@ -77,11 +77,6 @@ const SCHEMAS = {
       fieldRules: {
         title: { when: { title: { regex: 'TODO' } }, error: 'A teaser title must not say TODO.' },
         image: { when: { image: { isSet: false } }, warning: 'A teaser reads better with an image.' },
-        // A warning that links to the guidance it comes from.
-        count: {
-          when: { count: { gt: 10 } },
-          warning: { message: 'A teaser lists ten things at most.', href: 'https://example.com/guidance/teasers' },
-        },
       },
     },
   },
@@ -215,16 +210,6 @@ describe('checkEditorRules()', () => {
     assert.equal(r.warnings.length, 1);
     assert.match(r.warnings[0], /image/);
     assert.match(r.warnings[0], /reads better with an image/);
-  });
-
-  it("reports a warning's guidance link with it", async () => {
-    const r = await checkEditorRules(
-      page({ t: { '@type': 'teaser', title: 'Ready', image: 'x.png', count: 12 } }, ['t']),
-      SCHEMAS,
-    );
-    assert.equal(r.warnings.length, 1);
-    assert.match(r.warnings[0], /ten things at most/);
-    assert.match(r.warnings[0], /guidance: https:\/\/example\.com\/guidance\/teasers/);
   });
 
   it('says nothing when no rule fires', async () => {

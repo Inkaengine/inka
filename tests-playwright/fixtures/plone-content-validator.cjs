@@ -1177,8 +1177,7 @@ async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
         }
         if (def && def.hydraRuleWarning) {
           stats.ruleWarnings += 1;
-          const guidance = def.hydraRuleWarningHref ? ` (guidance: ${def.hydraRuleWarningHref})` : '';
-          warnings.push(`  ${rel}: a "${info.blockType}" block (${uid}), ${field}: ${def.hydraRuleWarning}${guidance}`);
+          warnings.push(`  ${rel}: a "${info.blockType}" block (${uid}), ${field}: ${def.hydraRuleWarning}`);
         }
       }
       if (typeof info.maxSiblings === 'number' && !placementExempt) {
