@@ -544,6 +544,107 @@ test.describe('Inline Editing - Links', () => {
     }).toPass({ timeout: 5000 });
   });
 
+  test('Enter at the end of a link starts a plain paragraph, and no empty link is saved', async ({ page }) => {
+    // Pressing Enter with the caret at the end of a link must not carry the
+    // link into the new paragraph. When it did, what was typed next extended a
+    // copy of the link, and pages were saved with `<a href="…"></a>` beside the
+    // real link — after which editing that text edited the wrong link.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const blockId = 'block-1-uuid';
+    await helper.editBlockTextInIframe(blockId, 'Click here');
+    const editor = await helper.getEditorLocator(blockId);
+    await helper.selectAllTextInEditor(editor);
+    await helper.clickFormatButton('link');
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await linkUrlInput.fill('https://example.com');
+    await linkUrlInput.press('Enter');
+    await helper.waitForLinkEditorToClose();
+    await helper.waitForEditorFocus(editor);
+    await expect(editor.locator('a')).toHaveAttribute('href', 'https://example.com');
+
+    // Caret to the end of the linked text, then split the paragraph.
+    await editor.press('End');
+    const before = await helper.getBlockOrder();
+    await editor.press('Enter');
+
+    let newBlockUid = '';
+    await expect(async () => {
+      const order = await helper.getBlockOrder();
+      const next = order[order.indexOf(blockId) + 1];
+      expect(next).toBeTruthy();
+      expect(before).not.toContain(next);
+      newBlockUid = next;
+    }).toPass({ timeout: 10000 });
+
+    const newEditor = await helper.getEditorLocator(newBlockUid);
+    await helper.waitForEditorFocus(newEditor);
+    await newEditor.pressSequentially('Next line', { delay: 10 });
+    await helper.waitForEditorText(newEditor, /Next line/);
+
+    // The new paragraph is plain text; the original link is untouched. (Block 1
+    // is no longer the editable one, so find its link by the block, not the
+    // contenteditable field.)
+    await expect(newEditor.locator('a')).toHaveCount(0);
+    const originalLink = helper.getIframe().locator(`[data-block-uid="${blockId}"] a`);
+    await expect(originalLink).toHaveCount(1);
+    await expect(originalLink).toHaveText('Click here');
+    await expect(originalLink).toHaveAttribute('href', 'https://example.com');
+
+    // What is saved agrees: the new block holds no link, and no link anywhere
+    // on the page is empty.
+    // The PATCH of THIS page — a frontend may save other documents (a site
+    // footer template) in the same save.
+    const patchRequest = page.waitForRequest(
+      (req) => req.method() === 'PATCH' && new URL(req.url()).pathname.endsWith('/test-page'),
+    );
+    await helper.saveContent();
+    const body = JSON.parse((await patchRequest).postData() || '{}');
+
+    const linksIn = (node: unknown): any[] => {
+      if (Array.isArray(node)) return node.flatMap(linksIn);
+      if (!node || typeof node !== 'object') return [];
+      const n = node as Record<string, unknown>;
+      // A slate link element — not e.g. a listing's `fieldMapping` entry,
+      // which also says `type: 'link'` but has no children.
+      const isSlateLink = n.type === 'link' && Array.isArray(n.children);
+      return [...(isSlateLink ? [n] : []), ...Object.values(n).flatMap(linksIn)];
+    };
+    const textOf = (node: any): string =>
+      typeof node.text === 'string' ? node.text : (node.children ?? []).map(textOf).join('');
+
+    // Blocks may be nested in containers (frontends differ), so find the new
+    // one by its uid anywhere in what was saved, not at `blocks[uid]`.
+    const blockByUid = (node: unknown, uid: string): unknown => {
+      if (!node || typeof node !== 'object') return undefined;
+      if (Array.isArray(node)) {
+        for (const x of node) {
+          const found = blockByUid(x, uid);
+          if (found) return found;
+        }
+        return undefined;
+      }
+      const n = node as Record<string, unknown>;
+      const blocks = n.blocks as Record<string, unknown> | undefined;
+      if (blocks && typeof blocks === 'object' && uid in blocks) return blocks[uid];
+      for (const v of Object.values(n)) {
+        const found = blockByUid(v, uid);
+        if (found) return found;
+      }
+      return undefined;
+    };
+    const savedNewBlock = blockByUid(body, newBlockUid);
+    expect(savedNewBlock, 'the new block is saved').toBeTruthy();
+    expect(linksIn(savedNewBlock), 'no link in the new paragraph').toEqual([]);
+    const allLinks = linksIn(body.blocks);
+    expect(allLinks.length, 'the original link is saved').toBeGreaterThan(0);
+    for (const link of allLinks) {
+      expect(textOf(link).replace(/[​﻿]/g, ''), 'a saved link has text').not.toBe('');
+    }
+  });
+
   test('a relative link typed into the link editor is accepted', async ({ page }) => {
     // Typing a path relative to the current page (`./child`) used to leave the
     // link editor's Submit doing nothing — the link was silently refused.
