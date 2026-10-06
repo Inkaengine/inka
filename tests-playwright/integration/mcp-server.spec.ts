@@ -39,9 +39,9 @@ test.describe('MCP server', () => {
     } };
   };
 
-  test('lists get_page and edit_blocks', async () => {
+  test('lists its tools', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['edit_blocks', 'get_page']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['edit_blocks', 'get_page', 'list_block_types']);
   });
 
   test('reads, dry-runs, saves, and refuses a stale version', async ({ request }) => {

@@ -42,7 +42,7 @@ export function agentOn(page) {
   );
   return {
     getPage: () => call('getPage'),
-    getSchemaWidgets: () => call('getSchemaWidgets'),
+    getBlockSchemas: () => call('getBlockSchemas'),
     insert: (op) => call('insert', op),
     update: (op) => call('update', op),
     remove: (id) => call('remove', id),

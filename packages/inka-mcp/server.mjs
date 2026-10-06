@@ -20,7 +20,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { openForEdit, agentOn } from './adminDriver.mjs';
-import { getPage, editPage } from './tools.mjs';
+import { getPage, editPage, listBlockTypes } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
 - {"op":"update","id":"<uid>","set":{field: value}} — change fields of a block.
@@ -87,6 +87,12 @@ export function createServer(admin) {
     description: 'Read a page as an ordered list of blocks. Each block has "@uid" and "@type"; containers hold their child blocks in lists named for the region; rich text is {"md": "..."}. Keep "version" — edit_blocks needs it.',
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }) => asResult(await admin.withEditor(path, getPage)));
+
+  server.registerTool('list_block_types', {
+    title: 'List block types',
+    description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes. Read this before adding a block type you have not seen on the page.',
+    inputSchema: { path: z.string().describe('The page path, e.g. /about') },
+  }, async ({ path }) => asResult(await admin.withEditor(path, listBlockTypes)));
 
   server.registerTool('edit_blocks', {
     title: 'Edit a page',
