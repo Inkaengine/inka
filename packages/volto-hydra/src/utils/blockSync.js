@@ -253,6 +253,35 @@ export function installVariationFieldEnhancers(blocksConfig) {
  *
  * Call this once at INIT, after blocksConfig is fully populated.
  */
+/**
+ * Complete a frontend-declared block schema the way Volto's forms need it:
+ * a `default` fieldset of every property when it declares none, `required` as
+ * an array, and the same for the inner schema of each `object_list` field.
+ *
+ * Applied to EVERY frontend block on EVERY INIT. It used to run for new block
+ * types only, so a frontend that sends INIT twice (a client-side hydration)
+ * had its second, unfilled copy treated as an "override" and merged over the
+ * filled one — leaving the block with no fieldsets, which crashed the
+ * container-child enhancer on load. Mutates and returns the schema.
+ *
+ * @param {Object|undefined} schema - blockConfig.blockSchema as sent
+ * @returns {Object|undefined}
+ */
+export function completeFrontendSchema(schema) {
+  if (!schema || typeof schema !== 'object') return schema;
+  const fill = (s) => {
+    if (s.properties && !s.fieldsets) {
+      s.fieldsets = [{ id: 'default', title: 'Default', fields: Object.keys(s.properties) }];
+    }
+    if (!s.required) s.required = [];
+  };
+  fill(schema);
+  for (const prop of Object.values(schema.properties || {})) {
+    if (prop?.widget === 'object_list' && prop.schema) fill(prop.schema);
+  }
+  return schema;
+}
+
 export function installChildBlockEnhancers(blocksConfig) {
   if (!blocksConfig) return;
   for (const blockType of Object.keys(blocksConfig)) {
@@ -1026,6 +1055,13 @@ export function hideParentOwnedFields() {
 
   return (args) => {
     const { schema, intl, blockPathMap: passedBlockPathMap, blockId: passedBlockId } = args;
+    if (schema?.properties && !Array.isArray(schema.fieldsets)) {
+      const blockType = passedBlockPathMap?.[passedBlockId]?.blockType;
+      throw new Error(
+        `Block type "${blockType}" (block "${passedBlockId}"): its schema has properties but no fieldsets. ` +
+          'Every block schema needs fieldsets: the sidebar lays its fields out by them.',
+      );
+    }
 
     // blockPathMap/blockId come from one of two sources, both first-class:
     //

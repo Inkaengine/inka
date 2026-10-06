@@ -15,6 +15,8 @@ import {
   getConversionMap,
   validateFieldMappings,
   getBlockTypeChoices,
+  hideParentOwnedFields,
+  completeFrontendSchema,
 } from './blockSync';
 import config from '@plone/volto/registry';
 
@@ -1455,5 +1457,58 @@ describe('fieldRules — value sub-paths and arithmetic', () => {
       },
     })({ schema: schema(), formData: { image: '/images/thing' } });
     expect(out.properties.image.hydraRuleWarning).toBeUndefined();
+  });
+});
+
+describe('completeFrontendSchema', () => {
+  test('gives a schema with no fieldsets a default one of all its fields', () => {
+    const schema = { properties: { title: {}, description: {} } };
+    completeFrontendSchema(schema);
+    expect(schema.fieldsets).toEqual([
+      { id: 'default', title: 'Default', fields: ['title', 'description'] },
+    ]);
+    expect(schema.required).toEqual([]);
+  });
+
+  test("leaves a schema's own fieldsets and required alone", () => {
+    const fieldsets = [{ id: 'default', title: 'Main', fields: ['title'] }];
+    const schema = { properties: { title: {}, extra: {} }, fieldsets, required: ['title'] };
+    completeFrontendSchema(schema);
+    expect(schema.fieldsets).toBe(fieldsets);
+    expect(schema.required).toEqual(['title']);
+  });
+
+  test('completes the inner schema of an object_list field', () => {
+    const schema = {
+      fieldsets: [{ id: 'default', title: 'Default', fields: ['items'] }],
+      properties: { items: { widget: 'object_list', schema: { properties: { label: {} } } } },
+    };
+    completeFrontendSchema(schema);
+    expect(schema.properties.items.schema.fieldsets).toEqual([
+      { id: 'default', title: 'Default', fields: ['label'] },
+    ]);
+  });
+
+  test('completes every copy it is given — a second INIT included', () => {
+    // A frontend that sends INIT twice sends a fresh, unfilled schema the
+    // second time; it must be completed too, not merged over the filled one.
+    const first = completeFrontendSchema({ properties: { title: {} } });
+    const second = completeFrontendSchema({ properties: { title: {} } });
+    expect(second.fieldsets).toEqual(first.fieldsets);
+  });
+});
+
+describe('hideParentOwnedFields — a schema without fieldsets', () => {
+  test('fails with an error naming the block, not a bare TypeError', () => {
+    // Schemas from a frontend are completed on INIT; anything that still
+    // arrives here without fieldsets is reported by name.
+    const enhance = hideParentOwnedFields();
+    expect(() =>
+      enhance({
+        schema: { properties: { title: { title: 'Title' } } },
+        blockId: 'item-1',
+        blockPathMap: { 'item-1': { blockType: 'teaserItem', parentId: 'grid-1' } },
+      }),
+    ).toThrow(/teaserItem.*item-1.*no fieldsets|item-1.*teaserItem.*no fieldsets/);
   });
 });
