@@ -554,7 +554,11 @@ test.describe('Inline Editing - Links', () => {
 
     // What is saved agrees: the new block holds no link, and no link anywhere
     // on the page is empty.
-    const patchRequest = page.waitForRequest((req) => req.method() === 'PATCH');
+    // The PATCH of THIS page — a frontend may save other documents (a site
+    // footer template) in the same save.
+    const patchRequest = page.waitForRequest(
+      (req) => req.method() === 'PATCH' && new URL(req.url()).pathname.endsWith('/test-page'),
+    );
     await helper.saveContent();
     const body = JSON.parse((await patchRequest).postData() || '{}');
 
@@ -570,8 +574,29 @@ test.describe('Inline Editing - Links', () => {
     const textOf = (node: any): string =>
       typeof node.text === 'string' ? node.text : (node.children ?? []).map(textOf).join('');
 
-    expect(body.blocks?.[newBlockUid], 'the new block is saved').toBeTruthy();
-    expect(linksIn(body.blocks[newBlockUid]), 'no link in the new paragraph').toEqual([]);
+    // Blocks may be nested in containers (frontends differ), so find the new
+    // one by its uid anywhere in what was saved, not at `blocks[uid]`.
+    const blockByUid = (node: unknown, uid: string): unknown => {
+      if (!node || typeof node !== 'object') return undefined;
+      if (Array.isArray(node)) {
+        for (const x of node) {
+          const found = blockByUid(x, uid);
+          if (found) return found;
+        }
+        return undefined;
+      }
+      const n = node as Record<string, unknown>;
+      const blocks = n.blocks as Record<string, unknown> | undefined;
+      if (blocks && typeof blocks === 'object' && uid in blocks) return blocks[uid];
+      for (const v of Object.values(n)) {
+        const found = blockByUid(v, uid);
+        if (found) return found;
+      }
+      return undefined;
+    };
+    const savedNewBlock = blockByUid(body, newBlockUid);
+    expect(savedNewBlock, 'the new block is saved').toBeTruthy();
+    expect(linksIn(savedNewBlock), 'no link in the new paragraph').toEqual([]);
     const allLinks = linksIn(body.blocks);
     expect(allLinks.length, 'the original link is saved').toBeGreaterThan(0);
     for (const link of allLinks) {
