@@ -31,7 +31,12 @@ describe('agent page format', () => {
   it('found docs pages to check', () => expect(documents.length).toBeGreaterThan(20));
 
   for (const [file, stored] of documents) {
-    it(`round-trips ${file.slice(DOCS.length)}`, () => {
+    it(`round-trips ${file.slice(DOCS.length)}`, async () => {
+      // Yield before a body that blocks the worker: vitest reports each finished
+      // test over RPC with a 1s timeout, and a run of synchronous round trips
+      // starves it ("Timeout calling onTaskUpdate") though every test passes.
+      // Same as lib/prototype-roundtrip.test.mjs.
+      await new Promise((resolve) => setTimeout(resolve, 0));
       const agent = toAgentBlocks(stored);
       const back = toStoredBlocks(agent, config);
       expect(toAgentBlocks(back)).toEqual(agent);
