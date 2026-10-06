@@ -1,7 +1,8 @@
 /**
- * The Nuxt front end's social preview: a visitor's page carries Open Graph and
- * Twitter card tags from the page itself, with absolute URLs on the public
- * site, and the site's card as the image when the page has none of its own.
+ * The Nuxt front end's social preview and icons: a visitor's page carries Open
+ * Graph and Twitter card tags from the page itself, with absolute URLs on the
+ * public site, the site's card as the image when the page has none of its own,
+ * and the Inka mark as its icons.
  */
 import { test, expect } from '../fixtures';
 import { URLS } from '../ports';
@@ -35,4 +36,20 @@ test('a page with a preview image shares that image', async ({ page }) => {
   await expect(page).toHaveTitle('Test Page');
   expect(await meta(page, 'property', 'og:image')).toBe(content.preview_image.download);
   expect(await meta(page, 'name', 'twitter:image')).toBe(content.preview_image.download);
+});
+
+test('a page links the Inka icons, and the front end serves them', async ({ page }) => {
+  await page.goto(`${URLS.nuxt}/_test_data/accordion-test-page`);
+  // Servers name .ico differently (image/x-icon, image/vnd.microsoft.icon).
+  const icons = {
+    'link[rel="icon"][type="image/svg+xml"]': /^image\/svg\+xml/,
+    'link[rel="icon"][sizes="48x48"]': /^image\//,
+    'link[rel="apple-touch-icon"]': /^image\/png/,
+  };
+  for (const [selector, type] of Object.entries(icons)) {
+    const href = await page.locator(`head ${selector}`).getAttribute('href');
+    const response = await page.request.get(new URL(href, URLS.nuxt).href);
+    expect(response.ok(), href).toBe(true);
+    expect(response.headers()['content-type'], href).toMatch(type);
+  }
 });

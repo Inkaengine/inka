@@ -58,6 +58,12 @@ export default defineNuxtConfig({
       htmlAttrs: {
         lang: 'en',
       },
+      // The Inka mark; the .ico and touch icon come from favicon.svg via scripts/icons.mjs.
+      link: [
+        { rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
+        { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+      ],
     },
   },
   modules: [
