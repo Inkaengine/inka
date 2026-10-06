@@ -286,6 +286,29 @@ export function normalizeTelephone(tel) {
   return `tel:${tel}`;
 }
 
+// HYDRA: `./x` and `../x` — a path relative to the page it is written on.
+function isRelativePath(url) {
+  return url.startsWith('./') || url.startsWith('../');
+}
+
+/**
+ * Resolve a path relative to a page into a site path.
+ *
+ * HYDRA: resolved the way a browser resolves a link on that page, so `./x` on
+ * `/about/team` is `/about/x` (a sibling) and `../x` goes up from `/about/`.
+ * Anything that is not relative is returned unchanged.
+ * @function resolveRelativeUrl
+ * @param {string} url The url as typed.
+ * @param {string} pagePath Site path of the page the link is on.
+ * @returns {string} A site path (or the url unchanged).
+ */
+export function resolveRelativeUrl(url, pagePath) {
+  if (!isRelativePath(url)) return url;
+  const base = new URL(pagePath, 'http://site.invalid');
+  const resolved = new URL(url, base);
+  return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+}
+
 export function checkAndNormalizeUrl(url) {
   let res = {
     isMail: false,
@@ -300,10 +323,14 @@ export function checkAndNormalizeUrl(url) {
     res.isTelephone = true;
     res.url = URLUtils.normalizeTelephone(url);
   } else {
+    // HYDRA: a path relative to the page (`./x`, `../x`) is a path too.
+    // Stock Volto prefixed it with `http://`, failed the URL check, and the
+    // link editor silently refused it.
     if (
       res.url?.length >= 0 &&
       !res.url.startsWith('/') &&
-      !res.url.startsWith('#')
+      !res.url.startsWith('#') &&
+      !isRelativePath(res.url)
     ) {
       res.url = URLUtils.normalizeUrl(url);
       if (!URLUtils.isUrl(res.url)) {
