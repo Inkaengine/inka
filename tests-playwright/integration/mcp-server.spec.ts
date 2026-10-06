@@ -3,6 +3,7 @@
  * host would, and it drives its own headless admin against the mock API.
  */
 import { randomUUID } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { test, expect } from '../fixtures';
@@ -53,8 +54,17 @@ test.describe('MCP server', () => {
     const ops = [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@uid': 'new', '@type': 'slate', value: 'From the *MCP server*' }] }];
 
     // A dry run returns the page as it would be, and saves nothing.
-    const dry = (await call('edit_blocks', { path: PAGE, expectedVersion: read.version, ops, dryRun: true })).json();
+    const dryCall = await client.callTool({
+      name: 'edit_blocks', arguments: { path: PAGE, expectedVersion: read.version, ops, dryRun: true, preview: 'desktop' },
+    });
+    const [text, image] = dryCall.content as any[];
+    const dry = JSON.parse(text.text);
     expect(dry.page.blocks.find((b: any) => b['@uid'] === dry.ids.new).value.md).toBe('From the *MCP server*');
+    // The preview: the draft as a visitor sees it, as a screenshot and its text.
+    expect(dry.renderedText).toContain('From the MCP server');
+    expect(image).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    // MCP_PREVIEW_PNG=<file> keeps the screenshot to look at.
+    if (process.env.MCP_PREVIEW_PNG) writeFileSync(process.env.MCP_PREVIEW_PNG, Buffer.from(image.data, 'base64'));
     const after = (await call('get_page', { path: PAGE })).json();
     expect(after.blocks.map((b: any) => b['@uid'])).toEqual(read.blocks.map((b: any) => b['@uid']));
     expect(after.version).toBe(read.version);

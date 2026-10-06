@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { openForEdit, agentOn } from './adminDriver.mjs';
+import { frontendUrlOf, previewDraft } from './preview.mjs';
 import { getPage, editPage, listBlockTypes } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
@@ -66,7 +67,12 @@ export function headlessAdmin({ adminUrl, token }) {
       const page = await (await ready()).newPage();
       try {
         await openForEdit(page, { adminUrl, path });
-        return await work(agentOn(page));
+        return await work(agentOn(page), {
+          // Render a draft of this page as a visitor sees it, in its own page.
+          render: async (draft, viewport) => previewDraft(page.context(), {
+            frontendUrl: await frontendUrlOf(page), path, draft, viewport,
+          }),
+        });
       } finally {
         await page.close();
       }
@@ -96,16 +102,28 @@ export function createServer(admin) {
 
   server.registerTool('edit_blocks', {
     title: 'Edit a page',
-    description: `Change a page's blocks. With dryRun the changes are applied but not saved, and the resulting page is returned; resubmit without dryRun to save. A save is refused if the page has changed since expectedVersion — read it again and reapply.\n\n${OPS_HELP}`,
+    description: `Change a page's blocks. With dryRun the changes are applied but not saved, and the resulting page is returned; resubmit without dryRun to save. With dryRun, "preview" also renders the result as a visitor would see it — a screenshot and the page's text. A save is refused if the page has changed since expectedVersion — read it again and reapply.\n\n${OPS_HELP}`,
     inputSchema: {
       path: z.string().describe('The page path, e.g. /about'),
       expectedVersion: z.string().describe('The version get_page returned'),
       ops: z.array(z.object({ op: z.enum(['update', 'add', 'move', 'delete']) }).passthrough()),
       dryRun: z.boolean().optional().describe('Show the result without saving'),
+      preview: z.enum(['desktop', 'mobile']).optional().describe('With dryRun: render the result at this width'),
     },
-  }, async ({ path, expectedVersion, ops, dryRun }) => asResult(
-    await admin.withEditor(path, (agent) => editPage(agent, { ops, expectedVersion, dryRun, mintId: randomUUID })),
-  ));
+  }, async ({ path, expectedVersion, ops, dryRun, preview }) => {
+    const result = await admin.withEditor(path, (agent, { render }) => editPage(agent, {
+      ops, expectedVersion, dryRun, mintId: randomUUID,
+      render: preview && ((draft) => render(draft, preview)),
+    }));
+    if (!result.rendered) return asResult(result);
+    const { rendered: { image, text }, ...rest } = result;
+    return {
+      content: [
+        { type: 'text', text: JSON.stringify({ ...rest, renderedText: text }, null, 2) },
+        { type: 'image', data: image, mimeType: 'image/png' },
+      ],
+    };
+  });
 
   return server;
 }

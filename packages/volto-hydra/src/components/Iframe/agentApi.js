@@ -23,7 +23,9 @@ import {
   getContainerRegionDescriptors,
   resolveRegionConstraints,
   resolveObjectListConstraints,
+  stripEmptyBlocks,
 } from '../../utils/blockPath';
+import { stripFixedInsideSlots } from '@volto-hydra/helpers';
 import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
 import { getPageAllowedBlocksFromRestricted } from '../../../../hydra-js/buildBlockPathMap.js';
 
@@ -112,6 +114,16 @@ export function registerAgentApi(live) {
     getPage() {
       const { properties: formData, blockPathMap } = live.current;
       return { path: contentPath(), version: formData.modified, formData, blockPathMap };
+    },
+
+    /**
+     * The page as a save would persist it: without the empty slot blocks the
+     * editor keeps for its canvas, and with fixed flags scrubbed inside slots —
+     * the same two steps the Form's save takes. What a preview renders.
+     */
+    getDraft() {
+      const { properties, blocksConfig, intl } = live.current;
+      return stripFixedInsideSlots(stripEmptyBlocks(properties, blocksConfig, intl));
     },
 
     /**
