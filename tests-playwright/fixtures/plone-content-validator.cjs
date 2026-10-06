@@ -982,7 +982,10 @@ function checkBlockSchemas(source, fieldMap) {
       // `{ fields, defaultsPrefix }`, or a bare array from an older map.
       const declared = Array.isArray(entry) ? entry : entry && entry.fields;
       const defaultsPrefix = Array.isArray(entry) ? null : entry && entry.defaultsPrefix;
-      if (!declared) {
+      if (entry && entry.builtIn) {
+        // Its fields are the admin's built-in schema's (fieldMapFromSchemas):
+        // not checked here. Its children still are, below.
+      } else if (!declared) {
         if (!unknown.has(type)) {
           unknown.add(type);
           stats.unknownTypes += 1;
@@ -1278,7 +1281,15 @@ function fieldMapFromSchemas(schemas) {
     Object.values(node).forEach(stamps);
   };
   for (const [type, def] of Object.entries(schemas)) {
-    const entry = { fields: Object.keys(def?.blockSchema?.properties ?? {}) };
+    // No blockSchema: the frontend adds rules or an enhancer to a block the
+    // admin already provides, and the admin's schema stays (mergeFrontendBlock
+    // replaces only the keys given). Its fields are that schema's, which this
+    // map cannot see — so they are not checked here, and the block is known.
+    if (!def?.blockSchema) {
+      blocks[type] = { builtIn: true };
+      continue;
+    }
+    const entry = { fields: Object.keys(def.blockSchema.properties ?? {}) };
     const defaultsField = def?.schemaEnhancer?.inheritSchemaFrom?.defaultsField;
     if (defaultsField) entry.defaultsPrefix = defaultsField;
     blocks[type] = entry;
