@@ -20,6 +20,20 @@ describe('mergeFrontendBlock', () => {
     expect(() => mergeFrontendBlock('card', undefined, { id: 'card', title: 'Card' })).toThrow(/needs a `title` and a `group`/);
   });
 
+  test('an allowedBlocks list with a gap or a non-name in it is refused, wherever it is', () => {
+    // eslint-disable-next-line no-sparse-arrays
+    const gap = ['slate', , 'image'];
+    const nested = {
+      id: 'tabs', title: 'Tabs', group: 'common',
+      blockSchema: { properties: { tabs: { widget: 'object_list', schema: { properties: { items: { widget: 'blocks_layout', allowedBlocks: gap } } } } } },
+    };
+    expect(() => mergeFrontendBlock('tabs', undefined, nested)).toThrow(
+      'Block "tabs": allowedBlocks at blockSchema.properties.tabs.schema.properties.items has [1] = undefined',
+    );
+    expect(() => mergeFrontendBlock('slate', { id: 'slate', title: 'Text', group: 'text' }, { allowedBlocks: ['slate', null] }))
+      .toThrow('Block "slate": allowedBlocks at the block has [1] = null');
+  });
+
   test('a block the admin has needs neither: its own stand', () => {
     const { entry } = mergeFrontendBlock('slate', { id: 'slate', title: 'Text', group: 'text' }, { schemaEnhancer: { fieldRules: {} } });
     expect(entry.title).toBe('Text');

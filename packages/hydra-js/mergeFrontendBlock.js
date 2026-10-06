@@ -19,9 +19,14 @@
  * needs a `title` and a `group` from it — compulsory, never made up from the
  * key: a chooser entry with an invented name is a bug hidden, not fixed.
  *
+ * Every `allowedBlocks` list the entry carries, at any depth of its schema,
+ * must be block type names only: a gap (a stray comma) or a null would offer
+ * an unnamed type in the chooser.
+ *
  * @returns {{ entry: object, previousEnhancer: Function | undefined }}
  */
 export function mergeFrontendBlock(blockType, adminEntry, frontendEntry) {
+  checkAllowedBlocks(blockType, frontendEntry, [], new WeakSet());
   if (!adminEntry) {
     if (!frontendEntry.title || !frontendEntry.group) {
       throw new Error(
@@ -39,4 +44,27 @@ export function mergeFrontendBlock(blockType, adminEntry, frontendEntry) {
   const asList = (r) => (Array.isArray(r) ? r : [r]);
   entry.schemaEnhancer = [...asList(before), ...asList(added)];
   return { entry, previousEnhancer: undefined };
+}
+
+function checkAllowedBlocks(blockType, node, path, seen) {
+  if (!node || typeof node !== 'object' || seen.has(node)) return;
+  seen.add(node);
+  if (Array.isArray(node)) {
+    node.forEach((item, i) => checkAllowedBlocks(blockType, item, [...path, i], seen));
+    return;
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'allowedBlocks' && Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        if (typeof value[i] !== 'string' || !value[i]) {
+          throw new Error(
+            `Block "${blockType}": allowedBlocks at ${path.length ? path.join('.') : 'the block'} ` +
+              `has [${i}] = ${value[i] === undefined ? 'undefined' : JSON.stringify(value[i])}`,
+          );
+        }
+      }
+    } else {
+      checkAllowedBlocks(blockType, value, [...path, key], seen);
+    }
+  }
 }
