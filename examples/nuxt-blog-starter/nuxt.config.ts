@@ -179,6 +179,9 @@ export default defineNuxtConfig({
       // The api.inka.sh / admin.inka.sh fallbacks are only for a plain local build.
       backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://api.inka.sh',
       adminUrl: process.env.NUXT_ADMIN_URL || 'https://admin.inka.sh',
+      // The public site, for social previews' absolute og:url / og:image.
+      siteUrl: 'https://inka.sh',
+      siteName: 'Inka',
     },
   },
   css: ['/assets/css/main.css'],
