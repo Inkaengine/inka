@@ -44,7 +44,7 @@ test.describe('MCP server', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(['edit_blocks', 'get_page', 'list_block_types']);
   });
 
-  test('reads, dry-runs, saves, and refuses a stale version', async ({ request }) => {
+  test('reads, dry-runs, saves, and refuses a stale version', async () => {
     // Every call opens the editor afresh — that is what keeps the server stateless.
     test.setTimeout(180000);
     const read = (await call('get_page', { path: PAGE })).json();
@@ -61,7 +61,8 @@ test.describe('MCP server', () => {
 
     // Saved for real.
     const saved = (await call('edit_blocks', { path: PAGE, expectedVersion: read.version, ops })).json();
-    const stored = await (await request.get(`${URLS.mockApi}${PAGE}`, {
+    // Plain fetch: the `request` fixture would carry a frontend project's storageState.
+    const stored = await (await fetch(`${URLS.mockApi}${PAGE}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).json();
     expect(stored.blocks_layout.items[1]).toBe(saved.ids.new);
