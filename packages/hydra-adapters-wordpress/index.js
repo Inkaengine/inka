@@ -2,6 +2,9 @@ import {
   BaseAdapter,
   AdapterError,
   resolveOrderPosition,
+  VIEW_PREFIX,
+  EXCLUDED_NODE,
+  parseViewPath,
 } from '@volto-hydra/hydra-adapters-core';
 
 /**
@@ -157,11 +160,47 @@ export class WordPressAdapter extends BaseAdapter {
     credentials,
     postType = 'pages',
     translations = 'grouped',
+    // Whether the Hydra Companion plugin is installed (see
+    // companion-plugin/). WordPress keeps real edit locks in `_edit_lock`, but
+    // protected meta is unreachable over REST until something registers it, so
+    // the operations exist only where that plugin does.
+    //
+    // OPT-IN, and never probed-and-assumed: advertising a lock field without
+    // the operations behind it is worse than having neither, because Volto locks
+    // on `content.lock !== undefined` alone and a failed lock blanks the loaded
+    // content instead of just failing.
+    locking = false,
+    // Whether Polylang AND the companion plugin are installed.
+    //
+    // Separate from `translations`, which says what KIND of multilingual this
+    // site is: Polylang keeps one post per language and relates them, so the
+    // kind stays 'grouped'. This option says the operations exist at all.
+    //
+    // Polylang ships REST routes for the language LIST but none for a post's
+    // language or its translation group, which is what the companion adds.
+    multilingual = false,
   } = {}) {
     super({
       name: 'wordpress',
       capabilities: [
         'content',
+        // NOT navigation-exclusion or navigation-title.
+        //
+        // "Hide from navigation" is a PLONE mechanism — a field on its content
+        // type schema — and generalising it to every CMS was a mistake. WordPress
+        // has no per-page equivalent to map, and inventing post meta for it meant
+        // advertising a capability that was true only on sites running our own
+        // plugin.
+        //
+        // WordPress expresses menu membership by which MENU a page is in, and a
+        // menu is a separate curated view over the same content. That belongs to
+        // the views model — a view selector in the contents view and the picker —
+        // not to a flag on the document. See
+        // superpowers/specs/2026-10-02-content-trees-and-menus-design.md
+        // Only with the companion plugin — see the `locking` option.
+        ...(locking ? ['locking'] : []),
+        // Only with Polylang + the companion plugin — see `multilingual`.
+        ...(multilingual ? ['multilingual'] : []),
         // WordPress core takes 25 requests per /batch/v1 call, and its
         // require-all-or-none mode is a real all-or-nothing promise — so unlike
         // the emulated floor, this adapter can honour `atomic`. See applyBatch.
@@ -193,6 +232,8 @@ export class WordPressAdapter extends BaseAdapter {
     this.credentials = credentials ?? null;
     this.nonce = nonce ?? null;
     this.postType = postType;
+    this.locking = locking;
+    this.multilingual = multilingual;
     // Session-stable SITE metadata: the content types, their field schemas and
     // the taxonomy list. See cachedMeta.
     this.metaCache = new Map();
@@ -564,10 +605,262 @@ export class WordPressAdapter extends BaseAdapter {
       title: post.title?.raw ?? post.title?.rendered ?? '',
       blocks,
       blocksLayout,
-      fields: { legacyContent: legacy, slug: post.slug, link: post.link },
+      fields: {
+        legacyContent: legacy,
+        slug: post.slug,
+        link: post.link,
+        // From the companion plugin's rest field, on the same read as the
+        // content — so there is no window where the document is loaded but
+        // whether someone else holds it is not yet known.
+        //
+        // Omitted entirely when locking is off, which the contract requires:
+        // a lock field sends the admin after operations this adapter would not
+        // have.
+        ...(this.locking && post.hydra_lock != null
+          ? { lock: post.hydra_lock }
+          : {}),
+      },
       state: STATE_MAP[post.status] ?? post.status,
       _adapter: { raw: post },
     };
+  }
+
+  /** The menu term for a view's slug. */
+  async menuForView(menu) {
+    const menus = await this.fetchJson('/wp/v2/menus', {
+      params: { per_page: '100' },
+    });
+    const found = (menus ?? []).find((m) => m.slug === menu);
+    if (!found) {
+      throw new AdapterError(`wordpress: no menu named ${menu}`, {
+        code: 'NOT_FOUND',
+        status: 404,
+      });
+    }
+    return found;
+  }
+
+  /**
+   * A menu's nodes, as CONTENT.
+   *
+   * A node is a PLACEMENT that may reference content — its identity is the
+   * placement, not the page, which is what makes "the same page twice" a
+   * non-question. Per-placement properties live here, which is where WordPress
+   * already keeps them: two placements of one page can carry two different
+   * labels, as `title` does below.
+   *
+   * `reference` is the content path, resolved so a caller never has to turn an
+   * object_id into a path itself. The picker must take the stored value from
+   * HERE and never from the browse location — a synthetic path that escaped into
+   * stored data would look right in the editor and break on the public site.
+   */
+  async listPlacements({ menu, excluded, placementId }) {
+    const term = await this.menuForView(menu);
+    const items = await this.fetchJson('/wp/v2/menu-items', {
+      params: {
+        menus: String(term.id),
+        per_page: '100',
+        // An UNPUBLISHED menu item is WordPress's own "in the menu's definition
+        // but not in the menu" — wp_get_nav_menu_items asks for published only,
+        // and so does WPGraphQL. That is what the Excluded node holds.
+        status: excluded ? 'draft' : 'publish',
+        context: 'edit',
+      },
+    });
+
+    const wantedParent = placementId ?? 0;
+    const children = (items ?? [])
+      .filter((item) => Number(item.parent ?? 0) === Number(wantedParent))
+      .sort((a, b) => (a.menu_order ?? 0) - (b.menu_order ?? 0));
+
+    // ONE request for every referenced page, rather than one per placement.
+    const pageIds = [
+      ...new Set(
+        children
+          .filter((item) => item.type === 'post_type')
+          .map((item) => Number(item.object_id))
+          .filter(Boolean),
+      ),
+    ];
+    const pathById = new Map();
+    if (pageIds.length) {
+      const posts = await this.fetchJson(`/wp/v2/${this.postType}`, {
+        params: {
+          include: pageIds.join(','),
+          per_page: String(pageIds.length),
+          status: 'any',
+          context: 'edit',
+        },
+      });
+      for (const post of posts ?? []) {
+        pathById.set(Number(post.id), await this.pathOfPost(post));
+      }
+    }
+
+    const base = excluded
+      ? `/${VIEW_PREFIX}/${menu}/${EXCLUDED_NODE}`
+      : `/${VIEW_PREFIX}/${menu}`;
+
+    const nodes = children.map((item) => ({
+      id: String(item.id),
+      path: `${base}/${item.id}`,
+      // "link" is not a type, it is the ABSENCE of a reference.
+      type: item.type === 'post_type' ? 'placement' : 'link',
+      title: item.title?.rendered ?? '',
+      blocks: {},
+      blocksLayout: { items: [] },
+      fields: {
+        reference: pathById.get(Number(item.object_id)) ?? null,
+        url: item.url ?? null,
+      },
+      state: STATE_MAP[item.status] ?? item.status,
+      _adapter: { raw: item },
+    }));
+
+    // The bucket is offered at the view's ROOT, so what was taken out of the
+    // menu is discoverable in the menu rather than only through the picker.
+    // Not selectable: it is a bucket, not content.
+    if (!excluded && !placementId) {
+      nodes.push({
+        id: EXCLUDED_NODE,
+        path: `/${VIEW_PREFIX}/${menu}/${EXCLUDED_NODE}`,
+        type: 'bucket',
+        title: 'Not in this menu',
+        blocks: {},
+        blocksLayout: { items: [] },
+        fields: { reference: null, url: null },
+        state: 'private',
+        _adapter: { raw: null },
+      });
+    }
+
+    return { items: nodes };
+  }
+
+  /**
+   * Move a placement into or out of the Excluded node.
+   *
+   * Membership is a MOVE, which is why content.delete can mean "destroy this" in
+   * every view. Here it is the menu item's own publish status — the page is never
+   * touched either way.
+   */
+  async movePlacement(fromView, toView, args) {
+    if (!fromView || !fromView.rest) {
+      throw new AdapterError(
+        `wordpress: ${args.path} is not something in a menu view`,
+        { code: 'INVALID_MOVE', status: 400 },
+      );
+    }
+    if (!toView || toView.menu !== fromView.menu) {
+      throw new AdapterError(
+        'wordpress: a menu placement can only move within its own menu; to ' +
+          'put a page in a different menu, add it there and remove it here',
+        { code: 'INVALID_MOVE', status: 400 },
+      );
+    }
+    if (toView.rest) {
+      throw new AdapterError(
+        'wordpress: reparenting inside a menu is not implemented yet; this ' +
+          'moves a placement between the menu and its Excluded node',
+        { code: 'NOT_IMPLEMENTED', status: 501 },
+      );
+    }
+
+    const placementId = Number(fromView.rest);
+    const updated = await this.fetchJson(`/wp/v2/menu-items/${placementId}`, {
+      method: 'POST',
+      body: { status: toView.excluded ? 'draft' : 'publish' },
+    });
+    const base = toView.excluded
+      ? `/${VIEW_PREFIX}/${toView.menu}/${EXCLUDED_NODE}`
+      : `/${VIEW_PREFIX}/${toView.menu}`;
+    return { path: `${base}/${placementId}`, id: String(updated.id) };
+  }
+
+  /**
+   * Add a placement to a menu.
+   *
+   * `data.reference` is a CONTENT path; the page itself is untouched. Appended
+   * last, because a position the caller did not ask for is not ours to invent.
+   */
+  async addPlacement({ menu, placementId }, data) {
+    const term = await this.menuForView(menu);
+    const reference = data.reference ?? data.path;
+    // A node with a URL and no reference is an EXTERNAL LINK — "link" is not a
+    // type, it is the absence of a reference. WordPress calls it a `custom` menu
+    // item, which is its own object holding a url and a label and pointing at no
+    // post at all.
+    const url = data.url ?? null;
+    if (!reference && !url) {
+      throw new AdapterError(
+        'wordpress: a menu node needs either a reference to content or a url',
+        { code: 'BAD_REQUEST', status: 400 },
+      );
+    }
+    const pageId = reference ? await this.resolvePath(reference) : null;
+
+    const existing = await this.fetchJson('/wp/v2/menu-items', {
+      params: {
+        menus: String(term.id),
+        per_page: '100',
+        status: 'publish,draft',
+        context: 'edit',
+      },
+    });
+    const lastOrder = (existing ?? []).reduce(
+      (highest, item) => Math.max(highest, Number(item.menu_order ?? 0)),
+      0,
+    );
+
+    const created = await this.fetchJson('/wp/v2/menu-items', {
+      method: 'POST',
+      body: {
+        menus: term.id,
+        title: data.title ?? undefined,
+        ...(reference
+          ? {
+              type: 'post_type',
+              object: this.postType === 'pages' ? 'page' : this.postType,
+              object_id: pageId,
+            }
+          : { type: 'custom', url }),
+        parent: placementId ?? 0,
+        menu_order: lastOrder + 1,
+        status: 'publish',
+      },
+    });
+
+    return {
+      id: String(created.id),
+      path: `/${VIEW_PREFIX}/${menu}/${created.id}`,
+      type: reference ? 'placement' : 'link',
+      title: created.title?.rendered ?? '',
+      blocks: {},
+      blocksLayout: { items: [] },
+      fields: { reference: reference ?? null, url: created.url ?? url },
+      state: STATE_MAP[created.status] ?? created.status,
+      _adapter: { raw: created },
+    };
+  }
+
+  /**
+   * A post's Polylang translation group, via the companion plugin.
+   */
+  async translationGroup(id) {
+    try {
+      const body = await this.fetchJson(`/hydra/v1/translations/${id}`);
+      return body.items ?? [];
+    } catch (err) {
+      if (err?.status === 404 && /rest_no_route/.test(err?.message ?? '')) {
+        throw new AdapterError(
+          'wordpress: multilingual was enabled but Polylang or the Hydra ' +
+            'Companion plugin is not installed, so WordPress has no ' +
+            'translation group to report',
+          { code: 'NOT_IMPLEMENTED', status: 501 },
+        );
+      }
+      throw err;
+    }
   }
 
   async whoami() {
@@ -827,6 +1120,14 @@ export class WordPressAdapter extends BaseAdapter {
       }
 
       case 'content.create': {
+        const intoView = parseViewPath(args.parentPath);
+        if (intoView) {
+          return this.addPlacement(
+            { menu: intoView.menu, placementId: intoView.rest ? Number(intoView.rest) : null },
+            args.data ?? {},
+          );
+        }
+
         const parentId =
           args.parentPath === '/' ? 0 : await this.resolvePath(args.parentPath);
         const post = await this.fetchJson(`/wp/v2/${this.postType}`, {
@@ -860,6 +1161,25 @@ export class WordPressAdapter extends BaseAdapter {
       }
 
       case 'content.delete': {
+        const placement = parseViewPath(args.path);
+        if (placement) {
+          const placementId = placement.rest ? Number(placement.rest) : null;
+          if (!placementId) {
+            throw new AdapterError(
+              `wordpress: ${args.path} is a view, not something in it`,
+              { code: 'BAD_REQUEST', status: 400 },
+            );
+          }
+          // UNLINK, never delete. Removing a page from a menu must leave the page
+          // alone — that is the whole difference between tidying a menu and
+          // losing a page, and it is what `remove: 'unlink'` means on the view.
+          await this.fetchJson(`/wp/v2/menu-items/${placementId}`, {
+            method: 'DELETE',
+            params: { force: 'true' },
+          });
+          return null;
+        }
+
         const id = await this.resolvePath(args.path);
         await this.fetchJson(`/wp/v2/${this.postType}/${id}`, {
           method: 'DELETE',
@@ -1074,6 +1394,15 @@ export class WordPressAdapter extends BaseAdapter {
       }
 
       case 'tree.list': {
+        const view = parseViewPath(args.parent);
+        if (view) {
+          return this.listPlacements({
+            menu: view.menu,
+            excluded: view.excluded,
+            placementId: view.rest ? Number(view.rest) : null,
+          });
+        }
+
         const parentId =
           args.parent === '/' ? 0 : await this.resolvePath(args.parent);
         const posts = await this.fetchJson(`/wp/v2/${this.postType}`, {
@@ -1121,22 +1450,81 @@ export class WordPressAdapter extends BaseAdapter {
         return { items };
       }
 
+      case 'content.lock':
+      case 'content.unlock': {
+        const id = await this.resolvePath(args.path);
+        const taking = intent === 'content.lock';
+        try {
+          return await this.fetchJson(`/hydra/v1/lock/${id}`, {
+            method: taking ? 'POST' : 'DELETE',
+            body: taking && args.force ? { force: true } : undefined,
+          });
+        } catch (err) {
+          // Distinguish "the plugin is not there" from "the post is not there".
+          // Both arrive as 404, and the first is a deployment mistake that would
+          // otherwise read as a missing document.
+          if (err?.status === 404 && /rest_no_route/.test(err?.message ?? '')) {
+            throw new AdapterError(
+              'wordpress: locking was enabled but the Hydra Companion plugin ' +
+                'is not installed, so WordPress exposes no lock over REST',
+              { code: 'NOT_IMPLEMENTED', status: 501 },
+            );
+          }
+          throw err;
+        }
+      }
+
+      case 'translations.get': {
+        const id = await this.resolvePath(args.path);
+        const items = await this.translationGroup(id);
+        return { items: items.map(({ language, path }) => ({ language, path })) };
+      }
+
+      case 'translations.locate': {
+        // Where the CMS says the translation belongs, which is not a guess the
+        // caller should make. Polylang has no per-language folder — one post per
+        // language, related — so there is no /de/ branch to nest under, and the
+        // answer is beside the translation of this document's PARENT where one
+        // exists.
+        const id = await this.resolvePath(args.path);
+        const post = await this.fetchJson(`/wp/v2/${this.postType}/${id}`, {
+          params: { context: 'edit' },
+        });
+        const parentId = Number(post.parent ?? 0);
+        if (!parentId) return { path: '/' };
+
+        const siblings = await this.translationGroup(parentId);
+        const translated = siblings.find((t) => t.language === args.language);
+        // No translated parent yet: the root, rather than nesting the
+        // translation under a parent in the wrong language.
+        return { path: translated?.path || '/' };
+      }
+
+      case 'translations.create': {
+        const sourceId = await this.resolvePath(args.sourcePath);
+        const created = await this.dispatch('content.create', {
+          parentPath: args.parentPath,
+          data: args.data,
+        });
+        // LINKING is the whole point. Without it this is a loose page that merely
+        // looks like a translation, which is exactly the failure the contract
+        // warns about — the editor finds out after typing a page.
+        await this.fetchJson(`/hydra/v1/translations/${sourceId}/link`, {
+          method: 'POST',
+          body: { language: args.language, target_id: Number(created.id) },
+        });
+        return created;
+      }
+
       case 'navigation.get': {
         const posts = await this.fetchJson(`/wp/v2/${this.postType}`, {
           params: { parent: '0', status: 'any', context: 'edit', per_page: '100' },
         });
-        // Sorted HERE, by menu_order then title, rather than asking WordPress
-        // for orderby=menu_order.
-        //
-        // The ordering itself is the point: menu_order is what content.order
-        // writes, and without applying it a reorder moved the contents view and
-        // left the menu alone. But asking the REST API to do it broke the
-        // journey's link picker, reproducibly — the last passing commit still
-        // passes on a re-run today, so it was the parameter and not the weather.
-        // Sorting the answer costs one pass over at most 100 rows and depends on
-        // nothing the API has to agree to, which is how Drupal's navigation does
-        // it too. Title breaks the tie, because every page starts at menu_order
-        // 0 and WordPress's tie-break is its own business.
+        // Sorted HERE, by menu_order then title, rather than asking WordPress for
+        // orderby=menu_order. The ordering itself is the point: menu_order is
+        // what content.order writes. But asking the REST API to do it broke the
+        // journey's link picker, reproducibly. Title breaks the tie, because
+        // every page starts at menu_order 0.
         posts.sort(
           (a, b) =>
             (a.menu_order ?? 0) - (b.menu_order ?? 0) ||
@@ -1145,7 +1533,15 @@ export class WordPressAdapter extends BaseAdapter {
             ),
         );
         return {
-          items: posts.map((p) => this.toDocument(p, `/${p.slug}`)),
+          // THE PAGE TREE — the main hierarchy.
+          //
+          // Drupal's navigation.get reads menu links because its nodes are FLAT, so
+          // a menu is its only hierarchy. WordPress pages form a tree, and that
+          // tree is what its navigation is built from (wp_list_pages, the page-list
+          // block, a theme with no menu assigned).
+          //
+          // A curated nav MENU is a separate view over the same content, not this.
+          items: posts.map((post) => this.toDocument(post, `/${post.slug}`)),
         };
       }
 
@@ -1317,6 +1713,12 @@ export class WordPressAdapter extends BaseAdapter {
       }
 
       case 'content.move': {
+        const fromView = parseViewPath(args.path);
+        const toView = parseViewPath(args.targetParentPath);
+        if (fromView || toView) {
+          return this.movePlacement(fromView, toView, args);
+        }
+
         if (
           args.targetParentPath === args.path ||
           args.targetParentPath.startsWith(`${args.path}/`)
@@ -1430,7 +1832,23 @@ export class WordPressAdapter extends BaseAdapter {
         // resolvePath cached this post's parent on the way past, so the
         // separate fetch it used to do is redundant. The post itself is one of
         // the siblings fetched below.
-        const parentId = this.ancestorCache.get(id)?.parent ?? 0;
+        //
+        // `?? 0` was WRONG here: a cold ancestorCache — which is what resolvePath
+        // leaves when it answers from pathCache alone, as it does for any path
+        // seen before — made every post look top-level, so the siblings fetched
+        // below were the ROOT pages. A nested page was then "Not found among
+        // siblings", and one that happened to be among them would have silently
+        // reordered the wrong run of pages.
+        const cached = this.ancestorCache.get(id);
+        const parentId =
+          cached?.parent ??
+          Number(
+            (
+              await this.fetchJson(`/wp/v2/${this.postType}/${id}`, {
+                params: { context: 'edit' },
+              })
+            ).parent ?? 0,
+          );
 
         // Renumber ALL the siblings, not just this one.
         //
@@ -1511,15 +1929,77 @@ export class WordPressAdapter extends BaseAdapter {
       case 'site.get': {
         const settings = await this.fetchJson('/wp/v2/settings');
         const locale = settings?.language ?? 'en_US';
-        const defaultLanguage = locale.split(/[_-]/)[0];
+        let defaultLanguage = locale.split(/[_-]/)[0];
+        let languages = [defaultLanguage];
+
+        if (this.multilingual) {
+          // DETECTED, not declared. Polylang's own route is the only thing that
+          // knows which languages a site has, and `features.multilingual` has
+          // to describe this site rather than the plugin: a site with Polylang
+          // installed and one language configured still cannot hold a
+          // translation, and offering one would waste the editor's work.
+          const list = await this.fetchJson('/pll/v1/languages');
+          if (!Array.isArray(list) || list.length === 0) {
+            throw new AdapterError(
+              'wordpress: multilingual was enabled but Polylang reports no ' +
+                'languages, so no translation could be created or linked',
+              { code: 'NOT_IMPLEMENTED', status: 501 },
+            );
+          }
+          languages = list.map((l) => l.slug);
+          defaultLanguage =
+            list.find((l) => l.is_default)?.slug ?? languages[0];
+        }
+
+        // The views this CMS offers. The admin needs them to put a selector at the
+        // root of the breadcrumb; nothing here invents a hierarchy WordPress does
+        // not have.
+        //
+        // `ordered` says WHOSE order it is, which matters because a WordPress menu
+        // carries its own positions while Plone's menu view IS the content tree —
+        // "move up in the menu" would silently rearrange pages there.
+        // `allowsLabels` is what navigation-title should have been: a property of
+        // the view, since a menu item carries its own title and a page cannot.
+        const menus = await this.fetchJson('/wp/v2/menus', {
+          params: { per_page: '100' },
+        });
+
         return {
           defaultLanguage,
-          languages: [defaultLanguage],
+          languages,
           ...(settings?.title ? { title: settings.title } : {}),
-          // Core WordPress holds one language; a plugin is what changes that,
-          // and until this adapter detects one, saying otherwise would offer to
-          // create a translation that cannot exist.
-          features: { multilingual: false, translations: this.translationsMode },
+          views: [
+            {
+              id: 'content',
+              title: 'Pages',
+              shape: 'hierarchy',
+              main: true,
+              prefix: '',
+              ordered: 'own',
+              holdsContent: true,
+              remove: 'delete',
+            },
+            ...(menus ?? []).map((menu) => ({
+              id: `menu:${menu.slug}`,
+              title: menu.name,
+              shape: 'hierarchy',
+              prefix: `${VIEW_PREFIX}/${menu.slug}`,
+              ordered: 'own',
+              holdsContent: true,
+              allowsLinks: true,
+              allowsLabels: true,
+              // UNLINK: removing a page from a menu must leave the page alone.
+              remove: 'unlink',
+            })),
+          ],
+          // The KIND is structural and does not depend on today's
+          // configuration; whether this site can actually hold a translation
+          // does. Polylang keeps one post per language and relates them, which
+          // is the grouped kind.
+          features: {
+            multilingual: languages.length > 1,
+            translations: this.translationsMode,
+          },
         };
       }
 

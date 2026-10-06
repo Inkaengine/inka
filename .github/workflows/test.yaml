@@ -314,6 +314,19 @@ jobs:
       - name: Warm the WordPress Playground package
         if: matrix.target == 'wordpress'
         run: pnpm dlx @wp-playground/cli@3.1.51 --version || true
+      # The plugins the suite MOUNTS into Playground. Not committed — they are
+      # ~11MB of third-party code — so they are fetched, and cached by the version
+      # pinned in the script. Without them global-setup fails fast rather than
+      # booting a WordPress that silently lacks them.
+      - name: Cache the WordPress plugins
+        if: matrix.target == 'wordpress'
+        uses: actions/cache@v4
+        with:
+          path: tests-adapters/fixtures/wp-plugins
+          key: ${{ runner.os }}-wp-plugins-${{ hashFiles('scripts/fetch-wp-plugins.mjs') }}
+      - name: Fetch the WordPress plugins
+        if: matrix.target == 'wordpress'
+        run: pnpm wp:plugins
       - name: Run the contract suite
         # `shell: bash` is load-bearing, not tidiness: GitHub's default shell has
         # no pipefail, so `vitest | tee` exited with TEE's status and every

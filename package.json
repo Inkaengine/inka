@@ -53,7 +53,8 @@
     "storybook": "VOLTOCONFIG=$(pwd)/volto.config.js storybook dev -p 6006 -c $(pwd)/.storybook",
     "build-storybook": "VOLTOCONFIG=$(pwd)/volto.config.js storybook build -c $(pwd)/.storybook",
     "example:nextjs": "pnpm --filter hydra-nextjs run dev",
-    "example:nuxt": "pnpm --filter nuxt-blog-starter install && pnpm --filter nuxt-blog-starter run dev"
+    "example:nuxt": "pnpm --filter nuxt-blog-starter install && pnpm --filter nuxt-blog-starter run dev",
+    "wp:plugins": "node scripts/fetch-wp-plugins.mjs"
   },
   "dependencies": {
     "@adobe/remark-gridtables": "3.0.20",
