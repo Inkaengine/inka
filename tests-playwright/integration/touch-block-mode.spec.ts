@@ -304,4 +304,40 @@ test.describe('touch-mode word-select suppression', () => {
       expect(await helper.getQuantaToolbarFormatButton('Bold').count()).toBe(0);
     }).toPass({ timeout: 3000 });
   });
+
+  test('on a phone, a newly added text block takes what is typed into it', async ({ page }) => {
+    // Typing into a text block just added on a phone used to produce nothing:
+    // the characters were eaten. Add a block the way a phone user does (tap a
+    // block, tap +, pick text), tap into the new paragraph, and type.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const iframe = helper.getIframe();
+
+    await iframe.locator('[data-block-uid="block-3-uuid"]').first().tap();
+    await helper.waitForIframeBlockHandle('block-3-uuid');
+    const before = await helper.getBlockOrder();
+    await helper.clickAddBlockButton();
+    await helper.selectBlockType('slate');
+
+    let newBlockUid = '';
+    await expect(async () => {
+      const order = await helper.getBlockOrder();
+      const added = order.filter((uid) => !before.includes(uid));
+      expect(added).toHaveLength(1);
+      newBlockUid = added[0];
+    }).toPass({ timeout: 10000 });
+
+    const field = iframe
+      .locator(
+        `[data-block-uid="${newBlockUid}"] [data-edit-text], [data-block-uid="${newBlockUid}"][data-edit-text]`,
+      )
+      .first();
+    await field.tap();
+    await expect(field).toHaveAttribute('contenteditable', 'true', { timeout: 5000 });
+    await expect(field).toBeFocused({ timeout: 5000 });
+
+    await page.keyboard.type('Typed on a phone', { delay: 20 });
+    await expect(field).toHaveText('Typed on a phone', { timeout: 5000 });
+  });
 });

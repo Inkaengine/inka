@@ -297,6 +297,48 @@ test.describe('Inline Editing - Links', () => {
     await expect(editor.locator('a')).toHaveAttribute('href', new RegExp(`${target}$`));
   });
 
+  // The object browser's header buttons sit under the text toolbar in the React
+  // tree; they must reach their own handlers (the toolbar used to swallow them).
+  async function openBrowseFromLinkEditor(page, helper: AdminUIHelper) {
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await helper.editBlockTextInIframe('block-1-uuid', 'Browse from here');
+    const editor = await helper.getEditorLocator('block-1-uuid');
+    await helper.selectAllTextInEditor(editor);
+    await helper.clickFormatButton('link');
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await expect(linkUrlInput).toBeFocused({ timeout: 2000 });
+    if ((await linkUrlInput.inputValue()).length > 0) await linkUrlInput.clear();
+    await (await helper.getLinkEditorBrowseButton()).click();
+    return helper.waitForObjectBrowser();
+  }
+
+  test("the browse button's Back goes up a folder", async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const objectBrowser = await openBrowseFromLinkEditor(page, helper);
+    // It opens on the page being edited, inside /_test_data.
+    const crumbs = objectBrowser.locator('.breadcrumbs');
+    await expect(crumbs).toContainText('test-page');
+
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    await expect(crumbs).not.toContainText('test-page');
+    await expect(crumbs).toContainText('_test_data');
+    await expect(
+      page.locator('.object-listing li').filter({ hasText: 'Another Page' }).first(),
+    ).toBeVisible();
+  });
+
+  test("the browse button's close button closes the browser", async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const objectBrowser = await openBrowseFromLinkEditor(page, helper);
+    await expect(objectBrowser).toBeVisible();
+
+    await objectBrowser.locator('header button.clearSVG').click();
+
+    await expect(page.locator('.object-browser')).toHaveCount(0);
+  });
+
   test('LinkEditor closes when focusing back on editor', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 
