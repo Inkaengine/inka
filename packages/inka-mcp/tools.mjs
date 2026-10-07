@@ -8,6 +8,7 @@
  */
 import { toAgentBlocks } from './pageFormat.mjs';
 import { editBlocks } from './editBlocks.mjs';
+import { describeBlockTypes } from './blockTypes.mjs';
 
 export class StaleVersion extends Error {}
 
@@ -15,6 +16,11 @@ export class StaleVersion extends Error {}
 export async function getPage(agent) {
   const { path, version, formData } = await agent.getPage();
   return { path, version, title: formData.title, blocks: toAgentBlocks(formData) };
+}
+
+/** The block types this page can hold, their fields, and where child blocks go. */
+export async function listBlockTypes(agent) {
+  return describeBlockTypes(await agent.getBlockSchemas());
 }
 
 /**
@@ -30,7 +36,7 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, mi
       `the page has changed since it was read (read at ${expectedVersion}, now ${loaded}). Read it again and reapply.`,
     );
   }
-  const blocksConfig = await agent.getSchemaWidgets();
+  const blocksConfig = (await agent.getBlockSchemas()).types;
   const { results, ids } = await editBlocks(agent, ops, { blocksConfig, mintId });
   if (dryRun) return { dryRun: true, results, ids, page: await getPage(agent) };
   const { version } = await agent.save({ expectedVersion });

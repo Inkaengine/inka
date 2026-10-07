@@ -7,7 +7,7 @@ import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { URLS } from '../ports';
 import { agentOn, waitForAgent, discardEdits } from '../../packages/inka-mcp/adminDriver.mjs';
-import { getPage, editPage } from '../../packages/inka-mcp/tools.mjs';
+import { getPage, editPage, listBlockTypes } from '../../packages/inka-mcp/tools.mjs';
 
 const mintId = () => crypto.randomUUID();
 
@@ -56,5 +56,23 @@ test.describe('MCP tools', () => {
     const agent = agentOn(page);
     await expect(editPage(agent, { ops: [], expectedVersion: 'an-old-version', mintId }))
       .rejects.toThrow(/changed since it was read/);
+  });
+
+  test('list_block_types: what the page takes, fields and regions', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await waitForAgent(page);
+    const described = await listBlockTypes(agentOn(page));
+
+    const pageList = described.page.find((r) => r.field === 'blocks');
+    expect(pageList.allowed).toContain('slate');
+    expect(described.types.slate.fields.value).toMatchObject({ widget: 'slate', markdown: true });
+
+    // A container's region, with the editor's limit.
+    expect(described.types.columns.regions).toEqual([{ field: 'columns', allowed: ['column'], maxLength: 4 }]);
+    // A list whose items have no types of their own holds the item type the admin registers.
+    expect(described.types.accordion.regions).toEqual([{ field: 'panels', allowed: ['accordion:panels'], list: true }]);
+    expect(Object.keys(described.types['accordion:panels'].fields)).toContain('title');
   });
 });

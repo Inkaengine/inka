@@ -14,7 +14,48 @@
  * state and handlers: { properties, blockPathMap, insertAndSelectBlock,
  * onDeleteBlock, moveBlocks, onChangeFormData, blocksConfig, intl }.
  */
-import { getBlockById, updateBlockById, getBlockTypeSchema } from '../../utils/blockPath';
+import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
+import {
+  getBlockById,
+  updateBlockById,
+  getBlockTypeSchema,
+  getAllContainerFields,
+  getContainerRegionDescriptors,
+  resolveRegionConstraints,
+  resolveObjectListConstraints,
+} from '../../utils/blockPath';
+import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
+import { getPageAllowedBlocksFromRestricted } from '../../../../hydra-js/buildBlockPathMap.js';
+
+// The schema facts an agent needs; the rest (widgets' React bits, functions) stays behind.
+const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'choices', 'default', 'maxLength', 'allowedBlocks'];
+
+function schemaFacts(schema) {
+  return {
+    required: schema?.required ?? [],
+    properties: Object.fromEntries(
+      Object.entries(schema?.properties ?? {}).map(([field, def]) => [field, fieldFacts(def)]),
+    ),
+  };
+}
+
+function fieldFacts(def) {
+  const out = {};
+  for (const key of FIELD_FACTS) {
+    if (def?.[key] !== undefined && typeof def[key] !== 'function') out[key] = def[key];
+  }
+  if (def?.schema?.properties) out.schema = schemaFacts(def.schema);
+  return out;
+}
+
+/** The field definition of `region`, under the object fields of `regionPath`. */
+function fieldAt(schema, regionPath, region) {
+  let properties = schema.properties;
+  for (const key of regionPath) properties = properties[key].schema.properties;
+  const def = properties[region];
+  if (!def) throw new Error(`getBlockSchemas: no field "${region}" at ${regionPath.join('/') || 'the block root'}`);
+  return def;
+}
 
 const STATE_LIMIT_MS = 10000;
 const SAVE_LIMIT_MS = 15000;
@@ -74,25 +115,49 @@ export function registerAgentApi(live) {
     },
 
     /**
-     * Each block type's fields and their widgets, from the block config the
-     * frontends registered — what an agent-side converter needs to know which
-     * fields hold child blocks (blocks_layout) and which are rich text (slate).
-     * Plain data: { type: { blockSchema: { properties: { field: { widget } } } } }.
+     * What blocks this page can hold, from the block config the frontends
+     * registered, resolved by the editor's own rules (field → block → page):
+     *   page:  { regions: [{ region, regionPath?, allowedBlocks, defaultBlockType, maxLength }] }
+     *   types: { type: { title, blockSchema: { required, properties }, regions: [...] } }
+     * A region that restricts nothing lists what the page allows. Items of a
+     * list without types of their own are the `<type>:<field>` types the admin
+     * registers for them. Plain data — properties keep only the facts an agent
+     * needs (title, widget, choices, …), with nested `schema` for objects.
      */
-    getSchemaWidgets() {
-      const { blocksConfig, intl } = live.current;
-      const out = {};
+    getBlockSchemas() {
+      const { blocksConfig, intl, properties, blockPathMap } = live.current;
+      const pageDefaults = {
+        allowedBlocks: getPageAllowedBlocksFromRestricted(blocksConfig, { properties }),
+        defaultBlockType: getDefaultBlockType(),
+      };
+      const regionFacts = (r) => ({
+        region: r.region,
+        ...(r.regionPath && { regionPath: r.regionPath }),
+        isObjectList: !!r.isObjectList,
+        allowedBlocks: r.allowedBlocks,
+        defaultBlockType: r.defaultBlockType,
+        maxLength: r.maxLength,
+      });
+      const page = {
+        regions: getAllContainerFields(PAGE_BLOCK_UID, blockPathMap, properties, blocksConfig, intl)
+          .map(regionFacts),
+      };
+      const types = {};
       for (const type of Object.keys(blocksConfig)) {
-        const properties = getBlockTypeSchema(type, intl, blocksConfig)?.properties ?? {};
-        out[type] = {
-          blockSchema: {
-            properties: Object.fromEntries(
-              Object.entries(properties).map(([field, def]) => [field, { widget: def?.widget ?? null }]),
-            ),
-          },
+        const schema = getBlockTypeSchema(type, intl, blocksConfig);
+        types[type] = {
+          title: blocksConfig[type].title,
+          blockSchema: schemaFacts(schema),
+          regions: getContainerRegionDescriptors(type, blocksConfig, intl).map((d) => {
+            const fieldDef = fieldAt(schema, d.regionPath ?? [], d.region);
+            const rc = d.isObjectList
+              ? resolveObjectListConstraints(fieldDef, type, d.region)
+              : resolveRegionConstraints(fieldDef, blocksConfig[type], pageDefaults);
+            return regionFacts({ ...d, ...rc });
+          }),
         };
       }
-      return out;
+      return { page, types };
     },
 
     /**
