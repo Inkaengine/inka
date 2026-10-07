@@ -19,6 +19,7 @@ import {
 import { validateAndLog, validateTemplatePlaceholders } from '../../utils/formDataValidation';
 import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
+import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
 import { mergeFrontendBlock } from '../../../../hydra-js/mergeFrontendBlock.js';
@@ -799,7 +800,7 @@ const Iframe = (props) => {
   const urlFromEnv = getURlsFromEnv();
   const u =
     useSelector((state) => state.frontendPreviewUrl.url) ||
-    Cookies.get(getIframeUrlCookieName()) ||
+    rememberedFrontendUrl() ||
     urlFromEnv[0]?.url;
 
   // Track last SELECT_BLOCK sent to avoid redundant sends during pending selection
