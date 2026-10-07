@@ -12,7 +12,7 @@
  *
  * `live.current` is refreshed by the editor on every render with its current
  * state and handlers: { properties, blockPathMap, insertAndSelectBlock,
- * onDeleteBlock, moveBlocks, onChangeFormData, blocksConfig, intl }.
+ * onDeleteBlock, moveBlocks, onChangeFormData, blocksConfig, intl, dispatch }.
  */
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
@@ -26,6 +26,8 @@ import {
   stripEmptyBlocks,
 } from '../../utils/blockPath';
 import { stripFixedInsideSlots } from '@volto-hydra/helpers';
+import { searchContent } from '@plone/volto/actions/search/search';
+import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
 import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
 import { getPageAllowedBlocksFromRestricted } from '../../../../hydra-js/buildBlockPathMap.js';
 
@@ -114,6 +116,36 @@ export function registerAgentApi(live) {
     getPage() {
       const { properties: formData, blockPathMap } = live.current;
       return { path: contentPath(), version: formData.modified, formData, blockPathMap };
+    },
+
+    /**
+     * Find content through the admin's own @search (so it goes wherever the
+     * admin's CMS connection goes). `text` searches the full text; `types`
+     * narrows by content type; `depth: 1` lists the direct children of `path`,
+     * in their order. Paths come back site-relative.
+     */
+    async search({ path = '/', text, types, depth, limit = 25, start = 0 }) {
+      const options = {
+        SearchableText: text,
+        portal_type: types,
+        'path.depth': depth,
+        ...(depth === 1 && { sort_on: 'getObjPositionInParent' }),
+        b_size: limit,
+        b_start: start,
+      };
+      const response = await live.current.dispatch(
+        searchContent(path === '/' ? '' : path, options, 'inka-agent-search'),
+      );
+      return {
+        total: response.items_total,
+        items: response.items.map((item) => ({
+          path: flattenToAppURL(item['@id']),
+          title: item.title,
+          type: item['@type'],
+          description: item.description,
+          reviewState: item.review_state,
+        })),
+      };
     },
 
     /**

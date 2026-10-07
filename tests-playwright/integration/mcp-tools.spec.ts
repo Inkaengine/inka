@@ -7,7 +7,7 @@ import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { URLS } from '../ports';
 import { agentOn, waitForAgent, discardEdits } from '../../packages/inka-mcp/adminDriver.mjs';
-import { getPage, editPage, listBlockTypes } from '../../packages/inka-mcp/tools.mjs';
+import { getPage, editPage, listBlockTypes, search, listChildren } from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
 
 const mintId = () => crypto.randomUUID();
@@ -114,5 +114,35 @@ test.describe('MCP tools', () => {
     const read = await getPage(agent);
     await expect(editPage(agent, { ops: [], expectedVersion: read.version, mintId, render: async () => ({}) }))
       .rejects.toThrow(/for a dry run/);
+  });
+
+  test('search and list_children, through the admin\'s own @search', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await waitForAgent(page);
+    const agent = agentOn(page);
+
+    // By text: site-relative paths, with title and type.
+    const found = await search(agent, { text: 'Accordion' });
+    expect(found.total).toBeGreaterThan(0);
+    expect(found.items).toContainEqual(expect.objectContaining({
+      path: '/_test_data/accordion-test-page', title: 'Accordion Test Page', type: 'Document',
+    }));
+
+    // Narrowed by type: nothing of another type comes back.
+    const events = await search(agent, { text: 'Test', types: ['Event'] });
+    expect(events.items.length).toBeGreaterThan(0);
+    expect(events.items.every((i) => i.type === 'Event')).toBe(true);
+
+    // A section's children, one level down, paged.
+    const children = await listChildren(agent, { path: '/_test_data', limit: 5 });
+    expect(children.total).toBeGreaterThan(5);
+    expect(children.items).toHaveLength(5);
+    expect(children.items.every((i) => i.path.split('/').length === 3 && i.path.startsWith('/_test_data/'))).toBe(true);
+    const next = await listChildren(agent, { path: '/_test_data', limit: 5, start: 5 });
+    expect(next.items.map((i) => i.path)).not.toContain(children.items[0].path);
+
+    await expect(search(agent, {})).rejects.toThrow(/needs "text" or "types"/);
   });
 });

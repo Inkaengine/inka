@@ -18,6 +18,20 @@ export async function getPage(agent) {
   return { path, version, title: formData.title, blocks: toAgentBlocks(formData) };
 }
 
+/**
+ * Find pages: by text, narrowed by content type and to a section (`path`).
+ * Returns { total, items: [{ path, title, type, description, reviewState }] }.
+ */
+export async function search(agent, { text, types, path, limit, start }) {
+  if (!text && !types) throw new Error('search needs "text" or "types"; to browse a section use list_children');
+  return agent.search({ text, types, path, limit, start });
+}
+
+/** The pages directly inside `path`, in their order. */
+export async function listChildren(agent, { path, limit, start }) {
+  return agent.search({ path, depth: 1, limit, start });
+}
+
 /** The block types this page can hold, their fields, and where child blocks go. */
 export async function listBlockTypes(agent) {
   return describeBlockTypes(await agent.getBlockSchemas());
