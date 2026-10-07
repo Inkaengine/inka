@@ -368,9 +368,18 @@ async function renderBlock(blockId, block, { inListing = false } = {}) {
         case 'slide':
             wrapper.innerHTML = renderSlideBlock(block);
             break;
-        case 'accordion':
+        case 'accordion': {
+            // A group of one is drawn as just that one: a single panel, no
+            // group element — so the accordion draws no element of its own and
+            // the editor finds it through its panel (getAllBlockElements).
+            if ((block.panels || []).length === 1) {
+                const single = document.createElement('div');
+                single.innerHTML = await renderAccordionPanels(block.panels);
+                return single.firstElementChild;
+            }
             wrapper.innerHTML = await renderAccordionBlock(block, blockId);
             break;
+        }
         // accordionPanel is rendered inline by renderAccordionBlock (object_list items)
         case 'socialLinks':
             wrapper.innerHTML = renderSocialLinksBlock(block);
@@ -2485,18 +2494,25 @@ function renderSocialLinksBlock(block) {
  * @returns {Promise<string>} HTML string
  */
 async function renderAccordionBlock(block, blockId) {
-    const panels = block.panels || [];
+    return (
+        '<div class="accordion-container" style="border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">' +
+        (await renderAccordionPanels(block.panels || [])) +
+        '</div>'
+    );
+}
 
-    let html = '<div class="accordion-container" style="border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">';
-
+/**
+ * Each panel a native disclosure: <details> carrying the panel's uid, its
+ * title the <summary>. Open, so a panel's blocks are in reach without a click.
+ */
+async function renderAccordionPanels(panels) {
+    let html = '';
     for (const panel of panels) {
         const panelId = panel['@id'];
-        html += `<div data-block-uid="${panelId}" data-block-add="bottom">`;
+        html += `<details open data-block-uid="${panelId}" data-block-add="bottom">`;
         html += await renderAccordionPanelBlock(panel, panelId);
-        html += '</div>';
+        html += '</details>';
     }
-
-    html += '</div>';
     return html;
 }
 
@@ -2516,9 +2532,9 @@ async function renderAccordionPanelBlock(block, blockId) {
     let html = '';
 
     // Panel header (title)
-    html += '<div class="accordion-header" style="background: #f5f5f5; padding: 15px; border-bottom: 1px solid #ddd; cursor: pointer;">';
+    html += '<summary class="accordion-header" style="background: #f5f5f5; padding: 15px; border-bottom: 1px solid #ddd; cursor: pointer;">';
     html += `<strong data-edit-text="title">${block.title || ''}</strong>`;
-    html += '</div>';
+    html += '</summary>';
 
     // Panel content
     html += '<div class="accordion-content" style="padding: 15px;">';

@@ -1670,14 +1670,33 @@ export class AdminUIHelper {
   }
 
   /**
+   * Where a block is drawn: the elements carrying its uid, or — a container
+   * that draws no element of its own — its children's, as the bridge finds
+   * them (getAllBlockElements). A block drawn nowhere gives an empty locator.
+   */
+  async drawnLocator(blockId: string): Promise<Locator> {
+    const iframe = this.getIframe();
+    const own = iframe.locator(`[data-block-uid="${blockId}"]`);
+    if (await own.count()) return own;
+    const uids: string[] = await iframe.locator('body').evaluate(
+      (_body, uid) =>
+        [...((window as any).__hydraBridge?.getAllBlockElements(uid) ?? [])]
+          .map((el: Element) => el.getAttribute('data-block-uid'))
+          .filter((u: string | null): u is string => !!u),
+      blockId,
+    );
+    if (!uids.length) return own;
+    return iframe.locator([...new Set(uids)].map((u) => `[data-block-uid="${u}"]`).join(', '));
+  }
+
+  /**
    * Scroll a block into view with room for the toolbar above it.
    * The toolbar is in the parent page, positioned based on block position.
    * Using 'center' ensures there's room above for the toolbar.
    * For multi-element blocks, scrolls the first element into view.
    */
   async scrollBlockIntoViewWithToolbarRoom(blockId: string): Promise<void> {
-    const iframe = this.getIframe();
-    const block = iframe.locator(`[data-block-uid="${blockId}"]`).first();
+    const block = (await this.drawnLocator(blockId)).first();
     await block.evaluate((el) => {
       el.scrollIntoView({ block: 'center', behavior: 'instant' });
     });
@@ -2538,8 +2557,7 @@ export class AdminUIHelper {
    * Handles multi-element blocks (multiple elements with same UID) by computing combined bounding box.
    */
   async getBlockBoundingBoxInIframe(blockId: string): Promise<{ x: number; y: number; width: number; height: number } | null> {
-    const iframe = this.getIframe();
-    const blockLocator = iframe.locator(`[data-block-uid="${blockId}"]`);
+    const blockLocator = await this.drawnLocator(blockId);
     const allElements = await blockLocator.all();
 
     if (allElements.length === 0) return null;
