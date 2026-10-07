@@ -94,12 +94,35 @@ export function agentOn(page) {
   return {
     getPage: () => call('getPage'),
     getDraft: () => call('getDraft'),
-    search: (query) => call('search', query),
     getBlockSchemas: () => call('getBlockSchemas'),
     insert: (op) => call('insert', op),
     update: (op) => call('update', op),
     remove: (id) => call('remove', id),
     move: (op) => call('move', op),
     save: (op) => call('save', op),
+  };
+}
+
+/**
+ * Open a page of the admin that holds no editor (the site's contents view):
+ * the site-wide API is there, and no page is locked for editing.
+ */
+export async function openSite(page, { adminUrl }) {
+  await page.goto(`${adminUrl}/contents`, { timeout: LOAD_MS });
+  await page.waitForFunction(() => !!window.__inkaSite, null, { timeout: READY_MS });
+}
+
+/** The site-wide API (window.__inkaSite), its methods run in the admin page. */
+export function siteOn(page) {
+  const call = (method, arg) => page.evaluate(
+    ([m, a]) => window.__inkaSite[m](a),
+    [method, arg],
+  );
+  return {
+    search: (query) => call('search', query),
+    version: (path) => call('version', path),
+    move: (op) => call('move', op),
+    rename: (op) => call('rename', op),
+    remove: (path) => call('remove', path),
   };
 }

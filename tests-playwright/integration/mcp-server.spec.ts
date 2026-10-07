@@ -52,10 +52,10 @@ test.describe('MCP server', () => {
 
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'search']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'rename_page', 'search']);
   });
 
-  test('list_children runs in the site root\'s editor', async () => {
+  test('list_children runs without an editor', async () => {
     test.setTimeout(90000);
     const listed = (await call('list_children', { path: '/_test_data', limit: 3 })).json();
     expect(listed.items).toHaveLength(3);

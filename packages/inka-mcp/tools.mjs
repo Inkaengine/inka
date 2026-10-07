@@ -37,14 +37,45 @@ export async function fillNewPage(agent, { blocks, mintId }) {
  * Find pages: by text, narrowed by content type and to a section (`path`).
  * Returns { total, items: [{ path, title, type, description, reviewState }] }.
  */
-export async function search(agent, { text, types, path, limit, start }) {
+export async function search(site, { text, types, path, limit, start }) {
   if (!text && !types) throw new Error('search needs "text" or "types"; to browse a section use list_children');
-  return agent.search({ text, types, path, limit, start });
+  return site.search({ text, types, path, limit, start });
 }
 
 /** The pages directly inside `path`, in their order. */
-export async function listChildren(agent, { path, limit, start }) {
-  return agent.search({ path, depth: 1, limit, start });
+export async function listChildren(site, { path, limit, start }) {
+  return site.search({ path, depth: 1, limit, start });
+}
+
+/** Refuse to act on a page that has changed since the agent read it. */
+async function checkVersion(site, path, expectedVersion) {
+  if (!expectedVersion) throw new Error('this needs the expectedVersion get_page returned');
+  const now = await site.version(path);
+  if (now !== expectedVersion) {
+    throw new StaleVersion(
+      `${path} has changed since it was read (read at ${expectedVersion}, now ${now}). Read it again first.`,
+    );
+  }
+}
+
+/** Move a page into another section. Returns its new path. */
+export async function movePage(site, { path, target, expectedVersion }) {
+  await checkVersion(site, path, expectedVersion);
+  return { path: await site.move({ path, target }) };
+}
+
+/** Change a page's short name (the last part of its path) and/or its title. Returns its path. */
+export async function renamePage(site, { path, id, title, expectedVersion }) {
+  if (!id && !title) throw new Error('rename_page needs a new "id" or "title"');
+  await checkVersion(site, path, expectedVersion);
+  return { path: await site.rename({ path, id, title }) };
+}
+
+/** Delete a page. */
+export async function deletePage(site, { path, expectedVersion }) {
+  await checkVersion(site, path, expectedVersion);
+  await site.remove(path);
+  return { deleted: path };
 }
 
 /** The block types this page can hold, their fields, and where child blocks go. */

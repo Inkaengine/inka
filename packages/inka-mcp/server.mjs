@@ -21,9 +21,11 @@ import { chromium } from 'playwright';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { openForEdit, createPage, agentOn } from './adminDriver.mjs';
+import { openForEdit, createPage, agentOn, openSite, siteOn } from './adminDriver.mjs';
 import { frontendUrlOf, previewDraft } from './preview.mjs';
-import { getPage, editPage, listBlockTypes, search, listChildren, fillNewPage } from './tools.mjs';
+import {
+  getPage, editPage, listBlockTypes, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
+} from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
 - {"op":"update","id":"<uid>","set":{field: value}} — change fields of a block.
@@ -86,6 +88,16 @@ export function headlessAdmin({ adminUrl, token, frontendUrl }) {
         await page.close();
       }
     },
+    /** Work site-wide, from an admin page that holds no editor (and so no lock). */
+    async withSite(work) {
+      const page = await (await ready()).newPage();
+      try {
+        await openSite(page, { adminUrl });
+        return await work(siteOn(page));
+      } finally {
+        await page.close();
+      }
+    },
     /** Add a page through the admin's add form, then work in its editor. */
     async withNewPage({ parent, type, title }, work) {
       const page = await (await ready()).newPage();
@@ -113,8 +125,6 @@ export function createServer(admin) {
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }) => asResult(await admin.withEditor(path, getPage)));
 
-  // Site-wide reads run in the editor of the site root.
-  const SITE = '/';
   const paging = {
     limit: z.number().int().positive().max(100).optional().describe('At most this many (default 25)'),
     start: z.number().int().nonnegative().optional().describe('Skip this many, to page through'),
@@ -129,13 +139,42 @@ export function createServer(admin) {
       path: z.string().optional().describe('Only inside this section, e.g. /news'),
       ...paging,
     },
-  }, async (args) => asResult(await admin.withEditor(SITE, (agent) => search(agent, args))));
+  }, async (args) => asResult(await admin.withSite((site) => search(site, args))));
 
   server.registerTool('list_children', {
     title: 'List a section',
     description: 'The pages directly inside a section, in their order: path, title, type, description and workflow state. "/" lists the top of the site.',
     inputSchema: { path: z.string().describe('The section, e.g. / or /docs'), ...paging },
-  }, async (args) => asResult(await admin.withEditor(SITE, (agent) => listChildren(agent, args))));
+  }, async (args) => asResult(await admin.withSite((site) => listChildren(site, args))));
+
+  const version = z.string().describe('The version get_page returned; refused if the page has changed since');
+
+  server.registerTool('move_page', {
+    title: 'Move a page',
+    description: 'Move a page (and everything inside it) into another section. Returns its new path.',
+    inputSchema: {
+      path: z.string().describe('The page to move, e.g. /news/old-item'),
+      target: z.string().describe('The section to move it into, e.g. /archive'),
+      expectedVersion: version,
+    },
+  }, async (args) => asResult(await admin.withSite((site) => movePage(site, args))));
+
+  server.registerTool('rename_page', {
+    title: 'Rename a page',
+    description: 'Change a page\'s short name (the last part of its path, so its URL) and/or its title. Returns its path.',
+    inputSchema: {
+      path: z.string().describe('The page, e.g. /about/team'),
+      id: z.string().optional().describe('The new short name, e.g. people'),
+      title: z.string().optional().describe('The new title'),
+      expectedVersion: version,
+    },
+  }, async (args) => asResult(await admin.withSite((site) => renamePage(site, args))));
+
+  server.registerTool('delete_page', {
+    title: 'Delete a page',
+    description: 'Delete a page and everything inside it. This cannot be undone here.',
+    inputSchema: { path: z.string().describe('The page to delete'), expectedVersion: version },
+  }, async (args) => asResult(await admin.withSite((site) => deletePage(site, args))));
 
   server.registerTool('list_block_types', {
     title: 'List block types',
