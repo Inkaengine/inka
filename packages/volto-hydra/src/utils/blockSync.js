@@ -1055,13 +1055,6 @@ export function hideParentOwnedFields() {
 
   return (args) => {
     const { schema, intl, blockPathMap: passedBlockPathMap, blockId: passedBlockId } = args;
-    if (schema?.properties && !Array.isArray(schema.fieldsets)) {
-      const blockType = passedBlockPathMap?.[passedBlockId]?.blockType;
-      throw new Error(
-        `Block type "${blockType}" (block "${passedBlockId}"): its schema has properties but no fieldsets. ` +
-          'Every block schema needs fieldsets: the sidebar lays its fields out by them.',
-      );
-    }
 
     // blockPathMap/blockId come from one of two sources, both first-class:
     //
@@ -1125,6 +1118,16 @@ export function hideParentOwnedFields() {
     }
 
     if (fieldsToHide.size === 0) return schema;
+
+    // Hiding a field edits the fieldsets. Checked HERE, where they are used:
+    // Volto runs block enhancers over schemas of its own making too (adding a
+    // block, filling defaults), with nothing to hide, and those pass through.
+    if (!Array.isArray(schema.fieldsets)) {
+      throw new Error(
+        `Block type "${pathInfo.blockType}" (block "${blockId}"): its schema has properties but no fieldsets. ` +
+          'Every block schema needs fieldsets: the sidebar lays its fields out by them.',
+      );
+    }
 
     // Clone schema to avoid mutations
     const newSchema = {

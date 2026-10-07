@@ -3,10 +3,14 @@ import { describe, test, expect, vi } from 'vitest';
 // HydraSchemaContext.js is JSX inside a .js file (the admin build uses babel; vitest
 // uses esbuild and can't parse it). The slotId-inheritance path doesn't touch the
 // schema context, so stub the module to keep the import graph parseable.
+const { getHydraSchemaContext, getLiveBlockData } = vi.hoisted(() => ({
+  getHydraSchemaContext: vi.fn(() => ({})),
+  getLiveBlockData: vi.fn(() => undefined),
+}));
 vi.mock('../context', () => ({
-  getHydraSchemaContext: () => ({}),
+  getHydraSchemaContext,
   setHydraSchemaContext: () => {},
-  getLiveBlockData: () => undefined,
+  getLiveBlockData,
 }));
 
 import {
@@ -1499,16 +1503,56 @@ describe('completeFrontendSchema', () => {
 });
 
 describe('hideParentOwnedFields — a schema without fieldsets', () => {
-  test('fails with an error naming the block, not a bare TypeError', () => {
-    // Schemas from a frontend are completed on INIT; anything that still
-    // arrives here without fieldsets is reported by name.
-    const enhance = hideParentOwnedFields();
-    expect(() =>
-      enhance({
-        schema: { properties: { title: { title: 'Title' } } },
-        blockId: 'item-1',
-        blockPathMap: { 'item-1': { blockType: 'teaserItem', parentId: 'grid-1' } },
-      }),
-    ).toThrow(/teaserItem.*item-1.*no fieldsets|item-1.*teaserItem.*no fieldsets/);
+  // A grid whose `variation` picks its items' type, and claims their `title`.
+  const blocks = {
+    'grid-1': { '@type': 'grid', variation: 'teaserItem' },
+    'item-1': { '@type': 'teaserItem' },
+  };
+  const blockPathMap = { 'item-1': { blockType: 'teaserItem', parentId: 'grid-1' } };
+  const withParentClaiming = (claimed, run) => {
+    getHydraSchemaContext.mockReturnValue({
+      blocksConfig: {
+        grid: {
+          schemaEnhancer: {
+            config: { typeField: 'variation', parentControlled: { teaserItem: claimed } },
+          },
+        },
+        teaserItem: {},
+      },
+    });
+    getLiveBlockData.mockImplementation((id) => blocks[id]);
+    try {
+      return run();
+    } finally {
+      getHydraSchemaContext.mockReset().mockReturnValue({});
+      getLiveBlockData.mockReset().mockReturnValue(undefined);
+    }
+  };
+  const schema = () => ({ properties: { title: { title: 'Title' }, image: { title: 'Image' } } });
+
+  test('fails with an error naming the block when it has a field to hide', () => {
+    // Hiding a field means editing the fieldsets; a schema that still has none
+    // here (frontend schemas are completed on INIT) is reported by name.
+    withParentClaiming(['title'], () =>
+      expect(() => hideParentOwnedFields()({ schema: schema(), blockId: 'item-1', blockPathMap })).toThrow(
+        /teaserItem.*item-1.*no fieldsets|item-1.*teaserItem.*no fieldsets/,
+      ),
+    );
+  });
+
+  test('passes through untouched when the parent claims none of its fields', () => {
+    withParentClaiming(['other'], () => {
+      const s = schema();
+      expect(hideParentOwnedFields()({ schema: s, blockId: 'item-1', blockPathMap })).toBe(s);
+    });
+  });
+
+  test('passes through untouched when there is no block to look up', () => {
+    // Volto applies block enhancers to schemas of its own making, outside any
+    // block (adding a block, filling defaults); those have nothing to hide.
+    withParentClaiming(['title'], () => {
+      const s = schema();
+      expect(hideParentOwnedFields()({ schema: s })).toBe(s);
+    });
   });
 });
