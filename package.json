@@ -90,6 +90,7 @@
     "@fiverr/afterbuild-webpack-plugin": "^1.0.0",
     "@loadable/babel-plugin": "5.13.2",
     "@loadable/webpack-plugin": "5.15.2",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@playwright/test": "1.61.0",
     "@plone/babel-preset-razzle": "workspace:*",
     "@plone/razzle": "workspace:*",

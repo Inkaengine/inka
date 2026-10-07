@@ -22,6 +22,7 @@ import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
 import { mergeFrontendBlock } from '../../../../hydra-js/mergeFrontendBlock.js';
+import { registerAgentApi } from './agentApi';
 import {
   isSlateFieldType,
   formDataContentEqual,
@@ -1836,7 +1837,7 @@ const Iframe = (props) => {
    * @returns {string} The new block's ID
    */
   /**
-   * Move blocks — the drag-and-drop move, as a named function. Runs
+   * Move blocks — the drag-and-drop move, also what the agent API calls. Runs
    * every check and conversion a drop does. Returns what happened: 'moved', or
    * why not: 'rejected' (not allowed or convertible there), 'needs-choice' (the
    * editor must pick a conversion), 'needs-confirm' (a conversion awaits the
@@ -2530,6 +2531,22 @@ const Iframe = (props) => {
     dispatch(setSidebarTab(1));
   };
 
+  // The agent API (window.__inkaAgent): what an MCP server drives in a headless
+  // admin. It calls these same handlers, so an agent edits exactly as a person
+  // does. Refreshed every render so it always sees the current state.
+  const agentLiveRef = useRef(null);
+  agentLiveRef.current = {
+    properties,
+    blockPathMap: iframeSyncState.blockPathMap,
+    insertAndSelectBlock,
+    onDeleteBlock,
+    moveBlocks,
+    onChangeFormData,
+    blocksConfig: config.blocks.blocksConfig,
+    intl,
+    dispatch,
+  };
+  useEffect(() => registerAgentApi(agentLiveRef), []);
 
   // Process pending delete from iframe DELETE_BLOCK message (same pattern as addNewBlockOpened)
   useEffect(() => {
