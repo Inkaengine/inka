@@ -12,6 +12,7 @@ import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/tes
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage';
 import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
+import { settledCount } from './settled-count';
 import { isEmptySlate } from '../../packages/helpers/index.js';
 
 export interface SubBlock {
@@ -1295,7 +1296,7 @@ export async function verifyBlockRendering(
   // duplicate anyway. Verify the block renders + carries its edit annotations via
   // the first match, then return — the assertions below use the multi-match
   // `block` locator and would trip Playwright strict mode on >1 element.
-  if ((await block.count()) > 1) {
+  if ((await settledCount(block)) > 1) {
     await checkEditAnnotations(block.first(), blockData);
     return;
   }
