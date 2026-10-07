@@ -6,8 +6,10 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { URLS } from '../ports';
-import { agentOn, waitForAgent, discardEdits, createPage } from '../../packages/inka-mcp/adminDriver.mjs';
-import { getPage, editPage, listBlockTypes, search, listChildren, fillNewPage } from '../../packages/inka-mcp/tools.mjs';
+import { agentOn, waitForAgent, discardEdits, createPage, siteOn } from '../../packages/inka-mcp/adminDriver.mjs';
+import {
+  getPage, editPage, listBlockTypes, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
+} from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
 
 const mintId = () => crypto.randomUUID();
@@ -119,9 +121,9 @@ test.describe('MCP tools', () => {
   test('search and list_children, through the admin\'s own @search', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
-    await helper.navigateToEdit('/test-page');
-    await waitForAgent(page);
-    const agent = agentOn(page);
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const agent = siteOn(page);
 
     // By text: site-relative paths, with title and type.
     const found = await search(agent, { text: 'Accordion' });
@@ -174,5 +176,42 @@ test.describe('MCP tools', () => {
     await helper.login();
     await expect(createPage(page, { adminUrl: helper.adminUrl, parent: '/_test_data', type: 'Document', title: '' }))
       .rejects.toThrow(/add form refused it/);
+  });
+
+  test('move_page, rename_page and delete_page, version-checked', async ({ page }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const site = siteOn(page);
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
+    const status = async (path: string) => (await fetch(`${URLS.mockApi}${path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).status;
+    const versionOf = (path: string) => site.version(path);
+
+    // Move another-page into the accordion test page's section.
+    const from = '/_test_data/another-page';
+    const moved = await movePage(site, { path: from, target: '/_test_data/accordion-test-page', expectedVersion: await versionOf(from) });
+    expect(moved.path).toBe('/_test_data/accordion-test-page/another-page');
+    expect(await status(from)).toBe(404);
+    expect(await status(moved.path)).toBe(200);
+
+    // Rename it: a new short name and title.
+    const renamed = await renamePage(site, { path: moved.path, id: 'moved-page', title: 'Moved page', expectedVersion: await versionOf(moved.path) });
+    expect(renamed.path).toBe('/_test_data/accordion-test-page/moved-page');
+    const stored = await (await fetch(`${URLS.mockApi}${renamed.path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    expect(stored.title).toBe('Moved page');
+
+    // A version the page has moved past is refused, and nothing is deleted.
+    await expect(deletePage(site, { path: renamed.path, expectedVersion: 'an-old-version' })).rejects.toThrow(/changed since it was read/);
+    expect(await status(renamed.path)).toBe(200);
+
+    // Delete it.
+    await deletePage(site, { path: renamed.path, expectedVersion: await versionOf(renamed.path) });
+    expect(await status(renamed.path)).toBe(404);
   });
 });

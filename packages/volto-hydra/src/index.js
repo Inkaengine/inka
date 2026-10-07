@@ -38,6 +38,7 @@ import SidebarToggleToolbarPlug from './components/Toolbar/SidebarToggleToolbarP
 import FrontendSwitcherPanel from './components/Toolbar/FrontendSwitcherPanel';
 import MobileSubmenuClose from './components/Toolbar/MobileSubmenuClose';
 import { getIframeUrlCookieName } from './utils/cookieNames';
+import AgentSite from './components/AgentSite/AgentSite';
 import getSavedURLs, { getURlsFromEnv } from './utils/getSavedURLs';
 import getCurrentFrontendPublicUrl from './utils/getCurrentFrontendPublicUrl';
 import publicUrlSync from './middleware/publicUrlSync';
@@ -238,6 +239,8 @@ config.settings.additionalToolbarComponents = {
     { match: '/', component: FrontendSwitcherPlug },
     { match: '/', component: SidebarToggleToolbarPlug },
     { match: '/', component: MobileSubmenuClose },
+    // window.__inkaSite, the site-wide agent API (an MCP server drives it).
+    { match: '/', component: AgentSite },
   ];
 
   // Array-aware url widget. A `widget: 'url'` field's value is the object-browser
