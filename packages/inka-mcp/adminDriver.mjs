@@ -43,6 +43,7 @@ export function agentOn(page) {
   return {
     getPage: () => call('getPage'),
     getDraft: () => call('getDraft'),
+    search: (query) => call('search', query),
     getBlockSchemas: () => call('getBlockSchemas'),
     insert: (op) => call('insert', op),
     update: (op) => call('update', op),

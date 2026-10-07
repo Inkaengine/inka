@@ -42,7 +42,13 @@ test.describe('MCP server', () => {
 
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['edit_blocks', 'get_page', 'list_block_types']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['edit_blocks', 'get_page', 'list_block_types', 'list_children', 'search']);
+  });
+
+  test('list_children runs in the site root\'s editor', async () => {
+    const listed = (await call('list_children', { path: '/_test_data', limit: 3 })).json();
+    expect(listed.items).toHaveLength(3);
+    expect(listed.items[0].path).toMatch(/^\/_test_data\//);
   });
 
   test('reads, dry-runs, saves, and refuses a stale version', async () => {

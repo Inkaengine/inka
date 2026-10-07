@@ -21,7 +21,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { openForEdit, agentOn } from './adminDriver.mjs';
 import { frontendUrlOf, previewDraft } from './preview.mjs';
-import { getPage, editPage, listBlockTypes } from './tools.mjs';
+import { getPage, editPage, listBlockTypes, search, listChildren } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
 - {"op":"update","id":"<uid>","set":{field: value}} — change fields of a block.
@@ -93,6 +93,30 @@ export function createServer(admin) {
     description: 'Read a page as an ordered list of blocks. Each block has "@uid" and "@type"; containers hold their child blocks in lists named for the region; rich text is {"md": "..."}. Keep "version" — edit_blocks needs it.',
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }) => asResult(await admin.withEditor(path, getPage)));
+
+  // Site-wide reads run in the editor of the site root.
+  const SITE = '/';
+  const paging = {
+    limit: z.number().int().positive().max(100).optional().describe('At most this many (default 25)'),
+    start: z.number().int().nonnegative().optional().describe('Skip this many, to page through'),
+  };
+
+  server.registerTool('search', {
+    title: 'Search the site',
+    description: 'Find pages by their text, narrowed by content type and to a section. Returns the total and a page of results: path, title, type, description and workflow state. Use a result\'s path with get_page.',
+    inputSchema: {
+      text: z.string().optional().describe('Words to find (each word matches as a prefix)'),
+      types: z.array(z.string()).optional().describe('Content types, e.g. ["Document"]'),
+      path: z.string().optional().describe('Only inside this section, e.g. /news'),
+      ...paging,
+    },
+  }, async (args) => asResult(await admin.withEditor(SITE, (agent) => search(agent, args))));
+
+  server.registerTool('list_children', {
+    title: 'List a section',
+    description: 'The pages directly inside a section, in their order: path, title, type, description and workflow state. "/" lists the top of the site.',
+    inputSchema: { path: z.string().describe('The section, e.g. / or /docs'), ...paging },
+  }, async (args) => asResult(await admin.withEditor(SITE, (agent) => listChildren(agent, args))));
 
   server.registerTool('list_block_types', {
     title: 'List block types',
