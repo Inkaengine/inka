@@ -279,6 +279,20 @@ function sessionIdentity(sessionId) {
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Increase limit for image uploads
 
+// Zope's marshalling: `name:list=a&name:list=b` is the option `name` = [a, b]
+// (Volto's searchContent sends every array option that way). Folded into
+// req.query once here, so no endpoint reads `name:list` itself.
+app.use((req, res, next) => {
+  for (const key of Object.keys(req.query)) {
+    if (!key.endsWith(':list')) continue;
+    const name = key.slice(0, -':list'.length);
+    const values = [req.query[key]].flat();
+    req.query[name] = req.query[name] === undefined ? values : [req.query[name], ...values].flat();
+    delete req.query[key];
+  }
+  next();
+});
+
 // Normalise the fixtures' baked origin to ours on the way out. Every JSON
 // response goes through res.json, so this is the one place a URL can leave the
 // server — no endpoint has to remember to call the rewrite itself.
@@ -5075,8 +5089,13 @@ app.get('*/@search', (req, res) => {
   }
   // Handle path.query with path.depth=0 (exact match for specific content)
   else
-  if (pathQuery && pathDepth === '0') {
-    const content = loadContentFromDisk(pathQuery);
+  if (pathDepth === '0') {
+    // The object itself: the one `path.query` names, or else the context the
+    // search was asked at (`/page/@search?path.depth=0`), as Plone answers it.
+    const target = pathQuery
+      ? (String(pathQuery).startsWith('http') ? new URL(String(pathQuery)).pathname : String(pathQuery))
+      : (searchPath || '/');
+    const content = loadContentFromDisk(target);
     if (content) {
       items = [formatSearchItem(content, baseUrl)];
     } else {
@@ -5237,10 +5256,20 @@ app.get('*/@search', (req, res) => {
     ? `${API_ORIGIN}/@search`
     : `${API_ORIGIN}${searchPath}/@search`;
 
+  // A page of the results when one is asked for (b_start / b_size), with
+  // items_total the whole, as plone.restapi batches. Unlike Plone there is no
+  // default page of 25: callers here have always had every result.
+  const total = items.length;
+  if (req.query.b_size !== undefined || req.query.b_start !== undefined) {
+    const start = Number(req.query.b_start ?? 0);
+    const size = req.query.b_size !== undefined ? Number(req.query.b_size) : total;
+    items = items.slice(start, start + size);
+  }
+
   res.json({
     '@id': searchUrl,
     'items': items,
-    'items_total': items.length,
+    'items_total': total,
     'batching': {
       '@id': searchUrl,
       'first': `${searchUrl}?b_start=0`,

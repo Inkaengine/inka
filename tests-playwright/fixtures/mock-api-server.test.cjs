@@ -213,6 +213,45 @@ describe('@querystring-search', () => {
   });
 });
 
+describe('@search', () => {
+  // Volto's searchContent sends an array option as `name:list=` (Zope's
+  // marshalling), e.g. several content types; a single one as `name=`.
+  const search = async (qs) => (await fetch(`${baseUrl}/@search?${qs}`, {
+    headers: { Accept: 'application/json' },
+  })).json();
+
+  it('reads a `:list` option as that option, as Zope does', async () => {
+    const data = await search('SearchableText=Test*&portal_type:list=Event');
+    assert.ok(data.items.length > 0, 'should find the test event');
+    for (const item of data.items) assert.equal(item['@type'], 'Event', `${item['@id']} is not an Event`);
+  });
+
+  it('a `:list` option with several values keeps all of them', async () => {
+    const data = await search('SearchableText=Test*&portal_type:list=Event&portal_type:list=Document');
+    const types = new Set(data.items.map((i) => i['@type']));
+    assert.deepEqual([...types].sort(), ['Document', 'Event']);
+  });
+
+  it('path.depth=0 at a page\'s @search is that page alone, as Plone answers it', async () => {
+    // The admin looks a link target up this way (copy-from-target), b_size 1.
+    const data = await (await fetch(`${baseUrl}/_test_data/test-page/@search?path.depth=0&metadata_fields=_all&b_size=1`, {
+      headers: { Accept: 'application/json' },
+    })).json();
+    assert.equal(data.items_total, 1);
+    assert.equal(new URL(data.items[0]['@id']).pathname, '/_test_data/test-page');
+  });
+
+  it('pages a listing by b_start / b_size, items_total staying the whole', async () => {
+    const all = await search('path.depth=1&path.query=/_test_data');
+    const page1 = await search('path.depth=1&path.query=/_test_data&b_size=5');
+    const page2 = await search('path.depth=1&path.query=/_test_data&b_size=5&b_start=5');
+    assert.ok(all.items.length > 10, 'the fixture folder has more than two pages');
+    assert.equal(page1.items_total, all.items.length);
+    assert.deepEqual(page1.items.map((i) => i['@id']), all.items.slice(0, 5).map((i) => i['@id']));
+    assert.deepEqual(page2.items.map((i) => i['@id']), all.items.slice(5, 10).map((i) => i['@id']));
+  });
+});
+
 describe('navigation', () => {
   it('returns children in folder order', async () => {
     const data = await getContent('/_test_data');
