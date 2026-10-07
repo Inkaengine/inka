@@ -3,9 +3,10 @@
  * through a Playwright page. The MCP server and the tests both use this.
  */
 
-const READY_MS = 30000;
-// A cold admin can take a while to render its first page.
+// A cold admin can take a while to render its first page, and its front end
+// (a dev server's first compile, a busy machine) a while more to connect.
 const LOAD_MS = 60000;
+const READY_MS = 60000;
 
 /** Open a page's editor and wait until the agent API and the block map are there. */
 export async function openForEdit(page, { adminUrl, path }) {
@@ -58,6 +59,12 @@ export async function discardEdits(page) {
   await waitForAgent(page);
 }
 
+/**
+ * Wait until the editor can be edited: the agent API and its block map, AND
+ * the front end's bridge connected (the admin has sent it the page). Before
+ * that handshake the admin re-initialises its state from the form when the
+ * front end connects, and an edit made in between is silently lost.
+ */
 export async function waitForAgent(page) {
   await page.waitForFunction(
     () => {
@@ -68,6 +75,14 @@ export async function waitForAgent(page) {
     null,
     { timeout: READY_MS },
   );
+  const frame = page.locator('#previewIframe').contentFrame();
+  const deadline = Date.now() + READY_MS;
+  while (!(await frame.locator('body').evaluate(() => window.__hydraBridge?.initialized === true))) {
+    if (Date.now() > deadline) {
+      throw new Error(`the front end's bridge did not connect within ${READY_MS / 1000}s`);
+    }
+    await page.waitForTimeout(100);
+  }
 }
 
 /** An agent (see editBlocks.mjs) whose methods run in the admin page. */

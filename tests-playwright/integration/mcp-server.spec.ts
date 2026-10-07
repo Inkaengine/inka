@@ -13,18 +13,28 @@ import { URLS } from '../ports';
 const SERVER = new URL('../../packages/inka-mcp/server.mjs', import.meta.url).pathname;
 const PAGE = '/_test_data/test-page';
 
+// A call loads an editor (and a preview loads the front end too); the SDK's
+// default 60s per request is less than that under a loaded test machine.
+const CALL = { timeout: 170000 };
+
+/** An MCP client on a fresh server, started over stdio as an agent's host does. */
+async function connect(env: Record<string, string>): Promise<Client> {
+  const client = new Client({ name: 'mcp-server-spec', version: '0.0.1' });
+  await client.connect(new StdioClientTransport({
+    command: process.execPath,
+    args: [SERVER],
+    env: { ...process.env, INKA_ADMIN_URL: URLS.voltoSsr, ...env } as Record<string, string>,
+  }));
+  return client;
+}
+
 test.describe('MCP server', () => {
   let client: Client;
   // The mock keys its state by token, so this test has the page to itself.
   const token = `${TEST_AUTH_TOKEN}-${randomUUID()}`;
 
   test.beforeEach(async () => {
-    client = new Client({ name: 'mcp-server-spec', version: '0.0.1' });
-    await client.connect(new StdioClientTransport({
-      command: process.execPath,
-      args: [SERVER],
-      env: { ...process.env, INKA_ADMIN_URL: URLS.voltoSsr, INKA_TOKEN: token } as Record<string, string>,
-    }));
+    client = await connect({ INKA_TOKEN: token });
   });
 
   test.afterEach(async () => {
@@ -32,7 +42,7 @@ test.describe('MCP server', () => {
   });
 
   const call = async (name: string, args: Record<string, unknown>) => {
-    const result = await client.callTool({ name, arguments: args });
+    const result = await client.callTool({ name, arguments: args }, undefined, CALL);
     const text = (result.content as { text: string }[])[0].text;
     return { isError: !!result.isError, text, json: () => {
       if (result.isError) throw new Error(`${name} failed: ${text}`);
@@ -46,6 +56,7 @@ test.describe('MCP server', () => {
   });
 
   test('list_children runs in the site root\'s editor', async () => {
+    test.setTimeout(90000);
     const listed = (await call('list_children', { path: '/_test_data', limit: 3 })).json();
     expect(listed.items).toHaveLength(3);
     expect(listed.items[0].path).toMatch(/^\/_test_data\//);
@@ -62,12 +73,14 @@ test.describe('MCP server', () => {
     // A dry run returns the page as it would be, and saves nothing.
     const dryCall = await client.callTool({
       name: 'edit_blocks', arguments: { path: PAGE, expectedVersion: read.version, ops, dryRun: true, preview: 'desktop' },
-    });
+    }, undefined, CALL);
     const [text, image] = dryCall.content as any[];
     const dry = JSON.parse(text.text);
     expect(dry.page.blocks.find((b: any) => b['@uid'] === dry.ids.new).value.md).toBe('From the *MCP server*');
     // The preview: the draft as a visitor sees it, as a screenshot and its text.
     expect(dry.renderedText).toContain('From the MCP server');
+    // Without INKA_FRONTEND_URL, the admin's own default front end.
+    expect(dry.renderedOn).not.toBe(URLS.nuxt);
     expect(image).toMatchObject({ type: 'image', mimeType: 'image/png' });
     // MCP_PREVIEW_PNG=<file> keeps the screenshot to look at.
     if (process.env.MCP_PREVIEW_PNG) writeFileSync(process.env.MCP_PREVIEW_PNG, Buffer.from(image.data, 'base64'));
@@ -87,5 +100,27 @@ test.describe('MCP server', () => {
     const stale = await call('edit_blocks', { path: PAGE, expectedVersion: read.version, ops });
     expect(stale.isError).toBe(true);
     expect(stale.text).toMatch(/changed since it was read/);
+  });
+});
+
+test.describe('MCP server on a chosen front end', () => {
+  test('INKA_FRONTEND_URL: the editor, and so the preview, use that front end', async () => {
+    test.setTimeout(180000);
+    const client = await connect({ INKA_TOKEN: `${TEST_AUTH_TOKEN}-${randomUUID()}`, INKA_FRONTEND_URL: URLS.nuxt });
+    try {
+      const read = JSON.parse((await client.callTool({ name: 'get_page', arguments: { path: PAGE } }, undefined, CALL)).content[0].text);
+      const ops = [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@type': 'slate', value: 'Previewed on *Nuxt*' }] }];
+      const result = await client.callTool({
+        name: 'edit_blocks', arguments: { path: PAGE, expectedVersion: read.version, ops, dryRun: true, preview: 'desktop' },
+      }, undefined, CALL);
+      expect(result.isError, (result.content as any[])[0].text).toBeFalsy();
+      const dry = JSON.parse((result.content as any[])[0].text);
+      expect(dry.renderedOn).toBe(URLS.nuxt);
+      // The edit is in the page, then in the render.
+      expect(JSON.stringify(dry.page)).toContain('Previewed on *Nuxt*');
+      expect(dry.renderedText).toContain('Previewed on Nuxt');
+    } finally {
+      await client.close();
+    }
   });
 });

@@ -15,7 +15,7 @@ const VIEWPORTS = {
 };
 const SERVED_MS = 15000;
 const QUIET_MS = 500;
-const SETTLE_MS = 10000;
+const SETTLE_MS = 30000;
 
 /** The front end's view-mode URL for the page, from the admin's edit frame. */
 export async function frontendUrlOf(adminPage) {
@@ -42,6 +42,7 @@ export async function previewDraft(context, { frontendUrl, path, draft, viewport
   const page = await context.newPage();
   try {
     await page.setViewportSize(size);
+    const activity = watchActivity(page);
     let served = 0;
     await page.route(
       (url) => isContentFetch(url.href, path),
@@ -65,7 +66,7 @@ export async function previewDraft(context, { frontendUrl, path, draft, viewport
       }
       await page.waitForTimeout(100);
     }
-    await settle(page);
+    await activity.settled();
     const image = (await page.screenshot({ fullPage: true })).toString('base64');
     return { image, text: await page.evaluate(() => document.body.innerText) };
   } finally {
@@ -73,23 +74,40 @@ export async function previewDraft(context, { frontendUrl, path, draft, viewport
   }
 }
 
-/** Wait until the DOM has been quiet for QUIET_MS (the draft rendered), and fonts are in. */
-async function settle(page) {
-  await page.evaluate(([quietMs, limitMs]) => new Promise((resolve, reject) => {
-    let timer = setTimeout(done, quietMs);
-    const limit = setTimeout(() => {
-      observer.disconnect();
-      reject(new Error(`preview: the page kept changing for ${limitMs / 1000}s`));
-    }, limitMs);
-    const observer = new MutationObserver(() => {
-      clearTimeout(timer);
-      timer = setTimeout(done, quietMs);
-    });
-    observer.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
-    function done() {
-      observer.disconnect();
-      clearTimeout(limit);
-      document.fonts.ready.then(() => resolve());
-    }
-  }), [QUIET_MS, SETTLE_MS]);
+/**
+ * Track what the page is still doing: requests in flight, and the time of the
+ * last DOM change or finished request. `settled()` resolves once nothing has
+ * been in flight or changed for QUIET_MS, and fonts are in. A quiet DOM alone
+ * isn't enough: a front end can sit on its "Loading..." for longer than that,
+ * waiting on a slow request. (In view mode there is no bridge traffic, so the
+ * network is a fair signal here.)
+ */
+function watchActivity(page) {
+  let inFlight = 0;
+  let lastNetwork = Date.now();
+  const started = () => { inFlight++; lastNetwork = Date.now(); };
+  const ended = () => { inFlight--; lastNetwork = Date.now(); };
+  page.on('request', started);
+  page.on('requestfinished', ended);
+  page.on('requestfailed', ended);
+  page.addInitScript(() => {
+    window.__inkaLastChange = Date.now();
+    new MutationObserver(() => { window.__inkaLastChange = Date.now(); })
+      .observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  });
+  return {
+    async settled() {
+      const deadline = Date.now() + SETTLE_MS;
+      for (;;) {
+        const lastDom = await page.evaluate(() => window.__inkaLastChange);
+        const quietSince = Math.max(lastNetwork, lastDom);
+        if (inFlight === 0 && Date.now() - quietSince >= QUIET_MS) break;
+        if (Date.now() > deadline) {
+          throw new Error(`preview: the page was still loading or changing after ${SETTLE_MS / 1000}s`);
+        }
+        await page.waitForTimeout(100);
+      }
+      await page.evaluate(() => document.fonts.ready);
+    },
+  };
 }
