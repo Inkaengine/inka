@@ -1233,6 +1233,11 @@ export async function verifyBlockRendering(
   // consecutive same-value reads = stable.
   if (isListing) {
     const items = iframe.locator(`[data-block-uid="${blockId}"]`);
+    // A listing can sit in something that hides it — an inactive tab, a closed
+    // panel — like any block: reveal it the way the editor does on select
+    // before asking whether its items are visible.
+    await expect(items.first()).toBeAttached({ timeout: 15000 });
+    await revealBlock(iframe, blockId);
     await expect(items.first()).toBeVisible({ timeout: 15000 });
     // Three consecutive equal reads, not "at least 2 items": the old n >= 2
     // floor assumed every listing shows several results, so a listing whose
