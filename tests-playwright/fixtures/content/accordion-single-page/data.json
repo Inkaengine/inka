@@ -1,0 +1,41 @@
+{
+  "@id": "http://localhost:8888/accordion-single-page",
+  "@type": "Document",
+  "UID": "accordion-single-page-uid",
+  "id": "accordion-single-page",
+  "title": "Accordion Single Page",
+  "description": "An accordion with one panel: drawn as just that panel, with no group element",
+  "effective": "2024-12-01T00:00:00+00:00",
+  "review_state": "published",
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "accordion-single": {
+      "@type": "accordion",
+      "panels": [
+        {
+          "@type": "panel",
+          "@id": "panel-only",
+          "title": "Only panel",
+          "blocks": {
+            "only-text": {
+              "@type": "slate",
+              "value": [{"type": "p", "children": [{"text": "The only panel's content"}]}],
+              "plaintext": "The only panel's content"
+            }
+          },
+          "blocks_layout": {"items": ["only-text"]}
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": ["title-block", "accordion-single"]
+  }
+}

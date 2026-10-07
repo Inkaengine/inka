@@ -112,6 +112,34 @@ Some markup is built by a third-party script, somewhere your renderer never writ
 - `block-uid` on the target makes it **part of that block**: the block is now several elements sharing one uid, and its selection outline covers all of them. Use it when the script-built element really is part of the block, as a banner showing the block's message is.
 - A slate field inside still needs its `data-node-id`s — comments cannot supply those, so render them in whatever markup you *do* hand the script (above, the `<span>` inside the banner's `<p>`).
 
+## A container with no element of its own
+
+A container block usually draws an element of its own around its children, and that element carries its `data-block-uid`. It doesn't have to. A design system can draw a group of one as just that one: a single collapsible section, with no group element around it. The container still holds it in the data, but nothing on the page carries the container's uid.
+
+Inka finds such a container through its children: it is wherever they are drawn, through children that draw nothing either, down to the ones that do. So the author:
+
+- clicks a child, then **select parent**, to select the container;
+- sees the container outlined around its children, with its toolbar there;
+- adds a second child as usual, at which point your renderer can draw the group element again.
+
+### Html
+
+```html
+<!-- An accordion of one panel: no group element, no accordion uid -->
+<details data-block-uid="panel-1">
+  <summary data-edit-text="title">Only panel</summary>
+  …
+</details>
+
+<!-- The same accordion with two panels: the group is drawn again -->
+<div data-block-uid="accordion-1">
+  <details data-block-uid="panel-1">…</details>
+  <details data-block-uid="panel-2">…</details>
+</div>
+```
+
+The rule is what the container draws, not how it is built: a container may have no element only if it **draws nothing of its own**. Settings (switches, choices) and children need no element. Words do. A heading or an intro line drawn outside any element carrying the container's uid lands inside whichever block encloses it, and would be edited as that block's. Block sanity checks this: a container with no element of its own whose text fields hold words fails.
+
 ## Optional fields: empty means absent
 
 Render optional fields **data-driven**: no data, no element. Don't render an empty element just to give the editor something to click — it leaks empty markup into your published page.

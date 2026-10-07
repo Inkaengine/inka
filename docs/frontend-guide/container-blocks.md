@@ -59,6 +59,8 @@ Both look and behave the same in the editor — selecting, dragging, nesting —
 
 <block type="separator" />
 
+A container's own element is optional: a container that draws nothing of its own, such as an accordion of one panel drawn as just that panel, is found through its children. See [A container with no element of its own](./visual-editing.md#a-container-with-no-element-of-its-own).
+
 ## blocks\_layout: a region in the shared dict
 
 Each child has its own `@type` and schema (from `blocks`). The blocks live in the parent's shared `blocks` dict; the region's name is a key in the parent's shared `blocks_layout` dict that holds the ordering:
