@@ -10,6 +10,8 @@
  *   INKA_API_URL    the CMS API the admin talks to (for logging in)
  *   INKA_TOKEN      an auth token for the CMS, or
  *   INKA_USER + INKA_PASSWORD  to log in for one
+ *   INKA_FRONTEND_URL  optional: the front end the editor (and so a preview)
+ *                      uses; without it, the admin's own default
  * The agent can do what that CMS user can do, nothing more.
  */
 import { realpathSync } from 'node:fs';
@@ -51,15 +53,20 @@ export async function authToken(env) {
 }
 
 /** A headless admin, logged in; `withEditor` opens a page's editor for one call. */
-export function headlessAdmin({ adminUrl, token }) {
+export function headlessAdmin({ adminUrl, token, frontendUrl }) {
   let context;
   const ready = async () => {
     if (context) return context;
     const browser = await chromium.launch();
     context = await browser.newContext();
-    await context.addCookies([{
-      name: 'auth_token', value: token, url: adminUrl, sameSite: 'Lax',
-    }]);
+    await context.addCookies([
+      { name: 'auth_token', value: token, url: adminUrl, sameSite: 'Lax' },
+      // The admin's front-end choice, as its switcher stores it: a cookie
+      // named for the admin's port (utils/cookieNames.js).
+      ...(frontendUrl ? [{
+        name: `iframe_url_${new URL(adminUrl).port || '80'}`, value: frontendUrl, url: adminUrl, sameSite: 'Lax',
+      }] : []),
+    ]);
     return context;
   };
   return {
@@ -69,9 +76,11 @@ export function headlessAdmin({ adminUrl, token }) {
         await openForEdit(page, { adminUrl, path });
         return await work(agentOn(page), {
           // Render a draft of this page as a visitor sees it, in its own page.
-          render: async (draft, viewport) => previewDraft(page.context(), {
-            frontendUrl: await frontendUrlOf(page), path, draft, viewport,
-          }),
+          render: async (draft, viewport) => {
+            const renderedOn = await frontendUrlOf(page);
+            const rendered = await previewDraft(page.context(), { frontendUrl: renderedOn, path, draft, viewport });
+            return { ...rendered, renderedOn: new URL(renderedOn).origin };
+          },
         });
       } finally {
         await page.close();
@@ -163,10 +172,10 @@ export function createServer(admin) {
       render: preview && ((draft) => render(draft, preview)),
     }));
     if (!result.rendered) return asResult(result);
-    const { rendered: { image, text }, ...rest } = result;
+    const { rendered: { image, text, renderedOn }, ...rest } = result;
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ ...rest, renderedText: text }, null, 2) },
+        { type: 'text', text: JSON.stringify({ ...rest, renderedOn, renderedText: text }, null, 2) },
         { type: 'image', data: image, mimeType: 'image/png' },
       ],
     };
@@ -176,7 +185,11 @@ export function createServer(admin) {
 }
 
 async function main(env) {
-  const admin = headlessAdmin({ adminUrl: required(env, 'INKA_ADMIN_URL').replace(/\/$/, ''), token: await authToken(env) });
+  const admin = headlessAdmin({
+    adminUrl: required(env, 'INKA_ADMIN_URL').replace(/\/$/, ''),
+    token: await authToken(env),
+    frontendUrl: env.INKA_FRONTEND_URL,
+  });
   const server = createServer(admin);
   server.server.onclose = () => admin.close();
   await server.connect(new StdioServerTransport());
