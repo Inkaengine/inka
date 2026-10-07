@@ -31,7 +31,7 @@ import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
 import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
 import { getPageAllowedBlocksFromRestricted } from '../../../../hydra-js/buildBlockPathMap.js';
 
-// The schema facts an agent needs; the rest (widgets' React bits, functions) stays behind.
+// The schema facts an agent needs, as plain data (see plain()).
 const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'choices', 'default', 'maxLength', 'allowedBlocks'];
 
 function schemaFacts(schema) {
@@ -43,10 +43,29 @@ function schemaFacts(schema) {
   };
 }
 
+/**
+ * `v` as plain data, or undefined: schema values can be React elements (a
+ * description written as JSX, holding the live component tree) or functions,
+ * which mean nothing to an agent and can't leave the page.
+ */
+function plain(v) {
+  if (v === null || ['string', 'number', 'boolean'].includes(typeof v)) return v;
+  if (Array.isArray(v)) {
+    const items = v.map(plain);
+    return items.includes(undefined) ? undefined : items;
+  }
+  if (typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype && !v.$$typeof) {
+    const entries = Object.entries(v).map(([k, x]) => [k, plain(x)]);
+    return entries.some(([, x]) => x === undefined) ? undefined : Object.fromEntries(entries);
+  }
+  return undefined;
+}
+
 function fieldFacts(def) {
   const out = {};
   for (const key of FIELD_FACTS) {
-    if (def?.[key] !== undefined && typeof def[key] !== 'function') out[key] = def[key];
+    const value = plain(def?.[key]);
+    if (value !== undefined) out[key] = value;
   }
   if (def?.schema?.properties) out.schema = schemaFacts(def.schema);
   return out;

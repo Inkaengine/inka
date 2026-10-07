@@ -14,6 +14,42 @@ export async function openForEdit(page, { adminUrl, path }) {
 }
 
 /**
+ * Add a page as a person does: the admin's add form for `type` under `parent`,
+ * its title filled in, saved. The admin then opens the new page's editor; this
+ * resolves with the new page's path once the agent API is there. A form the
+ * CMS or the admin refuses (a required field, a type not allowed there) throws
+ * with what the form says.
+ */
+export async function createPage(page, { adminUrl, parent, type, title }) {
+  await page.goto(
+    `${adminUrl}${parent.replace(/\/$/, '')}/add?type=${encodeURIComponent(type)}`,
+    { timeout: LOAD_MS },
+  );
+  const created = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.status() === 201,
+    { timeout: READY_MS },
+  );
+  created.catch(() => {}); // a refusal wins the race; its timeout is then nobody's
+  const errors = page.locator('.toast-inner-content, .field.error .ui.label, .ui.message.error');
+  // Settles to what the form says if it refuses; never rejects, so it can be
+  // left behind once the page is created.
+  const refused = errors.first().waitFor({ state: 'visible', timeout: READY_MS })
+    .then(() => errors.allInnerTexts(), () => null);
+  await page.locator('#field-title input, input#field-title, input[name="title"]').first().fill(title);
+  await page.locator('#toolbar-save').click();
+  const outcome = await Promise.race([created.then((response) => ({ response })), refused.then((said) => ({ said }))]);
+  if (!outcome.response) {
+    if (!outcome.said) throw new Error('create_page: the add form neither saved nor said why');
+    throw new Error(`create_page: the add form refused it: ${outcome.said.join(' / ')}`);
+  }
+  const response = outcome.response;
+  const path = new URL((await response.json())['@id']).pathname;
+  await page.waitForURL((url) => url.pathname === `${path}/edit`, { timeout: READY_MS });
+  await waitForAgent(page);
+  return path;
+}
+
+/**
  * Throw away the editor's unsaved changes (after a dry run): a full reload,
  * which refetches the page. Client-side navigation would keep the edited state.
  */

@@ -42,7 +42,7 @@ test.describe('MCP server', () => {
 
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['edit_blocks', 'get_page', 'list_block_types', 'list_children', 'search']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'search']);
   });
 
   test('list_children runs in the site root\'s editor', async () => {
