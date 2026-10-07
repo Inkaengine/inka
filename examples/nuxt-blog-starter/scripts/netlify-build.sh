@@ -9,7 +9,7 @@ set -o pipefail
 # prerender uses until it returns 200 + valid JSON quickly a few
 # times. Non-fatal: warn and proceed if it never warms (the build's
 # own failOnError guard still catches a genuinely broken SSG).
-API_BASE="${NUXT_TEST_BACKEND:-https://hydra-api.pretagov.com}/++api++"
+API_BASE="${NUXT_TEST_BACKEND:-https://api.inka.sh}/++api++"
 EXPAND="expand=breadcrumbs,navroot,navigation,templates&expand.navigation.depth=2"
 echo "=== Warming API: ${API_BASE} ==="
 warm_ok() {

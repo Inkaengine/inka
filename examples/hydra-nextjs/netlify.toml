@@ -10,4 +10,8 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "frame-ancestors https://hydra.pretagov.com https://*.pretagov.com http://localhost:*"
+    # Who may FRAME this example. These were the retired pretagov hosts, which the
+    # live deploy predates — it serves no CSP at all, so it is still framable by
+    # accident. The next deploy would have applied this and broken framing from
+    # admin.inka.sh, which is the one context the example exists for.
+    Content-Security-Policy = "frame-ancestors https://admin.inka.sh https://inka.sh https://*.inka.sh http://localhost:*"

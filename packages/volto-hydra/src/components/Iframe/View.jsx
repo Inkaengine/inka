@@ -296,6 +296,7 @@ import {
   reshapeContainerBlock,
   validateFieldMappings,
   reportDisallowedSlateNodes,
+  completeFrontendSchema,
 } from '../../utils/blockSync';
 import {
   installCopyFromTargetEnhancers,
@@ -3741,36 +3742,10 @@ const Iframe = (props) => {
               ) {
                 blockConfig.disableCustomSidebarEditForm = true;
               }
-              // Auto-generate default fieldset if missing (only for new blocks, not overrides)
-              // Also ensure required is an array (Volto expects this)
-              // Recurse into object_list inner schemas too (Volto's InlineForm needs fieldsets).
-              const schema = blockConfig?.blockSchema;
-              const isNewBlock = !config.blocks.blocksConfig[blockType];
-              if (isNewBlock && schema?.properties && !schema.fieldsets) {
-                schema.fieldsets = [{
-                  id: 'default',
-                  title: 'Default',
-                  fields: Object.keys(schema.properties),
-                }];
-              }
-              if (schema && !schema.required) {
-                schema.required = [];
-              }
-              // Auto-generate fieldsets on nested object_list inner schemas
-              if (schema?.properties) {
-                Object.values(schema.properties).forEach((prop) => {
-                  if (prop?.widget === 'object_list' && prop?.schema?.properties && !prop.schema.fieldsets) {
-                    prop.schema.fieldsets = [{
-                      id: 'default',
-                      title: 'Default',
-                      fields: Object.keys(prop.schema.properties),
-                    }];
-                  }
-                  if (prop?.widget === 'object_list' && prop?.schema && !prop.schema.required) {
-                    prop.schema.required = [];
-                  }
-                });
-              }
+              // Fieldsets / required for the block's schema and its object_list
+              // inner schemas — on every INIT, overrides included (see
+              // completeFrontendSchema).
+              completeFrontendSchema(blockConfig?.blockSchema);
               // Validate fieldMappings: warn about invalid @default keys
               validateFieldMappings(blockType, blockConfig);
             });
