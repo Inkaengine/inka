@@ -8,7 +8,7 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { URLS } from '../ports';
 import { agentOn, waitForAgent, discardEdits, createPage, siteOn } from '../../packages/inka-mcp/adminDriver.mjs';
 import {
-  getPage, editPage, listBlockTypes, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
+  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
 } from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
 
@@ -213,5 +213,26 @@ test.describe('MCP tools', () => {
     // Delete it.
     await deletePage(site, { path: renamed.path, expectedVersion: await versionOf(renamed.path) });
     expect(await status(renamed.path)).toBe(404);
+  });
+
+  test('describe_block: the type in full, with a real example from the site', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await waitForAgent(page);
+    const [agent, site] = [agentOn(page), siteOn(page)];
+
+    const teaser = await describeBlock(agent, site, { type: 'teaser' });
+    expect(teaser.fields.href).toMatchObject({ widget: 'object_browser', required: true });
+    expect(teaser.allowedIn).toContain("the page's blocks");
+    // The example is a real teaser from a page on the site: the link's shape is there to copy.
+    expect(teaser.example.block['@type']).toBe('teaser');
+    expect(teaser.example.from).toMatch(/^\//);
+    expect(teaser.example.block.href[0]['@id']).toBeTruthy();
+
+    // A block's display variants, as its variation field offers them.
+    const callout = await describeBlock(agent, site, { type: 'callout' });
+    expect(callout.variations).toContainEqual({ id: 'note', title: 'Note', isDefault: true });
+    expect(callout.variations.map((v) => v.id)).toEqual(['note', 'tip', 'warning', 'important']);
   });
 });

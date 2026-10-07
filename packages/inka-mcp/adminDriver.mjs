@@ -120,6 +120,7 @@ export function siteOn(page) {
   );
   return {
     search: (query) => call('search', query),
+    get: (path) => call('get', path),
     version: (path) => call('version', path),
     move: (op) => call('move', op),
     rename: (op) => call('rename', op),

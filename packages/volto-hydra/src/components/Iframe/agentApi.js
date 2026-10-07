@@ -178,6 +178,13 @@ export function registerAgentApi(live) {
         const schema = getBlockTypeSchema(type, intl, blocksConfig);
         types[type] = {
           title: blocksConfig[type].title,
+          ...(plain(blocksConfig[type].description) !== undefined && { description: plain(blocksConfig[type].description) }),
+          // A block's display variants (a listing's summary/grid, …), as its variation field offers them.
+          variations: (blocksConfig[type].variations ?? []).map((v) => ({
+            id: v.id,
+            ...(plain(v.title) !== undefined && { title: plain(v.title) }),
+            ...(v.isDefault && { isDefault: true }),
+          })),
           blockSchema: schemaFacts(schema),
           regions: getContainerRegionDescriptors(type, blocksConfig, intl).map((d) => {
             const fieldDef = fieldAt(schema, d.regionPath ?? [], d.region);

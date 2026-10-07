@@ -59,10 +59,15 @@ function layoutList(container, key) {
   return container.blocks_layout[key].map((uid) => {
     const block = container.blocks[uid];
     if (!block) throw new Error(`blocks_layout names ${uid}, which is not in blocks`);
-    const out = { '@uid': uid, ...simplify(block) };
-    if (isSlate(block.value)) delete out.plaintext;
-    return out;
+    return toAgentBlock(uid, block);
   });
+}
+
+/** One stored block, with its uid, in the agent format. */
+export function toAgentBlock(uid, block) {
+  const out = { '@uid': uid, ...simplify(block) };
+  if (isSlate(block.value)) delete out.plaintext;
+  return out;
 }
 
 function simplify(v) {

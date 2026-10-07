@@ -24,7 +24,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { openForEdit, createPage, agentOn, openSite, siteOn } from './adminDriver.mjs';
 import { frontendUrlOf, previewDraft } from './preview.mjs';
 import {
-  getPage, editPage, listBlockTypes, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
+  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
@@ -77,6 +77,8 @@ export function headlessAdmin({ adminUrl, token, frontendUrl }) {
       try {
         await openForEdit(page, { adminUrl, path });
         return await work(agentOn(page), {
+          // The site-wide API is on every admin page, the editor's included.
+          site: siteOn(page),
           // Render a draft of this page as a visitor sees it, in its own page.
           render: async (draft, viewport) => {
             const renderedOn = await frontendUrlOf(page);
@@ -181,6 +183,15 @@ export function createServer(admin) {
     description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes. Read this before adding a block type you have not seen on the page.',
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }) => asResult(await admin.withEditor(path, listBlockTypes)));
+
+  server.registerTool('describe_block', {
+    title: 'Describe a block type',
+    description: 'One block type in full, as the page at "path" can use it: what it is, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, and a real example of it from a page on the site, showing the exact value each field takes (links, images, choices). Use it before adding a type you have not used, or to see how to fill a field.',
+    inputSchema: {
+      path: z.string().describe('The page you will add it to, e.g. /about'),
+      type: z.string().describe('The block type, as list_block_types names it, e.g. teaser'),
+    },
+  }, async ({ path, type }) => asResult(await admin.withEditor(path, (agent, { site }) => describeBlock(agent, site, { type }))));
 
   server.registerTool('create_page', {
     title: 'Create a page',

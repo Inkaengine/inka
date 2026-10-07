@@ -6,9 +6,9 @@
  * the caller discards it by reloading. A save is refused if the page has
  * changed since the agent read it (its version).
  */
-import { toAgentBlocks } from './pageFormat.mjs';
+import { toAgentBlocks, toAgentBlock } from './pageFormat.mjs';
 import { editBlocks } from './editBlocks.mjs';
-import { describeBlockTypes } from './blockTypes.mjs';
+import { describeBlockTypes, describeBlockType } from './blockTypes.mjs';
 
 export class StaleVersion extends Error {}
 
@@ -81,6 +81,43 @@ export async function deletePage(site, { path, expectedVersion }) {
 /** The block types this page can hold, their fields, and where child blocks go. */
 export async function listBlockTypes(agent) {
   return describeBlockTypes(await agent.getBlockSchemas());
+}
+
+/** The first block of `type` on a stored page, nested blocks included: [uid, block]. */
+function findBlock(node, type) {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = findBlock(item, type);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!node || typeof node !== 'object') return null;
+  if (node.blocks && typeof node.blocks === 'object' && !Array.isArray(node.blocks)) {
+    for (const [uid, block] of Object.entries(node.blocks)) {
+      if (block?.['@type'] === type) return [uid, block];
+    }
+  }
+  for (const value of Object.values(node)) {
+    const found = findBlock(value, type);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * One block type in full (see describeBlockType), with a real example: a block
+ * of that type from a page on the site, in the agent format, and where it is.
+ * A type no page uses yet has no example, and says so.
+ */
+export async function describeBlock(agent, site, { type }) {
+  const described = describeBlockType(await agent.getBlockSchemas(), type);
+  const pages = await site.search({ blockTypes: [type], limit: 5 });
+  for (const { path } of pages.items) {
+    const found = findBlock(await site.get(path), type);
+    if (found) return { ...described, example: { from: path, block: toAgentBlock(...found) } };
+  }
+  return { ...described, example: null, exampleNote: `no page on the site uses a ${type} block yet` };
 }
 
 /**
