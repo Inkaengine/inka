@@ -3733,17 +3733,28 @@ export class Bridge {
       if (carriesContent) own.push(handle);
     }
     // The page is not a container drawn somewhere; it is the whole canvas.
-    if (own.length || blockUid === PAGE_BLOCK_UID) return own;
-    // A container that draws no element of its own is where its children are
-    // — as a template instance is, above. A design system can draw a group of
-    // one as just that one (a single collapsible section, no group around
-    // it); the container still holds it in the data, and is selected from it
-    // ("select parent") and outlined around it. Through children that draw
-    // nothing either, down to the ones that do.
+    if (blockUid === PAGE_BLOCK_UID) return own;
+    // A container is drawn by its own parts AND by any children drawn outside
+    // them. Its parts need not wrap its children: a heading of its own can sit
+    // beside them, and a design system can draw a group of one as just that
+    // one, with no element of the container's at all (as a template instance
+    // never has one). Children inside its own elements are already covered —
+    // a carousel's slides, scrolled out of view, do not stretch it — so only
+    // those drawn outside are followed, through children that draw nothing
+    // either, down to the ones that do.
+    const inside = (el) => own.some((o) => o !== el && o.contains(el));
     const children = Object.entries(this.blockPathMap || {})
       .filter(([, info]) => info.parentId === blockUid)
       .map(([id]) => id);
-    const elements = children.flatMap((id) => this.getAllBlockElements(id, options));
+    const outside = [];
+    for (const id of children) {
+      const drawn = [...document.querySelectorAll(`[data-block-uid="${id}"]`)];
+      if (drawn.length && drawn.every(inside)) continue;
+      for (const el of this.getAllBlockElements(id, options)) {
+        if (!inside(el)) outside.push(el);
+      }
+    }
+    const elements = [...own, ...outside];
     if (elements.length === 0) {
       log('getAllBlockElements: no DOM elements for', blockUid, 'pathInfo:', pathInfo ? 'exists' : 'missing', 'isTemplateInstance:', pathInfo?.isTemplateInstance);
     }

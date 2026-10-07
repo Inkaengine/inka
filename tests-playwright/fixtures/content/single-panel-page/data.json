@@ -1,10 +1,10 @@
 {
-  "@id": "http://localhost:8888/accordion-single-page",
+  "@id": "http://localhost:8888/single-panel-page",
   "@type": "Document",
-  "UID": "accordion-single-page-uid",
-  "id": "accordion-single-page",
-  "title": "Accordion Single Page",
-  "description": "An accordion with one panel: drawn as just that panel, with no group element",
+  "UID": "single-panel-page-uid",
+  "id": "single-panel-page",
+  "title": "Single Panel Page",
+  "description": "A group of one panel, drawn as just that panel with no group element",
   "effective": "2024-12-01T00:00:00+00:00",
   "review_state": "published",
   "parent": {

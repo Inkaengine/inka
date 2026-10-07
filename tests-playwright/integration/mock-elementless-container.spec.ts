@@ -14,7 +14,7 @@ test.describe('A container with no element of its own', () => {
   test('is selected through its child and outlined around it', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
-    await helper.navigateToEdit('/accordion-single-page');
+    await helper.navigateToEdit('/single-panel-page');
     const iframe = helper.getIframe();
 
     await expect(iframe.locator('details[data-block-uid="panel-only"]')).toBeVisible();
@@ -40,7 +40,7 @@ test.describe('A container with no element of its own', () => {
   test('draws its own element again once it holds two children', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
-    await helper.navigateToEdit('/accordion-single-page');
+    await helper.navigateToEdit('/single-panel-page');
     const iframe = helper.getIframe();
 
     await helper.clickBlockInIframe('only-text');

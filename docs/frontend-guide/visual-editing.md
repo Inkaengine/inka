@@ -112,15 +112,20 @@ Some markup is built by a third-party script, somewhere your renderer never writ
 - `block-uid` on the target makes it **part of that block**: the block is now several elements sharing one uid, and its selection outline covers all of them. Use it when the script-built element really is part of the block, as a banner showing the block's message is.
 - A slate field inside still needs its `data-node-id`s — comments cannot supply those, so render them in whatever markup you *do* hand the script (above, the `<span>` inside the banner's `<p>`).
 
-## A container with no element of its own
+## A container's parts and its children needn't be nested
 
-A container block usually draws an element of its own around its children, and that element carries its `data-block-uid`. It doesn't have to. A design system can draw a group of one as just that one: a single collapsible section, with no group element around it. The container still holds it in the data, but nothing on the page carries the container's uid.
+A container block usually draws one element of its own around its children, and that element carries its `data-block-uid`. It doesn't have to. A container is drawn by **its own elements plus any of its children drawn outside them**:
 
-Inka finds such a container through its children: it is wherever they are drawn, through children that draw nothing either, down to the ones that do. So the author:
+- **Beside its children:** a heading of the container's can sit next to the group of children rather than around it. The heading carries the container's uid; the children carry theirs.
+- **No element at all:** a design system can draw a group of one as just that one, such as a single collapsible section with no group element around it. Nothing carries the container's uid; it is wherever its children are, through children that draw nothing either, down to the ones that do. (A template instance has always worked this way.)
 
-- clicks a child, then **select parent**, to select the container;
-- sees the container outlined around its children, with its toolbar there;
-- adds a second child as usual, at which point your renderer can draw the group element again.
+Children *inside* the container's own elements are already covered by them, so a carousel's slides, scrolled out of view, don't stretch it across the page.
+
+For the author it's one block either way:
+
+- **Select it:** click its own part (a heading), or a child and then **select parent**.
+- **See it:** outlined around its own parts and its children together, with its toolbar there.
+- **Add to it:** a child as usual, at which point your renderer can draw a group element again.
 
 ### Html
 
@@ -131,14 +136,18 @@ Inka finds such a container through its children: it is wherever they are drawn,
   …
 </details>
 
-<!-- The same accordion with two panels: the group is drawn again -->
+<!-- An accordion whose heading sits beside its panels -->
+<h2 data-block-uid="accordion-1" data-edit-text="heading">Questions</h2>
+<details data-block-uid="panel-1">…</details>
+
+<!-- The same accordion with two panels and a group element -->
 <div data-block-uid="accordion-1">
   <details data-block-uid="panel-1">…</details>
   <details data-block-uid="panel-2">…</details>
 </div>
 ```
 
-The rule is what the container draws, not how it is built: a container may have no element only if it **draws nothing of its own**. Settings (switches, choices) and children need no element. Words do. A heading or an intro line drawn outside any element carrying the container's uid lands inside whichever block encloses it, and would be edited as that block's. Block sanity checks this: a container with no element of its own whose text fields hold words fails.
+The container's **words** must be drawn in an element carrying its uid, as any block's fields must. A heading drawn outside every element carrying the container's uid lands inside whichever block encloses it, and would be edited as that block's. So a container that draws no element at all may hold settings (switches, choices) and children, but no words. Block sanity checks this.
 
 ## Optional fields: empty means absent
 

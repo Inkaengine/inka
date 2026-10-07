@@ -59,7 +59,7 @@ Both look and behave the same in the editor — selecting, dragging, nesting —
 
 <block type="separator" />
 
-A container's own element is optional: a container that draws nothing of its own, such as an accordion of one panel drawn as just that panel, is found through its children. See [A container with no element of its own](./visual-editing.md#a-container-with-no-element-of-its-own).
+A container's own element needn't wrap its children, or exist at all: a heading of its own can sit beside them, and an accordion of one panel can be drawn as just that panel. See [A container's parts and its children needn't be nested](./visual-editing.md#a-containers-parts-and-its-children-neednt-be-nested).
 
 ## blocks\_layout: a region in the shared dict
 

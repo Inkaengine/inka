@@ -2,7 +2,7 @@ import { JSDOM } from 'jsdom';
 import { Bridge } from './hydra.src.js';
 
 /**
- * A container that draws no element of its own is where its children are.
+ * A container is drawn by its own parts and by any children drawn outside them.
  *
  * A design system can draw a group of one as just that one: a single
  * collapsible section with no group around it. The container block holding it
@@ -63,6 +63,31 @@ describe('getAllBlockElements: a container with no element of its own', () => {
       elements(
         '<div id="g" data-block-uid="group"><details id="d" data-block-uid="item"></details></div>',
         map,
+        'group',
+      ),
+    ).toEqual(['g']);
+  });
+
+  it('is its own parts and the children drawn outside them', () => {
+    // A heading of the container's, drawn beside its children rather than
+    // around them: the container is the heading and the children.
+    expect(
+      elements(
+        '<h2 id="h" data-block-uid="group">Questions</h2><details id="d" data-block-uid="item"></details>',
+        map,
+        'group',
+      ),
+    ).toEqual(['h', 'd']);
+  });
+
+  it('is only its own element when its children are inside it', () => {
+    // A carousel's slides sit inside it, some scrolled out of view: they do not
+    // stretch the container across the page.
+    const slides = { ...map, item2: { parentId: 'group' } };
+    expect(
+      elements(
+        '<div id="g" data-block-uid="group"><div id="a" data-block-uid="item"></div><div id="b" data-block-uid="item2"></div></div>',
+        slides,
         'group',
       ),
     ).toEqual(['g']);
