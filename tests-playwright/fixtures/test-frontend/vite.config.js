@@ -81,10 +81,14 @@ export default defineConfig({
       '/hydra.js': path.resolve(__dirname, '../../../packages/hydra-js/hydra.src.js'),
       '/helpers.js': path.resolve(__dirname, '../../../packages/helpers/index.js'),
       '/build-block-path-map.js': path.resolve(__dirname, '../../../packages/hydra-js/buildBlockPathMap.js'),
+      '/merge-frontend-block.js': path.resolve(__dirname, '../../../packages/hydra-js/mergeFrontendBlock.js'),
       // The same merge the admin runs before it posts INITIAL_DATA (View.jsx),
       // so the mock parent hands the bridge a page with its forced layouts and
       // templates already stamped on — see mock-parent.html's INIT handler.
       '/merge-templates.js': path.resolve(__dirname, '../../../packages/volto-hydra/src/utils/mergeTemplates.mjs'),
+      // The admin's own region helpers, so block-sanity can empty a region exactly
+      // as an editor's delete does (deleteBlockFromContainer + ensureEmptyBlockIfEmpty).
+      '/block-path.js': path.resolve(__dirname, '../../../packages/volto-hydra/src/utils/blockPath.js'),
       '/shared-block-schemas.js': path.resolve(__dirname, '../shared-block-schemas.js'),
       '/core-block-schemas.js': path.resolve(__dirname, '../core-block-schemas.js'),
     },

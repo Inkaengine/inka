@@ -3,6 +3,12 @@ name: Build and test
 on:
   push:
 
+# The browser jobs run in a container, where a step's default shell is sh: bash
+# ranges like {1..30} would not expand, and a wait loop would try once.
+defaults:
+  run:
+    shell: bash
+
 # Every test port, stated. `tests-playwright/ports.ts` has no defaults on
 # purpose — a checkout that fell back to these numbers could take over another
 # checkout's servers without saying so — so CI declares them like any other
@@ -143,6 +149,19 @@ jobs:
     needs: build
     runs-on: 'ubuntu-latest'
     timeout-minutes: 30
+    # Playwright's own image: Node, git, the browsers for this Playwright
+    # version and every system package they need, baked in. The jobs used to
+    # apt-install those packages (100+ MB from the Ubuntu mirror) on every run,
+    # and a slow mirror timed the step out; retries and a shorter acquire
+    # timeout only made it fail faster. Keep the tag in step with
+    # @playwright/test in package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -170,46 +189,21 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install --with-deps chromium firefox
-      - name: Install Playwright deps only
-        # This step sat for 3h38m on one run. The log shows apt-get update stalling
-        # mid-fetch of the Ubuntu package indexes — silent after
-        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
-        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
-        # acquire so it fails fast, and bound the step as a backstop.
-        timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install-deps chromium firefox
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
-          cd docs/examples/test-react && npx vite --port ${{ env.HYDRA_REACT_DOC_PORT }} --strictPort &
-          cd docs/examples/test-svelte && npx vite --port ${{ env.HYDRA_SVELTE_DOC_PORT }} --strictPort &
-          cd docs/examples/test-vue && npx vite --port ${{ env.HYDRA_VUE_DOC_PORT }} --strictPort &
-          cd docs/examples/test-astro && pnpm run dev:test &
+          # Every interface (--host): in the container `localhost` is both
+          # 127.0.0.1 and ::1, a server bound to "localhost" takes one, and the
+          # tests' Node-side reachability probe can pick the other.
+          cd docs/examples/test-react && npx vite --host --port ${{ env.HYDRA_REACT_DOC_PORT }} --strictPort &
+          cd docs/examples/test-svelte && npx vite --host --port ${{ env.HYDRA_SVELTE_DOC_PORT }} --strictPort &
+          cd docs/examples/test-vue && npx vite --host --port ${{ env.HYDRA_VUE_DOC_PORT }} --strictPort &
+          cd docs/examples/test-astro && pnpm run dev:test --host &
           sleep 3
       - name: Wait for servers
         run: |
@@ -226,6 +220,9 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           SKIP_VOLTO_CHECK: true
           # The editor screenshots the docs embed are git-ignored and generated
           # in the PARENT repo's deploy now, not recorded here — so they are
@@ -242,6 +239,9 @@ jobs:
           # Per-frontend discovery would remove the need to choose.
           FRONTEND_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}
           MOCK_PARENT_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}/mock-parent.html
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -251,12 +251,36 @@ jobs:
             playwright-report/
             test-results/**/*.png
           retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-bridge-unit
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ── Admin integration tests (mock frontend) ─────────────────────────────
   test-admin-mock:
     needs: build
     runs-on: 'ubuntu-latest'
     timeout-minutes: 45
+    # Playwright's own image: Node, git, the browsers for this Playwright
+    # version and every system package they need, baked in. The jobs used to
+    # apt-install those packages (100+ MB from the Ubuntu mirror) on every run,
+    # and a slow mirror timed the step out; retries and a shorter acquire
+    # timeout only made it fail faster. Keep the tag in step with
+    # @playwright/test in package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -293,45 +317,17 @@ jobs:
         with:
           name: volto-build
           path: build/
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install --with-deps chromium firefox
-      - name: Install Playwright deps only
-        # This step sat for 3h38m on one run. The log shows apt-get update stalling
-        # mid-fetch of the Ubuntu package indexes — silent after
-        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
-        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
-        # acquire so it fails fast, and bound the step as a backstop.
-        timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install-deps chromium firefox
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
-            VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
+            VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
             pnpm start:prod &
           sleep 3
       - name: Wait for servers
@@ -346,7 +342,13 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           USE_PREBUILT: true
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -355,6 +357,17 @@ jobs:
           path: |
             playwright-report/
             test-results/**/*.png
+          retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-admin-mock
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
           retention-days: 7
 
   # ── Admin typing specs on the Next.js example ───────────────────────────
@@ -367,6 +380,19 @@ jobs:
     needs: build
     runs-on: 'ubuntu-latest'
     timeout-minutes: 45
+    # Playwright's own image: Node, git, the browsers for this Playwright
+    # version and every system package they need, baked in. The jobs used to
+    # apt-install those packages (100+ MB from the Ubuntu mirror) on every run,
+    # and a slow mirror timed the step out; retries and a shorter acquire
+    # timeout only made it fail faster. Keep the tag in step with
+    # @playwright/test in package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -399,7 +425,7 @@ jobs:
         # their dist/ output must exist or the SSR server fails to boot.
         run: pnpm build:deps
       - name: Build Next.js example
-        run: cd examples/hydra-nextjs && pnpm install --ignore-workspace && pnpm run build:test
+        run: cd examples/hydra-nextjs && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
         env:
           NEXT_PUBLIC_BACKEND_BASE_URL: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
       - name: Download Volto build
@@ -407,45 +433,17 @@ jobs:
         with:
           name: volto-build
           path: build/
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install --with-deps chromium firefox
-      - name: Install Playwright deps only
-        # This step sat for 3h38m on one run. The log shows apt-get update stalling
-        # mid-fetch of the Ubuntu package indexes — silent after
-        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
-        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
-        # acquire so it fails fast, and bound the step as a backstop.
-        timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install-deps chromium firefox
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
-            VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
+            VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
             pnpm start:prod &
           (cd examples/hydra-nextjs && pnpm run start:test) &
           sleep 3
@@ -472,7 +470,13 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           USE_PREBUILT: true
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -482,12 +486,36 @@ jobs:
             playwright-report/
             test-results/**/*.png
           retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-admin-nextjs
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ── Nuxt bridge tests (no Volto needed) ─────────────────────────────────
   test-nuxt-bridge:
     needs: build
     runs-on: 'ubuntu-latest'
     timeout-minutes: 45
+    # Playwright's own image: Node, git, the browsers for this Playwright
+    # version and every system package they need, baked in. The jobs used to
+    # apt-install those packages (100+ MB from the Ubuntu mirror) on every run,
+    # and a slow mirror timed the step out; retries and a shorter acquire
+    # timeout only made it fail faster. Keep the tag in step with
+    # @playwright/test in package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -516,41 +544,13 @@ jobs:
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
       - name: Install and build Nuxt
-        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace && pnpm run build:test
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install --with-deps chromium firefox
-      - name: Install Playwright deps only
-        # This step sat for 3h38m on one run. The log shows apt-get update stalling
-        # mid-fetch of the Ubuntu package indexes — silent after
-        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
-        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
-        # acquire so it fails fast, and bound the step as a backstop.
-        timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install-deps chromium firefox
+        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
@@ -567,6 +567,9 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           SKIP_VOLTO_CHECK: true
           # The editor screenshots the docs embed are git-ignored and generated
           # in the PARENT repo's deploy now, not recorded here — so they are
@@ -583,6 +586,9 @@ jobs:
           # above) — the variable was simply never passed, while FRONTEND_URL
           # beside it was. globalSetup now fails rather than run type-only.
           MOCK_PARENT_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}/mock-parent.html
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -592,12 +598,36 @@ jobs:
             playwright-report/
             test-results/**/*.png
           retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-nuxt-bridge
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ── Nuxt integration tests (needs Volto) ────────────────────────────────
   test-nuxt-admin:
     needs: build
     runs-on: 'ubuntu-latest'
     timeout-minutes: 45
+    # Playwright's own image: Node, git, the browsers for this Playwright
+    # version and every system package they need, baked in. The jobs used to
+    # apt-install those packages (100+ MB from the Ubuntu mirror) on every run,
+    # and a slow mirror timed the step out; retries and a shorter acquire
+    # timeout only made it fail faster. Keep the tag in step with
+    # @playwright/test in package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -635,46 +665,18 @@ jobs:
           name: volto-build
           path: build/
       - name: Install and build Nuxt
-        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace && pnpm run build:test
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install --with-deps chromium firefox
-      - name: Install Playwright deps only
-        # This step sat for 3h38m on one run. The log shows apt-get update stalling
-        # mid-fetch of the Ubuntu package indexes — silent after
-        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
-        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
-        # acquire so it fails fast, and bound the step as a backstop.
-        timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install-deps chromium firefox
+        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
-            VOLTOCONFIG=${{ github.workspace }}/volto.config.js \
+            VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
             pnpm start:prod &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
           sleep 3
@@ -690,7 +692,13 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           USE_PREBUILT: true
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -700,12 +708,36 @@ jobs:
             playwright-report/
             test-results/**/*.png
           retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-nuxt-admin
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ── Next.js + F7 bridge tests (no Volto needed) ─────────────────────────
   test-nextjs-f7:
     needs: build
     runs-on: 'ubuntu-latest'
     timeout-minutes: 45
+    # Playwright's own image: Node, git, the browsers for this Playwright
+    # version and every system package they need, baked in. The jobs used to
+    # apt-install those packages (100+ MB from the Ubuntu mirror) on every run,
+    # and a slow mirror timed the step out; retries and a shorter acquire
+    # timeout only made it fail faster. Keep the tag in step with
+    # @playwright/test in package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      options: --ipc=host
+    # The job runs as root, but $HOME is /github/home, which the image's pwuser
+    # owns, and Firefox refuses to start as root in a home it doesn't own.
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@v4
         with:
@@ -734,56 +766,32 @@ jobs:
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
       - name: Build Next.js example
-        run: cd examples/hydra-nextjs && pnpm install --ignore-workspace && pnpm run build:test
+        run: cd examples/hydra-nextjs && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
         env:
           NEXT_PUBLIC_BACKEND_BASE_URL: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
       - name: Install F7 example
-        run: cd examples/hydra-vue-f7 && pnpm install --ignore-workspace
+        run: cd examples/hydra-vue-f7 && pnpm install --ignore-workspace --frozen-lockfile
       - name: Install Svelte Quick Start
-        run: cd docs/quickstart/svelte && pnpm install --ignore-workspace
+        run: cd docs/quickstart/svelte && pnpm install --ignore-workspace --frozen-lockfile
       - name: Install Astro Quick Start
-        run: cd docs/quickstart/astro && pnpm install --ignore-workspace
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-v2-${{ hashFiles('**/pnpm-lock.yaml') }}
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install --with-deps chromium firefox
-      - name: Install Playwright deps only
-        # This step sat for 3h38m on one run. The log shows apt-get update stalling
-        # mid-fetch of the Ubuntu package indexes — silent after
-        # "Get:5 …noble-security InRelease", no output until the run was cancelled.
-        # A stalled fetch, not a dpkg lock or a prompt. Retry and time-limit the
-        # acquire so it fails fast, and bound the step as a backstop.
-        timeout-minutes: 10
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99-hydra-acquire >/dev/null <<'APTCONF'
-          Acquire::Retries "3";
-          Acquire::http::Timeout "30";
-          Acquire::https::Timeout "30";
-          APTCONF
-          pnpm exec playwright install-deps chromium firefox
+        run: cd docs/quickstart/astro && pnpm install --ignore-workspace --frozen-lockfile
       - name: Start servers
         run: |
+          # The servers outlive this step, but its stdout does not: in a container
+          # the step is a `docker exec` whose pipe closes when it ends, and the
+          # next line a server logs kills it with EPIPE. Log to a file instead.
+          exec > "$RUNNER_TEMP/servers.log" 2>&1
           node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/hydra-nextjs && pnpm run start:test &
           cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} npx vite --port ${{ env.HYDRA_F7_PORT }} --strictPort --config vite.config.test.mjs &
-          npx vite --port ${{ env.HYDRA_VANILLA_DOC_PORT }} --strictPort --config docs/quickstart/vanilla/vite.config.mjs &
-          cd docs/quickstart/svelte && npx vite --port ${{ env.HYDRA_SVELTE_QS_PORT }} --strictPort &
-          cd docs/quickstart/astro && npx astro dev --port ${{ env.HYDRA_ASTRO_QS_PORT }} &
+          # The quick starts listen on every interface (--host, as the F7 app's
+          # config does): in the container `localhost` is both 127.0.0.1 and ::1,
+          # a dev server bound to "localhost" takes one of them, and Node's fetch
+          # (the tests' reachability probe) can pick the other: ECONNREFUSED.
+          npx vite --host --port ${{ env.HYDRA_VANILLA_DOC_PORT }} --strictPort --config docs/quickstart/vanilla/vite.config.mjs &
+          cd docs/quickstart/svelte && npx vite --host --port ${{ env.HYDRA_SVELTE_QS_PORT }} --strictPort &
+          cd docs/quickstart/astro && npx astro dev --host --port ${{ env.HYDRA_ASTRO_QS_PORT }} &
           sleep 3
       - name: Wait for servers
         run: |
@@ -809,6 +817,9 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
+          TRACE: '1'
           SKIP_VOLTO_CHECK: true
           # The editor screenshots the docs embed are git-ignored and generated
           # in the PARENT repo's deploy now, not recorded here — so they are
@@ -825,6 +836,9 @@ jobs:
           # two, and nominates nextjs.
           FRONTEND_URL: http://localhost:${{ env.HYDRA_NEXTJS_PORT }}
           MOCK_PARENT_URL: http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }}/mock-parent.html
+      - name: Server logs
+        if: failure()
+        run: cat "$RUNNER_TEMP/servers.log"
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -833,4 +847,15 @@ jobs:
           path: |
             playwright-report/
             test-results/**/*.png
+          retention-days: 7
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-nextjs-f7
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
           retention-days: 7

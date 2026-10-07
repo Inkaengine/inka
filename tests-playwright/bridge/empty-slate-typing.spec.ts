@@ -234,6 +234,87 @@ test.describe('Empty slate typing', () => {
     }
   });
 
+  test('text typed after the browser placeholder <br> replaces it', async ({ helper, page }) => {
+    // A select-all delete leaves the browser's placeholder: `<p><br></p>`. In
+    // the CI container the caret then sometimes sat in a text node AFTER it
+    // (the frontend's re-render or a caret target put one there), the browser
+    // typed after the placeholder instead of replacing it, and the line gained
+    // a break nobody typed: the admin got "\nFresh" and the reader saw an empty
+    // line above "Fresh". Build that state directly, so the test doesn't depend
+    // on the timing that produced it.
+    const field = await helper.getEditorLocator('mock-block-1', 'value');
+    await field.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('Backspace');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('');
+    await field.evaluate((el) => {
+      const line = el.querySelector('[data-node-id]') ?? el;
+      // Some frontends' lines already hold the browser's placeholder after the
+      // delete; add one only where there isn't one, so there is exactly one.
+      if (!line.querySelector('br')) line.insertBefore(document.createElement('br'), line.firstChild);
+      const br = line.querySelector('br')!;
+      // The caret goes where the failures had it: in a zero-width caret target
+      // AFTER the <br> — the frontend's if it drew one there, else one like the
+      // bridge parks (U+FEFF). Never an empty text node: the browser doesn't
+      // keep a caret in one, so no user can type there.
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      let target: Text | null = null;
+      let t;
+      while ((t = walker.nextNode())) {
+        if (br.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING && /^[\u200B\uFEFF]+$/.test(t.textContent || '')) {
+          target = t as Text;
+          break;
+        }
+      }
+      if (!target) {
+        target = document.createTextNode('\uFEFF');
+        br.after(target);
+      }
+      const range = document.createRange();
+      range.setStart(target, target.length);
+      range.collapse(true);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await page.keyboard.type('Fresh');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('Fresh');
+    expect(await field.evaluate((el) => el.querySelectorAll('br').length), 'the placeholder <br> is gone').toBe(0);
+  });
+
+  test("text typed while the caret is in the bridge's caret node, beside the frontend's, shows once", async ({
+    helper,
+    page,
+  }) => {
+    // After a clear the frontend draws its own zero-width caret target (U+200B,
+    // from the render data). In the CI container the caret was sometimes still
+    // in a caret node the bridge had made (U+FEFF) before that render: the
+    // typing went into the bridge's node, the frontend drew the text again in
+    // its own, and the admin got "FreshFresh". Build that state directly.
+    const field = await helper.getEditorLocator('mock-block-1', 'value');
+    await field.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('Backspace');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('');
+    await field.evaluate((el) => {
+      const line = el.querySelector('[data-node-id]') ?? el;
+      const bridgeNode = document.createTextNode('\uFEFF');
+      line.insertBefore(bridgeNode, line.firstChild);
+      const range = document.createRange();
+      range.setStart(bridgeNode, 1);
+      range.collapse(true);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await page.keyboard.type('Fresh');
+    await expect.poll(() => adminText(page, 'mock-block-1')).toBe('Fresh');
+    await sendAdminUpdate(page, helper, 'mock-empty-slate', 'Changed by the admin');
+    expect(await visibleText(field)).toBe('Fresh');
+    const nodes = await textNodesWith(field, 'Fresh');
+    expect(nodes.found, `text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+  });
+
   test('bold typed into an empty slate shows once after the next FORM_DATA', async ({
     helper,
     page,

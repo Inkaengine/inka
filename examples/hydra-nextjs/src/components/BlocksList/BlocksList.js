@@ -405,7 +405,7 @@ function ListingBlock({ id, block, data, apiUrl, contextPath }) {
           React duplicates or omits children. @id is the content each item is.
           The uid still goes to `id`, which is what the bridge reads. */}
       {items.map((item, index) => (
-        <Block key={item["@id"] ?? `${item["@uid"] ?? "item"}-${index}`} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+        <Block key={item["@id"] ?? `${item["@uid"] ?? "item"}-${index}`} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} inListing />
       ))}
       <Paging paging={paging} buildUrl={buildPagingUrl} onNavigate={handleNavigate} />
     </>
@@ -603,6 +603,13 @@ function FormBlock({ id, block, data, apiUrl, contextPath }) {
   const [formValues, setFormValues] = useState({});
   const [formErrors, setFormErrors] = useState({});
   const [success, setSuccess] = useState(false);
+  // collective.volto.formsupport's honeypot: a field no person fills in. Its
+  // name comes from the backend (`captcha_props.id`, collective.honeypot's
+  // HONEYPOT_FIELD — "protected_1" by default), and the backend refuses the
+  // submission unless the `captcha` it gets says the field stayed empty.
+  const [honeypot, setHoneypot] = useState("");
+  const honeypotId =
+    block.captcha === "honeypot" ? block.captcha_props?.id || "protected_1" : null;
 
   const getFormValue = (fieldId) => formValues[fieldId] ?? "";
 
@@ -665,7 +672,13 @@ function FormBlock({ id, block, data, apiUrl, contextPath }) {
     const response = await fetch(`${apiUrl}${cp}/@submit-form`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ block_id: id, data: submitData }),
+      body: JSON.stringify({
+        block_id: id,
+        data: submitData,
+        ...(honeypotId
+          ? { captcha: { provider: "honeypot", token: "", value: honeypot } }
+          : {}),
+      }),
     });
     if (response.ok || response.status === 204) {
       setSuccess(true);
@@ -854,6 +867,20 @@ function FormBlock({ id, block, data, apiUrl, contextPath }) {
               )}
             </div>
           ))}
+          {honeypotId && (
+            <div hidden aria-hidden="true">
+              <label htmlFor={`${id}-${honeypotId}`}>Leave this field empty</label>
+              <input
+                type="text"
+                id={`${id}-${honeypotId}`}
+                name={honeypotId}
+                tabIndex={-1}
+                autoComplete="off"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+              />
+            </div>
+          )}
           <div style={{ display: "flex", gap: "0.75rem", paddingTop: "0.5rem" }}>
             <button type="submit" className="form-submit" data-edit-text="submit_label">
               {block.submit_label || "Submit"}
@@ -1125,17 +1152,16 @@ function SearchBlock({ id, block, data, apiUrl, contextPath }) {
 }
 
 /**
- * Stand-in for an image block that has no image yet: a transparent-grey SVG with
- * real intrinsic dimensions, so it lays out like the image it will become and
- * gives the author something to click. Kept at module scope — a data URI rebuilt
- * per render would change identity and churn the DOM.
+ * The image slot of a listing result that has no image: a neutral grey SVG with
+ * real intrinsic dimensions, so the cards line up. Kept at module scope — a
+ * data URI rebuilt per render would change identity and churn the DOM.
  */
-const IMAGE_BLOCK_PLACEHOLDER =
+const LISTING_IMAGE_SLOT =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect width='400' height='300' fill='%23e5e7eb'/%3E%3C/svg%3E";
 
 // ─── Block Component ─────────────────────────────────────────────────────────
 
-function Block({ block, id, data, apiUrl, contextPath }) {
+function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
   const type = block["@type"];
   const expand = useExpand();
 
@@ -1183,13 +1209,13 @@ function Block({ block, id, data, apiUrl, contextPath }) {
     // ── Image ──
     case "image": {
       const imgProps = imageProps(block, apiUrl);
-      // An image block with no image still renders one — a grey placeholder at
-      // the shape a real image would take. This block exists to hold an image,
-      // so the author has to be able to click it to set one, and a block that
-      // renders nothing has no box to click and no toolbar to reveal from.
-      // That is NOT the always-render hack #296 forbids: that rule is about
-      // OPTIONAL fields (a hero's image), which stay absent until revealed.
-      const src = imgProps.url || IMAGE_BLOCK_PLACEHOLDER;
+      // No image ⇒ no element (#296). `url` is required, so while editing the
+      // bridge hands an empty one a stand-in image to click (as the reveal
+      // toggle does for an optional field); a visitor sees nothing. A LISTING
+      // result is different: one with no image keeps its image slot so the
+      // cards line up (as the Nuxt frontend's isInListing placeholder does).
+      const src = imgProps.url || (inListing ? LISTING_IMAGE_SLOT : null);
+      if (!src) return <div data-block-uid={id} />;
       const href = getUrl(block.href, apiUrl);
       return (
         <div
@@ -1239,15 +1265,14 @@ function Block({ block, id, data, apiUrl, contextPath }) {
     case "hero":
       return (
         <div data-block-uid={id} className="hero-block">
-          {block.image ? (
+          {/* No image ⇒ no element (#296); the reveal toggle adds one while editing. */}
+          {block.image && (
             <img
               className="hero-image"
               data-edit-media="image"
               src={imageProps(block.image, apiUrl).url || ""}
               alt="Hero image"
             />
-          ) : (
-            <div className="hero-image hero-placeholder" data-edit-media="image" />
           )}
           <h1 className="hero-heading" data-edit-text="heading">
             {block.heading}
@@ -1287,7 +1312,8 @@ function Block({ block, id, data, apiUrl, contextPath }) {
           data-block-readonly={block.overwrite ? undefined : ""}
           className="teaser-block"
         >
-          {teaserImgProps?.url ? (
+          {/* No image ⇒ no element (#296); the reveal toggle adds one while editing. */}
+          {teaserImgProps?.url && (
             <a href={teaserHref} data-edit-link="href">
               <img
                 data-edit-media="preview_image"
@@ -1296,14 +1322,6 @@ function Block({ block, id, data, apiUrl, contextPath }) {
                 className="teaser-image"
               />
             </a>
-          ) : (
-            <div
-              data-edit-media="preview_image"
-              className="teaser-image-placeholder"
-              style={{ height: "200px", backgroundColor: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-            >
-              <span style={{ color: "#9ca3af" }}>Click to add image</span>
-            </div>
           )}
           <div className="teaser-content">
             {teaserTitle && (

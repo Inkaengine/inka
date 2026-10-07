@@ -783,7 +783,22 @@ export async function expandListingBlocks(inputItems, options = {}) {
       const total = listingTotals[blockId];
       const blockStart = globalPos;
 
-      if (listingResults[blockId]) {
+      if (
+        total === 0 &&
+        _isEditMode() &&
+        blockStart >= paging.start &&
+        blockStart < paging.start + paging.size
+      ) {
+        // No results, while editing: the author still needs something with the
+        // listing's uid to click — to select it and fix its query. One `empty`
+        // placeholder (which frontends already draw as a clickable box in any
+        // container), carrying the listing's uid; the bridge doesn't treat it as
+        // an add-block slot because the stored block is still the listing.
+        // Published, nothing. Not a result, so paging doesn't count it.
+        // Decided by the TOTAL: listingResults can be an empty array (truthy)
+        // when static blocks come before the listing in the same window.
+        items.push({ '@uid': blockId, '@type': 'empty', readOnly: true });
+      } else if (listingResults[blockId]) {
         const itemType = block[itemTypeField] || defaultItemType;
         const fieldMapping = block.fieldMapping || {};
 
@@ -836,7 +851,10 @@ export async function expandListingBlocks(inputItems, options = {}) {
             const targetType =
               typeof mapping === 'object' ? mapping?.type : undefined;
             if (!targetField) continue;
-            if (result[sourceField] === undefined) continue;
+            // A brain carries null for a field the page never set (an
+            // unpublished page's `effective`): no value, like a missing field.
+            // Converted, it became the text "null".
+            if (result[sourceField] === undefined || result[sourceField] === null) continue;
 
             itemBlock[targetField] = convertFieldValue(
               result[sourceField],
@@ -3182,6 +3200,19 @@ export function isBlockInEditedTemplate(blockData, templateEditMode) {
   const iid = blockData?.templateInstanceId;
   if (!iid) return false;
   return unlockedTemplateIds(templateEditMode).includes(iid);
+}
+
+/**
+ * Is an empty required field filled through the admin's block-level STARTER UI
+ * (a "pick a target" overlay) rather than an element on the canvas?
+ *
+ * Today that is a required link (object_browser in link mode, a teaser's
+ * `href`). The admin draws the starter UI for these, and the bridge leaves them
+ * out when it shows empty required fields on the canvas — one answer, so the
+ * two never offer both, or neither.
+ */
+export function isStarterUiField(fieldDef) {
+  return fieldDef?.widget === 'object_browser' && fieldDef?.mode === 'link';
 }
 
 /**

@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { validate, checkIntegrity, checkBlockSchemas } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom } = require('./plone-content-validator.cjs');
 
 /**
  * Build a minimal plone.exportimport content tree under a temp dir.
@@ -1102,6 +1102,42 @@ describe('plone-content-validator checkIntegrity()', () => {
     );
   });
 
+  it('reports a block id used by two blocks on one page', () => {
+    // Every rows' value block was "v1" (r1/v1, r2/v1, r3/v1): each container's
+    // own layout resolves, so the layout checks pass, but the editor maps a
+    // block id to ONE block, so only one of them could be selected or edited.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a', UID: 'pageauid1234567',
+        parent: { '@id': '/' },
+        blocks: {
+          r1: { '@type': 'row', blocks: { v1: { '@type': 'slate' } }, blocks_layout: { items: ['v1'] } },
+          r2: { '@type': 'row', blocks: { v1: { '@type': 'slate' } }, blocks_layout: { items: ['v1'] } },
+        },
+        blocks_layout: { items: ['r1', 'r2'] },
+      },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('block id v1 is used twice (in r1 and r2)')),
+      r.errors.join('\n'),
+    );
+  });
+
+  it('accepts the same block id on two different pages', () => {
+    const page = (n) => ({
+      '@id': `/page-${n}`, '@type': 'Document', id: `page-${n}`, UID: `page${n}uid1234567`,
+      parent: { '@id': '/' },
+      blocks: { v1: { '@type': 'slate' } },
+      blocks_layout: { items: ['v1'] },
+    });
+    const { root, contentDir } = buildFixture({ pageA: page('a'), pageB: page('b') });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.deepEqual(r.errors, []);
+  });
+
   it('resolves valid resolveuid refs', () => {
     // UID must be hex ≥ 10 chars to match the /resolveuid/[a-f0-9]{10,}/ regex
     const uid = 'abcdef1234567890';
@@ -1376,3 +1412,65 @@ describe('checkIntegrity — every list item has its own id', () => {
     assert.deepEqual(idErrors(r), []);
   });
 });
+
+// A site's block schemas, as the site stores them (one JSON file the frontend's
+// config also loads) -- the ONE source both checks read: what fields a block
+// declares, and what shape each field's value must have.
+describe('validating against a site\'s schemas', () => {
+  const SCHEMAS = {
+    card: {
+      blockSchema: { properties: { title: { type: 'string' }, body: { widget: 'slate' } } },
+    },
+    grid: {
+      blockSchema: {
+        properties: {
+          headline: { type: 'string' },
+          cells: { widget: 'object_list', idField: 'key', typeField: '@type' },
+        },
+      },
+      schemaEnhancer: { inheritSchemaFrom: { defaultsField: 'itemDefaults' } },
+    },
+  };
+  const page = (blocks) => [{ rel: 'content/x', data: { blocks } }];
+
+  it('derives the field map from the schemas: fields, defaults prefix, identity fields', () => {
+    const map = fieldMapFromSchemas(SCHEMAS);
+    assert.deepEqual(map.blocks.card, { fields: ['title', 'body'] });
+    assert.deepEqual(map.blocks.grid, { fields: ['headline', 'cells'], defaultsPrefix: 'itemDefaults' });
+    assert.deepEqual([...map.identityFields].sort(), ['@id', '@type', 'key']);
+  });
+
+  it('leaves the fields of a block the frontend only adds rules to to its own schema', () => {
+    // An entry with no blockSchema keeps the admin's built-in schema
+    // (mergeFrontendBlock: a key not given is not replaced). This map cannot
+    // see that schema, so it must not call the block's fields undeclared —
+    // nor the block unknown.
+    const schemas = {
+      ...SCHEMAS,
+      slate: { schemaEnhancer: { fieldRules: { value: [{ when: {}, warning: 'w' }] } } },
+    };
+    const r = checkBlockSchemas(
+      page({ b1: { '@type': 'slate', value: [], anchor: 'intro' } }),
+      fieldMapFromSchemas(schemas),
+    );
+    assert.deepEqual(r.errors, []);
+    assert.deepEqual(r.warnings, []);
+  });
+
+  it('reports a field the schemas do not declare', () => {
+    const r = checkBlockSchemas(page({ b1: { '@type': 'card', title: 'T', url: '/x' } }), fieldMapFromSchemas(SCHEMAS));
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /card\.url/);
+  });
+
+  it('checks a site block\'s field values against its schema, not just its field names', () => {
+    // A slate field holding a {value:[...]} wrapper has the right NAME; only the
+    // schema says it must be a bare array of nodes.
+    const r = checkIntegrity(
+      page({ b1: { '@type': 'card', title: 'T', body: { value: [{ type: 'p', children: [{ text: 'x' }] }] } } }),
+      { schemaFor: schemaForFrom(SCHEMAS) },
+    );
+    assert.ok(r.errors.some((e) => /card\) field "body" is widget:slate/.test(e)), r.errors.join('\n'));
+  });
+});
+

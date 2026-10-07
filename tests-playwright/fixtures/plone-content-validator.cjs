@@ -886,11 +886,28 @@ function imageDimensions(file) {
       }
     }
   }
+  // A block id names ONE block on its page: the editor maps an id to a block, so
+  // of two blocks sharing an id only one can be selected or edited. Each
+  // container's own layout can resolve perfectly (every summary-list row's value
+  // block was "v1"), so the layout checks above can't see it.
+  function checkUniqueIds(rel, blocks, parent, firstIn) {
+    for (const [bid, block] of Object.entries(blocks || {})) {
+      if (!block || typeof block !== 'object') continue;
+      const where = parent ?? 'the page';
+      if (firstIn.has(bid)) {
+        errors.push(`  ${rel}: block id ${bid} is used twice (in ${firstIn.get(bid)} and ${where}) — a block id must be unique on its page, or the editor can select and edit only one of them`);
+      } else {
+        firstIn.set(bid, where);
+      }
+      if (block.blocks && typeof block.blocks === 'object') checkUniqueIds(rel, block.blocks, bid, firstIn);
+    }
+  }
   for (const { rel, data } of items) {
     checkLayout(rel, null, data);  // page-level blocks_layout
     for (const [bid, block] of walkBlocks(data.blocks)) {
       if (block.blocks && typeof block.blocks === 'object') checkLayout(rel, bid, block);
     }
+    checkUniqueIds(rel, data.blocks, null, new Map());
   }
 
   // Parent containers (metadata cross-check for completeness). Uses the `@id`
@@ -965,7 +982,10 @@ function checkBlockSchemas(source, fieldMap) {
       // `{ fields, defaultsPrefix }`, or a bare array from an older map.
       const declared = Array.isArray(entry) ? entry : entry && entry.fields;
       const defaultsPrefix = Array.isArray(entry) ? null : entry && entry.defaultsPrefix;
-      if (!declared) {
+      if (entry && entry.builtIn) {
+        // Its fields are the admin's built-in schema's (fieldMapFromSchemas):
+        // not checked here. Its children still are, below.
+      } else if (!declared) {
         if (!unknown.has(type)) {
           unknown.add(type);
           stats.unknownTypes += 1;
@@ -1020,6 +1040,166 @@ function checkBlockSchemas(source, fieldMap) {
   return { errors, warnings, stats };
 }
 
+/**
+ * Everything in the content the editor would refuse or rewrite.
+ *
+ * The schemas already say where a block may go — a region's `allowedBlocks`,
+ * an ancestor's `disallowDescendantBlocks`, a region's `maxLength` — and the
+ * editor enforces them on every add, drag and convert. Content that reached
+ * Plone some other way (an import, a conversion, a fixture) was never held to
+ * them: checkBlockSchemas only asks whether a block's FIELDS are declared, so
+ * a block written into a container that does not allow it passed validation.
+ *
+ * It asks buildBlockPathMap, the module the editor itself reads, rather than
+ * re-deriving the rules: each block's `allowedSiblingTypes` (its region's
+ * allowedBlocks less anything an ancestor disallows), `maxSiblings` and
+ * `emptyRequiredFields`, and its region's slate rules run through the same
+ * normalizeSlateFields the editor applies on load. A region that names no
+ * allowedBlocks (`allowedSiblingTypesDerived`) restricts nothing, so nothing
+ * in it is reported.
+ *
+ * `schemas` is the site's `{ type: { blockSchema, ... } }` with its page
+ * regions under `_page` — the same file `--schemas` reads. `exemptSlots`
+ * names template slots whose blocks are placed deliberately where the editor
+ * would not put them (documentation examples): their placement and maxLength
+ * are not checked, every other rule is.
+ */
+async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
+  const exempt = new Set(exemptSlots);
+  const hydraJs = (file) =>
+    import(
+      require('url').pathToFileURL(
+        require('path').join(__dirname, '..', '..', 'packages', 'hydra-js', file),
+      ).href
+    );
+  const { buildBlockPathMap } = await hydraJs('buildBlockPathMap.js');
+  const { normalizeSlateFields } = await hydraJs('slateStyles.js');
+  const { createFieldRulesEnhancer } = await hydraJs('fieldRules.js');
+  // A schemas file carries schemaEnhancer RECIPES (plain data), and
+  // buildBlockPathMap runs only enhancer FUNCTIONS — in the admin, blockSync
+  // turns recipes into functions at init. Do the same for `fieldRules`, with
+  // the same module, so a rule means here exactly what it means in the editor.
+  const withRules = Object.fromEntries(
+    Object.entries(schemas).map(([type, def]) => {
+      const recipe = def && def.schemaEnhancer;
+      if (!recipe || typeof recipe === 'function' || !recipe.fieldRules) return [type, def];
+      return [type, { ...def, schemaEnhancer: createFieldRulesEnhancer(recipe.fieldRules) }];
+    }),
+  );
+  const onDisk = typeof source === 'string';
+  const errors = [];
+  const warnings = [];
+  const stats = {
+    items: 0, blocks: 0, misplaced: 0, overfull: 0, emptyRequired: 0, restyled: 0,
+    ruleErrors: 0, ruleWarnings: 0,
+  };
+  // A LAYOUT document holds the blocks of the region that names it in
+  // `allowedLayouts` (a site footer's blocks are the footer region's, not the
+  // page content's), so it is held to that region's rules: its own `items` are
+  // checked with that region's definition in place of the page's.
+  const pageSchema = (withRules._page && withRules._page.blockSchema) || { properties: {} };
+  const layoutRegion = new Map(); // layout path -> region field definition
+  for (const def of Object.values(pageSchema.properties || {})) {
+    for (const layout of (def && def.allowedLayouts) || []) {
+      if (typeof layout === 'string') layoutRegion.set(layout.replace(/\/+$/, ''), def);
+    }
+  }
+  const schemasFor = (data) => {
+    const id = typeof data['@id'] === 'string' ? data['@id'].replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '') : '';
+    const region = layoutRegion.get(id);
+    if (!region) return withRules;
+    return {
+      ...withRules,
+      _page: { ...withRules._page, blockSchema: { ...pageSchema, properties: { items: region } } },
+    };
+  };
+  for (const { rel, data } of onDisk ? walkData(source) : source) {
+    stats.items += 1;
+    if (!data || !data.blocks) continue;
+    const pathMap = buildBlockPathMap(data, schemasFor(data));
+    const regionCounts = new Map(); // parent + region -> [counted blocks, max, where]
+    for (const [uid, info] of Object.entries(pathMap)) {
+      if (uid.startsWith('_') || !info || typeof info !== 'object' || !info.blockType) continue;
+      // A template instance's VIRTUAL container (no path: it groups the
+      // instance's blocks in the editor, it is not content) — its blocks are
+      // checked where they actually live.
+      if (!Array.isArray(info.path)) continue;
+      stats.blocks += 1;
+      const blockData = info.path.reduce((node, key) => (node == null ? node : node[key]), data);
+      // A block in an exempt template slot is deliberately placed where the
+      // editor would not put it (an example on a documentation page): its
+      // PLACEMENT is not checked, and it does not count against maxLength.
+      // Every other rule below still applies to it.
+      const placementExempt = Boolean(blockData && exempt.has(blockData.slotId));
+      const where = info.parentId === '_page'
+        ? `the page's ${info.region}`
+        : `${pathMap[info.parentId]?.blockType ?? info.parentId}.${info.region}`;
+      if (
+        !placementExempt &&
+        !info.allowedSiblingTypesDerived &&
+        Array.isArray(info.allowedSiblingTypes) &&
+        !info.allowedSiblingTypes.includes(info.blockType)
+      ) {
+        stats.misplaced += 1;
+        errors.push(
+          `  ${rel}: a "${info.blockType}" block (${uid}) is in ${where}, which ` +
+            `does not allow it there — the editor would refuse to put it there`,
+        );
+      }
+      // A required field left empty: the editor will not save the block.
+      for (const { fieldName } of info.emptyRequiredFields || []) {
+        stats.emptyRequired += 1;
+        errors.push(
+          `  ${rel}: a "${info.blockType}" block (${uid}) has no ${fieldName}, ` +
+            `which its schema requires — the editor will not save it`,
+        );
+      }
+      // A text style the region does not allow: the editor rewrites it on load,
+      // so the stored content is not what anyone will see or save.
+      const schema = info._schemaRef ? pathMap._schemas[info._schemaRef] : null;
+      if (info.slateRules && schema) {
+        const { changes } = normalizeSlateFields(blockData, schema, info.slateRules);
+        for (const c of changes) {
+          stats.restyled += 1;
+          errors.push(
+            `  ${rel}: a "${info.blockType}" block (${uid}) uses "${c.from}" in ${c.field}, ` +
+              `which ${where} does not allow — the editor rewrites it ` +
+              `${c.to ? `as "${c.to}"` : 'away'} on load`,
+          );
+        }
+      }
+      // A fieldRules `error` / `warning` that fired on this block's data: the
+      // resolved schema carries it on the field, as the sidebar shows it.
+      for (const [field, def] of Object.entries((schema && schema.properties) || {})) {
+        if (def && def.hydraRuleError) {
+          stats.ruleErrors += 1;
+          errors.push(`  ${rel}: a "${info.blockType}" block (${uid}), ${field}: ${def.hydraRuleError}`);
+        }
+        if (def && def.hydraRuleWarning) {
+          stats.ruleWarnings += 1;
+          warnings.push(`  ${rel}: a "${info.blockType}" block (${uid}), ${field}: ${def.hydraRuleWarning}`);
+        }
+      }
+      if (typeof info.maxSiblings === 'number' && !placementExempt) {
+        // Per container INSTANCE: two blocks of the same type each have their
+        // own region, and its own limit.
+        const key = `${info.parentId}\u0000${info.region}`;
+        const [count] = regionCounts.get(key) || [0];
+        regionCounts.set(key, [count + 1, info.maxSiblings, where]);
+      }
+    }
+    for (const [count, max, where] of regionCounts.values()) {
+      if (count <= max) continue;
+      stats.overfull += 1;
+      errors.push(
+        `  ${rel}: ${where} holds ${count} blocks, but takes at most ${max} — ` +
+          `the editor would refuse to add the extra ones`,
+      );
+    }
+  }
+  return { errors, warnings, stats };
+}
+
 function formatReport(title, result) {
   const lines = [];
   if (title === 'schema') {
@@ -1031,6 +1211,13 @@ function formatReport(title, result) {
         (result.stats.unknownTypes
           ? `, ${result.stats.unknownTypes} block type(s) not in the field map`
           : ''),
+    );
+  } else if (title === 'rules') {
+    lines.push(`Content: ${result.stats.items} items, ${result.stats.blocks} blocks`);
+    lines.push(
+      `Rules:   ${result.stats.misplaced} misplaced, ${result.stats.overfull} over maxLength, ` +
+        `${result.stats.emptyRequired} required empty, ${result.stats.restyled} disallowed styles, ` +
+        `${result.stats.ruleErrors} rule errors, ${result.stats.ruleWarnings} rule warnings`,
     );
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
@@ -1059,4 +1246,56 @@ function formatReport(title, result) {
   return lines.join('\n');
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, formatReport };
+/**
+ * A site's block schemas -- `{ blockType: { blockSchema, schemaEnhancer? } }`,
+ * the JSON its frontend config loads -- read for the two questions content is
+ * checked against: which fields a block declares (checkBlockSchemas) and what
+ * shape each field's value has (checkIntegrity's `schemaFor`). One source; no
+ * map derived from it and stored.
+ */
+/** Load a site's schemas: a JS module (`.mjs`/`.js`, its default export) --
+ *  plain data the frontend config also imports, so shared pieces are written
+ *  once -- or a `.json` file. */
+async function loadSchemas(file) {
+  const abs = require('path').resolve(file);
+  if (abs.endsWith('.json')) return JSON.parse(require('fs').readFileSync(abs, 'utf8'));
+  const mod = await import(require('url').pathToFileURL(abs).href);
+  return mod.default ?? mod;
+}
+
+function schemaForFrom(schemas) {
+  return (type) => schemas[type]?.blockSchema ?? null;
+}
+
+/** The field map checkBlockSchemas reads, derived from the schemas: each
+ *  block's declared fields (its schema properties), the prefix its per-item
+ *  defaults are stored under (`<defaultsField>_<field>`), and the keys a
+ *  container stamps on its children (every object_list's idField/typeField). */
+function fieldMapFromSchemas(schemas) {
+  const blocks = {};
+  const identityFields = new Set(['@id', '@type']);
+  const stamps = (node) => {
+    if (Array.isArray(node)) { node.forEach(stamps); return; }
+    if (!node || typeof node !== 'object') return;
+    for (const key of ['idField', 'typeField']) if (typeof node[key] === 'string') identityFields.add(node[key]);
+    Object.values(node).forEach(stamps);
+  };
+  for (const [type, def] of Object.entries(schemas)) {
+    // No blockSchema: the frontend adds rules or an enhancer to a block the
+    // admin already provides, and the admin's schema stays (mergeFrontendBlock
+    // replaces only the keys given). Its fields are that schema's, which this
+    // map cannot see — so they are not checked here, and the block is known.
+    if (!def?.blockSchema) {
+      blocks[type] = { builtIn: true };
+      continue;
+    }
+    const entry = { fields: Object.keys(def.blockSchema.properties ?? {}) };
+    const defaultsField = def?.schemaEnhancer?.inheritSchemaFrom?.defaultsField;
+    if (defaultsField) entry.defaultsPrefix = defaultsField;
+    blocks[type] = entry;
+    stamps(def?.blockSchema);
+  }
+  return { blocks, identityFields: [...identityFields] };
+}
+
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };

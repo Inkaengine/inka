@@ -529,7 +529,7 @@ test.describe('Editor Guide screenshots: translations', () => {
 
     const marker = page
       .locator('.parent-block-section')
-      .filter({ hasText: 'GridBlock' })
+      .filter({ has: page.locator('.nav-title', { hasText: /^Grid$/ }) })
       .locator('.nested-status[data-nested-status="untranslated"]');
     await expect(marker.first()).toHaveAttribute('data-nested-count', '2', { timeout: 10000 });
 

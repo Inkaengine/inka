@@ -3,28 +3,37 @@
  * CLI for the plone-content-validator. Usage:
  *   plone-content validate [<content-dir>]   — export-shape validation
  *   plone-content check    [<content-dir>]   — graph integrity check
- *   plone-content schema   [<content-dir>] --fields <block-fields.json>
- *                                            — every block field no schema declares
- *   plone-content all      [<content-dir>]   — validate + check (+ schema with --fields)
+ *   plone-content schema   [<content-dir>] --schemas <schemas.json>
+ *                                            — every block field no schema declares, and
+ *                                              everything the editor would refuse or rewrite
+ *   plone-content all      [<content-dir>]   — validate + check (+ schema with --schemas)
+ *   --exempt-slot <slotId>                    — (repeatable) don't check the PLACEMENT of
+ *                                              blocks in that template slot
+ *   --json <report.json>                     — also write the report as data:
+ *                                              { <check>: { errors, warnings, stats } }
  *   plone-content served                     — the whole site the mock API serves for
  *                                              CONTENT_MOUNTS (every mount together), the
  *                                              same check that stops the mock starting
  *
- * <content-dir> defaults to cwd/content. `--fields` takes the map a frontend
- * emits from its own block schemas: { blockType: ["field", ...] }.
+ * <content-dir> defaults to cwd/content. `--schemas` takes the site's block
+ * schemas -- the JS module (default export) or JSON file its frontend config
+ * loads ({ blockType: { blockSchema,
+ * schemaEnhancer? } }): `check` then also checks each field's value against its
+ * schema, and `schema` reports fields a block doesn't declare. (`--fields`, a
+ * names-only map, still works until every frontend ships schemas.)
  */
 'use strict';
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, formatReport } = require(
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport } = require(
   path.join(__dirname, '..', 'tests-playwright', 'fixtures', 'plone-content-validator.cjs'),
 );
 
 function usage() {
   console.error(
     'Usage: plone-content <validate|check|schema|all> [<content-dir>] ' +
-      '[--fields <block-fields.json>]\n' +
+      '[--schemas <schemas.json>] [--exempt-slot <slot>]... [--json <report.json>]\n' +
       '       plone-content served   (reads CONTENT_MOUNTS)',
   );
   process.exit(2);
@@ -44,38 +53,71 @@ if (argv[0] === 'served') {
   return;
 }
 
-const fieldsIndex = argv.indexOf('--fields');
-const fieldsPath = fieldsIndex === -1 ? null : argv[fieldsIndex + 1];
-if (fieldsIndex !== -1) argv.splice(fieldsIndex, 2);
+const takeFlag = (name) => {
+  const i = argv.indexOf(name);
+  if (i === -1) return null;
+  const value = argv[i + 1];
+  argv.splice(i, 2);
+  return value;
+};
+const schemasPath = takeFlag('--schemas');
+const fieldsPath = takeFlag('--fields');
+// The report as data — { <check>: { errors, warnings, stats } } for each
+// check run — for a program that acts on it rather than a person reading it.
+const jsonPath = takeFlag('--json');
+// Template slots whose blocks are placed deliberately where the editor would
+// not put them (a documentation page's examples). Repeatable.
+const exemptSlots = [];
+for (let slot = takeFlag('--exempt-slot'); slot; slot = takeFlag('--exempt-slot')) exemptSlots.push(slot);
+
+(async () => {
+const schemas = schemasPath ? await loadSchemas(schemasPath) : null;
 
 const [cmd, dirArg] = argv;
-if (!cmd || !['validate', 'check', 'schema', 'all'].includes(cmd)) usage();
-if (cmd === 'schema' && !fieldsPath) {
-  console.error('schema needs --fields <block-fields.json>');
+// Anything left over is a flag this CLI does not know: ignoring it would run a
+// different check from the one asked for.
+if (!cmd || !['validate', 'check', 'schema', 'all'].includes(cmd) || argv.length > 2) usage();
+if (cmd === 'schema' && !schemas && !fieldsPath) {
+  console.error('schema needs --schemas <schemas.json>');
   process.exit(2);
 }
 
 const contentDir = path.resolve(dirArg || 'content');
 
 let hasErrors = false;
+const report = {};
 if (cmd === 'validate' || cmd === 'all') {
   const r = validate(contentDir);
+  report.validate = r;
   console.log(formatReport('validate', r));
   if (r.errors.length) hasErrors = true;
 }
 if (cmd === 'check' || cmd === 'all') {
   if (cmd === 'all') console.log('');
-  const r = checkIntegrity(contentDir);
+  const r = checkIntegrity(contentDir, schemas ? { schemaFor: schemaForFrom(schemas) } : {});
+  report.check = r;
   console.log(formatReport('check', r));
   if (r.errors.length) hasErrors = true;
 }
 
-if (cmd === 'schema' || (cmd === 'all' && fieldsPath)) {
+if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
   if (cmd === 'all') console.log('');
-  const fields = JSON.parse(fs.readFileSync(path.resolve(fieldsPath), 'utf8'));
+  const fields = schemas ? fieldMapFromSchemas(schemas) : JSON.parse(fs.readFileSync(path.resolve(fieldsPath), 'utf8'));
   const r = checkBlockSchemas(contentDir, fields);
+  report.schema = r;
   console.log(formatReport('schema', r));
   if (r.errors.length) hasErrors = true;
+  // The rules the editor enforces need the schemas themselves, not a names-only
+  // field map: placement, maxLength, required fields and region text styles.
+  if (schemas) {
+    console.log('');
+    const rules = await checkEditorRules(contentDir, schemas, { exemptSlots });
+    report.rules = rules;
+    console.log(formatReport('rules', rules));
+    if (rules.errors.length) hasErrors = true;
+  }
 }
 
+if (jsonPath) fs.writeFileSync(path.resolve(jsonPath), `${JSON.stringify(report, null, 2)}\n`);
 process.exit(hasErrors ? 1 : 0);
+})();

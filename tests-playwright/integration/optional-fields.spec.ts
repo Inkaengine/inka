@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { URLS } from '../ports';
 
 /**
  * Issue #296 — "empty means absent" for optional block fields.
@@ -79,10 +80,132 @@ test.describe('Optional fields — empty means absent (#296)', () => {
 });
 
 /**
+ * The same contract for a teaser's image. `preview_image` is an object_browser
+ * field in image mode, a different sentinel shape from hero's string `image`.
+ * The teaser used to render a grey "Click to add image" box whenever it had no
+ * image — in view markup too, so visitors saw it on published pages.
+ */
+test.describe('Optional fields — teaser image (#296)', () => {
+  const IMAGE = '[data-edit-media="preview_image"]';
+
+  test('a teaser with no image renders no image element', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/optional-fields-page');
+
+    const iframe = helper.getIframe();
+    await expect(
+      iframe.locator(`[data-block-uid="teaser-full"] ${IMAGE}`),
+      'a teaser with an image should render it — if this fails the selector or fixture is wrong, not the feature',
+    ).toHaveCount(1);
+    await expect(
+      iframe.locator(`[data-block-uid="teaser-empty"] ${IMAGE}`),
+      'a teaser with no image must not render an image element (no "Click to add image" stand-in)',
+    ).toHaveCount(0);
+  });
+
+  test('the reveal toggle gives an empty teaser image an element to click', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/optional-fields-page');
+
+    const iframe = helper.getIframe();
+    await helper.clickBlockInIframe('teaser-empty');
+    await expect(iframe.locator(`[data-block-uid="teaser-empty"] ${IMAGE}`)).toHaveCount(0);
+
+    const toggle = page.locator('.optional-fields-toggle');
+    await expect(toggle, 'quanta toolbar should offer the reveal toggle').toBeVisible({ timeout: 5000 });
+    await toggle.click();
+
+    const revealed = iframe.locator(`[data-block-uid="teaser-empty"] ${IMAGE}`);
+    await expect(revealed, 'preview_image should be revealed after pressing the toggle').toHaveCount(1);
+    const box = await revealed.boundingBox();
+    expect(box && box.width > 0 && box.height > 0, `revealed image must be a clickable target, got ${JSON.stringify(box)}`).toBe(true);
+    // A broken <img> also has a box (the browser's broken-image icon): the reveal
+    // must hand the renderer something that actually loads.
+    const loaded = await revealed.evaluate((el) => (el.tagName === 'IMG'
+      ? { ok: el.complete && el.naturalWidth > 0, src: el.getAttribute('src') }
+      : { ok: true, src: null }));
+    expect(loaded.ok, `revealed image must load, src=${loaded.src}`).toBe(true);
+  });
+});
+
+/**
  * The reveal affordance itself. Reveal is ALWAYS EXPLICIT — no auto-reveal on
  * selection or on insert — so an all-empty block stays an empty box until the
  * editor presses the toggle.
  */
+/**
+ * A REQUIRED image behaves like a revealed field while it is empty. An image
+ * block's `url` is required: while editing, an empty one is shown without the
+ * toggle (the bridge seeds the same stand-in reveal uses), and on the published
+ * page an empty one renders nothing. The frontend draws no placeholder of its
+ * own, so visitors never see one.
+ *
+ * Neither case is a fixture: an empty required field is invalid content (the
+ * admin won't save it, block-sanity rejects it). So the editing case inserts a
+ * new image block, and the published case hands the frontend such a page the
+ * way content from outside the editor (an import, the API, an agent) would.
+ */
+test.describe('Required images — shown while empty, like a revealed field (#296)', () => {
+  const IMAGE = '[data-edit-media="url"]';
+
+  test('a new image block shows its image target without the toggle', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/optional-fields-page');
+    const iframe = helper.getIframe();
+
+    // Found by the bridge's block map, not by markup — each frontend draws it its own way.
+    const imageBlocks = () =>
+      iframe.locator('body').evaluate(() => {
+        const map = (window as any).__hydraBridge?.blockPathMap || {};
+        return Object.keys(map).filter((uid) => map[uid]?.blockType === 'image');
+      });
+    const before = await imageBlocks();
+    await helper.clickBlockInIframe('anchor-slate');
+    await helper.clickAddBlockButton();
+    await helper.selectBlockType('image');
+    await expect.poll(imageBlocks).toHaveLength(before.length + 1);
+    const added = (await imageBlocks()).find((uid) => !before.includes(uid))!;
+
+    // Nothing toggled: the empty required image is already there, and loads.
+    const target = iframe.locator(`[data-block-uid="${added}"] ${IMAGE}`);
+    await expect(target, 'an empty required image must be shown while editing').toHaveCount(1);
+    const loaded = await target.evaluate((el) => (el.tagName === 'IMG'
+      ? { ok: el.complete && el.naturalWidth > 0, src: el.getAttribute('src') }
+      : { ok: true, src: null }));
+    expect(loaded.ok, `the shown image must load, src=${loaded.src}`).toBe(true);
+  });
+
+  test('an empty image block renders nothing on the published page', async ({ page }, testInfo) => {
+    const frontend = testInfo.project.name.includes('nuxt') ? URLS.nuxt : URLS.testFrontend;
+    const path = '/_test_data/optional-fields-page';
+    const original = await (await page.request.get(`${URLS.mockApi}/++api++${path}`)).json();
+    const filled = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300'%3E%3Crect width='100%25' height='100%25' fill='%23a05050'/%3E%3C/svg%3E";
+    const page_ = {
+      ...original,
+      blocks: { ...original.blocks, 'image-empty': { '@type': 'image' }, 'image-full': { '@type': 'image', url: filled } },
+      blocks_layout: { items: [...original.blocks_layout.items, 'image-empty', 'image-full'] },
+    };
+    // Answer the frontend's own fetch of this page (with or without ++api++).
+    await page.route(
+      (url) => url.origin === URLS.mockApi && url.pathname.replace(/^\/\+\+api\+\+/, '').replace(/\/$/, '') === path,
+      (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(page_) }),
+    );
+    await page.goto(`${frontend}${path}`);
+
+    await expect(
+      page.locator('[data-block-uid="image-full"] img'),
+      'the published page should show the filled image block — if this fails the page did not render',
+    ).toHaveCount(1, { timeout: 15000 });
+    await expect(
+      page.locator('[data-block-uid="image-empty"] img'),
+      'an empty image block must render no image (no grey placeholder) for visitors',
+    ).toHaveCount(0);
+  });
+});
+
 test.describe('Optional fields — reveal toggle (#296)', () => {
   test('toggle reveals every empty inline-editable field on the selected block', async ({ page }) => {
     const helper = new AdminUIHelper(page);

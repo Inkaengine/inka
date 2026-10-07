@@ -367,10 +367,10 @@ test.describe('Inline Editing - Formatting', () => {
       expect(await helper.isActiveFormatButton('bold')).toBe(true);
     }).toPass({ timeout: 5000 });
 
-    // TODO: Flaky in CI - first character after hotkey can be lost ("Hello orld" instead of "Hello world").
-    // The system should buffer keystrokes and never miss input, but there appears to be
-    // a gap where focus is lost during hotkey processing. Needs investigation.
-    // Wait for editor focus before typing (hotkey processing may temporarily shift focus)
+    // Wait for editor focus before typing (hotkey processing may temporarily shift focus).
+    // The CI flake once noted here (text typed after the hotkey landing outside the bold)
+    // was the bridge proceeding before the frontend drew the new node — fixed in #441;
+    // the "renders slowly" test below covers it.
     await helper.waitForEditorFocus(editor);
 
     // Type "world" - this should be bold
@@ -383,6 +383,77 @@ test.describe('Inline Editing - Formatting', () => {
     // Verify the HTML structure (waitForFormattedText already verified bold contains "world")
     const html = await editor.innerHTML();
     console.log('[TEST] Final HTML:', html);
+  });
+
+  // A frontend may take longer than a moment to draw what the admin sent. The
+  // bridge used to wait ~1s (60 frames) for the new empty bold node, then
+  // "proceed anyway": the node wasn't drawn yet, so the caret couldn't go in
+  // it, fell back to where it was before, and the typed text landed outside
+  // the bold. That is the CI flake on the tests around this one (a busy runner
+  // renders slowly). Here the test frontend is made slow on purpose.
+  test('prospective formatting: Ctrl+B then type applies bold when the frontend renders slowly', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const editor = await helper.enterEditMode('block-1-uuid');
+    await helper.selectAllTextInEditor(editor);
+    await editor.pressSequentially('Hello ', { delay: 10 });
+    await helper.waitForEditorText(editor, /Hello/);
+
+    // Every re-render from here on takes 1.5s before it draws.
+    await editor.evaluate(() => {
+      const draw = (window as any).renderContent;
+      (window as any).renderContent = async (...args: unknown[]) => {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return draw(...args);
+      };
+    });
+
+    await editor.press('ControlOrMeta+b');
+    await expect(async () => {
+      expect(await helper.isActiveFormatButton('bold')).toBe(true);
+    }).toPass({ timeout: 5000 });
+    await helper.waitForEditorFocus(editor);
+
+    await editor.pressSequentially('world', { delay: 10 });
+    await helper.waitForEditorText(editor, /Hello world/, { timeout: 10000 });
+    await helper.waitForFormattedText(editor, /world/, 'bold');
+  });
+
+  // The same slow frontend, on the toggle-on-then-off path (the CI flake on
+  // "toggle on then off without typing"): with the caret left outside the new
+  // empty bold node, the second Ctrl+B didn't turn bold off.
+  test('prospective formatting: toggle on then off works when the frontend renders slowly', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const editor = await helper.enterEditMode('block-1-uuid');
+    await helper.selectAllTextInEditor(editor);
+    await editor.pressSequentially('Hello world', { delay: 10 });
+    await helper.waitForEditorText(editor, /Hello world/);
+    await helper.moveCursorToEnd(editor);
+
+    await editor.evaluate(() => {
+      const draw = (window as any).renderContent;
+      (window as any).renderContent = async (...args: unknown[]) => {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return draw(...args);
+      };
+    });
+
+    await editor.press('ControlOrMeta+b');
+    await expect(async () => {
+      expect(await helper.isActiveFormatButton('bold')).toBe(true);
+    }).toPass({ timeout: 5000 });
+    await editor.press('ControlOrMeta+b');
+    await expect(async () => {
+      expect(await helper.isActiveFormatButton('bold')).toBe(false);
+    }).toPass({ timeout: 10000 });
+    expect(await helper.getCleanTextContent(editor)).toBe('Hello world');
   });
 
   test('prospective formatting: toolbar button click then type applies bold to new text', async ({ page }) => {

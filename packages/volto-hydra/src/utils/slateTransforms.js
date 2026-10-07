@@ -8,9 +8,18 @@
  * Related: GitHub Issue #147 - formatting can result in removing text in slate
  */
 
-import { Editor, Transforms, Element, Text } from 'slate';
+import {
+  Editor,
+  Transforms,
+  Element,
+  Text,
+  Path,
+  Range,
+  Node as SlateNode,
+} from 'slate';
 import { jsx } from 'slate-hyperscript';
 import { makeEditor } from '@plone/volto-slate/utils';
+import { splitEditorInTwoFragments } from '@plone/volto-slate/utils/ops';
 import config from '@plone/volto/registry';
 // Pure merge lives in a dep-free module (so blockPath.js can use it without these
 // Volto-only imports); re-exported here for back-compat.
@@ -183,23 +192,38 @@ export function htmlToSlate(html) {
  */
 export function splitBlock(value, selection) {
   const editor = createHeadlessEditor(value);
+  const at = outsideInlineEdge(editor, selection);
+  Transforms.select(editor, at);
+  const [topValue, bottomValue] = splitEditorInTwoFragments(editor, at);
+  return { topValue, bottomValue };
+}
 
-  try {
-    Transforms.select(editor, selection);
-
-    // Use Volto's existing utility function from volto-slate/utils/ops
-    const { splitEditorInTwoFragments } = require('@plone/volto-slate/utils/ops');
-    const [topValue, bottomValue] = splitEditorInTwoFragments(editor, selection);
-
-    return { topValue, bottomValue };
-  } catch (error) {
-    console.warn('Failed to split block:', error);
-    // Return original value if split fails
-    return {
-      topValue: value,
-      bottomValue: [{ type: 'p', children: [{ text: '' }] }],
-    };
+/**
+ * A caret at the very end (or start) of an inline such as a link is, visually,
+ * also just after (or before) it — but "from the caret to the end" then starts
+ * INSIDE the inline, so the split copies it, empty, into the other half (slate
+ * always keeps a text node beside an inline, so that half is never empty).
+ * Move such a caret just outside the inline, so the inline stays whole on one
+ * side and no empty copy is made. A caret inside the inline is left alone.
+ */
+function outsideInlineEdge(editor, selection) {
+  if (!Range.isCollapsed(selection)) return selection;
+  const point = selection.anchor;
+  const [inlineEntry] = Editor.nodes(editor, {
+    at: point,
+    match: (n) => Element.isElement(n) && Editor.isInline(editor, n),
+    mode: 'highest',
+  });
+  if (!inlineEntry) return selection;
+  const [, inlinePath] = inlineEntry;
+  let outside = null;
+  if (Editor.isEnd(editor, point, inlinePath)) {
+    const next = Path.next(inlinePath);
+    if (SlateNode.has(editor, next)) outside = Editor.start(editor, next);
+  } else if (Editor.isStart(editor, point, inlinePath) && Path.hasPrevious(inlinePath)) {
+    outside = Editor.end(editor, Path.previous(inlinePath));
   }
+  return outside ? { anchor: outside, focus: outside } : selection;
 }
 
 /**

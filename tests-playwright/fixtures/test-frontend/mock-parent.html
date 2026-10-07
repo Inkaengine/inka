@@ -123,6 +123,14 @@
   <script type="module">
     import { buildBlockPathMap, buildIdFieldMap } from '/build-block-path-map.js';
     import { mergeTemplatesIntoPage } from '/merge-templates.js';
+    import { mergeFrontendBlock } from '/merge-frontend-block.js';
+    import {
+      getAllContainerFields,
+      getContainerFieldConfig,
+      deleteBlockFromContainer,
+      ensureEmptyBlockIfEmpty,
+    } from '/block-path.js';
+    import { isBlockReadonly, getAtPath } from '/helpers.js';
 
     // Configure iframe frontend from ?frontend= URL param. The default is the
     // origin THIS page is served from — vite injects it (see vite.config.js), and
@@ -183,6 +191,18 @@
     const frontendBlockKeys = new Set();
     // cssClasses of the style menu the frontend declares at INIT (#295).
     const styleMenuClasses = new Set();
+
+    // The block types the real admin has built in (Volto core's blocksConfig +
+    // volto-hydra's index.js). A frontend entry for one of these ADDS to the
+    // admin's block, so it needs no title or group of its own; one for any
+    // other type is a new block and must bring both (mergeFrontendBlock).
+    // The baseline below stands in for only some of them.
+    const ADMIN_BUILT_IN_BLOCK_TYPES = new Set([
+      'checkboxFacet', 'daterangeFacet', 'default', 'description', 'gridBlock',
+      'html', 'image', 'leadimage', 'listing', 'maps', 'search', 'selectFacet',
+      'slate', 'slateTable', 'summary', 'teaser', 'title', 'toc', 'toggleFacet',
+      'video',
+    ]);
 
     // blocksConfig for schema-driven buildBlockPathMap (no Volto deps)
     const mockBlocksConfig = {
@@ -677,7 +697,17 @@
               // mock test-frontend's `sharedBlocksConfig` hero keeps `description`),
               // and baseline-only types (mock-*) are left untouched since the
               // frontend simply doesn't send them.
-              mockBlocksConfig[blockType] = blockDef;
+              //
+              // Applied key by key, exactly as the admin does (mergeFrontendBlock):
+              // a schema the frontend sends replaces the baseline's, keys it does
+              // not send keep the baseline's, and an enhancer chains. A slate entry
+              // carrying only `fieldRules` therefore keeps slate's `value` field.
+              mockBlocksConfig[blockType] = mergeFrontendBlock(
+                blockType,
+                mockBlocksConfig[blockType] ??
+                  (ADMIN_BUILT_IN_BLOCK_TYPES.has(blockType) ? { id: blockType } : undefined),
+                blockDef,
+              ).entry;
             }
           }
 
@@ -1151,6 +1181,57 @@
       setTransformDelay: (delay) => { window.mockTransformDelay = delay; },
       setEchoFormData: (enabled) => { window.mockEchoFormData = enabled; },
       setDuplicateFormData: (enabled) => { window.mockDuplicateFormData = enabled; },
+      // The regions of a block ('_page' for the page's own), as the admin lists
+      // them — the container fields its sidebar and add-button work from.
+      listRegions: (blockId) => {
+        const map = buildBlockPathMap(mockFormData, mockBlocksConfig);
+        return getAllContainerFields(blockId, map, mockFormData, mockBlocksConfig)
+          .filter((f) => !f.isTemplateInstance)
+          .map((f) => ({ region: f.region, defaultBlockType: f.defaultBlockType ?? null }));
+      },
+      // Empty one region the way an editor's delete does — remove each child
+      // (deleteBlockFromContainer), then let the admin seed what an empty region
+      // gets (ensureEmptyBlockIfEmpty: the default block type, or an `empty`
+      // placeholder when the region names none) — and send it to the frontend.
+      // Returns the uids now in the region, or why it can't be emptied.
+      emptyRegion: (blockId, region) => {
+        let formData = mockFormData;
+        let map = buildBlockPathMap(formData, mockBlocksConfig);
+        const inRegion = (m) => Object.keys(m).filter(
+          (uid) => m[uid]?.parentId === blockId && (m[uid].region || 'items') === region,
+        );
+        const children = inRegion(map);
+        // An editor can't delete a locked (template) block, so can't empty its region.
+        const locked = children.filter((uid) => isBlockReadonly(getAtPath(formData, map[uid].path) ?? {}, []));
+        if (locked.length) return { skipped: `holds locked block(s) ${locked.join(', ')}` };
+        for (const uid of children) {
+          const containerConfig = getContainerFieldConfig(uid, map, formData, mockBlocksConfig);
+          formData = deleteBlockFromContainer(formData, map, uid, containerConfig);
+          map = buildBlockPathMap(formData, mockBlocksConfig);
+        }
+        formData = ensureEmptyBlockIfEmpty(
+          formData, { parentId: blockId }, map, () => crypto.randomUUID(), mockBlocksConfig,
+        );
+        map = buildBlockPathMap(formData, mockBlocksConfig);
+        mockFormData = formData;
+        const seeded = inRegion(map).map((uid) => ({ uid, type: map[uid]?.blockType ?? null }));
+        document.getElementById('previewIframe').contentWindow.postMessage(
+          { type: 'FORM_DATA', data: formData, blockPathMap: map }, '*',
+        );
+        return { seeded };
+      },
+      // Change a block's fields (found by uid anywhere, nested included) and send
+      // the page to the frontend, as an edit in the sidebar would.
+      updateBlock: (blockId, fields) => {
+        const map = buildBlockPathMap(mockFormData, mockBlocksConfig);
+        if (!map[blockId]) throw new Error(`updateBlock: no block ${blockId}`);
+        const formData = JSON.parse(JSON.stringify(mockFormData));
+        Object.assign(getAtPath(formData, map[blockId].path), fields);
+        mockFormData = formData;
+        document.getElementById('previewIframe').contentWindow.postMessage(
+          { type: 'FORM_DATA', data: formData, blockPathMap: buildBlockPathMap(formData, mockBlocksConfig) }, '*',
+        );
+      },
       // Select a specific block by sending SELECT_BLOCK + FORM_DATA to iframe
       selectBlock: (blockId) => {
         const iframe = document.getElementById('previewIframe');

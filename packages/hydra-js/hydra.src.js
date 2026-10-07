@@ -27,6 +27,7 @@ import {
   setFieldValue,
   getFieldDef,
   resolveFieldPath as resolveFieldPathHelper,
+  isStarterUiField,
 } from '@volto-hydra/helpers';
 import { expelAllowedTypes, findOnlyEmptyChildUid } from './containerOps.js';
 import { acceptableAt } from './conversionMap.js';
@@ -315,6 +316,12 @@ const CONTROL_TAGS = new Set([
 ]);
 const CONTROL_SELECTOR = 'button, summary, a[href], [role="button"]';
 
+/** Inline elements: a line runs through them (see isPlaceholderBr). */
+const INLINE_TAGS = new Set([
+  'A', 'ABBR', 'B', 'CODE', 'DEL', 'EM', 'I', 'MARK', 'S', 'SMALL', 'SPAN',
+  'STRONG', 'SUB', 'SUP', 'U',
+]);
+
 /**
  * Virtual block UID for page-level fields (title, description, preview_image, etc.)
  * Used to distinguish "page field selected" from "nothing selected" (null)
@@ -325,6 +332,7 @@ export const PAGE_BLOCK_UID = '_page';
  * Bridge class creating a two-way link between the Hydra and the frontend.
  * @exports Bridge - Exported for testing purposes
  */
+
 export class Bridge {
   /**
    * Constructor for the Bridge class.
@@ -3290,13 +3298,16 @@ export class Bridge {
   _insertTextAtCursor(text, editableField) {
     const sel = window.getSelection();
     if (!sel?.rangeCount) return;
-    const range = sel.getRangeAt(0);
 
     // NBSP for spaces to prevent CSS whitespace collapse in inline elements.
     // handleTextChange converts NBSP back to regular space in the model.
     const insertionText = text.replace(/^ /, '\u00A0').replace(/ $/, '\u00A0');
 
-    if (!range.collapsed) range.deleteContents();
+    if (!sel.getRangeAt(0).collapsed) sel.getRangeAt(0).deleteContents();
+    this.adoptFrontendCaretTarget();
+    this.dropPlaceholderBrBeforeCaret();
+    // Both may have moved the caret: read the range after them.
+    const range = sel.getRangeAt(0);
 
     // Type into the text node the caret is in: the frontend drew it (from the
     // render data's zero-width space when the element was empty), so its next
@@ -3721,7 +3732,29 @@ export class Bridge {
         !!handle.querySelector('[data-edit-text], [data-edit-media]');
       if (carriesContent) own.push(handle);
     }
-    const elements = own;
+    // The page is not a container drawn somewhere; it is the whole canvas.
+    if (blockUid === PAGE_BLOCK_UID) return own;
+    // A container is drawn by its own parts AND by any children drawn outside
+    // them. Its parts need not wrap its children: a heading of its own can sit
+    // beside them, and a design system can draw a group of one as just that
+    // one, with no element of the container's at all (as a template instance
+    // never has one). Children inside its own elements are already covered —
+    // a carousel's slides, scrolled out of view, do not stretch it — so only
+    // those drawn outside are followed, through children that draw nothing
+    // either, down to the ones that do.
+    const inside = (el) => own.some((o) => o !== el && o.contains(el));
+    const children = Object.entries(this.blockPathMap || {})
+      .filter(([, info]) => info.parentId === blockUid)
+      .map(([id]) => id);
+    const outside = [];
+    for (const id of children) {
+      const drawn = [...document.querySelectorAll(`[data-block-uid="${id}"]`)];
+      if (drawn.length && drawn.every(inside)) continue;
+      for (const el of this.getAllBlockElements(id, options)) {
+        if (!inside(el)) outside.push(el);
+      }
+    }
+    const elements = [...own, ...outside];
     if (elements.length === 0) {
       log('getAllBlockElements: no DOM elements for', blockUid, 'pathInfo:', pathInfo ? 'exists' : 'missing', 'isTemplateInstance:', pathInfo?.isTemplateInstance);
     }
@@ -8277,10 +8310,6 @@ export class Bridge {
    * `<strong>…<br></strong>more` is real, because "more" follows it.
    */
   isPlaceholderBr(br) {
-    const INLINE = new Set([
-      'A', 'ABBR', 'B', 'CODE', 'DEL', 'EM', 'I', 'MARK', 'S', 'SMALL', 'SPAN',
-      'STRONG', 'SUB', 'SUP', 'U',
-    ]);
     let node = br;
     while (node) {
       for (let n = node.nextSibling; n; n = n.nextSibling) {
@@ -8293,10 +8322,85 @@ export class Bridge {
         if (!empty) return false;
       }
       const parent = node.parentElement;
-      if (!parent || !INLINE.has(parent.tagName)) return true;
+      if (!parent || !INLINE_TAGS.has(parent.tagName)) return true;
       node = parent;
     }
     return true;
+  }
+
+  /**
+   * Move the caret out of a caret node the bridge made into the frontend's own.
+   *
+   * restoreSlateSelection parks the caret in a U+FEFF text node of its own when
+   * the element has nowhere to put it. If the frontend has since drawn its own
+   * caret target (U+200B, from the render data) on the same line, text typed
+   * into the bridge's node is text the frontend doesn't know about: its next
+   * render draws the same text again in its own node ("FreshFresh"). So before
+   * a character goes in, the caret moves to the end of the frontend's node and
+   * the bridge's node goes — the same cleanup _insertTextAtCursor does after.
+   */
+  adoptFrontendCaretTarget() {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !sel.isCollapsed) return;
+    const bridgeNode = sel.anchorNode;
+    if (bridgeNode?.nodeType !== Node.TEXT_NODE || !/^\uFEFF+$/.test(bridgeNode.data)) return;
+    // Only a bare caret node sitting in the line itself. One inside a <strong>
+    // or <em> is a prospective format (bold toggled on, nothing typed yet): the
+    // caret is there on purpose, and moving it would drop the format.
+    const line = bridgeNode.parentElement;
+    if (!line || INLINE_TAGS.has(line.tagName)) return;
+    // And only on an empty line — where the frontend's caret target is what it
+    // draws for "nothing here yet". In a line with text, a bare caret node is a
+    // format the author just toggled off at the caret, and it stays put.
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+    let target = null;
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (this.stripZeroWidthSpaces(n.data) !== '') return;
+      if (!target && n !== bridgeNode && /^\u200B+$/.test(n.data)) target = n;
+    }
+    if (!target) return;
+    const range = document.createRange();
+    range.setStart(target, target.length);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    bridgeNode.remove();
+  }
+
+  /**
+   * Remove the browser's placeholder <br> when text is about to go in AFTER it.
+   *
+   * A select-all delete leaves `<p><br></p>`. The browser replaces that <br>
+   * when the caret is before it, but the caret can sit in a text node after it
+   * (the frontend's re-render, or a caret target, put one there): the browser
+   * then types after the placeholder, which stops being one — the line gains a
+   * break nobody typed, and the admin gets "\nFresh" with an empty line above.
+   * So: a line with no visible content whose only <br> is before the caret
+   * loses that <br> before the text goes in. A line with real breaks has two
+   * <br>s (a break at the end of a line needs a second one to show), or text.
+   */
+  dropPlaceholderBrBeforeCaret() {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    let line = range.startContainer.nodeType === Node.ELEMENT_NODE
+      ? range.startContainer
+      : range.startContainer.parentElement;
+    while (line && INLINE_TAGS.has(line.tagName)) line = line.parentElement;
+    if (!line) return;
+    const brs = [];
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.nodeType === Node.TEXT_NODE) {
+        if (this.stripZeroWidthSpaces(n.textContent || '') !== '') return;
+      } else if (n.tagName === 'BR') {
+        brs.push(n);
+      } else if (!INLINE_TAGS.has(n.tagName)) {
+        return; // an image or a nested block is content
+      }
+    }
+    if (brs.length !== 1 || range.comparePoint(brs[0], 0) !== -1) return;
+    brs[0].remove();
   }
 
   domNodeToSlate(el, metadataMap, matchMetadataFromDom = false, keepCaretTargets = false) {
@@ -9410,6 +9514,14 @@ export class Bridge {
             } else {
               log('selectionchange: admin placing the caret, suppressing');
             }
+            return;
+          } else if (this.pendingTransform) {
+            // A transform this bridge asked for (Ctrl+B, a toolbar format) is
+            // still with the admin, and its answer places the caret. A caret
+            // reported meanwhile — the bridge's own restore, a re-render — is
+            // older than the admin's, and arriving after it put the admin's
+            // caret back: toggling a format off then left it on.
+            log('selectionchange: transform pending, the admin places the caret — suppressing');
             return;
           } else {
             log('selectionchange: no expectedSelectionFromAdmin, sending new selection');
@@ -11811,6 +11923,10 @@ export class Bridge {
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
           this.correctInvalidWhitespaceSelection();
           this.ensureValidInsertionTarget();
+          // Here, not in beforeinput: by beforeinput the character is already
+          // in the DOM. Replayed keys get the same in _insertTextAtCursor.
+          this.adoptFrontendCaretTarget();
+          this.dropPlaceholderBrBeforeCaret();
         }
   }
 
@@ -12111,7 +12227,12 @@ export class Bridge {
     const widget = def?.widget;
     fieldDef = def;
 
-    if (widget === 'object_browser') return [{ '@id': Z, title: Z }];
+    // An image picker (object_browser in image mode, e.g. a teaser's
+    // preview_image) is rendered as an <img> from its @id, so its @id must be an
+    // image that loads — a ZWS @id renders a broken image.
+    if (widget === 'object_browser') {
+      return [{ '@id': fieldDef?.mode === 'image' ? Bridge.REVEAL_PIXEL : Z, title: Z }];
+    }
     if (widget === 'image' || fieldDef?.type === 'image') return Bridge.REVEAL_PIXEL;
     if (widget === 'url' || fieldDef?.type === 'url') return Z;
     if (isSlateFieldType(fieldType)) return [{ type: 'p', children: [{ text: Z }] }];
@@ -12125,7 +12246,7 @@ export class Bridge {
     if (value === Z || value === Bridge.REVEAL_PIXEL) return true;
     if (Array.isArray(value) && value.length === 1) {
       const only = value[0];
-      if (only && only['@id'] === Z) return true;
+      if (only && (only['@id'] === Z || only['@id'] === Bridge.REVEAL_PIXEL)) return true;
       if (only?.children?.length === 1 && only.children[0]?.text === Z) return true;
     }
     return false;
@@ -12170,12 +12291,10 @@ export class Bridge {
         if (!this._revealSentinelFor(fieldDef, fieldType)) {
           return false;
         }
-        // A REQUIRED field is rendered unconditionally by the frontend (a value
-        // is guaranteed, so no `{field && …}` guard), which means its element
-        // always exists and there is nothing to reveal. Excluding it keeps the
-        // button's "N empty optional fields" count honest. If a required field
-        // ever IS missing an element, that's a renderer bug for the dev-warning
-        // to shout about — not something reveal should paper over.
+        // A REQUIRED field is never toggled: an empty required image is always
+        // shown (emptyRequiredFields, seeded on every render), and a required
+        // text field is drawn by the frontend itself. Excluding them keeps the
+        // button's "N empty optional fields" count honest.
         if (schema.required?.includes(fieldName)) return false;
         // A slate field is never absent — it defaults to one empty paragraph —
         // so its empty is that paragraph, the same test a renderer hides it by.
@@ -12183,6 +12302,39 @@ export class Bridge {
         return isEmpty(block[fieldName]);
       })
       .map(([fieldName]) => fieldName);
+  }
+
+  /**
+   * The block's REQUIRED IMAGE fields that are empty.
+   *
+   * While editing these are always shown, exactly like a revealed field: the
+   * same sentinel is seeded on every render, no toggle needed. A required field
+   * has to be filled, so its target should be there from the start — an image
+   * block with nothing to click would be impossible to fill in. Frontends draw
+   * no placeholder of their own (#296: no data ⇒ no element), so a visitor never
+   * sees one; and the admin refuses to save an empty required field.
+   *
+   * IMAGE fields only, for now: their sentinel is a real, sized (transparent)
+   * image, so the target is always clickable. A text sentinel is a zero-width
+   * space, which only gives a clickable target when the frontend lays the field
+   * out as a block — an empty inline element (a nav item's label link) has no
+   * width at all. Required text fields keep the frontend's own placeholder until
+   * empty inline fields get a click target (which the reveal toggle needs too).
+   *
+   * Reads the block path map's emptyRequiredFields — the same list the admin's
+   * starter UI uses — and leaves out the fields that starter UI fills
+   * (isStarterUiField).
+   */
+  emptyRequiredFields(blockUid) {
+    const empty = this.blockPathMap?.[blockUid]?.emptyRequiredFields;
+    if (!empty) return [];
+    return empty
+      .filter(({ fieldName, fieldDef }) => {
+        if (isStarterUiField(fieldDef)) return false;
+        const sentinel = this._revealSentinelFor(fieldDef, this.getFieldType(blockUid, fieldName));
+        return sentinel === Bridge.REVEAL_PIXEL || sentinel?.[0]?.['@id'] === Bridge.REVEAL_PIXEL;
+      })
+      .map(({ fieldName }) => fieldName);
   }
 
   /**
@@ -12207,8 +12359,9 @@ export class Bridge {
   }
 
   /**
-   * Toggle reveal for a block. Reveal is ALWAYS EXPLICIT — nothing here runs on
-   * selection, on insert, or on a field becoming empty.
+   * Toggle reveal for a block. Reveal of OPTIONAL fields is always explicit —
+   * nothing here runs on selection, on insert, or on a field becoming empty.
+   * (Empty REQUIRED image fields are shown without it: emptyRequiredFields.)
    */
   toggleOptionalFields(blockUid) {
     if (this.revealedBlocks.has(blockUid)) this.revealedBlocks.delete(blockUid);
@@ -12303,11 +12456,17 @@ export class Bridge {
       // the answer doesn't change once revealed. (The old DOM-based rule asked "is
       // there no element?" — a question revealing itself falsified, so the field
       // flickered back out on the next render.)
-      if (!this._revealedBlocks?.has(blockUid)) continue;
-      // revealableFields is already "empty AND has an inline affordance", so a
-      // field the editor has since filled drops out on its own and no sentinel is
+      //
+      // Empty REQUIRED image fields are seeded the same way on every render,
+      // revealed or not (see emptyRequiredFields).
+      // Both lists are already "empty AND has an inline affordance", so a field
+      // the editor has since filled drops out on its own and no sentinel is
       // written over real content.
-      for (const fieldName of this.revealableFields(blockUid)) {
+      const toSeed = [
+        ...(this._revealedBlocks?.has(blockUid) ? this.revealableFields(blockUid) : []),
+        ...this.emptyRequiredFields(blockUid),
+      ];
+      for (const fieldName of toSeed) {
         const fieldDef = properties[fieldName];
         const fieldType = this.getFieldType(blockUid, fieldName);
         let sentinel = this._revealSentinelFor(fieldDef, fieldType);
@@ -12410,6 +12569,8 @@ export class Bridge {
     let navigationTriggered = false;
     let contentRetryBudget = 0; // set when target becomes visible after navigation
     const CONTENT_RETRIES = 60; // ~1s at rAF rate
+    // How long a render may take to draw the node a transform's caret goes in.
+    const TRANSFORM_RENDER_LIMIT_MS = 10000;
     const NAV_CONTENT_RETRIES = 60; // fresh budget after navigation completes
 
     const pollBlocksReady = (retries = CONTENT_RETRIES) => {
@@ -12450,6 +12611,23 @@ export class Bridge {
         }
       } else if (retries <= 0) {
         const elapsed = this._renderStartTime ? (performance.now() - this._renderStartTime).toFixed(0) : '?';
+        // The admin sent a caret position with this render (Ctrl+B with no
+        // selection puts it in a new, empty bold node). It can only go into a
+        // node the frontend has drawn. Proceeding before then put it back where
+        // it was — outside the new node — and unblocked typing there, so on a
+        // slow frontend (a busy CI runner) bold text came out plain. Input is
+        // still blocked and keys are buffered, so wait for the node, however
+        // long the frontend takes, up to a limit that fails loudly.
+        const caretTarget = afterRenderOptions.transformedSelection;
+        if (caretTarget && !this._transformedCaretTargetDrawn(caretTarget)) {
+          const waited = this._renderStartTime ? performance.now() - this._renderStartTime : 0;
+          if (waited < TRANSFORM_RENDER_LIMIT_MS) {
+            requestAnimationFrame(() => pollBlocksReady(0));
+            return;
+          }
+          console.error(`[HYDRA] The frontend did not draw the node the admin's caret goes in within ${TRANSFORM_RENDER_LIMIT_MS / 1000}s:`,
+            JSON.stringify(caretTarget), '— is it rendering the data-node-id attributes from the edit data?');
+        }
         if (result.targetVisible || !newBlockId) {
           // No navigation needed, content just doesn't match — give up and proceed.
           log('pollBlocksReady: TIMEOUT +' + elapsed + 'ms proceeding anyway');
@@ -13412,6 +13590,28 @@ export class Bridge {
    * @param {Object} formData - Form data with Slate JSON (containing nodeIds)
    * @returns {boolean} true if selection was restored, false if it failed
    */
+  /**
+   * Has the frontend drawn the nodes this Slate selection points into? The
+   * same lookup restoreSlateSelection does: a slate field's anchor/focus path
+   * → nodeId → the [data-node-id] element in the selected block. True when the
+   * selection isn't one restoreSlateSelection looks up by nodeId (nothing to
+   * wait for).
+   */
+  _transformedCaretTargetDrawn(slateSelection) {
+    if (!slateSelection?.anchor || !slateSelection?.focus) return true;
+    if (!this.selectedBlockUid || !this.focusedFieldName) return true;
+    const blockElement = this.queryBlockElement(this.selectedBlockUid);
+    if (!blockElement) return false;
+    const resolved = this.resolveFieldPath(this.focusedFieldName, this.selectedBlockUid);
+    const fieldValue = getFieldValue(this.getBlockData(resolved.blockId), resolved.fieldName);
+    const fieldType = this.getFieldType(this.selectedBlockUid, this.focusedFieldName);
+    if (!this.fieldTypeIsSlate(fieldType) || !Array.isArray(fieldValue) || fieldValue[0]?.nodeId === undefined) return true;
+    return [slateSelection.anchor, slateSelection.focus].every((point) => {
+      const found = this.getNodeIdFromPath(fieldValue, point.path);
+      return !!found && !!blockElement.querySelector(`[data-node-id="${found.nodeId}"]`);
+    });
+  }
+
   restoreSlateSelection(slateSelection, formData) {
     log('restoreSlateSelection called with:', JSON.stringify(slateSelection));
     if (!slateSelection || !slateSelection.anchor || !slateSelection.focus) {

@@ -118,7 +118,10 @@ test('hydra-demo — homepage hero loop', async ({ page }) => {
   // No DOM-level assertion — Slate's bold rendering varies by frontend
   // (could be <strong>, <b>, or a styled span); the visual recording
   // captures the formatting toolbar interaction either way.
-  await page.keyboard.press('Shift+Home');
+  // Select exactly the phrase just typed. Shift+Home selects to the start of the
+  // VISUAL line, so where the paragraph wraps decides what it gets: in CI it
+  // wrapped inside the phrase and only "anywhere." was selected (and bolded).
+  for (let i = 0; i < 'Edit anywhere.'.length; i += 1) await page.keyboard.press('Shift+ArrowLeft');
   await expect
     .poll(() => iframe.locator('body').evaluate(() => document.getSelection()?.toString() ?? ''))
     .toContain('Edit anywhere.');

@@ -19,8 +19,10 @@ import {
 import { validateAndLog, validateTemplatePlaceholders } from '../../utils/formDataValidation';
 import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
+import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
+import { mergeFrontendBlock } from '../../../../hydra-js/mergeFrontendBlock.js';
 import {
   isSlateFieldType,
   formDataContentEqual,
@@ -294,6 +296,7 @@ import {
   reshapeContainerBlock,
   validateFieldMappings,
   reportDisallowedSlateNodes,
+  completeFrontendSchema,
 } from '../../utils/blockSync';
 import {
   installCopyFromTargetEnhancers,
@@ -797,7 +800,7 @@ const Iframe = (props) => {
   const urlFromEnv = getURlsFromEnv();
   const u =
     useSelector((state) => state.frontendPreviewUrl.url) ||
-    Cookies.get(getIframeUrlCookieName()) ||
+    rememberedFrontendUrl() ||
     urlFromEnv[0]?.url;
 
   // Track last SELECT_BLOCK sent to avoid redundant sends during pending selection
@@ -1833,6 +1836,203 @@ const Iframe = (props) => {
    * @param {number} [options.selectChildIndex] - Select child at this index instead of the new block
    * @returns {string} The new block's ID
    */
+  /**
+   * Move blocks — the drag-and-drop move, as a named function. Runs
+   * every check and conversion a drop does. Returns what happened: 'moved', or
+   * why not: 'rejected' (not allowed or convertible there), 'needs-choice' (the
+   * editor must pick a conversion), 'needs-confirm' (a conversion awaits the
+   * confirm dialog), 'failed'.
+   */
+  const moveBlocks = (data) => {
+    // Handle drag-and-drop block moves (single or multi, supports containers)
+    // replaceTargetId is set when the drop landed on an 'empty' placeholder
+    // (the slot block ensureEmptyBlockIfEmpty creates when a container is
+    // empty). After the move, that placeholder is removed so the dropped
+    // block lives where the placeholder was instead of beside it.
+    const { blockIds: moveBlockIds, targetBlockId, insertAfter, targetParentId, selectAfterMove, replaceTargetId } = data;
+    log('MOVE_BLOCKS: received:', moveBlockIds?.length, 'blocks to', targetBlockId, 'insertAfter:', insertAfter, 'replaceTargetId:', replaceTargetId);
+
+    // Use properties (Redux) as source of truth for moves
+    const currentFormData = properties;
+    const currentBlockPathMap = buildBlockPathMap(currentFormData, config.blocks.blocksConfig, intl);
+
+    // Expand template instances: each template instance drags all its child blocks
+    const blocksToMove = [];
+    for (const bid of (moveBlockIds || [])) {
+      if (currentBlockPathMap[bid]?.isTemplateInstance) {
+        const parentId = currentBlockPathMap[bid]?.parentId || 'page';
+        const parentBlock = parentId === 'page' ? currentFormData : getBlockById(currentFormData, currentBlockPathMap, parentId);
+        const region = currentBlockPathMap[bid]?.region || 'items';
+        const layoutItems = parentBlock?.blocks_layout?.[region] || [];
+        const childBlocks = layoutItems.filter(id => currentBlockPathMap[id]?.parentId === bid);
+        log('MOVE_BLOCKS: template instance', bid, '- expanding to:', childBlocks);
+        blocksToMove.push(...childBlocks);
+      } else {
+        blocksToMove.push(bid);
+      }
+    }
+
+    // Derive sourceParentId from first block's pathMap entry
+    const firstBlockId = blocksToMove[0];
+    const sourceParentId = currentBlockPathMap[firstBlockId]?.parentId || null;
+
+    // Get source container config BEFORE the move (needed for ensureEmptyBlockIfEmpty)
+    const sourceContainerConfig = sourceParentId !== targetParentId && sourceParentId
+      ? getContainerFieldConfig(firstBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl)
+      : null;
+
+    // Resolve each block against the target container's allowedBlocks:
+    // native fit, or convertible (auto when one target type; a single-block
+    // drag with several options opens the chooser — ask-first). A block that
+    // can't be placed rejects the whole move. Multi-block is auto-only.
+    const targetContainerCfg = getContainerFieldConfig(targetBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl);
+    const targetAllowedTypes = targetContainerCfg?.allowedBlocks;
+    const dropConversions = {}; // bid -> type to convert to before moving
+    const membershipConversions = []; // {blockId, from, to} — surfaced in the confirm
+    let rejectMove = false;
+    let deferredToChooser = false;
+    if (targetAllowedTypes?.length > 0) {
+      const singleDrag = blocksToMove.length === 1;
+      for (const bid of blocksToMove) {
+        const bType = getBlockById(currentFormData, currentBlockPathMap, bid)?.['@type'];
+        if (targetAllowedTypes.includes(bType)) continue; // native fit
+        const options = getConvertibleTypes(bType, blocksConfig, targetAllowedTypes).map((t) => t.type);
+        if (options.length === 1) {
+          dropConversions[bid] = options[0]; // single target → convert to fit
+          membershipConversions.push({ blockId: bid, from: bType, to: options[0] });
+          continue;
+        }
+        if (options.length > 1 && singleDrag) {
+          // Ask-first: show the chooser; commitChooser converts + moves atomically.
+          setChooser({
+            kind: 'convert',
+            blockId: bid,
+            allowedBlocks: options,
+            pendingMove: { targetBlockId, insertAfter, targetParentId, replaceTargetId },
+          });
+          deferredToChooser = true;
+          break;
+        }
+        // 0 options, or a multi-option member of a multi-block batch → can't place.
+        log('MOVE_BLOCKS: blocked — type not allowed/convertible in target container');
+        rejectMove = true;
+        break;
+      }
+    }
+    if (rejectMove) return 'rejected';
+    if (deferredToChooser) return 'needs-choice';
+
+    // Move all blocks in sequence, each one after the previous
+    // Track insertAfter for each block (needed for template inheritance)
+    let newFormData = currentFormData;
+    // Auto-convert (single-option) blocks BEFORE moving so each already
+    // fits the target container's allowedBlocks.
+    for (const [bid, toType] of Object.entries(dropConversions)) {
+      const cbpm = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
+      newFormData = convertBlockInPlace(newFormData, cbpm, bid, toType);
+    }
+    let currentTarget = targetBlockId;
+    let currentInsertAfter = insertAfter;
+    const blockInsertAfterMap = {};
+
+    for (let i = 0; i < blocksToMove.length; i++) {
+      const moveBlockId = blocksToMove[i];
+      blockInsertAfterMap[moveBlockId] = currentInsertAfter;
+      const updatedPathMap = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
+
+      newFormData = moveBlockBetweenContainers(
+        newFormData,
+        updatedPathMap,
+        moveBlockId,
+        currentTarget,
+        currentInsertAfter,
+        sourceParentId,
+        targetParentId,
+        blocksConfig,
+        intl,
+      );
+
+      if (!newFormData) {
+        log('MOVE_BLOCKS: moveBlockBetweenContainers failed for:', moveBlockId);
+        break;
+      }
+
+      // After first block, subsequent blocks go after the previous one
+      currentTarget = moveBlockId;
+      currentInsertAfter = true;
+    }
+    log('MOVE_BLOCKS: moveBlockBetweenContainers returned:', newFormData ? 'formData' : 'null');
+
+    if (newFormData) {
+      // Everything a move owes afterwards, in the order it owes it:
+      // membership for what landed, THEN the placeholder it landed on,
+      // THEN a re-seed of the region it came out of. settleBlockStructure
+      // fixes that order in one place so the drag path and the chooser's
+      // ask-first drop cannot disagree about it again.
+      const settledMove = settleBlockStructure(
+        newFormData,
+        buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl),
+        {
+          landed: blocksToMove,
+          replacedPlaceholders: replaceTargetId ? [replaceTargetId] : [],
+          emptiedContainers:
+            sourceParentId !== targetParentId && sourceContainerConfig
+              ? [sourceContainerConfig]
+              : [],
+        },
+        {
+          blocksConfig,
+          intl,
+          uuidGenerator: uuid,
+          templateEditMode: templateEditModeRef.current,
+          metadata,
+          insertAfterById: blockInsertAfterMap,
+        },
+      );
+      newFormData = settledMove.formData;
+
+      // Commit + keep the moved block selected. Rebuild the pathMap for the
+      // new positions and flushSync so state is committed before the Redux
+      // update triggers the useEffect. Do NOT set formData here — the
+      // useEffect sends FORM_DATA. selectAfterMove pins selection on a
+      // specific block (edge-drag stays on the container); default = the
+      // first moved block (legacy DnD behaviour).
+      const selectUid = selectAfterMove || blocksToMove[0];
+      const commitMove = (fd) => {
+        const newBlockPathMap = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
+        flushSync(() => {
+          setIframeSyncState(prev => ({
+            ...prev,
+            blockPathMap: newBlockPathMap,
+            pendingSelectBlockUid: selectUid,
+          }));
+        });
+        onChangeFormData(fd);
+      };
+
+      // Trial the drop before committing: normalise the candidate (applies
+      // field defaults AND `@type` rules via the container⇄value bridge) and
+      // diff the @types. If ANY block converted — for any reason, any rule —
+      // confirm first. `membershipConversions` (single-target drops converted
+      // to fit the container above) are surfaced in the same confirm. Nothing
+      // converted → commit the raw move unchanged (no behaviour change).
+      const trialBpm = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
+      const { formData: normalizedFd, conversions: ruleConversions } =
+        previewSchemaDefaultConversions(newFormData, trialBpm, blocksConfig, intl);
+      const allConversions = [...membershipConversions, ...ruleConversions];
+      if (allConversions.length > 0) {
+        setConvertConfirm({
+          conversions: allConversions,
+          onConfirm: () => commitMove(normalizedFd),
+        });
+        return 'needs-confirm';
+      }
+      commitMove(newFormData);
+      return 'moved';
+    }
+    return 'failed';
+  };
+
   const insertAndSelectBlock = useCallback((blockId, blockType, action, fieldName, options = {}) => {
     const { blockData: customBlockData, formData: customFormData, blockPathMap: customBlockPathMap, formatRequestId, selectChildIndex, selectFirstLeaf, region: addRegion } = options;
     const formData = customFormData || properties;
@@ -2330,6 +2530,7 @@ const Iframe = (props) => {
     setAddNewBlockOpened(false);
     dispatch(setSidebarTab(1));
   };
+
 
   // Process pending delete from iframe DELETE_BLOCK message (same pattern as addNewBlockOpened)
   useEffect(() => {
@@ -3198,190 +3399,7 @@ const Iframe = (props) => {
           break;
 
         case 'MOVE_BLOCKS': {
-          // Handle drag-and-drop block moves (single or multi, supports containers)
-          // replaceTargetId is set when the drop landed on an 'empty' placeholder
-          // (the slot block ensureEmptyBlockIfEmpty creates when a container is
-          // empty). After the move, that placeholder is removed so the dropped
-          // block lives where the placeholder was instead of beside it.
-          const { blockIds: moveBlockIds, targetBlockId, insertAfter, targetParentId, selectAfterMove, replaceTargetId } = event.data;
-          log('MOVE_BLOCKS: received:', moveBlockIds?.length, 'blocks to', targetBlockId, 'insertAfter:', insertAfter, 'replaceTargetId:', replaceTargetId);
-
-          // Use properties (Redux) as source of truth for moves
-          const currentFormData = properties;
-          const currentBlockPathMap = buildBlockPathMap(currentFormData, config.blocks.blocksConfig, intl);
-
-          // Expand template instances: each template instance drags all its child blocks
-          const blocksToMove = [];
-          for (const bid of (moveBlockIds || [])) {
-            if (currentBlockPathMap[bid]?.isTemplateInstance) {
-              const parentId = currentBlockPathMap[bid]?.parentId || 'page';
-              const parentBlock = parentId === 'page' ? currentFormData : getBlockById(currentFormData, currentBlockPathMap, parentId);
-              const region = currentBlockPathMap[bid]?.region || 'items';
-              const layoutItems = parentBlock?.blocks_layout?.[region] || [];
-              const childBlocks = layoutItems.filter(id => currentBlockPathMap[id]?.parentId === bid);
-              log('MOVE_BLOCKS: template instance', bid, '- expanding to:', childBlocks);
-              blocksToMove.push(...childBlocks);
-            } else {
-              blocksToMove.push(bid);
-            }
-          }
-
-          // Derive sourceParentId from first block's pathMap entry
-          const firstBlockId = blocksToMove[0];
-          const sourceParentId = currentBlockPathMap[firstBlockId]?.parentId || null;
-
-          // Get source container config BEFORE the move (needed for ensureEmptyBlockIfEmpty)
-          const sourceContainerConfig = sourceParentId !== targetParentId && sourceParentId
-            ? getContainerFieldConfig(firstBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl)
-            : null;
-
-          // Resolve each block against the target container's allowedBlocks:
-          // native fit, or convertible (auto when one target type; a single-block
-          // drag with several options opens the chooser — ask-first). A block that
-          // can't be placed rejects the whole move. Multi-block is auto-only.
-          const targetContainerCfg = getContainerFieldConfig(targetBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl);
-          const targetAllowedTypes = targetContainerCfg?.allowedBlocks;
-          const dropConversions = {}; // bid -> type to convert to before moving
-          const membershipConversions = []; // {blockId, from, to} — surfaced in the confirm
-          let rejectMove = false;
-          let deferredToChooser = false;
-          if (targetAllowedTypes?.length > 0) {
-            const singleDrag = blocksToMove.length === 1;
-            for (const bid of blocksToMove) {
-              const bType = getBlockById(currentFormData, currentBlockPathMap, bid)?.['@type'];
-              if (targetAllowedTypes.includes(bType)) continue; // native fit
-              const options = getConvertibleTypes(bType, blocksConfig, targetAllowedTypes).map((t) => t.type);
-              if (options.length === 1) {
-                dropConversions[bid] = options[0]; // single target → convert to fit
-                membershipConversions.push({ blockId: bid, from: bType, to: options[0] });
-                continue;
-              }
-              if (options.length > 1 && singleDrag) {
-                // Ask-first: show the chooser; commitChooser converts + moves atomically.
-                setChooser({
-                  kind: 'convert',
-                  blockId: bid,
-                  allowedBlocks: options,
-                  pendingMove: { targetBlockId, insertAfter, targetParentId, replaceTargetId },
-                });
-                deferredToChooser = true;
-                break;
-              }
-              // 0 options, or a multi-option member of a multi-block batch → can't place.
-              log('MOVE_BLOCKS: blocked — type not allowed/convertible in target container');
-              rejectMove = true;
-              break;
-            }
-          }
-          if (rejectMove || deferredToChooser) break;
-
-          // Move all blocks in sequence, each one after the previous
-          // Track insertAfter for each block (needed for template inheritance)
-          let newFormData = currentFormData;
-          // Auto-convert (single-option) blocks BEFORE moving so each already
-          // fits the target container's allowedBlocks.
-          for (const [bid, toType] of Object.entries(dropConversions)) {
-            const cbpm = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
-            newFormData = convertBlockInPlace(newFormData, cbpm, bid, toType);
-          }
-          let currentTarget = targetBlockId;
-          let currentInsertAfter = insertAfter;
-          const blockInsertAfterMap = {};
-
-          for (let i = 0; i < blocksToMove.length; i++) {
-            const moveBlockId = blocksToMove[i];
-            blockInsertAfterMap[moveBlockId] = currentInsertAfter;
-            const updatedPathMap = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
-
-            newFormData = moveBlockBetweenContainers(
-              newFormData,
-              updatedPathMap,
-              moveBlockId,
-              currentTarget,
-              currentInsertAfter,
-              sourceParentId,
-              targetParentId,
-              blocksConfig,
-              intl,
-            );
-
-            if (!newFormData) {
-              log('MOVE_BLOCKS: moveBlockBetweenContainers failed for:', moveBlockId);
-              break;
-            }
-
-            // After first block, subsequent blocks go after the previous one
-            currentTarget = moveBlockId;
-            currentInsertAfter = true;
-          }
-          log('MOVE_BLOCKS: moveBlockBetweenContainers returned:', newFormData ? 'formData' : 'null');
-
-          if (newFormData) {
-            // Everything a move owes afterwards, in the order it owes it:
-            // membership for what landed, THEN the placeholder it landed on,
-            // THEN a re-seed of the region it came out of. settleBlockStructure
-            // fixes that order in one place so the drag path and the chooser's
-            // ask-first drop cannot disagree about it again.
-            const settledMove = settleBlockStructure(
-              newFormData,
-              buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl),
-              {
-                landed: blocksToMove,
-                replacedPlaceholders: replaceTargetId ? [replaceTargetId] : [],
-                emptiedContainers:
-                  sourceParentId !== targetParentId && sourceContainerConfig
-                    ? [sourceContainerConfig]
-                    : [],
-              },
-              {
-                blocksConfig,
-                intl,
-                uuidGenerator: uuid,
-                templateEditMode: templateEditModeRef.current,
-                metadata,
-                insertAfterById: blockInsertAfterMap,
-              },
-            );
-            newFormData = settledMove.formData;
-
-            // Commit + keep the moved block selected. Rebuild the pathMap for the
-            // new positions and flushSync so state is committed before the Redux
-            // update triggers the useEffect. Do NOT set formData here — the
-            // useEffect sends FORM_DATA. selectAfterMove pins selection on a
-            // specific block (edge-drag stays on the container); default = the
-            // first moved block (legacy DnD behaviour).
-            const selectUid = selectAfterMove || blocksToMove[0];
-            const commitMove = (fd) => {
-              const newBlockPathMap = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
-              flushSync(() => {
-                setIframeSyncState(prev => ({
-                  ...prev,
-                  blockPathMap: newBlockPathMap,
-                  pendingSelectBlockUid: selectUid,
-                }));
-              });
-              onChangeFormData(fd);
-            };
-
-            // Trial the drop before committing: normalise the candidate (applies
-            // field defaults AND `@type` rules via the container⇄value bridge) and
-            // diff the @types. If ANY block converted — for any reason, any rule —
-            // confirm first. `membershipConversions` (single-target drops converted
-            // to fit the container above) are surfaced in the same confirm. Nothing
-            // converted → commit the raw move unchanged (no behaviour change).
-            const trialBpm = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
-            const { formData: normalizedFd, conversions: ruleConversions } =
-              previewSchemaDefaultConversions(newFormData, trialBpm, blocksConfig, intl);
-            const allConversions = [...membershipConversions, ...ruleConversions];
-            if (allConversions.length > 0) {
-              setConvertConfirm({
-                conversions: allConversions,
-                onConfirm: () => commitMove(normalizedFd),
-              });
-            } else {
-              commitMove(newFormData);
-            }
-          }
+          moveBlocks(event.data);
           break;
         }
 
@@ -3656,16 +3674,16 @@ const Iframe = (props) => {
               if (!blockConfig.id) {
                 blockConfig.id = blockType;
               }
-              // Default title from the key name (e.g. 'single_choice' -> 'Single Choice')
-              if (!blockConfig.title) {
-                blockConfig.title = blockType.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-              }
-              if (!blockConfig.view) {
-                blockConfig.view = NoPreview;
-              }
-              // Default group to 'common' so blocks appear in the block chooser
-              if (!blockConfig.group) {
-                blockConfig.group = 'common';
+              // A block the admin does NOT have needs a name and a chooser group
+              // from its frontend — compulsory, never made up from the key. Its
+              // view is the admin's NoPreview: a frontend cannot send a component.
+              // An entry for a block the admin has keeps the admin's title, group
+              // and view unless it sends its own (mergeFrontendBlock).
+              // (mergeFrontendBlock throws for a missing title or group.)
+              if (!config.blocks.blocksConfig[blockType]) {
+                if (!blockConfig.view) {
+                  blockConfig.view = NoPreview;
+                }
               }
               // Show sidebar settings tab when block has a schema
               if (blockConfig.blockSchema && blockConfig.sidebarTab === undefined) {
@@ -3709,51 +3727,30 @@ const Iframe = (props) => {
               ) {
                 blockConfig.disableCustomSidebarEditForm = true;
               }
-              // Auto-generate default fieldset if missing (only for new blocks, not overrides)
-              // Also ensure required is an array (Volto expects this)
-              // Recurse into object_list inner schemas too (Volto's InlineForm needs fieldsets).
-              const schema = blockConfig?.blockSchema;
-              const isNewBlock = !config.blocks.blocksConfig[blockType];
-              if (isNewBlock && schema?.properties && !schema.fieldsets) {
-                schema.fieldsets = [{
-                  id: 'default',
-                  title: 'Default',
-                  fields: Object.keys(schema.properties),
-                }];
-              }
-              if (schema && !schema.required) {
-                schema.required = [];
-              }
-              // Auto-generate fieldsets on nested object_list inner schemas
-              if (schema?.properties) {
-                Object.values(schema.properties).forEach((prop) => {
-                  if (prop?.widget === 'object_list' && prop?.schema?.properties && !prop.schema.fieldsets) {
-                    prop.schema.fieldsets = [{
-                      id: 'default',
-                      title: 'Default',
-                      fields: Object.keys(prop.schema.properties),
-                    }];
-                  }
-                  if (prop?.widget === 'object_list' && prop?.schema && !prop.schema.required) {
-                    prop.schema.required = [];
-                  }
-                });
-              }
+              // Fieldsets / required for the block's schema and its object_list
+              // inner schemas — on every INIT, overrides included (see
+              // completeFrontendSchema).
+              completeFrontendSchema(blockConfig?.blockSchema);
               // Validate fieldMappings: warn about invalid @default keys
               validateFieldMappings(blockType, blockConfig);
             });
-            // Save existing function-type schemaEnhancers before deepMerge overwrites them.
-            // When the frontend sends a recipe object for a block that already has a function
-            // enhancer (e.g., listing's fieldMapping/b_size logic from our plugin), deepMerge
-            // would corrupt the function. We chain them back in step 1b.
+            // Each frontend entry applied to the admin's own (mergeFrontendBlock —
+            // the mock parent applies the same rule): a key the frontend sends
+            // replaces the admin's, a schema included; keys it doesn't send keep
+            // the admin's; an enhancer chains. An admin enhancer that is a
+            // function (e.g. listing's fieldMapping/b_size logic) comes back to be
+            // chained with the frontend's recipe in step 1b.
+            processBlockIcons(blocksConfig);
             const savedEnhancers = {};
-            for (const blockType of Object.keys(blocksConfig)) {
-              const existing = config.blocks.blocksConfig[blockType]?.schemaEnhancer;
-              if (typeof existing === 'function') {
-                savedEnhancers[blockType] = existing;
-              }
+            for (const [blockType, blockDef] of Object.entries(blocksConfig)) {
+              const { entry, previousEnhancer } = mergeFrontendBlock(
+                blockType,
+                config.blocks.blocksConfig[blockType],
+                blockDef,
+              );
+              config.blocks.blocksConfig[blockType] = entry;
+              if (previousEnhancer) savedEnhancers[blockType] = previousEnhancer;
             }
-            recurseUpdateVoltoConfig({ blocks: { blocksConfig } });
 
             // Variations follow the schema. They are a SECOND registry the admin
             // fills in (core attaches ToCVariations, ListingVariations, … in
@@ -3784,8 +3781,8 @@ const Iframe = (props) => {
             // chain it with any existing function enhancer from admin plugins (e.g., listing's
             // fieldMapping/b_size removal) rather than replacing it.
             const recipeKeys = ['inheritSchemaFrom', 'fieldRules'];
-            for (const [blockType, blockConfig] of Object.entries(blocksConfig)) {
-              const recipe = blockConfig.schemaEnhancer;
+            for (const blockType of Object.keys(blocksConfig)) {
+              const recipe = config.blocks.blocksConfig[blockType].schemaEnhancer;
               // Check if it's a recipe (has known enhancer keys, type property, or is array)
               const isRecipe =
                 recipe &&
@@ -3810,6 +3807,7 @@ const Iframe = (props) => {
             }
           }
 
+            for (const t of ['teaser', 'image', 'hero', 'gridBlock']) { const c = config.blocks.blocksConfig[t] || {}; console.log('[DBGMERGE]', t, JSON.stringify({ keys: Object.keys(c).sort(), title: c.title, group: c.group, fm: c.fieldMappings, se: typeof c.schemaEnhancer, bs: typeof c.blockSchema, s: typeof c.schema, bcKeys: c.blocksConfig ? Object.keys(c.blocksConfig).length : null, allowed: c.allowedBlocks })); }
           // 1c. Merge any additional voltoConfig (non-block settings)
           if (event.data.voltoConfig) {
             recurseUpdateVoltoConfig(event.data.voltoConfig);
@@ -5832,6 +5830,7 @@ const Iframe = (props) => {
             mouseActivityCounter={mouseActivityCounter}
             blockHasEmbed={!!blockUI?.hasEmbed}
             completedFlushRequestId={iframeSyncState.completedFlushRequestId}
+            flushEdits={flushIframeEdits}
             transformAction={iframeSyncState.transformAction}
             onTransformApplied={() => setIframeSyncState(prev => ({ ...prev, transformAction: null }))}
             onChangeFormData={(newFieldValue, selection, formatRequestId, extraBlocks) => {
@@ -5853,6 +5852,13 @@ const Iframe = (props) => {
                   const block = getBlockById(fd, bpm, selectedBlock);
                   const updatedBlock = { ...block, [fieldName]: newFieldValue };
                   fd = updateBlockById(fd, bpm, selectedBlock, updatedBlock);
+                  // The path map holds each block's schema RESOLVED against its
+                  // data (field rules' warnings and visibility), so a value the
+                  // toolbar changed — a heading chosen, a style applied — needs
+                  // it rebuilt, as text typed in the iframe does
+                  // (INLINE_EDIT_DATA). Otherwise the sidebar showed the rules
+                  // as they were before the change.
+                  bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
                   dataChanged = true;
                 }
 
