@@ -1165,8 +1165,12 @@ const SyncedSlateToolbar = ({
   // These intercept mousedown to flush the iframe buffer before applying formatting
   const handleButtonMouseDownCapture = useCallback(
     (e) => {
-      // Don't intercept clicks inside popups (like LinkEditor's Clear/Submit buttons)
-      if (e.target.closest('.add-link')) {
+      // Don't intercept clicks inside popups (like LinkEditor's Clear/Submit
+      // buttons), nor in the object browser the link editor opens: it renders
+      // in the sidebar, outside `.add-link` in the DOM but still under this
+      // toolbar in the React tree, so its header buttons (search, back, close)
+      // were swallowed here and did nothing.
+      if (e.target.closest('.add-link, .object-browser')) {
         return;
       }
 
@@ -1219,9 +1223,9 @@ const SyncedSlateToolbar = ({
 
   const handleButtonClickCapture = useCallback(
     (e) => {
-      // Same exclusion as the mousedown handler: a style-menu click must reach
-      // the dropdown.
-      if (e.target.closest('#style-menu')) return;
+      // Same exclusions as the mousedown handler: a style-menu or object
+      // browser click must reach its own button.
+      if (e.target.closest('#style-menu, .object-browser')) return;
       const button =
         e.target.closest('button') || e.target.closest('[data-toolbar-button]');
       if (!button) return;

@@ -15,6 +15,7 @@ import upSVG from '@plone/volto/icons/up-key.svg';
 import downSVG from '@plone/volto/icons/down-key.svg';
 import BlockChooserSearch from '@plone/volto/components/manage/BlockChooser/BlockChooserSearch';
 import { FormattedMessage } from 'react-intl';
+import { unlinkedText } from '../../../../../utils/linkedText';
 
 const messages = defineMessages({
   fold: {
@@ -134,6 +135,8 @@ const BlockChooser = ({
           icon
           basic
           className={block.id}
+          // What the block is for, where the author picks between blocks.
+          title={unlinkedText(block.description)}
           onClick={(e) => {
             onInsertBlock
               ? onInsertBlock(currentBlock, {

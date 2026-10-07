@@ -256,6 +256,89 @@ test.describe('Inline Editing - Links', () => {
     }).toPass({ timeout: 5000 });
   });
 
+  // Object browser search looks across the WHOLE site, not just the folder
+  // being browsed: an author linking to another page rarely knows which folder
+  // it lives in, and a page three levels away in another branch would
+  // otherwise be unfindable.
+  test('searching from the browse button finds a page in a different folder', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const blockId = 'block-1-uuid';
+    await helper.editBlockTextInIframe(blockId, 'Find me a page');
+    const editor = await helper.getEditorLocator(blockId);
+    await helper.selectAllTextInEditor(editor);
+    await helper.clickFormatButton('link');
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await expect(linkUrlInput).toBeFocused({ timeout: 2000 });
+    if ((await linkUrlInput.inputValue()).length > 0) await linkUrlInput.clear();
+    await (await helper.getLinkEditorBrowseButton()).click();
+
+    const objectBrowser = await helper.waitForObjectBrowser();
+    // The target is not in the folder the browser opens on (the page itself and
+    // its siblings): it is in another branch, three levels down.
+    const target = '/_test_data/context-navigation-forced-folder/page-b/under-b';
+    await expect(page.locator('.object-listing li').first()).toBeVisible();
+    await expect(page.locator('.object-listing li').filter({ hasText: 'Under B' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Search SVG' }).click();
+    const searchInput = page.getByPlaceholder('Search content');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill('Under');
+
+    const hit = page.locator('.object-listing li').filter({ hasText: 'Under B' });
+    await expect(hit).toHaveCount(1, { timeout: 10000 });
+
+    // Choosing it links to that page.
+    await helper.objectBrowserSelectItem(objectBrowser, /Under B/);
+    const submitButton = page.getByRole('button', { name: 'Submit' });
+    if (await submitButton.isVisible()) await submitButton.click();
+    await expect(editor.locator('a')).toHaveAttribute('href', new RegExp(`${target}$`));
+  });
+
+  // The object browser's header buttons sit under the text toolbar in the React
+  // tree; they must reach their own handlers (the toolbar used to swallow them).
+  async function openBrowseFromLinkEditor(page, helper: AdminUIHelper) {
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await helper.editBlockTextInIframe('block-1-uuid', 'Browse from here');
+    const editor = await helper.getEditorLocator('block-1-uuid');
+    await helper.selectAllTextInEditor(editor);
+    await helper.clickFormatButton('link');
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await expect(linkUrlInput).toBeFocused({ timeout: 2000 });
+    if ((await linkUrlInput.inputValue()).length > 0) await linkUrlInput.clear();
+    await (await helper.getLinkEditorBrowseButton()).click();
+    return helper.waitForObjectBrowser();
+  }
+
+  test("the browse button's Back goes up a folder", async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const objectBrowser = await openBrowseFromLinkEditor(page, helper);
+    // It opens on the page being edited, inside /_test_data.
+    const crumbs = objectBrowser.locator('.breadcrumbs');
+    await expect(crumbs).toContainText('test-page');
+
+    await page.getByRole('button', { name: 'Back' }).click();
+
+    await expect(crumbs).not.toContainText('test-page');
+    await expect(crumbs).toContainText('_test_data');
+    await expect(
+      page.locator('.object-listing li').filter({ hasText: 'Another Page' }).first(),
+    ).toBeVisible();
+  });
+
+  test("the browse button's close button closes the browser", async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const objectBrowser = await openBrowseFromLinkEditor(page, helper);
+    await expect(objectBrowser).toBeVisible();
+
+    await objectBrowser.locator('header button.clearSVG').click();
+
+    await expect(page.locator('.object-browser')).toHaveCount(0);
+  });
+
   test('LinkEditor closes when focusing back on editor', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 
@@ -501,6 +584,131 @@ test.describe('Inline Editing - Links', () => {
       const linkText = await editor.locator('a').textContent();
       expect(linkText).toContain('world');
     }).toPass({ timeout: 5000 });
+  });
+
+  test('Enter at the end of a link starts a plain paragraph, and no empty link is saved', async ({ page }) => {
+    // Pressing Enter with the caret at the end of a link must not carry the
+    // link into the new paragraph. When it did, what was typed next extended a
+    // copy of the link, and pages were saved with `<a href="…"></a>` beside the
+    // real link — after which editing that text edited the wrong link.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const blockId = 'block-1-uuid';
+    await helper.editBlockTextInIframe(blockId, 'Click here');
+    const editor = await helper.getEditorLocator(blockId);
+    await helper.selectAllTextInEditor(editor);
+    await helper.clickFormatButton('link');
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await linkUrlInput.fill('https://example.com');
+    await linkUrlInput.press('Enter');
+    await helper.waitForLinkEditorToClose();
+    await helper.waitForEditorFocus(editor);
+    await expect(editor.locator('a')).toHaveAttribute('href', 'https://example.com');
+
+    // Caret to the end of the linked text, then split the paragraph.
+    await editor.press('End');
+    const before = await helper.getBlockOrder();
+    await editor.press('Enter');
+
+    let newBlockUid = '';
+    await expect(async () => {
+      const order = await helper.getBlockOrder();
+      const next = order[order.indexOf(blockId) + 1];
+      expect(next).toBeTruthy();
+      expect(before).not.toContain(next);
+      newBlockUid = next;
+    }).toPass({ timeout: 10000 });
+
+    const newEditor = await helper.getEditorLocator(newBlockUid);
+    await helper.waitForEditorFocus(newEditor);
+    await newEditor.pressSequentially('Next line', { delay: 10 });
+    await helper.waitForEditorText(newEditor, /Next line/);
+
+    // The new paragraph is plain text; the original link is untouched. (Block 1
+    // is no longer the editable one, so find its link by the block, not the
+    // contenteditable field.)
+    await expect(newEditor.locator('a')).toHaveCount(0);
+    const originalLink = helper.getIframe().locator(`[data-block-uid="${blockId}"] a`);
+    await expect(originalLink).toHaveCount(1);
+    await expect(originalLink).toHaveText('Click here');
+    await expect(originalLink).toHaveAttribute('href', 'https://example.com');
+
+    // What is saved agrees: the new block holds no link, and no link anywhere
+    // on the page is empty.
+    // The PATCH of THIS page — a frontend may save other documents (a site
+    // footer template) in the same save.
+    const patchRequest = page.waitForRequest(
+      (req) => req.method() === 'PATCH' && new URL(req.url()).pathname.endsWith('/test-page'),
+    );
+    await helper.saveContent();
+    const body = JSON.parse((await patchRequest).postData() || '{}');
+
+    const linksIn = (node: unknown): any[] => {
+      if (Array.isArray(node)) return node.flatMap(linksIn);
+      if (!node || typeof node !== 'object') return [];
+      const n = node as Record<string, unknown>;
+      // A slate link element — not e.g. a listing's `fieldMapping` entry,
+      // which also says `type: 'link'` but has no children.
+      const isSlateLink = n.type === 'link' && Array.isArray(n.children);
+      return [...(isSlateLink ? [n] : []), ...Object.values(n).flatMap(linksIn)];
+    };
+    const textOf = (node: any): string =>
+      typeof node.text === 'string' ? node.text : (node.children ?? []).map(textOf).join('');
+
+    // Blocks may be nested in containers (frontends differ), so find the new
+    // one by its uid anywhere in what was saved, not at `blocks[uid]`.
+    const blockByUid = (node: unknown, uid: string): unknown => {
+      if (!node || typeof node !== 'object') return undefined;
+      if (Array.isArray(node)) {
+        for (const x of node) {
+          const found = blockByUid(x, uid);
+          if (found) return found;
+        }
+        return undefined;
+      }
+      const n = node as Record<string, unknown>;
+      const blocks = n.blocks as Record<string, unknown> | undefined;
+      if (blocks && typeof blocks === 'object' && uid in blocks) return blocks[uid];
+      for (const v of Object.values(n)) {
+        const found = blockByUid(v, uid);
+        if (found) return found;
+      }
+      return undefined;
+    };
+    const savedNewBlock = blockByUid(body, newBlockUid);
+    expect(savedNewBlock, 'the new block is saved').toBeTruthy();
+    expect(linksIn(savedNewBlock), 'no link in the new paragraph').toEqual([]);
+    const allLinks = linksIn(body.blocks);
+    expect(allLinks.length, 'the original link is saved').toBeGreaterThan(0);
+    for (const link of allLinks) {
+      expect(textOf(link).replace(/[​﻿]/g, ''), 'a saved link has text').not.toBe('');
+    }
+  });
+
+  test('a relative link typed into the link editor is accepted', async ({ page }) => {
+    // Typing a path relative to the current page (`./child`) used to leave the
+    // link editor's Submit doing nothing — the link was silently refused.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const blockId = 'block-1-uuid';
+    await helper.editBlockTextInIframe(blockId, 'Relative');
+    const editor = await helper.getEditorLocator(blockId);
+    await helper.selectAllTextInEditor(editor);
+    await helper.clickFormatButton('link');
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await linkUrlInput.fill('./another-page');
+    await linkUrlInput.press('Enter');
+    await helper.waitForLinkEditorToClose();
+
+    const link = editor.locator('a');
+    await expect(link).toHaveCount(1);
+    await expect(link).toHaveText('Relative');
+    // Resolved like a browser would on /_test_data/test-page: a sibling.
+    await expect(link).toHaveAttribute('href', /\/_test_data\/another-page$/);
   });
 
 });
