@@ -5089,8 +5089,13 @@ app.get('*/@search', (req, res) => {
   }
   // Handle path.query with path.depth=0 (exact match for specific content)
   else
-  if (pathQuery && pathDepth === '0') {
-    const content = loadContentFromDisk(pathQuery);
+  if (pathDepth === '0') {
+    // The object itself: the one `path.query` names, or else the context the
+    // search was asked at (`/page/@search?path.depth=0`), as Plone answers it.
+    const target = pathQuery
+      ? (String(pathQuery).startsWith('http') ? new URL(String(pathQuery)).pathname : String(pathQuery))
+      : (searchPath || '/');
+    const content = loadContentFromDisk(target);
     if (content) {
       items = [formatSearchItem(content, baseUrl)];
     } else {
