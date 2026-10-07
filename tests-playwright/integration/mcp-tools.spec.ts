@@ -8,11 +8,14 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { URLS } from '../ports';
 import { agentOn, waitForAgent, discardEdits } from '../../packages/inka-mcp/adminDriver.mjs';
 import { getPage, editPage, listBlockTypes } from '../../packages/inka-mcp/tools.mjs';
+import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
 
 const mintId = () => crypto.randomUUID();
 
 test.describe('MCP tools', () => {
   test('get_page, a dry run, then a real edit', async ({ page }) => {
+    // Loads the editor twice (the discard is a full reload) and saves.
+    test.setTimeout(90000);
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/test-page');
@@ -74,5 +77,42 @@ test.describe('MCP tools', () => {
     // A list whose items have no types of their own holds the item type the admin registers.
     expect(described.types.accordion.regions).toEqual([{ field: 'panels', allowed: ['accordion:panels'], list: true }]);
     expect(Object.keys(described.types['accordion:panels'].fields)).toContain('title');
+  });
+
+  test('a dry run previewed as a visitor sees it, saving nothing', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await waitForAgent(page);
+    const agent = agentOn(page);
+    const read = await getPage(agent);
+    const frontendUrl = await frontendUrlOf(page);
+    expect(new URL(frontendUrl).searchParams.has('_edit')).toBe(false);
+
+    const ops = [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@type': 'slate', value: 'Previewed *draft* text' }] }];
+    const dry = await editPage(agent, {
+      ops, expectedVersion: read.version, dryRun: true, mintId,
+      render: (draft) => previewDraft(page.context(), { frontendUrl, path: '/_test_data/test-page', draft }),
+    });
+    expect(dry.rendered.text).toContain('Previewed draft text');
+    expect(Buffer.from(dry.rendered.image, 'base64').subarray(1, 4).toString()).toBe('PNG');
+
+    // The view-mode frame is a visitor's: no editor, and the saved page is untouched.
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
+    const stored = await (await fetch(`${URLS.mockApi}/_test_data/test-page`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    expect(stored.blocks_layout.items).toEqual(read.blocks.map((b) => b['@uid']));
+  });
+
+  test('a preview is only for a dry run', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await waitForAgent(page);
+    const agent = agentOn(page);
+    const read = await getPage(agent);
+    await expect(editPage(agent, { ops: [], expectedVersion: read.version, mintId, render: async () => ({}) }))
+      .rejects.toThrow(/for a dry run/);
   });
 });

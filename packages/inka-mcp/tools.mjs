@@ -26,9 +26,11 @@ export async function listBlockTypes(agent) {
 /**
  * Apply `ops` (see editBlocks.mjs). With `dryRun`, return the resulting page
  * without saving; otherwise save and return the new version. `expectedVersion`
- * is the version the agent read.
+ * is the version the agent read. With a dry run, `render(draft)` (if given)
+ * renders the draft as a visitor would see it, and its result is `rendered`.
  */
-export async function editPage(agent, { ops, expectedVersion, dryRun = false, mintId }) {
+export async function editPage(agent, { ops, expectedVersion, dryRun = false, mintId, render }) {
+  if (render && !dryRun) throw new Error('a preview is for a dry run: add dryRun');
   if (!expectedVersion) throw new Error('edit_blocks needs the expectedVersion get_page returned');
   const loaded = (await agent.getPage()).version;
   if (loaded !== expectedVersion) {
@@ -38,7 +40,11 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, mi
   }
   const blocksConfig = (await agent.getBlockSchemas()).types;
   const { results, ids } = await editBlocks(agent, ops, { blocksConfig, mintId });
-  if (dryRun) return { dryRun: true, results, ids, page: await getPage(agent) };
+  if (dryRun) {
+    const dry = { dryRun: true, results, ids, page: await getPage(agent) };
+    if (render) dry.rendered = await render(await agent.getDraft());
+    return dry;
+  }
   const { version } = await agent.save({ expectedVersion });
   return { results, ids, version };
 }
