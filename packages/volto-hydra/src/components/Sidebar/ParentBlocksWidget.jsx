@@ -44,6 +44,7 @@ import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
 import { isBlockReadonly } from '@volto-hydra/helpers';
 import { flattenToAppURL } from '@plone/volto/helpers';
+import { LinkedText } from '../../utils/linkedText';
 
 /**
  * Get the display title for a block type
@@ -176,11 +177,27 @@ const RuleWarnings = ({ warnings }) =>
     <div className="hydra-field-warnings" role="status">
       {warnings.map((w) => (
         <p key={w.field} className="hydra-field-warning">
-          <strong>{w.title}:</strong> {w.message}
+          <strong>{w.title}:</strong> <LinkedText text={w.message} />
         </p>
       ))}
     </div>
   ) : null;
+
+/** What a block is for: its `description`, which may link to its guidance. */
+const BlockAbout = ({ blockConfig }) =>
+  blockConfig?.description ? (
+    <p className="hydra-block-about">
+      <LinkedText text={blockConfig.description} />
+    </p>
+  ) : null;
+
+/** The advice at the top of a block's settings: what it is for, then any warnings. */
+const BlockAdvice = ({ blockConfig, warnings }) => (
+  <>
+    <BlockAbout blockConfig={blockConfig} />
+    <RuleWarnings warnings={warnings} />
+  </>
+);
 
 /**
  * Single parent block section with header and settings
@@ -492,12 +509,12 @@ const ParentBlockSection = ({
           Parent blocks: render to their own target div
           Current block: render to sidebar-properties */}
       {/* A block with its own Edit component renders its own sidebar, so the
-          rule warnings go beside it here (the schema form below draws them
+          block advice (what it is for, rule warnings) goes beside it here (the schema form below draws it
           inside itself). */}
-      {BlockEdit && ruleWarnings.length > 0 && (() => {
+      {BlockEdit && (() => {
         const targetElement = document.getElementById(targetId);
         return targetElement
-          ? createPortal(<RuleWarnings warnings={ruleWarnings} />, targetElement)
+          ? createPortal(<BlockAdvice blockConfig={blockConfig} warnings={ruleWarnings} />, targetElement)
           : null;
       })()}
       {BlockEdit && (
@@ -554,7 +571,7 @@ const ParentBlockSection = ({
         const formContent = (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
             <>
-            <RuleWarnings warnings={ruleWarnings} />
+            <BlockAdvice blockConfig={blockConfig} warnings={ruleWarnings} />
             <BlockDataForm
               errors={blocksErrors?.[blockId] ? { [blockId]: blocksErrors[blockId] } : {}}
               schema={formSchema}

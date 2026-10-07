@@ -58,6 +58,12 @@ export default defineNuxtConfig({
       htmlAttrs: {
         lang: 'en',
       },
+      // The Inka mark; the .ico and touch icon come from favicon.svg via scripts/icons.mjs.
+      link: [
+        { rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
+        { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+      ],
     },
   },
   modules: [
@@ -179,6 +185,9 @@ export default defineNuxtConfig({
       // The api.inka.sh / admin.inka.sh fallbacks are only for a plain local build.
       backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://api.inka.sh',
       adminUrl: process.env.NUXT_ADMIN_URL || 'https://admin.inka.sh',
+      // The public site, for social previews' absolute og:url / og:image.
+      siteUrl: 'https://inka.sh',
+      siteName: 'Inka',
     },
   },
   css: ['/assets/css/main.css'],

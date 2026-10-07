@@ -3,10 +3,14 @@ import { describe, test, expect, vi } from 'vitest';
 // HydraSchemaContext.js is JSX inside a .js file (the admin build uses babel; vitest
 // uses esbuild and can't parse it). The slotId-inheritance path doesn't touch the
 // schema context, so stub the module to keep the import graph parseable.
+const { getHydraSchemaContext, getLiveBlockData } = vi.hoisted(() => ({
+  getHydraSchemaContext: vi.fn(() => ({})),
+  getLiveBlockData: vi.fn(() => undefined),
+}));
 vi.mock('../context', () => ({
-  getHydraSchemaContext: () => ({}),
+  getHydraSchemaContext,
   setHydraSchemaContext: () => {},
-  getLiveBlockData: () => undefined,
+  getLiveBlockData,
 }));
 
 import {
@@ -15,6 +19,8 @@ import {
   getConversionMap,
   validateFieldMappings,
   getBlockTypeChoices,
+  hideParentOwnedFields,
+  completeFrontendSchema,
 } from './blockSync';
 import config from '@plone/volto/registry';
 
@@ -1455,5 +1461,98 @@ describe('fieldRules — value sub-paths and arithmetic', () => {
       },
     })({ schema: schema(), formData: { image: '/images/thing' } });
     expect(out.properties.image.hydraRuleWarning).toBeUndefined();
+  });
+});
+
+describe('completeFrontendSchema', () => {
+  test('gives a schema with no fieldsets a default one of all its fields', () => {
+    const schema = { properties: { title: {}, description: {} } };
+    completeFrontendSchema(schema);
+    expect(schema.fieldsets).toEqual([
+      { id: 'default', title: 'Default', fields: ['title', 'description'] },
+    ]);
+    expect(schema.required).toEqual([]);
+  });
+
+  test("leaves a schema's own fieldsets and required alone", () => {
+    const fieldsets = [{ id: 'default', title: 'Main', fields: ['title'] }];
+    const schema = { properties: { title: {}, extra: {} }, fieldsets, required: ['title'] };
+    completeFrontendSchema(schema);
+    expect(schema.fieldsets).toBe(fieldsets);
+    expect(schema.required).toEqual(['title']);
+  });
+
+  test('completes the inner schema of an object_list field', () => {
+    const schema = {
+      fieldsets: [{ id: 'default', title: 'Default', fields: ['items'] }],
+      properties: { items: { widget: 'object_list', schema: { properties: { label: {} } } } },
+    };
+    completeFrontendSchema(schema);
+    expect(schema.properties.items.schema.fieldsets).toEqual([
+      { id: 'default', title: 'Default', fields: ['label'] },
+    ]);
+  });
+
+  test('completes every copy it is given — a second INIT included', () => {
+    // A frontend that sends INIT twice sends a fresh, unfilled schema the
+    // second time; it must be completed too, not merged over the filled one.
+    const first = completeFrontendSchema({ properties: { title: {} } });
+    const second = completeFrontendSchema({ properties: { title: {} } });
+    expect(second.fieldsets).toEqual(first.fieldsets);
+  });
+});
+
+describe('hideParentOwnedFields — a schema without fieldsets', () => {
+  // A grid whose `variation` picks its items' type, and claims their `title`.
+  const blocks = {
+    'grid-1': { '@type': 'grid', variation: 'teaserItem' },
+    'item-1': { '@type': 'teaserItem' },
+  };
+  const blockPathMap = { 'item-1': { blockType: 'teaserItem', parentId: 'grid-1' } };
+  const withParentClaiming = (claimed, run) => {
+    getHydraSchemaContext.mockReturnValue({
+      blocksConfig: {
+        grid: {
+          schemaEnhancer: {
+            config: { typeField: 'variation', parentControlled: { teaserItem: claimed } },
+          },
+        },
+        teaserItem: {},
+      },
+    });
+    getLiveBlockData.mockImplementation((id) => blocks[id]);
+    try {
+      return run();
+    } finally {
+      getHydraSchemaContext.mockReset().mockReturnValue({});
+      getLiveBlockData.mockReset().mockReturnValue(undefined);
+    }
+  };
+  const schema = () => ({ properties: { title: { title: 'Title' }, image: { title: 'Image' } } });
+
+  test('fails with an error naming the block when it has a field to hide', () => {
+    // Hiding a field means editing the fieldsets; a schema that still has none
+    // here (frontend schemas are completed on INIT) is reported by name.
+    withParentClaiming(['title'], () =>
+      expect(() => hideParentOwnedFields()({ schema: schema(), blockId: 'item-1', blockPathMap })).toThrow(
+        /teaserItem.*item-1.*no fieldsets|item-1.*teaserItem.*no fieldsets/,
+      ),
+    );
+  });
+
+  test('passes through untouched when the parent claims none of its fields', () => {
+    withParentClaiming(['other'], () => {
+      const s = schema();
+      expect(hideParentOwnedFields()({ schema: s, blockId: 'item-1', blockPathMap })).toBe(s);
+    });
+  });
+
+  test('passes through untouched when there is no block to look up', () => {
+    // Volto applies block enhancers to schemas of its own making, outside any
+    // block (adding a block, filling defaults); those have nothing to hide.
+    withParentClaiming(['title'], () => {
+      const s = schema();
+      expect(hideParentOwnedFields()({ schema: s })).toBe(s);
+    });
   });
 });

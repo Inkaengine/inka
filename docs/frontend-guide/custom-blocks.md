@@ -128,6 +128,7 @@ Per-block options (most are passed through to Volto's block config):
 - **\`id\`** — block type identifier (matches the key).
 - **\`title\`** — display name in the BlockChooser. **Required for a new block type** — nothing makes one up from the key; a block without one fails to register with an error naming it.
 - **\`icon\`** — icon shown in the BlockChooser (data URL or SVG component).
+- **\`description\`** — what the block is for, kept short: the sidebar shows it at the top of the block's settings, and the BlockChooser as the block button's tooltip. It may link to the block's guidance with a markdown link, `[text](url)` (see [Links in advice](#links-in-advice)).
 - **\`group\`** — chooser group (e.g. `'common'`). **Required for a new block type**, like `title`.
 - **\`restricted\`** — `true` hides the block from the chooser; can also be a function for conditional restrictions.
 - **\`mostUsed\`** — pin to the top of the chooser.
@@ -553,9 +554,23 @@ fieldRules: {
 
 An `error` is **refused** — a registered validator turns it into a form error and `Form.onSubmit` will not submit. A `warning` is **said**: it is deliberately not a validator, so nothing blocks. The sidebar shows it beside the field, and the page saves.
 
+A warning can point to the guidance it comes from with a markdown link in its message — see [Links in advice](#links-in-advice).
+
 Use a warning when the value may well be right and the author should simply know: artwork a little off the 48×48 grid is still the right artwork, and refusing to save over it would be hostile. Use an error when the value cannot work at all — a raster where the design system inlines an SVG.
 
 Both actions compose with `set`, and both work in a switch (`[rule, rule, …]`), where the first matching entry wins — so a rule can refuse one case and merely advise on another.
+
+### Links in advice
+
+A block's `description` and a rule's `warning` are plain strings that may contain markdown links, `[text](url)`. The sidebar draws each as a link that opens in a new tab, so the author does not leave the edit:
+
+### Javascript
+
+```javascript
+warning: 'Link text should say where it goes. [Writing links](https://example.com/guidance/links)',
+```
+
+Nothing else in the string is markup. Only `http(s):`, `mailto:` and relative URLs become links. A tooltip (the BlockChooser's) cannot hold a link, so it shows the link's words without the URL, and the content validator reports the string as written.
 
 ### Compare against another field
 
