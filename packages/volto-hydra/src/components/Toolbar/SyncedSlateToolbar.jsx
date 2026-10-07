@@ -238,6 +238,7 @@ const SyncedSlateToolbar = ({
   blockActions, // { toolbar: [...], dropdown: [...] } from pathMap.actions
   onBlockAction, // Handler for block actions: (actionId) => void
   onFieldLinkChange, // Handler for link field changes: (fieldName, url) => void
+  flushEdits, // () => Promise: resolves once text typed on the canvas is in the form
   onOpenObjectBrowser, // Handler to open object browser for media fields
   onFileUpload, // Handler for file uploads: (fieldName, file) => void
   convertibleTypes = [], // Array of { type, title } for block type conversion
@@ -1727,8 +1728,13 @@ const SyncedSlateToolbar = ({
           {blockUI?.focusedLinkableField && (
             <button
               title={`Edit link (${blockUI.focusedLinkableField})`}
-              onClick={() => {
-                setFieldLinkEditorField(blockUI.focusedLinkableField);
+              onClick={async () => {
+                // Text typed on the canvas may not have reached the form yet;
+                // the link edit writes the block from the form, so it would be
+                // written back without that text. Bring it in first.
+                const field = blockUI.focusedLinkableField;
+                await flushEdits();
+                setFieldLinkEditorField(field);
                 setFieldLinkEditorOpen(true);
               }}
               style={{
@@ -1750,8 +1756,11 @@ const SyncedSlateToolbar = ({
           {blockUI?.focusedMediaField && (
             <button
               title={`Select image (${blockUI.focusedMediaField})`}
-              onClick={() => {
-                setFieldImageEditorField(blockUI.focusedMediaField);
+              onClick={async () => {
+                // As for the link: the image edit writes the block from the form.
+                const field = blockUI.focusedMediaField;
+                await flushEdits();
+                setFieldImageEditorField(field);
                 setFieldImageEditorOpen(true);
               }}
               style={{

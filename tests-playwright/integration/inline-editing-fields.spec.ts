@@ -118,6 +118,38 @@ test.describe('Inline editing - linkable/media fields', () => {
     await expect(linkButton).toBeVisible();
   });
 
+  test('text typed into a field, then its link edited straight away: both are kept and saved', async ({ page }) => {
+    // The author types the element's text and goes straight to its link
+    // button, without waiting for anything. The text was still only on the
+    // canvas when the link editor opened, and the link edit wrote the block
+    // back without it: the canvas showed the new text, the form never had it.
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const iframe = helper.getIframe();
+    const button = iframe.locator('[data-block-uid="block-4-hero"] [data-edit-text="buttonText"][data-edit-link="buttonLink"]');
+    await expect(button).toHaveText('Click Me');
+
+    await helper.enterEditMode('block-4-hero', 'buttonText');
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Read more');
+    await expect(button).toHaveText('Read more');
+
+    await page.locator('.quanta-toolbar button[title*="Edit link"]').click();
+    const linkInput = page.locator('.field-link-editor .link-form-container input[name="link"]');
+    await linkInput.fill('https://example.com/more');
+    await linkInput.press('Enter');
+    await expect(button).toHaveAttribute('href', 'https://example.com/more');
+    await expect(button).toHaveText('Read more');
+    await expect(page.locator('#sidebar-properties #field-buttonText')).toHaveValue('Read more');
+
+    await helper.saveContent();
+    // Published, the hero carries no block uid (and other blocks on the page
+    // say "Read more" too): find its button by the new link.
+    await expect(iframe.locator('a[href="https://example.com/more"]')).toHaveText('Read more');
+  });
+
   test('hover state shows dashed outline on linkable field', async ({ page }) => {
     // The hover affordance is now drawn with CSS `outline` (renders
     // outside the box, no layout impact) instead of a positioned
