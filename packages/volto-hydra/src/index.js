@@ -31,13 +31,12 @@ const messages = defineMessages({
     defaultMessage: 'Add some HTML here',
   },
 });
-import Cookies from 'js-cookie';
 import frontendPreviewUrl, { viewportPreset } from './reducers';
 import FrontendSwitcherPlug from './components/Toolbar/FrontendSwitcherPlug';
 import SidebarToggleToolbarPlug from './components/Toolbar/SidebarToggleToolbarPlug';
 import FrontendSwitcherPanel from './components/Toolbar/FrontendSwitcherPanel';
 import MobileSubmenuClose from './components/Toolbar/MobileSubmenuClose';
-import { getIframeUrlCookieName } from './utils/cookieNames';
+import rememberedFrontendUrl from './utils/getRememberedFrontendUrl';
 import getSavedURLs, { getURlsFromEnv } from './utils/getSavedURLs';
 import getCurrentFrontendPublicUrl from './utils/getCurrentFrontendPublicUrl';
 import publicUrlSync from './middleware/publicUrlSync';
@@ -203,7 +202,7 @@ const applyConfig = (config) => {
     // session. Without this, settings.publicURL stays at Volto's stock
     // default until the first switch.
     const currentEditUrl =
-      Cookies.get(getIframeUrlCookieName()) || getURlsFromEnv()[0]?.url;
+      rememberedFrontendUrl() || getURlsFromEnv()[0]?.url;
     const initial = getCurrentFrontendPublicUrl(getSavedURLs(), currentEditUrl);
     if (initial) config.settings.publicURL = initial;
   }
