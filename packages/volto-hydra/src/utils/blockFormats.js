@@ -95,6 +95,11 @@ export function blockFormatButtons(
  * paragraph — chosen like a heading, one per block — so it belongs beside the
  * headings, not in the style menu with the text (inline) styles. `type` is the
  * element it makes: `p` unless the style says otherwise (`type: 'div'`).
+ *
+ * A style for one KIND of block declares the element types it is for instead:
+ * `appliesTo: ['ul', 'ol']` for a list style. It keeps the block what it is
+ * (a list stays a list) and is offered only where the cursor is in one of those
+ * blocks (styleItemsFor).
  */
 export function paragraphStyleItems(styleMenu, { slateRules } = {}) {
   return (styleMenu?.blockStyles || [])
@@ -107,9 +112,24 @@ export function paragraphStyleItems(styleMenu, { slateRules } = {}) {
       name: `style-${d.cssClass}`,
       cssClass: d.cssClass,
       type: d.type || 'p',
+      appliesTo: d.appliesTo,
       title: d.label || d.cssClass,
       icon: iconOf(d.icon, d.cssClass),
     }));
+}
+
+/**
+ * The style entries to offer on a block of type `blockType`: every style that
+ * makes its own kind of block, and those declared for this type (`appliesTo`).
+ */
+export function styleItemsFor(items, blockType) {
+  return items.filter((i) => !i.appliesTo || i.appliesTo.includes(blockType));
+}
+
+/** The type of the highest block at the cursor, or undefined with no selection. */
+export function blockTypeAtCursor(editor) {
+  const [first] = [...selectedBlocks(editor)];
+  return first?.[0]?.type;
 }
 
 /** The highest blocks the selection is in — a cursor is enough. */
@@ -136,10 +156,12 @@ function setClasses(editor, path, classes) {
  */
 export function applyParagraphStyle(editor, item, allClasses) {
   for (const [node, path] of [...selectedBlocks(editor)]) {
+    // A style for one kind of block styles only those, and leaves them that kind.
+    if (item.appliesTo && !item.appliesTo.includes(node.type)) continue;
     const keep = (node.styleName || '')
       .split(/\s+/)
       .filter((c) => c && !allClasses.includes(c));
-    if (node.type !== item.type)
+    if (!item.appliesTo && node.type !== item.type)
       Transforms.setNodes(editor, { type: item.type }, { at: path });
     setClasses(editor, path, [...keep, item.cssClass]);
   }

@@ -229,6 +229,8 @@ initBridge({
                     blockStyles: [
                         { cssClass: 'lead', label: 'Lead', icon: { viewBox: '0 0 24 24', paths: ['M…'] } },
                         { cssClass: 'aside', label: 'Aside', type: 'div' },
+                        // A style for one kind of block: offered only there, and it keeps the block that kind.
+                        { cssClass: 'list-spaced', label: 'Spaced list', appliesTo: ['ul', 'ol'] },
                     ],
                     // Applied to selected text; several can stack.
                     inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }],
@@ -240,6 +242,8 @@ initBridge({
 ```
 
 On the canvas toolbar, **paragraph styles are in the format dropdown**, after the formats. Choosing one makes the block the cursor is in a `p` (or the entry's `type`) carrying that class, replacing any other paragraph style; choosing a heading or Paragraph removes it. The **style menu** there holds the text (inline) styles only, and is not shown when there are none. The sidebar's toolbar, which has no format dropdown, offers both groups in its style menu.
+
+A style for one **kind** of block declares the element types it is for, as `appliesTo` (a list style: `['ul', 'ol']`). It is offered in the format dropdown only while the cursor is in one of those blocks, and choosing it adds the class and leaves the block what it is: a list stays a list. (A paragraph style without `appliesTo`, chosen on a list, would turn it into a paragraph.)
 
 Either kind may take an `icon`, in the same data shape as a format's. Stored content is unchanged: a style is the element's `styleName`.
 

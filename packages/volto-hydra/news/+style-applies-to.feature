@@ -1,0 +1,1 @@
+A paragraph style can say which kinds of block it is for (`appliesTo`, e.g. a list style for `ul` and `ol`): the format dropdown offers it only there, and choosing it keeps the block that kind instead of turning it into a paragraph. @djay

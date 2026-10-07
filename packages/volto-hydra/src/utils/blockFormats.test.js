@@ -17,8 +17,10 @@ import { createEditor, Transforms } from 'slate';
 import {
   applyParagraphStyle,
   blockFormatButtons,
+  blockTypeAtCursor,
   clearParagraphStyles,
   paragraphStyleItems,
+  styleItemsFor,
 } from './blockFormats.js';
 
 const H = { viewBox: '0 0 24 24', paths: ['M5 4v16h2v-7h6v7h2V4h-2v7H7V4z'] };
@@ -186,4 +188,66 @@ describe('applyParagraphStyle', () => {
       children: [{ text: 'x' }],
     });
   });
+});
+
+/**
+ * A style for one kind of block (`appliesTo`): a list style is for a list.
+ *
+ * A paragraph style makes the block a paragraph — chosen on a list, it turned
+ * the list into a paragraph. A style that declares the element types it is for
+ * keeps the block what it is, and is offered only where the cursor is in one.
+ */
+describe('styles for one kind of block (appliesTo)', () => {
+  const menu = {
+    blockStyles: [
+      { cssClass: 'lead', label: 'Lead' },
+      { cssClass: 'list-plain', label: 'Plain list', appliesTo: ['ul', 'ol'] },
+      { cssClass: 'list-spaced', label: 'Spaced list', appliesTo: ['ul', 'ol'] },
+    ],
+  };
+  const all = ['lead', 'list-plain', 'list-spaced'];
+  const items = () => paragraphStyleItems(menu, { slateRules: null });
+
+  test('an entry carries the types it applies to', () => {
+    expect(items().map((i) => [i.cssClass, i.appliesTo])).toEqual([
+      ['lead', undefined],
+      ['list-plain', ['ul', 'ol']],
+      ['list-spaced', ['ul', 'ol']],
+    ]);
+  });
+
+  test('offered only on a block of one of those types; other styles everywhere', () => {
+    expect(styleItemsFor(items(), 'ul').map((i) => i.cssClass)).toEqual(all);
+    expect(styleItemsFor(items(), 'p').map((i) => i.cssClass)).toEqual(['lead']);
+  });
+
+  test('applied, it keeps the list a list and styles it', () => {
+    const editor = editorWith([
+      { type: 'ul', children: [{ type: 'li', children: [{ text: 'One' }] }] },
+    ]);
+    Transforms.select(editor, { path: [0, 0, 0], offset: 0 });
+    applyParagraphStyle(editor, items()[2], all);
+    expect(editor.children).toEqual([
+      {
+        type: 'ul',
+        styleName: 'list-spaced',
+        children: [{ type: 'li', children: [{ text: 'One' }] }],
+      },
+    ]);
+  });
+
+  test('it replaces another style, as any paragraph style does', () => {
+    const editor = editorWith([
+      { type: 'ul', styleName: 'list-plain', children: [{ type: 'li', children: [{ text: 'One' }] }] },
+    ]);
+    Transforms.select(editor, { path: [0, 0, 0], offset: 0 });
+    applyParagraphStyle(editor, items()[2], all);
+    expect(editor.children[0].styleName).toBe('list-spaced');
+  });
+});
+
+test('with no selection there is no block type, and nothing throws', () => {
+  const editor = createEditor();
+  editor.children = [{ type: 'ul', children: [{ type: 'li', children: [{ text: 'x' }] }] }];
+  expect(blockTypeAtCursor(editor)).toBeUndefined();
 });
