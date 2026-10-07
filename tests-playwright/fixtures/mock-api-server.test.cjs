@@ -232,6 +232,15 @@ describe('@search', () => {
     assert.deepEqual([...types].sort(), ['Document', 'Event']);
   });
 
+  it('path.depth=0 at a page\'s @search is that page alone, as Plone answers it', async () => {
+    // The admin looks a link target up this way (copy-from-target), b_size 1.
+    const data = await (await fetch(`${baseUrl}/_test_data/test-page/@search?path.depth=0&metadata_fields=_all&b_size=1`, {
+      headers: { Accept: 'application/json' },
+    })).json();
+    assert.equal(data.items_total, 1);
+    assert.equal(new URL(data.items[0]['@id']).pathname, '/_test_data/test-page');
+  });
+
   it('pages a listing by b_start / b_size, items_total staying the whole', async () => {
     const all = await search('path.depth=1&path.query=/_test_data');
     const page1 = await search('path.depth=1&path.query=/_test_data&b_size=5');
