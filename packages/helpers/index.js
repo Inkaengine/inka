@@ -851,7 +851,10 @@ export async function expandListingBlocks(inputItems, options = {}) {
             const targetType =
               typeof mapping === 'object' ? mapping?.type : undefined;
             if (!targetField) continue;
-            if (result[sourceField] === undefined) continue;
+            // A brain carries null for a field the page never set (an
+            // unpublished page's `effective`): no value, like a missing field.
+            // Converted, it became the text "null".
+            if (result[sourceField] === undefined || result[sourceField] === null) continue;
 
             itemBlock[targetField] = convertFieldValue(
               result[sourceField],

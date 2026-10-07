@@ -1,0 +1,1 @@
+A listing result field that is null (an unpublished page's date) leaves the mapped field unset, instead of setting it to the text "null".
