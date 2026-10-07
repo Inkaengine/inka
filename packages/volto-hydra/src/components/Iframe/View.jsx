@@ -5830,6 +5830,7 @@ const Iframe = (props) => {
             mouseActivityCounter={mouseActivityCounter}
             blockHasEmbed={!!blockUI?.hasEmbed}
             completedFlushRequestId={iframeSyncState.completedFlushRequestId}
+            flushEdits={flushIframeEdits}
             transformAction={iframeSyncState.transformAction}
             onTransformApplied={() => setIframeSyncState(prev => ({ ...prev, transformAction: null }))}
             onChangeFormData={(newFieldValue, selection, formatRequestId, extraBlocks) => {
