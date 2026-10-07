@@ -701,13 +701,16 @@
                             // Advice on a block with its OWN edit component (the
                             // built-in text block): a field rule that warns. A
                             // frontend's slate entry adds to the admin's.
+                            // It also says what the block is for, and the
+                            // description and the warning link to their guidance.
                             ...(declareFormats ? {
                                 slate: {
+                                    description: 'Paragraphs, headings and lists. [Text guidance](https://example.com/guidance/text)',
                                     schemaEnhancer: {
                                         fieldRules: {
                                             value: {
                                                 when: { 'value@styles': { contains: 'h5' } },
-                                                warning: 'A Heading 5 is advice-worthy on this page.',
+                                                warning: 'A Heading 5 is advice-worthy on this page. [Heading guidance](https://example.com/guidance/headings)',
                                             },
                                         },
                                     },
