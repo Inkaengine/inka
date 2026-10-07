@@ -3732,7 +3732,18 @@ export class Bridge {
         !!handle.querySelector('[data-edit-text], [data-edit-media]');
       if (carriesContent) own.push(handle);
     }
-    const elements = own;
+    // The page is not a container drawn somewhere; it is the whole canvas.
+    if (own.length || blockUid === PAGE_BLOCK_UID) return own;
+    // A container that draws no element of its own is where its children are
+    // — as a template instance is, above. A design system can draw a group of
+    // one as just that one (a single collapsible section, no group around
+    // it); the container still holds it in the data, and is selected from it
+    // ("select parent") and outlined around it. Through children that draw
+    // nothing either, down to the ones that do.
+    const children = Object.entries(this.blockPathMap || {})
+      .filter(([, info]) => info.parentId === blockUid)
+      .map(([id]) => id);
+    const elements = children.flatMap((id) => this.getAllBlockElements(id, options));
     if (elements.length === 0) {
       log('getAllBlockElements: no DOM elements for', blockUid, 'pathInfo:', pathInfo ? 'exists' : 'missing', 'isTemplateInstance:', pathInfo?.isTemplateInstance);
     }
