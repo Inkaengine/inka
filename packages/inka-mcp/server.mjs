@@ -19,9 +19,9 @@ import { chromium } from 'playwright';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { openForEdit, agentOn } from './adminDriver.mjs';
+import { openForEdit, createPage, agentOn } from './adminDriver.mjs';
 import { frontendUrlOf, previewDraft } from './preview.mjs';
-import { getPage, editPage, listBlockTypes, search, listChildren } from './tools.mjs';
+import { getPage, editPage, listBlockTypes, search, listChildren, fillNewPage } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
 - {"op":"update","id":"<uid>","set":{field: value}} — change fields of a block.
@@ -77,6 +77,16 @@ export function headlessAdmin({ adminUrl, token }) {
         await page.close();
       }
     },
+    /** Add a page through the admin's add form, then work in its editor. */
+    async withNewPage({ parent, type, title }, work) {
+      const page = await (await ready()).newPage();
+      try {
+        await createPage(page, { adminUrl, parent, type, title });
+        return await work(agentOn(page));
+      } finally {
+        await page.close();
+      }
+    },
     async close() {
       if (context) await context.browser().close();
     },
@@ -123,6 +133,19 @@ export function createServer(admin) {
     description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes. Read this before adding a block type you have not seen on the page.',
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }) => asResult(await admin.withEditor(path, listBlockTypes)));
+
+  server.registerTool('create_page', {
+    title: 'Create a page',
+    description: 'Add a page inside a section, as an editor does through the admin\'s add form, and save it. Optional "blocks" (in the get_page format, each with your own "@uid" if you will refer to it) are added after the blocks the page starts with. Returns the new page\'s path, its version for edit_blocks, and the ids of your blocks.',
+    inputSchema: {
+      parent: z.string().describe('The section to add it to, e.g. /docs'),
+      title: z.string().describe('The page title'),
+      type: z.string().optional().describe('The content type (default "Document")'),
+      blocks: z.array(z.object({ '@type': z.string() }).passthrough()).optional().describe('Blocks to start with'),
+    },
+  }, async ({ parent, title, type = 'Document', blocks }) => asResult(
+    await admin.withNewPage({ parent, type, title }, (agent) => fillNewPage(agent, { blocks, mintId: randomUUID })),
+  ));
 
   server.registerTool('edit_blocks', {
     title: 'Edit a page',

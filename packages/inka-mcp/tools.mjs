@@ -19,6 +19,21 @@ export async function getPage(agent) {
 }
 
 /**
+ * A page just created (open in its editor), given its first blocks: they go
+ * after the blocks the page starts with (its title), and the page is saved.
+ * Returns { path, version, ids } — ids maps each new block's own @uid.
+ */
+export async function fillNewPage(agent, { blocks, mintId }) {
+  const created = await getPage(agent);
+  if (!blocks?.length) return { path: created.path, version: created.version, ids: {} };
+  const last = created.blocks.at(-1)['@uid'];
+  const { version, ids } = await editPage(agent, {
+    ops: [{ op: 'add', after: last, blocks }], expectedVersion: created.version, mintId,
+  });
+  return { path: created.path, version, ids };
+}
+
+/**
  * Find pages: by text, narrowed by content type and to a section (`path`).
  * Returns { total, items: [{ path, title, type, description, reviewState }] }.
  */

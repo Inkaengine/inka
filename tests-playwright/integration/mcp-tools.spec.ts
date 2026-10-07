@@ -6,8 +6,8 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { URLS } from '../ports';
-import { agentOn, waitForAgent, discardEdits } from '../../packages/inka-mcp/adminDriver.mjs';
-import { getPage, editPage, listBlockTypes, search, listChildren } from '../../packages/inka-mcp/tools.mjs';
+import { agentOn, waitForAgent, discardEdits, createPage } from '../../packages/inka-mcp/adminDriver.mjs';
+import { getPage, editPage, listBlockTypes, search, listChildren, fillNewPage } from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
 
 const mintId = () => crypto.randomUUID();
@@ -144,5 +144,35 @@ test.describe('MCP tools', () => {
     expect(next.items.map((i) => i.path)).not.toContain(children.items[0].path);
 
     await expect(search(agent, {})).rejects.toThrow(/needs "text" or "types"/);
+  });
+
+  test('create_page: through the add form, then its first blocks, saved', async ({ page }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+
+    const path = await createPage(page, { adminUrl: helper.adminUrl, parent: '/_test_data', type: 'Document', title: 'Made by the MCP' });
+    expect(path).toMatch(/^\/_test_data\/made-by-the-mcp/);
+
+    const blocks = [{ '@uid': 'intro', '@type': 'slate', value: 'Written *by an agent*' }];
+    const made = await fillNewPage(agentOn(page), { blocks, mintId });
+    expect(made.path).toBe(path);
+
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
+    const stored = await (await fetch(`${URLS.mockApi}${path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    expect(stored.title).toBe('Made by the MCP');
+    // The page keeps the blocks it starts with (its title block), and ours follow.
+    expect(stored.blocks[stored.blocks_layout.items[0]]['@type']).toBe('title');
+    expect(stored.blocks_layout.items.at(-1)).toBe(made.ids.intro);
+    expect(stored.blocks[made.ids.intro]['@type']).toBe('slate');
+  });
+
+  test('create_page: a form the admin refuses says why', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await expect(createPage(page, { adminUrl: helper.adminUrl, parent: '/_test_data', type: 'Document', title: '' }))
+      .rejects.toThrow(/add form refused it/);
   });
 });
