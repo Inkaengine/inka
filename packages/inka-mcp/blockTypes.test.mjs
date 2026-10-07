@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeBlockTypes } from './blockTypes.mjs';
+import { describeBlockTypes, describeBlockType } from './blockTypes.mjs';
 
 const field = (facts) => facts;
 const schemas = {
@@ -73,5 +73,31 @@ describe('describeBlockTypes', () => {
   it('fails on a region allowing a type nothing describes', () => {
     const broken = { ...schemas, page: { regions: [{ region: 'items', allowedBlocks: ['ghost'] }] } };
     expect(() => describeBlockTypes(broken)).toThrow(/"ghost"/);
+  });
+});
+
+describe('describeBlockType', () => {
+  const withVariations = {
+    ...schemas,
+    types: { ...schemas.types, slate: { ...schemas.types.slate, description: 'Rich text', variations: [{ id: 'default', title: 'Default', isDefault: true }] } },
+  };
+
+  it('gives the type in full: description, variations, fields, regions', () => {
+    const d = describeBlockType(withVariations, 'slate');
+    expect(d).toMatchObject({
+      type: 'slate', title: 'Text', description: 'Rich text',
+      variations: [{ id: 'default', title: 'Default', isDefault: true }],
+      fields: { value: { title: 'Body', widget: 'slate', required: true, markdown: true } },
+      regions: [],
+    });
+  });
+
+  it('says where on the page it can go', () => {
+    expect(describeBlockType(withVariations, 'slate').allowedIn).toEqual(["the page's blocks", "column's blocks"]);
+    expect(describeBlockType(withVariations, 'column').allowedIn).toEqual(["columns's columns"]);
+  });
+
+  it('refuses a type the page has no config for', () => {
+    expect(() => describeBlockType(withVariations, 'ghost')).toThrow(/no block type "ghost"/);
   });
 });

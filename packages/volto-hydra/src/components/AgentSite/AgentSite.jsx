@@ -38,18 +38,26 @@ export function siteApi(dispatch) {
     /**
      * Find content through the admin's own @search. `text` searches the full
      * text; `types` narrows by content type; `depth: 1` lists the direct
-     * children of `path`, in their order. Paths come back site-relative.
+     * children of `path`, in their order; `blockTypes` finds the pages that
+     * use those block types (plone.volto's block_types index). Paths come back
+     * site-relative.
      */
-    async search({ path = '/', text, types, depth, limit = 25, start = 0 }) {
+    async search({ path = '/', text, types, blockTypes, depth, limit = 25, start = 0 }) {
       const response = await run('search', searchContent(path === '/' ? '' : path, {
         SearchableText: text,
         portal_type: types,
+        block_types: blockTypes,
         'path.depth': depth,
         ...(depth === 1 && { sort_on: 'getObjPositionInParent' }),
         b_size: limit,
         b_start: start,
       }, 'inka-agent-search'));
       return { total: response.items_total, items: response.items.map(summary) };
+    },
+
+    /** A page as the CMS has it now (stored shape). */
+    async get(path) {
+      return run(`get ${path}`, getContent(path, null, 'inka-agent-get'));
     },
 
     /** A page's version (its modification date) as the CMS has it now. */

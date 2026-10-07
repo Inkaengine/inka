@@ -51,3 +51,29 @@ export function describeBlockTypes({ page, types }) {
 
   return { page: page.regions.map(regionOut), types: out };
 }
+
+/**
+ * describe_block: one type in full — its fields and regions as list_block_types
+ * gives them, its description and variations, and where on this page it can
+ * go (the page's own regions and the containers' regions that allow it).
+ */
+export function describeBlockType(schemas, type) {
+  const t = schemas.types[type];
+  if (!t) throw new Error(`no block type "${type}" (list_block_types lists what this page can hold)`);
+  const regionFields = new Set(t.regions.filter((r) => !r.regionPath).map((r) => r.region));
+  const allowedIn = [
+    ...schemas.page.regions.filter((r) => r.allowedBlocks.includes(type)).map((r) => `the page's ${regionOut(r).field}`),
+    ...Object.entries(schemas.types).flatMap(([container, c]) => c.regions
+      .filter((r) => r.allowedBlocks.includes(type))
+      .map((r) => `${container}'s ${regionOut(r).field}`)),
+  ];
+  return {
+    type,
+    title: t.title,
+    ...(t.description !== undefined && { description: t.description }),
+    variations: t.variations,
+    fields: fieldsOut(t.blockSchema, regionFields),
+    regions: t.regions.map(regionOut),
+    allowedIn,
+  };
+}
