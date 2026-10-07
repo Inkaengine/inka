@@ -743,7 +743,13 @@
                                     // offered no styles — "not an authorable style", and
                                     // rightly so.
                                     styleMenu: {
-                                        blockStyles: [{ cssClass: 'lead', label: 'Lead' }],
+                                        // A list style declares it is for lists
+                                        // (`appliesTo`): offered only in one, and it
+                                        // keeps the list a list.
+                                        blockStyles: [
+                                            { cssClass: 'lead', label: 'Lead' },
+                                            { cssClass: 'list-spaced', label: 'Spaced list', appliesTo: ['ul', 'ol'] },
+                                        ],
                                         inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }],
                                     },
                                     // The allow-list rules stay page-scoped: they are what

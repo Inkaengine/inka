@@ -17,11 +17,43 @@
     },
     "target": {
       "@type": "slate",
-      "value": [{ "type": "p", "children": [{ "text": "Some text to format" }] }],
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Some text to format"
+            }
+          ]
+        }
+      ],
       "plaintext": "Some text to format"
+    },
+    "list-target": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "ul",
+          "children": [
+            {
+              "type": "li",
+              "children": [
+                {
+                  "text": "A list item to style"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "plaintext": "A list item to style"
     }
   },
   "blocks_layout": {
-    "items": ["title-block", "target"]
+    "items": [
+      "title-block",
+      "target",
+      "list-target"
+    ]
   }
 }
