@@ -197,6 +197,22 @@ install. The fix is `pnpm install --ignore-workspace`, run by the fixture
 script, which then asserts the CLI exists rather than letting the harness
 discover it at spawn time.
 
+Behind it was a second layer of the same kind. pnpm 10 refuses a dependency's
+install script unless the project NAMES it in `pnpm.onlyBuiltDependencies`, and
+reports that as a warning while exiting 0 — so better-sqlite3 installed with no
+native binding and Strapi died at boot with "Could not locate the bindings
+file", listing eleven paths and no cause. create-strapi writes that field
+itself, with `core-js-pure` and `sharp`, and omits the three that matter:
+better-sqlite3, @swc/core, esbuild. The script merges them in.
+
+That one bit CI and not this machine because the approval is per project AND per
+pnpm version — 10.34 in CI, 10.18 here, which ran the scripts without asking.
+Which is the lesson both layers taught: a local run that differs from CI in
+where or how it installs proves nothing about CI. The script now asserts the
+artifacts (the CLI file, the compiled binding) rather than trusting an exit
+code, because an install that exits 0 having skipped the work fails later,
+somewhere that cannot explain it.
+
 ## Still owed
 
 - The `collection` view shape, which is what Strapi is really the forcing function

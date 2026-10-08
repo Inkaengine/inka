@@ -22,7 +22,14 @@
  *     admin UI — which is just as well, because its build fails under pnpm.
  */
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 const APP = 'tests-adapters/fixtures/strapi-app/app';
@@ -33,6 +40,50 @@ const SOURCE = 'tests-adapters/fixtures/strapi-app/src';
  * prevent, so it is checked rather than assumed — see installDependencies.
  */
 const CLI = join(APP, 'node_modules/@strapi/strapi/bin/strapi.js');
+
+/**
+ * Packages whose install script must actually RUN.
+ *
+ * pnpm 10 refuses lifecycle scripts unless a project names the dependency, and
+ * says so as a WARNING — the install still exits 0. better-sqlite3's script is
+ * what fetches or compiles its native binding, so without this the app
+ * installs cleanly and then dies at boot with "Could not locate the bindings
+ * file", naming eleven paths and no cause.
+ *
+ * It bit CI and not this machine because the two run different pnpm versions
+ * (10.34 vs 10.18) and the approval is per project, not per package — which is
+ * exactly why it belongs in the app's own package.json rather than in whatever
+ * state a developer's pnpm happens to hold.
+ */
+const NEEDS_BUILD = ['better-sqlite3', '@swc/core', 'esbuild'];
+
+/** Let those packages run their install scripts. */
+function allowNativeBuilds() {
+  const manifestPath = join(APP, 'package.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.pnpm = {
+    ...manifest.pnpm,
+    onlyBuiltDependencies: [
+      ...new Set([...(manifest.pnpm?.onlyBuiltDependencies ?? []), ...NEEDS_BUILD]),
+    ],
+  };
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+/** The native binding better-sqlite3's install script produces. */
+function sqliteBindingExists() {
+  const store = join(APP, 'node_modules/.pnpm');
+  if (!existsSync(store)) return false;
+  // Globbed rather than pinned: the version comes from Strapi's own tree, and
+  // a pinned path would quietly stop checking anything when it bumped.
+  return readdirSync(store)
+    .filter((dir) => dir.startsWith('better-sqlite3@'))
+    .some((dir) =>
+      existsSync(
+        join(store, dir, 'node_modules/better-sqlite3/build/Release/better_sqlite3.node'),
+      ),
+    );
+}
 
 /**
  * Install INSIDE the app, which needs --ignore-workspace.
@@ -46,6 +97,7 @@ const CLI = join(APP, 'node_modules/@strapi/strapi/bin/strapi.js');
  * app was in a scratchpad outside the workspace.
  */
 function installDependencies() {
+  allowNativeBuilds();
   execFileSync('pnpm', ['install', '--ignore-workspace'], {
     cwd: APP,
     stdio: 'inherit',
@@ -56,6 +108,30 @@ function installDependencies() {
         `stop here rather than at boot with a module-not-found.`,
     );
   }
+  // Both checks are here for the same reason: an install that exits 0 having
+  // skipped the work is worse than one that fails, because the failure then
+  // happens somewhere that cannot explain it.
+  if (!sqliteBindingExists()) {
+    // An explicit rebuild is not subject to the approval gate, so this covers
+    // a pnpm that read the allowlist differently. Announced rather than
+    // silent: if this line ever prints, the manifest field stopped working and
+    // that is worth knowing before the next version changes something else.
+    console.warn(
+      'strapi app: pnpm skipped better-sqlite3 despite the allowlist; ' +
+        'rebuilding it explicitly',
+    );
+    execFileSync('pnpm', ['rebuild', '--ignore-workspace', 'better-sqlite3'], {
+      cwd: APP,
+      stdio: 'inherit',
+    });
+  }
+  if (!sqliteBindingExists()) {
+    throw new Error(
+      `better-sqlite3 has no compiled binding after install. Its build script ` +
+        `was skipped — check that package.json's pnpm.onlyBuiltDependencies ` +
+        `still names it.`,
+    );
+  }
 }
 
 if (existsSync(join(APP, 'package.json'))) {
@@ -64,7 +140,7 @@ if (existsSync(join(APP, 'package.json'))) {
   cpSync(SOURCE, join(APP, 'src'), { recursive: true });
   // A restored cache can carry the app without its node_modules — the cache
   // key covers this script, not what was in the directory when it was saved.
-  if (!existsSync(CLI)) installDependencies();
+  if (!existsSync(CLI) || !sqliteBindingExists()) installDependencies();
   console.log('strapi app: already present (content model refreshed)');
   process.exit(0);
 }
