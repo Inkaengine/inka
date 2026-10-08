@@ -997,6 +997,25 @@ const Iframe = (props) => {
   // (no fingerprint recorded, or no schema for the type) come back too — they
   // belong to the page, not to any block's blind, so they are not part of the
   // per-block statuses below.
+  const translationStatuses = useMemo(
+    () =>
+      // Against the page this one was TRANSLATED FROM, whether or not a
+      // comparison is open and whichever language it shows: `@canonical` points
+      // at that page's blocks, so it is the only page these answers can come
+      // from. Markers used to wait for a comparison to be switched on, which is
+      // not when a translator wants them.
+      translationSource
+        ? translationStatus(properties?.blocks, translationSource?.blocks, {
+            idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, intl),
+            fingerprintOf: (sourceBlock, id, type) =>
+              sourceFingerprint(
+                sourceBlock,
+                getBlockTypeSchema(type, intl, config.blocks.blocksConfig),
+              ),
+          })
+        : { statuses: {}, missing: [], unknown: [] },
+    [translationSource, properties?.blocks, intl],
+  );
 
 
   // Initialize with properties so we have data from first render
@@ -1020,34 +1039,6 @@ const Iframe = (props) => {
     pendingFormatRequestId: null, // requestId to include in next FORM_DATA (for Enter key, etc.)
     templateEditMode: [], // v2: array of unlocked template instance ids (multiple at once)
   }));
-
-  // INIT builds the blockPathMap from the frontend's block schemas; before it
-  // the map is empty and the editor knows only its own schemas.
-  const frontendSchemasLoaded = Object.keys(iframeSyncState.blockPathMap || {}).length > 0;
-
-  const translationStatuses = useMemo(
-    () =>
-      // Against the page this one was TRANSLATED FROM, whether or not a
-      // comparison is open and whichever language it shows: `@canonical` points
-      // at that page's blocks, so it is the only page these answers can come
-      // from. Markers used to wait for a comparison to be switched on, which is
-      // not when a translator wants them.
-      // Only with the FRONTEND's block schemas: a fingerprint says which fields
-      // are prose by the schema, and before INIT the editor has only its own.
-      // Markers computed then would disagree with every copy made with the
-      // frontend's, and nothing recomputed them when the frontend's arrived.
-      translationSource && frontendSchemasLoaded
-        ? translationStatus(properties?.blocks, translationSource?.blocks, {
-            idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, intl),
-            fingerprintOf: (sourceBlock, id, type) =>
-              sourceFingerprint(
-                sourceBlock,
-                getBlockTypeSchema(type, intl, config.blocks.blocksConfig),
-              ),
-          })
-        : { statuses: {}, missing: [], unknown: [] },
-    [translationSource, properties?.blocks, intl, frontendSchemasLoaded],
-  );
 
   // Keep the latest-ref current as of this render (see templateEditModeRef).
   templateEditModeRef.current = iframeSyncState.templateEditMode || [];
