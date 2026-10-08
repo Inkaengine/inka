@@ -665,23 +665,59 @@ function matchSearchableText(searchTerm, item) {
 }
 
 /**
+ * Does this content have a preview image the mock can actually serve?
+ * Common for Documents, News Items, etc. For distribution-style content the
+ * preview_image is a blob_path reference; unless the bytes also exist on disk
+ * under the content dir, the mock can't serve the @@images URL — so don't claim
+ * a preview image we can't deliver.
+ */
+function hasServablePreviewImage(content) {
+  const declaresPreview = !!(content.preview_image || content['@type'] === 'Image');
+  if (declaresPreview && content.preview_image?.blob_path) {
+    const urlPath = (content['@id'] || '').replace(/^https?:\/\/[^/]+/, '') || '/';
+    const dirInfo = contentDirMap[urlPath];
+    return !!(dirInfo && findFirstImageFile(dirInfo.dirPath, 3));
+  }
+  return declaresPreview;
+}
+
+/**
+ * The catalog's description of an item's image, as plone.restapi's summary
+ * serializer gives it — in search results AND in a folder's `items`. Always
+ * both keys, matching real Plone:
+ *   with an image:    image_field='image' (or 'preview_image'), image_scales={...}
+ *   without an image: image_field='',                           image_scales=null
+ */
+function catalogImageFields(content, baseUrl, hasPreviewImage = hasServablePreviewImage(content)) {
+  if (content['@type'] === 'Image') {
+    return {
+      image_field: 'image',
+      image_scales: getImageScales(content, baseUrl) || getPlaceholderImageScales(content.title),
+    };
+  }
+  if (content.image && (content.image.blob_path || content.image.width)) {
+    // Lead image field (CaseStudy/Document with ILeadImage). Real Plone
+    // exposes image_field='image' + image_scales for these in listings; the
+    // @@images endpoint resolves the blob_path (incl. cross-referenced blobs).
+    return { image_field: 'image', image_scales: getLeadImageScales(content, 'image') };
+  }
+  if (hasPreviewImage) {
+    return {
+      image_field: 'preview_image',
+      image_scales: getPlaceholderImageScales(content.title, 'preview_image'),
+    };
+  }
+  return { image_field: '', image_scales: null };
+}
+
+/**
  * Format a content item for search results
  * Includes image_field and image_scales matching real Plone API structure
  * Includes is_folderish for folder navigation in object browser
  * Includes hasPreviewImage for teaser blocks to show target's preview image
  */
 function formatSearchItem(content, baseUrl) {
-  // Check if content has a preview image (common for Documents, News Items, etc.).
-  // For distribution-style content the preview_image is a blob_path reference;
-  // unless the bytes also exist on disk under the content dir, the mock can't
-  // serve the @@images URL — so don't claim a preview image we can't deliver.
-  const declaresPreview = !!(content.preview_image || content['@type'] === 'Image');
-  let hasPreviewImage = declaresPreview;
-  if (declaresPreview && content.preview_image?.blob_path) {
-    const urlPath = (content['@id'] || '').replace(/^https?:\/\/[^/]+/, '') || '/';
-    const dirInfo = contentDirMap[urlPath];
-    hasPreviewImage = !!(dirInfo && findFirstImageFile(dirInfo.dirPath, 3));
-  }
+  const hasPreviewImage = hasServablePreviewImage(content);
 
   const item = {
     '@id': content['@id'],
@@ -709,27 +745,8 @@ function formatSearchItem(content, baseUrl) {
     // filter reads `item.Subject` for facet.Subject criteria. Populate from the
     // content's `subjects` field (the lowercase schema field).
     'Subject': content.subjects || [],
+    ...catalogImageFields(content, baseUrl, hasPreviewImage),
   };
-
-  // Match real Plone: always include image_field and image_scales.
-  // With image: image_field='image', image_scales={...}
-  // Without image: image_field='', image_scales=null
-  if (content['@type'] === 'Image') {
-    item.image_field = 'image';
-    item.image_scales = getImageScales(content, baseUrl) || getPlaceholderImageScales(content.title);
-  } else if (content.image && (content.image.blob_path || content.image.width)) {
-    // Lead image field (CaseStudy/Document with ILeadImage). Real Plone
-    // exposes image_field='image' + image_scales for these in listings; the
-    // @@images endpoint resolves the blob_path (incl. cross-referenced blobs).
-    item.image_field = 'image';
-    item.image_scales = getLeadImageScales(content, 'image');
-  } else if (hasPreviewImage) {
-    item.image_field = 'preview_image';
-    item.image_scales = getPlaceholderImageScales(content.title, 'preview_image');
-  } else {
-    item.image_field = '';
-    item.image_scales = null;
-  }
 
   return item;
 }
@@ -1975,6 +1992,11 @@ function getFolderChildItems(folderPath, baseUrl) {
         'review_state': rawContent.review_state || 'published',
         'title': rawContent.title,
         'UID': rawContent.UID,
+        // A Volto site's summaries carry the item's image too (plone.volto adds
+        // image_field/image_scales to the default metadata) — in a folder's
+        // items exactly as in search results, so a folder view can show each
+        // child's preview without fetching it.
+        ...catalogImageFields({ ...rawContent, '@id': itemPath }, baseUrl),
       };
     })
     .filter(Boolean);

@@ -714,6 +714,50 @@ describe('folder items batching', () => {
   });
 });
 
+// A Volto site's summaries carry each item's image (plone.volto adds
+// image_field + image_scales to the default metadata), and a folder's `items`
+// are summaries like search results are. Checked against demo.plone.org: an
+// Image child has image_field "image" and a scale ladder, a page with no image
+// has image_field "" and image_scales null. The mock gave folder items neither,
+// so a folder view could not show a child's preview.
+describe('folder items carry the image fields', () => {
+  const child = async (folder, id) => {
+    const res = await fetch(`${baseUrl}${folder}?b_size=100`, { headers: { Accept: 'application/json' } });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    const item = data.items.find((i) => i['@id'].endsWith(`${folder}/${id}`));
+    assert.ok(item, `${folder} should list ${id}`);
+    return item;
+  };
+
+  it('an Image child names its field and carries its scale ladder', async () => {
+    const image = await child('/_test_data/images', 'test-image-1');
+    assert.equal(image.image_field, 'image');
+    const [original] = image.image_scales.image;
+    assert.equal(original.width, 400);
+    assert.equal(original.height, 300);
+    assert.ok(original.scales.preview.download, 'a preview scale to show in a listing');
+  });
+
+  it('a page with no image has an empty field and no scales', async () => {
+    const page = await child('/_test_data', 'another-page-2');
+    assert.equal(page.image_field, '');
+    assert.equal(page.image_scales, null);
+  });
+
+  it('matches what a search returns for the same item', async () => {
+    const image = await child('/_test_data/images', 'test-image-1');
+    const found = await querystringSearch('/_test_data', {
+      query: [{ i: 'portal_type', o: 'plone.app.querystring.operation.selection.any', v: ['Image'] }],
+      b_size: 100,
+    });
+    const searched = found.items.find((i) => i['@id'].endsWith('/_test_data/images/test-image-1'));
+    assert.ok(searched, 'the search should find test-image-1');
+    assert.equal(image.image_field, searched.image_field);
+    assert.deepEqual(image.image_scales, searched.image_scales);
+  });
+});
+
 describe('@breadcrumbs', () => {
   // plone.restapi's breadcrumbs list the page's ancestors and the page — NOT
   // the site root, which comes separately as `root`. The mock used to put a
