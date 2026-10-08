@@ -322,7 +322,6 @@ cannot be emulated from outside the CMS.
 | Assets          | `asset.upload`, `asset.imageUrl`                                                                                                                                         |
 | Session         | `auth.whoami`, `auth.logout`                                                                                                                                             |
 | Workflow        | `state.get`, `state.getForms`, `state.transition`                                                                                                                        |
-| Navigation      | `navigation.setExcluded`, `navigation.setTitle`                                                                                                                          |
 | The site        | `site.get`                                                                                                                                                               |
 | Translations    | `translations.get`, `translations.create`, `translations.link`, `translations.unlink`, `translations.locate`                                                             |
 | Several at once | `batch`                                                                                                                                                                  |
@@ -346,7 +345,6 @@ cannot be emulated from outside the CMS.
 | `versioning`                                                     | History and revisions                                                           |
 | `comments`                                                       | Reader comments and moderation                                                  |
 | `multilingual`                                                   | Manage Translations, and the translate/link controls                            |
-| `navigation-exclusion`, `navigation-title`                       | Per-item navigation controls                                                    |
 | `http-passthrough`                                               | Forwarding Plone-dialect requests unchanged                                     |
 | `expand-native`                                                  | The admin asks for its expander bundle inside the content response              |
 | `batch-native`                                                   | Grouping writes into one request saves round trips, so callers may batch freely |
