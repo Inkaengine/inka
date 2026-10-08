@@ -1,0 +1,173 @@
+import type { HydraAdapter } from '@volto-hydra/hydra-types';
+
+/**
+ * A conformance target is one CMS the contract suite can run against.
+ *
+ * Every target seeds itself from the same tests-adapters/fixtures/seed.json,
+ * so the suite's assertions refer to the seed rather than to per-CMS literals.
+ * If an assertion needs a CMS-specific value to pass, the abstraction has
+ * leaked and that is the finding.
+ */
+export interface Target {
+  name: string;
+  /** Capabilities the suite may exercise. Anything absent must reject. */
+  capabilities: string[];
+  /**
+   * Canonical seed type -> this CMS's real type name (Plone 'Document',
+   * WP 'post', Drupal 'page'). Assertions compare against this rather than
+   * hardcoding a portal type.
+   */
+  types: Record<string, string>;
+  /** Canonical seed vocabulary name -> this CMS's vocabulary identifier. */
+  vocabularies: Record<string, string>;
+  /**
+   * How many terms this target actually seeded. The contract cares that the
+   * adapter reports the FULL size rather than the page size, and that
+   * filtering happens server-side — not that every CMS can be loaded with the
+   * same number of terms. WordPress seeds via one PHP pass and lands wherever
+   * PHP's execution limits allow.
+   */
+  vocabularySize: number;
+  /**
+   * A named image scale this CMS actually produces. Plone ships preview/large;
+   * WordPress ships thumbnail/medium/large. The contract cares that a named
+   * scale resolves to a fetchable image, not that every CMS agrees on names.
+   */
+  imageScale: string;
+  /**
+   * Canonical role -> this CMS's query index name. Plone calls the type index
+   * portal_type, WordPress post_type; callers discover the name rather than
+   * hardcoding one CMS's vocabulary.
+   */
+  queryIndexes: {
+    type: string;
+    path: string;
+    title: string;
+    state: string;
+    /** Whatever this CMS calls "last edited": modified, changed, … */
+    modified: string;
+  };
+  /** Boot the backing CMS (or mock) and seed it. */
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  /** Reset content to the seed state between test files. */
+  seed(): Promise<void>;
+  /**
+   * The blocks of a published document, fetched with NO credentials.
+   *
+   * The frontend renders the public site by reading the CMS directly — no
+   * adapter, no session. So "can an anonymous client get the blocks?" is a
+   * property of the CMS and how we store them, and nothing else in this suite
+   * asks it: every other test holds the adapter's credentials.
+   *
+   * Returns null when the document is readable but carries no recoverable
+   * blocks, which is the interesting failure.
+   */
+  publicBlocks(path: string): Promise<Record<string, unknown> | null>;
+  /**
+   * The navigation, fetched with NO credentials, from the SAME source the
+   * adapter builds it from.
+   *
+   * A frontend renders the menu on every page, and it has no session. So it is
+   * not enough that `navigation.get` works for the admin: whatever the adapter
+   * reads has to be readable by a visitor too. Plone derives navigation from
+   * content, WordPress from the page tree, Drupal from menu links — and those
+   * three have very different default permissions.
+   *
+   * Returns null when an anonymous client cannot read it at all.
+   */
+  publicNavigation(): Promise<{ path: string; title: string }[] | null>;
+
+  /**
+   * A CURATED menu, read with no credentials — a second hierarchy over the same
+   * content, not the page tree that `publicNavigation` returns.
+   *
+   * Optional because only some CMSes have one. WordPress and Drupal keep menus
+   * separately from the content hierarchy, so a frontend must read them to draw
+   * navigation at all; in Plone the content tree IS the menu. A target that has
+   * no second hierarchy leaves this undefined and the test skips explicitly
+   * rather than passing on an empty result.
+   */
+  /**
+   * What a VISITOR sees in the menu view.
+   *
+   * Entries rather than paths, because an EXTERNAL link has no content path — its
+   * label is the only thing identifying it in a public read.
+   *
+   * Required of every target, because the view model is the generalisation: each
+   * CMS reads its menu from a different place — Plone's @navigation (which honours
+   * exclude_from_nav), Drupal's menu_link_content (enabled), WordPress's WPGraphQL
+   * menuItems (core serves menus to nobody) — and the point of the test is that an
+   * edit reaches a visitor, whichever place that is.
+   */
+  publicMenuEntries(): Promise<
+    { label: string; path: string | null }[] | null
+  >;
+
+  publicMenu?(): Promise<
+    { label: string; path: string; parentLabel: string | null }[] | null
+  >;
+  /**
+   * Put the adapter into a state where the CMS rejects it as unauthenticated,
+   * so the 401 path can be exercised for real rather than with a stub. The
+   * callback receives every event the adapter emits while expired.
+   */
+  expireSession(onEvent: (event: string, payload: unknown) => void): Promise<void>;
+  /**
+   * Fetch a CMS URL with the current session's credentials. Asset URLs are
+   * only meaningful to a caller that is authenticated the way the adapter is,
+   * so assertions about them must not fetch anonymously.
+   */
+  fetchAsSession(url: string): Promise<Response>;
+  adapter: HydraAdapter;
+}
+
+/**
+ * Explicit registry rather than a computed import: vite cannot statically
+ * analyse `import(`./${name}.ts`)` against its own directory, and an unknown
+ * TARGET should fail with a list of what exists rather than a module-not-found.
+ */
+const TARGETS: Record<string, () => Promise<{ default: Target }>> = {
+  plone: () => import('./plone'),
+  wordpress: () => import('./wordpress'),
+  drupal: () => import('./drupal'),
+  strapi: () => import('./strapi'),
+};
+
+export async function resolveTarget(): Promise<Target> {
+  const name = process.env.TARGET ?? 'plone';
+  const load = TARGETS[name];
+  if (!load) {
+    throw new Error(
+      `Unknown TARGET '${name}'. Available: ${Object.keys(TARGETS).join(', ')}`,
+    );
+  }
+  const mod = await load();
+  const target = mod.default;
+
+  // Seeding rewrites the CMS behind the adapter's back — new documents, new
+  // ids — so anything the adapter read before it is now about content that no
+  // longer exists. Without this the suite tests a cache that was never told,
+  // and the first symptom is a 404 for an id from the previous test's fixture.
+  //
+  // This is the same condition as another user editing in production: the
+  // adapter caches until IT writes, and an out-of-band change has to announce
+  // itself. Here the harness is that other writer.
+  if (!seedInvalidatesReads.has(target)) {
+    seedInvalidatesReads.add(target);
+    const seed = target.seed.bind(target);
+    target.seed = async () => {
+      await seed();
+      target.adapter.invalidateReads();
+    };
+  }
+
+  return target;
+}
+
+/**
+ * resolveTarget() is called per spec file (and again at module scope for
+ * capability gating) but returns one shared target, so the wrapper has to be
+ * applied exactly once or seeding would nest it deeper on every call.
+ */
+const seedInvalidatesReads = new WeakSet<Target>();

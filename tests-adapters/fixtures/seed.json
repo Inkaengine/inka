@@ -1,0 +1,111 @@
+{
+  "_comment": "Canonical content set. Every conformance target projects this into its own CMS; every contract assertion refers to it rather than to per-CMS literals. `type` values are canonical names \u2014 each target maps them to its CMS's real type via Target.types. No template documents here: the frontend forces a layout only on paths it is not excluded from, and the journey's roots are excluded, so nothing needs them. They were seeded when forcing was still on for /news, and every WordPress test re-seeds \u2014 the extra document pushed two tests past the 30s timeout. Re-seed them if forcing is ever enabled for a journey root; templates ARE CMS content and each target must carry the ones its frontend references.",
+  "documents": [
+    {
+      "path": "/",
+      "type": "folder",
+      "title": "Home",
+      "state": "published"
+    },
+    {
+      "path": "/news",
+      "type": "folder",
+      "title": "News",
+      "state": "published"
+    },
+    {
+      "path": "/news/first-post",
+      "type": "page",
+      "title": "First Post",
+      "state": "published",
+      "blocks": {
+        "b1": {
+          "@type": "slate",
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "Hello"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "blocksLayout": {
+        "items": [
+          "b1"
+        ]
+      }
+    },
+    {
+      "path": "/news/draft-post",
+      "type": "page",
+      "title": "Draft Post",
+      "state": "draft",
+      "blocks": {},
+      "blocksLayout": {
+        "items": []
+      }
+    },
+    {
+      "path": "/about",
+      "type": "page",
+      "title": "About",
+      "state": "published",
+      "blocks": {},
+      "blocksLayout": {
+        "items": []
+      }
+    },
+    {
+      "path": "/with-image",
+      "title": "With Image",
+      "state": "published",
+      "blocks": {
+        "img-1": {
+          "@type": "image",
+          "url": "http://127.0.0.1:8889/journey-upload.png",
+          "alt": "seeded image"
+        }
+      },
+      "blocksLayout": {
+        "items": [
+          "img-1"
+        ]
+      }
+    },
+    {
+      "path": "/archive",
+      "title": "Archive",
+      "type": "folder",
+      "state": "published"
+    }
+  ],
+  "assets": [
+    {
+      "path": "/news/hero.png",
+      "type": "image",
+      "title": "Hero",
+      "width": 800,
+      "height": 600
+    }
+  ],
+  "vocabularies": {
+    "categories": {
+      "generate": 10000,
+      "tokenPrefix": "cat-",
+      "titlePrefix": "Category "
+    }
+  },
+  "users": [
+    {
+      "username": "admin",
+      "fullname": "Site Admin",
+      "roles": [
+        "Manager"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,540 @@
+/**
+ * Canonical shapes exchanged over the Hydra bridge.
+ *
+ * These are the CMS-neutral types every adapter must produce. They are
+ * deliberately free of Plone-isms (`@id`, `UID`, `@components`): translating
+ * to whatever the Volto admin currently consumes is `plonify()`'s job on the
+ * admin side, not the adapter's.
+ *
+ * Types only — this package has no runtime and no build step.
+ */
+
+export type Capability =
+  | 'content'
+  | 'search-fulltext'
+  | 'search-filter'
+  | 'vocabulary'
+  | 'schema'
+  | 'asset'
+  /** Has lifecycle states and transitions at all. */
+  | 'state'
+  /**
+   * Can say who is editing a document right now, and stop a second editor
+   * silently overwriting the first.
+   *
+   * An obligation, not a feature flag: an adapter whose `content.get` returns
+   * `fields.lock` MUST advertise this and serve `content.lock`/`content.unlock`.
+   * The admin locks on `content.lock !== undefined` alone, and a lock it cannot
+   * take is worse than no locking at all — the failure clears the loaded
+   * content out of the store and the edit form never renders.
+   */
+  | 'locking'
+  /** Supports per-document principal grants (Plone yes, Strapi no). */
+  | 'per-content-permissions'
+  /** Supports inherit-from-parent / break-inheritance. Plone-only in practice. */
+  | 'hierarchical-permissions'
+  /**
+   * Can hold the same document in several languages, linked to each other.
+   *
+   * A group of documents, one per language, that know about each other — not a
+   * translated interface, and not a language field on a document. Plone has it
+   * through plone.app.multilingual; core WordPress needs a plugin, so vanilla
+   * WordPress must not claim it; Drupal has it when more than one language is
+   * configured.
+   *
+   * Everything the admin offers for translations is gated on this, because a
+   * translation that cannot exist is worse to offer than to omit: the editor
+   * fills in a form and the save fails.
+   */
+  | 'multilingual'
+  | 'versioning'
+  | 'sharing'
+  | 'comments'
+  /**
+   * This CMS speaks Plone's REST dialect, so the admin's own requests can be
+   * forwarded verbatim instead of being translated into intents.
+   *
+   * Declared by the Plone adapter and read by BridgeApi, which returns at that
+   * check before the intent router is consulted at all — so an adapter claiming
+   * this serves ~30 Volto action creators without implementing a single intent,
+   * and one that does not gets them as canonical intents. It was missing from
+   * this union while being load-bearing in both places.
+   */
+  | 'http-passthrough'
+  /**
+   * The CMS answers ?expand=breadcrumbs,actions,types,navigation inside the
+   * content response, so the admin's expander bundle rides along in a request it
+   * was making anyway.
+   *
+   * Adapters without this still SERVE expansion — the base class emulates it —
+   * but the admin does not ask, because emulation cannot reduce the request count
+   * and measurably raised it (Drupal's journey 190 -> 214). See
+   * bridge/expanders.js.
+   */
+  | 'expand-native'
+  /**
+   * Grouping writes into one request actually saves round trips here.
+   *
+   * Every adapter SERVES `batch` — the base class applies the operations one at a
+   * time — so this is not about support, it is about cost, exactly as
+   * `expand-native` is. WordPress core takes 25 requests per /batch/v1 call;
+   * Plone can take a whole subtree through @import; Drupal's JSON:API has neither
+   * a batch route nor the atomic-operations extension, so it never claims this.
+   */
+  | 'batch-native'
+  /**
+   * The CMS can say what links TO a document, so a delete can be warned about.
+   *
+   * Plone has @linkintegrity. Drupal could answer from entity reference
+   * back-references. WordPress indexes nothing of the kind, so it does not claim
+   * this and `reference.dependents` refuses honestly there — which is the point:
+   * a delete warning that cannot see incoming links is worse than none, because
+   * it teaches editors the dialog means something.
+   */
+  | 'link-integrity';
+
+/**
+ * RETIRED: `navigation-exclusion` and `navigation-title`.
+ *
+ * Both were Plone's `exclude_from_nav` promoted to something every CMS ought to
+ * have, and the promotion was the mistake. WordPress has no per-page equivalent
+ * to map, which ended in inventing post meta for it — a capability true only on
+ * sites running our own plugin. The evidence they were never universal:
+ * `navigation-exclusion` ran on 2 of 3 adapters and `navigation-title` on 1 of 3.
+ *
+ * What replaced them is VIEW MEMBERSHIP. A menu is a view over the same content,
+ * and what is in it is expressed by moving nodes in and out of the view's
+ * Excluded node — which all three CMSes satisfy through their own mechanisms
+ * (`exclude_from_nav`, a nav_menu_item's publish status, a menu link's
+ * `enabled`). A per-placement label became `allowsLabels` on the view
+ * descriptor, which is what `navigation-title` should have been: a property of
+ * the view, not of the document.
+ *
+ * See superpowers/specs/2026-10-02-content-trees-and-menus-design.md
+ */
+
+export type Intent =
+  | 'content.get'
+  | 'content.create'
+  | 'content.update'
+  | 'content.delete'
+  /**
+   * Put a document at a position among its siblings.
+   *
+   * Two forms, because an editor asks for this in two ways. `targetIndex` is an
+   * absolute slot, and may be negative to count from the end — 0 is first, -1
+   * is last, as a slice reads. `delta` is a signed step, which is what a drag
+   * produces: the gesture is relative and the admin has no sibling list to
+   * resolve it against. An adapter serves both; every CMS here has to read the
+   * siblings to renumber them anyway.
+   */
+  | 'content.order'
+  /**
+   * Order a folder's children by a field, persistently.
+   *
+   * Not the same as asking for a sorted listing: in a CMS with manual ordering
+   * this WRITES the new order, and what the reader sees afterwards no longer
+   * depends on the query. An adapter whose CMS has no manual ordering to write
+   * rejects rather than reporting success it cannot keep.
+   */
+  | 'content.sort'
+  | 'content.move'
+  /**
+   * Copy a document into another container, leaving the original where it is.
+   *
+   * The other half of paste. Unlike a move, the copy is a NEW document: it has
+   * its own id, and the CMS decides how it deduplicates one that clashes.
+   */
+  | 'content.copy'
+  | 'types.list'
+  | 'types.getSchema'
+  | 'search'
+  | 'navigation.get'
+  | 'breadcrumbs.get'
+  | 'tree.list'
+  | 'vocabulary.get'
+  | 'asset.upload'
+  | 'asset.imageUrl'
+  | 'site.get'
+  /** The languages this document exists in, as a group. */
+  | 'translations.get'
+  /**
+   * Make this document exist in another language, with the given content.
+   *
+   * Said as an intention rather than as Plone's `translation_of` field, because
+   * the mechanism differs by family: a grouped CMS creates a second document and
+   * joins the group, a variants CMS writes the language's values onto the entity
+   * that is already there. `parentPath` is where translations.locate said a new
+   * document belongs, and means nothing to an adapter that creates none.
+   */
+  | 'translations.create'
+  /** Put an existing document into this one's translation group. */
+  | 'translations.link'
+  /** Take a language out of this one's translation group. */
+  | 'translations.unlink'
+  /** Where a translation into a given language should be created. */
+  | 'translations.locate'
+  | 'auth.whoami'
+  /**
+   * End the session. The credential lives in the adapter, so signing out is
+   * the adapter's job — and it has to mean the same thing on every CMS: reads
+   * fail as UNAUTHORIZED afterwards rather than succeeding or coming back
+   * empty. Cached reads go too: they were fetched as somebody.
+   *
+   * Idempotent. A second click must not raise something different.
+   */
+  | 'auth.logout'
+  /**
+   * Turn a stored reference into something renderable.
+   *
+   * The contract is an OUTCOME, not an encoding: a reference stored today must
+   * still resolve after the target is renamed or moved. How an adapter achieves
+   * that is its own business — Plone stores resolveuid, WordPress stores the post
+   * id (stable across renames, unlike the permalink) and resolves it fresh on
+   * every render, Drupal has /node/<id> which is already rename-proof. This used
+   * to say references "MUST be stored by id, never by path", which is a mechanism
+   * mandate rather than a promise, and one a CMS can satisfy differently.
+   */
+  | 'reference.resolve'
+  /**
+   * What refers to this document — the question a delete warning is made of.
+   *
+   * Separate from reference.resolve on purpose: resolving forwards is something
+   * every CMS here can do, while looking BACKWARDS needs an index of incoming
+   * links, and that is where they genuinely differ rather than merely differing
+   * in encoding. Plone has one (@linkintegrity, which powers its delete
+   * confirmation); Drupal tracks entity reference back-references; WordPress
+   * indexes nothing of the kind. So this is gated on `link-integrity` and the
+   * admin withholds the warning where it cannot be answered — better than a
+   * confirmation dialog that quietly means nothing.
+   *
+   * Containment ("and it holds 12 things") is NOT part of this: tree.list already
+   * answers that, and bundling them would make one intent two questions.
+   */
+  | 'reference.dependents'
+  /**
+   * Listings. `querystring.getIndexes` describes what can be queried and how;
+   * `querystringSearch` runs one. Together they are the second highest volume
+   * call in a normal editing session after schema, because every listing,
+   * search and teaser block consults them.
+   */
+  | 'querystring.getIndexes'
+  | 'querystringSearch'
+  /** Lifecycle position, available transitions and effective permissions. */
+  /**
+   * RETIRED: `navigation.setExcluded` and `navigation.setTitle`.
+   *
+   * Membership of a menu is a MOVE into or out of the view's Excluded node, so
+   * `tree.list`, `content.move` and `content.create` already express it and
+   * `content.delete` keeps one meaning in every view. See the note on the retired
+   * capabilities above.
+   */
+  | 'state.get'
+  /**
+   * Every transition's form, fetched once when the state menu opens.
+   *
+   * Deliberately not part of `state.get`: Plone's `@actions` maps to that
+   * intent and the admin requests it on every content view, so schemas riding
+   * along would make the common path pay for the rare one. All transitions
+   * come back together rather than one per click because the expensive part —
+   * the current grants — is shared between them.
+   */
+  | 'state.getForms'
+  | 'state.transition'
+  /**
+   * Several operations as one intention.
+   *
+   * Served by every adapter: BaseAdapter applies them in order itself, so a CMS
+   * with nothing bulk still answers. An adapter whose CMS can group them
+   * overrides that and declares `batch-native`.
+   *
+   * Order is part of the meaning, so they are applied sequentially and stop at
+   * the first failure — the error carries `failedIndex` and how many stood, so an
+   * importer can resume. `atomic: true` is a separate promise: honoured by an
+   * adapter whose CMS can make it, refused with NOT_IMPLEMENTED by one that
+   * cannot, never quietly ignored.
+   */
+  /**
+   * Take the edit lock on a document, so a second editor is warned rather than
+   * silently overwriting the first. Returns the lock as it now stands.
+   *
+   * Idempotent for the holder: re-locking something you already hold succeeds.
+   * Entering edit, leaving by a route that does not unlock, and entering again
+   * is ordinary, and refusing the second would strand an author out of their
+   * own document.
+   */
+  | 'content.lock'
+  /**
+   * Release the edit lock. `force` steals a lock held by someone else, which
+   * the CMS may refuse.
+   */
+  | 'content.unlock'
+  | 'batch'
+  | 'http';
+
+export interface Document {
+  /** Opaque CMS id (Plone UID, WP post id, Drupal uuid) — always a string. */
+  id: string;
+  /** CMS-relative path, leading slash, never an absolute URL. */
+  path: string;
+  type: string;
+  title: string;
+  language?: string;
+  blocks: Record<string, unknown>;
+  blocksLayout: { items: string[] };
+  fields: Record<string, unknown>;
+  /** Canonical workflow state, mapped by the adapter from its CMS's names. */
+  state?: string;
+  /** Escape hatch for adapter-internal use. Never read by the admin. */
+  _adapter?: { raw: unknown };
+}
+
+export interface Schema {
+  fieldsets: Array<{ id: string; title: string; fields: string[] }>;
+  properties: Record<string, unknown>;
+  required: string[];
+}
+
+/**
+ * What a transition asks for before it fires, keyed by transition id.
+ *
+ * There is no separate permissions concept: who may do what is fields in this
+ * schema like any other, one per role — `title: 'Editors'`,
+ * `description: 'Will be able to update when published'` — over the
+ * `principals` vocabulary. A CMS with nothing to ask returns an empty schema
+ * and the dialog is a sentence and a confirm.
+ *
+ * Two reserved ids beyond the adapter's own transitions:
+ *  - `access` — change who can see this WITHOUT moving state.
+ *  - `inherit` — a boolean field, where `hierarchical-permissions` is
+ *    advertised.
+ *
+ * Per object and per user, not per type: which roles exist is site config, and
+ * what a role MEANS depends on the state being moved into, which is what the
+ * field descriptions say.
+ */
+export interface TransitionForms {
+  [transitionId: string]: {
+    schema: Schema;
+    /** Current values — grants as they stand, defaults for everything else. */
+    data: Record<string, unknown>;
+  };
+}
+
+export interface User {
+  id: string;
+  username: string;
+  fullname?: string;
+  email?: string;
+  roles: string[];
+}
+
+export interface SearchResult {
+  items: Document[];
+  total: number;
+  batching?: { next?: string; prev?: string };
+}
+
+/**
+ * A stored pointer from one document to another.
+ *
+ * `id` is the contract; `path` and `url` are conveniences valid only at the
+ * moment of resolution and must never be persisted in their place.
+ */
+export interface Reference {
+  id: string;
+  path: string;
+  url: string;
+  title: string;
+}
+
+/**
+ * One queryable field, and what may be done with it.
+ *
+ * Index NAMES are CMS-specific (Plone portal_type, WordPress post_type), the
+ * same way content type names are — callers discover them here rather than
+ * hardcoding. Operations are canonical so the query builder is CMS-neutral.
+ */
+export interface QueryIndex {
+  title: string;
+  description?: string;
+  group?: string;
+  enabled: boolean;
+  sortable: boolean;
+  /** Canonical operation ids this index supports, e.g. 'selection.any'. */
+  operations: string[];
+  /** Selectable values, when the index is an enumeration. */
+  values?: Record<string, { title: string }>;
+}
+
+/** One criterion: index, operation, value. */
+export interface QueryCriterion {
+  i: string;
+  o: string;
+  v?: unknown;
+}
+
+export interface Vocabulary {
+  items: Array<{ token: string; title: string }>;
+  total: number;
+}
+
+/**
+ * Workflow and sharing unified.
+ *
+ * Plone keeps them as separate UIs, but they answer one question: who can do
+ * what, when. Modelling them separately would force every adapter to invent a
+ * mapping twice, and most CMSes do not have two concepts to map. Each CMS
+ * lights up the parts it supports; capabilities gate the rest.
+ */
+export interface PermissionsAndState {
+  /** Lifecycle position. Always present. */
+  state: { name: string; label: string };
+  /**
+   * Transitions available to the current user right now. The state menu
+   * renders from this — there is no separate workflow concept.
+   *
+   * The adapter decides what belongs here, so working-copy entries (Plone's
+   * check out / check in) are transitions like any other: checking out a copy
+   * IS a state change. Cheap by design — ids and labels only. What each one
+   * asks for before it fires comes from `state.getForms` when the menu opens.
+   *
+   * A transition whose `targetState` equals the current state is a no-op; use
+   * the reserved `access` form to change who can see this without moving.
+   */
+  transitions: Array<{
+    id: string;
+    label: string;
+    /**
+     * Optional because one of the three cannot answer it. Plone's `@workflow`
+     * returns each transition as `{@id, title}` and nothing else — the
+     * destination state is in the workflow definition, which is not over REST.
+     * WordPress and Drupal both know theirs.
+     *
+     * Where it is absent the menu shows the transition's own label rather than
+     * grouping by destination, which is what Plone's own UI does today.
+     */
+    targetState?: string;
+    /**
+     * True when taking this moves the editing session somewhere else, and
+     * `state.transition` answers `{ redirect }` rather than null.
+     *
+     * Checking out a working copy is the case that needs it: the copy lives at
+     * a different path, and staying put would show the published version while
+     * the draft sat elsewhere unedited. The dialog says so before committing,
+     * because being relocated is not something to discover afterwards.
+     */
+    relocates?: boolean;
+  }>;
+  /** What the current user may do. UI gates visible/enabled controls on this. */
+  effective: {
+    canEdit: boolean;
+    canPublish: boolean;
+    canDelete: boolean;
+    canShare: boolean;
+    canComment: boolean;
+  };
+  /**
+   * Toolbar entries this CMS wants to answer for itself.
+   *
+   * `effective` above says what the user MAY do; this says where doing it
+   * happens when the CMS would rather show its own screen than have Volto
+   * reimplement one. Three uses, all from the same list:
+   *
+   *  - REPLACE a built-in: give the entry the id Volto already knows (`edit`,
+   *    `sharing`, `history`) and it takes over that button's destination.
+   *  - ADD one Volto has no concept of: any other id.
+   *  - HIDE either: `permitted: false`. The admin gates on this, so an adapter
+   *    can withhold its own entries and Volto's alike.
+   *
+   * Optional and empty by default: a CMS that is happy with Volto's own
+   * screens says nothing and nothing changes.
+   */
+  actions?: Array<{
+    /** Matches a Volto action id to replace it; anything else is a new entry. */
+    id: string;
+    title: string;
+    /**
+     * Where it goes. Absent means Volto's own screen for that id — which is
+     * how an adapter permits or hides a built-in without redirecting it.
+     */
+    url?: string;
+    /** Withheld entries are not rendered. Defaults to true. */
+    permitted?: boolean;
+    /**
+     * How a `url` opens. Defaults to 'window'.
+     *
+     * 'iframe' is opt-in because the CMS decides, not us: admin pages
+     * routinely send X-Frame-Options: SAMEORIGIN or frame-ancestors 'self'
+     * — WordPress does, which is why signing in had to be a popup — and in
+     * Hydra the admin is never on the CMS's origin. There is no way to ask
+     * in advance whether framing will be refused; you find out when the frame
+     * comes back blank. So an adapter opts in only for a CMS it knows allows
+     * it, and everything else opens where it will actually work.
+     */
+    target?: 'window' | 'iframe';
+    /** Which toolbar grouping it belongs to. Defaults to 'object'. */
+    /**
+     * Which of Volto's toolbar groups this belongs to.
+     *
+     * `object-buttons` is where Volto looks for the entries it treats as
+     * optional per site rather than per user — URL aliases and content rules.
+     * They are off unless something declares them, which is the right default:
+     * Plone has both, Drupal has aliases but no rules, and vanilla WordPress
+     * has neither. A CMS turns on what it actually has instead of the admin
+     * guessing from a capability that would have to mean two things.
+     */
+    category?: 'object' | 'object-buttons' | 'site' | 'user';
+  }>;
+}
+
+/**
+ * What the DEPLOYMENT is, as opposed to what any document is. Answered by
+ * `site.get`.
+ */
+export interface SiteInfo {
+  /** The language the site is authored in, as a language tag. */
+  defaultLanguage: string;
+  /** Every language the site offers, including the default. */
+  languages?: string[];
+  title?: string;
+  features?: {
+    /** Can hold the same document in more than one language at all. */
+    multilingual?: boolean;
+    /**
+     * HOW it holds them — a property of this site's configuration, not of the
+     * CMS.
+     *
+     *   'grouped'  — one document per language, linked to each other. Pointing
+     *                an existing page at a group, or detaching one, is metadata
+     *                on documents that both survive: lossless and reversible.
+     *   'variants' — one entity carrying a version of each field per language.
+     *                There is no second document, so there is nothing to link,
+     *                and removing a language deletes that language's content.
+     *
+     * Drupal is either, depending on setup: Content Translation gives variants,
+     * while separate nodes joined by a reference field are grouped. WordPress
+     * with Polylang is grouped. So the adapter is told which by whoever
+     * constructs it — the frontend knows its own site, and the CMS's name does
+     * not settle it.
+     *
+     * The admin offers linking and unlinking only for 'grouped'. On 'variants'
+     * the nearest operation destroys content, which must not hide behind a
+     * control that reads as "relate these two pages".
+     */
+    translations?: 'grouped' | 'variants';
+  };
+}
+
+export interface AdapterContext {
+  cmsBaseUrl: string;
+  emit(event: 'auth-required' | 'auth-state', payload: unknown): void;
+}
+
+export interface HydraAdapter {
+  name: string;
+  capabilities: Capability[];
+  init(ctx: AdapterContext): Promise<void>;
+  whoami(): Promise<User | null>;
+  dispatch(intent: Intent, args: unknown): Promise<unknown>;
+}

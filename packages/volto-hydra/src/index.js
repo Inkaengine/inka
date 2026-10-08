@@ -1,3 +1,6 @@
+// Publishes window.__hydraBridgeRpc at module load — before any route can
+// dispatch, which is earlier than any component effect could manage.
+import './bridge/client';
 import { defineMessages } from 'react-intl';
 import filterSVG from '@plone/volto/icons/filter.svg';
 
@@ -35,6 +38,8 @@ import frontendPreviewUrl, { viewportPreset } from './reducers';
 import FrontendSwitcherPlug from './components/Toolbar/FrontendSwitcherPlug';
 import SidebarToggleToolbarPlug from './components/Toolbar/SidebarToggleToolbarPlug';
 import FrontendSwitcherPanel from './components/Toolbar/FrontendSwitcherPanel';
+import NativeActionsPlug from './components/Toolbar/NativeActionsPlug';
+import NativeActionsPanel from './components/Toolbar/NativeActionsPanel';
 import MobileSubmenuClose from './components/Toolbar/MobileSubmenuClose';
 import rememberedFrontendUrl from './utils/getRememberedFrontendUrl';
 import getSavedURLs, { getURlsFromEnv } from './utils/getSavedURLs';
@@ -76,6 +81,8 @@ import columnAfterSVG from '@plone/volto/icons/column-after.svg';
 import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
 import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
+import { slateValueField } from './utils/slateValueField';
+import { BRIDGE_EXPANDERS } from './bridge/expanders';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
 import { noStore } from './express-middleware/noStore';
 
@@ -95,7 +102,73 @@ const RULE_ERROR_FIELD_TYPES = ['string', 'number', 'integer', 'boolean', 'array
 const hydraRuleErrorValidator = ({ field }) => field?.hydraRuleError || null;
 
 const applyConfig = (config) => {
+  // Route every CMS call over the bridge to the frontend's adapter instead of
+  // fetching directly from the admin. Off unless explicitly enabled: with it
+  // off the customized Api helper falls through to stock superagent, so the
+  // whole inversion is inert.
+  config.settings.useBridgeBackend =
+    process.env.RAZZLE_USE_BRIDGE_BACKEND === 'true';
+
+  if (config.settings.useBridgeBackend) {
+    // Expansion, decided HERE rather than from the adapter's announcement.
+    //
+    // Deriving it at runtime was the bug. apiExpanders is read synchronously
+    // when Volto BUILDS a request, so the first route's content GET went out
+    // before any adapter had announced and carried no expand parameter — while
+    // the Toolbar, mounting afterwards, saw expanders configured and skipped
+    // getTypes on the promise the data had ridden along. The types arrived from
+    // nowhere and the toolbar rendered empty. Static removes the race: every
+    // request is built from the same answer.
+    //
+    // Volto ships expansion ON (config/index.js), so clearing it was not
+    // declining an optimisation, it was removing a default — a route load cost
+    // five requests instead of one. That is what made this suite flaky under
+    // load: the same specs pass alone and fail together, because a 10s wait
+    // cannot absorb five round trips per route across four workers.
+    //
+    // Expansion goes through the adapter like everything else, so nothing needs
+    // to be negotiated to ASK for it. The one case where it measurably costs
+    // more than it saves is an EMULATING adapter — Drupal's journey went from
+    // 190 requests to 214, and ungated from 1.5 minutes to 6.9 and failed (see
+    // bridge/expanders.js). Those runs opt out explicitly rather than everyone
+    // paying for the exception.
+    config.settings.apiExpanders =
+      process.env.RAZZLE_BRIDGE_EXPANDERS === 'false' ? [] : BRIDGE_EXPANDERS;
+
+    // Guarantee the server can resolve a UI language without asking a CMS.
+    //
+    // server.jsx picks the render language from
+    //   cookie || state.site.data['plone.default_language'] || accept-language
+    // and in a bridge session the middle term is always absent — site info is
+    // a CMS read the server cannot make. A request that also carries no
+    // Accept-Language (health checks, curl, monitors) therefore left the
+    // language undefined, and toReactIntlLang() called .includes() on it. That
+    // throw lands in server.jsx's .catch(errorHandler), so the response was an
+    // ERROR PAGE with an error status rather than the admin.
+    //
+    // Naming the language the admin is built with is not a fallback for CMS
+    // data: it is a UI preference the CMS never owned in the first place.
+    const language =
+      config.settings.supportedLanguages?.[0] ?? 'en';
+    const ensureLanguage = (req, res, next) => {
+      if (!req.headers['accept-language']) {
+        req.headers['accept-language'] = language;
+      }
+      next();
+    };
+    config.settings.expressMiddleware = [
+      ...(config.settings.expressMiddleware ?? []),
+      ensureLanguage,
+    ];
+  }
+
   // No shared cache keeps an editor's page (express-middleware/noStore.js).
+  //
+  // Kept OUTSIDE the bridge-backend block, where the merge's own resolution
+  // would have put it: the two sides added middleware in competing branches of
+  // the same `if`, and folding main's into this branch's list would have made
+  // it conditional on RAZZLE_USE_BRIDGE_BACKEND — a cache header silently
+  // dropped for every direct-fetch deployment.
   if (__SERVER__) {
     config.settings.expressMiddleware = [
       ...(config.settings.expressMiddleware || []),
@@ -238,12 +311,19 @@ config.settings.additionalToolbarComponents = {
       component: FrontendSwitcherPanel,
       wrapper: null,
     },
+    // Screens the CMS answers for itself. The button hides when no adapter
+    // declared any, so a CMS happy with Volto's own screens adds nothing.
+    nativeActions: {
+      component: NativeActionsPanel,
+      wrapper: null,
+    },
   };
 
   // Register the toolbar plug as appExtras so Plug mounts in the App tree
   config.settings.appExtras = [
     ...(config.settings.appExtras || []),
     { match: '/', component: FrontendSwitcherPlug },
+    { match: '/', component: NativeActionsPlug },
     { match: '/', component: SidebarToggleToolbarPlug },
     { match: '/', component: MobileSubmenuClose },
   ];
@@ -346,7 +426,13 @@ config.settings.additionalToolbarComponents = {
           ...(blockTab?.fieldsets?.slice(1) || []),
         ],
         properties: {
-          value: { title: 'Body', widget: 'slate', placeholder },
+          // Defaulted on the field so every creation path gets a body — but
+          // only for a block without one; see slateValueField for why.
+          value: slateValueField({
+            data: props?.formData || props?.data,
+            placeholder,
+            defaultValue: config.settings.slate.defaultValue,
+          }),
           ...(blockTab?.properties || {}),
           // Permanent fragment id for a heading block. Frontends render it as
           // the heading's id, so links and tables of contents survive the
@@ -887,15 +973,29 @@ config.settings.additionalToolbarComponents = {
   // Initial call to set the blocks based on the initial state
   updateAllowedBlocks();
 
-  // Initial block for Document content type
+  // What a new document starts with.
+  //
+  // Keyed by CONTENT TYPE, and every key here used to be a Plone type name, so
+  // a new document on any other CMS started with no blocks at all — both
+  // WordPress and Drupal report their page type as 'page'. The admin is meant
+  // to be CMS-agnostic, so the same starting blocks are registered for the
+  // page types the other adapters report.
+  //
+  // Still a gap: this is a list of known type names rather than a default for
+  // any type, so a CMS whose page type is called something else is back to
+  // starting empty. Fixing that properly means a fallback in Volto's
+  // initialBlocks lookup, which is core behaviour rather than config.
+  const INITIAL_BLOCKS = [
+    { '@type': 'title' },
+    {
+      '@type': 'slate',
+      value: [{ type: 'p', children: [{ text: '' }] }],
+    },
+  ];
   config.blocks.initialBlocks = {
-    Document: [
-      { '@type': 'title' },
-      {
-        '@type': 'slate',
-        value: [{ type: 'p', children: [{ text: '' }] }],
-      },
-    ],
+    Document: INITIAL_BLOCKS,
+    page: INITIAL_BLOCKS,
+    post: INITIAL_BLOCKS,
   };
 
   // Generic block actions registry
