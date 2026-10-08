@@ -4804,11 +4804,14 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     const blockChooser = page.locator('.blocks-chooser');
     await expect(blockChooser).toBeVisible({ timeout: 5000 });
 
-    // Expand the Common section (facet types are grouped there, collapsed by default)
-    const commonSection = blockChooser.locator('text=Common');
-    if (await commonSection.isVisible()) {
-      await commonSection.click();
+    // Open the Common section (facet types are grouped there) unless the chooser
+    // already has: with a single group it opens it itself, and clicking its
+    // title then would close it.
+    const checkboxButton = blockChooser.locator('button.checkboxFacet');
+    if (!(await checkboxButton.isVisible())) {
+      await blockChooser.locator('.accordion > .title', { hasText: 'Common' }).click();
     }
+    await expect(checkboxButton).toBeVisible();
 
     // Allowed types use display names from blocksConfig.title — the facet
     // types the frontend's search schema allows, and only those.
@@ -4818,8 +4821,8 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     // NOT allowed: text and image (the admin's own search allows them among its
     // facets; this frontend's schema does not, and its schema is the whole
     // schema), hero, columns, slider
-    expect(await helper.isBlockTypeVisible('slate')).toBe(false);
-    expect(await helper.isBlockTypeVisible('image')).toBe(false);
+    await expect(blockChooser.locator('button.slate')).toHaveCount(0);
+    await expect(blockChooser.locator('button.image')).toHaveCount(0);
     expect(await helper.isBlockTypeVisible('hero')).toBe(false);
     expect(await helper.isBlockTypeVisible('columns')).toBe(false);
     expect(await helper.isBlockTypeVisible('slider')).toBe(false);
@@ -4905,13 +4908,10 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     const blockChooser = page.locator('.blocks-chooser');
     await expect(blockChooser).toBeVisible({ timeout: 5000 });
 
-    // Expand Common section and select Checkbox
-    const commonSection = blockChooser.locator('text=Common');
-    if (await commonSection.isVisible()) {
-      await commonSection.click();
-    }
-    await blockChooser.getByRole('button', { name: /Checkbox/i }).click();
-    await blockChooser.waitFor({ state: 'hidden', timeout: 5000 });
+    // Select Checkbox. The generic helper opens its section only if it is not
+    // already open: with one group of types the chooser opens it itself, and
+    // clicking its title then would close it.
+    await helper.selectBlockType('checkboxFacet');
 
     // Wait for the new facet to appear in iframe and be selected
     await helper.waitForBlockCountToBe(initialBlockCount + 1);

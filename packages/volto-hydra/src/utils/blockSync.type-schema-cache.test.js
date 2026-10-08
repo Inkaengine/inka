@@ -33,4 +33,37 @@ describe('populateTypeSchemaCache', () => {
     populateTypeSchemaCache(mergedConfig, {});
     expect(Object.keys(getBlockTypeSchema('finder', {}, mergedConfig).properties)).toEqual(['label', 'items']);
   });
+
+  test('filling again with the same config gives the same schema object', () => {
+    const cfg = { tile: { blockSchema: { properties: { label: { title: 'Label' } } } } };
+    populateTypeSchemaCache(cfg, {});
+    const first = getBlockTypeSchema('tile', {}, cfg);
+    populateTypeSchemaCache(cfg, {});
+    expect(getBlockTypeSchema('tile', {}, cfg)).toBe(first);
+  });
+
+  test('an enhancer installed on the same entry after it was cached is applied', () => {
+    const entry = { blockSchema: { properties: { label: { title: 'Label' } } } };
+    const cfg = { badge: entry };
+    expect(Object.keys(getBlockTypeSchema('badge', {}, cfg).properties)).toEqual(['label']);
+    entry.schemaEnhancer = ({ schema }) => ({ ...schema, properties: { ...schema.properties, variation: {} } });
+    expect(Object.keys(getBlockTypeSchema('badge', {}, cfg).properties)).toEqual(['label', 'variation']);
+  });
+});
+
+describe('getBlockTypeSchema', () => {
+  test('a type has every field it declares, whatever a visibility rule hides with no data', () => {
+    // Like a teaser whose title shows only once "customise" is ticked.
+    const cfg = {
+      card: {
+        blockSchema: { properties: { overwrite: { type: 'boolean' }, title: { title: 'Title' } } },
+        schemaEnhancer: ({ schema, formData }) => {
+          if (formData?.overwrite) return schema;
+          const { title, ...rest } = schema.properties;
+          return { ...schema, properties: rest };
+        },
+      },
+    };
+    expect(Object.keys(getBlockTypeSchema('card', {}, cfg).properties).sort()).toEqual(['overwrite', 'title']);
+  });
 });
