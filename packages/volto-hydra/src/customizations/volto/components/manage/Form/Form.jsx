@@ -46,7 +46,7 @@ import {
 } from 'semantic-ui-react';
 import { v4 as uuid } from 'uuid';
 import { toast } from 'react-toastify';
-import { stripEmptyBlocks, ensureAllContainersHaveBlocks } from '../../../../../utils/blockPath';
+import { stripEmptyBlocks } from '../../../../../utils/blockPath';
 import {
   stripFixedInsideSlots,
   inheritedLanguageFields,
@@ -253,11 +253,11 @@ class Form extends Component {
       }
     }
 
-    // Ensure all container blocks have at least one child block.
-    // Containers may be empty after loading from API (empty blocks are stripped on save).
-    formData = ensureAllContainersHaveBlocks(
-      formData, config.blocks.blocksConfig, props.intl, uuid,
-    );
+    // Nested regions saved empty (placeholders are stripped on save) are NOT
+    // seeded here: this runs before the frontend's INIT, so the only schemas
+    // known are the admin's own, and a block the frontend overrides would get
+    // the admin's regions seeded into its data (and saved). INIT seeds every
+    // region once the merged config is in (View.jsx, ensureAllContainersHaveBlocks).
 
     let selectedBlock = null;
     if (

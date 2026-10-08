@@ -96,6 +96,15 @@ export function addableSiblingTypes(
 const _typeSchemaCache = new Map();
 
 /**
+ * Forget every cached type schema. The cache holds the schemas of ONE
+ * blocksConfig; when that config is replaced (INIT merges the frontend's
+ * entries over the admin's), what was cached from the old one is wrong.
+ */
+export function clearTypeSchemaCache() {
+  _typeSchemaCache.clear();
+}
+
+/**
  * Get the default schema for a block type (with empty formData).
  * Runs blockSchema + schemaEnhancer with formData={}, so enhancers that add
  * fields unconditionally are included. Cached by blockType since the inputs

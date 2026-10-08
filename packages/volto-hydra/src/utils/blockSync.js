@@ -41,7 +41,7 @@ import { getInjectedBlocksConfig, getSlateStyleGlobals, getSlateVocabulary } fro
 import { normalizeSlateFields, undefinedSlateTypes } from '../../../hydra-js/slateStyles.js';
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
   deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
-import { addableSiblingTypes, buildBlockPathMap } from '../../../hydra-js/buildBlockPathMap.js';
+import { addableSiblingTypes, buildBlockPathMap, clearTypeSchemaCache } from '../../../hydra-js/buildBlockPathMap.js';
 import { isObjectListRegion } from '../../../hydra-js/regionWidgets.js';
 import {
   createFieldRulesEnhancer,
@@ -182,6 +182,9 @@ function addVariationFieldEnhancer(variations) {
  */
 export function populateTypeSchemaCache(blocksConfig, intl) {
   if (!blocksConfig) return;
+  // The admin's Form read schemas before INIT, from the admin's own config:
+  // a type cached then would keep the admin's schema over the frontend's.
+  clearTypeSchemaCache();
   for (const blockType of Object.keys(blocksConfig)) {
     // getBlockTypeSchema short-circuits on cache hit; first call fills.
     getBlockTypeSchema(blockType, intl, blocksConfig);
