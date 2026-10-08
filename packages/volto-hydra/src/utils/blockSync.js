@@ -660,6 +660,26 @@ export function applyBlockDefaultsWithContext(blockData, context) {
 }
 
 /**
+ * Every field a block type DECLARES (its blockSchema / schema), plus any its
+ * enhancer adds. Unlike getBlockTypeSchema, conditional visibility does not
+ * remove any: a fieldRule that hides a field until a box is ticked is about
+ * one block's form. What a listing can map onto an item, and what a container
+ * can own as its items' defaults, are the type's fields, shown or not.
+ *
+ * @returns {Object|null} - the type schema with its declared properties restored
+ */
+export function getDeclaredTypeSchema(blockType, intl, blocksConfig) {
+  const typeSchema = getBlockTypeSchema(blockType, intl, blocksConfig);
+  const source = blocksConfig?.[blockType]?.blockSchema || blocksConfig?.[blockType]?.schema;
+  const declared = typeof source === 'function' ? source({ formData: {}, data: {}, intl }) : source;
+  if (!typeSchema && !declared?.properties) return null;
+  return {
+    ...(typeSchema || {}),
+    properties: { ...(declared?.properties || {}), ...(typeSchema?.properties || {}) },
+  };
+}
+
+/**
  * Creates a schemaEnhancer that inherits fields from a referenced block type.
  *
  * Use this for blocks that reference another block type (e.g., listing → teaser).
@@ -797,7 +817,7 @@ export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFi
 
       // Use parent's selected type for computing fieldMapping
       const effectiveType = parentSelectedType || referencedType;
-      const effectiveSchema = effectiveType ? getBlockTypeSchema(effectiveType, intl, blocksConfig) : null;
+      const effectiveSchema = effectiveType ? getDeclaredTypeSchema(effectiveType, intl, blocksConfig) : null;
 
       // Clone schema and remove typeField
       let newSchema = {
@@ -879,7 +899,9 @@ export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFi
       };
       return newSchema;
     }
-    const referencedSchema = getBlockTypeSchema(referencedType, intl, blocksConfig);
+    // The items' fields, shown or not (getDeclaredTypeSchema): the source of the
+    // inherited defaults and of the mapping's targets.
+    const referencedSchema = getDeclaredTypeSchema(referencedType, intl, blocksConfig);
     if (!referencedSchema?.properties) return schema;
 
     // Compute smart defaults for fieldMapping based on current target type

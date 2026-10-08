@@ -16,7 +16,7 @@ import {
 } from '@plone/volto/components/manage/Widgets/SelectStyling';
 import { injectLazyLibs } from '@plone/volto/helpers/Loadable/Loadable';
 import {
-  getBlockTypeSchema,
+  getDeclaredTypeSchema,
   computeSmartDefaults,
   getFieldType,
   findTypeField,
@@ -25,10 +25,11 @@ import { useHydraSchemaContext } from '../../context/HydraSchemaContext';
 import { getBlockById } from '../../utils/blockPath';
 
 /**
- * Get schema fields for a block type as options for a select
+ * The fields a mapping can fill on a block type, as options for a select:
+ * every field it declares, whatever its form currently shows.
  */
 const getBlockSchemaFields = (blockType, intl, blocksConfig) => {
-  const schema = getBlockTypeSchema(blockType, intl, blocksConfig);
+  const schema = getDeclaredTypeSchema(blockType, intl, blocksConfig);
   if (!schema?.properties) return [];
 
   return Object.entries(schema.properties).map(([fieldName, fieldDef]) => ({
@@ -72,7 +73,7 @@ const FieldMappingWidget = (props) => {
 
   // Get target schema and compute smart defaults
   const blocksConfig = config.blocks.blocksConfig;
-  const targetSchema = getBlockTypeSchema(targetType, intl, blocksConfig);
+  const targetSchema = getDeclaredTypeSchema(targetType, intl, blocksConfig);
   const childFieldMappings = blocksConfig[targetType]?.fieldMappings;
   const smartDefaults = sourceFields && targetSchema
     ? computeSmartDefaults(sourceFields, targetSchema, childFieldMappings)
