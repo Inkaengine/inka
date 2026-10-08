@@ -1039,14 +1039,11 @@ const Iframe = (props) => {
       translationSource && frontendSchemasLoaded
         ? translationStatus(properties?.blocks, translationSource?.blocks, {
             idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, intl),
-            fingerprintOf: (sourceBlock, id, type) => {
-              const schema = getBlockTypeSchema(type, intl, config.blocks.blocksConfig);
-              const fp = sourceFingerprint(sourceBlock, schema);
-              // DIAGNOSTIC (temporary, #500): which schema the comparison used.
-              // eslint-disable-next-line no-console
-              console.log('[hydra-fp] compare', type, id, fp, JSON.stringify(Object.keys(schema?.properties || {})));
-              return fp;
-            },
+            fingerprintOf: (sourceBlock, id, type) =>
+              sourceFingerprint(
+                sourceBlock,
+                getBlockTypeSchema(type, intl, config.blocks.blocksConfig),
+              ),
           })
         : { statuses: {}, missing: [], unknown: [] },
     [translationSource, properties?.blocks, intl, frontendSchemasLoaded],

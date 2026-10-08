@@ -241,11 +241,7 @@ class Add extends Component {
    */
   fingerprintOf = (sourceBlock, id, type) => {
     const schema = getBlockTypeSchema(type, this.props.intl, config.blocks.blocksConfig);
-    const fp = schema ? sourceFingerprint(sourceBlock, schema) : null;
-    // DIAGNOSTIC (temporary, #500): which schema a translation's fingerprint used.
-    // eslint-disable-next-line no-console
-    console.log('[hydra-fp] add', type, id, fp, JSON.stringify(Object.keys(schema?.properties || {})), typeof config.blocks.blocksConfig[type]?.schemaEnhancer, JSON.stringify(Object.keys(config.blocks.blocksConfig[type]?.blockSchema?.properties || {})));
-    return fp;
+    return schema ? sourceFingerprint(sourceBlock, schema) : null;
   };
 
   onSubmit(data) {
