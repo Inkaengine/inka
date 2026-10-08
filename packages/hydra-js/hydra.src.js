@@ -4824,6 +4824,17 @@ export class Bridge {
           event.data.type === 'TOGGLE_MARK_DONE'
         ) {
           log('Received', event.data.type, 'message');
+          // Number each admin message as it arrives. The queue drain below
+          // re-posts its entry to this window, which lands it BEHIND any
+          // admin message already waiting — so a re-posted entry that a
+          // newer arrival has overtaken is stale and must not render.
+          if (event.data._hydraArrival === undefined) {
+            this._formDataArrivals = (this._formDataArrivals || 0) + 1;
+            event.data._hydraArrival = this._formDataArrivals;
+          } else if (event.data._hydraArrival < this._formDataArrivals) {
+            log(event.data.type, ': dropping re-posted queue entry overtaken by a newer arrival');
+            return;
+          }
           if (event.data.data) {
             // Don't set isInlineEditing to false - user is still editing
             // Check if focused field content changed - if so, this is a sidebar edit,
