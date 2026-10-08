@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cloneBlocksForTranslation } from './index.js';
+import { cloneBlocksForTranslation, restampTranslationFingerprints } from './index.js';
 
 /**
  * Copying a page's blocks into a translation.
@@ -178,5 +178,42 @@ describe('what a copy records about its source', () => {
     );
     expect(blocks[layout[0]]['@canonical']).toBe('s1');
     expect(blocks[layout[0]]['@translation']).toBeUndefined();
+  });
+});
+
+describe('restampTranslationFingerprints', () => {
+  // A translation's copies are made when the add form opens, and their
+  // fingerprints with whatever block schemas the editor had then — possibly
+  // before the frontend's arrived. Saving re-takes them from the originals with
+  // the schemas the editor has now, so a copy and a later comparison agree.
+  const idFieldMap = {};
+  const source = {
+    grid: { '@type': 'gridBlock', blocks: { t1: { '@type': 'teaser', title: 'One' } }, blocks_layout: { items: ['t1'] } },
+  };
+  const copy = {
+    g2: {
+      '@type': 'gridBlock',
+      '@canonical': 'grid',
+      '@translation': { fingerprint: 'old-grid' },
+      blocks: { c1: { '@type': 'teaser', title: 'Eins', '@canonical': 't1', '@translation': { fingerprint: 'old-t1' } } },
+      blocks_layout: { items: ['c1'] },
+    },
+    added: { '@type': 'teaser', title: 'Neu' },
+  };
+  const fingerprintOf = (block, id, type) => `${type}:${id}:${block.title ?? ''}`;
+
+  it("re-takes each copy's fingerprint from the original it names, at any depth", () => {
+    const out = restampTranslationFingerprints(copy, source, idFieldMap, fingerprintOf);
+    expect(out.g2['@translation'].fingerprint).toBe('gridBlock:grid:');
+    expect(out.g2.blocks.c1['@translation'].fingerprint).toBe('teaser:t1:One');
+    // The translated words, ids and layout are untouched.
+    expect(out.g2.blocks.c1.title).toBe('Eins');
+    expect(out.g2.blocks_layout).toEqual({ items: ['c1'] });
+  });
+
+  it('leaves a block with no original alone, and does not change its input', () => {
+    const out = restampTranslationFingerprints(copy, source, idFieldMap, fingerprintOf);
+    expect(out.added).toEqual({ '@type': 'teaser', title: 'Neu' });
+    expect(copy.g2['@translation'].fingerprint).toBe('old-grid');
   });
 });
