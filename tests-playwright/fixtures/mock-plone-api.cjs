@@ -4504,8 +4504,13 @@ const VOCAB_ITEMS = {
   ],
   // A second one, so a picker that lists vocabularies has something to choose
   // BETWEEN — with one entry, "offers the right list" and "offers any list at
-  // all" are the same assertion.
-  'plone.app.vocabularies.ReallyUserFriendlyTypes': ['Document', 'News Item'],
+  // all" are the same assertion. Its terms are titled as Plone titles them:
+  // the type "Document" reads "Page", so a token echoed as the title would
+  // show a type's id where a person expects its name.
+  'plone.app.vocabularies.ReallyUserFriendlyTypes': [
+    { token: 'Document', title: 'Page' },
+    { token: 'News Item', title: 'News Item' },
+  ],
   // collective.volto.formsupport lists only the captcha providers a site has
   // configured (captcha/vocabularies.py keeps those whose isEnabled() is
   // true): see CONFIGURED_CAPTCHAS.
@@ -4594,17 +4599,21 @@ app.get('/@vocabularies/:vocab', (req, res) => {
     });
   }
 
-  const all = VOCAB_ITEMS[req.params.vocab] || [];
+  // A term is a bare string where the token is its own title (keywords), or
+  // `{ token, title }` where they differ.
+  const all = (VOCAB_ITEMS[req.params.vocab] || []).map((v) =>
+    typeof v === 'string' ? { token: v, title: v } : v,
+  );
   // `?title=` is a case-insensitive substring filter in plone.restapi's
   // serializer — what a type-ahead sends so the server does the narrowing.
   const title = String(req.query.title || '').toLowerCase();
-  const values = title
-    ? all.filter((v) => v.toLowerCase().includes(title))
+  const items = title
+    ? all.filter((v) => v.title.toLowerCase().includes(title))
     : all;
   res.json({
     '@id': `http://localhost:${PORT}/@vocabularies/${req.params.vocab}`,
-    items: values.map((v) => ({ token: v, title: v })),
-    items_total: values.length,
+    items,
+    items_total: items.length,
   });
 });
 
