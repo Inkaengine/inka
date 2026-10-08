@@ -203,6 +203,36 @@ const sessionAliases = {};
  */
 const PRIVATE_STATES = new Set(['private', 'pending', 'draft']);
 
+/**
+ * A menu with nothing in it the caller may not open.
+ *
+ * The content route already refuses a private document to an anonymous
+ * visitor. Navigation did not apply the same rule, so the menu ADVERTISED
+ * exactly what the next request would be refused — every page of the public
+ * site carried a link that answered 401/404, which is what page-integrity
+ * reported the moment a private fixture existed to be listed.
+ *
+ * Real Plone cannot produce that combination: @navigation is built from a
+ * catalog search, and the search only returns what the caller may view. An
+ * editor still sees their drafts in the menu, which is why this filters on
+ * authentication rather than always.
+ *
+ * Applied at the ROUTES, where authentication is already known, rather than
+ * threaded down through the component builders: getContent and
+ * generateComponents would both need the flag, and every caller of getContent
+ * with it.
+ */
+function withoutPrivateItems(items) {
+  if (!Array.isArray(items)) return items;
+  return items
+    .filter((item) => !PRIVATE_STATES.has(item?.review_state))
+    .map((item) =>
+      item?.items
+        ? { ...item, items: withoutPrivateItems(item.items) }
+        : item,
+    );
+}
+
 function getSessionId(req) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -5115,11 +5145,24 @@ app.get(/.*\/@navigation$/, (req, res) => {
     const rootPath = rootPathParam || '/';
     res.json({
       '@id': `${baseUrl}${cleanPath}/@navigation`,
-      items: getNavigationItems(rootPath, depth, baseUrl, getSessionId(req)),
+      items: isAuthenticated(req)
+        ? getNavigationItems(rootPath, depth, baseUrl, getSessionId(req))
+        : withoutPrivateItems(
+            getNavigationItems(rootPath, depth, baseUrl, getSessionId(req)),
+          ),
     });
     return;
   }
-  res.json(buildNavigationComponent(cleanPath, baseUrl, getSessionId(req)));
+  const navigation = buildNavigationComponent(
+    cleanPath,
+    baseUrl,
+    getSessionId(req),
+  );
+  res.json(
+    isAuthenticated(req)
+      ? navigation
+      : { ...navigation, items: withoutPrivateItems(navigation.items) },
+  );
 });
 
 app.get(/.*\/@navroot$/, (req, res) => {
@@ -6472,7 +6515,24 @@ app.get('*', (req, res, next) => {
       });
     }
 
-    const filteredContent = filterActionsForAuth(content, authenticated);
+    let filteredContent = filterActionsForAuth(content, authenticated);
+    // The menu travels with the page as `?expand=navigation`, which is how a
+    // frontend reads it — so filtering only the standalone route would leave
+    // every rendered page still carrying the links.
+    if (!authenticated && filteredContent?.['@components']?.navigation?.items) {
+      filteredContent = {
+        ...filteredContent,
+        '@components': {
+          ...filteredContent['@components'],
+          navigation: {
+            ...filteredContent['@components'].navigation,
+            items: withoutPrivateItems(
+              filteredContent['@components'].navigation.items,
+            ),
+          },
+        },
+      };
+    }
 
     if (process.env.DEBUG) {
       console.log(`[DEBUG] Serving API content for ${cleanPath} (auth: ${authenticated})${sessionId ? ` (session: ${sessionId})` : ''}`);

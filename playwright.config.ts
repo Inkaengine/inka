@@ -718,7 +718,14 @@ export default defineConfig({
       name: 'Strapi',
       // `develop`, with the admin panel left unbuilt — the journey talks to
       // the REST API. The contract suite's global-setup explains why.
-      command: `node node_modules/@strapi/strapi/bin/strapi.js develop --no-watch-admin --no-build-admin`,
+      // A FRESH database every run, which is what makes a local run mean
+      // something. Strapi's data persists, unlike the mocks and unlike
+      // Playground, so a database left seeded by an earlier run makes the next
+      // one pass on content it did not create: back-navigation does not seed
+      // (only WordPress needed it), it runs first alphabetically, and in CI it
+      // met an empty Strapi and failed with "Not found: /news" while passing
+      // here every time.
+      command: `rm -f .tmp/journey.db && node node_modules/@strapi/strapi/bin/strapi.js develop --no-watch-admin --no-build-admin`,
       // An API route, not `/`: `/` is the admin panel, which is NOT built
       // here, so it answers 404 forever while Strapi is perfectly healthy —
       // the same trap as WordPress's self-302 below, in a different costume.

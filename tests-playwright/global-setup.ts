@@ -141,6 +141,38 @@ function strapiFrontend(): string | null {
   );
 }
 
+/**
+ * Put the journey's Strapi into the seeded state, ONCE per run.
+ *
+ * Every other journey backend arrives seeded: the Plone and Drupal mocks serve
+ * the canonical set by construction, and WordPress is seeded per spec by
+ * seedFor because it boots empty. Strapi boots empty too, but only the specs
+ * that call seedFor would fix that — and back-navigation does not (it was
+ * written when WordPress was the only CMS that needed it) and runs first
+ * alphabetically. In CI it therefore met an empty Strapi: "Not found: /news".
+ *
+ * Here rather than in that spec, because the guarantee belongs to the RUN: no
+ * spec should have to know whether an earlier one happened to seed.
+ *
+ * Skipped when Strapi is not answering, which means this run did not ask for
+ * it. Any other failure is raised: a journey against an unseeded CMS reports
+ * missing content as broken behaviour.
+ */
+async function seedJourneyStrapi(): Promise<void> {
+  if (!fs.existsSync(STRAPI_TOKEN_FILE)) return;
+  const up = await fetch(`${URLS.strapi}/api/pages`)
+    .then((r) => r.ok)
+    .catch(() => false);
+  if (!up) return;
+  const { seedStrapi } = await import('../tests-adapters/fixtures/seed-strapi');
+  await seedStrapi({
+    baseUrl: URLS.strapi,
+    token: fs.readFileSync(STRAPI_TOKEN_FILE, 'utf8').trim(),
+  });
+  // eslint-disable-next-line no-console
+  console.log('[SETUP] seeded the journey Strapi');
+}
+
 export const GENERATED_DIR = path.resolve(__dirname, '.generated');
 
 function writeStorageStates(): void {
@@ -215,6 +247,10 @@ async function warmFrontend(url: string): Promise<void> {
 async function globalSetup() {
   // Before anything else: the storageStates have to name the ports THIS run uses.
   writeStorageStates();
+
+  // A seeded CMS before the first spec, so no spec depends on another having
+  // run. A no-op unless this run started Strapi.
+  await seedJourneyStrapi();
 
   // Run block discovery if configured (before health checks — SKIP_VOLTO_CHECK
   // causes early return but discovery still needs to run for bridge tests)
