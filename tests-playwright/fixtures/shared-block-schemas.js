@@ -856,7 +856,26 @@ export const sharedBlocksConfig = {
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['variation', 'fieldMapping', 'headline', 'headlineTag', 'querystring'] }],
             properties: {
-                fieldMapping: { title: 'Field mapping' },
+                // The frontend declares its own mapping widget and what a result
+                // offers to map: these are the fields its fetcher (ploneFetchItems,
+                // @querystring-search) returns. A listing of another kind (related
+                // items, a feed) declares the fields ITS fetcher returns.
+                fieldMapping: {
+                    title: 'Field mapping',
+                    widget: 'field_mapping',
+                    description: 'Map query result fields to item block fields',
+                    sourceFields: {
+                        '@id': { title: 'URL', type: 'string' },
+                        title: { title: 'Title', type: 'string' },
+                        description: { title: 'Description', type: 'string' },
+                        image: { title: 'Lead Image', type: 'image' },
+                        created: { title: 'Created', type: 'date' },
+                        effective: { title: 'Published', type: 'date' },
+                        Creator: { title: 'Author', type: 'string' },
+                        review_state: { title: 'State', type: 'string' },
+                        Subject: { title: 'Categories', type: 'array' },
+                    },
+                },
                 headline: { title: 'Headline', type: 'string' },
                 headlineTag: { title: 'Headline tag', widget: 'select', choices: [['h1','h1'],['h2','h2'],['h3','h3'],['h4','h4'],['h5','h5'],['h6','h6']] },
                 querystring: { title: 'Search criteria', widget: 'querystring' },
@@ -870,7 +889,6 @@ export const sharedBlocksConfig = {
                     filterConvertibleFrom: '@default',
                     blocksField: '..',
                 },
-                // fieldMapping field is rendered by inheritSchemaFrom via mappingField
             },
         },
         schemaEnhancer: {

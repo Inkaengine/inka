@@ -168,7 +168,7 @@ This is deliberate: before, the admin's fields were merged in and its edit compo
 An entry for a block the admin already has applies key by key:
 
 - **`blockSchema` / `schema`** — replaces the admin's schema, as above; your fields are not merged into its.
-- **`schemaEnhancer`** — **adds**: it runs after the admin's own enhancer, so you can add `fieldRules` to a built-in block without replacing it.
+- **`schemaEnhancer`** — **adds**: with no `blockSchema`, it runs after the admin's own enhancer, so you can add `fieldRules` to a built-in block without replacing it. **With** a `blockSchema` the admin's enhancer does not run at all — it changes the admin's schema (adds its fields, seeds its regions), and yours is the whole schema; only your own enhancer applies.
 - **Any other key** (`title`, `group`, `fieldMappings`, `allowedBlocks`…) — replaces that key. Send every `fieldMappings` source type you want, including the admin's own conversions.
 - **A key you don't send** — the admin's value stands: a built-in block keeps its name, group and schema.
 

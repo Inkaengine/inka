@@ -239,11 +239,21 @@ listing: {
                 widget: 'blockTypeSelect',
                 filterConvertibleFrom: '@default',  // only offer types with @default mappings
             },
-            // FieldMappingWidget is added at sidebar render time by
-            // inheritSchemaFrom (the enhancer reads `mappingField` below);
-            // declare an empty placeholder so it appears in the auto-generated
-            // default fieldset alongside `variation`.
-            fieldMapping: {},
+            // The mapping widget, and what a result offers to map: the
+            // fields YOUR fetcher returns (here @querystring-search's). A
+            // listing of another kind — related items, a feed — lists the
+            // fields its own fetcher returns.
+            fieldMapping: {
+                title: 'Field mapping',
+                widget: 'field_mapping',
+                sourceFields: {
+                    '@id': { title: 'URL', type: 'string' },
+                    title: { title: 'Title', type: 'string' },
+                    description: { title: 'Description', type: 'string' },
+                    image: { title: 'Lead Image', type: 'image' },
+                    effective: { title: 'Published', type: 'date' },
+                },
+            },
         },
     },
     schemaEnhancer: {
@@ -255,7 +265,7 @@ listing: {
 }
 ```
 
-`filterConvertibleFrom: '@default'` restricts the dropdown to types that have a `fieldMappings['@default']` entry — i.e. types that can be populated from the canonical content fields (`@id`, `title`, `description`, `image`) that listing queries return. Each item type's `fieldMappings['@default']` (on its own block config) defines how those source fields land on its schema. Adding `mappingField` to the enhancer exposes the `FieldMappingWidget` so the editor can override the mapping per listing instance.
+`filterConvertibleFrom: '@default'` restricts the dropdown to types that have a `fieldMappings['@default']` entry — i.e. types that can be populated from the canonical content fields (`@id`, `title`, `description`, `image`) that listing queries return. Each item type's `fieldMappings['@default']` (on its own block config) defines how those source fields land on its schema. Adding `mappingField` to the enhancer fills the declared `field_mapping` widget with its smart defaults for the chosen item type, so the editor can override the mapping per listing instance. The widget and its `sourceFields` are yours to declare: a listing schema you send is the whole schema, so nothing from the admin's own listing is added to it.
 
 **Worked example:** [Related Items Block](../examples/relatedItemsListing.md) — the page's relation field, drawn with a configurable item type.
 
