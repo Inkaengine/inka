@@ -560,7 +560,11 @@ export class Bridge {
    * change is retried (same unit, new attempt) implicitly.
    */
   _installRenderEndpoint(endpoint, container) {
+    // The baseline that is actually ON SCREEN, the newest form we were handed,
+    // and whether a render is owed because one arrived mid-swap.
     let lastForm = null;
+    let latestForm = null;
+    let owed = false;
     let inFlight = null;
     const swap = async (unit, formData) => {
       const resp = await fetch(endpoint, {
@@ -585,8 +589,19 @@ export class Bridge {
         if (el) el.outerHTML = html;
       }
     };
-    this.onEditChange((formData) => {
+    /**
+     * Render the newest form we hold, against what is on screen.
+     *
+     * Separated from the listener so a render that arrived mid-swap can be
+     * taken up when that swap finishes. Sidebar typing sends one undebounced
+     * FORM_DATA per keystroke, so the LAST keystroke is routinely the one that
+     * lands while a swap is in flight — and it is the one whose text the
+     * editor is looking at.
+     */
+    const render = () => {
       const prevForm = lastForm;
+      const formData = latestForm;
+      owed = false;
       const unit = prevForm == null ? { unit: 'page' } : findChangedUnit(prevForm, formData);
       lastForm = formData;
       if (!unit) return;
@@ -613,9 +628,39 @@ export class Bridge {
       // unaffected.
       if (this._isTextOnlyAndDomMatches(prevForm, formData, unit)) return;
 
-      if (inFlight) return; // newer FORM_DATA will diff again against current lastForm
-      inFlight = swap(unit, formData).finally(() => { inFlight = null; });
+      inFlight = swap(unit, formData).finally(() => {
+        inFlight = null;
+        // The render that was dropped while this one ran. Without this the
+        // last keystroke of a burst was lost for good: the listener advanced
+        // `lastForm` to the payload it then declined to render, so the diff it
+        // promised "will happen next time" had nothing left to find, and the
+        // DOM kept a stale partial until the editor typed again. The comment
+        // here used to claim otherwise; the baseline had already moved.
+        if (owed) render();
+      });
+    };
+
+    this.onEditChange((formData) => {
+      // Always remember the newest, even when we cannot render it yet — it is
+      // what the trailing render above will draw. The BASELINE is left alone,
+      // so the diff is still measured against what is on screen.
+      latestForm = formData;
+      if (inFlight) {
+        owed = true;
+        return;
+      }
+      render();
     });
+
+    /**
+     * Is a render in flight, or owed?
+     *
+     * Exposed so a test can wait on the STATE of the bridge instead of a
+     * wall-clock budget. A burst of FORM_DATA settles when the last swap has
+     * finished and none is queued behind it; how long that takes is a property
+     * of the machine, and a test that guesses it reports load as breakage.
+     */
+    this.hasPendingRender = () => Boolean(inFlight) || owed;
   }
 
   /**

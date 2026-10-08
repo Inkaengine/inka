@@ -644,22 +644,47 @@ test.describe('Inline Editing with Mock Parent', () => {
       }, { partialText });
     }
 
-    // Stable-for-N-consecutive-polls gate against the historical flake
-    // where the polling matched a transient "Make this bold" before a
-    // late render landed and reverted to a partial. The text must equal
-    // the expected value AND remain stable for 3 polls in a row
-    // (~300ms). This folds the "wait for the last postMessage to drain
-    // through the bridge" beat into the same condition; no separate
-    // waitForTimeout needed.
+    // Wait on the BRIDGE'S STATE, not on a stopwatch.
+    //
+    // This used to require the text to hold still for three consecutive polls
+    // inside 5s, as a proxy for "every render has drained". That is a guess
+    // about how fast the machine is: under load the last swap had not finished
+    // when the budget expired, and a loaded CI runner reported it as a stale
+    // render. hasPendingRender() is the real condition — a swap in flight, or
+    // one owed behind it — so this waits for exactly as long as the work takes
+    // and no longer.
+    //
+    // The assertion that follows is unchanged in strength: once nothing is
+    // pending, the DOM is final, and a stale partial surviving to that point
+    // still fails. It fails DETERMINISTICALLY now rather than when the machine
+    // happens to be busy.
     const blockLocator = iframe.locator('[data-block-uid="mock-block-1"]');
-    let prev = '';
-    let stable = 0;
-    await expect.poll(async () => {
-      const seen = await helper.getCleanTextContent(blockLocator);
-      if (seen === prev && seen === 'Make this bold') stable++;
-      else { stable = 0; prev = seen; }
-      return stable >= 3;
-    }, { timeout: 5000, intervals: [100, 150, 200] }).toBe(true);
+    const pending = () =>
+      iframe
+        .locator('body')
+        .evaluate(
+          () => (window as any).__hydraBridge?.hasPendingRender?.() === true,
+        );
+
+    // The text first, THEN the drain — in that order, and not the other way
+    // round. Asking "is anything pending?" before the postMessages have been
+    // delivered answers no because nothing has STARTED, which passed the gate
+    // instantly and asserted against whatever had rendered so far ("Ma"). A
+    // state wait has to wait for the state to ARRIVE, not merely to be absent.
+    await expect
+      .poll(() => helper.getCleanTextContent(blockLocator), {
+        timeout: 15_000,
+        intervals: [100, 150, 200],
+      })
+      .toBe('Make this bold');
+
+    // And it has to SURVIVE the drain: a late swap completing afterwards is
+    // exactly how a stale partial used to win, and that is what this test
+    // exists to catch. No stopwatch — hasPendingRender() is the condition.
+    await expect
+      .poll(pending, { timeout: 15_000, intervals: [100, 150, 200] })
+      .toBe(false);
+    expect(await helper.getCleanTextContent(blockLocator)).toBe('Make this bold');
   });
 
   // NOTE: "should handle selection across node boundaries and delete" test moved to
