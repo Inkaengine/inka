@@ -2342,6 +2342,15 @@ export function ensureEmptyBlockIfEmpty(
       return id;
     });
     const updatedParentBlock = setContainerItems(parentBlock, containerConfig, ids, blocksObj);
+    // A block-defaults pass may have copied the raw list onto the field itself;
+    // the region is stored in blocks_layout, so that copy would be a stray field.
+    const regionHolder = (containerConfig.regionPath || []).reduce(
+      (node, key) => node?.[key],
+      updatedParentBlock,
+    );
+    if (Array.isArray(regionHolder?.[containerConfig.region])) {
+      delete regionHolder[containerConfig.region];
+    }
     return setBlockByPath(formData, parentPath, updatedParentBlock);
   }
 

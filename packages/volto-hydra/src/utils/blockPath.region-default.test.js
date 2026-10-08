@@ -128,6 +128,35 @@ describe('a blocks_layout region with a default', () => {
   });
 });
 
+describe('a refilled region leaves no copy of its default behind', () => {
+  test('the raw default a block-defaults pass put on the field goes when the region is seeded', () => {
+    // A block added before its regions are seeded (or loaded from data written so)
+    // can carry the field's default list as a value; it is not how a region is
+    // stored, and would be saved as a stray field.
+    const form = {
+      '@type': 'Document',
+      blocks: {
+        f1: {
+          '@type': 'finder',
+          results: finder.properties.results.default,
+          blocks: {},
+          blocks_layout: { results: [] },
+        },
+      },
+      blocks_layout: { items: ['f1'] },
+    };
+    const cfg = {
+      ...blocksConfig,
+      _page: { id: '_page', schema: () => ({ properties: { items: { widget: 'blocks_layout' } } }) },
+      finder: { id: 'finder', schema: () => finder },
+    };
+    const map = buildBlockPathMap(form, cfg, intl);
+    const result = ensureEmptyBlockIfEmpty(form, { parentId: 'f1' }, map, counter('r'), cfg, { intl });
+    expect(result.blocks.f1.blocks_layout.results).toHaveLength(2);
+    expect(result.blocks.f1.results).toBeUndefined();
+  });
+});
+
 describe('an object_list region with a default', () => {
   const tabsField = {
     widget: 'object_list',
