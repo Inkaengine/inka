@@ -1,7 +1,7 @@
 {
   "name": "@volto-hydra/hydra-adapters-strapi",
   "version": "1.0.0",
-  "description": "Hydra adapter for Strapi 5. Blocks are a dynamic zone; there is no content hierarchy.",
+  "description": "Hydra adapter for Strapi 5. Blocks live in a JSON field, and the content hierarchy is a self-relation the adapter is told about.",
   "type": "module",
   "exports": {
     ".": "./index.js"

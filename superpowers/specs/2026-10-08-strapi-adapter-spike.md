@@ -105,19 +105,62 @@ lifecycle hook; the adapter cannot fix it.
 
 ## Where it got to
 
-`packages/hydra-adapters-strapi` — 240 lines, advertising only `content`, with
-create/read/update/delete working against a real Strapi. Everything else falls
-through to the base class's "does not implement", deliberately: the contract suite
-should say what Strapi can do, not me.
+A blocking CI target. `TARGET=strapi pnpm test:contract` runs the same 152 tests
+every other adapter runs: **114 pass, 38 skip, 0 fail**, against a real Strapi 5
+booted by the harness, and `strapi` is in the `test-adapter-contract` matrix.
+
+The adapter advertises `content`, `search-filter`, `schema`, `asset`, `reference`
+and `vocabulary` — each added only once the suite proved it, because
+capabilities.spec checks the converse too: an unadvertised capability must answer
+NOT_IMPLEMENTED rather than half work.
+
+Four things Strapi has no answer for, and so the adapter does not either:
+
+- **No path.** Strapi stores no address of any kind, so there is no index to
+  delegate a path query to and no result can be addressed without walking
+  parents. One `addressingMap()` read computes every path, which is also what
+  makes a subtree filter possible at all.
+- **No published flag on a draft.** Strapi keeps a draft and a published variant
+  of each document, and the draft's own `publishedAt` is ALWAYS null — a
+  published document reads as null in the draft it is edited through. So the
+  workflow state cannot be read off the document; `withPublishedState()` asks
+  whether a published variant exists, once per result set.
+- **No schema over the API.** `/api/content-type-builder` needs an admin session,
+  which an API token cannot have. The fixture exposes `GET
+  /hydra/schema/:collection` — unmapped, deliberately: turning Strapi's field
+  types into canonical ones is the adapter's job, and doing it in the CMS would
+  put Hydra knowledge where no test of the adapter could see it. Same role as the
+  WordPress companion plugin.
+- **No identity.** An API token is not a user, and `/api/users/me` belongs to a
+  JWT session. `auth.whoami` proves the credential by making a request only a
+  credential can make — the companion route, since the fixture grants the public
+  role read on the collection. `auth.logout` drops the token here, because that
+  is the part of a logout that matters: Strapi revokes tokens in its own admin,
+  not over the content API.
+
+## Strapi has no menu, and that is a contract finding
+
+The view-membership suite asserted that every adapter maps its CMS's menu onto a
+view. Strapi falsifies it: no menu entity, no navigation flag, nowhere to store
+membership. The suite now gates on a declared `Target.menus`, and Strapi says
+false.
+
+The alternative was an exclusion field in the fixture's own schema, and that is
+inventing a CMS feature and calling it support — the same mistake as the invented
+WordPress post meta, which looked like a working capability on exactly one site:
+ours.
+
+Also fixed while there: `state.spec`'s "refuses a transition the document does not
+offer" was missing the `advertises('state')` gate its three siblings have, so a
+CMS with no workflow failed for not implementing the one thing it had already said
+about itself.
 
 ## Still owed
 
-- A `strapi` TARGET, so the suite runs and the skips become the real inventory.
-- A Strapi-shaped seed. The fixture is a tree, which now fits, but the seeding path
-  is unwritten.
-- Reproducibility: the spike app is in a scratchpad. A committed version needs the
-  schema files plus a provision script, gitignoring the generated app — the
-  `wp-plugins` pattern.
 - The `collection` view shape, which is what Strapi is really the forcing function
   for: a backend with no tree at all is the sharpest test of whether the contract
   degrades gracefully or quietly assumes Plone.
+- `search-fulltext`. Strapi has no full-text search without a plugin, so the
+  three gated search tests skip; `querystringSearch` covers the listing block.
+- Nested-vocabulary and relation fields: `vocabulary.get` reads a flat collection,
+  which is what the fixture has.

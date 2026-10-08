@@ -91,6 +91,7 @@ const target: Target = {
   types: { folder: 'page', page: 'page', image: 'image' },
   vocabularies: { categories: 'categories' },
   vocabularySize: seed.vocabularies.categories.generate,
+  menus: true,
   imageScale: 'large',
   queryIndexes: {
     type: 'node_type',

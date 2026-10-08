@@ -258,7 +258,12 @@ describe('state.transition with data', () => {
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   });
 
-  it('refuses a transition the document does not offer', async () => {
+  it('refuses a transition the document does not offer', async (ctx) => {
+    // Gated like every other test in this describe. Without it, a CMS with no
+    // workflow fails here for not implementing state.transition, which is the
+    // one thing it already said about itself.
+    if (!advertises('state')) ctx.skip();
+
     // WordPress took a missing id as status undefined, ignored it with a 200,
     // and reported the transition done: an import left every page a draft
     // while saying it had published them.

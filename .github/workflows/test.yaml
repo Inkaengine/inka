@@ -280,7 +280,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [plone, wordpress, drupal]
+        target: [plone, wordpress, drupal, strapi]
     name: test-contract (${{ matrix.target }})
     steps:
       - uses: actions/checkout@v4
@@ -327,6 +327,19 @@ jobs:
       - name: Fetch the WordPress plugins
         if: matrix.target == 'wordpress'
         run: pnpm wp:plugins
+      # A real Strapi 5, scaffolded rather than committed: the app is ~700MB of
+      # dependencies. Only the content model under fixtures/strapi-app/src is in
+      # git, and the script copies it over the scaffold on every run — so a
+      # cache hit still tests today's schema.
+      - name: Cache the Strapi app
+        if: matrix.target == 'strapi'
+        uses: actions/cache@v4
+        with:
+          path: tests-adapters/fixtures/strapi-app/app
+          key: ${{ runner.os }}-strapi-app-${{ hashFiles('scripts/fetch-strapi-fixture.mjs') }}
+      - name: Scaffold the Strapi app
+        if: matrix.target == 'strapi'
+        run: pnpm strapi:fixture
       - name: Run the contract suite
         # `shell: bash` is load-bearing, not tidiness: GitHub's default shell has
         # no pipefail, so `vitest | tee` exited with TEE's status and every

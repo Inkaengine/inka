@@ -68,7 +68,88 @@ async function blueprintDone(): Promise<boolean> {
 const pluginDir =
   process.env.WP_PLUGINS ?? 'tests-adapters/fixtures/wp-plugins';
 
+const STRAPI_PORT = 1337;
+const STRAPI_BASE = `http://127.0.0.1:${STRAPI_PORT}`;
+/**
+ * The scaffolded app. Overridable like WP_PLUGINS, so an install that already
+ * exists outside the checkout can be used rather than copied — a Strapi app is
+ * ~700MB of node_modules.
+ */
+const STRAPI_APP =
+  process.env.STRAPI_APP ?? 'tests-adapters/fixtures/strapi-app/app';
+
+let strapi: ChildProcess | null = null;
+
+/**
+ * Is Strapi serving AND has its bootstrap run?
+ *
+ * Two questions, because they are answered at different moments: src/index.js
+ * provisions the API token and seeds the vocabulary in bootstrap, and the
+ * harness cannot authenticate until the token file exists. Waiting on the port
+ * alone would start the suite with no credential — the WordPress blueprint race
+ * in a different costume.
+ */
+async function strapiReady(): Promise<boolean> {
+  if (!existsSync(join(STRAPI_APP, '.hydra-api-token'))) return false;
+  try {
+    const res = await fetch(`${STRAPI_BASE}/api/pages`);
+    return res.status === 200;
+  } catch (err) {
+    if (err instanceof TypeError) return false;
+    throw err;
+  }
+}
+
+async function startStrapi(): Promise<void> {
+  // Fail HERE with the command to run. The app is scaffolded, not committed —
+  // it is a whole Strapi install — and without it every test would report
+  // Strapi as unreachable, which says nothing about the adapter.
+  // package.json, not the directory: a half-made app directory is the state a
+  // failed scaffold leaves behind, and spawning node in it fails with
+  // something unrecognisable instead of the one instruction that fixes it.
+  if (!existsSync(join(STRAPI_APP, 'package.json'))) {
+    throw new Error(
+      `${STRAPI_APP} is missing. The contract suite runs a real Strapi — ` +
+        `run \`pnpm strapi:fixture\` to scaffold it.`,
+    );
+  }
+  if (await strapiReady()) {
+    throw new Error(
+      `Port ${STRAPI_PORT} is already serving. Stop it before running the ` +
+        `contract suite — reusing a Strapi we did not boot would test content ` +
+        `and permissions we did not provision.`,
+    );
+  }
+
+  // `develop`, not `start`: start serves a BUILT admin panel, and building it
+  // under pnpm fails on @strapi/admin's own dependency tree (@codemirror).
+  // --no-build-admin skips that build; the suite talks to the REST API, which
+  // does not need the panel. --no-watch-admin because nothing here edits it.
+  strapi = spawn(
+    'node',
+    [
+      'node_modules/@strapi/strapi/bin/strapi.js',
+      'develop',
+      '--no-watch-admin',
+      '--no-build-admin',
+    ],
+    { cwd: resolve(STRAPI_APP), stdio: 'pipe' },
+  );
+  strapi.stderr?.on('data', (d) => process.stderr.write(`[strapi] ${d}`));
+  strapi.stdout?.on('data', (d) => process.stderr.write(`[strapi] ${d}`));
+
+  // Generous, and for one reason: the bootstrap inserts ten thousand
+  // vocabulary terms on a cold database before it answers anything.
+  const deadline = Date.now() + 240_000;
+  while (Date.now() < deadline) {
+    if (await strapiReady()) return;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error(`Strapi never came up on ${STRAPI_BASE}`);
+}
+
 export async function setup(): Promise<void> {
+  if (process.env.TARGET === 'strapi') return startStrapi();
   if (process.env.TARGET !== 'wordpress') return;
 
   // Fail HERE, with the command to run, rather than letting the suite boot a
@@ -180,4 +261,6 @@ export async function setup(): Promise<void> {
 export async function teardown(): Promise<void> {
   wp?.kill('SIGTERM');
   wp = null;
+  strapi?.kill('SIGTERM');
+  strapi = null;
 }
