@@ -1,13 +1,6 @@
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
 import { resolveTarget, type Target } from '../targets';
 
-/**
- * Resolved at module scope so a CMS with no menu at all skips VISIBLY rather
- * than failing on a view it was never going to have — the same reason
- * search.spec resolves its gate here.
- */
-const resolved = await resolveTarget();
-
 let target: Target;
 
 beforeAll(async () => {
@@ -49,7 +42,7 @@ beforeEach(async () => {
  * the published site rendered nothing. An edit that does not reach a visitor has
  * not happened.
  */
-describe.skipIf(!resolved.menus)('view membership', () => {
+describe('view membership', () => {
   /** The first menu view this CMS advertises. */
   const menuView = async () => {
     const site: any = await target.adapter.dispatch('site.get', {});
@@ -229,7 +222,7 @@ describe.skipIf(!resolved.menus)('view membership', () => {
  * into stored data fails LOUDLY rather than resolving to something plausible. The
  * other half is the picker component itself, which is a browser test.
  */
-describe.skipIf(!resolved.menus)('picking from a view', () => {
+describe('picking from a view', () => {
   const menuView = async () => {
     const site: any = await target.adapter.dispatch('site.get', {});
     return (site.views ?? []).find((v: any) => String(v.id).startsWith('menu:'));

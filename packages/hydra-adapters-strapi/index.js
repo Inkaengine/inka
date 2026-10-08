@@ -2,6 +2,9 @@ import {
   BaseAdapter,
   AdapterError,
   resolveOrderPosition,
+  VIEW_PREFIX,
+  EXCLUDED_NODE,
+  parseViewPath,
 } from '@volto-hydra/hydra-adapters-core';
 
 /**
@@ -84,6 +87,15 @@ export class StrapiAdapter extends BaseAdapter {
     blocksField = 'hydraBlocks',
     // Where a manual position lives. Strapi has no implicit ordering.
     orderField = 'sortOrder',
+    // Which field keeps a page out of the navigation.
+    //
+    // This is Strapi's equivalent of Plone's exclude_from_nav, and it is a
+    // CONVENTION this adapter is told about, like slug, parent, blocks and
+    // order above — Strapi has no navigation concept of its own, so there is
+    // nothing to discover and nothing native to bypass. That is what makes it
+    // a different decision from the WordPress case, where inventing post meta
+    // would have gone around nav_menu_item, a real feature of that CMS.
+    navExcludeField = 'excludeFromNav',
     // Where this deployment's frontend serves the content, for the absolute
     // URLs reference.resolve has to hand back. Strapi itself serves no pages,
     // so there is nothing to discover: a deployment that has a frontend says
@@ -114,6 +126,7 @@ export class StrapiAdapter extends BaseAdapter {
     this.slugField = slugField;
     this.blocksField = blocksField;
     this.orderField = orderField;
+    this.navExcludeField = navExcludeField;
     this.siteBaseUrl = (siteBaseUrl ?? this.cmsBaseUrl)?.replace(/\/+$/, '');
   }
 
@@ -401,6 +414,145 @@ export class StrapiAdapter extends BaseAdapter {
     return file;
   }
 
+  /**
+   * Is this page in the navigation?
+   *
+   * As a filter rather than a post-filter, because the public frontend reads
+   * the menu with the same query and an admin that filtered in memory would
+   * show a menu no visitor sees.
+   *
+   * `$ne true` would not do: a row created before this field existed holds
+   * NULL, and SQL's `NULL != true` is NULL, so every such page would vanish
+   * from the navigation. Unset means "not excluded", which is what this says.
+   */
+  navFilter(params = {}) {
+    return {
+      ...params,
+      [`filters[$or][0][${this.navExcludeField}][$null]`]: 'true',
+      [`filters[$or][1][${this.navExcludeField}][$eq]`]: 'false',
+    };
+  }
+
+  /**
+   * A node in a menu view, which in Strapi IS the document.
+   *
+   * One hierarchy, as in Plone: the placement and the content are the same
+   * object, so a node always carries a reference and it is itself. The node's
+   * own path is synthetic and must never be mistaken for the content's —
+   * `content.get` refuses one.
+   */
+  toPlacement(menu, contentPath, title, excluded) {
+    const base = excluded
+      ? `/${VIEW_PREFIX}/${menu}/${EXCLUDED_NODE}`
+      : `/${VIEW_PREFIX}/${menu}`;
+    return {
+      id: contentPath,
+      path: `${base}${contentPath}`,
+      type: 'placement',
+      title,
+      blocks: {},
+      blocksLayout: { items: [] },
+      fields: { reference: contentPath, url: null },
+      state: 'published',
+      _adapter: { raw: null },
+    };
+  }
+
+  /**
+   * A menu view's nodes.
+   *
+   * Both halves come from ONE query over the same container, differing only in
+   * the exclusion filter — so what the editor is shown and what a visitor is
+   * served cannot drift apart, which two sources would allow.
+   */
+  async listPlacements({ menu, excluded, rest }) {
+    const parentPath = rest ? `/${rest}` : '/';
+    const parent =
+      parentPath === '/'
+        ? null
+        : (await this.entryForPath(parentPath)).documentId;
+    const params = {
+      status: 'draft',
+      'pagination[pageSize]': '100',
+      sort: `${this.orderField}:asc,title:asc`,
+    };
+    if (parent) {
+      params['filters[parent][documentId][$eq]'] = parent;
+    } else {
+      params['filters[parent][id][$null]'] = 'true';
+    }
+    const payload = await this.fetchJson(`/api/${this.collectionPlural}`, {
+      params: excluded
+        ? {
+            ...params,
+            [`filters[${this.navExcludeField}][$eq]`]: 'true',
+          }
+        : this.navFilter(params),
+    });
+    const base = parentPath === '/' ? '' : parentPath;
+    const nodes = (payload?.data ?? []).map((entry) =>
+      this.toPlacement(
+        menu,
+        `${base}/${entry[this.slugField]}`,
+        entry.title,
+        excluded,
+      ),
+    );
+
+    if (!excluded && !rest) {
+      // Offered at the view's ROOT, so what was taken out of the menu is
+      // discoverable in the menu rather than only through the picker. Not
+      // selectable: it is a bucket, not content.
+      nodes.push({
+        id: EXCLUDED_NODE,
+        path: `/${VIEW_PREFIX}/${menu}/${EXCLUDED_NODE}`,
+        type: 'bucket',
+        title: 'Not in this menu',
+        blocks: {},
+        blocksLayout: { items: [] },
+        fields: { reference: null, url: null },
+        state: 'private',
+        _adapter: { raw: null },
+      });
+    }
+    return { items: nodes };
+  }
+
+  /**
+   * Move a document into or out of the menu view's Excluded node.
+   *
+   * The document itself never moves: it keeps its place in the one hierarchy
+   * and stays readable by anyone holding its address, which is what makes this
+   * a different claim from unpublishing it.
+   */
+  async movePlacement(fromView, toView, args) {
+    if (!fromView || !fromView.rest) {
+      throw new AdapterError(
+        `strapi: ${args.path} is not something in a menu view`,
+        { code: 'INVALID_MOVE', status: 400 },
+      );
+    }
+    if (!toView || toView.menu !== fromView.menu) {
+      throw new AdapterError(
+        'strapi: a document can only move within its own menu view; its place ' +
+          "in the one hierarchy is the main view's business",
+        { code: 'INVALID_MOVE', status: 400 },
+      );
+    }
+    const entry = await this.entryForPath(`/${fromView.rest}`);
+    await this.fetchJson(
+      `/api/${this.collectionPlural}/${entry.documentId}`,
+      {
+        method: 'PUT',
+        body: { data: { [this.navExcludeField]: Boolean(toView.excluded) } },
+      },
+    );
+    const base = toView.excluded
+      ? `/${VIEW_PREFIX}/${toView.menu}/${EXCLUDED_NODE}`
+      : `/${VIEW_PREFIX}/${toView.menu}`;
+    return { path: `${base}/${fromView.rest}` };
+  }
+
   /** The children of a container, in their stored order. */
   async siblingsOf(parentPath) {
     const parent =
@@ -500,6 +652,16 @@ export class StrapiAdapter extends BaseAdapter {
   async dispatchOnce(intent, args) {
     switch (intent) {
       case 'content.get': {
+        // A view path is NOT content, and must not resolve to something
+        // plausible: a synthetic path that escaped into stored data would
+        // otherwise reach the published site looking like a real reference.
+        if (parseViewPath(args.path)) {
+          throw new AdapterError(
+            `strapi: ${args.path} is a node in a view, not content — read it ` +
+              `by its reference`,
+            { code: 'BAD_REQUEST', status: 400 },
+          );
+        }
         const [entry] = await this.withPublishedState([
           await this.entryForPath(args.path),
         ]);
@@ -567,9 +729,19 @@ export class StrapiAdapter extends BaseAdapter {
           defaultLanguage: 'en',
           languages: ['en'],
           features: { multilingual: false, translations: 'grouped' },
-          // ONE view, and it is the content tree the parent relation gives us.
-          // No menus: Strapi has no menu feature at all, so there is nothing to
-          // advertise and the view tests skip on a fact about the CMS.
+          // Two views over ONE hierarchy, which is the Plone shape rather than
+          // the WordPress one: Strapi has a single tree, and that tree IS the
+          // navigation — `navigation.get` is built from it and a visitor reads
+          // it directly.
+          //
+          // So `ordered: 'main'` on the menu, as in Plone: reordering within
+          // the menu reorders the content, because there is only one order to
+          // change. A WordPress or Drupal menu carries its own positions and
+          // says 'own'.
+          //
+          // `allowsLinks: false` because the fixture's collection has no url
+          // field — an external link in a Strapi menu is a content-model
+          // decision for the deployment, not something the adapter can assume.
           views: [
             {
               id: 'content',
@@ -580,6 +752,17 @@ export class StrapiAdapter extends BaseAdapter {
               ordered: 'own',
               holdsContent: true,
               remove: 'delete',
+            },
+            {
+              id: 'menu:navigation',
+              title: 'Navigation',
+              shape: 'hierarchy',
+              prefix: `${VIEW_PREFIX}/navigation`,
+              ordered: 'main',
+              holdsContent: true,
+              allowsLinks: false,
+              allowsLabels: false,
+              remove: 'unlink',
             },
           ],
         };
@@ -594,6 +777,9 @@ export class StrapiAdapter extends BaseAdapter {
         };
 
       case 'tree.list': {
+        const view = parseViewPath(args.parent);
+        if (view) return this.listPlacements(view);
+
         const parent =
           args.parent && args.parent !== '/'
             ? (await this.entryForPath(args.parent)).documentId
@@ -620,10 +806,25 @@ export class StrapiAdapter extends BaseAdapter {
         };
       }
 
-      case 'navigation.get':
-        // The top of the tree. Strapi has no menu to curate, so the main
-        // hierarchy IS the navigation.
-        return this.dispatchOnce('tree.list', { parent: '/' });
+      case 'navigation.get': {
+        // The top of the one hierarchy, minus what has been taken out of the
+        // menu. Built with the SAME filter a visitor's read uses, so the admin
+        // cannot show a menu the public site does not have.
+        const payload = await this.fetchJson(`/api/${this.collectionPlural}`, {
+          params: this.navFilter({
+            status: 'draft',
+            'pagination[pageSize]': '100',
+            'filters[parent][id][$null]': 'true',
+            sort: `${this.orderField}:asc,title:asc`,
+          }),
+        });
+        const entries = await this.withPublishedState(payload?.data ?? []);
+        return {
+          items: entries.map((entry) =>
+            this.toDocument(entry, `/${entry[this.slugField]}`),
+          ),
+        };
+      }
 
       case 'breadcrumbs.get': {
         // Built from the path rather than by walking parents upward: the walk
@@ -640,6 +841,12 @@ export class StrapiAdapter extends BaseAdapter {
       }
 
       case 'content.move': {
+        const fromView = parseViewPath(args.path);
+        const toView = parseViewPath(args.targetParentPath);
+        if (fromView || toView) {
+          return this.movePlacement(fromView, toView, args);
+        }
+
         const entry = await this.entryForPath(args.path);
         const target =
           args.targetParentPath && args.targetParentPath !== '/'

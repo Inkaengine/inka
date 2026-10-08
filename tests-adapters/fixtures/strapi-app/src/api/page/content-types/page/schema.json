@@ -36,6 +36,10 @@
     "sortOrder": {
       "type": "integer",
       "default": 0
+    },
+    "excludeFromNav": {
+      "type": "boolean",
+      "default": false
     }
   }
 }

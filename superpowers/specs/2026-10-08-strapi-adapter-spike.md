@@ -106,7 +106,7 @@ lifecycle hook; the adapter cannot fix it.
 ## Where it got to
 
 A blocking CI target. `TARGET=strapi pnpm test:contract` runs the same 152 tests
-every other adapter runs: **114 pass, 38 skip, 0 fail**, against a real Strapi 5
+every other adapter runs: **119 pass, 33 skip, 0 fail**, against a real Strapi 5
 booted by the harness, and `strapi` is in the `test-adapter-contract` matrix.
 
 The adapter advertises `content`, `search-filter`, `schema`, `asset`, `reference`
@@ -138,22 +138,64 @@ Four things Strapi has no answer for, and so the adapter does not either:
   is the part of a logout that matters: Strapi revokes tokens in its own admin,
   not over the content API.
 
-## Strapi has no menu, and that is a contract finding
+## Strapi's menu is the Plone shape, not the WordPress one
 
-The view-membership suite asserted that every adapter maps its CMS's menu onto a
-view. Strapi falsifies it: no menu entity, no navigation flag, nowhere to store
-membership. The suite now gates on a declared `Target.menus`, and Strapi says
-false.
+First attempt here was `Target.menus: false` — "Strapi has no menu, skip the
+view-membership suite". That was wrong, and the question that showed it was
+simply: if it has no menu, is it like Plone with one hierarchy?
 
-The alternative was an exclusion field in the fixture's own schema, and that is
-inventing a CMS feature and calling it support — the same mistake as the invented
-WordPress post meta, which looked like a working capability on exactly one site:
-ours.
+It is. Plone's menu view IS the content tree — `ordered: 'main'`,
+`holdsContent: true`, the same hierarchy as Contents — and its only extra is
+`exclude_from_nav`, which is what earns it `remove: 'unlink'`. Strapi is the
+same: one hierarchy, and `navigation.get` is built from it, so a visitor already
+reads the tree as the menu. What Strapi lacked was not navigation. It was a
+place to store MEMBERSHIP.
 
-Also fixed while there: `state.spec`'s "refuses a transition the document does not
-offer" was missing the `advertises('state')` gate its three siblings have, so a
-CMS with no workflow failed for not implementing the one thing it had already said
-about itself.
+So the adapter is told about one more field, `excludeFromNav`, and the menu view
+is advertised with `ordered: 'main'` and `remove: 'unlink'`, exactly as Plone's
+is. All five applicable view-membership tests pass against a real Strapi — a
+page taken out of the menu disappears from an anonymous read and stays
+readable at its own address — and the two that skip do so on the view's own
+declared abilities, the same mechanism Plone skips the relabel test on:
+
+    allowsLabels: false   nowhere to put a per-menu label
+    allowsLinks:  false   the collection has no url field, so no Link
+
+Why a convention field is right HERE and was wrong for WordPress: WordPress has
+`nav_menu_item`, a real menu system, and inventing post meta went AROUND it —
+producing a capability true only on sites running our plugin. Strapi has no
+navigation concept to go around, and this adapter is already told about four
+fields that are pure convention (`slug`, `parent`, `hydraBlocks`, `sortOrder`)
+because Strapi has no content model of its own. A fifth is the same kind of
+configuration, and it is how a real Strapi site would have to do it.
+
+One load-bearing detail: the filter is `$or` of `$null` and `$eq false`, not
+`$ne true`. A row written before the field existed holds NULL, and SQL's
+`NULL != true` is NULL — so `$ne true` would drop every untouched page from the
+navigation. Unset means not excluded.
+
+Also fixed while there: `state.spec`'s "refuses a transition the document does
+not offer" was missing the `advertises('state')` gate its three siblings have,
+so a CMS with no workflow failed for not implementing the one thing it had
+already said about itself.
+
+## The CI trap: pnpm installs the WORKSPACE, not the app
+
+The first CI run failed with `Cannot find module
+.../strapi-app/app/node_modules/@strapi/strapi/bin/strapi.js` while the suite
+was green locally.
+
+The app sits inside this repo's pnpm workspace, and a plain `pnpm install` in a
+directory under a workspace root installs the WORKSPACE — "Scope: all 25
+workspace projects", the app's own package.json ignored, no node_modules beside
+it. `create-strapi --install` does exactly that, so the scaffold reports
+success and leaves an app with no Strapi in it.
+
+It passed locally only because `STRAPI_APP` pointed at a scratchpad OUTSIDE the
+workspace, so my "validating the CI path" validated the boot and not the
+install. The fix is `pnpm install --ignore-workspace`, run by the fixture
+script, which then asserts the CLI exists rather than letting the harness
+discover it at spawn time.
 
 ## Still owed
 

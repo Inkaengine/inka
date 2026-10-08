@@ -28,10 +28,43 @@ import { join } from 'node:path';
 const APP = 'tests-adapters/fixtures/strapi-app/app';
 const SOURCE = 'tests-adapters/fixtures/strapi-app/src';
 
+/**
+ * The installed Strapi CLI. Its ABSENCE is the failure this script exists to
+ * prevent, so it is checked rather than assumed — see installDependencies.
+ */
+const CLI = join(APP, 'node_modules/@strapi/strapi/bin/strapi.js');
+
+/**
+ * Install INSIDE the app, which needs --ignore-workspace.
+ *
+ * The app sits inside this repo's pnpm workspace, and a plain `pnpm install`
+ * there installs the WORKSPACE: "Scope: all 25 workspace projects", the app's
+ * own package.json ignored and no node_modules beside it. create-strapi's
+ * --install does exactly that, so the scaffold reports success and leaves an
+ * app with no Strapi in it — which surfaces much later as the harness failing
+ * to spawn a CLI that was never installed. It passed locally only because the
+ * app was in a scratchpad outside the workspace.
+ */
+function installDependencies() {
+  execFileSync('pnpm', ['install', '--ignore-workspace'], {
+    cwd: APP,
+    stdio: 'inherit',
+  });
+  if (!existsSync(CLI)) {
+    throw new Error(
+      `${CLI} is missing after install. The contract suite spawns it, so ` +
+        `stop here rather than at boot with a module-not-found.`,
+    );
+  }
+}
+
 if (existsSync(join(APP, 'package.json'))) {
   // Still re-copy the model: it is the committed part, and a stale copy in a
   // cached app would mean testing yesterday's schema.
   cpSync(SOURCE, join(APP, 'src'), { recursive: true });
+  // A restored cache can carry the app without its node_modules — the cache
+  // key covers this script, not what was in the directory when it was saved.
+  if (!existsSync(CLI)) installDependencies();
   console.log('strapi app: already present (content model refreshed)');
   process.exit(0);
 }
@@ -59,11 +92,13 @@ execFileSync(
     '--no-git-init',
     '--dbclient', 'sqlite',
     '--dbfile', '.tmp/data.db',
-    '--install',
+    // Installed separately, with --ignore-workspace. See installDependencies.
+    '--no-install',
   ],
   { stdio: 'inherit' },
 );
 
+installDependencies();
 cpSync(SOURCE, join(APP, 'src'), { recursive: true });
 mkdirSync(join(APP, '.tmp'), { recursive: true });
 

@@ -100,24 +100,6 @@ export interface Target {
    * menuItems (core serves menus to nobody) — and the point of the test is that an
    * edit reaches a visitor, whichever place that is.
    */
-  /**
-   * Whether this CMS has a menu at all.
-   *
-   * Every other target keeps one SOMEWHERE and the view model's whole claim is
-   * that the admin need not care where: Plone's exclude_from_nav, WordPress's
-   * nav_menu_item status, Drupal's menu_link_content. Strapi has no navigation
-   * feature of any kind — no menu entity, no nav flag, nowhere to put
-   * membership — so there is nothing to map a view onto.
-   *
-   * Declared rather than discovered, because the gate has to be readable at
-   * describe() time, before any CMS has booted.
-   *
-   * The alternative was adding an exclusion field to the fixture's own schema,
-   * and that is inventing a CMS feature and calling it support: the same
-   * mistake as the invented WordPress post meta, which looked like a working
-   * capability on exactly one site — ours.
-   */
-  menus: boolean;
   publicMenuEntries(): Promise<
     { label: string; path: string | null }[] | null
   >;

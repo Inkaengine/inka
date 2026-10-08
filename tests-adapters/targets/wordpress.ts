@@ -391,7 +391,6 @@ const target: Target = {
   // Filled in at start() from what the blueprint actually created — PHP
   // execution limits decide, not us.
   vocabularySize: 0,
-  menus: true,
   imageScale: 'medium',
   queryIndexes: {
     type: 'post_type',

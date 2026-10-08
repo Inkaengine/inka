@@ -55,8 +55,6 @@ const target: Target = {
   // segment, and the fixture's bootstrap seeds it.
   vocabularies: { categories: 'categories' },
   vocabularySize: 10_000,
-  // No menu entity, no nav flag, nowhere to put membership. See Target.menus.
-  menus: false,
   imageScale: 'thumbnail',
   queryIndexes: {
     type: 'collection',
@@ -165,11 +163,26 @@ const target: Target = {
   },
 
   async publicMenuEntries() {
-    // Strapi has NO menu feature — not a tree, not a menu entity, nothing. This
-    // is a fact about the CMS rather than an unimplemented adapter, and it is
-    // what makes Strapi the sharpest test of whether the contract degrades
-    // gracefully. Until the collection view shape lands there is nothing to read.
-    return null;
+    // Strapi's menu IS its one hierarchy, as in Plone — so a visitor reads the
+    // top of the tree, honouring excludeFromNav. Deliberately NOT asking the
+    // adapter: the point of this read is that the edit reached the CMS, not
+    // that the adapter agrees with itself.
+    //
+    // The $or is load-bearing: a row whose excludeFromNav was never written
+    // holds NULL, and `$ne true` in SQL drops NULLs — which would hide every
+    // untouched page from the menu. Unset means not excluded.
+    const res = await anon(
+      '/api/pages?filters[parent][id][$null]=true' +
+        '&filters[$or][0][excludeFromNav][$null]=true' +
+        '&filters[$or][1][excludeFromNav][$eq]=false' +
+        '&pagination[pageSize]=100',
+    );
+    if (!res.ok) return null;
+    const entries = (await res.json())?.data ?? [];
+    return entries.map((entry: any) => ({
+      label: entry.title,
+      path: `/${entry.slug}`,
+    }));
   },
 };
 
