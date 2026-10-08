@@ -1,0 +1,1 @@
+Fast typing in a sidebar field always ends with the last text on the page. A change queued while the page was redrawing was sent back to the page behind newer changes already waiting, then redrawn over them, so the page could stop a few letters short.

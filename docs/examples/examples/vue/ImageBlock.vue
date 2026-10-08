@@ -1,9 +1,13 @@
 <template>
   <div :data-block-uid="block['@uid']">
-    <a v-if="href" :href="href" data-edit-link="href">
-      <img data-edit-media="url" :src="imgSrc" :alt="block.alt" />
-    </a>
-    <img v-else data-edit-media="url" :src="imgSrc" :alt="block.alt" />
+    <!-- No image ⇒ no element. While editing, Inka hands an empty image a
+         stand-in to click; a visitor sees nothing. -->
+    <template v-if="imgSrc">
+      <a v-if="href" :href="href" data-edit-link="href">
+        <img data-edit-media="url" :src="imgSrc" :alt="block.alt" />
+      </a>
+      <img v-else data-edit-media="url" :src="imgSrc" :alt="block.alt" />
+    </template>
   </div>
 </template>
 

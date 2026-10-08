@@ -34,7 +34,6 @@ const messages = defineMessages({
     defaultMessage: 'Add some HTML here',
   },
 });
-import Cookies from 'js-cookie';
 import frontendPreviewUrl, { viewportPreset } from './reducers';
 import FrontendSwitcherPlug from './components/Toolbar/FrontendSwitcherPlug';
 import SidebarToggleToolbarPlug from './components/Toolbar/SidebarToggleToolbarPlug';
@@ -42,7 +41,7 @@ import FrontendSwitcherPanel from './components/Toolbar/FrontendSwitcherPanel';
 import NativeActionsPlug from './components/Toolbar/NativeActionsPlug';
 import NativeActionsPanel from './components/Toolbar/NativeActionsPanel';
 import MobileSubmenuClose from './components/Toolbar/MobileSubmenuClose';
-import { getIframeUrlCookieName } from './utils/cookieNames';
+import rememberedFrontendUrl from './utils/getRememberedFrontendUrl';
 import getSavedURLs, { getURlsFromEnv } from './utils/getSavedURLs';
 import getCurrentFrontendPublicUrl from './utils/getCurrentFrontendPublicUrl';
 import publicUrlSync from './middleware/publicUrlSync';
@@ -85,6 +84,7 @@ import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
 import { slateValueField } from './utils/slateValueField';
 import { BRIDGE_EXPANDERS } from './bridge/expanders';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
+import { noStore } from './express-middleware/noStore';
 
 // The field types a `hydraRuleError` can land on. Volto looks a validator up by
 // the field's declared type (`field.type || 'string'`), so the rule's error has
@@ -159,6 +159,20 @@ const applyConfig = (config) => {
     config.settings.expressMiddleware = [
       ...(config.settings.expressMiddleware ?? []),
       ensureLanguage,
+    ];
+  }
+
+  // No shared cache keeps an editor's page (express-middleware/noStore.js).
+  //
+  // Kept OUTSIDE the bridge-backend block, where the merge's own resolution
+  // would have put it: the two sides added middleware in competing branches of
+  // the same `if`, and folding main's into this branch's list would have made
+  // it conditional on RAZZLE_USE_BRIDGE_BACKEND — a cache header silently
+  // dropped for every direct-fetch deployment.
+  if (__SERVER__) {
+    config.settings.expressMiddleware = [
+      ...(config.settings.expressMiddleware || []),
+      noStore,
     ];
   }
 
@@ -270,7 +284,7 @@ const applyConfig = (config) => {
     // session. Without this, settings.publicURL stays at Volto's stock
     // default until the first switch.
     const currentEditUrl =
-      Cookies.get(getIframeUrlCookieName()) || getURlsFromEnv()[0]?.url;
+      rememberedFrontendUrl() || getURlsFromEnv()[0]?.url;
     const initial = getCurrentFrontendPublicUrl(getSavedURLs(), currentEditUrl);
     if (initial) config.settings.publicURL = initial;
   }

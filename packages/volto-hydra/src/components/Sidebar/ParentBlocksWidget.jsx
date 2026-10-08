@@ -44,6 +44,7 @@ import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
 import { isBlockReadonly } from '@volto-hydra/helpers';
 import { flattenToAppURL } from '@plone/volto/helpers';
+import { LinkedText } from '../../utils/linkedText';
 
 /**
  * Get the display title for a block type
@@ -163,6 +164,40 @@ const getFilteredBlockSchema = (blockType, intl, blockPathMap, blockId, blockDat
 // getTemplateBlockSettingsSchema (a single `kind` dropdown replacing the fixed + readOnly
 // checkboxes, with the inside-slot restriction) lives in the pure ./templateSettingsSchema
 // module so it can be unit-tested without the React tree. Imported at the top of this file.
+
+/** The rule warnings a resolved schema carries: `[{ field, title, message }]`. */
+const ruleWarningsOf = (schema) =>
+  Object.entries(schema?.properties || {})
+    .filter(([, def]) => def?.hydraRuleWarning)
+    .map(([field, def]) => ({ field, title: def.title || field, message: def.hydraRuleWarning }));
+
+/** Rule warnings, beside the fields they are about. */
+const RuleWarnings = ({ warnings }) =>
+  warnings.length > 0 ? (
+    <div className="hydra-field-warnings" role="status">
+      {warnings.map((w) => (
+        <p key={w.field} className="hydra-field-warning">
+          <strong>{w.title}:</strong> <LinkedText text={w.message} />
+        </p>
+      ))}
+    </div>
+  ) : null;
+
+/** What a block is for: its `description`, which may link to its guidance. */
+const BlockAbout = ({ blockConfig }) =>
+  blockConfig?.description ? (
+    <p className="hydra-block-about">
+      <LinkedText text={blockConfig.description} />
+    </p>
+  ) : null;
+
+/** The advice at the top of a block's settings: what it is for, then any warnings. */
+const BlockAdvice = ({ blockConfig, warnings }) => (
+  <>
+    <BlockAbout blockConfig={blockConfig} />
+    <RuleWarnings warnings={warnings} />
+  </>
+);
 
 /**
  * Single parent block section with header and settings
@@ -287,6 +322,13 @@ const ParentBlockSection = ({
 
   // Get schema for fallback rendering (when no Edit component or disableCustomSidebarEditForm)
   const schema = !BlockEdit ? getFilteredBlockSchema(blockType, intl, blockPathMap, blockId, blockData) : null;
+
+  // Field rules that SAY something rather than refuse it. A warning is
+  // deliberately not a validator — it must not block the save — so it has no
+  // route through Volto's error machinery and is drawn by this widget, from the
+  // resolved schema: for EVERY block, whether its sidebar is a form built from
+  // that schema or its own Edit component (the text block's is).
+  const ruleWarnings = isReadonly ? [] : ruleWarningsOf(schema || getResolvedSchema(pathInfo, blockPathMap));
 
   // Compute a key suffix that changes when parent's block sync state changes.
   // This forces BlockEdit to remount when parent's typeField changes, ensuring child gets fresh schema.
@@ -466,6 +508,15 @@ const ParentBlockSection = ({
           We take full control - SidebarPortal only renders when context is set
           Parent blocks: render to their own target div
           Current block: render to sidebar-properties */}
+      {/* A block with its own Edit component renders its own sidebar, so the
+          block advice (what it is for, rule warnings) goes beside it here (the schema form below draws it
+          inside itself). */}
+      {BlockEdit && (() => {
+        const targetElement = document.getElementById(targetId);
+        return targetElement
+          ? createPortal(<BlockAdvice blockConfig={blockConfig} warnings={ruleWarnings} />, targetElement)
+          : null;
+      })()}
       {BlockEdit && (
         <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
           <SidebarPortalTargetContext.Provider value={targetId}>
@@ -517,29 +568,10 @@ const ParentBlockSection = ({
           that isn't rendered has nothing to lock. */}
       {!BlockEdit && schema && !isReadonly && !pathInfo?.isTemplateInstance && (() => {
         const formSchema = schema;
-        // Field rules that SAY something rather than refuse it. A warning is
-        // deliberately not a validator — it must not block the save — so it
-        // has no route through Volto's error machinery and is rendered here,
-        // from the resolved schema, beside the fields it is about.
-        const warnings = Object.entries(formSchema.properties || {})
-          .filter(([, def]) => def?.hydraRuleWarning)
-          .map(([field, def]) => ({
-            field,
-            title: def.title || field,
-            message: def.hydraRuleWarning,
-          }));
         const formContent = (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
             <>
-            {warnings.length > 0 && (
-              <div className="hydra-field-warnings" role="status">
-                {warnings.map((w) => (
-                  <p key={w.field} className="hydra-field-warning">
-                    <strong>{w.title}:</strong> {w.message}
-                  </p>
-                ))}
-              </div>
-            )}
+            <BlockAdvice blockConfig={blockConfig} warnings={ruleWarnings} />
             <BlockDataForm
               errors={blocksErrors?.[blockId] ? { [blockId]: blocksErrors[blockId] } : {}}
               schema={formSchema}

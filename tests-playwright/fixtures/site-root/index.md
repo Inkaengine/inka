@@ -136,7 +136,7 @@ onMounted(async () => {
     initBridge({
       // Register custom block types with their field schemas
       blocks: {
-        card: { blockSchema: { properties: {
+        card: { title: 'Card', group: 'common', blockSchema: { properties: {
           image: { widget: 'image' },
           title: { type: 'string' },
           description: { type: 'string' },
@@ -173,7 +173,7 @@ export default function Page({ params }) {
       initBridge({
         // Register custom block types with their field schemas
         blocks: {
-          card: { blockSchema: { properties: {
+          card: { title: 'Card', group: 'common', blockSchema: { properties: {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
@@ -234,7 +234,7 @@ export default function Page({ params }) {
       initBridge({
         // Register custom block types with their field schemas
         blocks: {
-          card: { blockSchema: { properties: {
+          card: { title: 'Card', group: 'common', blockSchema: { properties: {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
@@ -290,7 +290,7 @@ export default function Page({ params }) {
     initBridge({
       // Register custom block types with their field schemas
       blocks: {
-        card: { blockSchema: { properties: {
+        card: { title: 'Card', group: 'common', blockSchema: { properties: {
           image: { widget: 'image' },
           title: { type: 'string' },
           description: { type: 'string' },
@@ -350,7 +350,7 @@ export default function Page({ params }) {
         initBridge({
           // Register custom block types with their field schemas
           blocks: {
-            card: { blockSchema: { properties: {
+            card: { title: 'Card', group: 'common', blockSchema: { properties: {
               image: { widget: 'image' },
               title: { type: 'string' },
               description: { type: 'string' },

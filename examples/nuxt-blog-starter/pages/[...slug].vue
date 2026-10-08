@@ -1,8 +1,4 @@
 <template>
-    <Head>
-        <Title>{{ data.page?.title }}</Title>
-        <Meta name="description" :content="data.page?.description" />
-    </Head>
         <Header :page="data.page"></Header>
         <main class="pt-8 pb-16 lg:pt-16 lg:pb-24 bg-white dark:bg-gray-900 antialiased">
         <!-- <div class="flex justify-between px-4 mx-auto max-w-screen-xl "> -->
@@ -227,6 +223,8 @@ onMounted(() => {
                     },
                 },
                 socialLinks: {
+                    title: 'Social links',
+                    group: 'common',
                     restricted: true,  // Only used in footer template
                     blockSchema: {
                         properties: {
@@ -453,12 +451,27 @@ provide('pages', computed(() => {
     return result;
 }));
 
+// Title, description and the social preview (Open Graph / Twitter card).
+// og:url and og:image must be absolute, on the public site: siteUrl.
+// A page's own preview image is its share image; otherwise the site's card.
+if (!runtimeConfig.public.siteUrl) throw new Error('runtimeConfig.public.siteUrl is not set: social previews need the public site URL');
+const page = computed(() => data.value?.page);
+const shareImage = computed(() => page.value?.preview_image
+  ? page.value.preview_image.download
+  : `${runtimeConfig.public.siteUrl}/og-image.png`);
 useSeoMeta({
-  ogTitle: data.page?.title,
-  description: data.page?.description,
-  ogDescription: data.page?.description,
-  ogImage: 'https://example.com/image.png',
+  title: () => page.value?.title,
+  description: () => page.value?.description,
+  ogTitle: () => page.value?.title,
+  ogDescription: () => page.value?.description,
+  ogType: 'website',
+  ogSiteName: runtimeConfig.public.siteName,
+  ogUrl: () => `${runtimeConfig.public.siteUrl}${route.path.replace(/\/$/, '')}`,
+  ogImage: () => shareImage.value,
   twitterCard: 'summary_large_image',
+  twitterTitle: () => page.value?.title,
+  twitterDescription: () => page.value?.description,
+  twitterImage: () => shareImage.value,
 })
 
 

@@ -13,6 +13,7 @@ vi.mock('../context', () => ({
 
 import {
   getTargetMapping,
+  getUrlField,
   applyCopyFromTargetToSchema,
   getTargetValueForField,
   isFieldCustom,
@@ -25,7 +26,7 @@ import {
   pullLinkedFields,
   COPY_FROM_TARGET_WIDGET,
 } from './copyFromTarget';
-import { createSchemaEnhancerFromRecipe } from './blockSync';
+import { createSchemaEnhancerFromRecipe, convertBlockType } from './blockSync';
 
 // A teaser-like block: `href` is the link/url field carrying the target
 // snapshot (selectedItemAttrs), and fieldMappings['@target'] maps target
@@ -466,6 +467,43 @@ describe('copy-from-target — on by default via @default (link-bearing blocks)'
       blockSchema: { properties: { heading: { title: 'Heading' } } },
     };
     expect(getTargetMapping(noLink)).toBeNull();
+  });
+
+  it('reads a schema FUNCTION as well as an object (a built-in block\'s)', () => {
+    // An admin block's schema is often a function of the block's data (Volto's
+    // teaser, image). Read only as an object, its link field was invisible and
+    // copy-from-target silently off for exactly those blocks.
+    const fnCard = {
+      ...linkCard,
+      blockSchema: ({ intl }) => ({
+        properties: { ...linkCard.blockSchema.properties, heading: { title: intl.formatMessage({ defaultMessage: 'Heading' }) } },
+      }),
+    };
+    expect(getUrlField(fnCard)).toBe('href');
+    expect(getTargetMapping(fnCard)).toEqual({ title: 'heading', description: 'summary', image: 'picture' });
+  });
+
+  it('a field a block-type conversion filled is custom, not pulled over', () => {
+    // Converting a hero to a link card writes the hero's heading into the
+    // card's heading. That is the author's text; the link's title must not
+    // replace it the next time the card is edited.
+    const blocksConfig = {
+      linkcard: linkCard,
+      hero: {
+        id: 'hero',
+        fieldMappings: { '@default': { title: 'headline', '@id': 'link' } },
+        blockSchema: { properties: { headline: { title: 'Headline' }, link: { title: 'Link', widget: 'url' } } },
+      },
+    };
+    const out = convertBlockType(
+      { '@type': 'hero', headline: 'Welcome', link: [{ '@id': '/target', Title: 'Target Page' }] },
+      'linkcard',
+      blocksConfig,
+    );
+    expect(out.heading).toBe('Welcome');
+    expect(isFieldCustom('heading', out)).toBe(true);
+    // A destination the conversion left empty stays linked.
+    expect(isFieldCustom('summary', out)).toBe(false);
   });
 
   it('an explicit @target still wins over @default', () => {

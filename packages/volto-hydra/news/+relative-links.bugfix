@@ -1,0 +1,1 @@
+A link typed as a path relative to the page — `./other-page` or `../elsewhere` — is accepted by the link editor and saved as the site path it points to, resolved the way a browser resolves a link on that page. The editor used to put `http://` in front of it, find that invalid, and silently refuse the link.

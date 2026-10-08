@@ -450,7 +450,7 @@ async function globalSetup() {
     const emptyRegions = buildEmptyRegionCases(ecConfig, blocks);
     const emptyOutPath = path.resolve(__dirname, '../.discovered-empty-regions.json');
     fs.writeFileSync(emptyOutPath, JSON.stringify(emptyRegions, null, 2));
-    console.log(`[SETUP] Wrote ${emptyRegions.length} empty-seeding container region(s) to ${emptyOutPath}`);
+    console.log(`[SETUP] Wrote ${emptyRegions.length} container region(s) to empty to ${emptyOutPath}`);
 
     // Containers that ALLOW a listing but have no example holding one. The
     // combination is its own rendering — the container decides what the

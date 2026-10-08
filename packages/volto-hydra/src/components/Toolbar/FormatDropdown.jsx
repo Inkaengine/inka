@@ -4,6 +4,13 @@ import { useSlate } from 'slate-react';
 import { isBlockActive, toggleBlock } from '@plone/volto-slate/utils';
 import { Icon } from '@plone/volto/components';
 import paragraphIcon from '@plone/volto/icons/paragraph.svg';
+import { isBlockStyleActive } from '@plone/volto-slate/editor/plugins/StyleMenu/utils';
+import {
+  applyParagraphStyle,
+  blockTypeAtCursor,
+  clearParagraphStyles,
+  styleItemsFor,
+} from '../../utils/blockFormats';
 
 /**
  * FormatDropdown - Block-level format selector
@@ -11,7 +18,8 @@ import paragraphIcon from '@plone/volto/icons/paragraph.svg';
  * Renders BlockButton elements (paragraph formats like h2, h3, ul, ol, blockquote)
  * in a dropdown menu. Shows the currently active format's icon as the trigger.
  *
- * @param {Array} blockButtons - Array of { name, element } where element is a BlockButton
+ * @param {Array} blockButtons - { name, element } where element is a BlockButton (a
+ *   format), or { name, styleItem } (a paragraph style, from paragraphStyleItems)
  */
 /**
  * Helper to get inner props from a button element.
@@ -34,11 +42,34 @@ const FormatDropdown = ({ blockButtons, onMouseDownCapture, onClickCapture }) =>
   const triggerRef = useRef(null);
   const dropdownRef = useRef(null);
 
-  // Find current active format by checking each button's format prop
-  const activeButton = blockButtons.find(({ element }) => {
-    const innerProps = getInnerProps(element);
-    return innerProps.format && isBlockActive(editor, innerProps.format);
+  // Paragraph styles (`styleItem` entries) sit after the formats: a kind of
+  // paragraph, chosen like a heading. Choosing a format or Paragraph clears
+  // them; choosing one replaces another (utils/blockFormats.js).
+  const formatButtons = blockButtons.filter((b) => !b.styleItem);
+  const allStyleItems = blockButtons.filter((b) => b.styleItem).map((b) => b.styleItem);
+  // Every style's class, offered here or not: choosing one style replaces any
+  // other, and choosing a format clears them all.
+  const styleClasses = allStyleItems.map((s) => s.cssClass);
+  // A style for one kind of block (`appliesTo`) is offered only on that kind.
+  // With no selection yet there is no block type, and only the styles that
+  // make their own kind of block are offered.
+  const styleItems = styleItemsFor(allStyleItems, blockTypeAtCursor(editor));
+  const activeStyle = styleItems.find((s) => {
+    try {
+      return isBlockStyleActive(editor, s.cssClass);
+    } catch (e) {
+      // No selection yet (the editor has not been focused).
+      return false;
+    }
   });
+
+  // Find current active format by checking each button's format prop
+  const activeButton = activeStyle
+    ? undefined
+    : formatButtons.find(({ element }) => {
+        const innerProps = getInnerProps(element);
+        return innerProps.format && isBlockActive(editor, innerProps.format);
+      });
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -63,9 +94,10 @@ const FormatDropdown = ({ blockButtons, onMouseDownCapture, onClickCapture }) =>
   const triggerRect = triggerRef.current?.getBoundingClientRect();
 
   // Get the icon and title from the active button, or use paragraph defaults
-  const currentProps = activeButton ? getInnerProps(activeButton.element) : null;
+  const currentProps = activeStyle || (activeButton ? getInnerProps(activeButton.element) : null);
   const currentIcon = currentProps?.icon || paragraphIcon;
   const currentTitle = currentProps?.title || 'Paragraph';
+  const plainParagraph = !activeButton && !activeStyle;
 
   return (
     <>
@@ -128,17 +160,17 @@ const FormatDropdown = ({ blockButtons, onMouseDownCapture, onClickCapture }) =>
               alignItems: 'center',
               gap: '8px',
               padding: '8px 12px',
-              background: !activeButton ? '#e3f2fd' : 'transparent',
+              background: plainParagraph ? '#e3f2fd' : 'transparent',
               cursor: 'pointer',
               border: 'none',
               width: '100%',
               textAlign: 'left',
             }}
             onMouseEnter={(e) => {
-              if (activeButton) e.currentTarget.style.background = '#f5f5f5';
+              if (!plainParagraph) e.currentTarget.style.background = '#f5f5f5';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = !activeButton ? '#e3f2fd' : 'transparent';
+              e.currentTarget.style.background = plainParagraph ? '#e3f2fd' : 'transparent';
             }}
             onMouseDown={(e) => {
               if (e.currentTarget.dataset.bypassCapture === 'true') {
@@ -149,6 +181,7 @@ const FormatDropdown = ({ blockButtons, onMouseDownCapture, onClickCapture }) =>
                     toggleBlock(editor, activeProps.format, activeProps.allowedChildren);
                   }
                 }
+                clearParagraphStyles(editor, styleClasses);
                 setIsOpen(false);
               }
             }}
@@ -156,7 +189,7 @@ const FormatDropdown = ({ blockButtons, onMouseDownCapture, onClickCapture }) =>
             <Icon name={paragraphIcon} size="20px" />
             <span style={{ fontSize: '14px', color: '#333' }}>Paragraph</span>
           </button>
-          {blockButtons.map(({ name, element }) => {
+          {formatButtons.map(({ name, element }) => {
             const innerProps = getInnerProps(element);
             const format = innerProps.format;
             const isActive = format && isBlockActive(editor, format);
@@ -197,6 +230,7 @@ const FormatDropdown = ({ blockButtons, onMouseDownCapture, onClickCapture }) =>
                     e.preventDefault();
                     if (format) {
                       toggleBlock(editor, format, allowedChildren);
+                      clearParagraphStyles(editor, styleClasses);
                     }
                     setIsOpen(false);
                   }
@@ -206,6 +240,46 @@ const FormatDropdown = ({ blockButtons, onMouseDownCapture, onClickCapture }) =>
                 <span style={{ fontSize: '14px', color: '#333' }}>
                   {typeof title === 'string' ? title : name}
                 </span>
+              </button>
+            );
+          })}
+          {styleItems.map((item) => {
+            const isActive = item === activeStyle;
+            return (
+              <button
+                key={item.name}
+                className="format-dropdown-item"
+                data-toolbar-button={item.name}
+                data-style={item.cssClass}
+                title={item.title}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  background: isActive ? '#e3f2fd' : 'transparent',
+                  cursor: 'pointer',
+                  border: 'none',
+                  width: '100%',
+                  textAlign: 'left',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) e.currentTarget.style.background = '#f5f5f5';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = isActive ? '#e3f2fd' : 'transparent';
+                }}
+                onMouseDown={(e) => {
+                  // Same flush-then-reapply path as the formats above.
+                  if (e.currentTarget.dataset.bypassCapture === 'true') {
+                    e.preventDefault();
+                    applyParagraphStyle(editor, item, styleClasses);
+                    setIsOpen(false);
+                  }
+                }}
+              >
+                {item.icon && <Icon name={item.icon} size="20px" />}
+                <span style={{ fontSize: '14px', color: '#333' }}>{item.title}</span>
               </button>
             );
           })}

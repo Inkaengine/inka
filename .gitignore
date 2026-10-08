@@ -20,10 +20,9 @@ examples/nuxt-blog-starter/packages/hydra.js
 
 examples/hydra-vue-f7/src/.vite-ssg-temp/
 examples/nuxt-blog-starter/.nuxt-edit/
-# Lock files in example dirs (managed separately)
+# The examples install with pnpm (their pnpm-lock.yaml is committed); a stray
+# npm lockfile is not theirs.
 examples/hydra-nextjs/package-lock.json
-examples/hydra-nextjs/pnpm-lock.yaml
-examples/hydra-vue-f7/pnpm-lock.yaml
 # Local Netlify folder
 .netlify
 /core

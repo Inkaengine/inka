@@ -12,7 +12,7 @@
       editing = true
       initBridge({
         // Declare the one block type we render richly.
-        blocks: { card: { blockSchema: { properties: {
+        blocks: { card: { title: 'Card', group: 'common', blockSchema: { properties: {
           image: { widget: 'image' },
           title: { type: 'string' },
           description: { type: 'string' },

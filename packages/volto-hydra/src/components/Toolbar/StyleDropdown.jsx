@@ -10,6 +10,7 @@ import {
   toggleStyle,
 } from '@plone/volto-slate/editor/plugins/StyleMenu/utils';
 import { isStyleAllowed } from '../../../../hydra-js/slateStyles.js';
+import { iconOf } from '../../utils/blockFormats';
 
 /**
  * The design system's own text styles, as a dropdown that escapes the toolbar.
@@ -27,7 +28,7 @@ import { isStyleAllowed } from '../../../../hydra-js/slateStyles.js';
  * positioned from the trigger. Same reason, same shape — a toolbar built for
  * buttons cannot contain a dropdown.
  */
-const StyleDropdown = ({ onMouseDownCapture, onClickCapture, slateRules }) => {
+const StyleDropdown = ({ onMouseDownCapture, onClickCapture, slateRules, inlineOnly = false }) => {
   const editor = useSlate();
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef(null);
@@ -43,7 +44,11 @@ const StyleDropdown = ({ onMouseDownCapture, onClickCapture, slateRules }) => {
   // used.
   const offered = (defs) =>
     (defs || []).filter((d) => isStyleAllowed(`.${d?.cssClass}`, slateRules));
-  const blockStyles = offered(menu.blockStyles);
+  // `inlineOnly` (the canvas toolbar): paragraph styles are chosen like a
+  // heading — one kind of paragraph per block — so there they live in the
+  // format dropdown (utils/blockFormats.js paragraphStyleItems). The sidebar's
+  // toolbar has no format dropdown, so it keeps both groups here.
+  const blockStyles = inlineOnly ? [] : offered(menu.blockStyles);
   const inlineStyles = offered(menu.inlineStyles);
 
   useEffect(() => {
@@ -104,6 +109,7 @@ const StyleDropdown = ({ onMouseDownCapture, onClickCapture, slateRules }) => {
         </div>
         {defs.map((def) => {
           const active = isActiveFor(def, isBlock);
+          const icon = iconOf(def.icon, def.cssClass);
           return (
             <button
               key={def.cssClass}
@@ -131,6 +137,7 @@ const StyleDropdown = ({ onMouseDownCapture, onClickCapture, slateRules }) => {
                 setIsOpen(false);
               }}
             >
+              {icon && <Icon name={icon} size="20px" />}
               {def.label || def.cssClass}
             </button>
           );

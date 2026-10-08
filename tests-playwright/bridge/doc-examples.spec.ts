@@ -19,7 +19,7 @@ import { URLS } from '../ports';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { requireEnvironment } from '../helpers/preconditions';
+import { requireEnvironment, unreachable } from '../helpers/preconditions';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Doc-example tests run on frontends that render blocks from fixture data.
@@ -36,16 +36,8 @@ base.beforeEach(async ({}, testInfo) => {
   if (project === 'nextjs' || project === 'f7' || project === 'astro') {
     const url = getFrontendUrl(project);
     if (url) {
-      let reachable = false;
-      let detail = 'not reachable';
-      try {
-        const resp = await fetch(url, { signal: AbortSignal.timeout(2000) });
-        reachable = resp.ok;
-        if (!resp.ok) detail = `responded ${resp.status}`;
-      } catch {
-        reachable = false;
-      }
-      requireEnvironment(testInfo, reachable, `${project} server on ${url} ${detail}`);
+      const why = await unreachable(url);
+      requireEnvironment(testInfo, why === null, `${project} server on ${url} not reachable (${why})`);
     }
   }
 });

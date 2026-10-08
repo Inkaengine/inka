@@ -164,3 +164,48 @@ describe('object_list item fieldRules — applied per position (@index) for type
     expect(body?.properties?.blocks?.maxLength).toBeUndefined(); // row 1
   });
 });
+
+describe('a container region a fieldRule hides is still walked', () => {
+  // Pass 1 walks containers with the GENERIC type schema — the enhancer run
+  // with formData={}. A region shown only for some data (`links` when
+  // mode === 'links') is hidden there, so its children never reached the
+  // pathMap even on an instance that shows the region: they rendered, but the
+  // editor could not select them. Hiding a field is a sidebar concern; the
+  // region's children are in the data either way.
+  test("an instance that shows the region has its children in the pathMap", () => {
+    const cfg = {
+      bannerWithGatedLinks: {
+        blockSchema: {
+          fieldsets: [{ id: 'default', title: 'Default', fields: ['mode', 'links'] }],
+          properties: {
+            mode: { title: 'Mode', choices: [['none', 'None'], ['links', 'Links']] },
+            links: { title: 'Links', widget: 'blocks_layout', allowedBlocks: ['slate'] },
+          },
+          required: [],
+        },
+        schemaEnhancer: createSchemaEnhancerFromRecipe({
+          fieldRules: { links: { when: { mode: 'links' }, else: false } },
+        }),
+      },
+      slate: { blockSchema: { fieldsets: [], properties: { value: {} }, required: [] } },
+    };
+    const form = {
+      '@type': 'Document',
+      blocks: {
+        b1: {
+          '@type': 'bannerWithGatedLinks',
+          mode: 'links',
+          blocks: {
+            l1: { '@type': 'slate', value: [] },
+            l2: { '@type': 'slate', value: [] },
+          },
+          blocks_layout: { links: ['l1', 'l2'] },
+        },
+      },
+      blocks_layout: { items: ['b1'] },
+    };
+    const map = buildBlockPathMap(form, cfg, intl);
+    expect(map.l1?.parentId).toBe('b1');
+    expect(map.l2?.parentId).toBe('b1');
+  });
+});

@@ -1440,6 +1440,23 @@ describe('validating against a site\'s schemas', () => {
     assert.deepEqual([...map.identityFields].sort(), ['@id', '@type', 'key']);
   });
 
+  it('leaves the fields of a block the frontend only adds rules to to its own schema', () => {
+    // An entry with no blockSchema keeps the admin's built-in schema
+    // (mergeFrontendBlock: a key not given is not replaced). This map cannot
+    // see that schema, so it must not call the block's fields undeclared —
+    // nor the block unknown.
+    const schemas = {
+      ...SCHEMAS,
+      slate: { schemaEnhancer: { fieldRules: { value: [{ when: {}, warning: 'w' }] } } },
+    };
+    const r = checkBlockSchemas(
+      page({ b1: { '@type': 'slate', value: [], anchor: 'intro' } }),
+      fieldMapFromSchemas(schemas),
+    );
+    assert.deepEqual(r.errors, []);
+    assert.deepEqual(r.warnings, []);
+  });
+
   it('reports a field the schemas do not declare', () => {
     const r = checkBlockSchemas(page({ b1: { '@type': 'card', title: 'T', url: '/x' } }), fieldMapFromSchemas(SCHEMAS));
     assert.equal(r.errors.length, 1);

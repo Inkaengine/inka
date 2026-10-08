@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import Cookies from 'js-cookie';
 import { Icon } from '@plone/volto/components';
 import mobileSVG from '@plone/volto/icons/mobile.svg';
 import tabletSVG from '@plone/volto/icons/tablet.svg';
@@ -8,7 +7,7 @@ import screenSVG from '@plone/volto/icons/screen.svg';
 import settingsSVG from '@plone/volto/icons/settings.svg';
 import { setViewportPreset, setFrontendPreviewUrl } from '../../actions';
 import getSavedURLs, { getURlsFromEnv } from '../../utils/getSavedURLs';
-import { getIframeUrlCookieName } from '../../utils/cookieNames';
+import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import getDomainInitials from '../../utils/getDomainInitials';
 import FrontendSettingsModal from './FrontendSettingsModal';
 import './FrontendSwitcher.css';
@@ -37,7 +36,7 @@ const FrontendSwitcherPanel = ({
     (state) => state.frontendPreviewUrl?.url,
   );
   // Resolve effective URL same as View.jsx: Redux → cookie → first env URL
-  const activeUrl = reduxUrl || Cookies.get(getIframeUrlCookieName()) || getURlsFromEnv()[0]?.url;
+  const activeUrl = reduxUrl || rememberedFrontendUrl() || getURlsFromEnv()[0]?.url;
   const [showSettings, setShowSettings] = useState(false);
   const [entries, setEntries] = useState(() => getSavedURLs());
 

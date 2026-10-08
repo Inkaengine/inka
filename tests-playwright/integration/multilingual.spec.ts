@@ -551,7 +551,7 @@ test.describe('Multilingual editing', () => {
 
     const marker = page
       .locator('.parent-block-section')
-      .filter({ hasText: 'GridBlock' })
+      .filter({ has: page.locator('.nav-title', { hasText: /^Grid$/ }) })
       .locator('.nested-status[data-nested-status="untranslated"]');
     await expect(
       marker.first(),
@@ -833,6 +833,10 @@ test.describe('Multilingual editing', () => {
     await helper.enableMultilingual();
 
     await page.goto(`${helper.adminUrl}/en/services`);
+    // The add form has no preview of its own: the copies' fingerprints are
+    // taken with the block schemas THIS page's frontend sent. Its preview is
+    // showing the page before the translation is made.
+    await helper.waitForIframeReady();
     await fromMoreMenu(page, /manage translations/i);
     await page
       .locator('#page-manage-translations tbody tr', { hasText: /deutsch/i })
@@ -857,6 +861,14 @@ test.describe('Multilingual editing', () => {
       (b: any) => b['@type'] === 'gridBlock',
     );
     const germanTeasers = germanGrid.blocks_layout.items as string[];
+    // Each copy records a fingerprint of ITS original: the two originals say
+    // different things, so the two fingerprints differ.
+    const fingerprints = germanTeasers.map(
+      (uid) => germanGrid.blocks[uid]['@translation']?.fingerprint,
+    );
+    expect(fingerprints).toHaveLength(2);
+    for (const fp of fingerprints) expect(fp).toMatch(/^[0-9a-f]{16}$/);
+    expect(fingerprints[0]).not.toBe(fingerprints[1]);
     for (const [i, uid] of germanTeasers.entries()) {
       germanGrid.blocks[uid].title = `Deutscher Titel ${i + 1}`;
       germanGrid.blocks[uid].description = `Deutsche Beschreibung ${i + 1}`;
@@ -880,6 +892,18 @@ test.describe('Multilingual editing', () => {
       headers: auth,
       data: { blocks: english.blocks },
     });
+    // One English teaser changed, the other did not.
+    const englishAfter = await (
+      await page.request.get(`${URLS.mockApi}/en/services`, { headers: auth })
+    ).json();
+    const gridAfter: any = Object.values(englishAfter.blocks).find(
+      (b: any) => b['@type'] === 'gridBlock',
+    );
+    const [firstAfter, secondAfter] = gridAfter.blocks_layout.items as string[];
+    expect(gridAfter.blocks[firstAfter].description).toBe('We design in English, but differently now.');
+    expect(gridAfter.blocks[secondAfter].description).toBe(
+      englishGrid.blocks[secondAfter].description,
+    );
 
     // Re-open the translation beside its original.
     await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);
@@ -898,7 +922,7 @@ test.describe('Multilingual editing', () => {
 
     const marker = page
       .locator('.parent-block-section')
-      .filter({ hasText: 'GridBlock' })
+      .filter({ has: page.locator('.nav-title', { hasText: /^Grid$/ }) })
       .locator('.nested-status[data-nested-status="stale"]');
     await expect(
       marker.first(),
@@ -1037,7 +1061,7 @@ test.describe('Multilingual editing', () => {
 
     const marker = page
       .locator('.parent-block-section')
-      .filter({ hasText: 'GridBlock' })
+      .filter({ has: page.locator('.nav-title', { hasText: /^Grid$/ }) })
       .locator('.nested-status[data-nested-status="untranslated"]');
     await expect(
       marker.first(),

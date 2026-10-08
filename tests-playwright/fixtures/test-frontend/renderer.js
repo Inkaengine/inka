@@ -255,7 +255,7 @@ function syncCnavOpenState() {
  * @param {Object} block - Block data
  * @returns {Promise<HTMLElement>} Rendered block element
  */
-async function renderBlock(blockId, block) {
+async function renderBlock(blockId, block, { inListing = false } = {}) {
     const wrapper = document.createElement('div');
     wrapper.setAttribute('data-block-uid', blockId);
     // NOTE: a real frontend does NOT mark template read-only — hydra owns that
@@ -281,7 +281,7 @@ async function renderBlock(blockId, block) {
             wrapper.innerHTML = renderTextareaBlock(block);
             break;
         case 'image':
-            wrapper.innerHTML = renderImageBlock(block);
+            wrapper.innerHTML = renderImageBlock(block, { inListing });
             break;
         case 'video':
             wrapper.innerHTML = renderVideoBlock(block);
@@ -368,9 +368,18 @@ async function renderBlock(blockId, block) {
         case 'slide':
             wrapper.innerHTML = renderSlideBlock(block);
             break;
-        case 'accordion':
+        case 'accordion': {
+            // A group of one is drawn as just that one: a single panel, no
+            // group element — so the accordion draws no element of its own and
+            // the editor finds it through its panel (getAllBlockElements).
+            if ((block.panels || []).length === 1) {
+                const single = document.createElement('div');
+                single.innerHTML = await renderAccordionPanels(block.panels);
+                return single.firstElementChild;
+            }
             wrapper.innerHTML = await renderAccordionBlock(block, blockId);
             break;
+        }
         // accordionPanel is rendered inline by renderAccordionBlock (object_list items)
         case 'socialLinks':
             wrapper.innerHTML = renderSocialLinksBlock(block);
@@ -982,10 +991,12 @@ function renderTeaserBlock(block, blockUid) {
         `;
     }
 
-    // Show teaser content when href has value
+    // Show teaser content when href has value. No image ⇒ no element (#296): the
+    // editor reveals an empty image with the toolbar toggle, not a grey stand-in
+    // that also shows on the published page.
     const imageHtml = imageSrc
         ? `<img data-edit-media="preview_image" src="${imageSrc}" alt="" style="max-width: 100%; height: auto; margin-bottom: 10px; border-radius: 4px;" />`
-        : `<div data-edit-media="preview_image" style="height: 100px; background: #ddd; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; border-radius: 4px; cursor: pointer;">Click to add image</div>`;
+        : '';
 
     // When overwrite is false, add data-block-readonly to prevent editing
     // User must check "Customize teaser content" checkbox to enable editing
@@ -1073,9 +1084,16 @@ function renderSummaryItemBlock(block, blockUid) {
  * @param {Object} block - Image block data
  * @returns {string} HTML string
  */
-function renderImageBlock(block) {
+function renderImageBlock(block, { inListing = false } = {}) {
     tfLog('renderImageBlock:', { url: block.url, type: typeof block.url, hasImageScales: !!block.url?.image_scales });
-    const imageSrc = getImageUrl(block.url) || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23e5e7eb%22/%3E%3C/svg%3E';
+    // An image block with no image renders nothing (#296: no data ⇒ no element).
+    // `url` is required, so while editing the bridge hands an empty one a
+    // stand-in image to click; a visitor sees nothing. A LISTING item is different:
+    // a result with no image keeps its image slot so the cards line up (as the
+    // Nuxt frontend's isInListing placeholder does).
+    const imageSrc = getImageUrl(block.url)
+        || (inListing ? 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23e5e7eb%22/%3E%3C/svg%3E' : '');
+    if (!imageSrc) return '';
     // Volto's image block uses 'placeholder' for alt text, not 'alt'
     const alt = block.placeholder || block.alt || '';
     const href = getLinkUrl(block.href);
@@ -2030,7 +2048,7 @@ async function renderListingBlock(block, blockId) {
 
     for (const childBlock of expandedItems) {
         if (!childBlock) continue;
-        const itemEl = await renderBlock(childBlock['@uid'], childBlock);
+        const itemEl = await renderBlock(childBlock['@uid'], childBlock, { inListing: true });
         if (itemEl) {
             fragment.appendChild(itemEl);
         }
@@ -2444,9 +2462,8 @@ function renderSlideBlock(block) {
     // Preview image (background image area)
     if (imageSrc) {
         html += `<div data-edit-media="preview_image" style="height: 100px; background: url('${imageSrc}') center/cover; margin-bottom: 8px; border-radius: 4px;"></div>`;
-    } else {
-        html += `<div data-edit-media="preview_image" style="height: 100px; background: #ddd; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; border-radius: 4px; cursor: pointer;">Click to add image</div>`;
     }
+    // No image ⇒ no element (#296); revealed with the toolbar toggle while editing.
 
     if (headTitle) {
         html += `<div data-edit-text="head_title" style="font-size: 12px; color: #888; margin-bottom: 4px;">${headTitle}</div>`;
@@ -2498,18 +2515,25 @@ function renderSocialLinksBlock(block) {
  * @returns {Promise<string>} HTML string
  */
 async function renderAccordionBlock(block, blockId) {
-    const panels = block.panels || [];
+    return (
+        '<div class="accordion-container" style="border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">' +
+        (await renderAccordionPanels(block.panels || [])) +
+        '</div>'
+    );
+}
 
-    let html = '<div class="accordion-container" style="border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">';
-
+/**
+ * Each panel a native disclosure: <details> carrying the panel's uid, its
+ * title the <summary>. Open, so a panel's blocks are in reach without a click.
+ */
+async function renderAccordionPanels(panels) {
+    let html = '';
     for (const panel of panels) {
         const panelId = panel['@id'];
-        html += `<div data-block-uid="${panelId}" data-block-add="bottom">`;
+        html += `<details open data-block-uid="${panelId}" data-block-add="bottom">`;
         html += await renderAccordionPanelBlock(panel, panelId);
-        html += '</div>';
+        html += '</details>';
     }
-
-    html += '</div>';
     return html;
 }
 
@@ -2529,9 +2553,9 @@ async function renderAccordionPanelBlock(block, blockId) {
     let html = '';
 
     // Panel header (title)
-    html += '<div class="accordion-header" style="background: #f5f5f5; padding: 15px; border-bottom: 1px solid #ddd; cursor: pointer;">';
+    html += '<summary class="accordion-header" style="background: #f5f5f5; padding: 15px; border-bottom: 1px solid #ddd; cursor: pointer;">';
     html += `<strong data-edit-text="title">${block.title || ''}</strong>`;
-    html += '</div>';
+    html += '</summary>';
 
     // Panel content
     html += '<div class="accordion-content" style="padding: 15px;">';

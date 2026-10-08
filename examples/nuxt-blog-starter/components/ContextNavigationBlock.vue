@@ -57,7 +57,7 @@
 // async (fetches via the Plone REST API).
 // `ref` from vue; `useRoute` is a Nuxt auto-import composable so no explicit
 // import is needed for it (same pattern as ListingBlock.vue).
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { expandListingBlocks, ploneFetchItems } from '@hydra-js/helpers';
 
 const props = defineProps({
@@ -145,7 +145,11 @@ async function expandChildren() {
         itemTypeField: 'variation',
       });
       for (const item of result.items) {
-        flat.push({ block: item, blockId: item['@uid'] });
+        // A listing with no results yields, while editing, one 'empty'
+        // placeholder carrying its uid: draw it as the selectable placeholder
+        // (extras), not as a nav link with no label.
+        if (item['@type'] === 'empty') extras.push({ block: item, blockId: item['@uid'] });
+        else flat.push({ block: item, blockId: item['@uid'] });
       }
     } else {
       // Not a nav child (navItem/listing). Don't reject it — delegate to the central
@@ -247,5 +251,11 @@ async function expandChildren() {
   return { entries, extras };
 }
 
-const { entries, extras } = await expandChildren();
+// Re-expanded whenever the block changes (an edit to a navItem or to the
+// listing's query): expanding only at setup left the nav showing what it was
+// first given until the page reloaded.
+const expanded = ref(await expandChildren());
+watch(() => props.block, async () => { expanded.value = await expandChildren(); }, { deep: true });
+const entries = computed(() => expanded.value.entries);
+const extras = computed(() => expanded.value.extras);
 </script>

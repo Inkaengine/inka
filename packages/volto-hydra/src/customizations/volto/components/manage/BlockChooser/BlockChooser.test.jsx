@@ -47,3 +47,32 @@ describe('BlockChooser (shadow) — empty sections', () => {
     expect(screen.getByLabelText('Fold Text blocks')).toBeInTheDocument();
   });
 });
+
+/**
+ * A block may say what it is for (`description`). The chooser is where an author
+ * picks between blocks, so the description is there, as the block button's tooltip.
+ */
+describe('BlockChooser (shadow) — block descriptions', () => {
+  it("gives a block's button its description", () => {
+    render(
+      <Provider store={store}>
+        <BlockChooser
+          onInsertBlock={() => {}}
+          currentBlock="theblockid"
+          blocksConfig={{
+            text: {
+              ...blocksConfig.text,
+              description: 'Paragraphs, headings and lists. [Guidance](https://example.com/text)',
+            },
+          }}
+          allowedBlocks={['text']}
+        />
+      </Provider>,
+    );
+    expect(screen.getByRole('button', { name: /Text/ })).toHaveAttribute(
+      'title',
+      // A tooltip cannot hold a link: the link's words stay, its URL goes.
+      'Paragraphs, headings and lists. Guidance',
+    );
+  });
+});

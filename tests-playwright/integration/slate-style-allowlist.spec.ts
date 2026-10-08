@@ -198,17 +198,41 @@ test.describe('design-system style menu', () => {
     const editor = await helper.getEditorLocator('target');
     await editor.click();
 
-    const trigger = page.locator('.quanta-toolbar #style-menu');
-    await expect(trigger, 'the style menu is in toolbarButtons — it should render').toBeVisible();
-    await trigger.click();
-
-    const lead = page.locator('.block-style-lead');
+    // A paragraph style is a kind of paragraph, chosen like a heading: it is in
+    // the canvas toolbar's FORMAT dropdown, applied where the cursor is.
+    const formats = page.locator('.quanta-toolbar .format-dropdown-trigger');
+    await expect(formats).toBeVisible();
+    await formats.click();
+    const lead = page.locator('.format-dropdown-menu [data-style="lead"]');
     await expect(lead).toBeVisible();
     await lead.click();
 
     // The class the design system styles on, on the element the author edited.
-    await expect(iframe.locator('[data-block-uid="target"] .lead, [data-block-uid="target"].lead'))
-      .toHaveCount(1, { timeout: 5000 });
+    const styled = iframe.locator('[data-block-uid="target"] .lead, [data-block-uid="target"].lead');
+    await expect(styled).toHaveCount(1, { timeout: 5000 });
+
+    // Choosing a heading replaces it: one kind of block at a time.
+    await formats.click();
+    await page.locator('.format-dropdown-menu [data-format="h2"]').click();
+    await expect(iframe.locator('[data-block-uid="target"] h2')).toHaveCount(1, { timeout: 5000 });
+    await expect(styled).toHaveCount(0);
+  });
+
+  test('the canvas style menu offers text styles only', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    await helper.clickBlockInIframe('target');
+    const editor = await helper.getEditorLocator('target');
+    await editor.click();
+
+    const trigger = page.locator('.quanta-toolbar #style-menu');
+    await expect(trigger, 'the fixture declares a text style, so the menu renders').toBeVisible();
+    await trigger.click();
+    await expect(page.locator('.style-dropdown-menu .inline-style-dropcap')).toBeVisible();
+    await expect(page.locator('.style-dropdown-menu .block-style-lead')).toHaveCount(0);
   });
 });
 
@@ -502,5 +526,107 @@ test.describe('a frontend rendering design-system styles', () => {
     await expect(block.locator('.dropcap')).toHaveText('D');
     // And the text either side is untouched.
     await expect(block).toContainText('Design-system styles');
+  });
+});
+
+test.describe('block formats declared as data', () => {
+  // Declared by the mock test frontend only, for /block-formats-page.
+  test.beforeEach(({}, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'admin-mock',
+      'the block formats are declared by the mock frontend',
+    );
+  });
+
+  test('the dropdown offers exactly the declared formats, by their labels', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    const titles = await formatOptions(page, helper, 'target');
+    // Paragraph is always first; then the declared formats in their order —
+    // h5 included, which volto-slate has no button for — then the paragraph
+    // styles (this frontend declares "Lead"). Nothing of volto-slate's own
+    // ("Title", "Subtitle", lists) is left.
+    expect(titles).toEqual(['Paragraph', 'Heading 2', 'Heading 3', 'Heading 5', 'Lead']);
+    await expect(page.locator('.format-dropdown-menu [data-format="h2"] svg path')).toHaveCount(1);
+  });
+
+  test('a list style is offered in a list, and keeps it a list', async ({ page }) => {
+    // Declared `appliesTo: ['ul', 'ol']`. On a paragraph it is not offered (the
+    // menu above is exactly Paragraph, the headings and Lead); here it is, and
+    // choosing it styles the list instead of turning it into a paragraph.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    const titles = await formatOptions(page, helper, 'list-target');
+    expect(titles).toContain('Spaced list');
+    await page.locator('.format-dropdown-menu [data-style="list-spaced"]').click();
+    const list = helper.getIframe().locator('[data-block-uid="list-target"] ul, ul[data-block-uid="list-target"]').first();
+    await expect(list).toHaveClass(/\blist-spaced\b/);
+    await expect(list.locator('li')).toHaveText('A list item to style');
+  });
+
+  test('a declared format applies', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    await formatOptions(page, helper, 'target');
+    await page.locator('.format-dropdown-menu [data-format="h5"]').click();
+    const iframe = helper.getIframe();
+    await expect(iframe.locator('[data-block-uid="target"] h5')).toHaveText('Some text to format');
+  });
+
+  test("a block's description and a warning link to their guidance", async ({ page }) => {
+    // This page's frontend says what its text block is for, and both that
+    // description and its Heading 5 warning carry a markdown link to guidance.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    await formatOptions(page, helper, 'target');
+    const about = page.locator('#sidebar-properties .hydra-block-about');
+    await expect(about).toHaveText('Paragraphs, headings and lists. Text guidance');
+    await expect(about.getByRole('link', { name: 'Text guidance' })).toHaveAttribute(
+      'href',
+      'https://example.com/guidance/text',
+    );
+
+    await page.locator('.format-dropdown-menu [data-format="h5"]').click();
+    const warning = page.locator('.hydra-field-warning').filter({ hasText: /Heading 5 is advice-worthy/ });
+    await expect(warning.getByRole('link', { name: 'Heading guidance' })).toHaveAttribute(
+      'href',
+      'https://example.com/guidance/headings',
+    );
+  });
+
+  test("a rule's warning shows for a block with its own edit component", async ({ page }) => {
+    // The text block's sidebar is its own Edit component, not a form built
+    // from its schema — and the warnings were only drawn beside the latter, so
+    // advice about a text block (the validator reports it) never reached the
+    // author. This page's frontend warns about a Heading 5.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    const warning = page.locator('.hydra-field-warning').filter({ hasText: /Heading 5 is advice-worthy/ });
+    await formatOptions(page, helper, 'target');
+    await expect(warning).toHaveCount(0);
+    await page.locator('.format-dropdown-menu [data-format="h5"]').click();
+    await expect(helper.getIframe().locator('[data-block-uid="target"] h5')).toHaveCount(1);
+    await expect(warning).toHaveCount(1);
+
+    // And it goes when the heading does.
+    await formatOptions(page, helper, 'target');
+    await page.locator('.format-dropdown-menu [data-format="h2"]').click();
+    await expect(helper.getIframe().locator('[data-block-uid="target"] h2')).toHaveCount(1);
+    await expect(warning).toHaveCount(0);
   });
 });

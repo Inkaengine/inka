@@ -385,6 +385,20 @@ function sessionIdentity(sessionId) {
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Increase limit for image uploads
 
+// Zope's marshalling: `name:list=a&name:list=b` is the option `name` = [a, b]
+// (Volto's searchContent sends every array option that way). Folded into
+// req.query once here, so no endpoint reads `name:list` itself.
+app.use((req, res, next) => {
+  for (const key of Object.keys(req.query)) {
+    if (!key.endsWith(':list')) continue;
+    const name = key.slice(0, -':list'.length);
+    const values = [req.query[key]].flat();
+    req.query[name] = req.query[name] === undefined ? values : [req.query[name], ...values].flat();
+    delete req.query[key];
+  }
+  next();
+});
+
 // Normalise the fixtures' baked origin to ours on the way out. Every JSON
 // response goes through res.json, so this is the one place a URL can leave the
 // server — no endpoint has to remember to call the rewrite itself.
@@ -989,6 +1003,18 @@ function loadRawContentFromDisk(urlPath) {
   // Miss: reload the mount that owns this path (format-agnostic -- markdown
   // re-reads its tree, JSON rescans) and retry once. Content added since startup
   // is picked up here rather than needing a restart.
+  //
+  // LOCAL-DEV ONLY, for the same reason the content watcher is (see
+  // setupContentWatchers): in CI the fixtures are a static checkout, so nothing
+  // is ever added to disk mid-run and a reload can only re-find what's already
+  // cached. But search/listing specs look up many synthetic paths (resolveuid,
+  // query results) that aren't content dirs -- every one misses, and an
+  // unconditional reload runs a full scanContentDir over the whole mount,
+  // re-logging ~260 lines PER MISS. That floods the CI log into the hundreds of
+  // thousands of lines and pins the CPU rescanning, which starves concurrent
+  // requests (truncated responses -> flaky search/listing failures). In CI a
+  // miss is just a miss.
+  if (process.env.CI) return null;
   const mount = mountFor(urlPath);
   if (mount) {
     reloadMount(mount);
@@ -1747,8 +1773,8 @@ function templateIdToPath(templateId) {
     let resolved = uidToPathMap[uidMatch[1]];
     if (!resolved) {
       // Same fallback resolveUidUrls uses: a template added after startup isn't in the
-      // index yet, so rescan before calling it missing.
-      initContentDirMap();
+      // index yet, so rescan before calling it missing (local dev only; see rescanOnMiss).
+      rescanOnMiss();
       resolved = uidToPathMap[uidMatch[1]];
     }
     return resolved ? resolved.replace(/\/+$/, '') || '/' : null;
@@ -1949,7 +1975,8 @@ function resolveUidUrls(obj, parentKey = null) {
       let resolvedPath = uidToPathMap[uid];
       if (!resolvedPath) {
         // UID not found — rescan content dirs in case new files were added
-        initContentDirMap();
+        // (local dev only; see rescanOnMiss).
+        rescanOnMiss();
         resolvedPath = uidToPathMap[uid];
       }
       if (!resolvedPath) return match;
@@ -2706,6 +2733,20 @@ function initContentDirMap() {
     scanContentDir(dirPath, mountPath);
   });
   console.log(`Registered ${Object.keys(contentDirMap).length} content paths`);
+}
+
+// A cache MISS used to rescan the whole tree in case a fixture was added after
+// startup. That's a LOCAL-DEV convenience only -- the same reason the content
+// watcher is gated (see setupContentWatchers). In CI the fixtures are a static
+// checkout; nothing is added mid-run, so a rescan can only re-find what's
+// already registered. But resolveuid lookups, depth-less listings, and image
+// serving all rescan on EVERY miss, and the search/listing specs generate many
+// synthetic misses -- each one ran a full scanContentDir (~260 log lines) and
+// pinned the CPU, flooding the CI log and starving concurrent requests
+// (truncated responses -> flaky failures). So on a miss, only rescan locally.
+function rescanOnMiss() {
+  if (process.env.CI) return;
+  initContentDirMap();
 }
 
 // Initialize on startup
@@ -4871,7 +4912,24 @@ const VOCAB_ITEMS = {
   // BETWEEN — with one entry, "offers the right list" and "offers any list at
   // all" are the same assertion.
   'plone.app.vocabularies.ReallyUserFriendlyTypes': ['Document', 'News Item'],
+  // collective.volto.formsupport lists only the captcha providers a site has
+  // configured (captcha/vocabularies.py keeps those whose isEnabled() is
+  // true): see CONFIGURED_CAPTCHAS.
+  'collective.volto.formsupport.captcha.providers': null,
 };
+
+// The captcha providers this site can verify. Honeypot needs nothing and is
+// always on; reCAPTCHA and hCaptcha need keys and NoRobots questions, which a
+// site has only once configured — MOCK_CAPTCHA_PROVIDERS names those (e.g.
+// "recaptcha,hcaptcha,hcaptcha_invisible,norobots-captcha").
+const CONFIGURED_CAPTCHAS = [
+  'honeypot',
+  ...String(process.env.MOCK_CAPTCHA_PROVIDERS || '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean),
+];
+VOCAB_ITEMS['collective.volto.formsupport.captcha.providers'] = CONFIGURED_CAPTCHAS;
 
 // Optional generated vocabularies, declared by a seed file and switched on
 // with VOCAB_SPEC. Used by the adapter contract suite, which needs a
@@ -5607,8 +5665,13 @@ app.get('*/@search', (req, res) => {
   }
   // Handle path.query with path.depth=0 (exact match for specific content)
   else
-  if (pathQuery && pathDepth === '0') {
-    const content = loadContentFromDisk(pathQuery);
+  if (pathDepth === '0') {
+    // The object itself: the one `path.query` names, or else the context the
+    // search was asked at (`/page/@search?path.depth=0`), as Plone answers it.
+    const target = pathQuery
+      ? (String(pathQuery).startsWith('http') ? new URL(String(pathQuery)).pathname : String(pathQuery))
+      : (searchPath || '/');
+    const content = loadContentFromDisk(target);
     if (content) {
       items = [formatSearchItem(content, baseUrl)];
     } else {
@@ -5711,8 +5774,9 @@ app.get('*/@search', (req, res) => {
   } else {
     // No depth filter - return all content items from disk.
     // Rescan so newly-added fixture directories surface without a server
-    // restart — same "rescan on miss" pattern as resolveUidUrls() above.
-    initContentDirMap();
+    // restart — same "rescan on miss" pattern as resolveUidUrls() above
+    // (local dev only; see rescanOnMiss).
+    rescanOnMiss();
     items = Object.keys(contentDirMap)
       .filter((itemPath) => itemPath !== '/')
       .map((itemPath) => loadContentFromDisk(itemPath))
@@ -5769,15 +5833,32 @@ app.get('*/@search', (req, res) => {
     ? `${API_ORIGIN}/@search`
     : `${API_ORIGIN}${searchPath}/@search`;
 
-  // No batching key: this route returns every match in one go, which is the
-  // unbatched case, and Plone sends no links for that. See the note on
-  // @querystring-search above.
+  // A page of the results when one is asked for (b_start / b_size), with
+  // items_total the whole, as plone.restapi batches. Unlike Plone there is no
+  // default page of 25: callers here have always had every result.
+  const total = items.length;
+  if (req.query.b_size !== undefined || req.query.b_start !== undefined) {
+    const start = Number(req.query.b_start ?? 0);
+    const size = req.query.b_size !== undefined ? Number(req.query.b_size) : total;
+    items = items.slice(start, start + size);
+  }
+
   res.json({
     '@id': searchUrl,
+    // Both sides of the merge: main's batching, and the metadata_fields
+    // mapping this branch added — a catalog brain carries only what the
+    // caller asked for, which is what the adapter's search reads.
     'items': items.map((item) =>
       applyMetadataFields(item, req.query?.metadata_fields),
     ),
-    'items_total': items.length,
+    'items_total': total,
+    'batching': {
+      '@id': searchUrl,
+      'first': `${searchUrl}?b_start=0`,
+      'last': `${searchUrl}?b_start=0`,
+      'next': null,
+      'prev': null,
+    },
   });
 });
 
@@ -5944,6 +6025,9 @@ function runFieldValidations(field, value) {
  *    collective.volto.formsupport's post adapter does;
  *  - the honeypot captcha -> 400 unless `captcha.value` is the empty string,
  *    matching HoneypotSupport.verify;
+ *  - a token captcha (reCAPTCHA, hCaptcha, NoRobots) -> 400 with no
+ *    `captcha.token`, and NoRobots' token must be its {id, id_check, value}
+ *    JSON — the checks their verify() makes before calling out;
  *  - a `from` field whose value is not an address -> 400, matching
  *    validate_email_fields.
  *
@@ -5957,6 +6041,8 @@ function runFieldValidations(field, value) {
  * The resolved block is also recorded as `block_found`, so a multi-form test can
  * assert the id pointed at the form it meant.
  */
+const TOKEN_CAPTCHAS = new Set(['recaptcha', 'hcaptcha', 'hcaptcha_invisible', 'norobots-captcha']);
+
 app.post('*/@submit-form', (req, res) => {
   const contentPath = req.path.replace(/\/@submit-form$/, '') || '/';
   const body = req.body || {};
@@ -5994,20 +6080,53 @@ app.post('*/@submit-form', (req, res) => {
     return res.status(400).json({ type: 'BadRequest', message: 'Empty form data.' });
   }
 
-  // HoneypotSupport.verify has two branches, and only one of them is about the
-  // `captcha` object. A frontend that sends one (volto-form-block, and our
-  // Next.js action) is checked on its `value`; a frontend that does not — the
-  // Nuxt example here, for instance — falls back to looking for a FILLED
-  // honeypot field among the submitted data. An absent captcha is not by itself
-  // a rejection, and treating it as one fails every frontend that does not
-  // implement the token.
-  //
-  // The real fallback is `found_honeypot(form, required=True)`, which also
-  // rejects a submission MISSING the field. That rule depends on
-  // collective.honeypot's HONEYPOT_FIELD being configured in the environment —
-  // when it is unset the whole check short-circuits to "pass" — and there is no
-  // such environment here, so this models the "field is present and filled"
-  // half only.
+  // formsupport looks the provider up by name — getMultiAdapter(name=
+  // block.captcha) — and verifies with it. A name nothing registers ("none",
+  // or a provider whose extra is not installed) raises ComponentLookupError,
+  // and a registered one this site has not configured raises ValueError
+  // (no keys / no questions): either way the submission is a 500.
+  if (block.captcha && !CONFIGURED_CAPTCHAS.includes(block.captcha)) {
+    return res.status(500).json({
+      type: 'ComponentLookupError',
+      message: `No captcha provider "${block.captcha}" is set up on this site.`,
+    });
+  }
+
+  // The token-based providers, as their verify() checks before calling out:
+  // no token is "No captcha token provided.", and NoRobots' token is the JSON
+  // its widget builds ({id, id_check, value}), which verify() json.loads. The
+  // third-party check (Google, hCaptcha) is not reproduced — a token that is
+  // there is accepted.
+  if (TOKEN_CAPTCHAS.has(block.captcha)) {
+    const token = body.captcha && body.captcha.token;
+    if (!token) {
+      return res
+        .status(400)
+        .json({ type: 'BadRequest', message: 'No captcha token provided.' });
+    }
+    if (block.captcha === 'norobots-captcha') {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(token);
+      } catch (e) {
+        parsed = null;
+      }
+      if (!parsed || !parsed.id || !parsed.id_check || typeof parsed.value !== 'string') {
+        return res.status(400).json({
+          type: 'BadRequest',
+          message: 'The code you entered was wrong, please enter the new one.',
+        });
+      }
+    }
+  }
+
+  // HoneypotSupport.verify has two branches. A frontend that sends the
+  // `captcha` object (volto-form-block) is checked on its `value`: missing or
+  // not empty is refused. One that does not falls back to
+  // found_honeypot(form, required=True) over the answers keyed by LABEL —
+  // collective.honeypot's HONEYPOT_FIELD defaults to "protected_1", so the
+  // trap must be there AND empty: missing is "misses required field", filled
+  // is "has forbidden field".
   if (block.captcha === 'honeypot') {
     const captcha = body.captcha;
     const reject = () =>
@@ -6015,11 +6134,9 @@ app.post('*/@submit-form', (req, res) => {
     if (captcha) {
       if (typeof captcha.value !== 'string' || captcha.value !== '') return reject();
     } else {
-      const honeypotId = (block.captcha_props || {}).id;
-      const trap = honeypotId
-        ? data.find((entry) => entry.field_id === honeypotId || entry.label === honeypotId)
-        : null;
-      if (trap && String(trap.value || '') !== '') return reject();
+      const honeypotId = (block.captcha_props || {}).id || 'protected_1';
+      const trap = data.find((entry) => entry.label === honeypotId);
+      if (!trap || String(trap.value || '') !== '') return reject();
     }
   }
 
@@ -6290,7 +6407,7 @@ app.get('*/@@images/*', (req, res) => {
   // If not found, rescan in case content was added after startup
   let dirInfo = contentDirMap[contentPath];
   if (!dirInfo) {
-    initContentDirMap();
+    rescanOnMiss(); // local dev only; see rescanOnMiss
     dirInfo = contentDirMap[contentPath];
   }
   const imageDir = dirInfo ? path.join(dirInfo.dirPath, fieldName) : null;
@@ -6758,7 +6875,9 @@ app.patch('*', (req, res) => {
     // they ride along inside a registered field and persist, whereas a separate
     // top-level region field would be discarded here.
     const registeredBody = dropUnregisteredFields(req.body, content);
-    const mergedContent = { ...content, ...registeredBody };
+    // Plone stamps `modified` on every save; a client comparing it before
+    // saving (the agent API's version check) relies on that.
+    const mergedContent = { ...content, ...registeredBody, modified: new Date().toISOString() };
 
     // Persist to session storage for test verification when session is provided
     // Default session doesn't persist to maintain backward compatibility

@@ -768,6 +768,8 @@ export function getAllContainerFields(
         allowedTemplates: fieldDef.allowedTemplates || null,
         allowedLayouts: fieldDef.allowedLayouts || null,
         defaultBlockType: rc.defaultBlockType,
+        // What the region starts with and is refilled with (regionDefault).
+        defaultBlocks: regionDefault(fieldDef),
         maxLength: rc.maxLength,
         currentCount,
         canAdd: !parentIsReadonly && maxLengthOk,
@@ -778,21 +780,20 @@ export function getAllContainerFields(
       //   1. allowedBlocks set: typed items, each can have a different type via typeField
       //   2. schema set (no allowedBlocks): single-schema items, virtual type blockType:fieldName
       const hasAllowedBlocks = !!fieldDef.allowedBlocks;
-      const itemType = `${blockType}:${fieldName}`;
+      const { allowedBlocks, defaultBlockType, maxLength } =
+        resolveObjectListConstraints(fieldDef, blockType, fieldName);
       // Object prefix to the array (the `/`-path object hops): [] at the block
       // root, [table] when nested in a `table` object. The array is at
       // [...regionPath, fieldName].
-      const maxLength = fieldDef.maxLength || null;
       const currentCount = getFieldCount(fieldName, true, objectPath);
       const maxLengthOk = !maxLength || currentCount < maxLength;
       containerFields.push({
         region: fieldName,
         ...(objectPath.length > 0 && { regionPath: objectPath }),
         title: prefixTitle(fieldDef.title || fieldName, titlePath),
-        allowedBlocks: hasAllowedBlocks ? fieldDef.allowedBlocks : [itemType],
+        allowedBlocks,
         allowedTemplates: fieldDef.allowedTemplates || null,
-        defaultBlockType:
-          fieldDef.defaultBlockType || (hasAllowedBlocks ? null : itemType),
+        defaultBlockType,
         maxLength,
         currentCount,
         canAdd: !parentIsReadonly && maxLengthOk,
@@ -800,6 +801,7 @@ export function getAllContainerFields(
         itemSchema: hasAllowedBlocks ? null : fieldDef.schema, // null for typed (schema from blocksConfig)
         idField: fieldDef.idField || '@id', // ID field name for items
         typeField: fieldDef.typeField || null, // Attribute name for item type (e.g., '@type')
+        defaultBlocks: regionDefault(fieldDef),
       });
     }
   }
@@ -2029,6 +2031,23 @@ function getPageDefaults(blocksConfig, formData) {
 }
 
 /**
+ * An object_list region's constraints. Its items never inherit the page's types: a list with
+ * its own allowedBlocks takes those (typed items); one without holds items of the single
+ * schema the field declares, the virtual type `<blockType>:<field>`.
+ *
+ * @returns {{ allowedBlocks: Array, defaultBlockType: string|null, maxLength: number|null }}
+ */
+export function resolveObjectListConstraints(fieldDef, blockType, fieldName) {
+  const itemType = `${blockType}:${fieldName}`;
+  const typed = !!fieldDef.allowedBlocks;
+  return {
+    allowedBlocks: typed ? fieldDef.allowedBlocks : [itemType],
+    defaultBlockType: fieldDef.defaultBlockType || (typed ? null : itemType),
+    maxLength: fieldDef.maxLength || null,
+  };
+}
+
+/**
  * The single field → block → page precedence for a container region's constraints, shared by
  * getContainerFieldConfig (the per-block add/insert path) and getAllContainerFields (the
  * sidebar enumeration) so the two can't diverge. They used to: only getAllContainerFields
@@ -2246,6 +2265,33 @@ export function ensureEmptyBlockIfEmpty(
     const typeFieldName = containerConfig.typeField || null;
     const childType = getEmptyBlockType(containerConfig);
 
+    // A list with a `default` goes back to it, each item under a fresh id.
+    if (containerConfig.defaultBlocks) {
+      const items = containerConfig.defaultBlocks.map((entry) => {
+        const id = uuidGenerator();
+        const type = typeFieldName ? entry[typeFieldName] || entry['@type'] : childType;
+        const seeded = seedDefaultEntry(
+          { ...entry, [idField]: id },
+          type,
+          id,
+          parentBlock,
+          blocksConfig,
+          uuidGenerator,
+          {
+            intl,
+            metadata,
+            properties,
+            itemSchema: typeFieldName ? null : containerConfig.itemSchema,
+          },
+        );
+        return typeFieldName
+          ? setBlockType(seeded, type, typeFieldName)
+          : clearBlockType(seeded);
+      });
+      const updatedParentBlock = setContainerItems(parentBlock, containerConfig, items);
+      return setBlockByPath(formData, parentPath, updatedParentBlock);
+    }
+
     // Seed through the SAME shared path as initializeContainerBlock and the blocks_layout
     // branch below (seedTemplateChild): applyBlockDefaults for typed items, the field's item
     // schema for single-schema items, plus initialValue, template membership, and nested-
@@ -2274,6 +2320,37 @@ export function ensureEmptyBlockIfEmpty(
     const updatedParentBlock = setContainerItems(parentBlock, containerConfig, [
       blockData,
     ]);
+    return setBlockByPath(formData, parentPath, updatedParentBlock);
+  }
+
+  // A region with a `default` goes back to it, each child under a fresh id, seeded
+  // like the placeholder below (a load-time refill: it does not inherit fixed).
+  if (containerConfig.defaultBlocks) {
+    const blocksObj = { ...parentBlock.blocks };
+    const ids = containerConfig.defaultBlocks.map((entry) => {
+      const id = uuidGenerator();
+      let child = seedDefaultEntry(entry, entry['@type'], id, parentBlock, blocksConfig, uuidGenerator, {
+        intl,
+        metadata,
+        properties,
+        inheritFixed: false,
+      });
+      if (containerConfig.vacatedSlotId && child.templateInstanceId) {
+        child = { ...child, slotId: containerConfig.vacatedSlotId };
+      }
+      blocksObj[id] = child;
+      return id;
+    });
+    const updatedParentBlock = setContainerItems(parentBlock, containerConfig, ids, blocksObj);
+    // A block-defaults pass may have copied the raw list onto the field itself;
+    // the region is stored in blocks_layout, so that copy would be a stray field.
+    const regionHolder = (containerConfig.regionPath || []).reduce(
+      (node, key) => node?.[key],
+      updatedParentBlock,
+    );
+    if (Array.isArray(regionHolder?.[containerConfig.region])) {
+      delete regionHolder[containerConfig.region];
+    }
     return setBlockByPath(formData, parentPath, updatedParentBlock);
   }
 
@@ -2397,7 +2474,12 @@ export function initializeContainerBlock(
         fieldDef.widget === 'object_list'
           ? result[fieldName]
           : result[fieldName]?.items;
-      if (Array.isArray(existing) && existing.length > 0) {
+      // The raw `default` a block-defaults pass copied onto the field is not an
+      // author's content: it is seeded below, with fresh ids.
+      const isRawDefault =
+        !!regionDefault(fieldDef) &&
+        JSON.stringify(result[fieldName]) === JSON.stringify(fieldDef.default);
+      if (Array.isArray(existing) && existing.length > 0 && !isRawDefault) {
         continue;
       }
     }
@@ -2417,6 +2499,32 @@ export function initializeContainerBlock(
       const childType = hasAllowedBlocks
         ? getEmptyBlockType(fieldDef)
         : `${blockType}:${fieldName}`;
+
+      // A list that declares its starting items (`default`) gets those, each under a
+      // fresh id and through its type's defaults, as a blocks_layout region does.
+      const defaultItems = regionDefault(fieldDef);
+      if (defaultItems) {
+        result = {
+          ...result,
+          [fieldName]: defaultItems.map((entry) => {
+            const id = uuidGenerator();
+            const type = typeFieldName ? entry[typeFieldName] || entry['@type'] : childType;
+            const seeded = seedDefaultEntry(
+              { ...entry, [idField]: id },
+              type,
+              id,
+              blockData,
+              blocksConfig,
+              uuidGenerator,
+              options,
+            );
+            return hasAllowedBlocks && typeFieldName
+              ? setBlockType(seeded, type, typeFieldName)
+              : clearBlockType(seeded);
+          }),
+        };
+        continue;
+      }
 
       // For table mode: copy child count from sibling rows
       // siblingData is passed when adding a new row to a table-mode container
@@ -2461,6 +2569,34 @@ export function initializeContainerBlock(
     }
 
     if (fieldDef.widget !== 'blocks_layout') {
+      continue;
+    }
+
+    // A region that declares its starting children (`default`) gets those, each
+    // under a fresh id. A block-defaults pass may already have copied the raw list
+    // onto the field; it is not how a region is stored, so it goes.
+    const defaultChildren = regionDefault(fieldDef);
+    if (defaultChildren && !(result.blocks_layout?.[fieldName]?.length > 0)) {
+      const blocks = { ...(result.blocks || {}) };
+      const ids = defaultChildren.map((entry) => {
+        const id = uuidGenerator();
+        blocks[id] = seedDefaultEntry(
+          entry,
+          entry['@type'],
+          id,
+          blockData,
+          blocksConfig,
+          uuidGenerator,
+          options,
+        );
+        return id;
+      });
+      const { [fieldName]: _rawDefault, ...rest } = result;
+      result = {
+        ...rest,
+        blocks,
+        blocks_layout: { ...(result.blocks_layout || {}), [fieldName]: ids },
+      };
       continue;
     }
 
@@ -2510,6 +2646,36 @@ export function initializeContainerBlock(
   }
 
   return result;
+}
+
+/**
+ * A region's `default`: the children it starts with and is refilled with when
+ * emptied, or null when it declares none (it then gets one child of its default
+ * type). Each entry is a child block's data without an id; Inka gives each a fresh
+ * one, so two containers never share children.
+ */
+function regionDefault(fieldDef) {
+  return Array.isArray(fieldDef?.default) && fieldDef.default.length > 0
+    ? fieldDef.default
+    : null;
+}
+
+/** Seed one entry of a region's `default`: a copy, through the same path as any seed. */
+function seedDefaultEntry(entry, type, childId, container, blocksConfig, uuidGenerator, options) {
+  if (!type) {
+    throw new Error(
+      `[HYDRA] A region default entry has no @type: ${JSON.stringify(entry)}`,
+    );
+  }
+  return seedTemplateChild(
+    { ...structuredClone(entry), '@type': type },
+    type,
+    childId,
+    container,
+    blocksConfig,
+    uuidGenerator,
+    options,
+  );
 }
 
 /**

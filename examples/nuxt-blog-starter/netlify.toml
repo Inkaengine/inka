@@ -23,7 +23,10 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "frame-ancestors https://hydra.pretagov.com https://*.pretagov.com http://localhost:*"
+    # Who may FRAME this example. The editor loads it in an iframe, so leaving the
+    # retired pretagov hosts here meant admin.inka.sh could not frame it at all —
+    # the one context these examples exist for.
+    Content-Security-Policy = "frame-ancestors https://admin.inka.sh https://inka.sh https://*.inka.sh http://localhost:*"
 
 # Disable pretty URLs (trailing slash redirects) — breaks Nuxt SSG payload resolution
 [build.processing]
@@ -38,4 +41,4 @@
   status = 200
 
 [images]
-  remote_images = ["https://hydra-api.pretagov.com/.*"]
+  remote_images = ["https://api.inka.sh/.*"]

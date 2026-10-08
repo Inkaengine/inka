@@ -10,8 +10,9 @@ import slateTransforms, { withEmptyInlineRemoval } from '../../utils/slateTransf
 import { syncCreateSlateBlock } from '@plone/volto-slate/utils/volto-blocks';
 import { getBlockById, updateBlockById, getResolvedSchema } from '../../utils/blockPath';
 import { calculateDragHandlePosition, PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef } from '@volto-hydra/helpers';
+import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef, isStarterUiField } from '@volto-hydra/helpers';
 import { isStyleAllowed } from '../../../../hydra-js/slateStyles.js';
+import { blockFormatButtons, paragraphStyleItems } from '../../utils/blockFormats';
 import { useDispatch, useSelector } from 'react-redux';
 import FormatDropdown from './FormatDropdown';
 import DropdownMenu from './DropdownMenu';
@@ -237,6 +238,7 @@ const SyncedSlateToolbar = ({
   blockActions, // { toolbar: [...], dropdown: [...] } from pathMap.actions
   onBlockAction, // Handler for block actions: (actionId) => void
   onFieldLinkChange, // Handler for link field changes: (fieldName, url) => void
+  flushEdits, // () => Promise: resolves once text typed on the canvas is in the form
   onOpenObjectBrowser, // Handler to open object browser for media fields
   onFileUpload, // Handler for file uploads: (fieldName, file) => void
   convertibleTypes = [], // Array of { type, title } for block type conversion
@@ -1164,8 +1166,12 @@ const SyncedSlateToolbar = ({
   // These intercept mousedown to flush the iframe buffer before applying formatting
   const handleButtonMouseDownCapture = useCallback(
     (e) => {
-      // Don't intercept clicks inside popups (like LinkEditor's Clear/Submit buttons)
-      if (e.target.closest('.add-link')) {
+      // Don't intercept clicks inside popups (like LinkEditor's Clear/Submit
+      // buttons), nor in the object browser the link editor opens: it renders
+      // in the sidebar, outside `.add-link` in the DOM but still under this
+      // toolbar in the React tree, so its header buttons (search, back, close)
+      // were swallowed here and did nothing.
+      if (e.target.closest('.add-link, .object-browser')) {
         return;
       }
 
@@ -1218,9 +1224,9 @@ const SyncedSlateToolbar = ({
 
   const handleButtonClickCapture = useCallback(
     (e) => {
-      // Same exclusion as the mousedown handler: a style-menu click must reach
-      // the dropdown.
-      if (e.target.closest('#style-menu')) return;
+      // Same exclusions as the mousedown handler: a style-menu or object
+      // browser click must reach its own button.
+      if (e.target.closest('#style-menu, .object-browser')) return;
       const button =
         e.target.closest('button') || e.target.closest('[data-toolbar-button]');
       if (!button) return;
@@ -1260,7 +1266,15 @@ const SyncedSlateToolbar = ({
     // button: a plain format button is already gated by name above, but the
     // style menu holds MANY styles behind one button and has to filter its own
     // entries. Ignored by the buttons that don't take it.
-    const element = <Btn slateRules={slateRules} />;
+    // The style menu here offers TEXT styles only: this toolbar's format
+    // dropdown carries the paragraph styles (see below). The sidebar's
+    // volto-slate toolbar has no format dropdown, so there it keeps both.
+    const element =
+      name === 'styleMenu' ? (
+        <Btn slateRules={slateRules} inlineOnly />
+      ) : (
+        <Btn slateRules={slateRules} />
+      );
 
     // Check if this is a BlockButton (block-level format like h2, h3, ul, ol)
     // isBlockButton compares element.type to imported BlockButton reference
@@ -1270,6 +1284,37 @@ const SyncedSlateToolbar = ({
       allInlineButtons.push({ name, element });
     }
   });
+
+  // Formats declared as data (`settings.slate.blockFormats`) ARE the dropdown:
+  // their labels, icons and order replace volto-slate's components, and a
+  // format with no component (h5) can be offered. See utils/blockFormats.js.
+  const declaredFormats = config.settings.slate?.blockFormats;
+  if (Array.isArray(declaredFormats)) {
+    blockButtons.length = 0;
+    for (const f of blockFormatButtons(declaredFormats, {
+      slateRules,
+      allowedHeadlineElements: config.settings.slate?.allowedHeadlineElements,
+    })) {
+      const Btn = (props) => (
+        <BlockButton
+          format={f.format}
+          title={f.title}
+          icon={f.icon}
+          allowedChildren={f.allowedChildren}
+          {...props}
+        />
+      );
+      blockButtons.push({ name: f.name, element: <Btn slateRules={slateRules} /> });
+    }
+  }
+
+  // Paragraph styles (styleMenu.blockStyles) are chosen like a heading — one
+  // kind of paragraph per block, applied where the cursor is — so they are
+  // entries in the same dropdown, whether or not blockFormats is declared; the
+  // style menu keeps text styles only.
+  for (const item of paragraphStyleItems(config.settings.slate?.styleMenu, { slateRules })) {
+    blockButtons.push({ name: item.name, styleItem: item });
+  }
 
   // Multi-selection: simplified toolbar with drag handle + count
   const isMultiSelected = blockUI?.multiSelectedUids?.length > 1;
@@ -1683,8 +1728,13 @@ const SyncedSlateToolbar = ({
           {blockUI?.focusedLinkableField && (
             <button
               title={`Edit link (${blockUI.focusedLinkableField})`}
-              onClick={() => {
-                setFieldLinkEditorField(blockUI.focusedLinkableField);
+              onClick={async () => {
+                // Text typed on the canvas may not have reached the form yet;
+                // the link edit writes the block from the form, so it would be
+                // written back without that text. Bring it in first.
+                const field = blockUI.focusedLinkableField;
+                await flushEdits();
+                setFieldLinkEditorField(field);
                 setFieldLinkEditorOpen(true);
               }}
               style={{
@@ -1706,8 +1756,11 @@ const SyncedSlateToolbar = ({
           {blockUI?.focusedMediaField && (
             <button
               title={`Select image (${blockUI.focusedMediaField})`}
-              onClick={() => {
-                setFieldImageEditorField(blockUI.focusedMediaField);
+              onClick={async () => {
+                // As for the link: the image edit writes the block from the form.
+                const field = blockUI.focusedMediaField;
+                await flushEdits();
+                setFieldImageEditorField(field);
                 setFieldImageEditorOpen(true);
               }}
               style={{
@@ -2085,8 +2138,9 @@ const SyncedSlateToolbar = ({
 
     {/* Starter UI Overlay - for blocks with empty required fields */}
     {blockPathMap?.[selectedBlock]?.emptyRequiredFields?.map(({ fieldName, fieldDef }) => {
-      // For now, only render for object_browser link fields
-      if (fieldDef?.widget !== 'object_browser' || fieldDef?.mode !== 'link') {
+      // Only fields filled through the starter UI; the bridge shows the
+      // others on the canvas (see isStarterUiField).
+      if (!isStarterUiField(fieldDef)) {
         return null;
       }
 

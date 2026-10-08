@@ -28,7 +28,7 @@ import Toolbar from '@plone/volto/components/manage/Toolbar/Toolbar';
 import { useClient } from '@plone/volto/hooks/client/useClient';
 import backSVG from '@plone/volto/icons/back.svg';
 import { getURlsFromEnv } from '../../../../../utils/getSavedURLs';
-import { getIframeUrlCookieName } from '../../../../../utils/cookieNames';
+import rememberedFrontendUrl from '../../../../../utils/getRememberedFrontendUrl';
 import { addUrlParams } from '../../../../../utils/iframeUrl';
 import ViewPane from '../../../../../components/Iframe/ViewPane';
 
@@ -106,12 +106,9 @@ const HydraDiff = (props) => {
   };
 
   const urlFromEnv = getURlsFromEnv();
-  const cookieMatch =
-    typeof document !== 'undefined' &&
-    document.cookie.match(new RegExp(`${getIframeUrlCookieName()}=([^;]+)`));
   const previewBase =
     useSelector((state) => state.frontendPreviewUrl?.url) ||
-    (cookieMatch ? decodeURIComponent(cookieMatch[1]) : null) ||
+    (typeof document !== 'undefined' ? rememberedFrontendUrl() : null) ||
     urlFromEnv[0]?.url;
   const token = useSelector((state) => state.userSession?.token);
   // The SAME url recipe the editor's canvas uses — hash-routed frontends get

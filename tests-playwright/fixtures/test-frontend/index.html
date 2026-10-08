@@ -668,6 +668,10 @@
                     // /_test_data depending on how the mock API is mounted, so
                     // match on the page id rather than one of the two prefixes.
                     const restrictStyles = /\/restricted-styles-page(\/|$)/.test(pagePath);
+                    // Formats declared as data (settings.slate.blockFormats): the
+                    // dropdown lists exactly these, by these labels, with h5 offered
+                    // although volto-slate has no button for it.
+                    const declareFormats = /\/block-formats-page(\/|$)/.test(pagePath);
                     // A hero with a plain list of tags (`subBlocks: false`): edited
                     // in the sidebar, not a region of sub-blocks.
                     const plainListField = /\/object-list-plain-page(\/|$)/.test(pagePath);
@@ -822,6 +826,24 @@
                                     },
                                 },
                             } : {}),
+                            // Advice on a block with its OWN edit component (the
+                            // built-in text block): a field rule that warns. A
+                            // frontend's slate entry adds to the admin's.
+                            // It also says what the block is for, and the
+                            // description and the warning link to their guidance.
+                            ...(declareFormats ? {
+                                slate: {
+                                    description: 'Paragraphs, headings and lists. [Text guidance](https://example.com/guidance/text)',
+                                    schemaEnhancer: {
+                                        fieldRules: {
+                                            value: {
+                                                when: { 'value@styles': { contains: 'h5' } },
+                                                warning: 'A Heading 5 is advice-worthy on this page. [Heading guidance](https://example.com/guidance/headings)',
+                                            },
+                                        },
+                                    },
+                                },
+                            } : {}),
                             ...(restrictStyles ? {
                                 column: {
                                     ...sharedBlocksConfig.column,
@@ -849,13 +871,26 @@
                                     // offered no styles — "not an authorable style", and
                                     // rightly so.
                                     styleMenu: {
-                                        blockStyles: [{ cssClass: 'lead', label: 'Lead' }],
+                                        // A list style declares it is for lists
+                                        // (`appliesTo`): offered only in one, and it
+                                        // keeps the list a list.
+                                        blockStyles: [
+                                            { cssClass: 'lead', label: 'Lead' },
+                                            { cssClass: 'list-spaced', label: 'Spaced list', appliesTo: ['ul', 'ol'] },
+                                        ],
                                         inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }],
                                     },
                                     // The allow-list rules stay page-scoped: they are what
                                     // the restriction specs vary, and every other spec
                                     // must keep seeing an unrestricted editor.
                                     ...(restrictStyles ? { styleAliases: { b: 'strong' } } : {}),
+                                    ...(declareFormats ? {
+                                        blockFormats: [
+                                            { type: 'h2', label: 'Heading 2', icon: { viewBox: '0 0 24 24', paths: ['M3 4h2v7h6V4h2v16h-2v-7H5v7H3z'] } },
+                                            { type: 'h3', label: 'Heading 3', icon: { viewBox: '0 0 24 24', paths: ['M3 4h2v7h6V4h2v16h-2v-7H5v7H3z'] } },
+                                            { type: 'h5', label: 'Heading 5' },
+                                        ],
+                                    } : {}),
                                 },
                             },
                         },

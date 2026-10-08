@@ -76,51 +76,62 @@ function itemTypeFieldOf(blockDef) {
 }
 
 /**
- * A blocks_layout region seeds an `@type: "empty"` placeholder — rather than a
- * concrete default/single type — exactly when it has no `defaultBlockType` and
- * more than one `allowedBlocks`. Mirrors getEmptyBlockType() in
- * packages/volto-hydra/src/utils/blockPath.js (a 3-line predicate kept in sync
- * here because that module imports Volto's `config`, which this CJS discovery
- * can't load). Only these regions need the "renders when empty" sanity check —
- * default/single-type regions seed a normal block that block-sanity already
- * exercises.
+ * Every region a block type declares: a `blocks_layout` field, or an
+ * `object_list` whose items hold blocks (subBlocks !== false) — the same test as
+ * isRegionField() in packages/hydra-js/regionWidgets.js. A block that declares
+ * no region field but restricts its children (allowedBlocks / defaultBlockType
+ * on the block itself) has the default `items` region.
+ *
+ * What an emptied region gets is NOT decided here: the sanity test empties each
+ * one with the admin's own code (ensureEmptyBlockIfEmpty, via the mock parent),
+ * which seeds the default type, the single allowed type, or an `@type: "empty"`
+ * placeholder when the region names neither. Checking every region covers all
+ * three, without a second copy of that rule.
  * @returns {Array<{parentType: string, field: string}>}
  */
-function emptySeedingRegions(blocksConfig) {
+function regionFields(blocksConfig) {
   const out = [];
   for (const [blockType, blockDef] of Object.entries(blocksConfig || {})) {
-    const props = blockDef?.blockSchema?.properties;
-    if (!props) continue;
-    for (const [fieldName, fieldDef] of Object.entries(props)) {
-      if (fieldDef?.widget !== 'blocks_layout') continue;
-      if (fieldDef?.defaultBlockType) continue; // seeds the default type
-      const allowed = fieldDef?.allowedBlocks;
-      if (!Array.isArray(allowed) || allowed.length <= 1) continue; // seeds the single type
-      out.push({ parentType: blockType, field: fieldName });
-    }
+    const props = blockDef?.blockSchema?.properties || {};
+    const fields = Object.entries(props)
+      .filter(([, def]) => def?.widget === 'blocks_layout' || (def?.widget === 'object_list' && def.subBlocks !== false))
+      .map(([name]) => name);
+    if (!fields.length && (blockDef?.allowedBlocks || blockDef?.defaultBlockType)) fields.push('items');
+    for (const field of fields) out.push({ parentType: blockType, field });
   }
   return out;
 }
 
 /**
- * Pair each empty-seeding region with a real discovered container example so
- * the sanity test has a page + block to load and strip. Regions whose parent
- * container has no content example anywhere are skipped (nothing to strip).
+ * Pair each region with a real discovered container example, so the sanity test
+ * has a page and block to load and empty. Regions whose container has no content
+ * example anywhere are skipped (nothing to empty). Plus one case for the PAGE's
+ * own regions (field `*`: every region the page has), on a page with no template
+ * content — a template's regions hold locked blocks an editor can't empty.
  * @param {Object} blocksConfig
  * @param {DiscoveredBlock[]} blocks - discoverBlocks() output
  * @returns {Array<{parentType: string, field: string, pagePath: string, blockId: string}>}
  */
 function buildEmptyRegionCases(blocksConfig, blocks) {
+  // Prefer an example on an ordinary page: a template's blocks are locked, so
+  // an editor can't empty their regions and the case would only be skipped.
+  const isTemplated = (b) => !!(b.blockData?.templateId || b.blockData?.readOnly || /\/templates\//.test(b.pagePath));
   const exampleByType = new Map();
   for (const b of blocks || []) {
-    if (!exampleByType.has(b.blockType)) exampleByType.set(b.blockType, b);
+    const have = exampleByType.get(b.blockType);
+    if (!have || (isTemplated(have) && !isTemplated(b))) exampleByType.set(b.blockType, b);
   }
   const cases = [];
-  for (const { parentType, field } of emptySeedingRegions(blocksConfig)) {
+  for (const { parentType, field } of regionFields(blocksConfig)) {
     const example = exampleByType.get(parentType);
     if (!example) continue;
     cases.push({ parentType, field, pagePath: example.pagePath, blockId: example.blockId });
   }
+  const templated = new Set((blocks || []).filter((b) => b.blockData?.templateId).map((b) => b.pagePath));
+  const plainPage = [...new Set((blocks || []).map((b) => b.pagePath))]
+    .sort()
+    .find((p) => !templated.has(p) && p.startsWith('/_test_data/'));
+  if (plainPage) cases.push({ parentType: 'page', field: '*', pagePath: plainPage, blockId: '_page' });
   return cases;
 }
 

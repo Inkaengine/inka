@@ -12,6 +12,8 @@ import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/tes
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage';
 import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
+import { settledCount } from './settled-count';
+import { wordsWithNowhereToGo } from './elementless';
 import { isEmptySlate } from '../../packages/helpers/index.js';
 
 export interface SubBlock {
@@ -1231,6 +1233,11 @@ export async function verifyBlockRendering(
   // consecutive same-value reads = stable.
   if (isListing) {
     const items = iframe.locator(`[data-block-uid="${blockId}"]`);
+    // A listing can sit in something that hides it — an inactive tab, a closed
+    // panel — like any block: reveal it the way the editor does on select
+    // before asking whether its items are visible.
+    await expect(items.first()).toBeAttached({ timeout: 15000 });
+    await revealBlock(iframe, blockId);
     await expect(items.first()).toBeVisible({ timeout: 15000 });
     // Three consecutive equal reads, not "at least 2 items": the old n >= 2
     // floor assumed every listing shows several results, so a listing whose
@@ -1274,6 +1281,32 @@ export async function verifyBlockRendering(
   if (isFieldlessBlock && (await block.count()) === 0) {
     return; // metadata-projection block legitimately rendered nothing
   }
+  // A container may draw no element of its own: the editor finds it through
+  // its children (the bridge's getAllBlockElements), as it always has a
+  // template instance. Accepted when its children are drawn and it has no
+  // words of its own to draw — those need an element carrying its uid.
+  if ((await block.count()) === 0) {
+    const body = iframe.locator('body');
+    const drawnBy = await body.evaluate(
+      (_b, uid) => (window as any).__hydraBridge?.getAllBlockElements?.(uid)?.length ?? 0,
+      blockId,
+    );
+    if (drawnBy > 0) {
+      const schema = await body.evaluate(
+        (_b, uid) => (window as any).__hydraBridge?.getBlockSchema?.(uid) || null,
+        blockId,
+      );
+      const words = wordsWithNowhereToGo(schema, (blockData ?? {}) as Record<string, unknown>);
+      if (words.length) {
+        throw new Error(
+          `Block ${blockId} draws no element of its own but holds words (${words.join(', ')}): ` +
+            `words need an element carrying the block's uid, or they are edited as the enclosing block's.`,
+        );
+      }
+      return;
+    }
+  }
+
   // A block can be rendered but off-stage — an inactive carousel slide, a
   // closed tab. That is not a render failure: the editor reaches it by
   // selecting it, and hydra's tryMakeBlockVisible steps the container until it
@@ -1295,7 +1328,7 @@ export async function verifyBlockRendering(
   // duplicate anyway. Verify the block renders + carries its edit annotations via
   // the first match, then return — the assertions below use the multi-match
   // `block` locator and would trip Playwright strict mode on >1 element.
-  if ((await block.count()) > 1) {
+  if ((await settledCount(block)) > 1) {
     await checkEditAnnotations(block.first(), blockData);
     return;
   }

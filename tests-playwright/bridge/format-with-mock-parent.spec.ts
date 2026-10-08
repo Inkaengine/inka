@@ -687,6 +687,63 @@ test.describe('Inline Editing with Mock Parent', () => {
     expect(await helper.getCleanTextContent(blockLocator)).toBe('Make this bold');
   });
 
+  test('a FORM_DATA arriving ahead of the drained queue entry is not overwritten by it', async ({ helper, page }) => {
+    // The bridge drains its one-entry FORM_DATA queue by re-posting the
+    // queued message to itself, which puts it BEHIND any admin FORM_DATA
+    // already waiting in the event queue. Arrange exactly that order: the
+    // first re-post is preceded by a newer admin message. The newer text
+    // must win.
+    const iframe = helper.getIframe();
+    await expect(iframe.locator('[data-block-uid="mock-block-1"]')).toBeVisible();
+    await helper.clickBlockInIframe('mock-block-1', { waitForToolbar: false });
+
+    const frame = (await (await page.locator('#previewIframe').elementHandle())!.contentFrame())!;
+    const formData = await page.evaluate(() => JSON.parse(JSON.stringify(window.mockParent.getFormData())));
+    const blockPathMap = await page.evaluate(() => window.mockParent.buildBlockPathMap());
+    const withText = (t: string) => ({
+      type: 'FORM_DATA',
+      data: { ...formData, blocks: { ...formData.blocks, 'mock-block-1': { ...formData.blocks['mock-block-1'], value: [{ type: 'p', children: [{ text: t }] }] } } },
+      blockPathMap,
+    });
+
+    // The first message starts a render; the second is handed to the
+    // bridge's message handler while that render is still in progress, so
+    // it is queued and later drained by a re-post — which the patch
+    // precedes with the newest.
+    await frame.evaluate(({ first, second, newest }) => {
+      const w = window as any;
+      const bridge = w.__hydraBridge;
+      const post = window.postMessage.bind(window);
+      w.__reposts = 0;
+      w.__queuedSecond = false;
+      window.postMessage = ((msg: any, origin: string) => {
+        if (msg?.type === 'FORM_DATA' && w.__reposts++ === 0) post(newest, origin);
+        post(msg, origin);
+      }) as typeof window.postMessage;
+      const execute = bridge._executeRender.bind(bridge);
+      bridge._executeRender = (...args: any[]) => {
+        execute(...args);
+        if (!w.__queuedSecond && bridge._renderInProgress) {
+          bridge.realTimeDataHandler({ origin: window.location.origin, data: second });
+          w.__queuedSecond = bridge._formDataQueue === second;
+        }
+      };
+      post(first, window.location.origin);
+    }, { first: withText('Make this'), second: withText('Make this bol'), newest: withText('Make this bold') });
+
+    await expect.poll(() => frame.evaluate(() => (window as any).__queuedSecond)).toBe(true);
+    await expect.poll(() => frame.evaluate(() => (window as any).__reposts)).toBeGreaterThan(0);
+    const blockLocator = iframe.locator('[data-block-uid="mock-block-1"]');
+    let prev = '';
+    let stable = 0;
+    await expect.poll(async () => {
+      const seen = await helper.getCleanTextContent(blockLocator);
+      if (seen === prev && seen === 'Make this bold') stable++;
+      else { stable = 0; prev = seen; }
+      return `${seen} x${stable}`;
+    }, { timeout: 5000, intervals: [100, 150, 200] }).toBe('Make this bold x3');
+  });
+
   // NOTE: "should handle selection across node boundaries and delete" test moved to
   // tests-playwright/integration/inline-editing-basic.spec.ts because it requires
   // SLATE_TRANSFORM_REQUEST processing which only works with full Volto Admin UI
