@@ -1,0 +1,1 @@
+The Nuxt starter's edit build (inka.sh/edit/) talks to the admin its deploy names and may fetch from the API it is built against: it waited for a localhost admin and its CSP blocked its own API, so the editor showed a 500.
