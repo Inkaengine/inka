@@ -497,6 +497,25 @@ So the simplest way to never deal with empty placeholders in a region is to give
 
 Empty blocks are stripped before saving. Render them as empty space; Inka puts a '+' button in the middle for the user to pick a real type in place. You can override the look of that '+' by rendering something inside the empty block and adding `data-block-add="button"` to it.
 
+### Starting a region with set children — `default`
+
+A region's `default` lists the children it starts with. When a block is added, each entry becomes a child with a fresh id; when the region is emptied later, it is refilled with the same list. Each entry is a child block's data without an id: its `@type` (or, in a typed `object_list`, its `typeField`), and any fields to set. Fields an entry leaves out get the child type's own defaults. An entry with no type is an error.
+
+### Javascript
+
+```javascript
+results: {
+    widget: 'blocks_layout',
+    allowedBlocks: ['listing'],
+    defaultBlockType: 'listing',
+    default: [
+        { '@type': 'listing', querystring: { query: [{ i: 'path', o: 'plone.app.querystring.operation.string.absolutePath', v: '/' }] } },
+    ],
+},
+```
+
+The same works for an `object_list`. Without a `default`, a region starts with, and is refilled with, one child of its `defaultBlockType`, as described above. An author's own children are never replaced: the default only fills a region that is empty.
+
 ### Making a region empty by default — `defaultBlockType: "empty"`
 
 The rules above mean a region with a `defaultBlockType`, or a single-entry `allowedBlocks`, is *never* empty — it always seeds a block of that type. To declare a region that should sit **empty until an editor adds something**, while still restricting **what** they can add, set **\`defaultBlockType: "empty"\`** and do **not** list `"empty"` in `allowedBlocks`:
