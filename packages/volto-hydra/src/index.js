@@ -77,6 +77,7 @@ import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
 import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
+import { noStore } from './express-middleware/noStore';
 
 // The field types a `hydraRuleError` can land on. Volto looks a validator up by
 // the field's declared type (`field.type || 'string'`), so the rule's error has
@@ -94,6 +95,14 @@ const RULE_ERROR_FIELD_TYPES = ['string', 'number', 'integer', 'boolean', 'array
 const hydraRuleErrorValidator = ({ field }) => field?.hydraRuleError || null;
 
 const applyConfig = (config) => {
+  // No shared cache keeps an editor's page (express-middleware/noStore.js).
+  if (__SERVER__) {
+    config.settings.expressMiddleware = [
+      ...(config.settings.expressMiddleware || []),
+      noStore,
+    ];
+  }
+
   for (const fieldType of RULE_ERROR_FIELD_TYPES) {
     config.registerUtility({
       name: `hydraRuleError-${fieldType}`,

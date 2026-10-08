@@ -64,6 +64,12 @@ Don't set `RAZZLE_PUBLIC_URL`. Inka follows whichever front end the editor has s
 
 Build with `pnpm build` and run with `pnpm start:prod`. It needs Node.js 22 or 24.
 
+## Behind a CDN or caching proxy
+
+Every page the Inka editor's server sends is marked `Cache-Control: no-store`, so a shared cache never keeps one. Each page is for one signed-in editor and carries the deployment's settings, such as which front ends it frames. A CDN that kept a page would go on serving the old settings after a deploy. Volto itself leaves page caching to the proxy, and most CDNs keep a page without a `Cache-Control` header for days or weeks.
+
+The build's assets (`/static/…`) keep their long cache lifetime, because their names change with every build. You can cache those at the CDN.
+
 ## Stateless, so it can scale to zero
 
 Inka keeps no content, no database and no files. Content, users and history stay in the CMS. Each editor's own settings, such as the front ends they have added, are kept in their browser.
