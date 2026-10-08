@@ -691,7 +691,7 @@ export const sharedBlocksConfig = {
                                             idField: 'key',
                                             schema: {
                                                 properties: {
-                                                    value: { widget: 'slate' },
+                                                    value: { title: 'Content', widget: 'slate' },
                                                 },
                                             },
                                         },

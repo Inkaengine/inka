@@ -278,10 +278,17 @@ export function completeFrontendSchema(schema) {
     }
     if (!s.required) s.required = [];
   };
-  fill(schema);
-  for (const prop of Object.values(schema.properties || {})) {
-    if (prop?.widget === 'object_list' && prop.schema) fill(prop.schema);
-  }
+  // Every schema nested in it too, at any depth: a table is an object holding
+  // a list of rows, each holding a list of cells, and each of those is a form.
+  const walk = (s) => {
+    fill(s);
+    for (const prop of Object.values(s.properties || {})) {
+      if ((prop?.widget === 'object_list' || prop?.widget === 'object') && prop.schema && typeof prop.schema === 'object') {
+        walk(prop.schema);
+      }
+    }
+  };
+  walk(schema);
   return schema;
 }
 

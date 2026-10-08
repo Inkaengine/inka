@@ -4810,13 +4810,16 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
       await commonSection.click();
     }
 
-    // Allowed types use display names from blocksConfig.title
+    // Allowed types use display names from blocksConfig.title — the facet
+    // types the frontend's search schema allows, and only those.
     expect(await helper.isBlockTypeVisible('Checkbox')).toBe(true);
     expect(await helper.isBlockTypeVisible('Select')).toBe(true);
-    expect(await helper.isBlockTypeVisible('slate')).toBe(true);
-    expect(await helper.isBlockTypeVisible('image')).toBe(true);
 
-    // NOT allowed: hero, columns, slider
+    // NOT allowed: text and image (the admin's own search allows them among its
+    // facets; this frontend's schema does not, and its schema is the whole
+    // schema), hero, columns, slider
+    expect(await helper.isBlockTypeVisible('slate')).toBe(false);
+    expect(await helper.isBlockTypeVisible('image')).toBe(false);
     expect(await helper.isBlockTypeVisible('hero')).toBe(false);
     expect(await helper.isBlockTypeVisible('columns')).toBe(false);
     expect(await helper.isBlockTypeVisible('slider')).toBe(false);

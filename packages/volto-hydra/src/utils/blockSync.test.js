@@ -1465,6 +1465,36 @@ describe('fieldRules — value sub-paths and arithmetic', () => {
 });
 
 describe('completeFrontendSchema', () => {
+  test('fills schemas nested at any depth: an object holding a list of lists', () => {
+    // A table: an object whose list of rows each hold a list of cells. Each
+    // cell's form reads `required`, so a cell schema left without one throws.
+    const schema = {
+      properties: {
+        table: {
+          widget: 'object',
+          schema: {
+            properties: {
+              rows: {
+                widget: 'object_list',
+                schema: {
+                  properties: {
+                    cells: { widget: 'object_list', schema: { properties: { value: { widget: 'slate' } } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    completeFrontendSchema(schema);
+    const table = schema.properties.table.schema;
+    const row = table.properties.rows.schema;
+    const cell = row.properties.cells.schema;
+    for (const s of [table, row, cell]) expect(s.required).toEqual([]);
+    expect(cell.fieldsets).toEqual([{ id: 'default', title: 'Default', fields: ['value'] }]);
+  });
+
   test('gives a schema with no fieldsets a default one of all its fields', () => {
     const schema = { properties: { title: {}, description: {} } };
     completeFrontendSchema(schema);
