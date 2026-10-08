@@ -149,6 +149,7 @@
         import { PloneAdapter } from '/plone-adapter.js';
         import { WordPressAdapter } from '/wordpress-adapter.js';
         import { DrupalAdapter } from '/drupal-adapter.js';
+        import { StrapiAdapter } from '/strapi-adapter.js';
 
         // Which CMS this frontend talks to, chosen per test run. The whole
         // point of the inversion is that the ADMIN does not know or care —
@@ -175,6 +176,7 @@
         }
         function buildAdapter() {
             const { which, base: cmsBaseUrl } = frontendCms();
+            const params = new URLSearchParams(window.location.search);
             switch (which) {
                 case 'wordpress': {
                     // The frontend's OWN credential, not the admin's: the admin's
@@ -192,6 +194,20 @@
                         cmsBaseUrl,
                         credentials: { username: 'admin', password: 'admin' },
                     });
+                case 'strapi': {
+                    // The API token, carried on the frontend's own URL — Strapi's
+                    // content API has no login, so there is nothing to sign in to
+                    // and no credential in storage to find.
+                    //
+                    // A published page needs no token at all (the public role
+                    // reads it); a DRAFT does, which is what view-mode-preview's
+                    // second case asks for.
+                    const token = params.get('token');
+                    return new StrapiAdapter({
+                        cmsBaseUrl,
+                        ...(token ? { token } : {}),
+                    });
+                }
                 case 'plone':
                     return new PloneAdapter({
                         cmsBaseUrl,

@@ -1,6 +1,6 @@
 import { StrapiAdapter } from '@volto-hydra/hydra-adapters-strapi';
 import type { Target } from './index';
-import seed from '../fixtures/seed.json';
+import { seedStrapi } from '../fixtures/seed-strapi';
 import { readFileSync } from 'node:fs';
 
 const PORT = 1337;
@@ -29,14 +29,6 @@ const authed = (path: string, init: RequestInit = {}) =>
 /** A VISITOR's request: no Authorization header at all. */
 const anon = (path: string) => fetch(`${BASE}${path}`);
 
-async function deleteEverything() {
-  const payload = await authed(
-    '/api/pages?pagination[pageSize]=200&status=draft',
-  ).then((r) => r.json());
-  for (const entry of payload?.data ?? []) {
-    await authed(`/api/pages/${entry.documentId}`, { method: 'DELETE' });
-  }
-}
 
 const target: Target = {
   name: 'strapi',
@@ -47,6 +39,8 @@ const target: Target = {
     'asset',
     'reference',
     'vocabulary',
+    'state',
+    'search-fulltext',
   ],
   // Strapi has no portal types: one collection holds everything the fixture
   // describes, so every canonical type maps to the same collection.
@@ -82,45 +76,8 @@ const target: Target = {
    */
   async seed() {
     adapter.token = token();
-    await deleteEverything();
-
-    const docs = seed.documents
-      .filter((d) => d.path !== '/')
-      .sort((a, b) => a.path.split('/').length - b.path.split('/').length);
-
-    const idByPath = new Map<string, string>();
-    for (const doc of docs) {
-      const segments = doc.path.split('/').filter(Boolean);
-      const parentPath = `/${segments.slice(0, -1).join('/')}`;
-      const parent = segments.length === 1 ? null : idByPath.get(parentPath);
-
-      const body = {
-        data: {
-          title: doc.title,
-          slug: segments[segments.length - 1],
-          ...(parent ? { parent } : {}),
-          hydraBlocks: {
-            blocks: (doc as any).blocks ?? {},
-            blocksLayout: (doc as any).blocksLayout ?? { items: [] },
-          },
-        },
-      };
-      // `status=draft` writes the draft version WITHOUT publishing it. A plain
-      // POST sets publishedAt immediately, which would make the fixture's
-      // draft-post public and silently break the "a visitor cannot read a draft"
-      // test.
-      const query = doc.state === 'published' ? '' : '?status=draft';
-      const res = await authed(`/api/pages${query}`, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        throw new Error(
-          `Seeding ${doc.path} failed: ${res.status} ${(await res.text()).slice(0, 200)}`,
-        );
-      }
-      idByPath.set(doc.path, (await res.json()).data.documentId);
-    }
+    // One implementation, shared with the journey. See seed-strapi.ts.
+    await seedStrapi({ baseUrl: BASE, token: adapter.token });
   },
 
   async expireSession(onEvent) {

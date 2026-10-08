@@ -82,6 +82,18 @@ const FIXTURES: Record<
     published: { path: '/news/first-post', title: 'First Post', text: 'Hello' },
     draft: { path: '/news/draft-post', title: 'Draft Post' },
   },
+  // Strapi's hierarchy is the parent self-relation the adapter is told about,
+  // so any page can hold children — same as Drupal and WordPress, and unlike
+  // Plone there is no distinct folder type.
+  'journey-strapi': {
+    root: '/news',
+    target: '/news/first-post',
+    lastEditedLabel: 'Last edited',
+    withImage: '/with-image',
+    moveTarget: '/archive',
+    published: { path: '/news/first-post', title: 'First Post', text: 'Hello' },
+    draft: { path: '/news/draft-post', title: 'Draft Post' },
+  },
   'journey-wordpress': {
     root: '/news',
     target: '/news/first-post',

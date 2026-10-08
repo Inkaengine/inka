@@ -83,6 +83,7 @@ export default defineConfig({
       '/plone-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-plone/index.js'),
       '/wordpress-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-wordpress/index.js'),
       '/drupal-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-drupal/index.js'),
+      '/strapi-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-strapi/index.js'),
       // The same merge the admin runs before it posts INITIAL_DATA (View.jsx),
       // so the mock parent hands the bridge a page with its forced layouts and
       // templates already stamped on — see mock-parent.html's INIT handler.

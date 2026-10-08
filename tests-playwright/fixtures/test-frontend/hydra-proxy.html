@@ -39,6 +39,7 @@
     import { PloneAdapter } from '/plone-adapter.js';
     import { WordPressAdapter } from '/wordpress-adapter.js';
     import { DrupalAdapter } from '/drupal-adapter.js';
+    import { StrapiAdapter } from '/strapi-adapter.js';
 
     const params = new URLSearchParams(window.location.search);
     const which = params.get('adapter') || 'plone';
@@ -86,6 +87,25 @@
             cmsBaseUrl,
             credentials: credentials ?? { username: 'admin', password: 'admin' },
           });
+        case 'strapi': {
+          // An API token, not a session: Strapi has nothing to log in to over
+          // the content API, so there is no credential for the sign-in panel
+          // to collect and the frontend is handed one the way it is handed its
+          // CMS url.
+          //
+          // Refused rather than defaulted. An anonymous Strapi still serves
+          // published pages, so a missing token would look like a working
+          // editor right up to the first save.
+          const apiToken = params.get('token');
+          if (!apiToken) {
+            throw new Error(
+              "[proxy] adapter=strapi needs ?token=: Strapi's content API has " +
+                'no login, and reading as a visitor would pass for working ' +
+                'until something had to be written.',
+            );
+          }
+          return new StrapiAdapter({ cmsBaseUrl, token: apiToken });
+        }
         case 'plone':
           return new PloneAdapter({ cmsBaseUrl, getAuthToken: () => token });
         default:

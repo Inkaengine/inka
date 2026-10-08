@@ -114,11 +114,46 @@ const STORAGE_FRONTENDS: Record<string, string> = {
   'journey-wordpress': `${URLS.testFrontend}/?adapter=wordpress&cms=http://127.0.0.1:${PORTS.wordpress}`,
 };
 
+/** Where the journey's Strapi writes the API token it provisions on boot. */
+const STRAPI_TOKEN_FILE = path.resolve(
+  __dirname,
+  '../tests-adapters/fixtures/strapi-app/app/.hydra-journey-token',
+);
+
+/**
+ * The journey's Strapi frontend URL, carrying the credential.
+ *
+ * Strapi's content API has no login — the credential is an API token — so
+ * there is nothing for the sign-in panel to collect and the proxy frame is
+ * handed the token the way it is handed the CMS url.
+ *
+ * Read HERE rather than declared with the others because the token does not
+ * exist until Strapi's bootstrap has run, and webServers start before this
+ * file does. A fixture token for a local throwaway database; it never leaves
+ * the generated storage state, which is git-ignored.
+ */
+function strapiFrontend(): string | null {
+  if (!fs.existsSync(STRAPI_TOKEN_FILE)) return null;
+  const token = fs.readFileSync(STRAPI_TOKEN_FILE, 'utf8').trim();
+  return (
+    `${URLS.testFrontend}/?adapter=strapi` +
+    `&cms=${URLS.strapi}&token=${encodeURIComponent(token)}`
+  );
+}
+
 export const GENERATED_DIR = path.resolve(__dirname, '.generated');
 
 function writeStorageStates(): void {
   fs.mkdirSync(GENERATED_DIR, { recursive: true });
-  for (const [name, frontendUrl] of Object.entries(STORAGE_FRONTENDS)) {
+  const strapi = strapiFrontend();
+  const frontends = {
+    ...STORAGE_FRONTENDS,
+    // Only when the token is there — a state pointing at an adapter with no
+    // credential would send the journey off to read Strapi anonymously, which
+    // succeeds for published pages and fails at the first write.
+    ...(strapi ? { 'journey-strapi': strapi } : {}),
+  };
+  for (const [name, frontendUrl] of Object.entries(frontends)) {
     const state = {
       cookies: [
         {

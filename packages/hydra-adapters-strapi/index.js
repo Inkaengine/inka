@@ -117,6 +117,10 @@ export class StrapiAdapter extends BaseAdapter {
         'asset',
         'reference',
         'vocabulary',
+        // Two states, and the permissions half of PermissionsAndState.
+        'state',
+        // Substring over title and stored blocks; see the `search` case.
+        'search-fulltext',
       ],
     });
     this.cmsBaseUrl = cmsBaseUrl?.replace(/\/+$/, '');
@@ -362,6 +366,186 @@ export class StrapiAdapter extends BaseAdapter {
       ...entry,
       publishedAt: published.get(entry.documentId) ?? null,
     }));
+  }
+
+  /**
+   * The workflow half of Strapi, which is two states and nothing else.
+   *
+   * `effective` is the other half, and it is the question the admin asks far
+   * more often: @actions routes to this intent, and Volto derives the Edit and
+   * Contents buttons from these flags. A CMS with no workflow still has to
+   * answer it — which is why this is implemented rather than left to reject,
+   * and why journey-strapi could not render a listing until it was.
+   */
+  permissionsAndState(entry) {
+    const published = Boolean(entry.publishedAt);
+    return {
+      state: published
+        ? { name: 'published', label: 'Published' }
+        : { name: 'draft', label: 'Draft' },
+      transitions: published
+        ? [{ id: 'unpublish', label: 'Unpublish', targetState: 'draft' }]
+        : [{ id: 'publish', label: 'Publish', targetState: 'published' }],
+      effective: {
+        // What an API TOKEN may do, which is all or nothing: Strapi's
+        // per-token scope is set in its own admin and is not readable over the
+        // content API, so there is nothing finer to report. A restricted
+        // token's write fails at the CMS, loudly, rather than being predicted
+        // wrongly here.
+        canEdit: true,
+        canPublish: true,
+        canDelete: true,
+        // Strapi's roles and permissions govern its OWN admin users and the
+        // public role; there are no per-document grants to show, so the
+        // sharing half of the panel hides rather than showing an empty list.
+        canShare: false,
+        canComment: false,
+      },
+      shareEntries: null,
+
+      // Screens Strapi owns.
+      //
+      // The account belongs to the CMS that holds it: an API token cannot
+      // change a password or an email, and reimplementing a profile the
+      // adapter has no credential for would be a form that cannot submit.
+      // Strapi's own admin has one, and the editor is signed into it.
+      actions: [
+        {
+          id: 'preferences',
+          title: 'Your profile',
+          url: `${this.cmsBaseUrl}/admin/me`,
+          category: 'user',
+          // Answers the admin's OWN profile screen, which against Strapi
+          // would PATCH Plone endpoints that do not exist.
+          panel: 'profile',
+        },
+        {
+          id: 'strapi-admin',
+          title: 'Strapi admin',
+          url: `${this.cmsBaseUrl}/admin`,
+          category: 'site',
+          // Not 'iframe': Strapi's admin sets its own frame policy, and in
+          // Hydra this admin is never on the CMS's origin.
+          target: 'window',
+        },
+      ],
+    };
+  }
+
+  /**
+   * What each transition asks for before it fires: nothing.
+   *
+   * Publishing in Strapi takes no arguments — no effective date, no
+   * notification, no per-document grants — so the forms are empty rather than
+   * absent. Absent would make the menu show an entry it could not open.
+   *
+   * No `update` form either: that is the "stay here and change something"
+   * entry, and Strapi has nothing changeable in place.
+   */
+  transitionForms(entry) {
+    const empty = {
+      schema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: [] }],
+        properties: {},
+        required: [],
+      },
+      data: {},
+    };
+    return Object.fromEntries(
+      this.permissionsAndState(entry).transitions.map((t) => [t.id, empty]),
+    );
+  }
+
+  /**
+   * A path segment for a new document.
+   *
+   * Every other CMS here does this for us — WordPress sanitises its `slug`,
+   * Plone normalises an id, Drupal builds an alias — because every other CMS
+   * knows it is addressing content. Strapi's slug is a plain string field, a
+   * convention this adapter was told about, so the work is the adapter's.
+   *
+   * Without it the raw TITLE becomes the segment: journey-strapi created
+   * "Probe 1791449544951" and got the path "/news/Probe 1791449544951", which
+   * reads back through the adapter perfectly and is not a URL anyone can
+   * navigate to. Six admin specs failed waiting for a URL that never came.
+   *
+   * Non-ASCII is KEPT, only lowercased and de-spaced. Stripping it would turn
+   * a Chinese or Greek title into an empty slug, and a percent-encoded path is
+   * something browsers have handled for decades.
+   */
+  async slugFor(data, parentPath) {
+    const explicit = data?.slug ?? data?.id;
+    const base = this.slugify(explicit ?? data?.title ?? '');
+    if (!base) {
+      throw new AdapterError(
+        'strapi: cannot derive a path segment from this title — pass an explicit slug',
+        { code: 'BAD_REQUEST', status: 400 },
+      );
+    }
+    // An explicit slug is the caller's decision and is taken as given; a
+    // DERIVED one must not silently collide, because Strapi enforces no
+    // sibling uniqueness and two documents at one path make the second
+    // unreachable — entryForPath would always answer with the first.
+    if (explicit) return base;
+    const taken = new Set(
+      (await this.siblingsOf(parentPath ?? '/')).map(
+        (entry) => entry[this.slugField],
+      ),
+    );
+    if (!taken.has(base)) return base;
+    // Numbered, the way WordPress and Plone both number a duplicate.
+    for (let n = 1; ; n += 1) {
+      const candidate = `${base}-${n}`;
+      if (!taken.has(candidate)) return candidate;
+    }
+  }
+
+  /** Lowercase, de-spaced, and stripped of what breaks a path. */
+  slugify(value) {
+    return String(value)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      // Everything with a meaning in a URL, plus the quotes and brackets that
+      // make a path a guessing game.
+      .replace(/[/\\?#%&=+:;"'<>[\]{}|^`~!*()$@,.]/g, '')
+      .replace(/-{2,}/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  /**
+   * Fields the edit form must NOT offer.
+   *
+   * Each one is already somebody else's intent, and a widget for it would let
+   * an editor write a value that another part of the admin owns:
+   *
+   *   slug            addressing — content.create derives it, content.move changes it
+   *   parent/children hierarchy — content.move
+   *   sortOrder       sibling order — content.order
+   *   excludeFromNav  menu membership — content.move into the view's Excluded node
+   *   publishedAt     lifecycle — state.transition
+   *   createdAt/…     timestamps nobody sets by hand
+   *   hydraBlocks     storage for the canonical `blocks` fields added below
+   *
+   * The WordPress adapter filters the same class of field for the same reason:
+   * rendering them puts widgets on screen for values nobody can change there.
+   */
+  isStructuralField(name) {
+    return [
+      this.slugField,
+      this.blocksField,
+      this.orderField,
+      this.navExcludeField,
+      'parent',
+      'children',
+      'publishedAt',
+      'createdAt',
+      'updatedAt',
+      'createdBy',
+      'updatedBy',
+      'locale',
+      'localizations',
+    ].includes(name);
   }
 
   /** Prefix a provider-relative media URL with the CMS origin. */
@@ -677,7 +861,7 @@ export class StrapiAdapter extends BaseAdapter {
           args.parentPath && args.parentPath !== '/'
             ? (await this.entryForPath(args.parentPath)).documentId
             : null;
-        const slug = args.data?.slug ?? args.data?.id ?? args.data?.title;
+        const slug = await this.slugFor(args.data, args.parentPath);
         const payload = await this.fetchJson(`/api/${this.collectionPlural}`, {
           method: 'POST',
           body: {
@@ -1022,6 +1206,65 @@ export class StrapiAdapter extends BaseAdapter {
           },
         };
 
+      case 'search': {
+        // What the admin's contents FILTER box asks for, routed to this intent
+        // by intentRouter — which is why a listing that would not narrow was
+        // the first thing journey-strapi found after the state crash.
+        //
+        // Strapi has no full-text index, and this is not pretending to be one:
+        // it is a case-insensitive substring match over the title and the
+        // stored blocks, which is the same shape core Drupal's "full text"
+        // takes (title plus block content via filter groups).
+        //
+        // The blocks half matches the stored JSON as TEXT, so a query naming a
+        // block type matches structure rather than prose. Coarse, and the same
+        // coarseness Drupal's has; a deployment wanting real relevance adds a
+        // search plugin and this intent can defer to it.
+        const query = String(args.query ?? '').trim();
+        if (!query) {
+          // Not "everything": an empty filter box is a listing, and the router
+          // sends tree.list for that. A search for nothing reaching here means
+          // a caller lost its query, which is worth saying.
+          throw new AdapterError('strapi: search needs a query', {
+            code: 'BAD_REQUEST',
+            status: 400,
+          });
+        }
+        const paths = await this.addressingMap();
+        const params = {
+          status: 'draft',
+          'pagination[page]': '1',
+          'pagination[pageSize]': String(args.limit ?? 100),
+          'filters[$or][0][title][$containsi]': query,
+          [`filters[$or][1][${this.blocksField}][$containsi]`]: query,
+        };
+        if (args.path && args.path !== '/') {
+          const root = String(args.path).replace(/\/$/, '');
+          const under = [...paths.entries()]
+            .filter(([, path]) => path === root || path.startsWith(`${root}/`))
+            .map(([documentId]) => documentId);
+          if (!under.length) return { items: [], total: 0 };
+          under.forEach((id, n) => {
+            params[`filters[documentId][$in][${n}]`] = id;
+          });
+        }
+        if (args.sortOn) {
+          params.sort = `${this.sortField(args.sortOn)}:${
+            args.sortOrder === 'descending' ? 'desc' : 'asc'
+          }`;
+        }
+        const payload = await this.fetchJson(`/api/${this.collectionPlural}`, {
+          params,
+        });
+        const found = await this.withPublishedState(payload?.data ?? []);
+        return {
+          items: found.map((entry) =>
+            this.toDocument(entry, paths.get(entry.documentId)),
+          ),
+          total: payload?.meta?.pagination?.total ?? 0,
+        };
+      }
+
       case 'querystringSearch': {
         // Paths come from the addressing map whatever the query, because a
         // result with no path is not addressable; so a path filter costs
@@ -1123,8 +1366,7 @@ export class StrapiAdapter extends BaseAdapter {
         const properties = {};
         const required = [];
         for (const [name, attribute] of Object.entries(attributes)) {
-          // Strapi's own bookkeeping, not fields an editor fills in.
-          if (name === 'createdBy' || name === 'updatedBy') continue;
+          if (this.isStructuralField(name)) continue;
           const canonical = STRAPI_FIELD_TYPES[attribute.type];
           if (!canonical) {
             // Loudly, because the alternative is an add form with a widget
@@ -1141,6 +1383,23 @@ export class StrapiAdapter extends BaseAdapter {
           };
           if (attribute.required) required.push(name);
         }
+        // The blocks fields, which Strapi has never heard of: this adapter
+        // keeps them in a JSON column and content.get returns them, so they
+        // are as writable as any other field.
+        //
+        // Declaring them is not cosmetic — the WordPress adapter says the same
+        // at more length. The admin decides whether a type is editable
+        // VISUALLY by looking for a property whose name ends in "blocks", and
+        // Strapi's own column is `hydraBlocks`, which is storage rather than
+        // the canonical field. Without these two the add form came up with no
+        // block editor, nothing to save, and journey-strapi sat waiting for a
+        // URL while the audit log showed the schema fetched and no create ever
+        // dispatched.
+        const withBlocks = {
+          ...properties,
+          blocks: { title: 'Blocks', type: 'object' },
+          blocks_layout: { title: 'Blocks layout', type: 'object' },
+        };
         return {
           title: payload?.info?.displayName ?? args.type,
           // One fieldset: Strapi has no field grouping of its own, and
@@ -1149,10 +1408,10 @@ export class StrapiAdapter extends BaseAdapter {
             {
               id: 'default',
               title: 'Default',
-              fields: Object.keys(properties),
+              fields: Object.keys(withBlocks),
             },
           ],
-          properties,
+          properties: withBlocks,
           required,
         };
       }
@@ -1181,6 +1440,51 @@ export class StrapiAdapter extends BaseAdapter {
           })),
           total: payload?.meta?.pagination?.total ?? 0,
         };
+      }
+
+      case 'state.get': {
+        const [entry] = await this.withPublishedState([
+          await this.entryForPath(args.path),
+        ]);
+        return this.permissionsAndState(entry);
+      }
+
+      case 'state.getForms': {
+        const [entry] = await this.withPublishedState([
+          await this.entryForPath(args.path),
+        ]);
+        return this.transitionForms(entry);
+      }
+
+      case 'state.transition': {
+        const [entry] = await this.withPublishedState([
+          await this.entryForPath(args.path),
+        ]);
+        const forms = this.transitionForms(entry);
+        // Both from the base class, and both about the same failure: a
+        // transition that writes nothing and reports success. WordPress sent
+        // `status: undefined`, got a 200, and left a whole import unpublished.
+        const form = this.offeredTransition(forms, args.id);
+        this.assertDeclared(args.data, form.schema, args.id);
+
+        if (args.id === 'publish') {
+          await this.fetchJson(
+            `/api/${this.collectionPlural}/${entry.documentId}`,
+            { method: 'PUT', params: { status: 'published' }, body: { data: {} } },
+          );
+          return null;
+        }
+        // Unpublishing needs the companion route: Strapi's content API has no
+        // counterpart to publishing — `?status=draft` answers 200 and leaves
+        // the published variant in place, and there is no unpublish action.
+        // A 404 here means the deployment has no companion, which is a
+        // deployment fact worth saying out loud rather than a retraction that
+        // quietly did nothing.
+        await this.fetchJson(
+          `/api/hydra/unpublish/${this.collection}/${entry.documentId}`,
+          { method: 'POST', body: {} },
+        );
+        return null;
       }
 
       case 'reference.resolve': {

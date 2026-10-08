@@ -18,5 +18,16 @@ module.exports = {
       path: '/hydra/schema/:collection',
       handler: 'hydra.schema',
     },
+    {
+      // UNPUBLISHING, which the content API cannot do.
+      //
+      // `PUT /api/pages/:id?status=published` publishes — verified — but the
+      // reverse does nothing: `?status=draft` returns 200 and leaves the
+      // published variant in place, and there is no unpublish action (405).
+      // The Document Service has unpublish(); this exposes it.
+      method: 'POST',
+      path: '/hydra/unpublish/:collection/:documentId',
+      handler: 'hydra.unpublish',
+    },
   ],
 };

@@ -17,6 +17,7 @@ env:
   # run that never touches Drupal still needs the name to exist.
   HYDRA_MOCK_DRUPAL_PORT: 8794
   HYDRA_WORDPRESS_PORT: 8795
+  HYDRA_STRAPI_PORT: 1338
   HYDRA_PLONE_SEED_PORT: 8898
   HYDRA_VOLTO_SSR_PORT: 3001
   HYDRA_VOLTO_WEBPACK_PORT: 3002
@@ -378,7 +379,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [journey-plone-seeded, journey-drupal, journey-wordpress]
+        project: [journey-plone-seeded, journey-drupal, journey-wordpress, journey-strapi]
     name: test-journey (${{ matrix.project }})
     steps:
       - uses: actions/checkout@v4
@@ -430,6 +431,19 @@ jobs:
       - name: Install Playwright deps only
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
+      # Strapi's app, scaffolded and cached exactly as the contract job does —
+      # same script, same key, so the two jobs share one cache entry. Playwright
+      # starts the server itself (see the Strapi webServer entry), on its own
+      # port and database so it cannot collide with the contract suite's.
+      - name: Cache the Strapi app
+        if: matrix.project == 'journey-strapi'
+        uses: actions/cache@v4
+        with:
+          path: tests-adapters/fixtures/strapi-app/app
+          key: ${{ runner.os }}-strapi-app-${{ hashFiles('scripts/fetch-strapi-fixture.mjs') }}
+      - name: Scaffold the Strapi app
+        if: matrix.project == 'journey-strapi'
+        run: pnpm strapi:fixture
       # No separate auth step for WordPress: journey-wordpress declares
       # `dependencies: ['journey-wordpress-setup']`, so Playwright mints the
       # credential itself with the servers this project needs already up.

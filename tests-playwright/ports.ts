@@ -52,6 +52,16 @@ export const PORTS = {
   mockDrupal: port('HYDRA_MOCK_DRUPAL_PORT'),
   /** WordPress Playground, for the three-CMS journey. */
   wordpress: port('HYDRA_WORDPRESS_PORT'),
+  /**
+   * Strapi, for the journey.
+   *
+   * A DIFFERENT port from the contract suite's Strapi (1337, in
+   * tests-adapters/global-setup.ts), exactly as the journey's WordPress is a
+   * different port from the contract suite's: the two suites seed the same
+   * paths to different states, so sharing an instance would make each one's
+   * fixtures the other's flake.
+   */
+  strapi: port('HYDRA_STRAPI_PORT'),
   /** Test frontend: HTML + bridge fixture served by Vite (`pnpm start:test-frontend`). */
   testFrontend: port('HYDRA_TEST_FRONTEND_PORT'),
   // A Plone mock serving the CANONICAL seed, for journey specs that need the
@@ -105,6 +115,7 @@ export const URLS = {
   // mocks already use 127.0.0.1, so this is also the more consistent choice.
   testFrontend: `http://127.0.0.1:${PORTS.testFrontend}`,
   plonSeeded: `http://127.0.0.1:${PORTS.plonSeeded}`,
+  strapi: `http://127.0.0.1:${PORTS.strapi}`,
   mockParent: `http://localhost:${PORTS.mockParent}`,
   voltoSsr: `http://localhost:${PORTS.voltoSsr}`,
   voltoWebpack: `http://localhost:${PORTS.voltoWebpack}`,

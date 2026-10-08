@@ -106,7 +106,7 @@ lifecycle hook; the adapter cannot fix it.
 ## Where it got to
 
 A blocking CI target. `TARGET=strapi pnpm test:contract` runs the same 152 tests
-every other adapter runs: **119 pass, 33 skip, 0 fail**, against a real Strapi 5
+every other adapter runs: **132 pass, 21 skip, 0 fail**, and the 18-spec journey suite, against a real Strapi 5
 booted by the harness, and `strapi` is in the `test-adapter-contract` matrix.
 
 The adapter advertises `content`, `search-filter`, `schema`, `asset`, `reference`
@@ -212,6 +212,51 @@ where or how it installs proves nothing about CI. The script now asserts the
 artifacts (the CLI file, the compiled binding) rather than trusting an exit
 code, because an install that exits 0 having skipped the work fails later,
 somewhere that cannot explain it.
+
+## The journey: what driving the real admin found
+
+`journey-strapi` walks the same 18 admin specs the other three CMSes walk —
+create a page, link to another, move it, upload an image, change its state — in
+a browser, against a real Strapi. It passes.
+
+Five bugs, in the order the journey surfaced them. NONE of them was visible to
+the contract suite, which was green on 132 tests throughout, because it drives
+the adapter directly and never renders anything:
+
+1. **`state.get` rejecting took down the whole Contents view.** An unhandled
+   bridge rejection crashed the React component, so the listing had no rows.
+   The fix is not tolerance in the admin: `@actions` routes to `state.get`, and
+   Volto derives the Edit and Contents buttons from its `effective` permissions
+   — so this is the question "what may I do here", which every CMS can answer.
+   Strapi's workflow half is two states; the permissions half is what an API
+   token may do.
+2. **The contents filter box silently did not narrow.** It routes to the
+   `search` intent, which was unimplemented. Strapi has no full-text index, but
+   `filters[hydraBlocks][$containsi]` matches inside the stored JSON, so search
+   covers title and block content — the same shape the spec attributes to core
+   Drupal's "full text".
+3. **A created page's path was the raw title**: `/news/Probe 1791449544951`,
+   which round-trips through the adapter perfectly and is not a URL. Six specs
+   sat waiting for a navigation that could never happen. Every other CMS
+   assigns the segment itself; Strapi's slug is a plain string field, so the
+   adapter slugifies, keeps non-ASCII, and numbers duplicates the way WordPress
+   and Plone do — Strapi enforces no sibling uniqueness, and two documents at
+   one path make the second unreachable.
+4. **The add form had no block editor, so no create was ever dispatched** — the
+   audit log ended at `types.getSchema`. The schema returned Strapi's raw
+   attributes: no canonical `blocks`/`blocks_layout` (the admin decides a type
+   is visually editable by finding a property whose name ends in "blocks", and
+   `hydraBlocks` is storage), and structural fields — slug, parent, sortOrder,
+   publishedAt — offered as widgets for values other intents own.
+5. **Nothing rendered in the iframe**: the test frontend's `index.html` has its
+   own `buildAdapter`, separate from the proxy frame's, and threw
+   `Unknown adapter 'strapi'`. Mine to fix, not Strapi's.
+
+(3) also earned a permanent contract guard: a created document's path segment
+must equal `encodeURIComponent` of itself, which states the property —
+addressable — without testing any one CMS's slug algorithm. The old
+assertions only asked that the path start with its parent, which is exactly how
+this got through.
 
 ## Still owed
 

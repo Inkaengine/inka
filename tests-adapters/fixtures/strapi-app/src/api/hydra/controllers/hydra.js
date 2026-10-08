@@ -23,4 +23,27 @@ module.exports = {
       attributes: contentType.attributes,
     };
   },
+
+  /**
+   * Take a document out of publication.
+   *
+   * The one workflow move Strapi's REST API does not expose. Publishing is
+   * `PUT /api/:plural/:documentId?status=published`; there is no counterpart,
+   * so without this an editor could publish and never retract — which is the
+   * half of a workflow that matters when something goes out by mistake.
+   */
+  async unpublish(ctx) {
+    const { collection, documentId } = ctx.params;
+    const uid = `api::${collection}.${collection}`;
+    if (!strapi.contentTypes[uid]) {
+      return ctx.notFound(`No content type ${uid}`);
+    }
+    const document = await strapi.documents(uid).unpublish({ documentId });
+    if (!document) {
+      // Not found rather than a silent success: an unpublish that moved
+      // nothing would report the document retracted while it stayed public.
+      return ctx.notFound(`No document ${documentId} in ${uid}`);
+    }
+    ctx.body = { documentId, unpublished: true };
+  },
 };

@@ -11,7 +11,18 @@ const path = require('node:path');
 const VOCABULARY_SIZE = 10_000;
 
 const TOKEN_NAME = 'hydra-contract';
-const TOKEN_FILE = path.join(__dirname, '..', '.hydra-api-token');
+/**
+ * Where the provisioned token is written.
+ *
+ * Overridable because the journey runs a SECOND instance of this same app —
+ * its own port, its own DATABASE_FILENAME — and two instances writing one
+ * token file would each revoke the other's credential on boot.
+ */
+const TOKEN_FILE = path.join(
+  __dirname,
+  '..',
+  process.env.HYDRA_TOKEN_FILE || '.hydra-api-token',
+);
 
 module.exports = {
   register() {},

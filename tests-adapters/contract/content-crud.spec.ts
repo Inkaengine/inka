@@ -143,6 +143,43 @@ describe('content.create / content.delete', () => {
     }
   });
 
+  it('derives a path a browser can actually navigate to', async () => {
+    // What the ADMIN does: it sends the title an editor typed and nothing
+    // else, then navigates to the path that comes back.
+    //
+    // Every CMS here but one assigns the segment itself — WordPress sanitises
+    // its slug, Plone normalises an id, Drupal builds an alias. Strapi's slug
+    // is a plain string field, so its adapter used the raw title and answered
+    // "/news/Probe 1791449544951": a path that round-trips through the adapter
+    // perfectly and is not a URL. Six admin specs failed waiting for a URL
+    // that never arrived, and nothing here noticed, because the assertions
+    // only asked that the path start with the parent.
+    const created: any = await target.adapter.dispatch('content.create', {
+      parentPath: '/news',
+      data: { type: target.types.page, title: 'A Messy Title: Draft #2' },
+    });
+    try {
+      const segment = created.path.split('/').pop();
+      expect(segment, 'the created document has no path segment').toBeTruthy();
+      // Needs no escaping to appear in a URL. Deliberately not a comparison
+      // against one CMS's slug algorithm — how an id is derived is the CMS's
+      // business, and only that the result is addressable is ours.
+      expect(
+        segment,
+        `'${segment}' has to be escaped to go in a URL, so the admin cannot ` +
+          `navigate to the document it just created`,
+      ).toBe(encodeURIComponent(segment));
+
+      // And the document is really there, at that path.
+      const fetched: any = await target.adapter.dispatch('content.get', {
+        path: created.path,
+      });
+      expect(fetched.id).toBe(created.id);
+    } finally {
+      await target.adapter.dispatch('content.delete', { path: created.path });
+    }
+  });
+
   it('creates a document WITH its blocks, in one call', async () => {
     // Creating and then updating is not the same thing. Translating a page
     // copies the original's blocks into the new document, and the admin posts

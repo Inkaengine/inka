@@ -34,6 +34,7 @@ const needsAstroQs = projectArg?.includes('astro-qs');
 // started, because booting all three costs minutes for no benefit.
 const needsDrupal = projectArg?.includes('journey-drupal');
 const needsWordPress = projectArg?.includes('journey-wordpress');
+const needsStrapi = projectArg?.includes('journey-strapi');
 const needsJourney = projectArgs.some((p) => p.startsWith('journey'));
 // The bridge-mock project runs the admin with the backend inversion on. It is
 // an env var rather than a test fixture because the Api helper is constructed
@@ -456,6 +457,21 @@ export default defineConfig({
       },
     },
     {
+      // Strapi needs no sign-in project: its content API has no login, so the
+      // credential is an API token handed to the proxy frame, which is what
+      // makes this project's storage state different from the others. See
+      // STORAGE_FRONTENDS in tests-playwright/global-setup.ts.
+      name: 'journey-strapi',
+      testDir: 'tests-playwright/journey',
+      testIgnore: /auth\.setup\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 720 },
+        permissions: ['clipboard-read', 'clipboard-write'],
+        storageState: 'tests-playwright/.generated/storage-journey-strapi.json',
+      },
+    },
+    {
       // Signs in once and saves the session; every WordPress spec depends on
       // it. Without this each spec paid ~50s for the login round trip.
       name: 'journey-wordpress-setup',
@@ -696,6 +712,34 @@ export default defineConfig({
           cwd: process.cwd(),
         }]
       : []),
+    // Real Strapi, for journey-strapi. Started only when asked for: it is a
+    // whole Node app, and a cold database seeds a 10k-term vocabulary first.
+    ...(needsStrapi ? [{
+      name: 'Strapi',
+      // `develop`, with the admin panel left unbuilt — the journey talks to
+      // the REST API. The contract suite's global-setup explains why.
+      command: `node node_modules/@strapi/strapi/bin/strapi.js develop --no-watch-admin --no-build-admin`,
+      // An API route, not `/`: `/` is the admin panel, which is NOT built
+      // here, so it answers 404 forever while Strapi is perfectly healthy —
+      // the same trap as WordPress's self-302 below, in a different costume.
+      url: `${URLS.strapi}/api/pages`,
+      timeout: 300 * 1000,
+      reuseExistingServer: true,
+      cwd: path.join(__dirname, 'tests-adapters/fixtures/strapi-app/app'),
+      stdout: 'pipe' as const,
+      stderr: 'pipe' as const,
+      env: {
+        // Its own port, database and token file, so the contract suite's
+        // Strapi can run beside it. They share the app DIRECTORY — it is 700MB
+        // of node_modules, copied for nobody — so without these two the pair
+        // would share one SQLite file and each boot would revoke the other's
+        // API token.
+        PORT: String(PORTS.strapi),
+        HOST: '127.0.0.1',
+        DATABASE_FILENAME: '.tmp/journey.db',
+        HYDRA_TOKEN_FILE: '.hydra-journey-token',
+      },
+    }] : []),
     // WordPress Playground — real WordPress on PHP-WASM; slow to boot, so it
     // is only started when the WordPress journey is actually requested.
     ...(needsWordPress ? [{
