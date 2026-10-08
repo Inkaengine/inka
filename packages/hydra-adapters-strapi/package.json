@@ -1,0 +1,17 @@
+{
+  "name": "@volto-hydra/hydra-adapters-strapi",
+  "version": "1.0.0",
+  "description": "Hydra adapter for Strapi 5. Blocks are a dynamic zone; there is no content hierarchy.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "dependencies": {
+    "@volto-hydra/hydra-adapters-core": "workspace:*",
+    "@volto-hydra/hydra-types": "workspace:*"
+  },
+  "license": "MIT"
+}
