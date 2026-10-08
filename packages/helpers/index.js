@@ -2063,62 +2063,6 @@ export function cloneBlocksForTranslation(
 }
 
 /**
- * A translation's blocks with each copy's fingerprint taken again from the
- * original it names (`@canonical`), at any depth.
- *
- * The copies are made when the add form opens, and their fingerprints with
- * whatever block schemas the editor has at that moment — which can be before
- * the frontend's have arrived, so a later comparison (made with the
- * frontend's) disagrees with every one of them. Saving the translation calls
- * this with the schemas the editor has then. Only `@translation.fingerprint`
- * changes: the translated words, ids and layout are as the translator left
- * them, and a block with no original (added since) is left alone.
- *
- * @param {Object} blocks - the translation's blocks map
- * @param {Object} sourceBlocks - the original page's blocks map
- * @param {Object} idFieldMap - block type → id field (buildIdFieldMap)
- * @param {Function} fingerprintOf - (sourceBlock, sourceId, type) => string|null
- * @returns {Object} a new blocks map
- */
-export function restampTranslationFingerprints(blocks, sourceBlocks, idFieldMap, fingerprintOf) {
-  const sources = new Map();
-  const index = (id, block) => {
-    sources.set(id, block);
-    for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
-      for (const { id: childId, block: child } of getChildBlockEntries(block, field)) {
-        index(childId, child);
-      }
-    }
-  };
-  for (const [id, block] of Object.entries(sourceBlocks || {})) index(id, block);
-
-  const restamp = (block) => {
-    const copy = { ...block };
-    const source = sources.get(block['@canonical']);
-    if (source) {
-      const fingerprint = fingerprintOf(source, block['@canonical'], getBlockType(source));
-      if (fingerprint) copy['@translation'] = { ...block['@translation'], fingerprint };
-      else delete copy['@translation'];
-    }
-    const fields = getChildFields(block, idFieldMap, { allObjectLists: true });
-    // Regions share one `blocks` map, so it is rebuilt once (as the copy does).
-    if (fields.some((f) => !f.isObjectList)) {
-      copy.blocks = {};
-      copy.blocks_layout = {};
-    }
-    for (const field of fields) {
-      setChildBlockEntries(
-        copy,
-        field,
-        getChildBlockEntries(block, field).map(({ id, block: child }) => ({ id, block: restamp(child) })),
-      );
-    }
-    return copy;
-  };
-  return Object.fromEntries(Object.entries(blocks || {}).map(([id, block]) => [id, restamp(block)]));
-}
-
-/**
  * One block and everything under it, copied under new ids.
  *
  * Each copy records what it was made FROM: `@canonical`, the id of the source

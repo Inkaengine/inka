@@ -32,7 +32,6 @@ import {
   cloneBlocksForTranslation,
   withFieldsReadOnly,
   sourceFingerprint,
-  restampTranslationFingerprints,
 } from '@volto-hydra/helpers';
 import { buildIdFieldMap, getBlockTypeSchema } from '../../../../../utils/blockPath';
 import {
@@ -234,33 +233,7 @@ class Add extends Component {
    * @param {object} data Form data.
    * @returns {undefined}
    */
-  /**
-   * A fingerprint of a source block's translatable content, with the block
-   * schemas the editor has NOW. A type with no schema here records nothing
-   * rather than a fingerprint over fields we cannot tell apart.
-   */
-  fingerprintOf = (sourceBlock, id, type) => {
-    const schema = getBlockTypeSchema(type, this.props.intl, config.blocks.blocksConfig);
-    return schema ? sourceFingerprint(sourceBlock, schema) : null;
-  };
-
   onSubmit(data) {
-    // The copies' fingerprints were taken when the form opened, possibly before
-    // the frontend's block schemas arrived; a comparison made later, with them,
-    // would then call every copy stale. Take them again from the originals now.
-    const translationObject = this.props.location?.state?.translationObject;
-    const blocksFieldname = getBlocksFieldname(this.props.schema.properties);
-    if (translationObject && blocksFieldname && data[blocksFieldname]) {
-      data = {
-        ...data,
-        [blocksFieldname]: restampTranslationFingerprints(
-          data[blocksFieldname],
-          translationObject[blocksFieldname],
-          buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
-          this.fingerprintOf,
-        ),
-      };
-    }
     this.props.createContent(getBaseUrl(this.props.pathname), {
       ...data,
       '@static_behaviors': this.props.schema.definitions
@@ -374,9 +347,17 @@ class Add extends Component {
           uuid,
           buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
           // What each copy was made FROM, so the editor can later be told which
-          // blocks the original has moved on from. Taken again on save
-          // (onSubmit): the frontend's schemas may not have arrived yet.
-          this.fingerprintOf,
+          // blocks the original has moved on from. A type with no schema here
+          // records nothing rather than a fingerprint over fields we cannot
+          // tell apart.
+          (sourceBlock, id, type) => {
+            const schema = getBlockTypeSchema(
+              type,
+              this.props.intl,
+              config.blocks.blocksConfig,
+            );
+            return schema ? sourceFingerprint(sourceBlock, schema) : null;
+          },
         );
         initialBlocks = copied.blocks;
         initialBlocksLayout = copied.layout;
