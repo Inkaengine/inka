@@ -92,8 +92,20 @@ export function addableSiblingTypes(
   return types;
 }
 
-// Cache for getBlockTypeSchema — keyed by blockType
+// Cache for getBlockTypeSchema — keyed by blockType. Each entry remembers the
+// config it was built from (the entry object, its schema and its enhancer): the
+// admin's Form reads schemas before INIT, and INIT replaces an entry with the
+// frontend's merged one (and installs enhancers on it), so a schema built from
+// anything else is stale and is built again. A schema built from the config as
+// it stands is reused — the same object every time, so nothing that compares
+// schemas by identity sees a change that did not happen.
 const _typeSchemaCache = new Map();
+
+const builtFrom = (blockConfig) => [
+  blockConfig,
+  blockConfig?.blockSchema || blockConfig?.schema,
+  blockConfig?.schemaEnhancer,
+];
 
 /**
  * Get the default schema for a block type (with empty formData).
@@ -110,10 +122,11 @@ export function getBlockTypeSchema(blockType, intl, blocksConfig) {
   if (!blockType) return null;
   if (!blocksConfig) throw new Error('getBlockTypeSchema requires blocksConfig');
 
-  const cached = _typeSchemaCache.get(blockType);
-  if (cached) return cached;
-
   const blockConfig = blocksConfig[blockType];
+  const cached = _typeSchemaCache.get(blockType);
+  const from = builtFrom(blockConfig);
+  if (cached && cached.from.every((ref, i) => ref === from[i])) return cached.schema;
+
   if (!blockConfig) return null;
 
   const schemaSource = blockConfig.blockSchema || blockConfig.schema;
@@ -154,17 +167,15 @@ export function getBlockTypeSchema(blockType, intl, blocksConfig) {
       formData: {},
       intl,
     });
-    // This generic schema is what pass 1 walks containers by, and it was built
-    // with empty data. A fieldRule that shows a region only for some data
-    // (`links: { when: { mode: 'links' }, else: false }`) hides it here, and
-    // then no instance's children in that region reach the pathMap — they
-    // render, but cannot be selected. Hiding a field is the sidebar's concern
-    // (pass 2 resolves each instance's own schema); a region the schema
-    // declares is walked whatever empty data would show.
+    // This is the TYPE's schema, built with empty data, so a fieldRule that
+    // shows a field only for some data (`links: { when: { mode: 'links' },
+    // else: false }`, a teaser's title until "customise" is ticked) hides it
+    // here. Hiding a field is one block's form's concern (pass 2 resolves each
+    // instance's own schema). The type has every field it declares: pass 1
+    // walks its regions by it, a listing maps onto its fields, a container
+    // owns their defaults, a translation fingerprints its prose by it.
     const removed = Object.entries(base?.properties || {}).filter(
-      ([name, fd]) =>
-        ['blocks_layout', 'object_list', 'object'].includes(fd?.widget) &&
-        !(name in (schema?.properties || {})),
+      ([name]) => !(name in (schema?.properties || {})),
     );
     if (removed.length > 0) {
       schema = {
@@ -178,7 +189,7 @@ export function getBlockTypeSchema(blockType, intl, blocksConfig) {
     ? schema
     : null;
 
-  _typeSchemaCache.set(blockType, result);
+  _typeSchemaCache.set(blockType, { schema: result, from });
   return result;
 }
 

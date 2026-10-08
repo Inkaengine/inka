@@ -2248,9 +2248,12 @@ export function translatableFieldIds(schema) {
   const properties = schema?.properties;
   if (!properties) return [];
   return Object.entries(properties)
-    .filter(([, def]) => {
-      if (!def) return false;
-      if (def.multilingual_options?.language_independent) return false;
+    .filter(([, wrapper]) => {
+      if (!wrapper) return false;
+      if (wrapper.multilingual_options?.language_independent) return false;
+      // A field wrapped by another widget (copy-from-target keeps a teaser's
+      // title and description under `baseWidget`) is still the field it wraps.
+      const def = wrapper.baseWidget || wrapper;
       if (CHILD_WIDGETS.has(def.widget)) return false;
       if (NON_PROSE_WIDGETS.has(def.widget)) return false;
       // A field with a fixed set of values holds a token, not a sentence.

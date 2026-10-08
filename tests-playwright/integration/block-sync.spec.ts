@@ -217,14 +217,15 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     // The "Lead Image" row should now show a mapped value (smart defaults for image type)
     const imageRow = mappingTable.locator('tr').filter({ has: page.locator('td:first-child', { hasText: 'Lead Image' }) });
     const imageRowSelect = imageRow.locator('.react-select__single-value');
-    // Image block's url field should be mapped (it's an image type field)
-    await expect(imageRowSelect).toContainText('Image URL');
+    // Image block's url field should be mapped (it's an image type field), under
+    // the title the frontend's image schema gives it.
+    await expect(imageRowSelect).toHaveText('Image');
 
     // Scroll to show the fieldMapping table after variation change
     const sidebarWrapper = page.locator('.sidebar-content-wrapper');
     await sidebarWrapper.evaluate((el) => el.scrollTo(0, el.scrollHeight));
 
-    // Re-query the URL row dropdown (use first-child filter to avoid matching "Image URL" text)
+    // Re-query the URL row dropdown (first-child filter: match the row's label, not a target's)
     const urlRowAfterChange = mappingTable.locator('tr').filter({ has: page.locator('td:first-child', { hasText: 'URL' }) });
     const urlRowDropdownAfterChange = urlRowAfterChange.locator('.react-select__control');
     await urlRowDropdownAfterChange.scrollIntoViewIfNeeded();
@@ -235,8 +236,8 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     // Verify "Target" (teaser-specific) is NOT present
     await expect(menu.locator('.react-select__option:has-text("Target")')).not.toBeVisible();
 
-    // Verify image block has "Image URL" field (url with widget: 'image')
-    await expect(menu.locator('.react-select__option:has-text("Image URL")')).toBeVisible();
+    // Verify image block has its url field (widget: 'image'), titled "Image" by the frontend's schema
+    await expect(menu.locator('.react-select__option', { hasText: /^Image$/ })).toBeVisible();
 
     // Close dropdown by clicking elsewhere
     await mappingTable.locator('th', { hasText: 'Source' }).click();
@@ -972,12 +973,12 @@ test.describe('Frontend-Driven Schema Enhancers', () => {
     // Scroll down again to check fieldMapping
     await sidebarWrapper.evaluate((el) => el.scrollTo(0, el.scrollHeight));
 
-    // The fieldMapping should now show image's target fields (Image URL, Alt text)
+    // The fieldMapping should now show image's target fields (Image, Alt text)
     // Wait for the fieldMapping to update with image fields
     await expect(fieldMappingTable).toBeVisible({ timeout: 5000 });
-    // The Lead Image row should map to "Image URL" (image's url field for src)
+    // The Lead Image row should map to "Image" (image's url field for src)
     const imageRow = fieldMappingTable.locator('tr').filter({ has: page.locator('td:first-child', { hasText: 'Lead Image' }) });
-    await expect(imageRow.locator('.react-select__single-value')).toContainText('Image URL', { timeout: 5000 });
+    await expect(imageRow.locator('.react-select__single-value')).toHaveText('Image', { timeout: 5000 });
   });
 
   test('changing variation transforms child block types', async ({ page }) => {
