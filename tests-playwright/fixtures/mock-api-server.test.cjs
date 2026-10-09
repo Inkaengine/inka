@@ -829,3 +829,18 @@ describe('@querystring-search: date operations', () => {
     assert.ok(after.length > 0 && after.length < all.length, `${after.length} dated of ${all.length}`);
   });
 });
+
+describe('@querystring-search: sort_on sortable_title', () => {
+  // sortable_title is a catalog index made from the title (case folded); items
+  // carry no field of that name, so sorting on it must read the title.
+  it('orders results by title, A to Z', async () => {
+    const data = await querystringSearch('/_test_data', {
+      query: [{ i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' }],
+      sort_on: 'sortable_title',
+      b_size: 1000,
+    });
+    const titles = data.items.map((i) => String(i.title ?? '').toLowerCase());
+    assert.ok(titles.length > 2);
+    assert.deepEqual(titles, [...titles].sort());
+  });
+});

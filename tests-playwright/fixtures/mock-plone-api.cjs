@@ -5052,9 +5052,13 @@ app.post('*/@querystring-search', (req, res) => {
       return allPaths.indexOf(aPath) - allPaths.indexOf(bPath);
     };
   } else if (sort_on) {
+    // sortable_title is an index Plone makes from the title (case folded);
+    // no item carries a field of that name.
+    const sortValue = (item) =>
+      sort_on === 'sortable_title' ? String(item.title ?? '').toLowerCase() : item[sort_on] || '';
     comparator = (a, b) => {
-      const aVal = a[sort_on] || '';
-      const bVal = b[sort_on] || '';
+      const aVal = sortValue(a);
+      const bVal = sortValue(b);
       return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
     };
   }
