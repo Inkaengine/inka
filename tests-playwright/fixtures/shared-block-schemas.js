@@ -875,6 +875,9 @@ export const sharedBlocksConfig = {
                         review_state: { title: 'State', type: 'string' },
                         Subject: { title: 'Categories', type: 'array' },
                     },
+                    // …and every metadata column the site's catalog holds, so a
+                    // site's own fields can be mapped too.
+                    vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
                 },
                 headline: { title: 'Headline', type: 'string' },
                 headlineTag: { title: 'Headline tag', widget: 'select', choices: [['h1','h1'],['h2','h2'],['h3','h3'],['h4','h4'],['h5','h5'],['h6','h6']] },
