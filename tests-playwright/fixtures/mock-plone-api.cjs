@@ -4980,6 +4980,23 @@ app.post('*/@querystring-search', (req, res) => {
             .includes(String(value).toLowerCase()),
         );
       }
+    } else if (
+      operation === 'plone.app.querystring.operation.date.largerThan' ||
+      operation === 'plone.app.querystring.operation.date.lessThan'
+    ) {
+      // A date index (effective, created, modified…): after or before the
+      // value, as a date-range filter asks. Like Plone's DateIndex, an item
+      // with no date matches neither.
+      const bound = new Date(value).getTime();
+      if (Number.isNaN(bound)) {
+        throw new Error(`[MOCK-API] @querystring-search: '${value}' is not a date (${index})`);
+      }
+      const after = operation.endsWith('largerThan');
+      allItems = allItems.filter((item) => {
+        if (!item[index]) return false;
+        const t = new Date(item[index]).getTime();
+        return after ? t > bound : t < bound;
+      });
     } else if (index === 'exclude_from_nav' && operation.includes('boolean')) {
       // Nav listings filter out items marked exclude_from_nav: true.
       // Mirrors Plone's plone.app.querystring.operation.boolean.{isFalse,isTrue}.
