@@ -376,3 +376,36 @@ Usage:
 ```
 
 **Worked example:** [Slate (Text) Block](../examples/slate.md) — the block itself, rendered per stack.
+
+## What a link knows about its target
+
+A link the editor picked from the object browser also carries the picked
+item's catalog metadata, beside its address, as `data.item`:
+
+### Json
+
+```json
+{ "type": "link", "nodeId": "0.3",
+  "data": {
+    "url": "/reports/annual-report",
+    "item": { "title": "Annual report", "portal_type": "File",
+              "mime_type": "application/pdf", "getObjSize": "19.5 KB",
+              "modified": "2026-10-01T09:00:00+00:00" } },
+  "children": [{ "text": "the annual report" }] }
+```
+
+So a frontend can draw a link from what it links to (a file's type and size
+after a link to it, say) without fetching the item. Everything the catalog
+returned is kept, so metadata a site adds (a page count) comes through too;
+two kinds of field are left out:
+
+- **where the item is** (`@id`, `getURL`, `getPath`, `getRemoteUrl`): `data.url`
+  is the link's only address. Plone turns an internal one into a resolveuid on
+  save, so it follows the item when it moves; a copy would not.
+- **who made it** (creators, contributors, authors, commentators).
+
+It is a snapshot from when the link was picked: if the file is replaced, the
+link describes the old one until it is picked again. A typed address has no
+`item`, and neither does a link saved before this existed — draw a link without
+it the way you always have.
+

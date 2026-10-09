@@ -746,9 +746,39 @@ function formatSearchItem(content, baseUrl) {
     // content's `subjects` field (the lowercase schema field).
     'Subject': content.subjects || [],
     ...catalogImageFields(content, baseUrl, hasPreviewImage),
+    ...catalogFileFields(content),
   };
 
   return item;
+}
+
+/**
+ * Plone's getObjSize: a blob's size the way the catalog formats it
+ * (Products.CMFPlone.utils.human_readable_size — "19.5 KB", "0 KB" when empty).
+ */
+function humanReadableSize(size) {
+  if (!size) return '0 KB';
+  for (const [unit, bytes] of [['GB', 1024 ** 3], ['MB', 1024 ** 2], ['KB', 1024]]) {
+    if (Math.floor(size / bytes)) return `${(size / bytes).toFixed(1)} ${unit}`;
+  }
+  return `${(size / 1024).toFixed(1)} KB`;
+}
+
+/**
+ * The catalog metadata Plone keeps for every item and a search with
+ * metadata_fields=_all returns: its type, the blob's mime type and size (a File's
+ * `file`, an Image's `image`), and who made it.
+ */
+function catalogFileFields(content) {
+  const blob = content.file || content.image;
+  const creators = content.creators || [];
+  return {
+    'portal_type': content['@type'],
+    'mime_type': blob ? blob['content-type'] : null,
+    'getObjSize': humanReadableSize(blob ? blob.size : 0),
+    'Creator': creators[0] || null,
+    'listCreators': creators,
+  };
 }
 
 /**

@@ -844,3 +844,22 @@ describe('@querystring-search: sort_on sortable_title', () => {
     assert.deepEqual(titles, [...titles].sort());
   });
 });
+
+describe('@search: catalog metadata of a file', () => {
+  // Plone's catalog keeps a file's type, its size (as getObjSize formats it) and
+  // who made it; a search with metadata_fields=_all returns them.
+  it('returns mime_type, getObjSize, portal_type and the creators', async () => {
+    const res = await fetch(
+      `${baseUrl}/_test_data/@search?path.query=/_test_data/annual-report&path.depth=0&metadata_fields=_all`,
+      { headers: { Accept: 'application/json' } },
+    );
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    assert.equal(item.title, 'Annual report');
+    assert.equal(item.portal_type, 'File');
+    assert.equal(item.mime_type, 'application/pdf');
+    assert.equal(item.getObjSize, '19.5 KB');
+    assert.equal(item.Creator, 'jane.author');
+    assert.deepEqual(item.listCreators, ['jane.author']);
+  });
+});
