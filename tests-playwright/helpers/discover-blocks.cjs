@@ -786,6 +786,34 @@ const KNOWN_MAPPING_TYPES = new Set([
 // The allowed sources come from the listing's OWN schema — hydra hangs
 // `sourceFields` on the fieldMapping field — so this reads the same list the
 // sidebar offers rather than keeping a copy of it.
+// The terms of each vocabulary a field-mapping widget names (`vocabulary:
+// { '@id' }` beside `sourceFields`), fetched once per discovery from the API
+// being discovered: the sidebar offers those columns too, so the check below
+// must accept them. Filled by loadMappingVocabularies before any page is read.
+const mappingVocabularyTerms = new Map();
+
+function mappingVocabularyNames(blocksConfig) {
+  const names = new Set();
+  for (const config of Object.values(blocksConfig || {})) {
+    const props = config?.blockSchema?.properties;
+    const name = props?.fieldMapping?.vocabulary?.['@id'];
+    if (name) names.add(name);
+  }
+  return names;
+}
+
+async function loadMappingVocabularies(apiUrl, blocksConfig) {
+  for (const name of mappingVocabularyNames(blocksConfig)) {
+    const url = `${apiUrl}/@vocabularies/${name}?b_size=1000`;
+    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!resp.ok) {
+      throw new Error(`field mapping vocabulary ${name}: ${url} answered ${resp.status}`);
+    }
+    const body = await resp.json();
+    mappingVocabularyTerms.set(name, new Set((body.items || []).map((t) => t.token)));
+  }
+}
+
 function collectFieldMappingIssues(blockData, blockSchema, blocksConfig, issues) {
   const mapping = blockData?.fieldMapping;
   if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return;
@@ -810,7 +838,16 @@ function collectFieldMappingIssues(blockData, blockSchema, blocksConfig, issues)
       issues.push(`fieldMapping "${source}": no target field — the value goes nowhere.`);
       continue;
     }
-    if (sourceFields && !sourceFields[source]) {
+    const vocabularyName = mappingDef?.vocabulary?.['@id'];
+    const vocabularyTokens = vocabularyName ? mappingVocabularyTerms.get(vocabularyName) : null;
+    if (vocabularyName && !vocabularyTokens) {
+      throw new Error(`field mapping vocabulary ${vocabularyName} was never loaded (loadMappingVocabularies)`);
+    }
+    // A column differing from a declared source only in case is not offered
+    // (mergeVocabularySources: the catalog's Title IS the result's title).
+    const declaredLower = new Set(Object.keys(sourceFields || {}).map((key) => key.toLowerCase()));
+    const offeredByVocabulary = vocabularyTokens?.has(source) && !declaredLower.has(source.toLowerCase());
+    if (sourceFields && !sourceFields[source] && !offeredByVocabulary) {
       issues.push(
         `fieldMapping "${source}": not a source the sidebar offers (${Object.keys(sourceFields).join(', ')}) — ` +
           `nobody can create or repair this mapping in the editor.`,
@@ -1356,6 +1393,7 @@ async function discoverBlocks(
   // child-block enhancers + inject blocksConfig, exactly as the addon does at
   // init. After this, resolveEffectiveSchemaFn gives the dynamic required set.
   await loadOfflineBlockSyncApi(blocksConfig);
+  await loadMappingVocabularies(apiUrl, blocksConfig);
 
   const seen = new Map();
   const slateIssues = [];
@@ -1936,6 +1974,7 @@ module.exports = {
   // drift would show up as a validator shouting about `slotId` on every block.
   UNDECLARED_EXEMPT,
   collectFieldMappingIssues,
+  loadMappingVocabularies,
   collectSlateIssues,
   discoverBlocks,
   extractBlocks,

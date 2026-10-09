@@ -543,6 +543,9 @@ config.settings.additionalToolbarComponents = {
             title: 'Field Mapping',
             widget: 'field_mapping',
             sourceFields: QUERY_RESULT_FIELDS,
+            // …and every metadata column the site's catalog holds, so its own
+            // fields can be mapped too.
+            vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
             description: 'Map query result fields to item block fields',
             fieldset: { id: 'mapping', title: 'Field Mapping' },
           },

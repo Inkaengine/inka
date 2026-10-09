@@ -62,4 +62,14 @@ describe('@vocabularies', () => {
       { token: 'newsroom', title: 'newsroom' },
     ]);
   });
+
+  it('lists the catalog metadata columns, as MetadataFields does', async () => {
+    const items = await vocabulary('plone.app.vocabularies.MetadataFields');
+    assert.deepEqual(items.find((i) => i.token === 'EffectiveDate'), {
+      token: 'EffectiveDate',
+      title: 'Effective date',
+    });
+    assert.ok(items.some((i) => i.token === 'review_state'));
+  });
 });
+

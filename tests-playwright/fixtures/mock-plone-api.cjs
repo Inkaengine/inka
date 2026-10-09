@@ -4537,6 +4537,37 @@ const VOCAB_ITEMS = {
   // all" are the same assertion. Its terms are titled as Plone titles them:
   // the type "Document" reads "Page", so a token echoed as the title would
   // show a type's id where a person expects its name.
+  // Every metadata column the catalog holds, as Plone's MetadataFields lists
+  // them: a listing result carries these (metadata_fields=_all), so a field
+  // mapping can offer a site's own columns without a frontend naming them.
+  'plone.app.vocabularies.MetadataFields': [
+    { token: 'CreationDate', title: 'Creation date' },
+    { token: 'Creator', title: 'Creator' },
+    { token: 'Description', title: 'Description' },
+    { token: 'EffectiveDate', title: 'Effective date' },
+    { token: 'ExpirationDate', title: 'Expiration date' },
+    { token: 'ModificationDate', title: 'Modification date' },
+    { token: 'Subject', title: 'Subject' },
+    { token: 'Title', title: 'Title' },
+    { token: 'Type', title: 'Type' },
+    { token: 'UID', title: 'UID' },
+    { token: 'created', title: 'Created' },
+    { token: 'effective', title: 'Effective' },
+    { token: 'end', title: 'End' },
+    { token: 'exclude_from_nav', title: 'Exclude from navigation' },
+    { token: 'expires', title: 'Expires' },
+    { token: 'getId', title: 'Short name' },
+    { token: 'getObjSize', title: 'Size' },
+    { token: 'id', title: 'ID' },
+    { token: 'is_folderish', title: 'Is folderish' },
+    { token: 'listCreators', title: 'Creators' },
+    { token: 'location', title: 'Location' },
+    { token: 'mime_type', title: 'MIME type' },
+    { token: 'modified', title: 'Modified' },
+    { token: 'portal_type', title: 'Portal type' },
+    { token: 'review_state', title: 'Review state' },
+    { token: 'start', title: 'Start' },
+  ],
   'plone.app.vocabularies.ReallyUserFriendlyTypes': [
     { token: 'Document', title: 'Page' },
     { token: 'News Item', title: 'News Item' },

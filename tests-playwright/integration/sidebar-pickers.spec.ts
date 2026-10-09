@@ -365,6 +365,7 @@ test.describe('Sidebar pickers', () => {
     ).toEqual([
       'collective.volto.formsupport.captcha.providers',
       'plone.app.vocabularies.Keywords',
+      'plone.app.vocabularies.MetadataFields',
       'plone.app.vocabularies.ReallyUserFriendlyTypes',
     ]);
 
