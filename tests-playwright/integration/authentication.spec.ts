@@ -43,6 +43,21 @@ test.describe('Authentication and Access Control', () => {
     expect(page.url()).not.toContain('/login');
   });
 
+  test('a demo link signs in with the demo account and opens the page for editing', async ({ page }) => {
+    // A public demo site's "try editing" button: /login?demo&return_url=<page>/edit
+    // signs in with the site's demo account (RAZZLE_DEMO_LOGIN/PASSWORD) — the
+    // visitor never fills the form — and lands in the editor.
+    const helper = new AdminUIHelper(page);
+    const loginRequest = page.waitForRequest((req) => req.url().includes('@login') && req.method() === 'POST');
+    await page.goto(`${URLS.voltoSsr}/login?demo&return_url=${encodeURIComponent(`${helper.contentPrefix}/test-page/edit`)}`);
+    expect((await loginRequest).postDataJSON()).toMatchObject({ login: 'demo', password: 'demo' });
+    await page.waitForURL(/\/test-page\/edit$/, { timeout: 15000 });
+    await expect(page.getByLabel('Login Name')).toHaveCount(0);
+    await helper.waitForIframeReady();
+    // Signed in and editing: the edit toolbar's Save.
+    await expect(page.locator('#toolbar-save, #toolbar button.save')).toBeVisible({ timeout: 10000 });
+  });
+
   test('Edit page requires authentication', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     // Try to access edit page without logging in
