@@ -2347,6 +2347,7 @@ test.describe('Container Block Drag and Drop', () => {
       col2,
       false, // insertAfter=false (left side, between col-1 and col-2)
       true,  // expectIndicator=true — a drop line is always shown, at the nearest valid edge
+      false, // confirmTarget=false — refused at col-2 by design; it snaps elsewhere
     );
 
     // A drop line IS shown (never hidden — it snaps to the nearest valid edge).

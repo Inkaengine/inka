@@ -4336,6 +4336,58 @@ export class AdminUIHelper {
    * @param targetBlock - The block we're dragging to
    * @param insertAfter - Whether we're inserting after (true) or before (false) the target
    */
+  /**
+   * Where the bridge says the drop will land, against where the test means it
+   * to. The indicator carries the resolved target (data-drop-target, -insert-
+   * after) and names the container it lands in. A position check alone passed
+   * a drop that went to the container AROUND a small target: the nearest edge
+   * at another nesting level won. "After X" and "before the block after X"
+   * are the same gap. Returns null when it agrees,
+   * else what the drop would really do.
+   */
+  async dropTargetMismatch(targetBlock: Locator, insertAfter: boolean): Promise<string | null> {
+    const targetUid = await targetBlock.first().getAttribute('data-block-uid');
+    if (!targetUid) throw new Error('dropTargetMismatch: the target has no data-block-uid');
+    return this.getIframe().locator('body').evaluate(
+      (_body, { targetUid, insertAfter }) => {
+        const visible = (el: Element | null) =>
+          !!el && getComputedStyle(el as HTMLElement).display !== 'none';
+        const shade = document.querySelector('.volto-hydra-drop-shade');
+        if (visible(shade)) return null; // replace mode: drop into an empty container
+        const ind = document.querySelector('.volto-hydra-drop-indicator') as HTMLElement | null;
+        if (!visible(ind)) return 'no drop indicator is showing';
+        const t = ind!.dataset.dropTarget;
+        const after = ind!.dataset.dropInsertAfter === 'true';
+        const label = ind!.querySelector('.volto-hydra-drop-label')?.textContent ?? '';
+        if (t === targetUid && after === insertAfter) return null;
+        // "After X" and "before Y" are the same gap when Y is the next block
+        // after X (and X's own contents) in the page — whichever containers
+        // they are in; the label says which one the drop takes.
+        if (t && after !== insertAfter) {
+          const first = (uid: string) => document.querySelector(`[data-block-uid="${uid}"]`);
+          const [before, next] = insertAfter ? [targetUid, t] : [t, targetUid];
+          const beforeEl = first(before);
+          const all = [...document.querySelectorAll('[data-block-uid]')];
+          const seen = new Set<string>();
+          let passed = false;
+          let following: string | null = null;
+          for (const el of all) {
+            const uid = el.getAttribute('data-block-uid')!;
+            if (seen.has(uid)) continue;
+            seen.add(uid);
+            if (uid === before) { passed = true; continue; }
+            if (passed && beforeEl && !beforeEl.contains(el)) { following = uid; break; }
+          }
+          if (following === next) return null;
+        }
+        return `the drop would land ${after ? 'after' : 'before'} ${t} (${label}), not ${
+          insertAfter ? 'after' : 'before'
+        } ${targetUid}`;
+      },
+      { targetUid, insertAfter },
+    );
+  }
+
   async verifyDropIndicatorNearTarget(
     targetBlock: Locator,
     insertAfter: boolean,
@@ -4877,7 +4929,9 @@ export class AdminUIHelper {
 
       try {
         await this.verifyDropIndicatorNearTarget(targetBlock, insertAfter, dropPosPage);
-        return; // Success - indicator is in the right place
+        const mismatch = await this.dropTargetMismatch(targetBlock, insertAfter);
+        if (mismatch) throw new Error(mismatch);
+        return; // Success - the indicator is in the right place, for the right target
       } catch (error) {
         if (attempt < maxRetries - 1) {
           console.log(`[DROP] Indicator not in expected position, retrying (attempt ${attempt + 1}/${maxRetries})`);
@@ -4900,11 +4954,16 @@ export class AdminUIHelper {
   private async completeDrop(
     targetBlock?: Locator,
     insertAfter?: boolean,
+    { checkPosition = true }: { checkPosition?: boolean } = {},
   ): Promise<void> {
     // Verify drop indicator is still in correct position right before dropping.
     // Between moveToDropPosition and here, evaluations and timing could shift things.
+    // The position check reads a vertical line; a horizontal drop confirms the
+    // target alone.
     if (targetBlock && insertAfter !== undefined) {
-      await this.verifyDropIndicatorNearTarget(targetBlock, insertAfter);
+      if (checkPosition) await this.verifyDropIndicatorNearTarget(targetBlock, insertAfter);
+      const mismatch = await this.dropTargetMismatch(targetBlock, insertAfter);
+      if (mismatch) throw new Error(`Not releasing: ${mismatch}`);
     }
 
     // Get all block order before drop (using body to include all containers)
@@ -5263,7 +5322,9 @@ export class AdminUIHelper {
     _dragHandle: Locator,
     targetBlock: Locator,
     insertAfter: boolean = true,
-    expectIndicator: boolean = true
+    expectIndicator: boolean = true,
+    // false for a drop meant to be refused at the target and snap elsewhere.
+    confirmTarget: boolean = true,
   ): Promise<boolean> {
     // Step 1: Start drag from toolbar
     await this.startDragFromToolbar();
@@ -5276,9 +5337,28 @@ export class AdminUIHelper {
 
     // Step 4: Check drop indicator visibility
     const indicatorVisible = await this.checkDropIndicator(expectIndicator);
+    if (!expectIndicator || !confirmTarget) {
+      await this.completeDrop();
+      return indicatorVisible;
+    }
 
-    // Step 5: Complete the drop
-    await this.completeDrop();
+    // Step 5: Confirm the drop lands where we mean. A small target can lose
+    // to an edge of the container around it; move to the target's own edge on
+    // the side we mean, and look again.
+    await this.nextFrame();
+    if (await this.dropTargetMismatch(targetBlock, insertAfter)) {
+      const rect = await targetBlock.first().boundingBox();
+      if (!rect) throw new Error('Could not get target block bounding box');
+      await this.page.mouse.move(
+        insertAfter ? rect.x + rect.width - 2 : rect.x + 2,
+        rect.y + rect.height / 2,
+        { steps: 3 },
+      );
+      await this.nextFrame();
+    }
+
+    // Step 6: Complete the drop (re-confirms the target before releasing)
+    await this.completeDrop(targetBlock, insertAfter, { checkPosition: false });
 
     return indicatorVisible;
   }

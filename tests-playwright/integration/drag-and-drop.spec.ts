@@ -423,6 +423,59 @@ test.describe('Block Drag and Drop', () => {
     await page.mouse.up();
   });
 
+  test('the drop indicator names the container the block will land in', async ({ page }) => {
+    // The drop goes to the nearest droppable edge at ANY nesting level, so
+    // the pointer can be on a block in one container while the drop lands in
+    // another; a line on a shared edge looks the same either way. The
+    // indicator names the destination, and carries the resolved target.
+    // Tall enough to show the dragged block and the column at once: a
+    // pointer moved outside the viewport overshoots to the top of the page.
+    await page.setViewportSize({ width: 1400, height: 1600 });
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/container-test-page');
+    const iframe = helper.getIframe();
+    for (const uid of ['text-1a', 'text-after']) {
+      await expect(iframe.locator(`[data-block-uid="${uid}"]`)).toBeInViewport();
+    }
+
+    await helper.clickBlockInIframe('text-after');
+    await helper.waitForBlockSelectedInAdmin('text-after');
+    const startPos = await helper.getToolbarDragIconCenterInPageCoords();
+    await page.mouse.move(startPos.x, startPos.y);
+    await page.mouse.down();
+    await helper.verifyDragShadowVisible();
+
+    // Over the middle of a text block inside a column: the drop goes into
+    // the column, and the indicator says so.
+    const inColumn = iframe.locator('[data-block-uid="text-1a"]');
+    const box = (await inColumn.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.75, { steps: 10 });
+
+    const indicator = iframe.locator('.volto-hydra-drop-indicator');
+    await expect(indicator).toBeVisible();
+    await expect(indicator).toHaveAttribute('data-drop-target', 'text-1a');
+    await expect(indicator).toHaveAttribute('data-drop-insert-after', 'true');
+    await expect(indicator.locator('.volto-hydra-drop-label')).toHaveText('Into Column');
+
+    // Whatever it resolves to, the label is that target's container.
+    const consistent = await iframe.locator('body').evaluate(() => {
+      const ind = document.querySelector('.volto-hydra-drop-indicator') as HTMLElement;
+      const map = (window as any).__hydraBridge.blockPathMap;
+      const info = map[ind.dataset.dropTarget!];
+      return {
+        label: ind.querySelector('.volto-hydra-drop-label')!.textContent,
+        expected: `Into ${info.containerTitle}`,
+        container: ind.dataset.dropContainer,
+        parentId: info.parentId,
+      };
+    });
+    expect(consistent.label).toBe(consistent.expected);
+    expect(consistent.container).toBe(consistent.parentId);
+
+    await page.mouse.up();
+  });
+
   test('can select another block after cancelling drag', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 
