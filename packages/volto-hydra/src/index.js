@@ -77,6 +77,7 @@ import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
 import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
+import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
 
 // The field types a `hydraRuleError` can land on. Volto looks a validator up by
@@ -111,6 +112,11 @@ const applyConfig = (config) => {
       method: hydraRuleErrorValidator,
     });
   }
+
+  // A text link picked from the object browser keeps the picked item beside
+  // its url (data.item), so a frontend can draw it from the item (a file's type
+  // and size) without fetching it again.
+  installLinkEditor(config);
 
   // Autosave the form to localStorage while editing, and offer it back if the
   // author returns to a page they left mid-edit. Volto ships the feature but
