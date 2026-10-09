@@ -4342,7 +4342,7 @@ export class AdminUIHelper {
    * after) and names the container it lands in. A position check alone passed
    * a drop that went to the container AROUND a small target: the nearest edge
    * at another nesting level won. "After X" and "before the block after X"
-   * in the same container are the same place. Returns null when it agrees,
+   * are the same gap. Returns null when it agrees,
    * else what the drop would really do.
    */
   async dropTargetMismatch(targetBlock: Locator, insertAfter: boolean): Promise<string | null> {
@@ -4360,20 +4360,25 @@ export class AdminUIHelper {
         const after = ind!.dataset.dropInsertAfter === 'true';
         const label = ind!.querySelector('.volto-hydra-drop-label')?.textContent ?? '';
         if (t === targetUid && after === insertAfter) return null;
-        const map = (window as any).__hydraBridge?.blockPathMap ?? {};
-        const a = map[targetUid];
-        const b = t ? map[t] : null;
-        if (a && b && a.parentId === b.parentId && a.region === b.region && after !== insertAfter) {
-          const order: string[] = [];
-          for (const el of document.querySelectorAll('[data-block-uid]')) {
+        // "After X" and "before Y" are the same gap when Y is the next block
+        // after X (and X's own contents) in the page — whichever containers
+        // they are in; the label says which one the drop takes.
+        if (t && after !== insertAfter) {
+          const first = (uid: string) => document.querySelector(`[data-block-uid="${uid}"]`);
+          const [before, next] = insertAfter ? [targetUid, t] : [t, targetUid];
+          const beforeEl = first(before);
+          const all = [...document.querySelectorAll('[data-block-uid]')];
+          const seen = new Set<string>();
+          let passed = false;
+          let following: string | null = null;
+          for (const el of all) {
             const uid = el.getAttribute('data-block-uid')!;
-            const info = map[uid];
-            if (info && info.parentId === a.parentId && info.region === a.region && !order.includes(uid)) {
-              order.push(uid);
-            }
+            if (seen.has(uid)) continue;
+            seen.add(uid);
+            if (uid === before) { passed = true; continue; }
+            if (passed && beforeEl && !beforeEl.contains(el)) { following = uid; break; }
           }
-          const gap = order.indexOf(t!) - order.indexOf(targetUid);
-          if ((insertAfter && gap === 1) || (!insertAfter && gap === -1)) return null;
+          if (following === next) return null;
         }
         return `the drop would land ${after ? 'after' : 'before'} ${t} (${label}), not ${
           insertAfter ? 'after' : 'before'
