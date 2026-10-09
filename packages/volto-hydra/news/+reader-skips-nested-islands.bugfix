@@ -1,0 +1,1 @@
+Reading a field back out of the page skips what a frontend drew that is not content (a non-editable island, or decoration) wherever it sits, including inside a wrapper around a link's text, so a file's type and size drawn there are no longer saved as text. @djay
