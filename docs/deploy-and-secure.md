@@ -105,13 +105,7 @@ The token is the editor's CMS session token, so its lifetime is set by the CMS. 
 
 ## A demo site's "try editing" link
 
-A public demo can send visitors straight into editing a page, without a login form. Inka signs in with the demo account you configure and opens the page in the editor. Set the account on the Inka server; it is read at runtime, so no rebuild is needed.
-
-### Link
-
-```text
-https://<your Inka>/login?demo&return_url=/some/page/edit
-```
+A public demo can send visitors straight into editing a page, without a login form: link to your Inka's `/login?demo&return_url=/some/page/edit`. Inka signs in with the demo account you configure and opens the page in the editor. Set the account on the Inka server; it is read at runtime, so no rebuild is needed.
 
 ### Settings
 
