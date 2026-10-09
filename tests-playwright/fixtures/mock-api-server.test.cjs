@@ -789,3 +789,58 @@ describe('@breadcrumbs', () => {
     assert.deepEqual(paths(page['@components'].breadcrumbs.items), ['/_test_data']);
   });
 });
+
+describe('@querystring-search: date operations', () => {
+  // The mock advertises date.largerThan / date.lessThan for its date indexes
+  // (/@querystring); a date-range filter sends them. Plone matches an item
+  // whose date is after (or before) the value, and never one with no date.
+  const AFTER = 'plone.app.querystring.operation.date.largerThan';
+  const BEFORE = 'plone.app.querystring.operation.date.lessThan';
+  const paths = (data) => data.items.map((i) => new URL(i['@id']).pathname);
+  const search = (o, v) =>
+    querystringSearch('/_test_data', {
+      query: [
+        { i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' },
+        { i: 'effective', o, v },
+      ],
+      b_size: 1000,
+    });
+
+  it('largerThan keeps items dated after the value, and none without a date', async () => {
+    const found = paths(await search(AFTER, '2024-06-01'));
+    assert.ok(found.includes('/_test_data/news'), `news (2024-11-01) should match: ${found}`);
+    assert.ok(!found.includes('/_test_data/news-test-page'), 'news-test-page (2023-01-15) should not match');
+  });
+
+  it('lessThan keeps items dated before the value', async () => {
+    const found = paths(await search(BEFORE, '2024-06-01'));
+    assert.ok(found.includes('/_test_data/news-test-page'), `news-test-page should match: ${found}`);
+    assert.ok(!found.includes('/_test_data/news'), 'news (2024-11-01) should not match');
+  });
+
+  it('an undated item matches neither', async () => {
+    const after = paths(await search(AFTER, '1900-01-01'));
+    const all = paths(
+      await querystringSearch('/_test_data', {
+        query: [{ i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' }],
+        b_size: 1000,
+      }),
+    );
+    assert.ok(after.length > 0 && after.length < all.length, `${after.length} dated of ${all.length}`);
+  });
+});
+
+describe('@querystring-search: sort_on sortable_title', () => {
+  // sortable_title is a catalog index made from the title (case folded); items
+  // carry no field of that name, so sorting on it must read the title.
+  it('orders results by title, A to Z', async () => {
+    const data = await querystringSearch('/_test_data', {
+      query: [{ i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' }],
+      sort_on: 'sortable_title',
+      b_size: 1000,
+    });
+    const titles = data.items.map((i) => String(i.title ?? '').toLowerCase());
+    assert.ok(titles.length > 2);
+    assert.deepEqual(titles, [...titles].sort());
+  });
+});

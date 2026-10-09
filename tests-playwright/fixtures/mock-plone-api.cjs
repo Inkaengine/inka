@@ -4980,6 +4980,23 @@ app.post('*/@querystring-search', (req, res) => {
             .includes(String(value).toLowerCase()),
         );
       }
+    } else if (
+      operation === 'plone.app.querystring.operation.date.largerThan' ||
+      operation === 'plone.app.querystring.operation.date.lessThan'
+    ) {
+      // A date index (effective, created, modified…): after or before the
+      // value, as a date-range filter asks. Like Plone's DateIndex, an item
+      // with no date matches neither.
+      const bound = new Date(value).getTime();
+      if (Number.isNaN(bound)) {
+        throw new Error(`[MOCK-API] @querystring-search: '${value}' is not a date (${index})`);
+      }
+      const after = operation.endsWith('largerThan');
+      allItems = allItems.filter((item) => {
+        if (!item[index]) return false;
+        const t = new Date(item[index]).getTime();
+        return after ? t > bound : t < bound;
+      });
     } else if (index === 'exclude_from_nav' && operation.includes('boolean')) {
       // Nav listings filter out items marked exclude_from_nav: true.
       // Mirrors Plone's plone.app.querystring.operation.boolean.{isFalse,isTrue}.
@@ -5035,9 +5052,13 @@ app.post('*/@querystring-search', (req, res) => {
       return allPaths.indexOf(aPath) - allPaths.indexOf(bPath);
     };
   } else if (sort_on) {
+    // sortable_title is an index Plone makes from the title (case folded);
+    // no item carries a field of that name.
+    const sortValue = (item) =>
+      sort_on === 'sortable_title' ? String(item.title ?? '').toLowerCase() : item[sort_on] || '';
     comparator = (a, b) => {
-      const aVal = a[sort_on] || '';
-      const bVal = b[sort_on] || '';
+      const aVal = sortValue(a);
+      const bVal = sortValue(b);
       return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
     };
   }
