@@ -11,6 +11,7 @@ import { syncCreateSlateBlock } from '@plone/volto-slate/utils/volto-blocks';
 import { getBlockById, updateBlockById, getResolvedSchema } from '../../utils/blockPath';
 import { calculateDragHandlePosition, PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef, isStarterUiField } from '@volto-hydra/helpers';
+import { starterPickerTakesFocus } from '../../utils/starterUi';
 import { isStyleAllowed } from '../../../../hydra-js/slateStyles.js';
 import { blockFormatButtons, paragraphStyleItems } from '../../utils/blockFormats';
 import { useDispatch, useSelector } from 'react-redux';
@@ -2164,6 +2165,9 @@ const SyncedSlateToolbar = ({
             data={{ url: '' }}
             theme={{}}
             objectBrowserPickerType="link"
+            // Not when the author clicked into one of the block's fields on the
+            // canvas: they are typing there (utils/starterUi).
+            autoFocus={starterPickerTakesFocus(blockUI)}
             onChangeValue={(url) => {
               if (onFieldLinkChange && url) {
                 // For object_browser link fields, convert URL to array format
