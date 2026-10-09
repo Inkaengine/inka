@@ -8338,12 +8338,23 @@ export class Bridge {
         else if (c.nodeType === Node.ELEMENT_NODE) {
           if (c.tagName === 'BR') {
             if (!this.isPlaceholderBr(c)) out += '\n';
-          } else walk(c);
+          } else if (!this.isNonContentIsland(c)) walk(c);
         }
       }
     };
     walk(el);
     return out;
+  }
+
+  /**
+   * An element the frontend drew that is not the author's content: a
+   * non-editable island (contenteditable="false" — words the frontend writes
+   * itself, such as a file's size after a link) or decoration (aria-hidden).
+   * Skipped wherever it sits — as a node's child or inside a wrapper around the
+   * author's text — so its text is never read into the value.
+   */
+  isNonContentIsland(el) {
+    return el.getAttribute('contenteditable') === 'false' || el.getAttribute('aria-hidden') === 'true';
   }
 
   /**
@@ -8488,10 +8499,7 @@ export class Bridge {
         const childNodeId = child.getAttribute('data-node-id');
         if (childNodeId && isValidNodeId(childNodeId)) {
           children.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets));
-        } else if (
-          child.getAttribute('contenteditable') === 'false' ||
-          child.getAttribute('aria-hidden') === 'true'
-        ) {
+        } else if (this.isNonContentIsland(child)) {
           // Non-editable / decorative island with no data-node-id — e.g. a
           // frontend's external-link icon after a link's text, or any generated
           // chrome the editor should ignore. `contenteditable="false"` is the
