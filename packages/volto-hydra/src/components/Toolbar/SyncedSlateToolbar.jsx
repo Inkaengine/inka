@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, Component } from 'react';
-import { Slate, ReactEditor, useSlate } from 'slate-react';
+import { ReactEditor, useSlate } from 'slate-react';
+import SlateForValue from './SlateForValue';
 import { Transforms, Node, Range, Editor, Element, Point } from 'slate';
 import { isEqual, cloneDeep } from 'lodash';
 import config from '@plone/volto/registry';
@@ -1690,7 +1691,7 @@ const SyncedSlateToolbar = ({
           onClickCapture={handleButtonClickCapture}
         >
             <SlateErrorBoundary>
-              <Slate
+              <SlateForValue
                 editor={editor}
                 initialValue={currentValue}
                 onChange={handleChange}
@@ -1717,7 +1718,7 @@ const SyncedSlateToolbar = ({
               {persistentHelpers.map((Helper, idx) => (
                 <Helper key={idx} editor={editor} />
               ))}
-              </Slate>
+              </SlateForValue>
             </SlateErrorBoundary>
           </div>
       )}

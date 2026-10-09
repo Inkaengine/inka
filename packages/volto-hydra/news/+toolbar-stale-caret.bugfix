@@ -1,0 +1,1 @@
+Adding or selecting a rich-text block no longer crashes the admin when the block edited before left its caret past formatting ("Cannot find a descendant at path"). The toolbar's Slate editor is drawn again for each rich-text block and took the new block's text under the old caret; a caret the new text has no point for is now dropped as the text goes in.
