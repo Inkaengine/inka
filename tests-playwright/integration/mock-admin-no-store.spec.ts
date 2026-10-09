@@ -18,9 +18,27 @@ test.describe('the editor\'s pages and a shared cache', () => {
     expect(res.headers()['cache-control']).toBe('no-store');
   });
 
-  test('a page that is not there is no-store too', async ({ request }) => {
+  /**
+   * A path with no content behind it gets the same header.
+   *
+   * 200, not 404, and that is the architecture rather than a shortcoming: Inka
+   * is client-side only. The admin reads its CMS through the frontend's
+   * adapter, over the bridge, in the browser — on the server it does not even
+   * know WHICH CMS is in play, because that arrives in the adapter's
+   * announcement (see the Api shadow, which throws rather than quietly
+   * answering a server-side read from the build's own apiPath). So the server
+   * serves the shell for every path and the not-found page is rendered by
+   * Volto in the browser, by which time the status line is long gone.
+   *
+   * Which leaves the header as the whole point, and it is the same point: the
+   * response for a path that does not exist must not be kept by a shared cache
+   * either. Volto's own not-found page asks for `no-cache`, so when this WAS
+   * server-rendered the status was how the test reached that page; now it is
+   * simply the shell.
+   */
+  test('a path with nothing behind it is no-store too', async ({ request }) => {
     const res = await request.get(`${URLS.voltoSsr}/no-such-page-anywhere`);
-    expect(res.status()).toBe(404);
+    expect(res.status()).toBe(200);
     expect(res.headers()['cache-control']).toBe('no-store');
   });
 });
