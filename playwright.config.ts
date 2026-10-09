@@ -431,6 +431,9 @@ export default defineConfig({
               URLS.vueDoc, URLS.nextjs, URLS.f7, URLS.astroDoc,
             ].join(','),
             VOLTOCONFIG: process.cwd() + '/volto.config.js',
+            // The demo account a ?demo login link signs in with (authentication.spec).
+            RAZZLE_DEMO_LOGIN: 'demo',
+            RAZZLE_DEMO_PASSWORD: 'demo',
           },
         }
       : {
@@ -457,6 +460,8 @@ export default defineConfig({
               URLS.vueDoc, URLS.nextjs, URLS.f7, URLS.astroDoc,
             ].join(','),
             VOLTOCONFIG: process.cwd() + '/volto.config.js',
+            RAZZLE_DEMO_LOGIN: 'demo',
+            RAZZLE_DEMO_PASSWORD: 'demo',
             // Prevent parcel from trying to access TTY (fixes segfault in background process)
             CI: process.env.CI || 'true',
           },

@@ -103,6 +103,19 @@ The token is the editor's CMS session token, so its lifetime is set by the CMS. 
 - Serve everything over HTTPS.
 - Keep the CMS token lifetime short, and let editors sign out when they finish.
 
+## A demo site's "try editing" link
+
+A public demo can send visitors straight into editing a page, without a login form: link to your Inka's `/login?demo&return_url=/some/page/edit`. Inka signs in with the demo account you configure and opens the page in the editor. Set the account on the Inka server; it is read at runtime, so no rebuild is needed.
+
+### Settings
+
+```text
+RAZZLE_DEMO_LOGIN=demo
+RAZZLE_DEMO_PASSWORD=…
+```
+
+**These reach the browser** (every `RAZZLE_` setting does), so treat the account as public: it must be one whose saves the CMS throws away (for Plone, a subscriber that dooms every transaction the account makes), or a backend nobody else reads. Without both settings, a `?demo` link shows the login form with a message saying the editor has no demo account.
+
 ## Pin the bridge to Inka's origin
 
 The bridge learns Inka's origin from the iframe name. It sends messages only to that origin, and accepts messages only from that origin or from its own page. Inka, for its part, acts only on messages from the origin of the front end it opened.

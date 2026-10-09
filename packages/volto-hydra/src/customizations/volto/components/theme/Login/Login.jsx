@@ -24,6 +24,8 @@ import aheadSVG from '@plone/volto/icons/ahead.svg';
 import clearSVG from '@plone/volto/icons/clear.svg';
 import { getURlsFromEnv } from '../../../../../utils/getSavedURLs';
 import getDomainInitials from '../../../../../utils/getDomainInitials';
+import { demoAccount } from '../../../../../utils/demoAccount';
+import { runtimeConfig } from '@plone/volto/runtime_config';
 
 const messages = defineMessages({
   login: {
@@ -77,8 +79,13 @@ const Login = (props) => {
   const token = useSelector((state) => state.userSession.token, shallowEqual);
   const error = useSelector((state) => state.userSession.login.error);
   const loading = useSelector((state) => state.userSession.login.loading);
+  const query = qs.parse(props.location?.search ?? location.search);
+  // HYDRA: a demo site's "try editing" link (/login?demo&return_url=…) signs in
+  // with the site's demo account, so the visitor never sees this form.
+  const demoRequested = 'demo' in query;
+  const demo = demoRequested ? demoAccount(runtimeConfig) : null;
   const returnUrl =
-    qs.parse(props.location?.search ?? location.search).return_url ||
+    query.return_url ||
     location.pathname.replace(/\/login\/?$/, '').replace(/\/logout\/?$/, '') ||
     '/';
 
@@ -124,6 +131,14 @@ const Login = (props) => {
     location?.state?.isLogout,
   ]);
 
+  const demoLogin = demo?.login;
+  const demoPassword = demo?.password;
+  useEffect(() => {
+    if (demoLogin && !token && !loading && !error) {
+      dispatch(login(demoLogin, demoPassword));
+    }
+  }, [demoLogin, demoPassword, token, loading, error, dispatch]);
+
   const onLogin = (event) => {
     dispatch(
       login(
@@ -133,6 +148,16 @@ const Login = (props) => {
     );
     event.preventDefault();
   };
+  // Signing in with the demo account: say so instead of showing the form.
+  if (demo && !error) {
+    return (
+      <div id="page-login">
+        <Container>
+          <p style={{ margin: '3em 0', textAlign: 'center' }}>Opening the editor…</p>
+        </Container>
+      </div>
+    );
+  }
   /**
    * Updated the Login Component to show a message about the Hydra project
    */
@@ -149,6 +174,12 @@ const Login = (props) => {
                 </a>
                 <Header.Subheader>Headless Visual Editor</Header.Subheader>
               </Header>
+              {demoRequested && !demo ? (
+                <p role="alert" style={{ margin: '1em 0', color: '#a00' }}>
+                  This editor has no demo account to sign in with (RAZZLE_DEMO_LOGIN and
+                  RAZZLE_DEMO_PASSWORD are not set).
+                </p>
+              ) : null}
               <p style={{ margin: '1em 0 0.5em' }}>Editor for</p>
               <div style={{ display: 'flex', gap: '0.75em', flexWrap: 'wrap' }}>
                 {getURlsFromEnv().map(({ url, name }) => {

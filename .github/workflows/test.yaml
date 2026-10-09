@@ -328,6 +328,7 @@ jobs:
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           sleep 3
       - name: Wait for servers
@@ -444,6 +445,7 @@ jobs:
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           (cd examples/hydra-nextjs && pnpm run start:test) &
           sleep 3
@@ -677,6 +679,7 @@ jobs:
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
           sleep 3
