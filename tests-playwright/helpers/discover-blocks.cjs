@@ -127,8 +127,11 @@ function buildEmptyRegionCases(blocksConfig, blocks) {
     if (!example) continue;
     cases.push({ parentType, field, pagePath: example.pagePath, blockId: example.blockId });
   }
-  const templated = new Set((blocks || []).filter((b) => b.blockData?.templateId).map((b) => b.pagePath));
+  // A page holding template content — by the same test as the examples above: a
+  // definition need not name itself, so a templateId alone misses one.
+  const templated = new Set((blocks || []).filter(isTemplated).map((b) => b.pagePath));
   const plainPage = [...new Set((blocks || []).map((b) => b.pagePath))]
+    .filter(Boolean)
     .sort()
     .find((p) => !templated.has(p) && p.startsWith('/_test_data/'));
   if (plainPage) cases.push({ parentType: 'page', field: '*', pagePath: plainPage, blockId: '_page' });

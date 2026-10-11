@@ -1181,6 +1181,39 @@ test.describe('Template Edit Mode - Validation', () => {
     await expect(page2Header).toContainText('edited', { timeout: 15000 });
   });
 
+  // A definition need not name itself (its blocks carry slotId / fixed / readOnly,
+  // no templateId): templates/unlabelled-layout is templates/test-layout with every
+  // self-label removed, and its pages name it by path (/_test_data/templates/unlabelled-layout). Editing it from a page and
+  // committing ("Change on all pages") must save into it exactly as into a labelled one.
+  test('saved changes to a template that does not name itself persist to other pages', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/unlabelled-template-page');
+
+    const iframe = helper.getIframe();
+    const { blockId: headerBlockId, locator: headerLocator } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
+
+    await helper.unlockTemplate(headerBlockId);
+    await helper.clickBlockInIframe(headerBlockId);
+    const editor = helper.getSlateField(headerLocator);
+    await expect(editor).toHaveAttribute('contenteditable', 'true', { timeout: 5000 });
+    await editor.click();
+    await expect(editor).toBeFocused({ timeout: 2000 });
+    await page.keyboard.press('End');
+    await page.keyboard.type(' - edited unlabelled');
+    await expect(iframe.locator(`[data-block-uid="${headerBlockId}"]`)).toContainText('edited unlabelled', { timeout: 5000 });
+
+    await helper.lockTemplate(headerBlockId, 'commit');
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('.toolbar-actions .edit, [aria-label="Edit"]')).toBeVisible({ timeout: 10000 });
+
+    // The other page using the template shows the edit: it was saved into the template.
+    await helper.navigateToView('/unlabelled-template-page-2');
+    const { locator: page2Header } = await helper.waitForBlockByContent('edited unlabelled');
+    await expect(page2Header).toContainText(`${TEMPLATE_HEADER_CONTENT} - edited unlabelled`, { timeout: 15000 });
+  });
+
   test('saved NESTED template changes (a block inside a container) persist to other pages', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 
