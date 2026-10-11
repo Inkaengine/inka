@@ -280,7 +280,7 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
   }
   for (const entry of listedBlobs) {
     if (!fs.existsSync(path.join(contentDir, entry))) {
-      errors.push(`  ${entry} in _blob_files_ but missing from disk`);
+      missingBlob(`  ${entry} in _blob_files_ but missing from disk`);
     }
   }
 
