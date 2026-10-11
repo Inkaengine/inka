@@ -3879,6 +3879,79 @@ function fillContainerInto(stamped, tplBlock, templateState, options) {
  * @param {Array} extraTemplateIds - Additional template IDs to fetch (e.g. forced layouts not referenced in page data)
  * @returns {Promise<Object>} Map of templateId -> template data (includes preloaded + newly fetched)
  */
+/**
+ * A template's identity is the id it was referenced by, never data stored inside it.
+ *
+ * Returns the template with its own definition blocks labelled `id`, at every depth.
+ * Which blocks are its own depends on whether the template labels itself:
+ *
+ * - It does (the first templateId in layout order is its label): the blocks carrying
+ *   that label, whatever it says — a definition may name an address it no longer has
+ *   (moved, renamed, served under a mount prefix). An unlabelled block in such a
+ *   template is still malformed, and the merge still drops it.
+ * - It doesn't: every block with a slotId. A definition need not name itself — where
+ *   it lives already says what it is.
+ *
+ * Blocks naming a different template are nested templates, left as they are with
+ * their content. The input is not modified; when nothing needs relabelling the same
+ * object is returned. Memoized per (template, id).
+ *
+ * @param {Object} template - Template document data
+ * @param {string} id - The id the template was referenced by
+ * @returns {Object} The template, adopted under `id`
+ */
+const adoptedTemplates = new WeakMap();
+export function adoptTemplate(template, id) {
+  if (!template || typeof template !== 'object' || !id) return template;
+  let byId = adoptedTemplates.get(template);
+  if (byId?.has(id)) return byId.get(id);
+
+  // The template's own label, if it stored one: the first templateId in layout order.
+  let ownLabel = null;
+  for (const blockId of allRegionIds(template.blocks_layout)) {
+    const label = template.blocks?.[blockId]?.templateId;
+    if (label) {
+      ownLabel = label;
+      break;
+    }
+  }
+  const isDefinitionBlock = (block) =>
+    ownLabel ? block.templateId === ownLabel : !block.templateId && Boolean(block.slotId);
+
+  const adopt = (value) => {
+    if (Array.isArray(value)) {
+      const items = value.map(adopt);
+      return items.some((item, i) => item !== value[i]) ? items : value;
+    }
+    if (!value || typeof value !== 'object') return value;
+    const isBlock = typeof value['@type'] === 'string' || 'slotId' in value;
+    if (isBlock && value.templateId && value.templateId !== ownLabel) {
+      return value; // a nested template, with its own content
+    }
+    let out = value;
+    for (const [key, child] of Object.entries(value)) {
+      const next = adopt(child);
+      if (next !== child) {
+        if (out === value) out = { ...value };
+        out[key] = next;
+      }
+    }
+    if (isBlock && isDefinitionBlock(value) && value.templateId !== id) {
+      if (out === value) out = { ...value };
+      out.templateId = id;
+    }
+    return out;
+  };
+
+  const adopted = adopt(template);
+  if (!byId) {
+    byId = new Map();
+    adoptedTemplates.set(template, byId);
+  }
+  byId.set(id, adopted);
+  return adopted;
+}
+
 export async function loadTemplates(
   data,
   loadTemplate,
@@ -3896,8 +3969,8 @@ export async function loadTemplates(
   const component = data?.['@components']?.templates;
   if (component?.templates) {
     for (const [id, template] of Object.entries(component.templates)) {
-      templates[id] = template;
-      preloadedTemplates[id] = template;
+      templates[id] = adoptTemplate(template, id);
+      preloadedTemplates[id] = templates[id];
       loaded.add(id);
     }
   }
@@ -3994,11 +4067,12 @@ export async function loadTemplates(
     for (const { id, template, error } of results) {
       if (template) {
         loaded.add(id);
-        templates[id] = template;
-        preloadedTemplates[id] = template; // Write back to caller's cache
+        templates[id] = adoptTemplate(template, id);
+        preloadedTemplates[id] = templates[id]; // Write back to caller's cache
 
-        // Scan this template for nested template references
-        const nestedIds = collectTemplateIds(template);
+        // Scan this template for nested template references (its own blocks now
+        // carry `id`, already loaded, so it never asks for itself again)
+        const nestedIds = collectTemplateIds(templates[id]);
         for (const nestedId of nestedIds) {
           if (!loaded.has(nestedId) && !failed.has(nestedId)) {
             pending.add(nestedId);
@@ -4662,7 +4736,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
 
   // Load template from pre-loaded map, falling back to sync loadTemplate callback.
   if (!ctx.template) {
-    let template = templates[templateId];
+    let template = adoptTemplate(templates[templateId], templateId);
     if (!template && loadTemplate) {
       template = loadTemplate(templateId);
       if (!template || typeof template.then === 'function') {
@@ -4670,6 +4744,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
           `loadTemplate for "${templateId}" must return data synchronously, not a Promise. Use expandTemplates() for async loading, or pre-load templates via loadTemplates().`,
         );
       }
+      template = adoptTemplate(template, templateId);
       templates[templateId] = template;
     }
     if (!template) {

@@ -402,6 +402,40 @@ describe('plone-content-validator validate()', () => {
 });
 
 describe('plone-content-validator checkIntegrity()', () => {
+  // A template definition need not name itself: its blocks hold slots and no
+  // templateId, and where it lives already says what it is.
+  describe('a definition that does not name itself', () => {
+    const definition = {
+      '@id': '/templates/frame', '@type': 'Document', id: 'frame', UID: 'frame-uid',
+      blocks: {
+        head: { '@type': 'slate', fixed: true, readOnly: true, slotId: 'head' },
+        body: { '@type': 'slate', fixed: false, slotId: 'body' },
+      },
+      blocks_layout: { items: ['head', 'body'] },
+    };
+    const page = (fill) => ({
+      '@id': '/p', '@type': 'Document', id: 'p', UID: 'page-uid',
+      blocks: { f: { '@type': 'slate', templateId: '/templates/frame', slotId: 'body', fixed: false, ...fill } },
+      blocks_layout: { items: ['f'] },
+    });
+    const fillErrors = (items) =>
+      checkIntegrity(items).errors.filter((e) => e.includes('fills template'));
+
+    it('is not reported as a page filling a template', () => {
+      assert.deepEqual(fillErrors([{ rel: '/templates/frame', data: definition }]), []);
+    });
+
+    it('still has the pages that fill it checked', () => {
+      const items = (fill) => [
+        { rel: '/templates/frame', data: definition },
+        { rel: '/p', data: page(fill) },
+      ];
+      assert.deepEqual(fillErrors(items({ readOnly: false })), []);
+      const missing = fillErrors(items({}));
+      assert.ok(missing.some((e) => e.includes('/p') && e.includes('missing readOnly')), missing.join('\n'));
+    });
+  });
+
   it('flags broken resolveuid refs', () => {
     const { root, contentDir } = buildFixture({
       pageA: {
