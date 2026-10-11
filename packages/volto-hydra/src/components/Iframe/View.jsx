@@ -274,7 +274,7 @@ import { getBlockTypeSchema } from '../../utils/blockPath';
 import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
-import { canContainAll, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
+import { adoptTemplate, canContainAll, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage } from '../../utils/mergeTemplates.mjs';
 import {
   applySchemaDefaultsToFormData,
@@ -4325,7 +4325,8 @@ const Iframe = (props) => {
               return templateCacheRef.current[templateId];
             }
             // Load from API and cache
-            const template = await api.get(templateId);
+            // A template is the id it was referenced by (adoptTemplate).
+            const template = adoptTemplate(await api.get(templateId), templateId);
             templateCacheRef.current[templateId] = template;
             return template;
           };
@@ -4398,7 +4399,7 @@ const Iframe = (props) => {
         await Promise.all(
           unloadedTemplates.map(async (templateId) => {
             try {
-              const template = await api.get(templateId);
+              const template = adoptTemplate(await api.get(templateId), templateId);
               newTemplates[templateId] = template;
             } catch (error) {
               console.warn(`[INITIAL_DATA] Failed to fetch template ${templateId}:`, error.status || error);
@@ -4424,7 +4425,7 @@ const Iframe = (props) => {
             return templateCacheRef.current[templateId];
           }
           // Load from API and cache
-          const template = await api.get(templateId);
+          const template = adoptTemplate(await api.get(templateId), templateId);
           templateCacheRef.current[templateId] = template;
           return template;
         };
@@ -5105,7 +5106,10 @@ const Iframe = (props) => {
     }
     if (editTemplateId && !templateCacheRef.current[editTemplateId]?._isNew) {
       try {
-        templateCacheRef.current[editTemplateId] = await new Api().get(editTemplateId);
+        templateCacheRef.current[editTemplateId] = adoptTemplate(
+          await new Api().get(editTemplateId),
+          editTemplateId,
+        );
       } catch {
         // Offline / 404 — keep whatever's cached rather than dropping it.
       }

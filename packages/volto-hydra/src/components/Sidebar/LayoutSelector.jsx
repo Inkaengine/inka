@@ -10,7 +10,7 @@
 import React from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { v4 as uuid } from 'uuid';
-import { templateIdToPath } from '@volto-hydra/helpers';
+import { adoptTemplate, templateIdToPath } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage } from '../../utils/mergeTemplates.mjs';
 import Api from '@plone/volto/helpers/Api/Api';
 import config from '@plone/volto/registry';
@@ -124,7 +124,8 @@ const LayoutSelector = ({
       // Use mergeTemplatesIntoPage with the selected layout as the only allowedLayout
       // This forces that layout to be applied (or removed if null)
       const { merged: newFormData } = await mergeTemplatesIntoPage(formData, {
-        loadTemplate: async (templateId) => api.get(templateId),
+        loadTemplate: async (templateId) =>
+          adoptTemplate(await api.get(templateId), templateId),
         pageBlocksFields: { items: { allowedLayouts: [layoutToApply] } },
         uuidGenerator: uuid,
         firstInsert: true,
