@@ -772,13 +772,19 @@ function imageDimensions(file) {
   // would just be a second implementation to be wrong in a second way.
   {
     // slotId -> fixed, per template, from the template's own blocks at any depth.
+    // A template is a document whose top-level blocks name it, or — a definition need
+    // not name itself — whose top-level blocks hold slots and name no template at all.
+    const isTemplateDoc = (data) => {
+      const blocks = data.blocks || {};
+      const top = ((data.blocks_layout || {}).items || []).map((bid) => blocks[bid]).filter(Boolean);
+      const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
+      if (top.some((block) => own.includes(block.templateId))) return true;
+      return top.some((block) => block.slotId) && !top.some((block) => block.templateId);
+    };
     const templateChrome = new Map(); // templateRef -> Map(slotId -> fixed)
     for (const { data } of items) {
-      const blocks = data.blocks || {};
-      const top = (data.blocks_layout || {}).items || [];
       const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
-      const isTemplate = top.some((bid) => blocks[bid] && own.includes(blocks[bid].templateId));
-      if (!isTemplate) continue;
+      if (!isTemplateDoc(data)) continue;
       const slots = new Map();
       const collect = (container) => {
         for (const [, block] of Object.entries(container.blocks || {})) {
@@ -792,10 +798,7 @@ function imageDimensions(file) {
     }
 
     for (const { rel, data } of items) {
-      const top = (data.blocks_layout || {}).items || [];
-      const blocks = data.blocks || {};
-      const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
-      if (top.some((bid) => blocks[bid] && own.includes(blocks[bid].templateId))) continue; // a template, not an instance
+      if (isTemplateDoc(data)) continue; // a template, not an instance
       const check = (container) => {
         for (const [bid, block] of Object.entries(container.blocks || {})) {
           if (!block || typeof block !== 'object') continue;

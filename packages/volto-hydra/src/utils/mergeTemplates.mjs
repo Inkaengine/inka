@@ -5,7 +5,7 @@
  * @plone/volto) so that unit tests in hydra-js can import it directly.
  */
 
-import { expandTemplates } from '@volto-hydra/helpers';
+import { expandTemplates, adoptTemplate } from '@volto-hydra/helpers';
 
 /**
  * Merge templates into page data. Expands template references in every blocks field via
@@ -92,6 +92,17 @@ function stampDefinitionInstanceIds(block, isOwnTemplate) {
   return next;
 }
 
+function adoptUnlabelledDefinition(page) {
+  const topLevel = Object.values(page?.blocks_layout || {})
+    .flatMap((ids) => (Array.isArray(ids) ? ids : []))
+    .map((id) => page.blocks?.[id])
+    .filter(Boolean);
+  const isDefinition =
+    topLevel.some((block) => block.slotId) && !topLevel.some((block) => block.templateId);
+  if (!isDefinition || !page['@id']) return { ...page };
+  return { ...adoptTemplate(page, new URL(page['@id'], 'http://x').pathname) };
+}
+
 export async function mergeTemplatesIntoPage(page, options = {}) {
   const {
     loadTemplate,
@@ -104,7 +115,11 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
     idFieldMap,
   } = options;
 
-  let result = { ...page };
+  // A definition need not name itself: opened for editing, a document whose top-level
+  // blocks hold slots but name no template IS a template definition. Label its own
+  // blocks with its path (adoptTemplate — the same rule a template applied to a page
+  // follows), so it comes up exactly as a definition that names itself does.
+  let result = skipOwnTemplate ? adoptUnlabelledDefinition(page) : { ...page };
   const allNewTemplateIds = new Set();
 
   // Expand one page-level blocks field via the PUBLIC merge. That merge fully expands

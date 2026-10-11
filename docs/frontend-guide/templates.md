@@ -94,6 +94,16 @@ The slot a block lives in is identified by its `slotId`. This is the field name 
 
 </block>
 
+## A template is the id it was referenced by
+
+A template's identity comes from where it was loaded from, never from data stored inside it. A definition **need not name itself**: its blocks can carry just `slotId`, `fixed` and `readOnly`, with no `templateId`, because where the document lives already says what it is. Pages that use a template still name it in their blocks' `templateId`.
+
+When a page's template is loaded under an id (a path, a URL or a `resolveuid`), Inka gives the template's own blocks that id (`adoptTemplate`). So a template keeps working when it is moved, renamed, or served under a different prefix, and a definition that does name itself is relabelled with the id the page used, whatever its label says. Blocks that name a *different* template are nested templates and keep their own id.
+
+A template either names itself or it doesn't. In one that does, an unlabelled nested block is still malformed and is dropped. In one that doesn't, every block with a `slotId` belongs to it.
+
+Opened for editing, a document whose top-level blocks hold slots but name no template is a definition: it comes up as itself, with the unlock toggle, like one that names itself. Saving it from the editor stores its path on those blocks, which stays valid if it moves.
+
 ## Editing a template (central control)
 
 The point of a template is that its locked parts are authored **once** and update **everywhere**. Templates are stored as their own normal content documents; a page only *references* one — its blocks carry the `templateId`. On render the merge injects the template's `fixed` / `fixed+readOnly` blocks and fills the slots with the page's own content.
