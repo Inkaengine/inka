@@ -396,6 +396,22 @@ function isOwnDefinition(content, templateId) {
 }
 
 /**
+ * Is this document a template definition that does not name itself? A definition
+ * need not: its top-level blocks hold slots and name no template at all (the same
+ * test the editor's merge uses when the document is opened).
+ *
+ * @param {Object} content - The page JSON
+ * @returns {boolean}
+ */
+function isUnlabelledDefinition(content) {
+  const top = Object.values(content?.blocks_layout || {})
+    .flatMap((ids) => (Array.isArray(ids) ? ids : []))
+    .map((id) => content.blocks?.[id])
+    .filter(Boolean);
+  return top.some((block) => block.slotId) && !top.some((block) => block.templateId);
+}
+
+/**
  * Can an author edit this instance, and what does it take? Only an editable
  * instance is a valid subject for the sanity checks, which click a field and
  * require it to become editable.
@@ -437,7 +453,9 @@ function isOwnDefinition(content, templateId) {
  */
 function editableInstance(content, blockData) {
   const templateId = blockData?.templateId;
-  const onOwnDefinition = isOwnDefinition(content, templateId);
+  const onOwnDefinition =
+    isOwnDefinition(content, templateId) ||
+    (!templateId && Boolean(blockData?.slotId) && isUnlabelledDefinition(content));
   // Template CHROME (`fixed` or `readOnly`) as opposed to slot CONTENT (neither,
   // and the author's own). A `fixed` member is re-inserted from the template on
   // every render — "copy block content from a page block with the same slotId" —
@@ -1972,6 +1990,7 @@ async function discoverBlocks(
 
 module.exports = {
   paragraphShapeOf,
+  editableInstance,
   // Exported so the content validator asks the same question this does — a
   // second list of "fields that are not schema fields" would drift, and the
   // drift would show up as a validator shouting about `slotId` on every block.
