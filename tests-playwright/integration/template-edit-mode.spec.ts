@@ -1208,10 +1208,13 @@ test.describe('Template Edit Mode - Validation', () => {
     await page.keyboard.press('Control+s');
     await expect(page.locator('.toolbar-actions .edit, [aria-label="Edit"]')).toBeVisible({ timeout: 10000 });
 
-    // The other page using the template shows the edit: it was saved into the template.
+    // The other page using the template shows the edit in its template header: it
+    // was saved into the template. (Where End leaves the caret differs by frontend,
+    // so the typed words are asserted, not their position.)
     await helper.navigateToView('/unlabelled-template-page-2');
     const { locator: page2Header } = await helper.waitForBlockByContent('edited unlabelled');
-    await expect(page2Header).toContainText(`${TEMPLATE_HEADER_CONTENT} - edited unlabelled`, { timeout: 15000 });
+    await expect(page2Header).toHaveAttribute('data-block-uid', 'page2-template-header');
+    await expect(page2Header).toContainText('edited unlabelled', { timeout: 15000 });
   });
 
   test('saved NESTED template changes (a block inside a container) persist to other pages', async ({ page }) => {
