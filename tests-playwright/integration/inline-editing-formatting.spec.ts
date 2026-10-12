@@ -198,6 +198,30 @@ test.describe('Inline Editing - Formatting', () => {
     expect(await editor.textContent()).toContain('Toggle bold text');
   });
 
+  test('Clear formatting removes the formats from the selection', async ({ page }) => {
+    // volto-slate's default toolbar has no Clear formatting; the test frontend
+    // offers it on this page, as a design system's frontend does.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/clear-formatting-page');
+    const blockId = 'target';
+    await helper.clickBlockInIframe(blockId);
+    await helper.waitForBlockSelectedInAdmin(blockId);
+    const editor = await helper.getEditorLocator(blockId);
+    await expect(editor.locator(helper.getFormatSelector('bold'))).toHaveText('Bold words');
+
+    await helper.selectAllTextInEditor(editor);
+    await helper.assertTextSelection(editor, 'Bold words and plain words', {
+      shouldExist: true,
+      shouldBeCollapsed: false,
+      message: 'the whole line is selected before clearing',
+    });
+    await page.locator('.quanta-toolbar [data-toolbar-button="clearformatting"] a, .quanta-toolbar [data-toolbar-button="clearformatting"] button').first().click();
+
+    await expect(editor.locator(helper.getFormatSelector('bold'))).toHaveCount(0);
+    expect(await helper.getCleanTextContent(editor)).toBe('Bold words and plain words');
+  });
+
   test('format persists after typing', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 

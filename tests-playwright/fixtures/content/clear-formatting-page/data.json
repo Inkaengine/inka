@@ -1,0 +1,50 @@
+{
+  "@id": "http://localhost:8888/clear-formatting-page",
+  "@type": "Document",
+  "UID": "clear-formatting-page-uid",
+  "id": "clear-formatting-page",
+  "title": "Clear Formatting Page",
+  "description": "The test frontend offers Clear formatting in the toolbar on this page only (volto-slate's default toolbar has no such button; a frontend adds it to settings.slate.toolbarButtons).",
+  "review_state": "published",
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "target": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": ""
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Bold words"
+                }
+              ]
+            },
+            {
+              "text": " and plain words"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Bold words and plain words"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "target"
+    ]
+  }
+}
