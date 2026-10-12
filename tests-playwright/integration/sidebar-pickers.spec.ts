@@ -364,9 +364,14 @@ test.describe('Sidebar pickers', () => {
       'every vocabulary the site lists',
     ).toEqual([
       'collective.volto.formsupport.captcha.providers',
+      'plone.app.vocabularies.Groups',
       'plone.app.vocabularies.Keywords',
       'plone.app.vocabularies.MetadataFields',
       'plone.app.vocabularies.ReallyUserFriendlyTypes',
+      'plone.app.vocabularies.Roles',
+      'plone.app.vocabularies.WorkflowStates',
+      'plone.app.vocabularies.WorkflowTransitions',
+      'plone.contentrules.events',
     ]);
 
     // Set through the helper, which asserts the control actually took the value
