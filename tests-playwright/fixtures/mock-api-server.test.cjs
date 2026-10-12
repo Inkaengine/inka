@@ -863,3 +863,35 @@ describe('@search: catalog metadata of a file', () => {
     assert.deepEqual(item.listCreators, ['jane.author']);
   });
 });
+
+describe('GET @search sorted by folder order', () => {
+  // The Contents view lists a folder's children with
+  // sort_on=getObjPositionInParent. Markdown content has no exportimport
+  // ordering to arrive in: its order is the folder's `order:` frontmatter
+  // (docs/index.md here), so the search has to sort on the position.
+  const ORDER = [
+    'architecture', 'deploy-and-secure', 'frontend-guide', 'editor-guide',
+    'compliance', 'adapters', 'testing', 'examples',
+  ];
+
+  async function childIds(query) {
+    await require('./mock-plone-api.cjs').ready;
+    const res = await fetch(`${baseUrl}/docs/@search?path.depth=1&${query}`, {
+      headers: { Accept: 'application/json' },
+    });
+    assert.equal(res.status, 200);
+    const { items } = await res.json();
+    return items.map((i) => i['@id'].split('/').pop()).filter((id) => ORDER.includes(id));
+  }
+
+  it('lists a markdown folder in its `order:`', async () => {
+    assert.deepEqual(await childIds('sort_on=getObjPositionInParent'), ORDER);
+  });
+
+  it('descending reverses it', async () => {
+    assert.deepEqual(
+      await childIds('sort_on=getObjPositionInParent&sort_order=descending'),
+      [...ORDER].reverse(),
+    );
+  });
+});
