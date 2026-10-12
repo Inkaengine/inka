@@ -5404,12 +5404,18 @@ app.get('*/@search', (req, res) => {
   // which is indistinguishable from a sort the ADMIN failed to send, and hid
   // the question of whether the admin sends it at all.
   //
-  // getObjPositionInParent is the folder's own order, which is how the items
-  // already arrive; every other index sorts on the metadata field of that
-  // name, and sort_order: descending reverses the whole result, as in the
-  // querystring-search handler above.
+  // getObjPositionInParent is the folder's own order. JSON content arrives in
+  // it already (exportimport ordering), but markdown content does not: its
+  // order is the folder's `order:` frontmatter, kept as each item's position,
+  // so it is sorted on. An item the folder does not order goes last, as the
+  // catalog puts an unpositioned item. Every other index sorts on the
+  // metadata field of that name, and sort_order: descending reverses the
+  // whole result, as in the querystring-search handler above.
   const sortOn = req.query.sort_on;
-  if (sortOn && sortOn !== 'getObjPositionInParent') {
+  if (sortOn === 'getObjPositionInParent') {
+    const position = (item) => uidPositionMap[item.UID] ?? Number.MAX_SAFE_INTEGER;
+    items = [...items].sort((a, b) => position(a) - position(b));
+  } else if (sortOn) {
     items = [...items].sort((a, b) => {
       const x = a[sortOn] ?? '';
       const y = b[sortOn] ?? '';
