@@ -1288,40 +1288,62 @@ function buildBreadcrumbsComponent(cleanPath, baseUrl) {
 
 function buildActionsComponent(cleanPath, baseUrl, sessionId) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  const isRoot = cleanPath === '/';
+  // Folderish unless the content says otherwise — the rule the rest of this
+  // mock uses. The site root and any folder can hold content rules
+  // (plone.app.contentrules marks them IRuleAssignable).
+  const folderish = isRoot || loadRawContentFromDisk(cleanPath)?.is_folderish !== false;
+  const folderUrl = folderish ? fullUrl : fullUrl.replace(/\/[^/]+$/, '') || baseUrl;
+  const action = (id, title, url) => ({ icon: '', id, title, url });
+  // What a real Plone 6 site with plone.volto serves a Manager: the actions in
+  // Products.CMFPlone, plone.volto and plone.app.iterate's actions.xml whose
+  // `visible`, `available_expr` and permissions hold for a Manager, with the
+  // URL each `url_expr` gives. plone.restapi's recording (actions_get.resp)
+  // agrees on view/edit/folderContents/history/local_roles, the object_buttons
+  // and the user actions; it predates the serializer gaining `url`, which a
+  // live Plone 6 (demo.plone.org) emits and Volto reads — Footer.jsx renders
+  // `item.url ? flattenToAppURL(item.url) : addAppURL(item.id)`.
+  //
+  // Left out, as a Manager on a fresh site does not see them: Paste (only with
+  // something on the clipboard), RSS / Print / Syndication / Undo (not
+  // visible), Accessibility (hidden by plone.volto), the ical import actions
+  // (plone.app.event, only on a folder set up for it), Moderate comments
+  // (plone.app.discussion, not installed in Plone 6.1). portal_tabs and
+  // document_actions come back empty from a live Plone 6.
   return {
     '@id': `${fullUrl}/@actions`,
     document_actions: [],
-    // Two sources, and they disagree. plone.restapi's own recorded example
-    // (actions_get.resp) has keys [icon, id, title]; a live Plone 6
-    // (demo.plone.org) has [icon, id, title, url]. The recording predates the
-    // serializer gaining `url`, and Volto reads `url` — Footer.jsx renders
-    // `item.url ? flattenToAppURL(item.url) : addAppURL(item.id)` — so `url`
-    // is what a current Plone emits and what belongs here.
-    //
-    // WHICH entries appear, and in which category, is from actions_get.resp:
-    // delete belongs in object_buttons beside cut/copy/rename, not in object.
     object: [
-      { url: fullUrl, icon: '', id: 'view', title: 'View' },
-      { url: `${fullUrl}/edit`, icon: '', id: 'edit', title: 'Edit' },
-      { id: 'folderContents', icon: '', title: 'Contents' },
-      { id: 'history', icon: '', title: 'History' },
-      { id: 'local_roles', icon: '', title: 'Sharing' },
+      action('view', 'View', fullUrl),
+      action('edit', 'Edit', `${fullUrl}/edit`),
+      action('folderContents', 'Contents', `${folderUrl}/folder_contents`),
+      action('history', 'History', `${fullUrl}/@@historyview`),
+      action('local_roles', 'Sharing', `${fullUrl}/@@sharing`),
+      ...(folderish ? [action('contentrules', 'Rules', `${fullUrl}/@@manage-content-rules`)] : []),
     ],
     object_buttons: [
-      { id: 'cut', icon: '', title: 'Cut' },
-      { id: 'copy', icon: '', title: 'Copy' },
-      { id: 'delete', icon: '', title: 'Delete' },
-      { id: 'rename', icon: '', title: 'Rename' },
+      action('cut', 'Cut', `${fullUrl}/object_cut`),
+      action('copy', 'Copy', `${fullUrl}/object_copy`),
+      action('delete', 'Delete', `${fullUrl}/delete_confirmation`),
+      action('rename', 'Rename', `${fullUrl}/object_rename`),
+      ...(isRoot ? [] : [action('redirection', 'URL Management', `${fullUrl}/@@manage-aliases`)]),
       // plone.app.iterate's, and the ids Volto gates its working-copy buttons
-      // on. NOT in actions_get.resp, which records a site without it — so this
-      // is the one entry here that is inferred rather than recorded.
+      // on. NOT in actions_get.resp, which records a site without it.
       ...(workingCopyOf(cleanPath, sessionId)
-        ? [{ id: 'iterate_checkin', icon: '', title: 'Check in' }]
-        : [{ id: 'iterate_checkout', icon: '', title: 'Check out' }]),
+        ? [action('iterate_checkin', 'Check in', `${fullUrl}/@@content-checkin`)]
+        : [action('iterate_checkout', 'Check out', `${fullUrl}/@@content-checkout`)]),
     ],
     portal_tabs: [],
-    site_actions: [],
-    user: [],
+    site_actions: [
+      action('sitemap', 'Site Map', `${baseUrl}/sitemap`),
+      action('contact', 'Contact', `${baseUrl}/contact-form`),
+    ],
+    user: [
+      action('preferences', 'Preferences', `${baseUrl}/@@personal-preferences`),
+      action('dashboard', 'Dashboard', `${baseUrl}/dashboard`),
+      action('plone_setup', 'Site Setup', `${baseUrl}/@@overview-controlpanel`),
+      action('logout', 'Log out', `${baseUrl}/logout`),
+    ],
   };
 }
 

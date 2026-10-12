@@ -85,7 +85,11 @@ test.describe('Content rules', () => {
     await helper.login();
     await addRule(page, helper);
 
-    await page.goto(`${helper.adminUrl}${FOLDER}/rules`);
+    // From the folder, as a site manager gets there: More → Rules.
+    await page.goto(`${helper.adminUrl}${FOLDER}`);
+    await page.locator('#toolbar button[aria-label="More"], #toolbar .more').first().click();
+    await page.locator('.pastanaga-menu a[href$="/rules"]').click();
+    await expect(page).toHaveURL(new RegExp(`${FOLDER}/rules$`));
     const rules = page.locator('#rules');
     await rules.locator('.ui.selection.dropdown').click();
     await rules.locator('.ui.selection.dropdown .item', { hasText: RULE }).click();
