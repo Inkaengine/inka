@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
+const principalsAndRules = require('./mock-principals-and-rules.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
@@ -4390,20 +4391,11 @@ app.post(/.*\/@sharing$/, (req, res) => {
   res.status(204).end();
 });
 
-/**
- * GET /@users/:userid
- * Get user information
- */
-app.get('/@users/:userid', (req, res) => {
-  const { userid } = req.params;
-  res.json({
-    '@id': `${API_ORIGIN}/@users/${userid}`,
-    id: userid,
-    fullname: 'Admin User',
-    email: 'admin@example.com',
-    roles: ['Manager', 'Authenticated'],
-    username: userid,
-  });
+// Users, groups, roles, the user schema, control panels and content rules.
+principalsAndRules.register(app, {
+  getSessionId,
+  origin: API_ORIGIN,
+  titleOf: (urlPath) => loadRawContentFromDisk(urlPath)?.title || urlPath,
 });
 
 /**
@@ -4590,6 +4582,9 @@ const CONFIGURED_CAPTCHAS = [
     .filter(Boolean),
 ];
 VOCAB_ITEMS['collective.volto.formsupport.captcha.providers'] = CONFIGURED_CAPTCHAS;
+// The vocabularies the content-rule forms read (events, workflow states and
+// transitions, groups, roles).
+Object.assign(VOCAB_ITEMS, principalsAndRules.EXTRA_VOCABULARIES);
 
 // Optional generated vocabularies, declared by a seed file and switched on
 // with VOCAB_SPEC. Used by the adapter contract suite, which needs a
