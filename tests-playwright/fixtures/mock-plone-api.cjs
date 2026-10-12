@@ -2372,10 +2372,20 @@ function loadMarkdownMount(mount) {
  */
 function validateServedContent() {
   const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+  // ALLOW_MISSING_BLOBS=true: a blob whose bytes are not on disk is a warning,
+  // not an error — what `plone-content --allow-missing-blobs` does. For a pull
+  // request whose content references a file CI makes only after the merge (a
+  // recorded clip, say). Every other problem is still fatal.
+  const allowMissingBlobs = process.env.ALLOW_MISSING_BLOBS === 'true';
   const errors = [];
+  const warnings = [];
+  const keep = (result) => {
+    errors.push(...result.errors);
+    warnings.push(...(result.warnings || []));
+  };
   for (const { dirPath } of CONTENT_MOUNTS) {
     if (!isMarkdownMount({ dirPath }) && fs.existsSync(path.join(dirPath, '__metadata__.json'))) {
-      errors.push(...validate(dirPath).errors);
+      keep(validate(dirPath, { allowMissingBlobs }));
     }
   }
   const paths = new Set([...markdownItems.keys(), ...Object.keys(contentDirMap)]);
@@ -2384,7 +2394,8 @@ function validateServedContent() {
     if (data == null) throw new Error(`content-check: ${urlPath} is registered but has no content`);
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
-  errors.push(...checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent }).errors);
+  keep(checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent, allowMissingBlobs }));
+  for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   if (siteSchemas) {
     const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
     const own = source.filter((item) => !isHydraOwned(item.rel));
