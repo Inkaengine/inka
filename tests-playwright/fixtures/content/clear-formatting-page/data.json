@@ -39,12 +39,27 @@
         }
       ],
       "plaintext": "Bold words and plain words"
+    },
+    "plain": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Only plain words"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Only plain words"
     }
   },
   "blocks_layout": {
     "items": [
       "title-block",
-      "target"
+      "target",
+      "plain"
     ]
   }
 }
