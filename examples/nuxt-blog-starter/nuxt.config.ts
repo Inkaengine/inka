@@ -1,4 +1,3 @@
-import mkcert from 'vite-plugin-mkcert'
 import { fileURLToPath } from 'url'
 import { dirname, resolve, join } from 'path'
 import { existsSync } from 'fs'
@@ -262,7 +261,10 @@ export default defineNuxtConfig({
       }
     },
     plugins: [
-      // mkcert disabled - certs already generated manually
+      // mkcert disabled - certs already generated manually. Re-enabling it
+      // needs `import mkcert from 'vite-plugin-mkcert'` back at the top; the
+      // unused import made merely LOADING this config need the starter's own
+      // install, which the config tests (tests-playwright/fixtures) do not have.
       // mkcert({
       //   savePath: './certs',
       //   force: false,
