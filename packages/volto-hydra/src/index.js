@@ -33,6 +33,8 @@ const messages = defineMessages({
 });
 import frontendPreviewUrl, { viewportPreset } from './reducers';
 import FrontendSwitcherPlug from './components/Toolbar/FrontendSwitcherPlug';
+import ClearFormattingButton from './components/Toolbar/ClearFormattingButton';
+import formatClearIcon from '@plone/volto/icons/format-clear.svg';
 import SidebarToggleToolbarPlug from './components/Toolbar/SidebarToggleToolbarPlug';
 import FrontendSwitcherPanel from './components/Toolbar/FrontendSwitcherPanel';
 import MobileSubmenuClose from './components/Toolbar/MobileSubmenuClose';
@@ -945,6 +947,15 @@ config.settings.additionalToolbarComponents = {
     config.settings.slate.buttons = {
       ...config.settings.slate.buttons,
       styleMenu: (props) => <StyleDropdown {...props} />,
+      // Volto's Clear formatting is always enabled; Inka's is disabled when the
+      // selection has nothing to clear. See ClearFormattingButton.
+      clearformatting: (props) => (
+        <ClearFormattingButton
+          title="Clear formatting"
+          icon={formatClearIcon}
+          {...props}
+        />
+      ),
     };
 
     const { backspaceListItem } = require('./extensions/backspaceListItem');
