@@ -140,6 +140,14 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
   // feed it the items-array shape. Catching this here keeps a bad
   // redirects.json from silently breaking site bootstrap on deploy.
   const redirectsPath = path.join(parentDir, 'redirects.json');
+  // The site's physical path is its root item's @id (/Plone in an export);
+  // a root at "/" (or none) gives nothing to check against.
+  const sitePath = (() => {
+    const rootFile = path.join(contentDir, 'plone_site_root', 'data.json');
+    if (!fs.existsSync(rootFile)) return '';
+    const rootId = readJson(rootFile)['@id'];
+    return rootId === '/' ? '' : rootId;
+  })();
   if (fs.existsSync(redirectsPath)) {
     let redirectsData;
     try { redirectsData = readJson(redirectsPath); }
@@ -153,6 +161,16 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
             errors.push(`  redirects.json: value for "${key}" is ${Array.isArray(value) ? 'an array' : typeof value} — use {"/old": "/new"}, not the REST-API {items: [...]} shape`);
           } else if (!key.startsWith('/') || !value.startsWith('/')) {
             errors.push(`  redirects.json: paths must be absolute (start with /): ${JSON.stringify(key)} -> ${JSON.stringify(value)}`);
+          } else if (sitePath) {
+            // Physical paths: the importer gives each pair to
+            // plone.app.redirector's storage as is, and the storage is keyed
+            // by physical path. A site-relative "/old" is stored where no
+            // request looks — the redirect never fires, and nothing says so.
+            for (const p of [key, value]) {
+              if (p !== sitePath && !p.startsWith(sitePath + '/')) {
+                errors.push(`  redirects.json: ${JSON.stringify(p)} is not under the site's physical path ${JSON.stringify(sitePath)} — Plone stores redirects by physical path, so write ${JSON.stringify(sitePath + p)}`);
+              }
+            }
           }
         }
       }

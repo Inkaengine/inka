@@ -63,25 +63,51 @@ function parseContentMounts() {
 const CONTENT_MOUNTS = parseContentMounts();
 
 /**
- * Resolve a moved-content redirect, mimicking plone.app.redirector.
- * Each mount may carry a redirects.json sibling ({ oldPath: newPath },
- * mount-relative) next to its content dir. Returns the new mount-prefixed
- * path or null. Read fresh each call (tiny file, only hit on a 404) so dev
- * edits to redirects.json take effect without a restart.
+ * A mount's redirects.json as site-relative [old, new] pairs, or [] when it has
+ * none.
+ *
+ * The file holds PHYSICAL paths ({"/Plone/old": "/Plone/new"}): that is what
+ * plone.exportimport writes, and what its importer hands, as is, to
+ * plone.app.redirector's storage, which is keyed by physical path. The site's
+ * physical path is its root item's @id (plone_site_root/data.json). An entry
+ * outside it is one Plone would store where no request looks — a redirect
+ * that never fires — so it fails here rather than working only in the mock.
+ * A mount without a site root (or one whose @id is "/") has no prefix.
+ *
+ * Read fresh each call (tiny file, only hit on a 404 or @aliases) so dev edits
+ * take effect without a restart.
+ */
+function readRedirects(dirPath) {
+  const redirectsFile = path.join(dirPath, '..', 'redirects.json');
+  if (!fs.existsSync(redirectsFile)) return [];
+  const map = JSON.parse(fs.readFileSync(redirectsFile, 'utf8'));
+  const rootFile = path.join(dirPath, 'plone_site_root', 'data.json');
+  const rootId = fs.existsSync(rootFile) ? JSON.parse(fs.readFileSync(rootFile, 'utf8'))['@id'] : '/';
+  const sitePath = rootId === '/' ? '' : rootId;
+  const relative = (p) => {
+    if (p === sitePath) return '/';
+    if (p.startsWith(sitePath + '/')) return p.slice(sitePath.length);
+    throw new Error(
+      `${redirectsFile}: ${JSON.stringify(p)} is not under the site's physical path ${JSON.stringify(sitePath)} ` +
+      `— Plone stores redirects by physical path, so write ${JSON.stringify(sitePath + p)}`,
+    );
+  };
+  return Object.entries(map).map(([from, to]) => [relative(from), relative(to)]);
+}
+
+/**
+ * Resolve a moved-content redirect, mimicking plone.app.redirector. Returns
+ * the new mount-prefixed path or null.
  */
 function getRedirectTarget(cleanPath) {
   for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const redirectsFile = path.join(dirPath, '..', 'redirects.json');
-    if (!fs.existsSync(redirectsFile)) continue;
-    let map;
-    try { map = JSON.parse(fs.readFileSync(redirectsFile, 'utf8')); }
-    catch { continue; }
     const rel = mountPath === '/'
       ? cleanPath
       : (cleanPath.startsWith(mountPath) ? cleanPath.slice(mountPath.length) || '/' : null);
     if (rel == null) continue;
-    if (map[rel]) {
-      return mountPath === '/' ? map[rel] : mountPath + map[rel];
+    const hit = readRedirects(dirPath).find(([from]) => from === rel);
+    if (hit) {
+      return mountPath === '/' ? hit[1] : mountPath + hit[1];
     }
   }
   return null;
@@ -94,12 +120,7 @@ function getRedirectTarget(cleanPath) {
 function getAllRedirects() {
   const out = [];
   for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const redirectsFile = path.join(dirPath, '..', 'redirects.json');
-    if (!fs.existsSync(redirectsFile)) continue;
-    let map;
-    try { map = JSON.parse(fs.readFileSync(redirectsFile, 'utf8')); }
-    catch { continue; }
-    for (const [from, to] of Object.entries(map)) {
+    for (const [from, to] of readRedirects(dirPath)) {
       out.push({
         path: mountPath === '/' ? from : mountPath + from,
         'redirect-to': mountPath === '/' ? to : mountPath + to,
@@ -6404,4 +6425,4 @@ if (require.main === module) {
 }
 
 // Export for use by test frontend server or test harnesses
-module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution };
+module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution, getRedirectTarget, getAllRedirects };

@@ -401,6 +401,45 @@ describe('plone-content-validator validate()', () => {
   });
 });
 
+/**
+ * redirects.json holds PHYSICAL paths. plone.exportimport's importer hands each
+ * pair to plone.app.redirector's storage as is, and the storage is keyed by
+ * physical path (/Plone/old), which is also what an export writes. A
+ * site-relative "/old" is stored where no request ever looks: the site deploys
+ * green and every redirect 404s.
+ */
+describe('plone-content-validator redirects.json paths', () => {
+  const withRedirects = (redirects) => {
+    const fixture = buildFixture({ rootItem: { '@id': '/Plone' } });
+    fs.writeFileSync(path.join(fixture.root, 'redirects.json'), JSON.stringify(redirects));
+    return fixture;
+  };
+
+  it('accepts redirects under the site root\'s physical path', () => {
+    const { root, contentDir } = withRedirects({ '/Plone/old': '/Plone/page-a' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a site-relative redirect (it would never fire)', () => {
+    const { root, contentDir } = withRedirects({ '/old': '/page-a' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('"/old"') && e.includes('/Plone')),
+      r.errors.join('\n'),
+    );
+  });
+
+  it('reports a redirect whose target is site-relative', () => {
+    const { root, contentDir } = withRedirects({ '/Plone/old': '/page-a' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('"/page-a"')), r.errors.join('\n'));
+  });
+});
+
 describe('plone-content-validator checkIntegrity()', () => {
   // A template definition need not name itself: its blocks hold slots and no
   // templateId, and where it lives already says what it is.
