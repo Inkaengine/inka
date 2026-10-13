@@ -9,6 +9,7 @@ import { createRequire } from 'module';
 import { chromium } from '@playwright/test';
 import { PORTS, URLS } from './ports';
 import { FRONTEND_URLS, SANITY_PROJECTS } from './bridge/fixtures';
+import { editorFrontendUrl } from './journey/frontends';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const { discoverBlocks, buildEmptyRegionCases,
@@ -108,38 +109,29 @@ const STORAGE_FRONTENDS: Record<string, string> = {
   // 8794: on any other ports the cookie name missed, the admin loaded the
   // default frontend with no ?adapter=, and the proxy silently built a Plone
   // adapter for a Drupal journey — every request 404ing against the wrong CMS.
-  'journey-plone': `${URLS.testFrontend}/?adapter=plone&cms=${URLS.mockApi}`,
-  'journey-plone-seeded': `${URLS.testFrontend}/?adapter=plone&cms=http://localhost:${PORTS.plonSeeded}`,
-  'journey-drupal': `${URLS.testFrontend}/?adapter=drupal&cms=http://127.0.0.1:${PORTS.mockDrupal}`,
-  'journey-wordpress': `${URLS.testFrontend}/?adapter=wordpress&cms=http://127.0.0.1:${PORTS.wordpress}`,
 };
+
+/**
+ * The journey projects' frontends, from journey/frontends.ts.
+ *
+ * Declared there rather than here because a second caller needs the same
+ * answer: the public-site spec loads the SAME CMS with NO credential, and two
+ * copies of "which CMS does journey-drupal read" is exactly the drift this
+ * file's own comment warns about.
+ */
+const JOURNEY_PROJECTS = [
+  'journey-plone',
+  'journey-plone-seeded',
+  'journey-drupal',
+  'journey-wordpress',
+  'journey-strapi',
+];
 
 /** Where the journey's Strapi writes the API token it provisions on boot. */
 const STRAPI_TOKEN_FILE = path.resolve(
   __dirname,
   '../tests-adapters/fixtures/strapi-app/app/.hydra-journey-token',
 );
-
-/**
- * The journey's Strapi frontend URL, carrying the credential.
- *
- * Strapi's content API has no login — the credential is an API token — so
- * there is nothing for the sign-in panel to collect and the proxy frame is
- * handed the token the way it is handed the CMS url.
- *
- * Read HERE rather than declared with the others because the token does not
- * exist until Strapi's bootstrap has run, and webServers start before this
- * file does. A fixture token for a local throwaway database; it never leaves
- * the generated storage state, which is git-ignored.
- */
-function strapiFrontend(): string | null {
-  if (!fs.existsSync(STRAPI_TOKEN_FILE)) return null;
-  const token = fs.readFileSync(STRAPI_TOKEN_FILE, 'utf8').trim();
-  return (
-    `${URLS.testFrontend}/?adapter=strapi` +
-    `&cms=${URLS.strapi}&token=${encodeURIComponent(token)}`
-  );
-}
 
 /**
  * Put the journey's Strapi into the seeded state, ONCE per run.
@@ -177,13 +169,16 @@ export const GENERATED_DIR = path.resolve(__dirname, '.generated');
 
 function writeStorageStates(): void {
   fs.mkdirSync(GENERATED_DIR, { recursive: true });
-  const strapi = strapiFrontend();
   const frontends = {
     ...STORAGE_FRONTENDS,
-    // Only when the token is there — a state pointing at an adapter with no
-    // credential would send the journey off to read Strapi anonymously, which
-    // succeeds for published pages and fails at the first write.
-    ...(strapi ? { 'journey-strapi': strapi } : {}),
+    // The editor's URL per journey project: same CMS as the public-site spec
+    // reads, plus that CMS's own way of saying "this viewer may see drafts".
+    // Strapi's rides on the URL and only exists once its bootstrap has written
+    // the token, which is why these are built HERE, after the servers are up,
+    // rather than declared at module scope.
+    ...Object.fromEntries(
+      JOURNEY_PROJECTS.map((name) => [name, editorFrontendUrl(name)]),
+    ),
   };
   for (const [name, frontendUrl] of Object.entries(frontends)) {
     const state = {

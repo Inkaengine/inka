@@ -189,11 +189,22 @@
                         ...(stored ? { credentials: JSON.parse(stored) } : {}),
                     });
                 }
-                case 'drupal':
+                case 'drupal': {
+                    // Credentials only when the URL ASKS for an editor.
+                    //
+                    // They used to be unconditional, so this frontend could
+                    // never be a visitor against Drupal: every read went out as
+                    // admin, and a public-site test would have been asserting
+                    // what an editor sees. The admin's preview URL carries
+                    // `editor=1` (journey/frontends.ts); a visitor's does not.
+                    const editor = params.get('editor');
                     return new DrupalAdapter({
                         cmsBaseUrl,
-                        credentials: { username: 'admin', password: 'admin' },
+                        ...(editor
+                            ? { credentials: { username: 'admin', password: 'admin' } }
+                            : {}),
                     });
+                }
                 case 'strapi': {
                     // The API token, carried on the frontend's own URL — Strapi's
                     // content API has no login, so there is nothing to sign in to

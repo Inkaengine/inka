@@ -143,7 +143,8 @@ export class DrupalAdapter extends BaseAdapter {
   async assertMediaAvailable() {
     const res = await fetch(
       `${this.cmsBaseUrl}/jsonapi/media_type/media_type`,
-      { credentials: this.credentials ? 'omit' : 'include', headers: this.authHeaders() },
+      // See requestJson: never cookies, cross-origin by construction.
+      { credentials: 'omit', headers: this.authHeaders() },
     );
     // An auth failure is NOT a missing module. Conflating them would send an
     // integrator to install Media on a site that already has it, so leave 401
@@ -171,7 +172,7 @@ export class DrupalAdapter extends BaseAdapter {
   /** Drupal requires a CSRF token for every write. */
   async fetchCsrfToken() {
     const res = await fetch(`${this.cmsBaseUrl}/session/token`, {
-      credentials: this.credentials ? 'omit' : 'include',
+      credentials: 'omit',
       headers: this.authHeaders(),
     });
     if (!res.ok) return null;
@@ -207,12 +208,22 @@ export class DrupalAdapter extends BaseAdapter {
     if (method !== 'GET' && this.csrfToken) headers['X-CSRF-Token'] = this.csrfToken;
 
     const res = await fetch(`${this.cmsBaseUrl}${route}${qs}`, {
-      // With explicit credentials we must NOT also send cookies: a wildcard
-      // Access-Control-Allow-Origin — what a dev CMS typically returns —
-      // makes the browser reject a credentialled cross-origin request
-      // outright, surfacing only as "Failed to fetch". Cookie auth is the
-      // same-origin case. The Plone adapter had this exact bug.
-      credentials: this.credentials ? 'omit' : 'include',
+      // NEVER cookies, with or without credentials.
+      //
+      // A wildcard Access-Control-Allow-Origin — what a dev CMS typically
+      // returns — makes the browser reject a credentialled cross-origin
+      // request outright, surfacing only as "Failed to fetch". That was
+      // already known for the explicit-credentials case; what it missed is
+      // that `include` is WORSE for a visitor, because in Hydra the frontend
+      // is never same-origin with its CMS, so the cookie session this was
+      // reaching for cannot apply — while published content needs no
+      // credential at all.
+      //
+      // So the anonymous path was the only one that asked for cookies and the
+      // only one that could not work. Every test held an editor's credentials,
+      // which is why it took a public-site spec to find it: the frontend could
+      // not read a published Drupal page as a visitor.
+      credentials: 'omit',
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -1200,7 +1211,7 @@ export class DrupalAdapter extends BaseAdapter {
           `${this.cmsBaseUrl}/jsonapi/media/${MEDIA_BUNDLE}/${MEDIA_FILE_FIELD}`,
           {
             method: 'POST',
-            credentials: this.credentials ? 'omit' : 'include',
+            credentials: 'omit',
             headers: {
               ...this.authHeaders(),
               ...(this.csrfToken ? { 'X-CSRF-Token': this.csrfToken } : {}),
@@ -1220,7 +1231,7 @@ export class DrupalAdapter extends BaseAdapter {
 
         const mediaRes = await fetch(`${this.cmsBaseUrl}/jsonapi/media/${MEDIA_BUNDLE}`, {
           method: 'POST',
-          credentials: this.credentials ? 'omit' : 'include',
+          credentials: 'omit',
           headers: {
             ...this.authHeaders(),
             ...(this.csrfToken ? { 'X-CSRF-Token': this.csrfToken } : {}),

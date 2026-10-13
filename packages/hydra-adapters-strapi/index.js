@@ -224,7 +224,7 @@ export class StrapiAdapter extends BaseAdapter {
         // has a published version too. Without this the adapter reads only
         // published documents and a draft is a 404 to the editor, which is the
         // opposite of what an editing client needs.
-        status: 'draft',
+        status: this.readStatus,
       };
       if (parent) {
         params['filters[parent][documentId][$eq]'] = parent;
@@ -268,7 +268,7 @@ export class StrapiAdapter extends BaseAdapter {
           // `draft` means "every document, as the editor sees it" — a listing
           // in the admin must show unpublished pages, and a path lookup that
           // skipped them would make a draft unaddressable.
-          status: 'draft',
+          status: this.readStatus,
           'fields[0]': this.slugField,
           'populate[parent][fields][0]': 'documentId',
           'pagination[page]': String(page),
@@ -548,6 +548,29 @@ export class StrapiAdapter extends BaseAdapter {
     ].includes(name);
   }
 
+  /**
+   * Which VARIANT of a document a read should ask for.
+   *
+   * `draft` means "the version an editor is working on", and asking for it is
+   * what lets the admin see unpublished pages at all. But it is NOT
+   * permission-gated beyond the collection's own find permission — measured: an
+   * anonymous GET of `?status=draft` on a collection the public role can read
+   * returns the unpublished document, title and body and all, while the same
+   * request without `status` returns nothing.
+   *
+   * So a credential-less adapter must not ask. The same adapter class serves
+   * the admin (holding an API token) and a PUBLIC frontend (holding nothing) —
+   * the public-site spec caught this by rendering /news/draft-post to a visitor
+   * and getting "Draft Post".
+   *
+   * Holding a token is the right test because the content API has no other
+   * credential: without one you ARE the public role, whatever the token's own
+   * scope turns out to be.
+   */
+  get readStatus() {
+    return this.token ? 'draft' : 'published';
+  }
+
   /** Prefix a provider-relative media URL with the CMS origin. */
   absoluteUrl(url) {
     // Strapi's LOCAL upload provider returns site-relative URLs; a remote one
@@ -656,7 +679,7 @@ export class StrapiAdapter extends BaseAdapter {
         ? null
         : (await this.entryForPath(parentPath)).documentId;
     const params = {
-      status: 'draft',
+      status: this.readStatus,
       'pagination[pageSize]': '100',
       sort: `${this.orderField}:asc,title:asc`,
     };
@@ -745,7 +768,7 @@ export class StrapiAdapter extends BaseAdapter {
         : null;
     const params = {
       'pagination[pageSize]': '100',
-      status: 'draft',
+      status: this.readStatus,
       sort: `${this.orderField}:asc,title:asc`,
       ...(parent
         ? { 'filters[parent][documentId][$eq]': parent }
@@ -970,7 +993,7 @@ export class StrapiAdapter extends BaseAdapter {
             : null;
         const params = {
           'pagination[pageSize]': '100',
-          status: 'draft',
+          status: this.readStatus,
           sort: `${this.orderField}:asc,title:asc`,
         };
         if (parent) {
@@ -996,7 +1019,7 @@ export class StrapiAdapter extends BaseAdapter {
         // cannot show a menu the public site does not have.
         const payload = await this.fetchJson(`/api/${this.collectionPlural}`, {
           params: this.navFilter({
-            status: 'draft',
+            status: this.readStatus,
             'pagination[pageSize]': '100',
             'filters[parent][id][$null]': 'true',
             sort: `${this.orderField}:asc,title:asc`,
@@ -1082,7 +1105,7 @@ export class StrapiAdapter extends BaseAdapter {
             ...(target
               ? { 'filters[parent][documentId][$eq]': target }
               : { 'filters[parent][id][$null]': 'true' }),
-            status: 'draft',
+            status: this.readStatus,
           },
         });
         const taken = (siblings?.data ?? []).length > 0;
@@ -1232,7 +1255,7 @@ export class StrapiAdapter extends BaseAdapter {
         }
         const paths = await this.addressingMap();
         const params = {
-          status: 'draft',
+          status: this.readStatus,
           'pagination[page]': '1',
           'pagination[pageSize]': String(args.limit ?? 100),
           'filters[$or][0][title][$containsi]': query,
@@ -1271,7 +1294,7 @@ export class StrapiAdapter extends BaseAdapter {
         // nothing extra and is applied here rather than delegated.
         const paths = await this.addressingMap();
         const params = {
-          status: 'draft',
+          status: this.readStatus,
           'pagination[page]': '1',
           'pagination[pageSize]': String(args.limit ?? 100),
         };
@@ -1493,7 +1516,7 @@ export class StrapiAdapter extends BaseAdapter {
         // while slug, title and therefore path are not.
         const payload = await this.fetchJson(
           `/api/${this.collectionPlural}/${args.id}`,
-          { params: { status: 'draft' } },
+          { params: { status: this.readStatus } },
         );
         const entry = payload?.data;
         if (!entry) {
