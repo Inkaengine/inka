@@ -1,4 +1,3 @@
-import mkcert from 'vite-plugin-mkcert'
 import { fileURLToPath } from 'url'
 import { dirname, resolve, join } from 'path'
 import { existsSync } from 'fs'
@@ -197,6 +196,9 @@ export default defineNuxtConfig({
       // The api.inka.sh / admin.inka.sh fallbacks are only for a plain local build.
       backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://api.inka.sh',
       adminUrl: process.env.NUXT_ADMIN_URL || 'https://admin.inka.sh',
+      // The admin has a demo account (Inka's /login?demo): the header offers
+      // "Try editing now" instead of the plain login.
+      demoEditing: process.env.NUXT_DEMO_EDITING === 'true',
       // The public site, for social previews' absolute og:url / og:image.
       siteUrl: 'https://inka.sh',
       siteName: 'Inka',
@@ -259,7 +261,10 @@ export default defineNuxtConfig({
       }
     },
     plugins: [
-      // mkcert disabled - certs already generated manually
+      // mkcert disabled - certs already generated manually. Re-enabling it
+      // needs `import mkcert from 'vite-plugin-mkcert'` back at the top; the
+      // unused import made merely LOADING this config need the starter's own
+      // install, which the config tests (tests-playwright/fixtures) do not have.
       // mkcert({
       //   savePath: './certs',
       //   force: false,
