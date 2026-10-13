@@ -84,6 +84,13 @@ export default defineConfig({
       '/wordpress-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-wordpress/index.js'),
       '/drupal-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-drupal/index.js'),
       '/strapi-adapter.js': path.resolve(__dirname, '../../../packages/hydra-adapters-strapi/index.js'),
+      // The PUBLIC readers. An anonymous view mounts no adapter at all — it
+      // reads its CMS directly, the way any headless frontend does — so the
+      // fixture needs these the same way it needs the adapters.
+      '/plone-public.js': path.resolve(__dirname, '../../../packages/hydra-adapters-plone/publicRead.js'),
+      '/wordpress-public.js': path.resolve(__dirname, '../../../packages/hydra-adapters-wordpress/publicRead.js'),
+      '/drupal-public.js': path.resolve(__dirname, '../../../packages/hydra-adapters-drupal/publicRead.js'),
+      '/strapi-public.js': path.resolve(__dirname, '../../../packages/hydra-adapters-strapi/publicRead.js'),
       '/merge-frontend-block.js': path.resolve(__dirname, '../../../packages/hydra-js/mergeFrontendBlock.js'),
       // The same merge the admin runs before it posts INITIAL_DATA (View.jsx),
       // so the mock parent hands the bridge a page with its forced layouts and

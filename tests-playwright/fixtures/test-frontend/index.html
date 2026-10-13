@@ -150,6 +150,11 @@
         import { WordPressAdapter } from '/wordpress-adapter.js';
         import { DrupalAdapter } from '/drupal-adapter.js';
         import { StrapiAdapter } from '/strapi-adapter.js';
+        // The PUBLIC readers. An anonymous view has no adapter — see publicSite().
+        import { createPublicReader as plonePublic } from '/plone-public.js';
+        import { createPublicReader as wordpressPublic } from '/wordpress-public.js';
+        import { createPublicReader as drupalPublic } from '/drupal-public.js';
+        import { createPublicReader as strapiPublic } from '/strapi-public.js';
 
         // Which CMS this frontend talks to, chosen per test run. The whole
         // point of the inversion is that the ADMIN does not know or care —
@@ -169,6 +174,50 @@
                 base: params.get('cms') || window._apiOrigin,
             };
         }
+        /**
+         * Is anyone signed in to the CMS on this page?
+         *
+         * Each CMS carries an editor's credential differently — Plone an
+         * access token, WordPress one minted into this origin's storage,
+         * Strapi an API token on the url, the Drupal fixture a flag — so this
+         * asks the same question four ways.
+         */
+        function hasCmsCredential() {
+            const params = new URLSearchParams(window.location.search);
+            const { which, base: cmsBaseUrl } = frontendCms();
+            switch (which) {
+                case 'plone': return Boolean(getAccessToken());
+                case 'wordpress':
+                    return Boolean(localStorage.getItem(`hydra_credentials:wordpress:${cmsBaseUrl}`));
+                case 'strapi': return Boolean(params.get('token'));
+                case 'drupal': return Boolean(params.get('editor'));
+                default: return false;
+            }
+        }
+
+        /**
+         * The PUBLIC read: this frontend talking to its CMS directly.
+         *
+         * No adapter. An anonymous view never has one mounted — the bridge and
+         * the adapter belong to an editing session, exactly as Plone has no
+         * bridge in view mode — so reading through one tested a configuration
+         * that does not exist in production, and hid that three of the four
+         * adapters could not serve a visitor at all.
+         *
+         * These are the same publicRead.js modules each adapter package ships
+         * as the documented way to read that CMS by hand.
+         */
+        function publicReader() {
+            const { which, base: cmsBaseUrl } = frontendCms();
+            switch (which) {
+                case 'plone': return plonePublic({ cmsBaseUrl });
+                case 'wordpress': return wordpressPublic({ cmsBaseUrl });
+                case 'drupal': return drupalPublic({ cmsBaseUrl });
+                case 'strapi': return strapiPublic({ cmsBaseUrl });
+                default: throw new Error(`No public reader for '${which}'`);
+            }
+        }
+
         let cmsAdapterInstance = null;
         function cmsAdapter() {
             cmsAdapterInstance ??= buildAdapter();
@@ -567,7 +616,41 @@
                 // the Plone mock.
                 const pageCms = frontendCms();
                 let content;
-                if (pageCms.which === 'plone') {
+                if (!hasCmsCredential()) {
+                    // A VISITOR. No adapter is mounted on an anonymous view —
+                    // the adapter and the bridge belong to an editing session —
+                    // so the frontend reads its CMS directly, through that
+                    // CMS's documented public read.
+                    //
+                    // This is also the only path a published site ever takes,
+                    // and reading it through the adapter instead hid that
+                    // WordPress refused `status=any`/`context=edit` to a
+                    // visitor, that Drupal's adapter asked for cookies it could
+                    // not use cross-origin, and that Strapi's asked for drafts.
+                    const reader = publicReader();
+                    const doc = await reader.document(contentPath);
+                    const nav = await reader.navigation();
+                    content = doc
+                        ? {
+                              '@id': contentPath,
+                              title: doc.title,
+                              description: doc.description ?? '',
+                              blocks: doc.blocks,
+                              blocks_layout: doc.blocksLayout,
+                              '@components': {
+                                  navigation: {
+                                      items: (nav ?? []).map((item) => ({
+                                          '@id': item.path,
+                                          title: item.title,
+                                      })),
+                                  },
+                              },
+                          }
+                        : // Not readable as a visitor: unpublished, or not
+                          // there. Either way the page says nothing, which is
+                          // what a published site must do with a draft.
+                          { error: { type: 'NotFound', message: `No public document at ${contentPath}` } };
+                } else if (pageCms.which === 'plone') {
                     const response = await fetch(`${pageCms.base}/++api++${contentPath}?expand=navigation,translations`, { headers: fetchHeaders });
                     content = await response.json();
                 } else {

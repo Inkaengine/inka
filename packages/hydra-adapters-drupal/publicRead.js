@@ -36,6 +36,35 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
     },
 
     /**
+     * Everything a frontend needs to RENDER the node, from one request.
+     *
+     * The same JSON:API read as `blocks`, keeping the title: a frontend draws
+     * both, and an anonymous view has no adapter to ask for the rest.
+     */
+    async document(path) {
+      const res = await fetchImpl(
+        `${base}/jsonapi/node/page?filter[path.alias]=${encodeURIComponent(path)}`,
+        jsonApi,
+      );
+      if (!res.ok) return null;
+      const node = (await res.json())?.data?.[0];
+      if (!node) return null;
+      let stored = { blocks: {}, blocks_layout: { items: [] } };
+      try {
+        stored = JSON.parse(node.attributes?.field_hydra_blocks ?? '{}');
+      } catch {
+        // Unparseable stored blocks are an empty page, not a failed read: the
+        // node IS readable, which is what a visitor's frontend has to act on.
+      }
+      return {
+        path,
+        title: node.attributes?.title ?? '',
+        blocks: stored.blocks ?? {},
+        blocksLayout: stored.blocks_layout ?? stored.blocksLayout ?? { items: [] },
+      };
+    },
+
+    /**
      * The menu, which in Drupal is the hierarchy — its nodes are flat, so
      * menu_link_content is where the tree lives.
      *

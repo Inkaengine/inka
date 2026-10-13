@@ -121,11 +121,22 @@ function buildState() {
     const parentPath = '/' + p.split('/').filter(Boolean).slice(0, -1).join('/');
     const parentNode = parentPath === '/' ? null : byPath.get(parentPath);
     const id = uuid();
+    const nodeUuid = byPath.get(p);
     state.menuLinks.set(id, {
       uuid: id,
-      nodeUuid: byPath.get(p),
+      nodeUuid,
       parentUuid: parentNode ? linkByNode.get(parentNode) : null,
       weight: 0,
+      // The link's OWN title, which Drupal defaults to the node's when a node
+      // is added to a menu — and which is REQUIRED on menu_link_content, so a
+      // link without one is not a state Drupal can be in.
+      //
+      // Seeded without it, every link served `title: null`: the admin reads
+      // navigation from the same entity and sorts by that title, and a public
+      // frontend renders it as the link TEXT — so the public site drew four
+      // empty anchors. Nothing noticed, because the contract's navigation
+      // assertions compare PATHS.
+      title: state.nodes.get(nodeUuid)?.title ?? null,
     });
     linkByNode.set(byPath.get(p), id);
   }

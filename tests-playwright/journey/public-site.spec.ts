@@ -64,10 +64,11 @@ test.describe('the public site', () => {
     const page = await context.newPage();
 
     const { cms } = frontendFor(projectName);
-    await page.goto(`${cms}/`, { waitUntil: 'domcontentloaded' }).catch(() => {
-      // A CMS that does not serve a browsable root is fine: we came only for
-      // whatever cookies it hands out.
-    });
+    // A REQUEST, not a navigation. It shares the context's cookie jar, which
+    // is all we came for — navigating there instead left the Drupal mock's
+    // unservable root as a chrome-error page that then interrupted the real
+    // navigation.
+    await context.request.get(`${cms}/`).catch(() => {});
     const kept = (await context.cookies()).filter(
       (c) => !/^(wordpress_|wp-settings)/.test(c.name),
     );

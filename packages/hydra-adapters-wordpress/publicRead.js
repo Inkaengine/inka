@@ -34,9 +34,31 @@ import { parseBlocks } from './index.js';
  */
 export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.fetch }) {
   const base = cmsBaseUrl.replace(/\/+$/, '');
-  // `?rest_route=` rather than /wp-json/, so this works on a site without pretty
-  // permalinks.
-  const rest = (route) => `${base}/?rest_route=${route}`;
+  /**
+   * The PRETTY route, which is how a headless WordPress frontend addresses the
+   * REST API: /wp-json/wp/v2/...
+   *
+   * This used `?rest_route=` on the theory that a site might not have pretty
+   * permalinks. Measured against the suite's own Playground: /wp-json answers
+   * 200 anonymously, so the accommodation bought nothing and made every URL in
+   * this file — the file that doubles as the documentation for reading
+   * WordPress by hand — unlike the ones a developer would actually write.
+   */
+  const api = (route, params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return `${base}/wp-json${route}${qs ? `?${qs}` : ''}`;
+  };
+
+  /** The one request every public page read makes. */
+  const readPage = async (path) => {
+    const slug = path.split('/').filter(Boolean).pop() ?? '';
+    const res = await fetchImpl(
+      api('/wp/v2/pages', { slug, status: 'publish' }),
+    );
+    if (!res.ok) return null;
+    const [post] = await res.json();
+    return post ?? null;
+  };
 
   return {
     /**
@@ -45,14 +67,30 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
      * null means NOT READABLE; {} means readable but carrying no blocks.
      */
     async blocks(path) {
-      const slug = path.split('/').filter(Boolean).pop() ?? '';
-      const res = await fetchImpl(
-        rest(`/wp/v2/pages&slug=${encodeURIComponent(slug)}&status=publish`),
-      );
-      if (!res.ok) return null;
-      const [post] = await res.json();
+      const post = await readPage(path);
       if (!post) return null;
       return parseBlocks(post.content?.rendered ?? '').blocks ?? {};
+    },
+
+    /**
+     * Everything a frontend needs to RENDER the page, from one request.
+     *
+     * `status=publish` and NO `context=edit`: asking for either of the
+     * editor's parameters is what demands a session, and this read has none.
+     * The blocks come out of `content.rendered` because they ride in a
+     * data-hydra-blocks ELEMENT, which survives rendering — a block comment
+     * would not.
+     */
+    async document(path) {
+      const post = await readPage(path);
+      if (!post) return null;
+      const { blocks, blocksLayout } = parseBlocks(post.content?.rendered ?? '');
+      return {
+        path,
+        title: post.title?.rendered ?? '',
+        blocks: blocks ?? {},
+        blocksLayout: blocksLayout ?? { items: [] },
+      };
     },
 
     /**
@@ -65,7 +103,7 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
      */
     async navigation() {
       const res = await fetchImpl(
-        rest('/wp/v2/pages&parent=0&status=publish&per_page=100'),
+        api('/wp/v2/pages', { parent: '0', status: 'publish', per_page: '100' }),
       );
       if (!res.ok) return null;
       const posts = await res.json();

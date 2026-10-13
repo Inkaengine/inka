@@ -40,6 +40,27 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
       return body.blocks ?? {};
     },
 
+    /**
+     * Everything a frontend needs to RENDER the page, from one request.
+     *
+     * `blocks` above answers "is this readable"; this answers "what do I draw".
+     * Separate because the contract asks the first question and a frontend asks
+     * the second, and a reader that only returned blocks sent the frontend back
+     * to the adapter — which is not mounted on an anonymous view at all.
+     */
+    async document(path) {
+      const res = await fetchImpl(`${base}${path}`, json());
+      if (!res.ok) return null;
+      const body = await res.json();
+      return {
+        path,
+        title: body.title ?? '',
+        description: body.description ?? '',
+        blocks: body.blocks ?? {},
+        blocksLayout: body.blocks_layout ?? { items: [] },
+      };
+    },
+
     /** The navigation, as paths and titles. */
     async navigation() {
       const res = await fetchImpl(`${base}/@navigation`, json());
