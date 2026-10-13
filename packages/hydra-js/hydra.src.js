@@ -15750,19 +15750,19 @@ export function getAccessToken() {
     sessionStorage.setItem('hydra_access_token', urlToken);
     return urlToken;
   }
-  // Try sessionStorage (persists across SPA navigations) — inside the admin's
-  // iframe only. sessionStorage is shared by every page of this origin in the
-  // TAB, so once the same tab shows the public site its pages would find the
-  // editor's token, fetch their data signed in, and render that fetch failing
-  // as a 500 on every reload. Outside the iframe the token is not theirs.
+  // A stored token (sessionStorage, or the bridge's cookie) is used inside the
+  // admin's iframe only. sessionStorage is shared by every page of this origin
+  // in the TAB, and the cookie by every page of the domain for 12 hours, so the
+  // public site's pages would find the editor's token, fetch their data signed
+  // in, and render that fetch failing as a 500 on every reload. Outside the
+  // iframe the token is not theirs.
   const inAdminIframe =
     window.name.startsWith('hydra-edit:') || window.name.startsWith('hydra-view:');
-  const sessionToken = inAdminIframe && sessionStorage.getItem('hydra_access_token');
-  if (sessionToken) {
-    return sessionToken;
+  if (!inAdminIframe) {
+    return null;
   }
-  // Fallback to cookie
-  return getTokenFromCookie();
+  // sessionStorage persists across SPA navigations; the cookie is the fallback.
+  return sessionStorage.getItem('hydra_access_token') || getTokenFromCookie();
 }
 
 /**
