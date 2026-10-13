@@ -62,6 +62,17 @@ export function validateBlocksAgainstSchemas(
       formData: blockData,
       formatMessage,
     });
+    // A rule's error on a REGION. Volto runs a field's validators only when
+    // `formData[field]` holds a value, and a blocks_layout region's children
+    // are not there — they are in `blocks_layout[region]` — so a rule counting
+    // them ("a set of at least two") had its message on the field and nothing
+    // read it: the content validator reported it, the editor saved anyway.
+    // Only where Volto skipped the field, so a valued field is not told twice.
+    for (const [fieldName, field] of Object.entries(schema.properties)) {
+      if (field?.hydraRuleError && blockData[fieldName] == null && !errors[fieldName]) {
+        errors[fieldName] = [field.hydraRuleError];
+      }
+    }
     if (Object.keys(errors).length > 0) {
       blocksErrors[blockId] = errors;
     }

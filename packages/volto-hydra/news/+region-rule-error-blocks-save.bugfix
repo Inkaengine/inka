@@ -1,0 +1,1 @@
+A fieldRules `error` on a blocks region (a rule counting its children, e.g. "at least two") now blocks the save. Volto validates a field only when `formData[field]` has a value, and a region's children live in `blocks_layout`, so the error was shown to the content validator and never to the save.

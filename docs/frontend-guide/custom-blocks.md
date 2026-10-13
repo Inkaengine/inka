@@ -533,6 +533,8 @@ fieldRules: {
 
 The message lands on the field, and everything an author sees is Volto's own: the widget goes red, the form shows its error summary, and **the save is blocked** (`Form.onSubmit` validates every block against its enhanced schema and refuses to submit while any block has errors).
 
+This holds for a rule on a **region** too — one counting its children, say "at least two" (`items: { when: { items: { lt: 2 } }, error: '…' }`): the region's children live in `blocks_layout`, not on the field Volto validates, so hydra's own block validation adds the error there and the save is blocked the same way.
+
 An `error` composes with a `set` in the same rule — the field can be re-titled *and* marked — and it is skipped entirely when the rule's `when` does not match, so a form that has not been filled in yet is not scolded for it.
 
 **Write a cross-field rule on the field that should show the error.** There is no block-level address, and adding one would do less: an error keyed to a field is the only shape Volto acts on, so a block-level error would show a banner and let the save through. If a constraint genuinely belongs to no single field, list the same rule under each field it concerns.
