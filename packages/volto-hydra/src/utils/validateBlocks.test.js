@@ -15,8 +15,12 @@ import { describe, test, expect, vi } from 'vitest';
 
 vi.mock('../context', () => ({
   getHydraSchemaContext: () => ({}),
+  // Set around a rule's enhancer; returns the restore. No rule here reads it.
+  setHydraSchemaContext: () => () => {},
   HydraSchemaProvider: ({ children }) => children,
 }));
+
+import { createFieldRulesEnhancer } from '../../../hydra-js/fieldRules.js';
 
 import { validateBlocksAgainstSchemas } from './validateBlocks';
 
@@ -160,5 +164,66 @@ describe('block validation — nested blocks, which core never reached', () => {
       blocks_layout: { items: ['col'] },
     });
     expect(blocksErrors.nested?.req).toBeTruthy();
+  });
+});
+
+/**
+ * A fieldRules `error` on a REGION refuses the save.
+ *
+ * Volto runs a field's validators only when `formData[field]` holds a value,
+ * and a blocks_layout region's children are not there — they are in
+ * `blocks_layout[region]`. So a rule counting a region's children ("a set of
+ * at least two") put its message on the field and nothing ever read it: the
+ * content validator reported it, the editor saved anyway.
+ */
+describe('block validation — a rule error on a region', () => {
+  const setConfig = {
+    ...blocksConfig,
+    set: {
+      id: 'set',
+      title: 'Set',
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['items'] }],
+        properties: {
+          items: { title: 'Items', widget: 'blocks_layout', allowedBlocks: ['validated'] },
+        },
+        required: [],
+      },
+      schemaEnhancer: createFieldRulesEnhancer({
+        items: { when: { items: { lt: 2 } }, error: 'A set holds at least two.' },
+      }),
+    },
+  };
+  const good = (id) => ({ '@type': 'validated', req: 'present', id });
+  const validateSetOf = (count) => {
+    const ids = Array.from({ length: count }, (_, i) => `child-${i}`);
+    return validateBlocksAgainstSchemas(
+      {
+        blocks: {
+          set: {
+            '@type': 'set',
+            blocks: Object.fromEntries(ids.map((id) => [id, good(id)])),
+            blocks_layout: { items: ids },
+          },
+        },
+        blocks_layout: { items: ['set'] },
+      },
+      { blocksConfig: setConfig, intl: { formatMessage }, formatMessage },
+    );
+  };
+  const setOf = (count) => validateSetOf(count).blocksErrors;
+
+  test('a region the rule refuses is an error on that block', () => {
+    expect(setOf(1).set?.items).toEqual(['A set holds at least two.']);
+  });
+
+  test('a region the rule accepts raises nothing', () => {
+    expect(setOf(2)).toEqual({});
+  });
+
+  test("an error comes with its field's title, for the refused save to name", () => {
+    // A region is not drawn as a widget, so the toast is where an author
+    // learns which field refused the save.
+    expect(validateSetOf(1).fieldTitles).toEqual({ set: { items: 'Items' } });
   });
 });
