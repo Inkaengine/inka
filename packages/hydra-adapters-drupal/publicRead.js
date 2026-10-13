@@ -41,9 +41,11 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
      *
      * The SUBSET a public listing needs — a path scope, a text search, a sort
      * and a page — rather than the whole querystring language. A frontend
-     * holds a stored query in Plone's canonical vocabulary (`path`,
-     * `SearchableText`); translating it is the caller's job, and anything this
-     * cannot express must fail there rather than be dropped here, because a
+     * holds the stored query in the vocabulary THIS adapter's
+     * `querystring.getIndexes` advertised (`menu_parent`, `title`), so there
+     * is nothing to translate: building a query out of those names is this
+     * CMS's own job and is done here, not in a shared builder. Anything this
+     * cannot express must fail rather than be dropped, because a
      * listing that quietly ignored a criterion shows the wrong content with no
      * sign that anything went wrong.
      *

@@ -221,58 +221,53 @@
         /**
          * A listing fetcher that reads the CMS directly.
          *
-         * `buildQuerystringSearchBody` gives the stored query in PLONE's
-         * canonical vocabulary — `path` with Volto's long operator names,
-         * `SearchableText` for a search — because the helpers are CMS-agnostic
-         * and that is the dialect they speak. The public readers take the
-         * subset a public listing needs, so this translates between them.
+         * There is no shared query builder here. The helpers' one
+         * (`buildQuerystringSearchBody`) is Plone's: it builds a
+         * `@querystring-search` body in Plone's vocabulary and operator names,
+         * which is right for `ploneFetchItems` and wrong for everyone else.
+         * Each CMS owns its query building, in its own `publicRead.listing()`.
+         * So this translates nothing: it hands the stored criteria over in the
+         * vocabulary that CMS's `getIndexes` advertised, plus the url's search
+         * term, and the CMS builds its own query.
          *
-         * Anything it cannot express THROWS. A listing that silently dropped a
-         * criterion would render the wrong content and look fine, which is how
-         * a dropped query stays hidden: WordPress passes an index it does not
-         * know straight through as a REST parameter and answers with
-         * everything.
+         * Anything a reader cannot express THROWS — there as well as here. A
+         * listing that silently dropped a criterion would render the wrong
+         * content and look fine, which is how a dropped query stays hidden:
+         * WordPress passes an index it does not know straight through as a
+         * REST parameter and answers with everything.
          */
         function publicFetchItems({ reader, contextPath, extraCriteria = {} }) {
             return async function fetchItems(block, { start, size }) {
-                const body = buildQuerystringSearchBody(
-                    block.querystring,
-                    { b_start: start, b_size: size },
-                    extraCriteria,
+                // NOT through buildQuerystringSearchBody: that is PLONE's query
+                // builder — it produces a @querystring-search body, injects
+                // Plone's own `path` default and Plone's long operator names.
+                // Each CMS has its own builder, which is that CMS's
+                // publicRead.listing(); this hands it the stored criteria and
+                // the url, and it works out its own query.
+                const querystring = block.querystring ?? {};
+                const facets = Object.keys(extraCriteria).filter((k) =>
+                    k.startsWith('facet.'),
                 );
-                // The stored criteria go STRAIGHT to the CMS's own helper.
-                //
-                // They are already in that CMS's vocabulary: getIndexes told
-                // the admin what this CMS can be queried on, and the listing
-                // block kept those names. So there is nothing to translate
-                // here, and translating would put index names in a second
-                // place — the mistake this used to make, mapping Plone's
-                // `path` for every CMS.
-                //
-                // Two things are NOT vocabulary and stay here: the helpers'
-                // query builder injects Plone's `SearchableText` for a url
-                // search, which every CMS answers as "text", and the default
-                // "this page's children" when a block has no query of its own.
-                const stored = [];
-                let text;
-                for (const criterion of body.query ?? []) {
-                    if (criterion.i === 'SearchableText') {
-                        text = criterion.v;
-                    } else if (criterion.i === 'path') {
-                        // The query builder's own default, in Plone's dialect
-                        // rather than this CMS's: an unconfigured listing means
-                        // this page's children, which the reader decides.
-                        continue;
-                    } else {
-                        stored.push(criterion);
-                    }
+                if (facets.length) {
+                    throw new Error(
+                        `[public listing] no public read for the facets ` +
+                            `${facets.join(', ')}. Add them to the CMS's ` +
+                            `publicRead.js rather than dropping them: a listing ` +
+                            `that ignores a filter shows the wrong content and ` +
+                            `looks right.`,
+                    );
                 }
                 const page = await reader.listing({
-                    query: stored,
-                    text,
+                    // The stored criteria, in the vocabulary this CMS's
+                    // getIndexes advertised. Untouched.
+                    query: querystring.query ?? [],
+                    // The url's search term, which is not vocabulary: every CMS
+                    // answers "find this text" its own way.
+                    text: extraCriteria.SearchableText,
+                    // Where an unconfigured listing looks: this page.
                     contextPath: contextPath || '/',
-                    sortOn: body.sort_on,
-                    sortOrder: body.sort_order,
+                    sortOn: querystring.sort_on,
+                    sortOrder: querystring.sort_order,
                     start,
                     size,
                 });
@@ -347,7 +342,7 @@
                     throw new Error(`Unknown adapter '${which}'`);
             }
         }
-        import { buildQuerystringSearchBody, expandListingBlocks, staticBlocks, ploneFetchItems, adapterFetchItems, adapterGetContent, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
+        import { expandListingBlocks, staticBlocks, ploneFetchItems, adapterFetchItems, adapterGetContent, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
         // Expose staticBlocks so the renderer's expandItems can window static
         // (non-listing) container children with combined paging, hand-in-hand with
         // expandListingBlocks — the two abstract object_list/blocks_layout and paging.
