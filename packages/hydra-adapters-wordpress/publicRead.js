@@ -94,6 +94,47 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
     },
 
     /**
+     * A LISTING, as a visitor: published pages, optionally under a parent and
+     * narrowed by text.
+     *
+     * The SUBSET a public listing needs. `status=publish` and no
+     * `context=edit`, which is what keeps it a visitor's read.
+     *
+     * A path scope becomes `parent`, which is CHILDREN and not the subtree:
+     * core's pages endpoint has no descendant filter, and faking one by
+     * walking the tree would be several requests pretending to be one. A
+     * caller that needs a deeper scope has to say so; this does not pretend.
+     */
+    async listing({ path = '/', text, sortOn, sortOrder, start = 0, size = 25 } = {}) {
+      const params = {
+        status: 'publish',
+        per_page: String(start + size),
+        page: '1',
+      };
+      if (text) params.search = text;
+      if (sortOn) {
+        params.orderby = sortOn === 'sortable_title' ? 'title' : sortOn;
+        params.order = String(sortOrder).startsWith('desc') ? 'desc' : 'asc';
+      }
+      if (path && path !== '/') {
+        const parent = await readPage(path);
+        if (!parent) return { items: [], total: 0 };
+        params.parent = String(parent.id);
+      }
+      const res = await fetchImpl(api('/wp/v2/pages', params));
+      if (!res.ok) return null;
+      const posts = await res.json();
+      const items = posts.slice(start, start + size).map((post) => ({
+        path: new URL(post.link, base).pathname.replace(/\/+$/, '') || '/',
+        title: post.title?.rendered ?? '',
+      }));
+      // X-WP-Total is the unpaged count, which is what a listing's "N results"
+      // means; the array's length is only this page.
+      const total = Number(res.headers.get('X-WP-Total') ?? posts.length);
+      return { items, total };
+    },
+
+    /**
      * The navigation: the top of the PAGE TREE, which is what WordPress builds its
      * navigation from (wp_list_pages, the page-list block, a theme with no menu
      * assigned all read it).

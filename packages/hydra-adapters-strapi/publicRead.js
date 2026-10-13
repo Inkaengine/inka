@@ -75,6 +75,51 @@ export function createPublicReader({
     },
 
     /**
+     * A LISTING, as a visitor: published documents, optionally under a parent
+     * and narrowed by text.
+     *
+     * The SUBSET a public listing needs. No `status`, so the published variant
+     * is all this can see — the whole point, since asking for `draft` is not
+     * permission-gated.
+     *
+     * A path scope becomes the parent relation, which is CHILDREN and not the
+     * subtree: Strapi stores no path, so a descendant query would mean walking
+     * the tree a level at a time. A caller needing more has to say so.
+     */
+    async listing({ path = '/', text, sortOn, sortOrder, start = 0, size = 25 } = {}) {
+      const params = {
+        'pagination[start]': String(start),
+        'pagination[limit]': String(size),
+      };
+      if (text) {
+        params['filters[$or][0][title][$containsi]'] = text;
+        params[`filters[$or][1][${blocksField}][$containsi]`] = text;
+      }
+      if (sortOn) {
+        const field = sortOn === 'sortable_title' ? 'title' : sortOn;
+        params.sort = `${field}:${String(sortOrder).startsWith('desc') ? 'desc' : 'asc'}`;
+      }
+      if (path && path !== '/') {
+        const parent = await readEntry(path);
+        if (!parent) return { items: [], total: 0 };
+        params['filters[parent][documentId][$eq]'] = parent.documentId;
+      }
+      const res = await fetchImpl(api(params));
+      if (!res.ok) return null;
+      const body = await res.json();
+      return {
+        items: (body?.data ?? []).map((entry) => ({
+          // The slug is the last segment; a visitor's listing links to it
+          // under whatever prefix the frontend serves. Strapi knows no path,
+          // so this is the convention the reader was told about.
+          path: `/${entry[slugField]}`,
+          title: entry.title ?? '',
+        })),
+        total: body?.meta?.pagination?.total ?? (body?.data ?? []).length,
+      };
+    },
+
+    /**
      * The navigation: the top of the one hierarchy.
      *
      * Strapi has no menu feature, so its tree IS its navigation — the Plone

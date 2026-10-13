@@ -218,6 +218,70 @@
             }
         }
 
+        /**
+         * A listing fetcher that reads the CMS directly.
+         *
+         * `buildQuerystringSearchBody` gives the stored query in PLONE's
+         * canonical vocabulary — `path` with Volto's long operator names,
+         * `SearchableText` for a search — because the helpers are CMS-agnostic
+         * and that is the dialect they speak. The public readers take the
+         * subset a public listing needs, so this translates between them.
+         *
+         * Anything it cannot express THROWS. A listing that silently dropped a
+         * criterion would render the wrong content and look fine, which is how
+         * a dropped query stays hidden: WordPress passes an index it does not
+         * know straight through as a REST parameter and answers with
+         * everything.
+         */
+        function publicFetchItems({ reader, contextPath, extraCriteria = {} }) {
+            return async function fetchItems(block, { start, size }) {
+                const body = buildQuerystringSearchBody(
+                    block.querystring,
+                    { b_start: start, b_size: size },
+                    extraCriteria,
+                );
+                const criteria = { path: '/', text: undefined };
+                for (const { i, o, v } of body.query ?? []) {
+                    // The operator arrives as Plone's long form; only its tail
+                    // names the operation.
+                    const op = String(o).replace(/^plone\.app\.querystring\.operation\./, '');
+                    if (i === 'path' && op === 'string.absolutePath') {
+                        criteria.path = v;
+                    } else if (i === 'path' && op === 'string.relativePath') {
+                        // '.' is this page's subtree, '.::1' its children. A
+                        // public reader scopes by path, so both resolve against
+                        // the page being rendered.
+                        criteria.path = contextPath || '/';
+                    } else if (i === 'SearchableText') {
+                        criteria.text = v;
+                    } else {
+                        throw new Error(
+                            `[public listing] no public read for criterion '${i}' ` +
+                                `(${op}). Add it to the CMS's publicRead.js rather ` +
+                                `than dropping it: a listing that ignores a ` +
+                                `criterion renders the wrong content silently.`,
+                        );
+                    }
+                }
+                const page = await reader.listing({
+                    ...criteria,
+                    sortOn: body.sort_on,
+                    sortOrder: body.sort_order,
+                    start,
+                    size,
+                });
+                if (!page) return { items: [], total: 0 };
+                return {
+                    items: page.items.map((item) => ({
+                        '@id': item.path,
+                        title: item.title,
+                        '@type': 'Document',
+                    })),
+                    total: page.total,
+                };
+            };
+        }
+
         let cmsAdapterInstance = null;
         function cmsAdapter() {
             cmsAdapterInstance ??= buildAdapter();
@@ -277,7 +341,7 @@
                     throw new Error(`Unknown adapter '${which}'`);
             }
         }
-        import { expandListingBlocks, staticBlocks, ploneFetchItems, adapterFetchItems, adapterGetContent, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
+        import { buildQuerystringSearchBody, expandListingBlocks, staticBlocks, ploneFetchItems, adapterFetchItems, adapterGetContent, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, expandTemplates, expandTemplatesSync, contentPath } from '/helpers.js';
         // Expose staticBlocks so the renderer's expandItems can window static
         // (non-listing) container children with combined paging, hand-in-hand with
         // expandListingBlocks — the two abstract object_list/blocks_layout and paging.
@@ -378,7 +442,12 @@
             const cms = frontendCms();
             const fetchItems = cms.which === 'plone'
                 ? ploneFetchItems({ apiUrl: cms.base, contextPath, extraCriteria })
-                : adapterFetchItems({ adapter: cmsAdapter(), extraCriteria });
+                : !hasCmsCredential()
+                  // A VISITOR's listing: the public reader, never an adapter.
+                  // Plone's own fetcher is already a direct read, which is why
+                  // only the other three need this.
+                  ? publicFetchItems({ reader: publicReader(), contextPath, extraCriteria })
+                  : adapterFetchItems({ adapter: cmsAdapter(), extraCriteria });
             // Example listing-variant fetchers (see packages/helpers/index.js).
             // They read the SAME CMS the page renders from: Plone directly, any
             // other CMS through its adapter — whose keyword vocabulary is its

@@ -80,12 +80,22 @@ export function editorFrontendUrl(projectName: string): string {
   return `${URLS.testFrontend}/?${params.toString()}`;
 }
 
-/** The frontend a VISITOR loads: the CMS, and nothing else. */
+/**
+ * The frontend a VISITOR loads: the CMS, and nothing else.
+ *
+ * `contentPath` may carry its own query — `?SearchableText=` is how a visitor
+ * searches — so the two are MERGED. Appending `?adapter=...` blindly produced a
+ * url with two question marks, which the frontend then parsed as neither a
+ * search nor a path and rendered nothing.
+ */
 export function publicFrontendUrl(
   projectName: string,
   contentPath = '/',
 ): string {
   const { adapter, cms } = frontendFor(projectName);
-  const params = new URLSearchParams({ adapter, cms });
-  return `${URLS.testFrontend}${contentPath}?${params.toString()}`;
+  const [path, existing = ''] = contentPath.split('?');
+  const params = new URLSearchParams(existing);
+  params.set('adapter', adapter);
+  params.set('cms', cms);
+  return `${URLS.testFrontend}${path}?${params.toString()}`;
 }

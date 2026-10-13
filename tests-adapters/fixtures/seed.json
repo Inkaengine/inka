@@ -81,6 +81,33 @@
       "title": "Archive",
       "type": "folder",
       "state": "published"
+    },
+    {
+      "path": "/listing-page",
+      "title": "Listing Page",
+      "state": "published",
+      "blocks": {
+        "listing-1": {
+          "@type": "listing",
+          "variation": "summary",
+          "querystring": {
+            "query": [
+              {
+                "i": "path",
+                "o": "plone.app.querystring.operation.string.absolutePath",
+                "v": "/"
+              }
+            ],
+            "sort_on": "sortable_title",
+            "sort_order": "ascending"
+          }
+        }
+      },
+      "blocksLayout": {
+        "items": [
+          "listing-1"
+        ]
+      }
     }
   ],
   "assets": [

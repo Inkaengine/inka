@@ -36,6 +36,57 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
     },
 
     /**
+     * A LISTING, as a visitor: published nodes under a path, optionally
+     * narrowed by text.
+     *
+     * The SUBSET a public listing needs — a path scope, a text search, a sort
+     * and a page — rather than the whole querystring language. A frontend
+     * holds a stored query in Plone's canonical vocabulary (`path`,
+     * `SearchableText`); translating it is the caller's job, and anything this
+     * cannot express must fail there rather than be dropped here, because a
+     * listing that quietly ignored a criterion shows the wrong content with no
+     * sign that anything went wrong.
+     *
+     * `filter[status]=1` is what makes it a VISITOR's listing: unpublished
+     * nodes are readable to an editor and must not appear here.
+     */
+    async listing({ path = '/', text, sortOn, sortOrder, start = 0, size = 25 } = {}) {
+      const params = new URLSearchParams();
+      params.set('filter[status]', '1');
+      // The subtree, which JSON:API can express exactly: a path alias is a
+      // string and STARTS_WITH is a documented operator.
+      if (path && path !== '/') {
+        params.set('filter[sub][condition][path]', 'path.alias');
+        params.set('filter[sub][condition][operator]', 'STARTS_WITH');
+        params.set('filter[sub][condition][value]', path);
+      }
+      if (text) {
+        params.set('filter[q][condition][path]', 'title');
+        params.set('filter[q][condition][operator]', 'CONTAINS');
+        params.set('filter[q][condition][value]', text);
+      }
+      if (sortOn) {
+        const field = sortOn === 'sortable_title' ? 'title' : sortOn;
+        params.set('sort', `${String(sortOrder).startsWith('desc') ? '-' : ''}${field}`);
+      }
+      params.set('page[offset]', String(start));
+      params.set('page[limit]', String(size));
+      const res = await fetchImpl(
+        `${base}/jsonapi/node/page?${params}`,
+        jsonApi,
+      );
+      if (!res.ok) return null;
+      const body = await res.json();
+      return {
+        items: (body.data ?? []).map((node) => ({
+          path: node.attributes?.path?.alias ?? '',
+          title: node.attributes?.title ?? '',
+        })),
+        total: body.meta?.count ?? (body.data ?? []).length,
+      };
+    },
+
+    /**
      * Everything a frontend needs to RENDER the node, from one request.
      *
      * The same JSON:API read as `blocks`, keeping the title: a frontend draws

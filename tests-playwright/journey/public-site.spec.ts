@@ -128,6 +128,75 @@ test.describe('the public site', () => {
     }
   });
 
+  /**
+   * A LISTING, on the public site.
+   *
+   * The block stores a query in Plone's canonical vocabulary — `path`, and
+   * Volto's long operator form — because that is what a stored listing block
+   * carries, and because four CMSes with four different names for the path
+   * index (path, parent, menu_parent, parent) cannot share a fixture written
+   * in any one CMS's names. Mapping it is the adapter's and the public
+   * reader's job.
+   *
+   * Scoped to the whole site, deliberately: that subtree holds several
+   * published pages AND the draft, so "did the query run" and "did it respect
+   * publication" are both answerable. Scoped to /news it could not be —
+   * /news has exactly one published child, so a dropped query and a working
+   * one look identical.
+   */
+  test('renders a listing to a visitor', async ({ browser }, testInfo) => {
+    test.setTimeout(120_000);
+    const { context, page } = await visit(
+      browser,
+      testInfo.project.name,
+      '/listing-page',
+    );
+    try {
+      // #content, not [data-block-uid="listing-1"]: the frontend tags every
+      // rendered ITEM with the listing block's uid, so that selector matches
+      // one element per result and a text assertion on it fails strict mode
+      // rather than telling you anything. The nav lives outside #content,
+      // which matters — "About" is a permanent nav entry, so a listing
+      // assertion that included it could never fail.
+      const listing = page.locator('#content');
+      await expect(listing).toContainText('First Post', { timeout: 60_000 });
+      // The draft is in the same subtree, so a query that ignored publication
+      // would list it — and so would a query that was dropped entirely, which
+      // is what makes this the assertion that matters.
+      await expect(listing).not.toContainText('Draft Post');
+    } finally {
+      await context.close();
+    }
+  });
+
+  /**
+   * SEARCH, which on the public site is the same read with a text criterion.
+   *
+   * `?SearchableText=` is how a visitor searches: the helpers' query builder
+   * folds it into the listing's own query as a `SearchableText` criterion, so
+   * a CMS that cannot map that name answers the unfiltered listing and looks
+   * like a working search that matches everything.
+   */
+  test('narrows a listing by search for a visitor', async ({ browser }, testInfo) => {
+    test.setTimeout(120_000);
+    const { context, page } = await visit(
+      browser,
+      testInfo.project.name,
+      '/listing-page?SearchableText=First',
+    );
+    try {
+      const listing = page.locator('#content');
+      await expect(listing).toContainText('First Post', { timeout: 60_000 });
+      // "About" is in the same listing when nothing is searched for, so a
+      // search that was dropped still shows it. Asserted on another title
+      // rather than a count, because what a variation renders around each item
+      // is its own business.
+      await expect(listing).not.toContainText('About');
+    } finally {
+      await context.close();
+    }
+  });
+
   test('does not serve a draft to a visitor', async ({ browser }, testInfo) => {
     test.setTimeout(120_000);
     const { draft } = fixtureFor(testInfo.project.name);

@@ -5548,6 +5548,23 @@ app.post('*/@querystring-search', (req, res) => {
     if (sort_order === 'descending') allItems.reverse();
   }
 
+  // A VISITOR's search returns only what a visitor may view.
+  //
+  // Plone's catalog applies the current user's permissions, so an anonymous
+  // @querystring-search cannot return private content. This mock filtered
+  // nothing, so a LISTING on a published page showed the draft's title to the
+  // public — the same inconsistency as advertising a private page in the
+  // navigation, which the content route has refused all along.
+  //
+  // Found by the public-site spec's listing test, which asks for the whole
+  // subtree: the draft is in it, and the only reason it should not appear is
+  // publication.
+  if (!isAuthenticated(req)) {
+    allItems = allItems.filter(
+      (content) => !PRIVATE_STATES.has(content?.review_state),
+    );
+  }
+
   // Apply results limit (different from b_size which is for pagination)
   if (limit && limit > 0) {
     allItems = allItems.slice(0, limit);
