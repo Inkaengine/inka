@@ -63,10 +63,14 @@ function parseContentMounts() {
 const CONTENT_MOUNTS = parseContentMounts();
 
 /**
- * A mount's redirects.json as site-relative [old, new] pairs, or [] when it has
- * none.
+ * A mount's redirects as site-relative [old, new] pairs, or [] when it has none.
  *
- * The file holds PHYSICAL paths ({"/Plone/old": "/Plone/new"}): that is what
+ * A markdown mount keeps them in its own folder (redirects.json beside
+ * index.md), site-relative: markdown has no physical path. @export makes them
+ * physical, with the site path the caller names.
+ *
+ * A JSON (exportimport) mount's redirects.json sits beside its content dir,
+ * as plone.exportimport lays it out, and holds PHYSICAL paths ({"/Plone/old": "/Plone/new"}): that is what
  * plone.exportimport writes, and what its importer hands, as is, to
  * plone.app.redirector's storage, which is keyed by physical path. The site's
  * physical path is its root item's @id (plone_site_root/data.json). An entry
@@ -77,7 +81,18 @@ const CONTENT_MOUNTS = parseContentMounts();
  * Read fresh each call (tiny file, only hit on a 404 or @aliases) so dev edits
  * take effect without a restart.
  */
-function readRedirects(dirPath) {
+function readRedirects(mount) {
+  const { dirPath } = mount;
+  if (isMarkdownMount(mount)) {
+    const ownFile = path.join(dirPath, 'redirects.json');
+    if (!fs.existsSync(ownFile)) return [];
+    return Object.entries(JSON.parse(fs.readFileSync(ownFile, 'utf8'))).map(([from, to]) => {
+      if (!from.startsWith('/') || !to.startsWith('/')) {
+        throw new Error(`${ownFile}: redirect paths start with / (site-relative): ${JSON.stringify(from)} -> ${JSON.stringify(to)}`);
+      }
+      return [from, to];
+    });
+  }
   const redirectsFile = path.join(dirPath, '..', 'redirects.json');
   if (!fs.existsSync(redirectsFile)) return [];
   const map = JSON.parse(fs.readFileSync(redirectsFile, 'utf8'));
@@ -105,7 +120,7 @@ function getRedirectTarget(cleanPath) {
       ? cleanPath
       : (cleanPath.startsWith(mountPath) ? cleanPath.slice(mountPath.length) || '/' : null);
     if (rel == null) continue;
-    const hit = readRedirects(dirPath).find(([from]) => from === rel);
+    const hit = readRedirects({ mountPath, dirPath }).find(([from]) => from === rel);
     if (hit) {
       return mountPath === '/' ? hit[1] : mountPath + hit[1];
     }
@@ -120,7 +135,7 @@ function getRedirectTarget(cleanPath) {
 function getAllRedirects() {
   const out = [];
   for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    for (const [from, to] of readRedirects(dirPath)) {
+    for (const [from, to] of readRedirects({ mountPath, dirPath })) {
       out.push({
         path: mountPath === '/' ? from : mountPath + from,
         'redirect-to': mountPath === '/' ? to : mountPath + to,
@@ -2961,9 +2976,10 @@ const SIBLING_DEFAULTS = {
  * @param {(uid:string)=>number|undefined} opts.positionOf  getObjPositionInParent, for ordering
  * @param {(urlPath,field,blobPath)=>string} opts.blobSourceOf  abs source file for a blob's bytes
  * @param {string[]} [opts.siblingsFrom]       dirs to copy the 6 siblings from (first that has each wins)
+ * @param {Object<string,string>} [opts.redirects]  redirects.json to write (physical paths) instead of copying one
  * @returns the written __metadata__
  */
-function writeDistribution(dest, items, { positionOf = () => undefined, blobSourceOf, siblingsFrom = [], allowMissingBlobs = false } = {}) {
+function writeDistribution(dest, items, { positionOf = () => undefined, blobSourceOf, siblingsFrom = [], allowMissingBlobs = false, redirects } = {}) {
   const destContent = path.join(dest, 'content');
   fs.rmSync(destContent, { recursive: true, force: true });
   fs.mkdirSync(destContent, { recursive: true });
@@ -3027,6 +3043,10 @@ function writeDistribution(dest, items, { positionOf = () => undefined, blobSour
   dataFiles.sort((a, b) => depthOf(a) - depthOf(b) || a.localeCompare(b));
 
   for (const sib of DISTRIBUTION_SIBLINGS) {
+    if (sib === 'redirects.json' && redirects) {
+      fs.writeFileSync(path.join(dest, sib), JSON.stringify(redirects, null, 2) + '\n');
+      continue;
+    }
     const from = siblingsFrom.map((d) => path.join(d, sib)).find((p) => fs.existsSync(p));
     if (from) fs.copyFileSync(from, path.join(dest, sib));
     else fs.writeFileSync(path.join(dest, sib), JSON.stringify(SIBLING_DEFAULTS[sib], null, 2) + '\n');
@@ -3053,7 +3073,34 @@ function writeDistribution(dest, items, { positionOf = () => undefined, blobSour
  * mount's dir (its blob_path is relative to that content root). Returns the
  * written __metadata__, or null when there is no content to export.
  */
-function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
+/**
+ * Every exportable mount's redirects, as plone.exportimport writes them:
+ * PHYSICAL paths under `sitePath` ("/Plone"), the site's path in the Zope root.
+ * The importer stores each pair as is, keyed by physical path, so a
+ * site-relative pair would be stored where no request looks. Throws an
+ * ExportRequestError when there are redirects and no usable `sitePath`.
+ */
+class ExportRequestError extends Error {}
+function exportRedirects(mounts, sitePath) {
+  const pairs = [];
+  for (const mount of mounts) {
+    for (const [from, to] of readRedirects(mount)) {
+      const prefixed = (p) => (mount.mountPath === '/' ? p : mount.mountPath + (p === '/' ? '' : p));
+      pairs.push([prefixed(from), prefixed(to)]);
+    }
+  }
+  if (!pairs.length) return {};
+  if (typeof sitePath !== 'string' || !/^\/[^/]+(\/[^/]+)*$/.test(sitePath)) {
+    throw new ExportRequestError(
+      `the content has ${pairs.length} redirect(s); pass sitePath (the site's physical path, e.g. "/Plone") ` +
+      `so redirects.json holds the physical paths Plone stores them by (got ${JSON.stringify(sitePath)})`,
+    );
+  }
+  const physical = (p) => (p === '/' ? sitePath : sitePath + p);
+  return Object.fromEntries(pairs.map(([from, to]) => [physical(from), physical(to)]));
+}
+
+function buildDistributionFromMemory(dest, { allowMissingBlobs = false, sitePath } = {}) {
   // Only genuine content-source mounts are exportable: a plone.exportimport tree
   // (has __metadata__.json) or a markdown tree (has index.md). A loose fixture
   // mount like /_test_data is neither — it holds intentionally-malformed test
@@ -3089,6 +3136,7 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
     blobSourceOf,
     siblingsFrom,
     allowMissingBlobs,
+    redirects: exportRedirects(CONTENT_MOUNTS.filter(exportable), sitePath),
   });
 }
 
@@ -3107,13 +3155,15 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
  * markdown trees instead of exportimport JSON; the CALLER supplies the
  * prototypes in the body (`{ matched, tagged }` declaration text) so the mock
  * API needs no format config of its own.
- *   POST /@export  { format: 'json'|'markdown', prototypes?: { matched, tagged } }
+ *   POST /@export  { format: 'json'|'markdown', prototypes?: { matched, tagged }, sitePath? }
+ *     sitePath: the site's physical path ("/Plone"), required for json when
+ *     the content has redirects — redirects.json holds physical paths.
  *     json     -> application/zip  (export.zip: content/**, siblings)
  *     markdown -> application/zip  (export-markdown.zip: docs/**, site/** trees)
  */
 app.post('/@export', async (req, res) => {
   await ready;
-  const { format = 'json', prototypes = {}, allowMissingBlobs = false } = req.body || {};
+  const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = req.body || {};
 
   if (format === 'markdown') {
     const { emitPage, parsePrototypes } = await getEngine();
@@ -3406,7 +3456,13 @@ app.post('/@export', async (req, res) => {
   // distribution. Build it in a temp dir, validate, tar, stream, clean up.
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'plone-export-'));
   try {
-    const merged = buildDistributionFromMemory(staging, { allowMissingBlobs });
+    let merged;
+    try {
+      merged = buildDistributionFromMemory(staging, { allowMissingBlobs, sitePath });
+    } catch (e) {
+      if (e instanceof ExportRequestError) return res.status(400).json({ error: e.message });
+      throw e;
+    }
     if (!merged) {
       return res.status(409).json({ error: 'no content to export' });
     }
