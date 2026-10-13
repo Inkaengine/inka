@@ -86,11 +86,38 @@ export function createPublicReader({
      * subtree: Strapi stores no path, so a descendant query would mean walking
      * the tree a level at a time. A caller needing more has to say so.
      */
-    async listing({ path = '/', text, sortOn, sortOrder, start = 0, size = 25 } = {}) {
+    async listing({ query = [], text, contextPath = '/', sortOn, sortOrder, start = 0, size = 25 } = {}) {
       const params = {
         'pagination[start]': String(start),
         'pagination[limit]': String(size),
       };
+      // The criteria arrive in STRAPI's vocabulary — `parent`, `collection`,
+      // `title` — because that is what this adapter's getIndexes advertises
+      // and what the listing block stored. Translated here, where the names
+      // mean something, and nowhere else.
+      let scope = null;
+      for (const { i, v } of query) {
+        const value = Array.isArray(v) ? v[0] : v;
+        if (i === 'parent') {
+          scope = String(value);
+        } else if (i === 'collection') {
+          // One request reads one collection, so a type criterion is answered
+          // by whether this is the collection asked for.
+          const wanted = Array.isArray(v) ? v : [value];
+          if (!wanted.includes(collectionPlural) && !wanted.includes('page')) {
+            return { items: [], total: 0 };
+          }
+        } else if (i === 'title') {
+          params['filters[title][$containsi]'] = String(value);
+        } else {
+          throw new Error(
+            `strapi public listing: no read for the '${i}' index. It is one ` +
+              `this adapter advertises, so add it here rather than dropping ` +
+              `it — a listing that ignores a criterion shows the wrong ` +
+              `content and looks right.`,
+          );
+        }
+      }
       if (text) {
         params['filters[$or][0][title][$containsi]'] = text;
         params[`filters[$or][1][${blocksField}][$containsi]`] = text;
@@ -99,8 +126,9 @@ export function createPublicReader({
         const field = sortOn === 'sortable_title' ? 'title' : sortOn;
         params.sort = `${field}:${String(sortOrder).startsWith('desc') ? 'desc' : 'asc'}`;
       }
-      if (path && path !== '/') {
-        const parent = await readEntry(path);
+      if (scope === null) scope = contextPath;
+      if (scope && scope !== '/') {
+        const parent = await readEntry(scope);
         if (!parent) return { items: [], total: 0 };
         params['filters[parent][documentId][$eq]'] = parent.documentId;
       }

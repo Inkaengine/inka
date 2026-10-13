@@ -4,7 +4,9 @@ import path from 'node:path';
 import { DrupalAdapter } from '@volto-hydra/hydra-adapters-drupal';
 import { createPublicReader } from '@volto-hydra/hydra-adapters-drupal/public';
 import type { Target } from './index';
-import seed from '../fixtures/seed.json';
+import { seedFixture } from '../fixtures/seed-documents';
+// Drupal's path index is `menu_parent` — its hierarchy lives in menu links.
+const seed = seedFixture('menu_parent');
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

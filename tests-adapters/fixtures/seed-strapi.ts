@@ -1,4 +1,4 @@
-import seed from './seed.json';
+import { seedDocuments } from './seed-documents';
 
 /**
  * Write the canonical fixture into a Strapi instance.
@@ -37,7 +37,9 @@ export async function seedStrapi({
 
   // Parents first, so a child always has an id to point its parent relation at.
   // Strapi has no hierarchy of its own; the tree is that relation.
-  const docs = seed.documents
+  // Projected into Strapi's own query vocabulary: its path index is
+  // `parent`, which is what its getIndexes advertises.
+  const docs = seedDocuments('parent')
     .filter((d: any) => d.path !== '/')
     .sort((a: any, b: any) => a.path.split('/').length - b.path.split('/').length);
 

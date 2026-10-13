@@ -1,7 +1,9 @@
 import { WordPressAdapter, serializeBlocks } from '@volto-hydra/hydra-adapters-wordpress';
 import { createPublicReader } from '@volto-hydra/hydra-adapters-wordpress/public';
 import type { Target } from './index';
-import seed from '../fixtures/seed.json';
+import { seedFixture } from '../fixtures/seed-documents';
+// WordPress's path index is `parent`.
+const seed = seedFixture('parent');
 
 const PORT = 8790;
 const BASE = `http://127.0.0.1:${PORT}`;

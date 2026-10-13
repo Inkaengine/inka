@@ -5,6 +5,25 @@ import { PORTS } from '../ports';
 import { serializeBlocks } from '@volto-hydra/hydra-adapters-wordpress';
 
 /**
+ * Swap the fixture's path-index token for this CMS's name.
+ *
+ * A local copy rather than an import of fixtures/seed-documents.ts: that
+ * module imports seed.json, and this file deliberately reads it from DISK so
+ * the journey's seed cannot drift from the contract suite's copy.
+ */
+function projectPathIndex(documents: any[], pathIndex: string) {
+  const projected = JSON.parse(JSON.stringify(documents));
+  for (const doc of projected) {
+    for (const block of Object.values<any>(doc.blocks ?? {})) {
+      for (const criterion of block?.querystring?.query ?? []) {
+        if (criterion.i === '__PATH_INDEX__') criterion.i = pathIndex;
+      }
+    }
+  }
+  return projected;
+}
+
+/**
  * Put the canonical fixture into WordPress before a journey runs.
  *
  * The other two targets arrive seeded: the Plone mock serves the repo's own
@@ -53,7 +72,10 @@ export async function seedWordPress(): Promise<void> {
 
   // Parents before children: the reset endpoint resolves each document's
   // parent by path as it inserts, so a child seeded first would be orphaned.
-  const documents = seed.documents
+  // Projected into WordPress's own query vocabulary: a stored listing block
+  // holds the index names its adapter advertises, and WordPress's path index
+  // is `parent`. See fixtures/seed-documents.ts.
+  const documents = projectPathIndex(seed.documents, 'parent')
     .filter((d: any) => d.path !== '/')
     .sort(
       (a: any, b: any) => a.path.split('/').length - b.path.split('/').length,

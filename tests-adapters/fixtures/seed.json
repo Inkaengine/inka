@@ -93,7 +93,7 @@
           "querystring": {
             "query": [
               {
-                "i": "path",
+                "i": "__PATH_INDEX__",
                 "o": "plone.app.querystring.operation.string.absolutePath",
                 "v": "/"
               }

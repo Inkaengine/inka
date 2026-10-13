@@ -50,15 +50,40 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
      * `filter[status]=1` is what makes it a VISITOR's listing: unpublished
      * nodes are readable to an editor and must not appear here.
      */
-    async listing({ path = '/', text, sortOn, sortOrder, start = 0, size = 25 } = {}) {
+    async listing({ query = [], text, contextPath = '/', sortOn, sortOrder, start = 0, size = 25 } = {}) {
       const params = new URLSearchParams();
       params.set('filter[status]', '1');
+      // The criteria arrive in DRUPAL's vocabulary, because that is what this
+      // CMS's getIndexes advertises and therefore what a listing block stored.
+      // Nothing is translated on the way in; this file knows what its own
+      // index names mean, which is the only place that knowledge belongs.
+      let scope = null;
+      for (const { i, v } of query) {
+        const value = Array.isArray(v) ? v[0] : v;
+        if (i === 'menu_parent') {
+          scope = String(value);
+        } else if (i === 'title') {
+          params.set('filter[t][condition][path]', 'title');
+          params.set('filter[t][condition][operator]', 'CONTAINS');
+          params.set('filter[t][condition][value]', String(value));
+        } else {
+          throw new Error(
+            `drupal public listing: no read for the '${i}' index. It is one ` +
+              `this adapter advertises, so add it here rather than dropping ` +
+              `it — a listing that ignores a criterion shows the wrong ` +
+              `content and looks right.`,
+          );
+        }
+      }
+      // No criteria at all means this page's own subtree, which is what Volto
+      // shows for an unconfigured listing.
+      if (scope === null) scope = contextPath;
       // The subtree, which JSON:API can express exactly: a path alias is a
       // string and STARTS_WITH is a documented operator.
-      if (path && path !== '/') {
+      if (scope && scope !== '/') {
         params.set('filter[sub][condition][path]', 'path.alias');
         params.set('filter[sub][condition][operator]', 'STARTS_WITH');
-        params.set('filter[sub][condition][value]', path);
+        params.set('filter[sub][condition][value]', scope);
       }
       if (text) {
         params.set('filter[q][condition][path]', 'title');

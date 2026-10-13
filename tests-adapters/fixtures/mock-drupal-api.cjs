@@ -90,6 +90,17 @@ function buildState() {
   };
 
   const spec = JSON.parse(fs.readFileSync(SEED_PATH, 'utf8'));
+  // The fixture's path-index token becomes Drupal's own name. A stored listing
+  // block holds the indexes its adapter advertised, and Drupal's path index is
+  // `menu_parent` — its hierarchy lives in menu links. See
+  // fixtures/seed-documents.ts for why the fixture carries a token at all.
+  for (const doc of spec.documents) {
+    for (const block of Object.values(doc.blocks || {})) {
+      for (const criterion of block?.querystring?.query || []) {
+        if (criterion.i === '__PATH_INDEX__') criterion.i = 'menu_parent';
+      }
+    }
+  }
   const byPath = new Map();
 
   for (const doc of spec.documents) {

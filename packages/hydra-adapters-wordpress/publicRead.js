@@ -105,19 +105,44 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
      * walking the tree would be several requests pretending to be one. A
      * caller that needs a deeper scope has to say so; this does not pretend.
      */
-    async listing({ path = '/', text, sortOn, sortOrder, start = 0, size = 25 } = {}) {
+    async listing({ query = [], text, contextPath = '/', sortOn, sortOrder, start = 0, size = 25 } = {}) {
       const params = {
         status: 'publish',
         per_page: String(start + size),
         page: '1',
       };
+      // The criteria arrive in WORDPRESS's vocabulary — `parent`, `post_type`,
+      // `title` — because that is what this adapter's getIndexes advertises
+      // and therefore what the listing block stored. This file works out the
+      // request from them; nothing translates index names on the way in.
+      let scope = null;
+      for (const { i, v } of query) {
+        const value = Array.isArray(v) ? v[0] : v;
+        if (i === 'parent') {
+          scope = String(value);
+        } else if (i === 'post_type') {
+          // A visitor's listing is pages; a type criterion that asks for
+          // something else is answered by the endpoint it names.
+          params.type = Array.isArray(v) ? v.join(',') : String(value);
+        } else if (i === 'title') {
+          params.search = String(value);
+        } else {
+          throw new Error(
+            `wordpress public listing: no read for the '${i}' index. It is ` +
+              `one this adapter advertises, so add it here rather than ` +
+              `dropping it — WordPress answers an unknown parameter with ` +
+              `everything, which looks like a working listing.`,
+          );
+        }
+      }
       if (text) params.search = text;
       if (sortOn) {
         params.orderby = sortOn === 'sortable_title' ? 'title' : sortOn;
         params.order = String(sortOrder).startsWith('desc') ? 'desc' : 'asc';
       }
-      if (path && path !== '/') {
-        const parent = await readPage(path);
+      if (scope === null) scope = contextPath;
+      if (scope && scope !== '/') {
+        const parent = await readPage(scope);
         if (!parent) return { items: [], total: 0 };
         params.parent = String(parent.id);
       }

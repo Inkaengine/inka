@@ -240,31 +240,37 @@
                     { b_start: start, b_size: size },
                     extraCriteria,
                 );
-                const criteria = { path: '/', text: undefined };
-                for (const { i, o, v } of body.query ?? []) {
-                    // The operator arrives as Plone's long form; only its tail
-                    // names the operation.
-                    const op = String(o).replace(/^plone\.app\.querystring\.operation\./, '');
-                    if (i === 'path' && op === 'string.absolutePath') {
-                        criteria.path = v;
-                    } else if (i === 'path' && op === 'string.relativePath') {
-                        // '.' is this page's subtree, '.::1' its children. A
-                        // public reader scopes by path, so both resolve against
-                        // the page being rendered.
-                        criteria.path = contextPath || '/';
-                    } else if (i === 'SearchableText') {
-                        criteria.text = v;
+                // The stored criteria go STRAIGHT to the CMS's own helper.
+                //
+                // They are already in that CMS's vocabulary: getIndexes told
+                // the admin what this CMS can be queried on, and the listing
+                // block kept those names. So there is nothing to translate
+                // here, and translating would put index names in a second
+                // place — the mistake this used to make, mapping Plone's
+                // `path` for every CMS.
+                //
+                // Two things are NOT vocabulary and stay here: the helpers'
+                // query builder injects Plone's `SearchableText` for a url
+                // search, which every CMS answers as "text", and the default
+                // "this page's children" when a block has no query of its own.
+                const stored = [];
+                let text;
+                for (const criterion of body.query ?? []) {
+                    if (criterion.i === 'SearchableText') {
+                        text = criterion.v;
+                    } else if (criterion.i === 'path') {
+                        // The query builder's own default, in Plone's dialect
+                        // rather than this CMS's: an unconfigured listing means
+                        // this page's children, which the reader decides.
+                        continue;
                     } else {
-                        throw new Error(
-                            `[public listing] no public read for criterion '${i}' ` +
-                                `(${op}). Add it to the CMS's publicRead.js rather ` +
-                                `than dropping it: a listing that ignores a ` +
-                                `criterion renders the wrong content silently.`,
-                        );
+                        stored.push(criterion);
                     }
                 }
                 const page = await reader.listing({
-                    ...criteria,
+                    query: stored,
+                    text,
+                    contextPath: contextPath || '/',
                     sortOn: body.sort_on,
                     sortOrder: body.sort_order,
                     start,
