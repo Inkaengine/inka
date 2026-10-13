@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { fixtureFor } from './fixtures';
-import { publicFrontendUrl } from './frontends';
+import { frontendFor, publicFrontendUrl } from './frontends';
 import { seedFor } from './seedFor';
 
 /**
@@ -29,10 +29,51 @@ test.describe('the public site', () => {
     await seedFor(testInfo);
   });
 
-  /** A visitor's page: no cookies, no storage, no credential on the URL. */
-  const visit = async (browser: import('@playwright/test').Browser, projectName: string, path: string) => {
-    const context = await browser.newContext();
+  /**
+   * A visitor's page: no storage, no credential on the URL, and no SESSION.
+   *
+   * A fresh context is not enough against WordPress. The Playground CLI mints
+   * a logged-in admin session for any new client on first contact — the
+   * contract target says the same and keeps a separate `publicCookie` for it —
+   * so a context that merely started empty had full editor rights the moment
+   * the frontend made its first request. That did not only weaken the draft
+   * assertion: it made the published-page and menu checks statements about an
+   * EDITOR, which is the exact confusion this spec exists to end.
+   *
+   * So: make contact, then drop WordPress's auth cookies and keep the rest.
+   * Playground's own cookie is TRANSPORT — without it the server 302s a
+   * cookie-less client to the same URL forever — while anything named
+   * `wordpress_*` or `wp-settings*` is the session. A no-op against a CMS that
+   * mints nothing, which is every other target here.
+   */
+  const visit = async (
+    browser: import('@playwright/test').Browser,
+    projectName: string,
+    path: string,
+  ) => {
+    // An EXPLICITLY empty storage state, because a bare newContext() is not
+    // empty: Playwright Test applies the project's `use` options to contexts
+    // made from the `browser` fixture, so this inherited
+    // storage-authed-wordpress.json — the editor's session AND, decisively,
+    // the frontend origin's localStorage credential, which is exactly how the
+    // WordPress frontend authenticates. Measured: the context arrived holding
+    // auth_token and iframe_url_3001 for the admin's origin.
+    const context = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+    });
     const page = await context.newPage();
+
+    const { cms } = frontendFor(projectName);
+    await page.goto(`${cms}/`, { waitUntil: 'domcontentloaded' }).catch(() => {
+      // A CMS that does not serve a browsable root is fine: we came only for
+      // whatever cookies it hands out.
+    });
+    const kept = (await context.cookies()).filter(
+      (c) => !/^(wordpress_|wp-settings)/.test(c.name),
+    );
+    await context.clearCookies();
+    if (kept.length) await context.addCookies(kept);
+
     await page.goto(publicFrontendUrl(projectName, path), {
       waitUntil: 'domcontentloaded',
     });
@@ -101,10 +142,28 @@ test.describe('the public site', () => {
       // aborted init and the other into a not-found page. What must hold
       // everywhere is that the draft's own title never reaches the visitor.
       //
-      // Given time to be wrong: a poll that settles immediately would pass
-      // against a page that renders the draft a second later.
-      await page.waitForTimeout(5_000);
-      await expect(page.locator('#page-title')).not.toHaveText(draft.title);
+      // Wait for the frontend to SETTLE, not for a fixed number of seconds.
+      //
+      // A flat wait passed locally for the wrong reason: WordPress-on-PHP-WASM
+      // answers in about a second per request, the page was still showing
+      // "Loading..." when the five seconds were up, and the assertion read
+      // that as "no draft". CI was faster, rendered the draft, and failed —
+      // which is the correct answer arriving by luck rather than by design.
+      //
+      // The title leaving "Loading..." is the frontend having DECIDED
+      // something: it either rendered a page or gave up. Staying on
+      // "Loading..." for the whole budget is itself the refusal — the read
+      // threw and init never completed — so that is a pass, not a timeout.
+      const title = () => page.locator('#page-title').textContent();
+      const deadline = Date.now() + 25_000;
+      let text = await title();
+      while (text?.trim() === 'Loading...' && Date.now() < deadline) {
+        await page.waitForTimeout(250);
+        text = await title();
+      }
+      expect(text?.trim(), 'a visitor was served the draft').not.toBe(
+        draft.title,
+      );
     } finally {
       await context.close();
     }

@@ -410,7 +410,7 @@ export class WordPressAdapter extends BaseAdapter {
       params: {
         slug: segments.join(','),
         per_page: String(PER_PAGE),
-        status: 'any',
+        ...(this.authenticated ? { status: 'any' } : {}),
         // id, slug and parent are all a path resolution needs. Without this the
         // response carries every field of every candidate — content included —
         // to answer a question about three of them.
@@ -470,7 +470,8 @@ export class WordPressAdapter extends BaseAdapter {
         params: {
           slug,
           parent: String(parent),
-          status: 'any',
+          // Editor-only; a visitor resolves published paths. See `authenticated`.
+          ...(this.authenticated ? { status: 'any' } : {}),
           _fields: 'id,slug,parent',
         },
       });
@@ -596,7 +597,11 @@ export class WordPressAdapter extends BaseAdapter {
   }
 
   toDocument(post, path) {
-    const raw = post.content?.raw ?? '';
+    // `raw` for an editor, `rendered` for a visitor: context=edit is what
+    // produces raw, and a visitor may not ask for it. The blocks survive
+    // rendering because they ride in a data-hydra-blocks ELEMENT rather than a
+    // block comment — see publicRead.js, which parses exactly this.
+    const raw = post.content?.raw ?? post.content?.rendered ?? '';
     const { blocks, blocksLayout, legacy } = parseBlocks(raw);
     return {
       id: String(post.id),
@@ -962,6 +967,30 @@ export class WordPressAdapter extends BaseAdapter {
    * came back 401, which surfaced as an image that never rendered rather than
    * as an auth failure.
    */
+  /**
+   * Is this adapter holding a credential?
+   *
+   * `status=any` and `context=edit` are the two parameters WordPress refuses
+   * to an anonymous caller — measured: `status=any` answers
+   * 400 "Status is forbidden", and `context=edit` demands a session. The
+   * adapter sent both unconditionally, so a frontend reading its CMS with no
+   * credential — which is every PUBLIC page view — could not resolve a path at
+   * all, let alone read one. publicRead.js in this package says the same thing
+   * in its header and was written for frontends doing it by hand; the adapter
+   * never offered the mode.
+   *
+   * A visitor therefore asks for neither, which also means the right answer to
+   * "is this draft readable": no, because `status` defaults to publish.
+   */
+  get authenticated() {
+    return Boolean(this.credentials || this.nonce);
+  }
+
+  /** The read parameters only a credentialled caller may send. */
+  get editorReadParams() {
+    return this.authenticated ? { status: 'any', context: 'edit' } : {};
+  }
+
   authHeaders() {
     return {
       ...(this.nonce ? { 'X-WP-Nonce': this.nonce } : {}),
@@ -1087,7 +1116,7 @@ export class WordPressAdapter extends BaseAdapter {
       case 'content.get': {
         const id = await this.resolvePath(args.path);
         const post = await this.fetchJson(`/wp/v2/${this.postType}/${id}`, {
-          params: { context: 'edit' },
+          params: this.editorReadParams,
         });
         return this.withContext(
           this.toDocument(post, args.path),
@@ -1408,8 +1437,7 @@ export class WordPressAdapter extends BaseAdapter {
         const posts = await this.fetchJson(`/wp/v2/${this.postType}`, {
           params: {
             parent: String(parentId),
-            status: 'any',
-            context: 'edit',
+            ...this.editorReadParams,
             per_page: '100',
             // menu_order is the folder's OWN order — without it the ordering
             // set by content.order is invisible. An explicit sort replaces it,
@@ -1517,8 +1545,11 @@ export class WordPressAdapter extends BaseAdapter {
       }
 
       case 'navigation.get': {
+        // A VISITOR reads this too — it is the public site's menu — so the
+        // editor-only parameters come off for an anonymous caller, which also
+        // keeps unpublished pages out of a visitor's navigation.
         const posts = await this.fetchJson(`/wp/v2/${this.postType}`, {
-          params: { parent: '0', status: 'any', context: 'edit', per_page: '100' },
+          params: { parent: '0', ...this.editorReadParams, per_page: '100' },
         });
         // Sorted HERE, by menu_order then title, rather than asking WordPress for
         // orderby=menu_order. The ordering itself is the point: menu_order is
