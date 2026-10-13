@@ -31,13 +31,30 @@ function distribution(redirects) {
   return content;
 }
 
-/** Load the mock with `mounts` and print what `expr` (over its exports) gives. */
+/**
+ * A markdown mount (a folder with index.md) holding /new, with `redirects` in
+ * the mount's own redirects.json. Markdown has no physical path, so its
+ * redirects are site-relative; the export makes them physical.
+ */
+function markdownMount(redirects) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-md-redirects-'));
+  const page = (file, id, uid, title) => fs.writeFileSync(
+    path.join(dir, file),
+    `---\n"@type": Document\nid: ${id}\nUID: ${uid}\ntitle: ${title}\n---\n`,
+  );
+  page('index.md', 'site', 'md-redirects-root-0001', 'Site');
+  page('new.md', 'new', 'md-redirects-new-0001', 'New');
+  fs.writeFileSync(path.join(dir, 'redirects.json'), JSON.stringify(redirects));
+  return dir;
+}
+
+/** Load the mock with `mounts` and print what `expr` (over its exports, awaited) gives. */
 function evaluate(mounts, expr) {
   const run = spawnSync(
     process.execPath,
     ['-e', `const m = require(${JSON.stringify(MODULE)});
-      m.ready.then(() => {
-        try { console.log('RESULT ' + JSON.stringify(${expr})); process.exit(0); }
+      m.ready.then(async () => {
+        try { console.log('RESULT ' + JSON.stringify(await (${expr}))); process.exit(0); }
         catch (e) { console.log('THREW ' + e.message); process.exit(0); }
       });`],
     {
@@ -74,5 +91,46 @@ describe('mock API: redirects.json holds physical paths', () => {
     const content = distribution({ '/old': '/new' });
     const result = evaluate(`/:${content}`, `m.getRedirectTarget('/old')`);
     assert.match(result.threw ?? '', /"\/old".*\/Plone/);
+  });
+});
+
+describe('mock API: redirects on a markdown mount', () => {
+  it('reads the mount\'s own redirects.json, site-relative', () => {
+    const dir = markdownMount({ '/old': '/new' });
+    assert.deepEqual(evaluate(`/:${dir}`, `m.getRedirectTarget('/old')`), { value: '/new' });
+  });
+});
+
+describe('@export writes redirects.json as Plone does: physical paths', () => {
+  /** POST /@export with `body`; the redirects.json in the ZIP, or the error. */
+  const exportRedirects = (dir, body) => {
+    const zip = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mock-export-')), 'export.zip');
+    return evaluate(`/:${dir}`, `(async () => {
+      const srv = m.app.listen(0);
+      await require('events').once(srv, 'listening');
+      const port = srv.address().port;
+      const res = await fetch('http://localhost:' + port + '/@export', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: ${JSON.stringify(JSON.stringify(body))},
+      });
+      if (!res.ok) return { status: res.status, body: await res.text() };
+      require('fs').writeFileSync(${JSON.stringify(zip)}, Buffer.from(await res.arrayBuffer()));
+      const out = require('child_process').execFileSync('unzip', ['-p', ${JSON.stringify(zip)}, 'redirects.json']);
+      return JSON.parse(out);
+    })()`);
+  };
+
+  it('prefixes the site path it is given', () => {
+    const dir = markdownMount({ '/old': '/new' });
+    assert.deepEqual(exportRedirects(dir, { format: 'json', sitePath: '/Plone' }), {
+      value: { '/Plone/old': '/Plone/new' },
+    });
+  });
+
+  it('refuses to export redirects without a site path', () => {
+    const dir = markdownMount({ '/old': '/new' });
+    const { value } = exportRedirects(dir, { format: 'json' });
+    assert.equal(value.status, 400);
+    assert.match(value.body, /sitePath/);
   });
 });
