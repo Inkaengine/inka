@@ -195,7 +195,7 @@ describe('block validation — a rule error on a region', () => {
     },
   };
   const good = (id) => ({ '@type': 'validated', req: 'present', id });
-  const setOf = (count) => {
+  const validateSetOf = (count) => {
     const ids = Array.from({ length: count }, (_, i) => `child-${i}`);
     return validateBlocksAgainstSchemas(
       {
@@ -209,8 +209,9 @@ describe('block validation — a rule error on a region', () => {
         blocks_layout: { items: ['set'] },
       },
       { blocksConfig: setConfig, intl: { formatMessage }, formatMessage },
-    ).blocksErrors;
+    );
   };
+  const setOf = (count) => validateSetOf(count).blocksErrors;
 
   test('a region the rule refuses is an error on that block', () => {
     expect(setOf(1).set?.items).toEqual(['A set holds at least two.']);
@@ -218,5 +219,11 @@ describe('block validation — a rule error on a region', () => {
 
   test('a region the rule accepts raises nothing', () => {
     expect(setOf(2)).toEqual({});
+  });
+
+  test("an error comes with its field's title, for the refused save to name", () => {
+    // A region is not drawn as a widget, so the toast is where an author
+    // learns which field refused the save.
+    expect(validateSetOf(1).fieldTitles).toEqual({ set: { items: 'Items' } });
   });
 });

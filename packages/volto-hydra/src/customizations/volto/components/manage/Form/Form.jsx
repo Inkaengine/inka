@@ -694,20 +694,32 @@ class Form extends Component {
       // Changes the focus to the metadata tab in the sidebar if error
       this.props.setSidebarTab(0);
     } else if (keys(blocksErrors).length > 0) {
-      // Template validation errors - show toast and highlight blocks
+      // Block errors - show a toast naming the first, and select its block.
       const firstBlockId = Object.keys(blocksErrors)[0];
-      const firstError = Object.values(blocksErrors[firstBlockId])[0];
+      const [firstField, firstError] = Object.entries(blocksErrors[firstBlockId])[0];
 
       this.setState({
         errors: { blocks: blocksErrors },
       });
 
+      // A template error is { title, message }; a schema error is Volto's list
+      // of messages for one field, named here by the field's title — a region
+      // is not drawn as a widget, so this toast is where an author learns which
+      // field refused the save, and why.
       toast.error(
-        <Toast
-          error
-          title={firstError.title || 'Template Error'}
-          content={firstError.message}
-        />,
+        Array.isArray(firstError) ? (
+          <Toast
+            error
+            title={schemaValidation.fieldTitles[firstBlockId]?.[firstField] || firstField}
+            content={firstError.join(', ')}
+          />
+        ) : (
+          <Toast
+            error
+            title={firstError.title || 'Template Error'}
+            content={firstError.message}
+          />
+        ),
       );
 
       // Select the first block with error

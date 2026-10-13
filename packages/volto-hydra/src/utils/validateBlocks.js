@@ -31,14 +31,18 @@ const PAGE_BLOCK = '_page';
  * @param {Object} options.blocksConfig - config.blocks.blocksConfig
  * @param {Object} options.intl - react-intl object (for schema resolution)
  * @param {Function} options.formatMessage - intl.formatMessage
- * @returns {{ blocksErrors: Object }} blockId → { fieldName: [messages] }
+ * @returns {{ blocksErrors: Object, fieldTitles: Object }}
+ *   blocksErrors: blockId → { fieldName: [messages] };
+ *   fieldTitles: blockId → { fieldName: title } for each field in error, so a
+ *   refused save can name it (a region is not drawn as a widget).
  */
 export function validateBlocksAgainstSchemas(
   formData,
   { blocksConfig, intl, formatMessage },
 ) {
   const blocksErrors = {};
-  if (!formData || !blocksConfig) return { blocksErrors };
+  const fieldTitles = {};
+  if (!formData || !blocksConfig) return { blocksErrors, fieldTitles };
 
   const blockPathMap = buildBlockPathMap(formData, blocksConfig, intl);
 
@@ -75,8 +79,11 @@ export function validateBlocksAgainstSchemas(
     }
     if (Object.keys(errors).length > 0) {
       blocksErrors[blockId] = errors;
+      fieldTitles[blockId] = Object.fromEntries(
+        Object.keys(errors).map((field) => [field, schema.properties[field]?.title || field]),
+      );
     }
   }
 
-  return { blocksErrors };
+  return { blocksErrors, fieldTitles };
 }

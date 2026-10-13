@@ -533,7 +533,7 @@ fieldRules: {
 
 The message lands on the field, and everything an author sees is Volto's own: the widget goes red, the form shows its error summary, and **the save is blocked** (`Form.onSubmit` validates every block against its enhanced schema and refuses to submit while any block has errors).
 
-This holds for a rule on a **region** too — one counting its children, say "at least two" (`items: { when: { items: { lt: 2 } }, error: '…' }`): the region's children live in `blocks_layout`, not on the field Volto validates, so hydra's own block validation adds the error there and the save is blocked the same way.
+This holds for a rule on a **region** too — one counting its children, say "at least two" (`items: { when: { items: { lt: 2 } }, error: '…' }`): the region's children live in `blocks_layout`, not on the field Volto validates, so hydra's own block validation adds the error there and the save is blocked the same way. A region has no widget to turn red, so its error is shown at the top of the block's settings, beside any warnings, as soon as the rule holds, and the refused save's toast names it.
 
 An `error` composes with a `set` in the same rule — the field can be re-titled *and* marked — and it is skipped entirely when the rule's `when` does not match, so a form that has not been filled in yet is not scolded for it.
 
