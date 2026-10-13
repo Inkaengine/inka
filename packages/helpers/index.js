@@ -69,7 +69,9 @@ function _getTokenFromCookie() {
  * SSR-safe minimal access-token reader — mirrors hydra-js's
  * `getAccessToken` but without sessionStorage writes in non-browser
  * environments. Order: URL `access_token` param → sessionStorage →
- * cookie. Returns null on server.
+ * cookie, the stored two inside the admin's iframe only (a public page
+ * that found the editor's token fetched signed in and rendered a 500).
+ * Returns null on server.
  */
 export function getAccessToken() {
   if (typeof window === 'undefined') {
@@ -82,11 +84,13 @@ export function getAccessToken() {
     sessionStorage.setItem('hydra_access_token', urlToken);
     return urlToken;
   }
-  const sessionToken = sessionStorage.getItem('hydra_access_token');
-  if (sessionToken) {
-    return sessionToken;
+  const inAdminIframe =
+    window.name.startsWith('hydra-edit:') ||
+    window.name.startsWith('hydra-view:');
+  if (!inAdminIframe) {
+    return null;
   }
-  return _getTokenFromCookie();
+  return sessionStorage.getItem('hydra_access_token') || _getTokenFromCookie();
 }
 
 /**
