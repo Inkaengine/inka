@@ -107,6 +107,29 @@ export class BridgeApi {
       return this.rpc.request('auth.logout', {});
     }
 
+    // @querystring is a DECLARATION, not content.
+    //
+    // It is how a backend says what it can be queried on, ordered by and shown
+    // as a column, and the admin builds its query builder, its rearrange menu
+    // and its contents columns from the answer. Relayed verbatim through the
+    // passthrough, the answer is the CMS's own rather than the ADAPTER's — so a
+    // Plone backend handed back raw plone.app.querystring, which says nothing
+    // about what kind of value an index holds and carries whatever sort keys
+    // Plone happens to list rather than the ones the adapter has normalised.
+    //
+    // Which left the admin holding that knowledge instead: a hard-coded table
+    // of Plone index names, consulted for every backend, describing none of
+    // them but Plone.
+    //
+    // Before passthrough for the same reason @logout is: the question has one
+    // canonical answer that the contract pins, so every adapter should answer
+    // it the same way. `@querystring-search` is a POST and a different
+    // endpoint, and is not caught by this.
+    if (op === 'get' && String(path).split('?')[0].endsWith('@querystring')) {
+      const result = await this.rpc.request('querystring.getIndexes', {});
+      return plonify('querystring.getIndexes', result, { path });
+    }
+
     if (this.supportsPassthrough(info)) {
       return this.rpc.request('http', { op, path, data, headers, params });
     }

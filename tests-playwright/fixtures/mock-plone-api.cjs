@@ -2427,6 +2427,19 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
   // Transform distribution blob_path fields to download URLs
   const transformed = transformBlobPaths(content, fullUrl);
 
+  // A stable, distinct date per document, so ordering by one is observable.
+  // Minutes apart within one day: far enough to order, close enough that a
+  // fixture reads as "about the same time".
+  const mockDateFor = (path, offsetMinutes) => {
+    let hash = 0;
+    for (const ch of String(path)) hash = (hash * 31 + ch.charCodeAt(0)) % 1440;
+    const minutes = (hash + offsetMinutes) % 1440;
+    const day = 1 + (hash % 27);
+    return new Date(
+      Date.UTC(2025, 0, day, Math.floor(minutes / 60), minutes % 60),
+    ).toISOString();
+  };
+
   // Dynamically build items (folder children) like Plone does,
   // sorted by __metadata__.json ordering
   const isFolderish = transformed.is_folderish !== undefined ? transformed.is_folderish : true;
@@ -2440,8 +2453,18 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     'is_folderish': isFolderish,
     'allow_discussion': transformed.allow_discussion !== undefined ? transformed.allow_discussion : false,
     'exclude_from_nav': transformed.exclude_from_nav || false,
-    'created': transformed.created || '2025-01-01T12:00:00+00:00',
-    'modified': transformed.modified || '2025-01-01T12:00:00+00:00',
+    // DISTINCT per document, derived from its path.
+    //
+    // These were one fixed timestamp for everything, which made any ordering
+    // by date vacuously correct: a sort could not tell a working one from an
+    // ignored one, and a date COLUMN showed every row the same day. The
+    // contents view's first offered sort key is a date on Plone, so the sort
+    // test was asserting a reversal that could never happen.
+    //
+    // From the path, not a counter: the same document gets the same date on
+    // every request, which a listing's order depends on.
+    'created': transformed.created || mockDateFor(cleanPath, 0),
+    'modified': transformed.modified || mockDateFor(cleanPath, 7),
     // The ACTUAL lock, not a fixed "nobody holds this".
     //
     // Volto's Edit route locks on entry (it does so whenever content.lock

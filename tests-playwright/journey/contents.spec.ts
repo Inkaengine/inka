@@ -225,3 +225,52 @@ test('the rearrange menu is the CMS\'s own sort keys', async ({
       `menu is not wired to the CMS at all`,
   ).not.toHaveLength(0);
 });
+
+test('the columns on offer are the backend\'s own fields', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(240_000);
+  const { root: ROOT } = fixtureFor(testInfo.project.name);
+
+  const helper = new AdminUIHelper(page);
+  await helper.login();
+  await browseListing(page, helper, ROOT);
+
+  // The column picker. Its entries used to come from a hard-coded table of
+  // PLONE index names, consulted whatever the backend was: against any other
+  // CMS it offered columns that backend has never heard of, and the fields it
+  // does have could not be chosen at all.
+  const picker = page.locator('.selectIndex').first();
+  await expect(picker).toBeVisible({ timeout: 20_000 });
+  await picker.click();
+
+  const offered = await page
+    .locator('.selectIndex .menu .item')
+    .allInnerTexts()
+    .then((items) => items.map((t) => t.trim()).filter(Boolean));
+  expect(offered.length, 'columns offered by the picker').toBeGreaterThan(0);
+
+  // PLONE's index names, which is what the table held. On another backend
+  // their presence means the admin is still describing Plone — and their
+  // absence is only meaningful alongside the check below that SOMETHING is
+  // offered.
+  if (!testInfo.project.name.includes('plone')) {
+    const ploneOnly = offered.filter((label) =>
+      /Effective date|Modification date|Expiration date|Object Size/i.test(label),
+    );
+    expect(ploneOnly, 'Plone index labels offered by a non-Plone backend').toEqual(
+      [],
+    );
+  }
+
+  // And the backend's default columns are SHOWN, not merely offerable: a
+  // listing of nothing but titles tells an editor less than the CMS knows.
+  const headers = await page
+    .locator('thead th, thead button')
+    .allInnerTexts()
+    .then((items) => items.map((t) => t.trim()).filter(Boolean));
+  expect(
+    headers.length,
+    `column headers rendered (offered: ${offered.join(', ')})`,
+  ).toBeGreaterThan(1);
+});

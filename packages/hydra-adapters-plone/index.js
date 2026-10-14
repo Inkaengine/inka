@@ -1129,6 +1129,20 @@ export class PloneAdapter extends BaseAdapter {
             sortable: index.sortable === true,
             operations: (index.operations ?? []).map(toCanonicalOperation),
             values: index.values,
+            // The vocabulary a selection index draws its choices from. Dropped
+            // here once, which cost the query builder its value pickers — a
+            // criterion on review_state offered a free-text box instead of the
+            // states.
+            vocabulary: index.vocabulary,
+            // What KIND of value the index holds, for a caller drawing it as a
+            // column: a date is formatted, a boolean becomes a tick, a list is
+            // joined. Volto kept a table of Plone index names to answer this;
+            // it belongs here, because it is knowledge about PLONE.
+            type: ploneIndexType(name, index),
+            // Shown as a column by default. These are the three Volto
+            // hard-coded for every backend; here they are PLONE's choice,
+            // which is the only backend they ever described.
+            column: PLONE_DEFAULT_COLUMNS.has(name),
           };
         }
         // Plone's own sort keys, passed through rather than derived from the
@@ -1427,6 +1441,39 @@ export class PloneAdapter extends BaseAdapter {
         return super.dispatch(intent, args);
     }
   }
+}
+
+/**
+ * What kind of value a Plone index holds.
+ *
+ * Mostly readable from the OPERATIONS Plone advertises for it — a date index
+ * offers date comparisons, a boolean index offers `isTrue`/`isFalse` — which
+ * keeps this honest as plone.app.querystring gains indexes.
+ *
+ * Reads Plone's OWN operation names, the long
+ * `plone.app.querystring.operation.date.lessThan` form, before they are mapped
+ * to canonical ones. That is deliberate: the long form carries the kind as a
+ * path segment, which is what makes this readable at all.
+ *
+ * The exception is the multi-valued ones. `Subject` (a page's keywords) and
+ * `portal_type` (one token) advertise exactly the same `selection.any`, so
+ * nothing in the response distinguishes a list from a single value; those are
+ * named. Drawn as a string, a list renders as its items run together, with
+ * nothing to say it is wrong.
+ */
+const PLONE_DEFAULT_COLUMNS = new Set(['review_state', 'modified', 'effective']);
+const PLONE_MULTI_VALUED = new Set(['Subject']);
+const PLONE_NUMERIC = new Set(['total_comments']);
+
+function ploneIndexType(name, index) {
+  if (PLONE_MULTI_VALUED.has(name)) return 'array';
+  if (PLONE_NUMERIC.has(name)) return 'number';
+  const operations = index.operations ?? [];
+  const has = (kind) =>
+    operations.some((op) => String(op).includes(`.${kind}.`));
+  if (has('date')) return 'date';
+  if (has('boolean')) return 'boolean';
+  return 'string';
 }
 
 export default PloneAdapter;

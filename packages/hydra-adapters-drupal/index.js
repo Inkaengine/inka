@@ -1376,6 +1376,7 @@ export class DrupalAdapter extends BaseAdapter {
         const indexes = {
           node_type: {
             title: 'Type',
+            type: 'string',
             description: 'Content type',
             group: 'Metadata',
             enabled: true,
@@ -1387,6 +1388,7 @@ export class DrupalAdapter extends BaseAdapter {
           },
           menu_parent: {
             title: 'Location',
+            type: 'string',
             description: 'Parent in the menu tree',
             group: 'Metadata',
             enabled: true,
@@ -1397,6 +1399,9 @@ export class DrupalAdapter extends BaseAdapter {
           },
           status: {
             title: 'State',
+            // Shown as a column by default: see the contract.
+            column: true,
+            type: 'boolean',
             group: 'Metadata',
             enabled: true,
             sortable: false,
@@ -1408,6 +1413,9 @@ export class DrupalAdapter extends BaseAdapter {
           },
           changed: {
             title: 'Last edited',
+            // Shown as a column by default: see the contract.
+            column: true,
+            type: 'date',
             description: 'When the content was last changed',
             group: 'Dates',
             enabled: true,
@@ -1419,6 +1427,7 @@ export class DrupalAdapter extends BaseAdapter {
           },
           title: {
             title: 'Title',
+            type: 'string',
             group: 'Metadata',
             enabled: true,
             sortable: true,

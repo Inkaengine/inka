@@ -93,6 +93,49 @@ describe('querystring.getIndexes', () => {
     }
   });
 
+  it('says what KIND of value each index holds', async () => {
+    // The contents view shows indexes as COLUMNS, and how a cell is drawn
+    // depends on the kind of value: a date is formatted, a boolean becomes a
+    // tick, a list is joined. Volto carried a hard-coded table of PLONE index
+    // names to answer that — `Subject` is an array, `ModificationDate` a date —
+    // which is CMS knowledge living in the generic admin, and which said
+    // nothing at all about any other backend's fields.
+    //
+    // So each adapter says it. `type` is not inferrable from `operations`:
+    // Plone's `Subject` (a list of keywords) and `portal_type` (one token)
+    // advertise the same `selection.any`, and a column drawn with the wrong
+    // kind renders a list as "abc" with no sign anything is wrong.
+    const res: any = await target.adapter.dispatch(
+      'querystring.getIndexes',
+      {},
+    );
+    const kinds = ['string', 'date', 'boolean', 'array', 'number'];
+    for (const [name, index] of Object.entries<any>(res.indexes)) {
+      expect(kinds, `${name} declares a kind of value`).toContain(index.type);
+    }
+  });
+
+  it('says which indexes a listing should SHOW by default', async () => {
+    // The contents view starts with some columns already chosen. Volto chose
+    // them from a hard-coded list of three PLONE index names, which named
+    // nothing on any other backend — so a WordPress listing opened with no
+    // columns but the title.
+    //
+    // At least one, because a table of nothing but titles tells an editor
+    // less than the CMS knows, and the adapter is the only thing that knows
+    // which of its fields are worth a column.
+    const res: any = await target.adapter.dispatch(
+      'querystring.getIndexes',
+      {},
+    );
+    const columns = Object.entries<any>(res.indexes)
+      .filter(([, index]) => index.column)
+      .map(([name]) => name);
+    expect(columns.length, 'indexes marked as default columns').toBeGreaterThan(
+      0,
+    );
+  });
+
   it('names its own sort keys', async () => {
     // `sortable_indexes` is a SEPARATE key in a real @querystring response, and
     // a separate VOCABULARY — not the queryable indexes filtered on a flag.

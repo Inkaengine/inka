@@ -1185,6 +1185,7 @@ export class StrapiAdapter extends BaseAdapter {
           indexes: {
             collection: {
               title: 'Type',
+              type: 'string',
               description: 'Content type',
               group: 'Metadata',
               enabled: true,
@@ -1196,6 +1197,7 @@ export class StrapiAdapter extends BaseAdapter {
             },
             title: {
               title: 'Title',
+              type: 'string',
               description: 'Words in the title',
               group: 'Metadata',
               enabled: true,
@@ -1204,6 +1206,7 @@ export class StrapiAdapter extends BaseAdapter {
             },
             parent: {
               title: 'Location',
+              type: 'string',
               description: 'Somewhere under this page',
               group: 'Metadata',
               enabled: true,
@@ -1212,6 +1215,9 @@ export class StrapiAdapter extends BaseAdapter {
             },
             publishedAt: {
               title: 'Published',
+              // Shown as a column by default: see the contract.
+              column: true,
+              type: 'date',
               description: 'Whether the document is published',
               group: 'Metadata',
               enabled: true,
@@ -1220,6 +1226,9 @@ export class StrapiAdapter extends BaseAdapter {
             },
             updatedAt: {
               title: 'Last edited',
+              // Shown as a column by default: see the contract.
+              column: true,
+              type: 'date',
               description: 'When the document was last saved',
               group: 'Dates',
               enabled: true,

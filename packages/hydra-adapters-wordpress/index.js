@@ -2049,6 +2049,7 @@ export class WordPressAdapter extends BaseAdapter {
         const indexes = {
           title: {
             title: 'Title',
+            type: 'string',
             description: 'Words in the title or body',
             group: 'Metadata',
             enabled: true,
@@ -2057,6 +2058,7 @@ export class WordPressAdapter extends BaseAdapter {
           },
           post_type: {
             title: 'Type',
+            type: 'string',
             description: 'Content type',
             group: 'Metadata',
             enabled: true,
@@ -2068,6 +2070,7 @@ export class WordPressAdapter extends BaseAdapter {
           },
           parent: {
             title: 'Location',
+            type: 'string',
             description: 'Parent page',
             group: 'Metadata',
             enabled: true,
@@ -2076,6 +2079,9 @@ export class WordPressAdapter extends BaseAdapter {
           },
           status: {
             title: 'State',
+            // Shown as a column by default: see the contract.
+            column: true,
+            type: 'string',
             description: 'Publication status',
             group: 'Metadata',
             enabled: true,
@@ -2090,6 +2096,7 @@ export class WordPressAdapter extends BaseAdapter {
           },
           author: {
             title: 'Author',
+            type: 'string',
             group: 'Metadata',
             enabled: true,
             sortable: false,
@@ -2097,6 +2104,9 @@ export class WordPressAdapter extends BaseAdapter {
           },
           modified: {
             title: 'Last edited',
+            // Shown as a column by default: see the contract.
+            column: true,
+            type: 'date',
             description: 'When the content was last changed',
             group: 'Dates',
             enabled: true,

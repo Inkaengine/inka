@@ -544,8 +544,44 @@ describe('plonify', () => {
 describe('BridgeApi transport selection', () => {
   it('uses the passthrough when the adapter advertises it', async () => {
     const rpc = { request: vi.fn().mockResolvedValue({}) };
-    await new BridgeApi(rpc, { getAdapterInfo: passthroughAdapter }).get('/@querystring');
+    // A CONTENT path. This used to ask for `/@querystring`, which is now the
+    // one GET deliberately kept off the passthrough — see below — so it tested
+    // the exception rather than the rule.
+    await new BridgeApi(rpc, { getAdapterInfo: passthroughAdapter }).get('/news/first-post');
     expect(rpc.request).toHaveBeenCalledWith('http', expect.objectContaining({ op: 'get' }));
+  });
+
+  it('asks the ADAPTER what it can be queried on, even behind a passthrough', async () => {
+    // `@querystring` is a declaration, not content: it is how a backend says
+    // what it can be queried on, ordered by and shown as a column, and the
+    // admin's query builder, rearrange menu and contents columns are built
+    // from the answer. Relayed verbatim it is the CMS's own answer instead of
+    // the adapter's — raw plone.app.querystring, which says nothing about what
+    // kind of value an index holds — and the admin ends up holding that
+    // knowledge itself, as a table of Plone index names describing no other
+    // backend.
+    const rpc = {
+      request: vi.fn().mockResolvedValue({
+        indexes: { Subject: { title: 'Tags', type: 'array' } },
+        sortable_indexes: { sortable_title: { title: 'Title' } },
+      }),
+    };
+    const out = await new BridgeApi(rpc, {
+      getAdapterInfo: passthroughAdapter,
+    }).get('/++api++/@querystring');
+
+    expect(rpc.request).toHaveBeenCalledWith('querystring.getIndexes', {});
+    expect(out.indexes.Subject.type).toBe('array');
+    expect(Object.keys(out.sortable_indexes)).toEqual(['sortable_title']);
+  });
+
+  it('still relays @querystring-SEARCH, which is content', async () => {
+    const rpc = { request: vi.fn().mockResolvedValue({}) };
+    await new BridgeApi(rpc, { getAdapterInfo: passthroughAdapter }).post(
+      '/@querystring-search',
+      { data: { query: [] } },
+    );
+    expect(rpc.request).toHaveBeenCalledWith('http', expect.objectContaining({ op: 'post' }));
   });
 
   it('routes semantically when the adapter does not', async () => {
