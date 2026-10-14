@@ -836,6 +836,10 @@
                     // dropdown lists exactly these, by these labels, with h5 offered
                     // although volto-slate has no button for it.
                     const declareFormats = /\/block-formats-page(\/|$)/.test(pagePath);
+                    // volto-slate's default toolbar has no Clear formatting; a
+                    // frontend adds it. Offered on this page only, so every other
+                    // spec keeps the toolbar it was written against.
+                    const offerClearFormatting = /\/clear-formatting-page(\/|$)/.test(pagePath);
                     // A hero with a plain list of tags (`subBlocks: false`): edited
                     // in the sidebar, not a region of sub-blocks.
                     const plainListField = /\/object-list-plain-page(\/|$)/.test(pagePath);
@@ -1048,6 +1052,9 @@
                                     // the restriction specs vary, and every other spec
                                     // must keep seeing an unrestricted editor.
                                     ...(restrictStyles ? { styleAliases: { b: 'strong' } } : {}),
+                                    ...(offerClearFormatting ? {
+                                        toolbarButtons: ['bold', 'italic', 'link', 'separator', 'clearformatting'],
+                                    } : {}),
                                     ...(declareFormats ? {
                                         blockFormats: [
                                             { type: 'h2', label: 'Heading 2', icon: { viewBox: '0 0 24 24', paths: ['M3 4h2v7h6V4h2v16h-2v-7H5v7H3z'] } },

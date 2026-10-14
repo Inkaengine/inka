@@ -6,6 +6,8 @@
  *
  * Example: Map "title" from query results to "headline" field in teaser blocks.
  */
+import { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useIntl } from 'react-intl';
 import config from '@plone/volto/registry';
 import FormFieldWrapper from '@plone/volto/components/manage/Widgets/FormFieldWrapper';
@@ -23,6 +25,7 @@ import {
 } from '../../utils/blockSync';
 import { useHydraSchemaContext } from '../../context/HydraSchemaContext';
 import { getBlockById } from '../../utils/blockPath';
+import { mergeVocabularySources } from '../../utils/fieldMappingSources';
 
 /**
  * Get schema fields for a block type as options for a select
@@ -42,10 +45,48 @@ const FieldMappingWidget = (props) => {
     id,
     value = {},       // { sourceField: targetField, ... }
     onChange,
-    sourceFields,     // { fieldName: { title: "Field Title" }, ... }
+    sourceFields: declaredSources, // { fieldName: { title, type }, ... }
+    // A vocabulary of further sources: plone.app.vocabularies.MetadataFields
+    // offers every metadata column the site's catalog holds, so a site's own
+    // fields can be mapped without the frontend naming them.
+    vocabulary,
     block,            // Block UID (passed by InlineForm)
     reactSelect,
   } = props;
+
+  // The vocabulary's terms, fetched the way VocabularySelectWidget does (the
+  // token as a header). A failure is shown, not swallowed: the widget would
+  // otherwise offer fewer sources with nothing to say why.
+  const vocabularyName = vocabulary?.['@id'];
+  const token = useSelector((state) => state.userSession?.token);
+  const [terms, setTerms] = useState([]);
+  const [vocabularyError, setVocabularyError] = useState(null);
+  useEffect(() => {
+    if (!vocabularyName) return undefined;
+    let cancelled = false;
+    const apiPath = config.settings?.apiPath || '';
+    const url = `${apiPath}/@vocabularies/${vocabularyName}?b_size=1000`;
+    fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`${vocabularyName} answered ${res.status}`);
+        return res.json();
+      })
+      .then((body) => {
+        if (!cancelled) setTerms(body?.items || []);
+      })
+      .catch((error) => {
+        if (!cancelled) setVocabularyError(String(error.message || error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [vocabularyName, token]);
+  const sourceFields = mergeVocabularySources(declaredSources, terms);
 
   // Get block data from HydraSchemaContext (InlineForm doesn't pass formData)
   const hydraCtx = useHydraSchemaContext();
@@ -135,6 +176,12 @@ const FieldMappingWidget = (props) => {
 
   return (
     <FormFieldWrapper {...props} columns={1}>
+      {vocabularyError ? (
+        <p className="help error">
+          The site's own fields could not be loaded ({vocabularyError}); only the
+          declared sources are offered.
+        </p>
+      ) : null}
       <table className="field-mapping-table" style={{ width: '100%' }}>
         <thead>
           <tr>

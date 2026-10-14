@@ -655,6 +655,9 @@ export default defineConfig({
             RAZZLE_USE_BRIDGE_BACKEND: useBridgeBackend,
             RAZZLE_BRIDGE_EXPANDERS: bridgeExpanders,
             RAZZLE_BRIDGE_PASSTHROUGH: bridgePassthrough,
+            // The demo account a ?demo login link signs in with (authentication.spec).
+            RAZZLE_DEMO_LOGIN: 'demo',
+            RAZZLE_DEMO_PASSWORD: 'demo',
           },
         }
       : {
@@ -684,6 +687,8 @@ export default defineConfig({
             RAZZLE_USE_BRIDGE_BACKEND: useBridgeBackend,
             RAZZLE_BRIDGE_EXPANDERS: bridgeExpanders,
             RAZZLE_BRIDGE_PASSTHROUGH: bridgePassthrough,
+            RAZZLE_DEMO_LOGIN: 'demo',
+            RAZZLE_DEMO_PASSWORD: 'demo',
             // Prevent parcel from trying to access TTY (fixes segfault in background process)
             CI: process.env.CI || 'true',
           },

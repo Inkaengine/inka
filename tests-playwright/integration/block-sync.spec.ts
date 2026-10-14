@@ -244,6 +244,28 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     await menu.waitFor({ state: 'hidden', timeout: 1000 });
   });
 
+  test("listing fieldMapping also offers the site's own catalog columns", async ({ page }) => {
+    // The listing's mapping names plone.app.vocabularies.MetadataFields, so
+    // beside its declared sources it offers every metadata column the site's
+    // catalog holds — a site's own fields, mappable without a frontend naming
+    // them. A declared source keeps its own title (effective is "Published").
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await helper.clickBlockInIframe('block-9-listing');
+    await helper.waitForSidebarOpen();
+    await helper.openSidebarTab('Block');
+
+    const mappingTable = page.locator('#sidebar-properties .field-wrapper-fieldMapping .field-mapping-table');
+    await expect(mappingTable).toBeVisible();
+    const sources = mappingTable.locator('tbody tr td:first-child');
+    await expect(sources.filter({ hasText: /^Effective date$/ })).toHaveCount(1);
+    await expect(sources.filter({ hasText: /^Exclude from navigation$/ })).toHaveCount(1);
+    await expect(sources.filter({ hasText: /^Published$/ })).toHaveCount(1);
+    await expect(sources.filter({ hasText: /^Effective$/ })).toHaveCount(0);
+    await expect(page.locator('#sidebar-properties .field-wrapper-fieldMapping .help.error')).toHaveCount(0);
+  });
+
   test('fieldMapping shows smart defaults based on field types', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 

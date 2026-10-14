@@ -31,14 +31,18 @@ const PAGE_BLOCK = '_page';
  * @param {Object} options.blocksConfig - config.blocks.blocksConfig
  * @param {Object} options.intl - react-intl object (for schema resolution)
  * @param {Function} options.formatMessage - intl.formatMessage
- * @returns {{ blocksErrors: Object }} blockId → { fieldName: [messages] }
+ * @returns {{ blocksErrors: Object, fieldTitles: Object }}
+ *   blocksErrors: blockId → { fieldName: [messages] };
+ *   fieldTitles: blockId → { fieldName: title } for each field in error, so a
+ *   refused save can name it (a region is not drawn as a widget).
  */
 export function validateBlocksAgainstSchemas(
   formData,
   { blocksConfig, intl, formatMessage },
 ) {
   const blocksErrors = {};
-  if (!formData || !blocksConfig) return { blocksErrors };
+  const fieldTitles = {};
+  if (!formData || !blocksConfig) return { blocksErrors, fieldTitles };
 
   const blockPathMap = buildBlockPathMap(formData, blocksConfig, intl);
 
@@ -62,10 +66,24 @@ export function validateBlocksAgainstSchemas(
       formData: blockData,
       formatMessage,
     });
+    // A rule's error on a REGION. Volto runs a field's validators only when
+    // `formData[field]` holds a value, and a blocks_layout region's children
+    // are not there — they are in `blocks_layout[region]` — so a rule counting
+    // them ("a set of at least two") had its message on the field and nothing
+    // read it: the content validator reported it, the editor saved anyway.
+    // Only where Volto skipped the field, so a valued field is not told twice.
+    for (const [fieldName, field] of Object.entries(schema.properties)) {
+      if (field?.hydraRuleError && blockData[fieldName] == null && !errors[fieldName]) {
+        errors[fieldName] = [field.hydraRuleError];
+      }
+    }
     if (Object.keys(errors).length > 0) {
       blocksErrors[blockId] = errors;
+      fieldTitles[blockId] = Object.fromEntries(
+        Object.keys(errors).map((field) => [field, schema.properties[field]?.title || field]),
+      );
     }
   }
 
-  return { blocksErrors };
+  return { blocksErrors, fieldTitles };
 }

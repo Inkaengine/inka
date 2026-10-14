@@ -8,6 +8,15 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
+/** The slate link elements in saved block data (not a listing's fieldMapping `type: 'link'`). */
+function savedLinks(node: unknown): any[] {
+  if (Array.isArray(node)) return node.flatMap(savedLinks);
+  if (!node || typeof node !== 'object') return [];
+  const n = node as Record<string, unknown>;
+  const isSlateLink = n.type === 'link' && Array.isArray(n.children);
+  return [...(isSlateLink ? [n] : []), ...Object.values(n).flatMap(savedLinks)];
+}
+
 test.describe('Inline Editing - Links', () => {
   test('can create a link', async ({ page }) => {
     const helper = new AdminUIHelper(page);
@@ -685,6 +694,82 @@ test.describe('Inline Editing - Links', () => {
     for (const link of allLinks) {
       expect(textOf(link).replace(/[​﻿]/g, ''), 'a saved link has text').not.toBe('');
     }
+  });
+
+  test("a link picked from the browser keeps the item's details beside its url", async ({ page }) => {
+    // A frontend draws a link from what it links to — a file's type and size
+    // after a link to it — so the link keeps the picked item's catalog
+    // metadata in data.item. data.url stays its only address (Plone turns it
+    // into a resolveuid), and who made the item is left out.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const blockId = 'block-1-uuid';
+    await helper.editBlockTextInIframe(blockId, 'The annual report');
+    const editor = await helper.getEditorLocator(blockId);
+    await helper.selectAllTextInEditor(editor);
+    await helper.clickFormatButton('link');
+    await helper.waitForLinkEditorPopup();
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await expect(linkUrlInput).toBeFocused();
+    await expect(linkUrlInput).toHaveValue('');
+
+    await (await helper.getLinkEditorBrowseButton()).click();
+    const objectBrowser = await helper.waitForObjectBrowser();
+    await helper.objectBrowserSelectItem(objectBrowser, /Annual report/);
+    // The pick fills in the address; submitting makes the link.
+    await expect(linkUrlInput).toHaveValue(/\/annual-report$/);
+    await page.getByRole('button', { name: 'Submit' }).click();
+    await helper.waitForLinkEditorToClose();
+    await expect(editor.locator('a')).toHaveAttribute('href', /\/annual-report$/);
+
+    const patchRequest = page.waitForRequest(
+      (req) => req.method() === 'PATCH' && new URL(req.url()).pathname.endsWith('/test-page'),
+    );
+    await helper.saveContent();
+    const body = JSON.parse((await patchRequest).postData() || '{}');
+    const links = savedLinks(body.blocks[blockId]);
+    expect(links).toHaveLength(1);
+    const data = links[0].data;
+    expect(data.url).toMatch(/\/annual-report$/);
+    expect(data.item).toMatchObject({
+      title: 'Annual report',
+      portal_type: 'File',
+      mime_type: 'application/pdf',
+      getObjSize: '19.5 KB',
+    });
+    expect(data.item).not.toHaveProperty('@id');
+    expect(data.item).not.toHaveProperty('Creator');
+    expect(data.item).not.toHaveProperty('listCreators');
+  });
+
+  test('a link typed into the link editor has no item details', async ({ page }) => {
+    // Only a pick from the browser knows the item; a typed address keeps none
+    // (a stale one from an earlier pick would describe the wrong thing).
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const blockId = 'block-1-uuid';
+    await helper.editBlockTextInIframe(blockId, 'Example');
+    const editor = await helper.getEditorLocator(blockId);
+    await helper.selectAllTextInEditor(editor);
+    await helper.clickFormatButton('link');
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await linkUrlInput.fill('https://example.com');
+    await linkUrlInput.press('Enter');
+    await helper.waitForLinkEditorToClose();
+    await expect(editor.locator('a')).toHaveAttribute('href', 'https://example.com');
+
+    const patchRequest = page.waitForRequest(
+      (req) => req.method() === 'PATCH' && new URL(req.url()).pathname.endsWith('/test-page'),
+    );
+    await helper.saveContent();
+    const body = JSON.parse((await patchRequest).postData() || '{}');
+    const links = savedLinks(body.blocks[blockId]);
+    expect(links).toHaveLength(1);
+    expect(links[0].data).toEqual({ url: 'https://example.com' });
   });
 
   test('a relative link typed into the link editor is accepted', async ({ page }) => {

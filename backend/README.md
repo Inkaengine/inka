@@ -78,6 +78,11 @@ the docs site. They're stored in the repo as markdown (`tests-playwright/fixture
 `plone.exportimport` distribution and hands that to Plone's `@import`. The result: the
 same templates the test suites use, in a real Plone.
 
+A markdown site's redirects live in its own folder (`redirects.json` beside `index.md`,
+site-relative: `{"/old": "/new"}`). Plone stores redirects by physical path, so `@export`
+needs the site's path to write them (`"sitePath": "/Plone"` in the request body; the seed
+takes it from `PLONE_URL`) and refuses to export redirects without one.
+
 For vanilla Plone **without** the addon, use `make backend-docker-start` instead. It uses
 the same port, so stop the other first.
 

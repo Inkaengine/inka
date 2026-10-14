@@ -730,6 +730,8 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
       pathMap[blockId] = {
         path: blockPath,
         parentId: effectiveParentId,
+        // The container as a person reads it — what the drop indicator names.
+        containerTitle: containerTitleOf(effectiveParentId, parent),
         region, // The container field (region) this block lives in
         ...(regionPath.length > 0 && { regionPath }), // object prefix to the blocks dict (#245)
         blockType, // Block type for uniform lookups (single source of truth)
@@ -900,6 +902,7 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
       pathMap[itemId] = {
         path: itemPath,
         parentId,
+        containerTitle: containerTitleOf(parentId, parent),
         region: fieldName, // The container field (region) — same concept as blocks fields
         blockType: itemBlockType, // Real type (from typeField) or virtual type (from parent:field)
         isObjectListItem: true,
@@ -950,6 +953,14 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
         processItem(item, itemId, itemPath, recurseSchema, disallow, regionSlateRules);
       }
     });
+  }
+
+  // The container a block lives in, as a person reads it: the parent block
+  // type's title (its id when it has none), or "Page" on the page itself.
+  function containerTitleOf(parentId, parent) {
+    if (parentId === PAGE_BLOCK_UID || parentId == null) return 'Page';
+    const parentType = pathMap[parentId]?.blockType || parent?.['@type'];
+    return blocksConfig?.[parentType]?.title || parentType;
   }
 
   // Add entry for the page itself (PAGE_BLOCK_UID virtual block)

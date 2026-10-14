@@ -401,7 +401,80 @@ describe('plone-content-validator validate()', () => {
   });
 });
 
+/**
+ * redirects.json holds PHYSICAL paths. plone.exportimport's importer hands each
+ * pair to plone.app.redirector's storage as is, and the storage is keyed by
+ * physical path (/Plone/old), which is also what an export writes. A
+ * site-relative "/old" is stored where no request ever looks: the site deploys
+ * green and every redirect 404s.
+ */
+describe('plone-content-validator redirects.json paths', () => {
+  const withRedirects = (redirects) => {
+    const fixture = buildFixture({ rootItem: { '@id': '/Plone' } });
+    fs.writeFileSync(path.join(fixture.root, 'redirects.json'), JSON.stringify(redirects));
+    return fixture;
+  };
+
+  it('accepts redirects under the site root\'s physical path', () => {
+    const { root, contentDir } = withRedirects({ '/Plone/old': '/Plone/page-a' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a site-relative redirect (it would never fire)', () => {
+    const { root, contentDir } = withRedirects({ '/old': '/page-a' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('"/old"') && e.includes('/Plone')),
+      r.errors.join('\n'),
+    );
+  });
+
+  it('reports a redirect whose target is site-relative', () => {
+    const { root, contentDir } = withRedirects({ '/Plone/old': '/page-a' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('"/page-a"')), r.errors.join('\n'));
+  });
+});
+
 describe('plone-content-validator checkIntegrity()', () => {
+  // A template definition need not name itself: its blocks hold slots and no
+  // templateId, and where it lives already says what it is.
+  describe('a definition that does not name itself', () => {
+    const definition = {
+      '@id': '/templates/frame', '@type': 'Document', id: 'frame', UID: 'frame-uid',
+      blocks: {
+        head: { '@type': 'slate', fixed: true, readOnly: true, slotId: 'head' },
+        body: { '@type': 'slate', fixed: false, slotId: 'body' },
+      },
+      blocks_layout: { items: ['head', 'body'] },
+    };
+    const page = (fill) => ({
+      '@id': '/p', '@type': 'Document', id: 'p', UID: 'page-uid',
+      blocks: { f: { '@type': 'slate', templateId: '/templates/frame', slotId: 'body', fixed: false, ...fill } },
+      blocks_layout: { items: ['f'] },
+    });
+    const fillErrors = (items) =>
+      checkIntegrity(items).errors.filter((e) => e.includes('fills template'));
+
+    it('is not reported as a page filling a template', () => {
+      assert.deepEqual(fillErrors([{ rel: '/templates/frame', data: definition }]), []);
+    });
+
+    it('still has the pages that fill it checked', () => {
+      const items = (fill) => [
+        { rel: '/templates/frame', data: definition },
+        { rel: '/p', data: page(fill) },
+      ];
+      assert.deepEqual(fillErrors(items({ readOnly: false })), []);
+      const missing = fillErrors(items({}));
+      assert.ok(missing.some((e) => e.includes('/p') && e.includes('missing readOnly')), missing.join('\n'));
+    });
+  });
+
   it('flags broken resolveuid refs', () => {
     const { root, contentDir } = buildFixture({
       pageA: {

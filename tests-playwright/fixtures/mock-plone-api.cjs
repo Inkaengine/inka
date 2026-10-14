@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
+const principalsAndRules = require('./mock-principals-and-rules.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
@@ -62,25 +63,66 @@ function parseContentMounts() {
 const CONTENT_MOUNTS = parseContentMounts();
 
 /**
- * Resolve a moved-content redirect, mimicking plone.app.redirector.
- * Each mount may carry a redirects.json sibling ({ oldPath: newPath },
- * mount-relative) next to its content dir. Returns the new mount-prefixed
- * path or null. Read fresh each call (tiny file, only hit on a 404) so dev
- * edits to redirects.json take effect without a restart.
+ * A mount's redirects as site-relative [old, new] pairs, or [] when it has none.
+ *
+ * A markdown mount keeps them in its own folder (redirects.json beside
+ * index.md), site-relative: markdown has no physical path. @export makes them
+ * physical, with the site path the caller names.
+ *
+ * A JSON (exportimport) mount's redirects.json sits beside its content dir,
+ * as plone.exportimport lays it out, and holds PHYSICAL paths ({"/Plone/old": "/Plone/new"}): that is what
+ * plone.exportimport writes, and what its importer hands, as is, to
+ * plone.app.redirector's storage, which is keyed by physical path. The site's
+ * physical path is its root item's @id (plone_site_root/data.json). An entry
+ * outside it is one Plone would store where no request looks — a redirect
+ * that never fires — so it fails here rather than working only in the mock.
+ * A mount without a site root (or one whose @id is "/") has no prefix.
+ *
+ * Read fresh each call (tiny file, only hit on a 404 or @aliases) so dev edits
+ * take effect without a restart.
+ */
+function readRedirects(mount) {
+  const { dirPath } = mount;
+  if (isMarkdownMount(mount)) {
+    const ownFile = path.join(dirPath, 'redirects.json');
+    if (!fs.existsSync(ownFile)) return [];
+    return Object.entries(JSON.parse(fs.readFileSync(ownFile, 'utf8'))).map(([from, to]) => {
+      if (!from.startsWith('/') || !to.startsWith('/')) {
+        throw new Error(`${ownFile}: redirect paths start with / (site-relative): ${JSON.stringify(from)} -> ${JSON.stringify(to)}`);
+      }
+      return [from, to];
+    });
+  }
+  const redirectsFile = path.join(dirPath, '..', 'redirects.json');
+  if (!fs.existsSync(redirectsFile)) return [];
+  const map = JSON.parse(fs.readFileSync(redirectsFile, 'utf8'));
+  const rootFile = path.join(dirPath, 'plone_site_root', 'data.json');
+  const rootId = fs.existsSync(rootFile) ? JSON.parse(fs.readFileSync(rootFile, 'utf8'))['@id'] : '/';
+  const sitePath = rootId === '/' ? '' : rootId;
+  const relative = (p) => {
+    if (p === sitePath) return '/';
+    if (p.startsWith(sitePath + '/')) return p.slice(sitePath.length);
+    throw new Error(
+      `${redirectsFile}: ${JSON.stringify(p)} is not under the site's physical path ${JSON.stringify(sitePath)} ` +
+      `— Plone stores redirects by physical path, so write ${JSON.stringify(sitePath + p)}`,
+    );
+  };
+  return Object.entries(map).map(([from, to]) => [relative(from), relative(to)]);
+}
+
+/**
+ * Resolve a moved-content redirect, mimicking plone.app.redirector. Returns
+ * the new mount-prefixed path or null.
  */
 function getRedirectTarget(cleanPath) {
   for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const redirectsFile = path.join(dirPath, '..', 'redirects.json');
-    if (!fs.existsSync(redirectsFile)) continue;
-    let map;
-    try { map = JSON.parse(fs.readFileSync(redirectsFile, 'utf8')); }
-    catch { continue; }
     const rel = mountPath === '/'
       ? cleanPath
       : (cleanPath.startsWith(mountPath) ? cleanPath.slice(mountPath.length) || '/' : null);
     if (rel == null) continue;
-    if (map[rel]) {
-      return mountPath === '/' ? map[rel] : mountPath + map[rel];
+    const hit = readRedirects({ mountPath, dirPath }).find(([from]) => from === rel);
+    if (hit) {
+      return mountPath === '/' ? hit[1] : mountPath + hit[1];
     }
   }
   return null;
@@ -93,12 +135,7 @@ function getRedirectTarget(cleanPath) {
 function getAllRedirects() {
   const out = [];
   for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const redirectsFile = path.join(dirPath, '..', 'redirects.json');
-    if (!fs.existsSync(redirectsFile)) continue;
-    let map;
-    try { map = JSON.parse(fs.readFileSync(redirectsFile, 'utf8')); }
-    catch { continue; }
-    for (const [from, to] of Object.entries(map)) {
+    for (const [from, to] of readRedirects({ mountPath, dirPath })) {
       out.push({
         path: mountPath === '/' ? from : mountPath + from,
         'redirect-to': mountPath === '/' ? to : mountPath + to,
@@ -859,19 +896,61 @@ function typeTitleOf(typeName) {
  * Includes image_field and image_scales matching real Plone API structure
  * Includes is_folderish for folder navigation in object browser
  * Includes hasPreviewImage for teaser blocks to show target's preview image
+
+/**
+ * Does this content have a preview image the mock can actually serve?
+ * Common for Documents, News Items, etc. For distribution-style content the
+ * preview_image is a blob_path reference; unless the bytes also exist on disk
+ * under the content dir, the mock can't serve the @@images URL — so don't claim
+ * a preview image we can't deliver.
  */
-function formatSearchItem(content, baseUrl) {
-  // Check if content has a preview image (common for Documents, News Items, etc.).
-  // For distribution-style content the preview_image is a blob_path reference;
-  // unless the bytes also exist on disk under the content dir, the mock can't
-  // serve the @@images URL — so don't claim a preview image we can't deliver.
+function hasServablePreviewImage(content) {
   const declaresPreview = !!(content.preview_image || content['@type'] === 'Image');
-  let hasPreviewImage = declaresPreview;
   if (declaresPreview && content.preview_image?.blob_path) {
     const urlPath = (content['@id'] || '').replace(/^https?:\/\/[^/]+/, '') || '/';
     const dirInfo = contentDirMap[urlPath];
-    hasPreviewImage = !!(dirInfo && findFirstImageFile(dirInfo.dirPath, 3));
+    return !!(dirInfo && findFirstImageFile(dirInfo.dirPath, 3));
   }
+  return declaresPreview;
+}
+
+/**
+ * The catalog's description of an item's image, as plone.restapi's summary
+ * serializer gives it — in search results AND in a folder's `items`. Always
+ * both keys, matching real Plone:
+ *   with an image:    image_field='image' (or 'preview_image'), image_scales={...}
+ *   without an image: image_field='',                           image_scales=null
+ */
+function catalogImageFields(content, baseUrl, hasPreviewImage = hasServablePreviewImage(content)) {
+  if (content['@type'] === 'Image') {
+    return {
+      image_field: 'image',
+      image_scales: getImageScales(content, baseUrl) || getPlaceholderImageScales(content.title),
+    };
+  }
+  if (content.image && (content.image.blob_path || content.image.width)) {
+    // Lead image field (CaseStudy/Document with ILeadImage). Real Plone
+    // exposes image_field='image' + image_scales for these in listings; the
+    // @@images endpoint resolves the blob_path (incl. cross-referenced blobs).
+    return { image_field: 'image', image_scales: getLeadImageScales(content, 'image') };
+  }
+  if (hasPreviewImage) {
+    return {
+      image_field: 'preview_image',
+      image_scales: getPlaceholderImageScales(content.title, 'preview_image'),
+    };
+  }
+  return { image_field: '', image_scales: null };
+}
+
+/**
+ * Format a content item for search results
+ * Includes image_field and image_scales matching real Plone API structure
+ * Includes is_folderish for folder navigation in object browser
+ * Includes hasPreviewImage for teaser blocks to show target's preview image
+ */
+function formatSearchItem(content, baseUrl) {
+  const hasPreviewImage = hasServablePreviewImage(content);
 
   const item = {
     '@id': content['@id'],
@@ -904,29 +983,40 @@ function formatSearchItem(content, baseUrl) {
     // filter reads `item.Subject` for facet.Subject criteria. Populate from the
     // content's `subjects` field (the lowercase schema field).
     'Subject': content.subjects || [],
+    ...catalogImageFields(content, baseUrl, hasPreviewImage),
+    ...catalogFileFields(content),
   };
 
-  // Match real Plone: always include image_field and image_scales.
-  // With image: image_field='image', image_scales={...}
-  // Without image: image_field='', image_scales=null
-  if (content['@type'] === 'Image') {
-    item.image_field = 'image';
-    item.image_scales = getImageScales(content, baseUrl) || getPlaceholderImageScales(content.title);
-  } else if (content.image && (content.image.blob_path || content.image.width)) {
-    // Lead image field (CaseStudy/Document with ILeadImage). Real Plone
-    // exposes image_field='image' + image_scales for these in listings; the
-    // @@images endpoint resolves the blob_path (incl. cross-referenced blobs).
-    item.image_field = 'image';
-    item.image_scales = getLeadImageScales(content, 'image');
-  } else if (hasPreviewImage) {
-    item.image_field = 'preview_image';
-    item.image_scales = getPlaceholderImageScales(content.title, 'preview_image');
-  } else {
-    item.image_field = '';
-    item.image_scales = null;
-  }
-
   return item;
+}
+
+/**
+ * Plone's getObjSize: a blob's size the way the catalog formats it
+ * (Products.CMFPlone.utils.human_readable_size — "19.5 KB", "0 KB" when empty).
+ */
+function humanReadableSize(size) {
+  if (!size) return '0 KB';
+  for (const [unit, bytes] of [['GB', 1024 ** 3], ['MB', 1024 ** 2], ['KB', 1024]]) {
+    if (Math.floor(size / bytes)) return `${(size / bytes).toFixed(1)} ${unit}`;
+  }
+  return `${(size / 1024).toFixed(1)} KB`;
+}
+
+/**
+ * The catalog metadata Plone keeps for every item and a search with
+ * metadata_fields=_all returns: its type, the blob's mime type and size (a File's
+ * `file`, an Image's `image`), and who made it.
+ */
+function catalogFileFields(content) {
+  const blob = content.file || content.image;
+  const creators = content.creators || [];
+  return {
+    'portal_type': content['@type'],
+    'mime_type': blob ? blob['content-type'] : null,
+    'getObjSize': humanReadableSize(blob ? blob.size : 0),
+    'Creator': creators[0] || null,
+    'listCreators': creators,
+  };
 }
 
 /**
@@ -1446,44 +1536,61 @@ function buildBreadcrumbsComponent(cleanPath, baseUrl) {
 
 function buildActionsComponent(cleanPath, baseUrl, sessionId) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
-  // No '@id'. plone.restapi's ActionsGet replies with the category map alone
-  // (Actions.__call__(expand=True) returns {actions: data}), and the expanded
-  // @components.actions is that same map. The '@id' belongs only to the
-  // UNEXPANDED stub, which enrichContent builds itself — carrying it here put a
-  // key in the reply that no real Plone sends in that shape.
+  const isRoot = cleanPath === '/';
+  // Folderish unless the content says otherwise — the rule the rest of this
+  // mock uses. The site root and any folder can hold content rules
+  // (plone.app.contentrules marks them IRuleAssignable).
+  const folderish = isRoot || loadRawContentFromDisk(cleanPath)?.is_folderish !== false;
+  const folderUrl = folderish ? fullUrl : fullUrl.replace(/\/[^/]+$/, '') || baseUrl;
+  const action = (id, title, url) => ({ icon: '', id, title, url });
+  // What a real Plone 6 site with plone.volto serves a Manager: the actions in
+  // Products.CMFPlone, plone.volto and plone.app.iterate's actions.xml whose
+  // `visible`, `available_expr` and permissions hold for a Manager, with the
+  // URL each `url_expr` gives. plone.restapi's recording (actions_get.resp)
+  // agrees on view/edit/folderContents/history/local_roles, the object_buttons
+  // and the user actions; it predates the serializer gaining `url`, which a
+  // live Plone 6 (demo.plone.org) emits and Volto reads — Footer.jsx renders
+  // `item.url ? flattenToAppURL(item.url) : addAppURL(item.id)`.
+  //
+  // Left out, as a Manager on a fresh site does not see them: Paste (only with
+  // something on the clipboard), RSS / Print / Syndication / Undo (not
+  // visible), Accessibility (hidden by plone.volto), the ical import actions
+  // (plone.app.event, only on a folder set up for it), Moderate comments
+  // (plone.app.discussion, not installed in Plone 6.1). portal_tabs and
+  // document_actions come back empty from a live Plone 6.
   return {
     document_actions: [],
-    // Two sources, and they disagree. plone.restapi's own recorded example
-    // (actions_get.resp) has keys [icon, id, title]; a live Plone 6
-    // (demo.plone.org) has [icon, id, title, url]. The recording predates the
-    // serializer gaining `url`, and Volto reads `url` — Footer.jsx renders
-    // `item.url ? flattenToAppURL(item.url) : addAppURL(item.id)` — so `url`
-    // is what a current Plone emits and what belongs here.
-    //
-    // WHICH entries appear, and in which category, is from actions_get.resp:
-    // delete belongs in object_buttons beside cut/copy/rename, not in object.
     object: [
-      { url: fullUrl, icon: '', id: 'view', title: 'View' },
-      { url: `${fullUrl}/edit`, icon: '', id: 'edit', title: 'Edit' },
-      { id: 'folderContents', icon: '', title: 'Contents' },
-      { id: 'history', icon: '', title: 'History' },
-      { id: 'local_roles', icon: '', title: 'Sharing' },
+      action('view', 'View', fullUrl),
+      action('edit', 'Edit', `${fullUrl}/edit`),
+      action('folderContents', 'Contents', `${folderUrl}/folder_contents`),
+      action('history', 'History', `${fullUrl}/@@historyview`),
+      action('local_roles', 'Sharing', `${fullUrl}/@@sharing`),
+      ...(folderish ? [action('contentrules', 'Rules', `${fullUrl}/@@manage-content-rules`)] : []),
     ],
     object_buttons: [
-      { id: 'cut', icon: '', title: 'Cut' },
-      { id: 'copy', icon: '', title: 'Copy' },
-      { id: 'delete', icon: '', title: 'Delete' },
-      { id: 'rename', icon: '', title: 'Rename' },
+      action('cut', 'Cut', `${fullUrl}/object_cut`),
+      action('copy', 'Copy', `${fullUrl}/object_copy`),
+      action('delete', 'Delete', `${fullUrl}/delete_confirmation`),
+      action('rename', 'Rename', `${fullUrl}/object_rename`),
+      ...(isRoot ? [] : [action('redirection', 'URL Management', `${fullUrl}/@@manage-aliases`)]),
       // plone.app.iterate's, and the ids Volto gates its working-copy buttons
-      // on. NOT in actions_get.resp, which records a site without it — so this
-      // is the one entry here that is inferred rather than recorded.
+      // on. NOT in actions_get.resp, which records a site without it.
       ...(workingCopyOf(cleanPath, sessionId)
-        ? [{ id: 'iterate_checkin', icon: '', title: 'Check in' }]
-        : [{ id: 'iterate_checkout', icon: '', title: 'Check out' }]),
+        ? [action('iterate_checkin', 'Check in', `${fullUrl}/@@content-checkin`)]
+        : [action('iterate_checkout', 'Check out', `${fullUrl}/@@content-checkout`)]),
     ],
     portal_tabs: [],
-    site_actions: [],
-    user: [],
+    site_actions: [
+      action('sitemap', 'Site Map', `${baseUrl}/sitemap`),
+      action('contact', 'Contact', `${baseUrl}/contact-form`),
+    ],
+    user: [
+      action('preferences', 'Preferences', `${baseUrl}/@@personal-preferences`),
+      action('dashboard', 'Dashboard', `${baseUrl}/dashboard`),
+      action('plone_setup', 'Site Setup', `${baseUrl}/@@overview-controlpanel`),
+      action('logout', 'Log out', `${baseUrl}/logout`),
+    ],
   };
 }
 
@@ -2218,6 +2325,11 @@ function getFolderChildItems(folderPath, baseUrl, sessionId) {
         'review_state': rawContent.review_state || 'published',
         'title': rawContent.title,
         'UID': rawContent.UID,
+        // A Volto site's summaries carry the item's image too (plone.volto adds
+        // image_field/image_scales to the default metadata) — in a folder's
+        // items exactly as in search results, so a folder view can show each
+        // child's preview without fetching it.
+        ...catalogImageFields({ ...rawContent, '@id': itemPath }, baseUrl),
       };
     })
     .filter(Boolean);
@@ -2549,10 +2661,20 @@ function loadMarkdownMount(mount) {
  */
 function validateServedContent() {
   const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+  // ALLOW_MISSING_BLOBS=true: a blob whose bytes are not on disk is a warning,
+  // not an error — what `plone-content --allow-missing-blobs` does. For a pull
+  // request whose content references a file CI makes only after the merge (a
+  // recorded clip, say). Every other problem is still fatal.
+  const allowMissingBlobs = process.env.ALLOW_MISSING_BLOBS === 'true';
   const errors = [];
+  const warnings = [];
+  const keep = (result) => {
+    errors.push(...result.errors);
+    warnings.push(...(result.warnings || []));
+  };
   for (const { dirPath } of CONTENT_MOUNTS) {
     if (!isMarkdownMount({ dirPath }) && fs.existsSync(path.join(dirPath, '__metadata__.json'))) {
-      errors.push(...validate(dirPath).errors);
+      keep(validate(dirPath, { allowMissingBlobs }));
     }
   }
   const paths = new Set([...markdownItems.keys(), ...Object.keys(contentDirMap)]);
@@ -2561,7 +2683,8 @@ function validateServedContent() {
     if (data == null) throw new Error(`content-check: ${urlPath} is registered but has no content`);
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
-  errors.push(...checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent }).errors);
+  keep(checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent, allowMissingBlobs }));
+  for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   if (siteSchemas) {
     const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
     const own = source.filter((item) => !isHydraOwned(item.rel));
@@ -3140,9 +3263,10 @@ const SIBLING_DEFAULTS = {
  * @param {(uid:string)=>number|undefined} opts.positionOf  getObjPositionInParent, for ordering
  * @param {(urlPath,field,blobPath)=>string} opts.blobSourceOf  abs source file for a blob's bytes
  * @param {string[]} [opts.siblingsFrom]       dirs to copy the 6 siblings from (first that has each wins)
+ * @param {Object<string,string>} [opts.redirects]  redirects.json to write (physical paths) instead of copying one
  * @returns the written __metadata__
  */
-function writeDistribution(dest, items, { positionOf = () => undefined, blobSourceOf, siblingsFrom = [], allowMissingBlobs = false } = {}) {
+function writeDistribution(dest, items, { positionOf = () => undefined, blobSourceOf, siblingsFrom = [], allowMissingBlobs = false, redirects } = {}) {
   const destContent = path.join(dest, 'content');
   fs.rmSync(destContent, { recursive: true, force: true });
   fs.mkdirSync(destContent, { recursive: true });
@@ -3206,6 +3330,10 @@ function writeDistribution(dest, items, { positionOf = () => undefined, blobSour
   dataFiles.sort((a, b) => depthOf(a) - depthOf(b) || a.localeCompare(b));
 
   for (const sib of DISTRIBUTION_SIBLINGS) {
+    if (sib === 'redirects.json' && redirects) {
+      fs.writeFileSync(path.join(dest, sib), JSON.stringify(redirects, null, 2) + '\n');
+      continue;
+    }
     const from = siblingsFrom.map((d) => path.join(d, sib)).find((p) => fs.existsSync(p));
     if (from) fs.copyFileSync(from, path.join(dest, sib));
     else fs.writeFileSync(path.join(dest, sib), JSON.stringify(SIBLING_DEFAULTS[sib], null, 2) + '\n');
@@ -3232,7 +3360,34 @@ function writeDistribution(dest, items, { positionOf = () => undefined, blobSour
  * mount's dir (its blob_path is relative to that content root). Returns the
  * written __metadata__, or null when there is no content to export.
  */
-function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
+/**
+ * Every exportable mount's redirects, as plone.exportimport writes them:
+ * PHYSICAL paths under `sitePath` ("/Plone"), the site's path in the Zope root.
+ * The importer stores each pair as is, keyed by physical path, so a
+ * site-relative pair would be stored where no request looks. Throws an
+ * ExportRequestError when there are redirects and no usable `sitePath`.
+ */
+class ExportRequestError extends Error {}
+function exportRedirects(mounts, sitePath) {
+  const pairs = [];
+  for (const mount of mounts) {
+    for (const [from, to] of readRedirects(mount)) {
+      const prefixed = (p) => (mount.mountPath === '/' ? p : mount.mountPath + (p === '/' ? '' : p));
+      pairs.push([prefixed(from), prefixed(to)]);
+    }
+  }
+  if (!pairs.length) return {};
+  if (typeof sitePath !== 'string' || !/^\/[^/]+(\/[^/]+)*$/.test(sitePath)) {
+    throw new ExportRequestError(
+      `the content has ${pairs.length} redirect(s); pass sitePath (the site's physical path, e.g. "/Plone") ` +
+      `so redirects.json holds the physical paths Plone stores them by (got ${JSON.stringify(sitePath)})`,
+    );
+  }
+  const physical = (p) => (p === '/' ? sitePath : sitePath + p);
+  return Object.fromEntries(pairs.map(([from, to]) => [physical(from), physical(to)]));
+}
+
+function buildDistributionFromMemory(dest, { allowMissingBlobs = false, sitePath } = {}) {
   // Only genuine content-source mounts are exportable: a plone.exportimport tree
   // (has __metadata__.json) or a markdown tree (has index.md). A loose fixture
   // mount like /_test_data is neither — it holds intentionally-malformed test
@@ -3268,6 +3423,7 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
     blobSourceOf,
     siblingsFrom,
     allowMissingBlobs,
+    redirects: exportRedirects(CONTENT_MOUNTS.filter(exportable), sitePath),
   });
 }
 
@@ -3286,13 +3442,15 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
  * markdown trees instead of exportimport JSON; the CALLER supplies the
  * prototypes in the body (`{ matched, tagged }` declaration text) so the mock
  * API needs no format config of its own.
- *   POST /@export  { format: 'json'|'markdown', prototypes?: { matched, tagged } }
+ *   POST /@export  { format: 'json'|'markdown', prototypes?: { matched, tagged }, sitePath? }
+ *     sitePath: the site's physical path ("/Plone"), required for json when
+ *     the content has redirects — redirects.json holds physical paths.
  *     json     -> application/zip  (export.zip: content/**, siblings)
  *     markdown -> application/zip  (export-markdown.zip: docs/**, site/** trees)
  */
 app.post('/@export', async (req, res) => {
   await ready;
-  const { format = 'json', prototypes = {}, allowMissingBlobs = false } = req.body || {};
+  const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = req.body || {};
 
   if (format === 'markdown') {
     const { emitPage, parsePrototypes } = await getEngine();
@@ -3585,7 +3743,13 @@ app.post('/@export', async (req, res) => {
   // distribution. Build it in a temp dir, validate, tar, stream, clean up.
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'plone-export-'));
   try {
-    const merged = buildDistributionFromMemory(staging, { allowMissingBlobs });
+    let merged;
+    try {
+      merged = buildDistributionFromMemory(staging, { allowMissingBlobs, sitePath });
+    } catch (e) {
+      if (e instanceof ExportRequestError) return res.status(400).json({ error: e.message });
+      throw e;
+    }
     if (!merged) {
       return res.status(409).json({ error: 'no content to export' });
     }
@@ -4672,14 +4836,13 @@ app.post(/.*\/@sharing$/, (req, res) => {
   res.status(204).end();
 });
 
-/**
- * GET /@users/:userid
- * Get user information
- *
- * A regex, not a path pattern, because the adapter asks for this with the
- * ++api++ prefix the rest of its requests carry — and Express reads `+` as a
- * repeat modifier, so '/++api++/@users/:userid' can never match as a path.
- */
+// Users, groups, roles, the user schema, control panels and content rules.
+principalsAndRules.register(app, {
+  getSessionId,
+  origin: API_ORIGIN,
+  titleOf: (urlPath) => loadRawContentFromDisk(urlPath)?.title || urlPath,
+});
+
 /**
  * The users this site has.
  *
@@ -4744,30 +4907,12 @@ function userRecord(user) {
   };
 }
 
-/**
- * GET /@users (and /@users?query=) — the collection.
- *
- * `query` matches id, fullname and email, which is what plone.restapi's user
- * search does. This did not exist: only /@users/<id> did, so anything that
- * listed or searched users got a 404 here and a list from a real Plone.
- */
-app.get(/^(?:\/\+\+api\+\+)?\/@users$/, (req, res) => {
-  const query = String(req.query.query ?? '').toLowerCase();
-  const matches = query
-    ? MOCK_USERS.filter((user) =>
-        [user.id, user.fullname, user.email]
-          .join(' ')
-          .toLowerCase()
-          .includes(query),
-      )
-    : MOCK_USERS;
-  res.json({
-    '@id': `${API_ORIGIN}/@users`,
-    items: matches.map(userRecord),
-    items_total: matches.length,
-  });
-});
-
+// RESTORED through the merge. main extracted users, groups, roles, control
+// panels and content rules into mock-principals-and-rules.cjs, which has no
+// equivalent of these: a login here registers the account so @users agrees
+// with it, which is what lets a test log in under its own name and then
+// identify itself. The module's own @users is registered after this route, so
+// this one answers.
 app.get(/^(?:\/\+\+api\+\+)?\/@users\/([^/]+)$/, (req, res) => {
   const userid = req.params[0];
   // An id nobody has is a 404, not a synthesised user. The adapter identifies
@@ -4910,8 +5055,44 @@ const VOCAB_ITEMS = {
   ],
   // A second one, so a picker that lists vocabularies has something to choose
   // BETWEEN — with one entry, "offers the right list" and "offers any list at
-  // all" are the same assertion.
-  'plone.app.vocabularies.ReallyUserFriendlyTypes': ['Document', 'News Item'],
+  // all" are the same assertion. Its terms are titled as Plone titles them:
+  // the type "Document" reads "Page", so a token echoed as the title would
+  // show a type's id where a person expects its name.
+  // Every metadata column the catalog holds, as Plone's MetadataFields lists
+  // them: a listing result carries these (metadata_fields=_all), so a field
+  // mapping can offer a site's own columns without a frontend naming them.
+  'plone.app.vocabularies.MetadataFields': [
+    { token: 'CreationDate', title: 'Creation date' },
+    { token: 'Creator', title: 'Creator' },
+    { token: 'Description', title: 'Description' },
+    { token: 'EffectiveDate', title: 'Effective date' },
+    { token: 'ExpirationDate', title: 'Expiration date' },
+    { token: 'ModificationDate', title: 'Modification date' },
+    { token: 'Subject', title: 'Subject' },
+    { token: 'Title', title: 'Title' },
+    { token: 'Type', title: 'Type' },
+    { token: 'UID', title: 'UID' },
+    { token: 'created', title: 'Created' },
+    { token: 'effective', title: 'Effective' },
+    { token: 'end', title: 'End' },
+    { token: 'exclude_from_nav', title: 'Exclude from navigation' },
+    { token: 'expires', title: 'Expires' },
+    { token: 'getId', title: 'Short name' },
+    { token: 'getObjSize', title: 'Size' },
+    { token: 'id', title: 'ID' },
+    { token: 'is_folderish', title: 'Is folderish' },
+    { token: 'listCreators', title: 'Creators' },
+    { token: 'location', title: 'Location' },
+    { token: 'mime_type', title: 'MIME type' },
+    { token: 'modified', title: 'Modified' },
+    { token: 'portal_type', title: 'Portal type' },
+    { token: 'review_state', title: 'Review state' },
+    { token: 'start', title: 'Start' },
+  ],
+  'plone.app.vocabularies.ReallyUserFriendlyTypes': [
+    { token: 'Document', title: 'Page' },
+    { token: 'News Item', title: 'News Item' },
+  ],
   // collective.volto.formsupport lists only the captcha providers a site has
   // configured (captcha/vocabularies.py keeps those whose isEnabled() is
   // true): see CONFIGURED_CAPTCHAS.
@@ -4930,6 +5111,9 @@ const CONFIGURED_CAPTCHAS = [
     .filter(Boolean),
 ];
 VOCAB_ITEMS['collective.volto.formsupport.captcha.providers'] = CONFIGURED_CAPTCHAS;
+// The vocabularies the content-rule forms read (events, workflow states and
+// transitions, groups, roles).
+Object.assign(VOCAB_ITEMS, principalsAndRules.EXTRA_VOCABULARIES);
 
 // Optional generated vocabularies, declared by a seed file and switched on
 // with VOCAB_SPEC. Used by the adapter contract suite, which needs a
@@ -5000,17 +5184,21 @@ app.get('/@vocabularies/:vocab', (req, res) => {
     });
   }
 
-  const all = VOCAB_ITEMS[req.params.vocab] || [];
+  // A term is a bare string where the token is its own title (keywords), or
+  // `{ token, title }` where they differ.
+  const all = (VOCAB_ITEMS[req.params.vocab] || []).map((v) =>
+    typeof v === 'string' ? { token: v, title: v } : v,
+  );
   // `?title=` is a case-insensitive substring filter in plone.restapi's
   // serializer — what a type-ahead sends so the server does the narrowing.
   const title = String(req.query.title || '').toLowerCase();
-  const values = title
-    ? all.filter((v) => v.toLowerCase().includes(title))
+  const items = title
+    ? all.filter((v) => v.title.toLowerCase().includes(title))
     : all;
   res.json({
     '@id': `http://localhost:${PORT}/@vocabularies/${req.params.vocab}`,
-    items: values.map((v) => ({ token: v, title: v })),
-    items_total: values.length,
+    items,
+    items_total: items.length,
   });
 });
 
@@ -5482,6 +5670,23 @@ app.post('*/@querystring-search', (req, res) => {
             .includes(String(value).toLowerCase()),
         );
       }
+    } else if (
+      operation === 'plone.app.querystring.operation.date.largerThan' ||
+      operation === 'plone.app.querystring.operation.date.lessThan'
+    ) {
+      // A date index (effective, created, modified…): after or before the
+      // value, as a date-range filter asks. Like Plone's DateIndex, an item
+      // with no date matches neither.
+      const bound = new Date(value).getTime();
+      if (Number.isNaN(bound)) {
+        throw new Error(`[MOCK-API] @querystring-search: '${value}' is not a date (${index})`);
+      }
+      const after = operation.endsWith('largerThan');
+      allItems = allItems.filter((item) => {
+        if (!item[index]) return false;
+        const t = new Date(item[index]).getTime();
+        return after ? t > bound : t < bound;
+      });
     } else if (index === 'exclude_from_nav' && operation.includes('boolean')) {
       // Nav listings filter out items marked exclude_from_nav: true.
       // Mirrors Plone's plone.app.querystring.operation.boolean.{isFalse,isTrue}.
@@ -5537,9 +5742,13 @@ app.post('*/@querystring-search', (req, res) => {
       return allPaths.indexOf(aPath) - allPaths.indexOf(bPath);
     };
   } else if (sort_on) {
+    // sortable_title is an index Plone makes from the title (case folded);
+    // no item carries a field of that name.
+    const sortValue = (item) =>
+      sort_on === 'sortable_title' ? String(item.title ?? '').toLowerCase() : item[sort_on] || '';
     comparator = (a, b) => {
-      const aVal = a[sort_on] || '';
-      const bVal = b[sort_on] || '';
+      const aVal = sortValue(a);
+      const bVal = sortValue(b);
       return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
     };
   }
@@ -5829,12 +6038,18 @@ app.get('*/@search', (req, res) => {
   // which is indistinguishable from a sort the ADMIN failed to send, and hid
   // the question of whether the admin sends it at all.
   //
-  // getObjPositionInParent is the folder's own order, which is how the items
-  // already arrive; every other index sorts on the metadata field of that
-  // name, and sort_order: descending reverses the whole result, as in the
-  // querystring-search handler above.
+  // getObjPositionInParent is the folder's own order. JSON content arrives in
+  // it already (exportimport ordering), but markdown content does not: its
+  // order is the folder's `order:` frontmatter, kept as each item's position,
+  // so it is sorted on. An item the folder does not order goes last, as the
+  // catalog puts an unpositioned item. Every other index sorts on the
+  // metadata field of that name, and sort_order: descending reverses the
+  // whole result, as in the querystring-search handler above.
   const sortOn = req.query.sort_on;
-  if (sortOn && sortOn !== 'getObjPositionInParent') {
+  if (sortOn === 'getObjPositionInParent') {
+    const position = (item) => uidPositionMap[item.UID] ?? Number.MAX_SAFE_INTEGER;
+    items = [...items].sort((a, b) => position(a) - position(b));
+  } else if (sortOn) {
     items = [...items].sort((a, b) => {
       const x = a[sortOn] ?? '';
       const y = b[sortOn] ?? '';
@@ -6948,4 +7163,4 @@ if (require.main === module) {
 }
 
 // Export for use by test frontend server or test harnesses
-module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution };
+module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution, getRedirectTarget, getAllRedirects };

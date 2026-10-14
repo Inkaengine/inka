@@ -140,6 +140,14 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
   // feed it the items-array shape. Catching this here keeps a bad
   // redirects.json from silently breaking site bootstrap on deploy.
   const redirectsPath = path.join(parentDir, 'redirects.json');
+  // The site's physical path is its root item's @id (/Plone in an export);
+  // a root at "/" (or none) gives nothing to check against.
+  const sitePath = (() => {
+    const rootFile = path.join(contentDir, 'plone_site_root', 'data.json');
+    if (!fs.existsSync(rootFile)) return '';
+    const rootId = readJson(rootFile)['@id'];
+    return rootId === '/' ? '' : rootId;
+  })();
   if (fs.existsSync(redirectsPath)) {
     let redirectsData;
     try { redirectsData = readJson(redirectsPath); }
@@ -153,6 +161,16 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
             errors.push(`  redirects.json: value for "${key}" is ${Array.isArray(value) ? 'an array' : typeof value} — use {"/old": "/new"}, not the REST-API {items: [...]} shape`);
           } else if (!key.startsWith('/') || !value.startsWith('/')) {
             errors.push(`  redirects.json: paths must be absolute (start with /): ${JSON.stringify(key)} -> ${JSON.stringify(value)}`);
+          } else if (sitePath) {
+            // Physical paths: the importer gives each pair to
+            // plone.app.redirector's storage as is, and the storage is keyed
+            // by physical path. A site-relative "/old" is stored where no
+            // request looks — the redirect never fires, and nothing says so.
+            for (const p of [key, value]) {
+              if (p !== sitePath && !p.startsWith(sitePath + '/')) {
+                errors.push(`  redirects.json: ${JSON.stringify(p)} is not under the site's physical path ${JSON.stringify(sitePath)} — Plone stores redirects by physical path, so write ${JSON.stringify(sitePath + p)}`);
+              }
+            }
           }
         }
       }
@@ -280,7 +298,7 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
   }
   for (const entry of listedBlobs) {
     if (!fs.existsSync(path.join(contentDir, entry))) {
-      errors.push(`  ${entry} in _blob_files_ but missing from disk`);
+      missingBlob(`  ${entry} in _blob_files_ but missing from disk`);
     }
   }
 
@@ -772,13 +790,19 @@ function imageDimensions(file) {
   // would just be a second implementation to be wrong in a second way.
   {
     // slotId -> fixed, per template, from the template's own blocks at any depth.
+    // A template is a document whose top-level blocks name it, or — a definition need
+    // not name itself — whose top-level blocks hold slots and name no template at all.
+    const isTemplateDoc = (data) => {
+      const blocks = data.blocks || {};
+      const top = ((data.blocks_layout || {}).items || []).map((bid) => blocks[bid]).filter(Boolean);
+      const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
+      if (top.some((block) => own.includes(block.templateId))) return true;
+      return top.some((block) => block.slotId) && !top.some((block) => block.templateId);
+    };
     const templateChrome = new Map(); // templateRef -> Map(slotId -> fixed)
     for (const { data } of items) {
-      const blocks = data.blocks || {};
-      const top = (data.blocks_layout || {}).items || [];
       const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
-      const isTemplate = top.some((bid) => blocks[bid] && own.includes(blocks[bid].templateId));
-      if (!isTemplate) continue;
+      if (!isTemplateDoc(data)) continue;
       const slots = new Map();
       const collect = (container) => {
         for (const [, block] of Object.entries(container.blocks || {})) {
@@ -792,10 +816,7 @@ function imageDimensions(file) {
     }
 
     for (const { rel, data } of items) {
-      const top = (data.blocks_layout || {}).items || [];
-      const blocks = data.blocks || {};
-      const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
-      if (top.some((bid) => blocks[bid] && own.includes(blocks[bid].templateId))) continue; // a template, not an instance
+      if (isTemplateDoc(data)) continue; // a template, not an instance
       const check = (container) => {
         for (const [bid, block] of Object.entries(container.blocks || {})) {
           if (!block || typeof block !== 'object') continue;

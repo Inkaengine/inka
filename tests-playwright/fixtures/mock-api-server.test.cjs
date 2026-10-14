@@ -956,6 +956,50 @@ describe('folder items batching', () => {
   });
 });
 
+// A Volto site's summaries carry each item's image (plone.volto adds
+// image_field + image_scales to the default metadata), and a folder's `items`
+// are summaries like search results are. Checked against demo.plone.org: an
+// Image child has image_field "image" and a scale ladder, a page with no image
+// has image_field "" and image_scales null. The mock gave folder items neither,
+// so a folder view could not show a child's preview.
+describe('folder items carry the image fields', () => {
+  const child = async (folder, id) => {
+    const res = await fetch(`${baseUrl}${folder}?b_size=100`, { headers: { Accept: 'application/json' } });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    const item = data.items.find((i) => i['@id'].endsWith(`${folder}/${id}`));
+    assert.ok(item, `${folder} should list ${id}`);
+    return item;
+  };
+
+  it('an Image child names its field and carries its scale ladder', async () => {
+    const image = await child('/_test_data/images', 'test-image-1');
+    assert.equal(image.image_field, 'image');
+    const [original] = image.image_scales.image;
+    assert.equal(original.width, 400);
+    assert.equal(original.height, 300);
+    assert.ok(original.scales.preview.download, 'a preview scale to show in a listing');
+  });
+
+  it('a page with no image has an empty field and no scales', async () => {
+    const page = await child('/_test_data', 'another-page-2');
+    assert.equal(page.image_field, '');
+    assert.equal(page.image_scales, null);
+  });
+
+  it('matches what a search returns for the same item', async () => {
+    const image = await child('/_test_data/images', 'test-image-1');
+    const found = await querystringSearch('/_test_data', {
+      query: [{ i: 'portal_type', o: 'plone.app.querystring.operation.selection.any', v: ['Image'] }],
+      b_size: 100,
+    });
+    const searched = found.items.find((i) => i['@id'].endsWith('/_test_data/images/test-image-1'));
+    assert.ok(searched, 'the search should find test-image-1');
+    assert.equal(image.image_field, searched.image_field);
+    assert.deepEqual(image.image_scales, searched.image_scales);
+  });
+});
+
 describe('@breadcrumbs', () => {
   // plone.restapi's breadcrumbs list the page's ancestors and the page — NOT
   // the site root, which comes separately as `root`. The mock used to put a
@@ -985,5 +1029,111 @@ describe('@breadcrumbs', () => {
   it('the expanded component matches the endpoint', async () => {
     const page = await getContent('/_test_data?expand=breadcrumbs');
     assert.deepEqual(paths(page['@components'].breadcrumbs.items), ['/_test_data']);
+  });
+});
+
+describe('@querystring-search: date operations', () => {
+  // The mock advertises date.largerThan / date.lessThan for its date indexes
+  // (/@querystring); a date-range filter sends them. Plone matches an item
+  // whose date is after (or before) the value, and never one with no date.
+  const AFTER = 'plone.app.querystring.operation.date.largerThan';
+  const BEFORE = 'plone.app.querystring.operation.date.lessThan';
+  const paths = (data) => data.items.map((i) => new URL(i['@id']).pathname);
+  const search = (o, v) =>
+    querystringSearch('/_test_data', {
+      query: [
+        { i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' },
+        { i: 'effective', o, v },
+      ],
+      b_size: 1000,
+    });
+
+  it('largerThan keeps items dated after the value, and none without a date', async () => {
+    const found = paths(await search(AFTER, '2024-06-01'));
+    assert.ok(found.includes('/_test_data/news'), `news (2024-11-01) should match: ${found}`);
+    assert.ok(!found.includes('/_test_data/news-test-page'), 'news-test-page (2023-01-15) should not match');
+  });
+
+  it('lessThan keeps items dated before the value', async () => {
+    const found = paths(await search(BEFORE, '2024-06-01'));
+    assert.ok(found.includes('/_test_data/news-test-page'), `news-test-page should match: ${found}`);
+    assert.ok(!found.includes('/_test_data/news'), 'news (2024-11-01) should not match');
+  });
+
+  it('an undated item matches neither', async () => {
+    const after = paths(await search(AFTER, '1900-01-01'));
+    const all = paths(
+      await querystringSearch('/_test_data', {
+        query: [{ i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' }],
+        b_size: 1000,
+      }),
+    );
+    assert.ok(after.length > 0 && after.length < all.length, `${after.length} dated of ${all.length}`);
+  });
+});
+
+describe('@querystring-search: sort_on sortable_title', () => {
+  // sortable_title is a catalog index made from the title (case folded); items
+  // carry no field of that name, so sorting on it must read the title.
+  it('orders results by title, A to Z', async () => {
+    const data = await querystringSearch('/_test_data', {
+      query: [{ i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' }],
+      sort_on: 'sortable_title',
+      b_size: 1000,
+    });
+    const titles = data.items.map((i) => String(i.title ?? '').toLowerCase());
+    assert.ok(titles.length > 2);
+    assert.deepEqual(titles, [...titles].sort());
+  });
+});
+
+describe('@search: catalog metadata of a file', () => {
+  // Plone's catalog keeps a file's type, its size (as getObjSize formats it) and
+  // who made it; a search with metadata_fields=_all returns them.
+  it('returns mime_type, getObjSize, portal_type and the creators', async () => {
+    const res = await fetch(
+      `${baseUrl}/_test_data/@search?path.query=/_test_data/annual-report&path.depth=0&metadata_fields=_all`,
+      { headers: { Accept: 'application/json' } },
+    );
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    assert.equal(item.title, 'Annual report');
+    assert.equal(item.portal_type, 'File');
+    assert.equal(item.mime_type, 'application/pdf');
+    assert.equal(item.getObjSize, '19.5 KB');
+    assert.equal(item.Creator, 'jane.author');
+    assert.deepEqual(item.listCreators, ['jane.author']);
+  });
+});
+
+describe('GET @search sorted by folder order', () => {
+  // The Contents view lists a folder's children with
+  // sort_on=getObjPositionInParent. Markdown content has no exportimport
+  // ordering to arrive in: its order is the folder's `order:` frontmatter
+  // (docs/index.md here), so the search has to sort on the position.
+  const ORDER = [
+    'architecture', 'deploy-and-secure', 'frontend-guide', 'editor-guide',
+    'compliance', 'adapters', 'testing', 'examples',
+  ];
+
+  async function childIds(query) {
+    await require('./mock-plone-api.cjs').ready;
+    const res = await fetch(`${baseUrl}/docs/@search?path.depth=1&${query}`, {
+      headers: { Accept: 'application/json' },
+    });
+    assert.equal(res.status, 200);
+    const { items } = await res.json();
+    return items.map((i) => i['@id'].split('/').pop()).filter((id) => ORDER.includes(id));
+  }
+
+  it('lists a markdown folder in its `order:`', async () => {
+    assert.deepEqual(await childIds('sort_on=getObjPositionInParent'), ORDER);
+  });
+
+  it('descending reverses it', async () => {
+    assert.deepEqual(
+      await childIds('sort_on=getObjPositionInParent&sort_order=descending'),
+      [...ORDER].reverse(),
+    );
   });
 });

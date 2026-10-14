@@ -7,6 +7,8 @@
  * - make the UI consistent. Both clear and submit modify the link and close immediately now
  * - fix null ref errors
  * - show object browser button for 'image' mode (Volto bug: only shows for 'link' mode)
+ * - hand the item picked in the object browser to onChangeValue(url, item), while
+ *   the url is still the picked one (a text link keeps it as data.item)
  *
  * In volto-hydra's synced toolbar, the Slate component can remount when:
  * 1. The Clear button's onClear() modifies Slate nodes via unwrapElement()
@@ -48,6 +50,7 @@ import withObjectBrowser from '@plone/volto/components/manage/Sidebar/ObjectBrow
 import { withRouter } from 'react-router';
 
 import { Icon } from '@plone/volto/components';
+import { linkItemSnapshot } from '../../../../../../../utils/linkItem';
 
 const messages = defineMessages({
   placeholder: {
@@ -115,6 +118,12 @@ class AddLinkForm extends Component {
       value: isInternalURL(url) ? flattenToAppURL(url) : url,
       isInvalid: false,
     };
+    // HYDRA: the item the url was picked from ({ url, item }), so submitting
+    // passes it on. A link being edited starts with the item it already has.
+    this.picked =
+      props.data.item && this.state.value
+        ? { url: this.state.value, item: props.data.item }
+        : null;
     this.onRef = this.onRef.bind(this);
     this.onChange = this.onChange.bind(this);
     this.onKeyDown = this.onKeyDown.bind(this);
@@ -287,7 +296,13 @@ class AddLinkForm extends Component {
 
     const editorStateUrl = isInternalURL(url) ? addAppURL(url) : url;
 
-    this.props.onChangeValue(editorStateUrl);
+    // The picked item goes with the url only while it is still the picked one:
+    // a typed or edited address describes something else.
+    const item =
+      this.picked && flattenToAppURL(url) === this.picked.url
+        ? this.picked.item
+        : undefined;
+    this.props.onChangeValue(editorStateUrl, item);
     this.onClose();
   }
 
@@ -337,6 +352,10 @@ class AddLinkForm extends Component {
                 mode: this.props.objectBrowserPickerType,
                 overlay: true,
                 onSelectItem: (url, item) => {
+                  this.picked = {
+                    url: flattenToAppURL(url),
+                    item: linkItemSnapshot(item),
+                  };
                   this.onChange(url);
                   // Pass full item to callback if provided (for object_browser fields needing metadata)
                   if (this.props.onSelectItem) {

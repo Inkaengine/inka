@@ -36,6 +36,8 @@ const messages = defineMessages({
 });
 import frontendPreviewUrl, { viewportPreset } from './reducers';
 import FrontendSwitcherPlug from './components/Toolbar/FrontendSwitcherPlug';
+import ClearFormattingButton from './components/Toolbar/ClearFormattingButton';
+import formatClearIcon from '@plone/volto/icons/format-clear.svg';
 import SidebarToggleToolbarPlug from './components/Toolbar/SidebarToggleToolbarPlug';
 import FrontendSwitcherPanel from './components/Toolbar/FrontendSwitcherPanel';
 import NativeActionsPlug from './components/Toolbar/NativeActionsPlug';
@@ -84,6 +86,7 @@ import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
 import { slateValueField } from './utils/slateValueField';
 import { BRIDGE_EXPANDERS } from './bridge/expanders';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
+import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
 
 // The field types a `hydraRuleError` can land on. Volto looks a validator up by
@@ -184,6 +187,11 @@ const applyConfig = (config) => {
       method: hydraRuleErrorValidator,
     });
   }
+
+  // A text link picked from the object browser keeps the picked item beside
+  // its url (data.item), so a frontend can draw it from the item (a file's type
+  // and size) without fetching it again.
+  installLinkEditor(config);
 
   // Autosave the form to localStorage while editing, and offer it back if the
   // author returns to a page they left mid-edit. Volto ships the feature but
@@ -623,6 +631,9 @@ config.settings.additionalToolbarComponents = {
             title: 'Field Mapping',
             widget: 'field_mapping',
             sourceFields: QUERY_RESULT_FIELDS,
+            // …and every metadata column the site's catalog holds, so its own
+            // fields can be mapped too.
+            vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
             description: 'Map query result fields to item block fields',
             fieldset: { id: 'mapping', title: 'Field Mapping' },
           },
@@ -1036,6 +1047,15 @@ config.settings.additionalToolbarComponents = {
     config.settings.slate.buttons = {
       ...config.settings.slate.buttons,
       styleMenu: (props) => <StyleDropdown {...props} />,
+      // Volto's Clear formatting is always enabled; Inka's is disabled when the
+      // selection has nothing to clear. See ClearFormattingButton.
+      clearformatting: (props) => (
+        <ClearFormattingButton
+          title="Clear formatting"
+          icon={formatClearIcon}
+          {...props}
+        />
+      ),
     };
 
     const { backspaceListItem } = require('./extensions/backspaceListItem');

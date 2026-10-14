@@ -96,6 +96,66 @@ function loadAndAwaitReady(mounts, env = {}) {
   );
 }
 
+/**
+ * An exportimport tree with a File whose bytes are not on disk — a clip a
+ * pull request adds, which CI records only after the merge.
+ */
+function treeWithMissingBlob(extraItem) {
+  // A distribution: the exportimport tree in content/, the files Plone's
+  // importer also reads beside it.
+  const distribution = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-blob-'));
+  for (const name of ['discussions.json', 'portlets.json', 'principals.json', 'redirects.json']) {
+    fs.writeFileSync(path.join(distribution, name), '{}');
+  }
+  const dir = path.join(distribution, 'content');
+  fs.mkdirSync(dir);
+  const files = ['clip/data.json', ...(extraItem ? ['page/data.json'] : [])];
+  fs.writeFileSync(
+    path.join(dir, '__metadata__.json'),
+    JSON.stringify({ __version__: '1.0.0', _data_files_: files, _blob_files_: ['clip/file/clip.mp4'] }),
+  );
+  fs.mkdirSync(path.join(dir, 'clip'));
+  fs.writeFileSync(
+    path.join(dir, 'clip', 'data.json'),
+    JSON.stringify({
+      '@id': '/clip.mp4', '@type': 'File', UID: 'missing-blob-clip-0001', id: 'clip.mp4', title: 'Clip',
+      file: { blob_path: 'clip/file/clip.mp4', 'content-type': 'video/mp4', filename: 'clip.mp4' },
+    }),
+  );
+  if (extraItem) {
+    fs.mkdirSync(path.join(dir, 'page'));
+    fs.writeFileSync(path.join(dir, 'page', 'data.json'), JSON.stringify(extraItem));
+  }
+  return dir;
+}
+
+describe('mock API: blobs not on disk', () => {
+  it('refuses to start when a blob is missing', () => {
+    const run = loadAndAwaitReady(`/:${treeWithMissingBlob()}`);
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /clip\/file\/clip\.mp4/);
+  });
+
+  it('ALLOW_MISSING_BLOBS=true starts, and still says what is missing', () => {
+    const run = loadAndAwaitReady(`/:${treeWithMissingBlob()}`, { ALLOW_MISSING_BLOBS: 'true' });
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+    assert.match(`${run.stdout}${run.stderr}`, /clip\/file\/clip\.mp4/);
+  });
+
+  it('ALLOW_MISSING_BLOBS=true excuses missing bytes only', () => {
+    const run = loadAndAwaitReady(
+      `/:${treeWithMissingBlob({
+        '@id': '/page', '@type': 'Document', UID: 'missing-blob-page-0001', id: 'page', title: 'Page',
+        blocks: { t1: { '@type': 'teaser', href: [{ '@id': '/no-such-page' }] } },
+        blocks_layout: { items: ['t1'] },
+      })}`,
+      { ALLOW_MISSING_BLOBS: 'true' },
+    );
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /path not in content: \/no-such-page/);
+  });
+});
+
 describe('mock API content validation', () => {
   it('refuses to become ready when served content links to nothing', () => {
     const run = loadAndAwaitReady(`/:${jsonMount(teaserTo('/no-such-page'))}`);

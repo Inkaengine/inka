@@ -7,6 +7,10 @@
  *                                            — every block field no schema declares, and
  *                                              everything the editor would refuse or rewrite
  *   plone-content all      [<content-dir>]   — validate + check (+ schema with --schemas)
+ *   --allow-missing-blobs                    — a blob with no bytes on disk is a warning, not
+ *                                              an error: generated media (a recorded clip,
+ *                                              a screenshot) that CI makes after the change
+ *                                              listing it is merged. Never on a deploy.
  *   --exempt-slot <slotId>                    — (repeatable) don't check the PLACEMENT of
  *                                              blocks in that template slot
  *   --json <report.json>                     — also write the report as data:
@@ -33,7 +37,7 @@ const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, fieldMapF
 function usage() {
   console.error(
     'Usage: plone-content <validate|check|schema|all> [<content-dir>] ' +
-      '[--schemas <schemas.json>] [--exempt-slot <slot>]... [--json <report.json>]\n' +
+      '[--schemas <schemas.json>] [--exempt-slot <slot>]... [--json <report.json>] [--allow-missing-blobs]\n' +
       '       plone-content served   (reads CONTENT_MOUNTS)',
   );
   process.exit(2);
@@ -67,6 +71,8 @@ const fieldsPath = takeFlag('--fields');
 const jsonPath = takeFlag('--json');
 // Template slots whose blocks are placed deliberately where the editor would
 // not put them (a documentation page's examples). Repeatable.
+const allowMissingBlobs = argv.includes('--allow-missing-blobs');
+if (allowMissingBlobs) argv.splice(argv.indexOf('--allow-missing-blobs'), 1);
 const exemptSlots = [];
 for (let slot = takeFlag('--exempt-slot'); slot; slot = takeFlag('--exempt-slot')) exemptSlots.push(slot);
 
@@ -87,14 +93,14 @@ const contentDir = path.resolve(dirArg || 'content');
 let hasErrors = false;
 const report = {};
 if (cmd === 'validate' || cmd === 'all') {
-  const r = validate(contentDir);
+  const r = validate(contentDir, { allowMissingBlobs });
   report.validate = r;
   console.log(formatReport('validate', r));
   if (r.errors.length) hasErrors = true;
 }
 if (cmd === 'check' || cmd === 'all') {
   if (cmd === 'all') console.log('');
-  const r = checkIntegrity(contentDir, schemas ? { schemaFor: schemaForFrom(schemas) } : {});
+  const r = checkIntegrity(contentDir, { allowMissingBlobs, ...(schemas ? { schemaFor: schemaForFrom(schemas) } : {}) });
   report.check = r;
   console.log(formatReport('check', r));
   if (r.errors.length) hasErrors = true;

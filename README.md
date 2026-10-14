@@ -20,7 +20,7 @@ The `hydra` name in the bridge script, attributes and package names is the proje
 
 ## Try the online demo
 
-Open [admin.inka.sh](https://admin.inka.sh) and log in as **admin** / **admin**. Open user preferences (bottom left), and either pick a preset front end or paste in your own URL. The demo resets overnight.
+Press **Try editing now** on [inka.sh](https://inka.sh), or open [admin.inka.sh/login?demo](https://admin.inka.sh/login?demo&return_url=/edit): you are signed in as a demo account, in the editor, with nothing to register for. Open user preferences (bottom left), and either pick a preset front end or paste in your own URL. Nothing the demo account changes is kept.
 
 ## Documentation
 
@@ -81,7 +81,7 @@ pnpm install
 NUXT_PUBLIC_BACKEND_BASE_URL=https://api.inka.sh pnpm run dev
 ```
 
-Then log in at <https://admin.inka.sh> and add your local front end (`http://localhost:3000`) in personal preferences.
+Then open the demo editor (<https://admin.inka.sh/login?demo&return_url=/edit>) and add your local front end (`http://localhost:3000`) in personal preferences.
 
 ### Tests
 

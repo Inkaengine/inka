@@ -3763,6 +3763,41 @@ export class Bridge {
       : null;
   }
 
+  /**
+   * Say where a drop will land, on the indicator (or the replace shade) the
+   * user is looking at: a label naming the container the block will be put
+   * in, and the resolved target as data attributes. The drop goes to the
+   * nearest droppable edge at ANY nesting level, so the pointer can sit on a
+   * small block while the drop lands in the container around it; a line on
+   * a shared edge looked the same either way. The label tells them apart, and
+   * the attributes let a test confirm the target before it lets go.
+   */
+  _nameDropTarget(el, targetUid, insertAfter, isHorizontal) {
+    const info = this.blockPathMap?.[targetUid];
+    const container = info?.containerTitle || 'Page';
+    el.dataset.dropTarget = targetUid;
+    el.dataset.dropInsertAfter = insertAfter ? 'true' : 'false';
+    el.dataset.dropContainer = info?.parentId || '';
+    let label = el.querySelector(':scope > .volto-hydra-drop-label');
+    if (!label) {
+      label = document.createElement('span');
+      label.className = 'volto-hydra-drop-label';
+      // Inline and self-contained: this sits in the frontend's page, whose
+      // CSS must not restyle it.
+      label.style.cssText =
+        'position:absolute;white-space:nowrap;padding:1px 6px;border-radius:3px;' +
+        'background:#007bff;color:#fff;font:600 11px/16px system-ui,sans-serif;' +
+        'letter-spacing:normal;text-transform:none;pointer-events:none;';
+      el.appendChild(label);
+    }
+    label.textContent = `Into ${container}`;
+    // Off the line, so it never hides what it labels: above a horizontal line,
+    // at the top beside a vertical one.
+    Object.assign(label.style, isHorizontal
+      ? { left: '6px', top: '0', bottom: 'auto' }
+      : { left: '0', top: 'auto', bottom: '6px' });
+  }
+
   getAllBlockElements(blockUid, options = {}) {
     // includeStandIns: false asks for only the elements that ARE the block.
     // Chrome (outline, toolbar) measures the block's box, and a stand-in sits
@@ -8394,12 +8429,23 @@ export class Bridge {
         else if (c.nodeType === Node.ELEMENT_NODE) {
           if (c.tagName === 'BR') {
             if (!this.isPlaceholderBr(c)) out += '\n';
-          } else walk(c);
+          } else if (!this.isNonContentIsland(c)) walk(c);
         }
       }
     };
     walk(el);
     return out;
+  }
+
+  /**
+   * An element the frontend drew that is not the author's content: a
+   * non-editable island (contenteditable="false" — words the frontend writes
+   * itself, such as a file's size after a link) or decoration (aria-hidden).
+   * Skipped wherever it sits — as a node's child or inside a wrapper around the
+   * author's text — so its text is never read into the value.
+   */
+  isNonContentIsland(el) {
+    return el.getAttribute('contenteditable') === 'false' || el.getAttribute('aria-hidden') === 'true';
   }
 
   /**
@@ -8544,10 +8590,7 @@ export class Bridge {
         const childNodeId = child.getAttribute('data-node-id');
         if (childNodeId && isValidNodeId(childNodeId)) {
           children.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets));
-        } else if (
-          child.getAttribute('contenteditable') === 'false' ||
-          child.getAttribute('aria-hidden') === 'true'
-        ) {
+        } else if (this.isNonContentIsland(child)) {
           // Non-editable / decorative island with no data-node-id — e.g. a
           // frontend's external-link icon after a link's text, or any generated
           // chrome the editor should ignore. `contenteditable="false"` is the
@@ -11334,6 +11377,7 @@ export class Bridge {
             // placeholder via replaceTargetId.
             closestBlockUid = emptyTargetUid;
             replaceTargetUid = emptyTargetUid;
+            this._nameDropTarget(shade, emptyTargetUid, false, false);
             dropIndicatorVisible = true;
             insertAt = 0;
             return;
@@ -11443,6 +11487,7 @@ export class Bridge {
               borderLeft: 'none', borderTop: '3px dashed #007bff', display: 'block'
             });
           }
+          this._nameDropTarget(dropIndicator, closestBlockUid, insertAt === 1, isHorizontal);
           dropIndicatorVisible = true;
           // TODO(scroll-into-view): if the resolved edge is off-screen, scroll it into
           // view — deferred; scrolling mid-drag fights a held cursor, needs its own design.
@@ -15940,13 +15985,19 @@ export function getAccessToken() {
     sessionStorage.setItem('hydra_access_token', urlToken);
     return urlToken;
   }
-  // Try sessionStorage (persists across SPA navigations)
-  const sessionToken = sessionStorage.getItem('hydra_access_token');
-  if (sessionToken) {
-    return sessionToken;
+  // A stored token (sessionStorage, or the bridge's cookie) is used inside the
+  // admin's iframe only. sessionStorage is shared by every page of this origin
+  // in the TAB, and the cookie by every page of the domain for 12 hours, so the
+  // public site's pages would find the editor's token, fetch their data signed
+  // in, and render that fetch failing as a 500 on every reload. Outside the
+  // iframe the token is not theirs.
+  const inAdminIframe =
+    window.name.startsWith('hydra-edit:') || window.name.startsWith('hydra-view:');
+  if (!inAdminIframe) {
+    return null;
   }
-  // Fallback to cookie
-  return getTokenFromCookie();
+  // sessionStorage persists across SPA navigations; the cookie is the fallback.
+  return sessionStorage.getItem('hydra_access_token') || getTokenFromCookie();
 }
 
 /**
