@@ -1,0 +1,30 @@
+{
+  "@id": "/listing-page",
+  "@type": "Document",
+  "UID": "seed-listing-page",
+  "id": "listing-page",
+  "title": "Listing Page",
+  "review_state": "published",
+  "blocks": {
+    "listing-1": {
+      "@type": "listing",
+      "variation": "summary",
+      "querystring": {
+        "query": [
+          {
+            "i": "path",
+            "o": "plone.app.querystring.operation.string.absolutePath",
+            "v": "/"
+          }
+        ],
+        "sort_on": "sortable_title",
+        "sort_order": "ascending"
+      }
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "listing-1"
+    ]
+  }
+}

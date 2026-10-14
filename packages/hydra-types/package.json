@@ -1,0 +1,15 @@
+{
+  "name": "@volto-hydra/hydra-types",
+  "version": "1.0.0",
+  "description": "Canonical shapes exchanged over the Hydra bridge. Types only, zero runtime.",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    }
+  },
+  "files": [
+    "index.d.ts"
+  ],
+  "license": "MIT"
+}

@@ -84,7 +84,7 @@ test('hydra-demo — homepage hero loop', async ({ page }) => {
 
   // A settled editor before any beats — the recording includes login + iframe
   // load, which are visually noisy and are trimmed off the published clip.
-  const iframe = page.frameLocator('iframe');
+  const iframe = page.frameLocator('#previewIframe');
   await page.waitForLoadState('networkidle');
   await expect(iframe.locator('[data-block-uid="intro"]')).toBeVisible();
   await expect(iframe.locator('[data-block-uid="columns-1"]')).toBeVisible();

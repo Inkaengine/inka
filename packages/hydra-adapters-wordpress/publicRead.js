@@ -1,0 +1,306 @@
+/**
+ * Reading WordPress as a VISITOR — no adapter, no session.
+ *
+ * This is the one that needs saying out loud, because WordPress asks the most of a
+ * frontend developer and none of it is discoverable:
+ *
+ *   - Blocks ride in post_content inside a `data-hydra-blocks` ELEMENT, not as a
+ *     block comment. kses strips HTML comments on save for anyone without
+ *     unfiltered_html, and do_blocks drops an unregistered block type on render,
+ *     so the comment form reached an anonymous reader EMPTY. `parseBlocks` is
+ *     shared with the adapter rather than reimplemented, so both read one format.
+ *   - A visitor must ask for `status=publish` and must NOT ask for
+ *     `context=edit` — requesting it is what demands a session.
+ *   - Menus are not in core's public API at all: /wp/v2/menus and
+ *     /wp/v2/menu-items both answer 401 to an anonymous client. They come from
+ *     WPGraphQL, and on a Polylang site from WPGraphQL plus wp-graphql-polylang.
+ *
+ * OPTIONAL: each function is a thin wrapper over ONE documented request, so this
+ * file doubles as the documentation for doing it by hand.
+ *
+ * Nothing here degrades quietly. Where a required plugin is absent the call
+ * throws, because a menu that came back empty would hand a developer a site that
+ * renders with no navigation and no reason given.
+ */
+import { parseBlocks } from './index.js';
+
+/**
+ * @param {object} options
+ * @param {string} options.cmsBaseUrl
+ * @param {typeof globalThis.fetch} [options.fetch] An injectable fetch, for a
+ *   caller carrying transport state the CMS does not define — a WordPress
+ *   Playground, for instance, sets its own cookie and 302s to the same url to
+ *   collect it, so a client with no cookie jar follows that redirect forever.
+ */
+export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.fetch }) {
+  const base = cmsBaseUrl.replace(/\/+$/, '');
+  /**
+   * The PRETTY route, which is how a headless WordPress frontend addresses the
+   * REST API: /wp-json/wp/v2/...
+   *
+   * This used `?rest_route=` on the theory that a site might not have pretty
+   * permalinks. Measured against the suite's own Playground: /wp-json answers
+   * 200 anonymously, so the accommodation bought nothing and made every URL in
+   * this file — the file that doubles as the documentation for reading
+   * WordPress by hand — unlike the ones a developer would actually write.
+   */
+  const api = (route, params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return `${base}/wp-json${route}${qs ? `?${qs}` : ''}`;
+  };
+
+  /** The one request every public page read makes. */
+  const readPage = async (path) => {
+    const slug = path.split('/').filter(Boolean).pop() ?? '';
+    const res = await fetchImpl(
+      api('/wp/v2/pages', { slug, status: 'publish' }),
+    );
+    if (!res.ok) return null;
+    const [post] = await res.json();
+    return post ?? null;
+  };
+
+  return {
+    /**
+     * A page's blocks, or null when it is not readable.
+     *
+     * null means NOT READABLE; {} means readable but carrying no blocks.
+     */
+    async blocks(path) {
+      const post = await readPage(path);
+      if (!post) return null;
+      return parseBlocks(post.content?.rendered ?? '').blocks ?? {};
+    },
+
+    /**
+     * Everything a frontend needs to RENDER the page, from one request.
+     *
+     * `status=publish` and NO `context=edit`: asking for either of the
+     * editor's parameters is what demands a session, and this read has none.
+     * The blocks come out of `content.rendered` because they ride in a
+     * data-hydra-blocks ELEMENT, which survives rendering — a block comment
+     * would not.
+     */
+    async document(path) {
+      const post = await readPage(path);
+      if (!post) return null;
+      const { blocks, blocksLayout } = parseBlocks(post.content?.rendered ?? '');
+      return {
+        path,
+        title: post.title?.rendered ?? '',
+        blocks: blocks ?? {},
+        blocksLayout: blocksLayout ?? { items: [] },
+      };
+    },
+
+    /**
+     * What the SITE is called, for a visitor.
+     *
+     * From the REST root, which is public: `/wp-json` carries `name` and
+     * `description`. `wp/v2/settings` has more (including the language) but is
+     * permission-gated — a visitor reading it gets 401, so a frontend that
+     * asked for the site's own name would need a credential to render a header.
+     *
+     * `language` is therefore NULL here, not guessed: WordPress does not
+     * publish it to an anonymous client. A caller that needs the page's
+     * language should read the document's.
+     */
+    async site() {
+      const res = await fetchImpl(`${base}/wp-json`);
+      if (!res.ok) return null;
+      const root = await res.json();
+      return {
+        title: root.name ?? '',
+        description: root.description ?? '',
+        language: null,
+      };
+    },
+
+    /**
+     * The trail from the site root to this page, as paths and titles.
+     *
+     * Walked up the `parent` chain, one request per ancestor, because
+     * WordPress has no breadcrumb endpoint and no ancestors field — the
+     * hierarchy is only ever a parent id. Plone expands breadcrumbs with the
+     * page in a single request; this is the honest cost of the same answer
+     * here, and it is why the walk is bounded: a cycle in the data would
+     * otherwise hang the page.
+     */
+    async breadcrumbs(path) {
+      const post = await readPage(path);
+      if (!post) return null;
+
+      const trail = [];
+      let current = post;
+      for (let depth = 0; depth < 10 && current; depth += 1) {
+        trail.unshift({
+          path: `/${current.slug}`,
+          title: current.title?.rendered ?? '',
+        });
+        if (!current.parent) break;
+        const res = await fetchImpl(
+          api(`/wp/v2/pages/${current.parent}`, { status: 'publish' }),
+        );
+        if (!res.ok) break;
+        current = await res.json();
+      }
+
+      // Paths rebuilt from the chain, so a child's breadcrumb carries its
+      // ancestors' slugs rather than only its own.
+      let prefix = '';
+      return trail.map((entry) => {
+        prefix = `${prefix}${entry.path}`;
+        return { path: prefix, title: entry.title };
+      });
+    },
+
+    /**
+     * A LISTING, as a visitor: published pages, optionally under a parent and
+     * narrowed by text.
+     *
+     * The SUBSET a public listing needs. `status=publish` and no
+     * `context=edit`, which is what keeps it a visitor's read.
+     *
+     * A path scope becomes `parent`, which is CHILDREN and not the subtree:
+     * core's pages endpoint has no descendant filter, and faking one by
+     * walking the tree would be several requests pretending to be one. A
+     * caller that needs a deeper scope has to say so; this does not pretend.
+     */
+    async listing({ query = [], text, contextPath = '/', sortOn, sortOrder, start = 0, size = 25 } = {}) {
+      const params = {
+        status: 'publish',
+        per_page: String(start + size),
+        page: '1',
+      };
+      // The criteria arrive in WORDPRESS's vocabulary — `parent`, `post_type`,
+      // `title` — because that is what this adapter's getIndexes advertises
+      // and therefore what the listing block stored. This file works out the
+      // request from them; nothing translates index names on the way in.
+      let scope = null;
+      for (const { i, v } of query) {
+        const value = Array.isArray(v) ? v[0] : v;
+        if (i === 'parent') {
+          scope = String(value);
+        } else if (i === 'post_type') {
+          // A visitor's listing is pages; a type criterion that asks for
+          // something else is answered by the endpoint it names.
+          params.type = Array.isArray(v) ? v.join(',') : String(value);
+        } else if (i === 'title') {
+          params.search = String(value);
+        } else {
+          throw new Error(
+            `wordpress public listing: no read for the '${i}' index. It is ` +
+              `one this adapter advertises, so add it here rather than ` +
+              `dropping it — WordPress answers an unknown parameter with ` +
+              `everything, which looks like a working listing.`,
+          );
+        }
+      }
+      if (text) params.search = text;
+      if (sortOn) {
+        params.orderby = sortOn === 'sortable_title' ? 'title' : sortOn;
+        params.order = String(sortOrder).startsWith('desc') ? 'desc' : 'asc';
+      }
+      if (scope === null) scope = contextPath;
+      if (scope && scope !== '/') {
+        const parent = await readPage(scope);
+        if (!parent) return { items: [], total: 0 };
+        params.parent = String(parent.id);
+      }
+      const res = await fetchImpl(api('/wp/v2/pages', params));
+      if (!res.ok) return null;
+      const posts = await res.json();
+      const items = posts.slice(start, start + size).map((post) => ({
+        path: new URL(post.link, base).pathname.replace(/\/+$/, '') || '/',
+        title: post.title?.rendered ?? '',
+      }));
+      // X-WP-Total is the unpaged count, which is what a listing's "N results"
+      // means; the array's length is only this page.
+      const total = Number(res.headers.get('X-WP-Total') ?? posts.length);
+      return { items, total };
+    },
+
+    /**
+     * The navigation: the top of the PAGE TREE, which is what WordPress builds its
+     * navigation from (wp_list_pages, the page-list block, a theme with no menu
+     * assigned all read it).
+     *
+     * Not a nav menu — that is a separate, curated view over the same content, and
+     * `menu()` below returns it.
+     */
+    async navigation() {
+      const res = await fetchImpl(
+        api('/wp/v2/pages', { parent: '0', status: 'publish', per_page: '100' }),
+      );
+      if (!res.ok) return null;
+      const posts = await res.json();
+      return posts.map((post) => ({
+        path: new URL(post.link, base).pathname.replace(/\/+$/, '') || '/',
+        title: post.title?.rendered ?? '',
+      }));
+    },
+
+    /**
+     * A curated nav menu, over GraphQL.
+     *
+     * Core cannot answer this: both menu endpoints are 401 to a visitor. On a
+     * Polylang site WPGraphQL alone cannot either — Polylang re-keys menu
+     * locations per language, WPGraphQL can then no longer resolve a menu's
+     * locations, and its public-menu check fails, so an anonymous caller is told
+     * the site has no menus while an authenticated one still sees them. The
+     * wp-graphql-polylang bridge is what makes them agree.
+     *
+     * A menu is published by being assigned to a theme LOCATION; one nobody
+     * assigned stays private, which is the site saying what is part of its design.
+     *
+     * @param {object} [options]
+     * @param {string} [options.language] A Polylang language code, e.g. 'EN'.
+     */
+    async menu({ language } = {}) {
+      const where = language ? `(where: { language: ${language} })` : '';
+      const res = await fetchImpl(`${base}/index.php?graphql`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `{ menuItems${where} { nodes { id label uri parentId } } }`,
+        }),
+      });
+      if (!res.ok) return null;
+
+      // A 200 that is NOT JSON means WPGraphQL is not answering. WordPress
+      // serves its ordinary HTML page for a query string it does not
+      // recognise, so the request succeeds and only the parse gives it away —
+      // as `Unexpected token '<'` from deep inside whatever was rendering,
+      // naming neither WordPress nor the plugin. Caught here, with the reason.
+      const text = await res.text();
+      let body;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        throw new Error(
+          `wordpress: index.php?graphql answered ${res.status} with ` +
+            `${res.headers.get('content-type') ?? 'no content-type'} rather ` +
+            `than JSON, which means WPGraphQL is not installed. Core ` +
+            `WordPress has no public menu endpoint — a visitor's read of ` +
+            `core menus is 401 — so without the plugin there is no curated ` +
+            `menu to serve. The page TREE is readable: use navigation().`,
+        );
+      }
+      if (body.errors) {
+        throw new Error(
+          `wordpress: the public menu query failed, which usually means ` +
+            `WPGraphQL is not installed: ${JSON.stringify(body.errors)}`,
+        );
+      }
+      const nodes = body.data?.menuItems?.nodes;
+      if (!nodes) return null;
+      // parentId is an opaque global id, so a parent is named by its label.
+      const labelById = new Map(nodes.map((n) => [n.id, n.label]));
+      return nodes.map((n) => ({
+        label: n.label,
+        path: new URL(n.uri, base).pathname.replace(/\/+$/, '') || '/',
+        parentLabel: n.parentId ? (labelById.get(n.parentId) ?? null) : null,
+      }));
+    },
+  };
+}

@@ -1,3 +1,8 @@
+// Canonical adapter results in Plone's REST shape — shared by the admin and by
+// frontends that read a CMS through an adapter.
+export { plonify, documentToPlone } from './plonify.js';
+import { plonify } from './plonify.js';
+
 /**
  * @volto-hydra/helpers
  *
@@ -1000,6 +1005,69 @@ async function fetchFolderContents({ apiUrl, contextPath, contextContent, mapped
   };
 }
 
+/**
+ * A listing fetcher that reads a CMS DIRECTLY, as a visitor, through that CMS's
+ * own public reader.
+ *
+ * The companion to `ploneFetchItems`, which is PLONE's: it builds a
+ * `@querystring-search` body in Plone's vocabulary and with Plone's operator
+ * names. There is no shared query builder, because each CMS has its own — this
+ * TRANSLATES NOTHING. The stored criteria go across in the vocabulary that
+ * CMS's `querystring.getIndexes` advertised and the reader works out its own
+ * request from them.
+ *
+ * No adapter is involved: a visitor's page has none mounted (the same reason
+ * Plone needs no bridge to serve a page), so what this takes is a reader.
+ *
+ * @param {object} options
+ * @param {object} options.reader - the CMS's publicRead, with `listing()`
+ * @param {string} [options.contextPath] - where an unconfigured listing looks
+ * @param {object} [options.extraCriteria] - from the URL: SearchableText, facets
+ */
+export function publicFetchItems({ reader, contextPath, extraCriteria = {} }) {
+  if (!reader || typeof reader.listing !== 'function') {
+    throw new Error(
+      'publicFetchItems needs a public reader with listing(). Plone has none ' +
+        'on purpose: its query builder IS ploneFetchItems, already a direct ' +
+        'read. Use that for Plone.',
+    );
+  }
+  return async function fetchItems(block, { start, size } = {}) {
+    const facets = Object.keys(extraCriteria).filter((k) =>
+      k.startsWith('facet.'),
+    );
+    if (facets.length) {
+      throw new Error(
+        `publicFetchItems: no public read for the facets ${facets.join(', ')}. ` +
+          `Add them to the CMS's publicRead rather than dropping them: a ` +
+          `listing that ignores a filter shows the wrong content and looks right.`,
+      );
+    }
+    const querystring = block?.querystring ?? {};
+    const page = await reader.listing({
+      // Untouched, in the CMS's own index names.
+      query: querystring.query ?? [],
+      // The url's search term, which is not vocabulary: every CMS answers
+      // "find this text" its own way.
+      text: extraCriteria.SearchableText,
+      contextPath: contextPath || '/',
+      sortOn: querystring.sort_on,
+      sortOrder: querystring.sort_order,
+      start: start ?? 0,
+      size: size ?? 25,
+    });
+    if (!page) return { items: [], total: 0 };
+    return {
+      items: (page.items ?? []).map((item) => ({
+        '@id': item.path,
+        title: item.title,
+        '@type': item['@type'] ?? 'Document',
+      })),
+      total: page.total ?? (page.items ?? []).length,
+    };
+  };
+}
+
 export function ploneFetchItems({
   apiUrl,
   contextPath = '/',
@@ -1074,27 +1142,102 @@ export function ploneFetchItems({
 }
 
 /**
+ * Read a page through a CMS adapter, in the shape Plone's REST API returns.
+ *
+ * For a FRONTEND whose CMS is not Plone. A frontend renders from its CMS
+ * directly when it is not being edited — the adapter in the admin's proxy frame
+ * plays no part — and its renderers were written against Plone's shape. The
+ * adapter reads the CMS, plonify turns the canonical answer into that shape, and
+ * the renderers do not change.
+ *
+ * Takes an adapter INSTANCE, so helpers depends on no adapter package: a Plone
+ * frontend that fetches Plone itself never loads one. The credential is the
+ * frontend's own, given to the adapter it constructs — a published page needs
+ * none, a draft does.
+ */
+export async function adapterGetContent(adapter, path, { expand = [] } = {}) {
+  if (!adapter) throw new Error('adapterGetContent requires an adapter');
+  const doc = await adapter.dispatch('content.get', {
+    path,
+    ...(expand.length ? { expand } : {}),
+  });
+  return plonify('content.get', doc, { path });
+}
+
+/**
+ * The adapter-backed twin of ploneFetchItems: the same `fetchItems` contract
+ * for expandListingBlocks, answered by the adapter's querystringSearch.
+ *
+ * The intent takes no offset — Plone and WordPress honour `limit`, Drupal
+ * returns everything — so a page is asked for up to its end and sliced here.
+ * Nor does it take a context: adapters search from the site root, so a relative
+ * path criterion resolves from there, exactly as it does in the admin.
+ */
+export function adapterFetchItems({ adapter, extraCriteria = {} } = {}) {
+  if (!adapter) throw new Error('adapterFetchItems requires an adapter');
+
+  return async function fetchItems(block, { start, size }) {
+    const body = buildQuerystringSearchBody(
+      block.querystring,
+      { b_start: start, b_size: size },
+      extraCriteria,
+    );
+    const result = await adapter.dispatch('querystringSearch', {
+      query: body.query,
+      sortOn: body.sort_on,
+      sortOrder: body.sort_order,
+      limit: start + size,
+    });
+    const plone = plonify('querystringSearch', result, { path: '/' });
+    const items = plone.items.slice(start, start + size).map(normalizeCatalogImage);
+    return { items, total: plone.items_total };
+  };
+}
+
+/**
+ * Which CMS an example fetcher reads: Plone directly at `apiUrl`, or any CMS
+ * through an `adapter` (answers plonified, like adapterFetchItems). Exactly one —
+ * given both, there is no telling which site the block would render from.
+ */
+function _requireOneSource(name, apiUrl, adapter) {
+  if (!apiUrl === !adapter) {
+    throw new Error(`${name} requires exactly one of apiUrl or adapter`);
+  }
+}
+
+/** The context page, in Plone's shape, from whichever source the fetcher has. */
+async function _readContext({ apiUrl, adapter, contextPath }) {
+  if (adapter) return adapterGetContent(adapter, contextPath);
+  const res = await fetch(`${apiUrl}${contextPath}/++api++`, {
+    headers: _getAuthHeaders(),
+  });
+  return res.json();
+}
+
+/**
  * Fetcher for the Related Items example block: renders the CURRENT page's
  * relation field (default `relatedItems`). Reads the context content and pages
  * its relation summaries — no catalog query. A `fetchItems` value for
  * `expandListingBlocks`, same contract as `ploneFetchItems`.
+ *
+ * `apiUrl` reads Plone directly; `adapter` reads any CMS through its adapter.
  */
-export function relatedItemsFetcher({ apiUrl, contextPath = '/' } = {}) {
-  if (!apiUrl) throw new Error('relatedItemsFetcher requires apiUrl');
+export function relatedItemsFetcher({ apiUrl, adapter, contextPath = '/' } = {}) {
+  _requireOneSource('relatedItemsFetcher', apiUrl, adapter);
   return async function fetchItems(block, { start, size }) {
     const field = block.relationField || 'relatedItems';
-    const headers = _getAuthHeaders();
-    const res = await fetch(`${apiUrl}${contextPath}/++api++`, { headers });
-    const content = await res.json();
+    const content = await _readContext({ apiUrl, adapter, contextPath });
     const all = Array.isArray(content?.[field]) ? content[field] : [];
     const items = size ? all.slice(start, start + size) : [];
     return { items, total: all.length };
   };
 }
 
-// Catalog index → vocabulary of its unique values (site-wide mode). Extend as
-// needed; falls back to a same-named vocabulary.
-const SEARCH_SHORTCUT_INDEX_VOCAB = {
+// Plone's catalog index → the vocabulary of its unique values (site-wide mode).
+// The default when reading Plone directly; any other CMS names its vocabularies
+// its own way, so a caller using an adapter passes `vocabularies`. An index with
+// no entry falls back to a same-named vocabulary.
+const PLONE_SEARCH_SHORTCUT_VOCABULARIES = {
   Subject: 'plone.app.vocabularies.Keywords',
 };
 
@@ -1106,24 +1249,35 @@ const SEARCH_SHORTCUT_INDEX_VOCAB = {
  *
  * A linked `pageField` ⇒ THIS page's values of that field; no `pageField` ⇒ all
  * unique values of the index, site-wide (from the index's vocabulary).
+ *
+ * `apiUrl` reads Plone directly; `adapter` reads any CMS through its adapter,
+ * with `vocabularies` mapping an index to that CMS's vocabulary name.
  */
-export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
-  if (!apiUrl) throw new Error('searchShortcutsFetcher requires apiUrl');
+export function searchShortcutsFetcher({
+  apiUrl,
+  adapter,
+  contextPath = '/',
+  vocabularies = adapter ? {} : PLONE_SEARCH_SHORTCUT_VOCABULARIES,
+} = {}) {
+  _requireOneSource('searchShortcutsFetcher', apiUrl, adapter);
   return async function fetchItems(block, { start, size }) {
     const index = block.index || 'Subject';
     const searchUrl = block.searchUrl || '';
-    const headers = _getAuthHeaders();
 
     let values;
     if (block.pageField) {
-      const res = await fetch(`${apiUrl}${contextPath}/++api++`, { headers });
-      const content = await res.json();
+      const content = await _readContext({ apiUrl, adapter, contextPath });
       const v = content?.[block.pageField];
       values = Array.isArray(v) ? v : v == null ? [] : [v];
     } else {
-      const vocab = SEARCH_SHORTCUT_INDEX_VOCAB[index] || index;
-      const res = await fetch(`${apiUrl}/++api++/@vocabularies/${vocab}`, { headers });
-      const data = await res.json();
+      const vocab = vocabularies[index] || index;
+      const data = adapter
+        ? await adapter.dispatch('vocabulary.get', { name: vocab })
+        : await (
+            await fetch(`${apiUrl}/++api++/@vocabularies/${vocab}`, {
+              headers: _getAuthHeaders(),
+            })
+          ).json();
       values = (data?.items || []).map((t) => t.token);
     }
 

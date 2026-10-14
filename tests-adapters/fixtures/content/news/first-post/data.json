@@ -1,0 +1,29 @@
+{
+  "@id": "/news/first-post",
+  "@type": "Document",
+  "UID": "seed-news-first-post",
+  "id": "first-post",
+  "title": "First Post",
+  "review_state": "published",
+  "is_folderish": false,
+  "blocks": {
+    "b1": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Hello"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "b1"
+    ]
+  }
+}

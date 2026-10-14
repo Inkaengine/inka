@@ -1,0 +1,13 @@
+{
+  "@id": "/about",
+  "@type": "Document",
+  "UID": "seed-about",
+  "id": "about",
+  "title": "About",
+  "review_state": "published",
+  "is_folderish": false,
+  "blocks": {},
+  "blocks_layout": {
+    "items": []
+  }
+}

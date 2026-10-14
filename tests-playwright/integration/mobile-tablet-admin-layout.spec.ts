@@ -798,9 +798,13 @@ test.describe('Admin layout — mobile (≤767px)', () => {
     await page.setViewportSize({ width: 412, height: 915 });
     const helper = new AdminUIHelper(page);
     await helper.login();
-    await page.goto(`${URLS.voltoSsr}/test-page`);
+    await page.goto(helper.contentUrl('/test-page'));
     const bar = page.locator('#toolbar-body');
     await expect(bar).toBeVisible();
+    // The content actions (edit, add, contents) arrive with the content, which a
+    // bridge session loads client-side after the bar is up — measure the full
+    // bar, not the handful of icons it starts with.
+    await expect(bar.locator('a.edit')).toBeVisible();
 
     const m = await bar.evaluate((el: HTMLElement) => {
       const b = el.getBoundingClientRect();
