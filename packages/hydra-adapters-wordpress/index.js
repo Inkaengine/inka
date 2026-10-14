@@ -2117,6 +2117,7 @@ export class WordPressAdapter extends BaseAdapter {
           },
           date: {
             title: 'Date',
+            type: 'date',
             group: 'Dates',
             enabled: true,
             sortable: true,
@@ -2131,6 +2132,11 @@ export class WordPressAdapter extends BaseAdapter {
           if (tax.visibility && tax.visibility.public === false) continue;
           indexes[id] = {
             title: tax.name,
+            // A page holds a LIST of terms, so a column drawn from one joins
+            // them. Typed here rather than left out: this fixture's pages
+            // carry no taxonomies, so nothing would have reported it, and a
+            // site whose pages do would have drawn its terms run together.
+            type: 'array',
             description: tax.description || undefined,
             group: 'Categorization',
             enabled: true,
