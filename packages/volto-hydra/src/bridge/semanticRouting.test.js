@@ -502,13 +502,42 @@ describe('plonify', () => {
     expect(p['@type']).toBe('Image');
   });
 
-  it('splits query indexes into sortable and all', () => {
+  it('passes both index maps through, in the shape an adapter answers', () => {
+    // The shape a REAL caller sends: the intent's result, which is
+    // `{ indexes, sortable_indexes }`. This used to pass a bare index map —
+    // a shape no caller sends — so it asserted a sortable/all split that
+    // production never performed: the real result's two KEYS carry no
+    // `sortable` flag, so every adapter-backed CMS got an empty sort menu and
+    // an `indexes` nested one level deeper than Volto reads.
+    //
+    // `sortable_title` is the point of the fixture: Plone's sort key for the
+    // `Title` index is not the index's name, so the sortable map cannot be
+    // derived from the queryable one.
     const p = plonify('querystring.getIndexes', {
-      Title: { title: 'Title', sortable: true, enabled: true, operations: [] },
-      Sub: { title: 'Subject', sortable: false, enabled: true, operations: [] },
+      indexes: {
+        Title: { title: 'Title', sortable: true, enabled: true, operations: [] },
+        Sub: { title: 'Subject', sortable: false, enabled: true, operations: [] },
+      },
+      sortable_indexes: {
+        sortable_title: { title: 'Title' },
+        getObjPositionInParent: { title: 'Position in parent' },
+      },
     });
     expect(Object.keys(p.indexes)).toEqual(['Title', 'Sub']);
-    expect(Object.keys(p.sortable_indexes)).toEqual(['Title']);
+    expect(Object.keys(p.sortable_indexes)).toEqual([
+      'sortable_title',
+      'getObjPositionInParent',
+    ]);
+  });
+
+  it('refuses a result with no sortable_indexes', () => {
+    // Loudly, rather than as an empty map: a sort menu with nothing in it
+    // reads as a CMS that cannot sort.
+    expect(() =>
+      plonify('querystring.getIndexes', {
+        indexes: { Title: { title: 'Title', sortable: true } },
+      }),
+    ).toThrow(/sortable_indexes/);
   });
 });
 

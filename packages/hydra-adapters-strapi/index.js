@@ -320,16 +320,16 @@ export class StrapiAdapter extends BaseAdapter {
    * builder, and Strapi rejects a field it cannot sort by, which is louder
    * than quietly returning an unsorted list.
    */
+  /**
+   * The Strapi field to sort by, which is the name as given.
+   *
+   * A Plone-name map lived here for the same reason the other adapters had
+   * one: Volto's contents view hard-coded six index names. Those menus are
+   * built from `sortable_indexes` now, so what arrives is Strapi's own field,
+   * and `assertSortable` refuses anything this adapter never advertised.
+   */
   sortField(sortOn) {
-    const plone = {
-      ModificationDate: 'updatedAt',
-      modified: 'updatedAt',
-      created: 'createdAt',
-      EffectiveDate: 'publishedAt',
-      sortable_title: 'title',
-      getObjPositionInParent: this.orderField,
-    };
-    return plone[sortOn] ?? sortOn;
+    return sortOn;
   }
 
   /**
@@ -1227,6 +1227,19 @@ export class StrapiAdapter extends BaseAdapter {
               operations: ['date.afterRelativeDate', 'date.beforeRelativeDate'],
             },
           },
+          // WHAT STRAPI WILL SORT A COLLECTION BY, in its own field names. A
+          // separate vocabulary from the queryable indexes, as in Plone.
+          //
+          // publishedAt is NOT here although it is a queryable index: on the
+          // draft variant it is always null, so ordering by it puts every
+          // document on the same key and the sort does nothing. An editor
+          // offered it would be picking a sort that cannot work.
+          sortable_indexes: {
+            title: { title: 'Title' },
+            updatedAt: { title: 'Last edited' },
+            createdAt: { title: 'Created on' },
+            documentId: { title: 'ID' },
+          },
         };
 
       case 'search': {
@@ -1289,6 +1302,12 @@ export class StrapiAdapter extends BaseAdapter {
       }
 
       case 'querystringSearch': {
+
+        // Refused here, not translated: see assertSortable. The admin's
+
+        // menus are built from what this adapter advertises.
+
+        await this.assertSortable(args.sortOn);
         // Paths come from the addressing map whatever the query, because a
         // result with no path is not addressable; so a path filter costs
         // nothing extra and is applied here rather than delegated.

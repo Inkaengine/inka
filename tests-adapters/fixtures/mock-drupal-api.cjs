@@ -181,10 +181,17 @@ function toResource(n) {
       drupal_internal__nid: n.nid,
       title: n.title,
       status: n.status,
-      created: '2026-01-01T00:00:00+00:00',
-      // DISTINCT per node. Every node sharing one timestamp made any ordering
-      // by date vacuously correct — a sort test could not tell a working sort
-      // from an ignored one.
+      // DISTINCT per node, BOTH of them. Every node sharing one timestamp made
+      // any ordering by date vacuously correct — a sort test could not tell a
+      // working sort from an ignored one. `created` kept that flaw after
+      // `changed` was fixed, which made `created` unsortable in practice: the
+      // contents listing is menu-derived and orders client-side on this very
+      // attribute, so identical values left the order untouched even though
+      // the adapter advertises `created` as a sort key.
+      //
+      // Counting DOWN, so created order is the reverse of changed order and a
+      // test cannot pass by sorting on the wrong one of the two.
+      created: new Date(Date.UTC(2026, 0, 1, 0, 59 - (n.nid ?? 0))).toISOString(),
       changed: new Date(Date.UTC(2026, 0, 1, 0, n.nid ?? 0)).toISOString(),
       path: { alias: n.alias, pid: n.nid, langcode: 'en' },
       field_hydra_blocks: n.blocks,
@@ -764,12 +771,37 @@ app.get('/jsonapi/node/:bundle', (req, res) => {
   if (typeof sort === 'string' && sort) {
     const descending = sort.startsWith('-');
     const field = descending ? sort.slice(1) : sort;
+    // A field this Drupal cannot sort on is a 400, as it is in the real thing
+    // ("Invalid sort"). It used to fall through to `?? ''`, which gave every
+    // node the same key — so an unsortable field sorted vacuously, the order
+    // came back untouched, and a caller sending an index name Drupal has never
+    // heard of looked indistinguishable from one sending a real field. That is
+    // the failure this mock exists to make visible.
+    // Judged against the RESOURCE, which is what a client can see and sort by.
+    // Probing the mock's internal node instead rejected
+    // `drupal_internal__nid` — a real, sortable JSON:API attribute that the
+    // internal object spells `nid` — so a legitimate sort came back 400.
+    const attributesOf = (n) => toResource(n).attributes;
+    if (list.length && list.every((n) => attributesOf(n)[field] === undefined)) {
+      return res.status(400).json({
+        errors: [
+          {
+            status: '400',
+            detail:
+              `Invalid sort: '${field}' is not a field on this resource. ` +
+              `Sortable: ${Object.keys(attributesOf(list[0])).join(', ')}.`,
+          },
+        ],
+      });
+    }
+    // Read what the resource ACTUALLY reports. Synthesising the date here
+    // instead meant the collection could sort by a value the attribute did not
+    // carry: `created` sorted fine over the API while every node reported the
+    // same created date, so a client-side sort on the attribute did nothing
+    // and the API said the key worked.
     const keyOf = (n) => {
-      if (field === 'changed' || field === 'created') {
-        return new Date(Date.UTC(2026, 0, 1, 0, n.nid ?? 0)).toISOString();
-      }
       if (field === 'title') return n.title ?? '';
-      return String(valueAtPath(n, field) ?? '');
+      return String(attributesOf(n)[field]);
     };
     list = [...list].sort((a, b) => {
       const x = keyOf(a);

@@ -1001,6 +1001,69 @@ async function fetchFolderContents({ apiUrl, contextPath, contextContent, mapped
   };
 }
 
+/**
+ * A listing fetcher that reads a CMS DIRECTLY, as a visitor, through that CMS's
+ * own public reader.
+ *
+ * The companion to `ploneFetchItems`, which is PLONE's: it builds a
+ * `@querystring-search` body in Plone's vocabulary and with Plone's operator
+ * names. There is no shared query builder, because each CMS has its own — this
+ * TRANSLATES NOTHING. The stored criteria go across in the vocabulary that
+ * CMS's `querystring.getIndexes` advertised and the reader works out its own
+ * request from them.
+ *
+ * No adapter is involved: a visitor's page has none mounted (the same reason
+ * Plone needs no bridge to serve a page), so what this takes is a reader.
+ *
+ * @param {object} options
+ * @param {object} options.reader - the CMS's publicRead, with `listing()`
+ * @param {string} [options.contextPath] - where an unconfigured listing looks
+ * @param {object} [options.extraCriteria] - from the URL: SearchableText, facets
+ */
+export function publicFetchItems({ reader, contextPath, extraCriteria = {} }) {
+  if (!reader || typeof reader.listing !== 'function') {
+    throw new Error(
+      'publicFetchItems needs a public reader with listing(). Plone has none ' +
+        'on purpose: its query builder IS ploneFetchItems, already a direct ' +
+        'read. Use that for Plone.',
+    );
+  }
+  return async function fetchItems(block, { start, size } = {}) {
+    const facets = Object.keys(extraCriteria).filter((k) =>
+      k.startsWith('facet.'),
+    );
+    if (facets.length) {
+      throw new Error(
+        `publicFetchItems: no public read for the facets ${facets.join(', ')}. ` +
+          `Add them to the CMS's publicRead rather than dropping them: a ` +
+          `listing that ignores a filter shows the wrong content and looks right.`,
+      );
+    }
+    const querystring = block?.querystring ?? {};
+    const page = await reader.listing({
+      // Untouched, in the CMS's own index names.
+      query: querystring.query ?? [],
+      // The url's search term, which is not vocabulary: every CMS answers
+      // "find this text" its own way.
+      text: extraCriteria.SearchableText,
+      contextPath: contextPath || '/',
+      sortOn: querystring.sort_on,
+      sortOrder: querystring.sort_order,
+      start: start ?? 0,
+      size: size ?? 25,
+    });
+    if (!page) return { items: [], total: 0 };
+    return {
+      items: (page.items ?? []).map((item) => ({
+        '@id': item.path,
+        title: item.title,
+        '@type': item['@type'] ?? 'Document',
+      })),
+      total: page.total ?? (page.items ?? []).length,
+    };
+  };
+}
+
 export function ploneFetchItems({
   apiUrl,
   contextPath = '/',

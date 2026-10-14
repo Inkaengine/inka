@@ -143,11 +143,22 @@ export class PloneAdapter extends BaseAdapter {
     const auth = token ? { Authorization: `Bearer ${token}` } : {};
     const res = await fetch(this.url(path), {
       method,
-      // With an explicit bearer token we must NOT send credentials: a
-      // wildcard Access-Control-Allow-Origin (which is what a dev CMS
-      // typically sends) makes the browser reject a credentialled
-      // cross-origin request outright. Cookie auth is the same-origin case.
-      credentials: token ? 'omit' : 'include',
+      // NEVER credentials, token or no token.
+      //
+      // A wildcard Access-Control-Allow-Origin — what a dev CMS, and this
+      // repo's own mock, send — makes the browser reject a credentialled
+      // cross-origin request outright. This used to send them whenever there
+      // was no token, on the reasoning that cookie auth is the same-origin
+      // case. It is not: the adapter runs in the proxy frame, which the
+      // FRONTEND serves, so it is cross-origin to the CMS in every deployment.
+      // There is no same-origin case to serve.
+      //
+      // So the branch only ever fired where it did harm — the anonymous reads
+      // before sign-in. Driving the real GDS frontend's proxy against the mock,
+      // `@site` and the registration read were both blocked, and nothing said
+      // so: whoami's failure resolved as "no user", so the frame reported
+      // "needs sign-in" when the truth was "could not reach the CMS".
+      credentials: 'omit',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
@@ -1120,10 +1131,21 @@ export class PloneAdapter extends BaseAdapter {
             values: index.values,
           };
         }
-        return { indexes };
+        // Plone's own sort keys, passed through rather than derived from the
+        // indexes above. They are a DIFFERENT vocabulary: the queryable index
+        // is `Title` while the sort key is `sortable_title`, and
+        // `getObjPositionInParent` is a sort key that is no queryable index at
+        // all. Deriving one from the other would silently rename half of them.
+        return { indexes, sortable_indexes: raw.sortable_indexes };
       }
 
       case 'querystringSearch': {
+
+        // Refused here, not translated: see assertSortable. The admin's
+
+        // menus are built from what this adapter advertises.
+
+        await this.assertSortable(args.sortOn);
         const raw = await this.fetchJson('/@querystring-search', {
           method: 'POST',
           body: {

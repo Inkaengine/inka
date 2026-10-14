@@ -401,6 +401,45 @@ export class BaseAdapter {
     this.invalidateReads();
   }
 
+  /**
+   * Refuse a sort key this adapter never advertised.
+   *
+   * Inka is generic and is not customised per CMS, so it is the ADAPTER's job
+   * to say what it can be ordered by — `querystring.getIndexes` answers
+   * `sortable_indexes` for exactly that, and the admin's menus are built from
+   * it. A name that is not in there did not come from those menus.
+   *
+   * Refusing is the point. Each adapter used to carry a table mapping Plone's
+   * index names onto its own, from when Volto's contents view hard-coded six of
+   * them; WordPress went further and substituted `menu_order` for anything it
+   * did not recognise. Both answer a question nobody asked: the editor picked
+   * one ordering and got another, with nothing reporting it. The tables are
+   * gone, and this is what replaces them.
+   *
+   * Read through the cache, so a sorted query costs no extra round trip after
+   * the first.
+   */
+  async assertSortable(sortOn) {
+    if (!sortOn) return;
+    const advertised = await this.cachedRead('sortable_indexes', async () => {
+      const { sortable_indexes: sortable } = await this.dispatch(
+        'querystring.getIndexes',
+        {},
+      );
+      return Object.keys(sortable ?? {});
+    });
+    if (!advertised.includes(sortOn)) {
+      throw new AdapterError(
+        `${this.name} cannot sort by '${sortOn}': it is not one of the keys ` +
+          `this adapter advertises (${advertised.join(', ')}). Nothing is ` +
+          `translated here — a sort the CMS cannot perform has to be refused, ` +
+          `because the alternative is an editor looking at an order they did ` +
+          `not ask for.`,
+        { code: 'BAD_REQUEST', status: 400 },
+      );
+    }
+  }
+
   async dispatch(intent, args) {
     // Several operations, one intention — served here so EVERY adapter has it.
     //

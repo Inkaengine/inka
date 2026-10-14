@@ -27,72 +27,51 @@ beforeEach(async () => {
  */
 
 /**
- * Sorting by the index names the ADMIN actually sends.
+ * A sort key the adapter never ADVERTISED is refused.
  *
- * Volto's contents view offers sorting from a hard-coded list of PLONE index
- * names — ModificationDate, sortable_title and friends — rather than from
- * querystring.getIndexes, which is what its own query builder uses and what
- * every adapter answers with its real indexes. So `ModificationDate` arrives
- * at a WordPress adapter that knows only `modified`, and at a Drupal one that
- * knows only `changed`.
+ * This replaces two tests that asserted the opposite — that each adapter
+ * TRANSLATES Plone's index names (`ModificationDate`, `sortable_title`)
+ * because Volto's contents view hard-coded them. Their own note said the
+ * proper fix was to drive that menu from the advertised indexes, and that is
+ * now what happens: the rearrange menu is built from `sortable_indexes`, so
+ * the admin sends names this CMS declared.
  *
- * Each adapter translates the six as an interim measure; the proper fix is to
- * drive that menu from the advertised indexes. Tested HERE rather than through
- * the contents UI because this is a claim about the adapter, and driving
- * Volto's sort popup tests the popup.
+ * Which makes the translation tables worse than redundant. Inka is generic and
+ * is NOT customised per CMS; it is the adapter's job to tell Inka what it can
+ * do. An adapter that quietly maps — or quietly substitutes, as WordPress did
+ * by falling back to `menu_order` — answers a question nobody asked and hides
+ * the fact that the sort did not happen. Refusing says so.
+ *
+ * `ModificationDate` is foreign to every target here, Plone included: its real
+ * sort keys are `modified`, `created`, `effective`, `sortable_title`.
  */
-describe('sorting by the admin\'s index names', () => {
-  it('orders by modification date under Plone\'s name for it', async () => {
-    const descending: any = await target.adapter.dispatch('querystringSearch', {
-      query: [
-        { i: target.queryIndexes.path, o: 'string.absolutePath', v: '/news' },
-      ],
-      // The name the ADMIN sends, not the one this CMS uses.
-      sortOn: 'ModificationDate',
-      sortOrder: 'descending',
-    });
-    const ascending: any = await target.adapter.dispatch('querystringSearch', {
-      query: [
-        { i: target.queryIndexes.path, o: 'string.absolutePath', v: '/news' },
-      ],
-      sortOn: 'ModificationDate',
-      sortOrder: 'ascending',
-    });
-
-    const down = descending.items.map((i: any) => i.path);
-    const up = ascending.items.map((i: any) => i.path);
-    expect(down.length).toBeGreaterThan(1);
-
-    // Reversed, not merely different: an index name the CMS does not
-    // understand is typically ignored, and then both orders come back
-    // identical — which is exactly what happened before the translation.
-    expect(down).toEqual([...up].reverse());
+describe('sort keys the adapter did not advertise', () => {
+  it('refuses one, rather than translating or ignoring it', async () => {
+    await expect(
+      target.adapter.dispatch('querystringSearch', {
+        query: [
+          { i: target.queryIndexes.path, o: 'string.absolutePath', v: '/news' },
+        ],
+        sortOn: 'ModificationDate',
+        sortOrder: 'descending',
+      }),
+    ).rejects.toThrow(/ModificationDate/);
   });
 
-  it('orders by title under Plone\'s name for it', async () => {
-    const ascending: any = await target.adapter.dispatch('querystringSearch', {
+  it('still sorts by the ones it does advertise', async () => {
+    const res: any = await target.adapter.dispatch(
+      'querystring.getIndexes',
+      {},
+    );
+    const key = Object.keys(res.sortable_indexes)[0];
+    const sorted: any = await target.adapter.dispatch('querystringSearch', {
       query: [
         { i: target.queryIndexes.path, o: 'string.absolutePath', v: '/news' },
       ],
-      sortOn: 'sortable_title',
+      sortOn: key,
       sortOrder: 'ascending',
     });
-    const descending: any = await target.adapter.dispatch('querystringSearch', {
-      query: [
-        { i: target.queryIndexes.path, o: 'string.absolutePath', v: '/news' },
-      ],
-      sortOn: 'sortable_title',
-      sortOrder: 'descending',
-    });
-
-    const up = ascending.items.map((i: any) => i.title);
-    const down = descending.items.map((i: any) => i.title);
-    expect(up.length).toBeGreaterThan(1);
-
-    // Sorted by TITLE, and reversed. Checking it is actually alphabetical
-    // catches an adapter that reverses a list it never ordered.
-    expect(up).toEqual([...up].sort((a: string, b: string) => a.localeCompare(b)));
-    expect(down).toEqual([...up].reverse());
+    expect(sorted.items.length).toBeGreaterThan(0);
   });
 });
 
@@ -111,6 +90,79 @@ describe('querystring.getIndexes', () => {
       expect(typeof index.enabled).toBe('boolean');
       expect(typeof index.sortable).toBe('boolean');
       expect(Array.isArray(index.operations)).toBe(true);
+    }
+  });
+
+  it('names its own sort keys', async () => {
+    // `sortable_indexes` is a SEPARATE key in a real @querystring response, and
+    // a separate VOCABULARY — not the queryable indexes filtered on a flag.
+    // Plone proves it: the index is `Title` while the sort key is
+    // `sortable_title`, and `getObjPositionInParent` is a sort key that is no
+    // queryable index at all. So a sort menu cannot be derived from `indexes`;
+    // the CMS has to say what it can be ordered BY, in its own names.
+    //
+    // Volto's own consumers read it: `indexChoices` builds the listing block's
+    // "sort by" from `state.querystring.sortable_indexes`, and the contents
+    // view's rearrange menu has nothing else to drive it from. An adapter that
+    // answered only `indexes` left those menus EMPTY on every CMS but Plone,
+    // which reads as a CMS that cannot sort rather than an adapter that never
+    // said so.
+    const res: any = await target.adapter.dispatch(
+      'querystring.getIndexes',
+      {},
+    );
+    expect(typeof res.sortable_indexes).toBe('object');
+    expect(Object.keys(res.sortable_indexes).length).toBeGreaterThan(0);
+
+    for (const [name, index] of Object.entries<any>(res.sortable_indexes)) {
+      expect(typeof name).toBe('string');
+      expect(typeof index.title, `${name} title`).toBe('string');
+    }
+  });
+
+  it('really sorts by every key it advertises', async () => {
+    // Advertising a key the CMS cannot order by is worse than advertising
+    // none: the menu offers it, the editor picks it, and the order comes back
+    // untouched with nothing reporting a problem. That is how the contents
+    // view came to offer six hard-coded PLONE index names to every CMS — four
+    // of which quietly did nothing on anything but Plone.
+    const res: any = await target.adapter.dispatch(
+      'querystring.getIndexes',
+      {},
+    );
+
+    for (const key of Object.keys(res.sortable_indexes)) {
+      const up: any = await target.adapter.dispatch('querystringSearch', {
+        query: [
+          {
+            i: target.queryIndexes.type,
+            o: 'selection.any',
+            v: [target.types.page],
+          },
+        ],
+        sortOn: key,
+        sortOrder: 'ascending',
+      });
+      const down: any = await target.adapter.dispatch('querystringSearch', {
+        query: [
+          {
+            i: target.queryIndexes.type,
+            o: 'selection.any',
+            v: [target.types.page],
+          },
+        ],
+        sortOn: key,
+        sortOrder: 'descending',
+      });
+
+      expect(up.items.length, `${key} ascending`).toBeGreaterThan(1);
+      const ascending = up.items.map((i: any) => i['@id']);
+      const descending = down.items.map((i: any) => i['@id']);
+      // Reversed, not merely different: a sort that honours the key but
+      // ignores the direction would pass a weaker check.
+      expect(descending, `sorting by '${key}'`).toEqual(
+        [...ascending].reverse(),
+      );
     }
   });
 

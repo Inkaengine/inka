@@ -19,6 +19,36 @@ export async function waitForRows(page: Page, timeout = 60_000): Promise<void> {
 }
 
 /**
+ * The listing's rows once they have STOPPED CHANGING.
+ *
+ * Rearranging is a write: the contents view sends the sort, the CMS reorders,
+ * and the view refetches. The row COUNT never moves while that happens, so
+ * `waitForRows` returns immediately and hands back the order from before the
+ * write — which made a descending sort and an ascending one read as identical
+ * and turned a working sort into a failure (and would have hidden a broken one
+ * just as well).
+ *
+ * Two consecutive identical reads, rather than a fixed pause: a pause long
+ * enough for the slowest CMS is dead time for the rest, and one short enough
+ * for the fastest is a flake everywhere else.
+ */
+export async function stableRows(
+  page: Page,
+  { settleMs = 250, attempts = 40 } = {},
+): Promise<string[]> {
+  let previous: string[] | null = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const rows = await page.locator('tbody tr').allInnerTexts();
+    if (previous !== null && rows.join('\u0000') === previous.join('\u0000')) {
+      return rows;
+    }
+    previous = rows;
+    await page.waitForTimeout(settleMs);
+  }
+  throw new Error('the contents listing never settled');
+}
+
+/**
  * Sign in to the CMS, if the proxy says nobody is.
  *
  * This is the REAL flow, not a fixture: the proxy frame offers a button, the

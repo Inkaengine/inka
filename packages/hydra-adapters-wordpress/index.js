@@ -2129,10 +2129,30 @@ export class WordPressAdapter extends BaseAdapter {
           };
         }
 
-        return { indexes };
+        // WHAT WORDPRESS WILL ORDER A PAGE COLLECTION BY, in its own names.
+        // A separate vocabulary from the queryable indexes, as it is in Plone:
+        // `menu_order` is sortable and is not something you can filter on.
+        //
+        // Only keys WordPress really accepts in `orderby` — advertising one it
+        // rejects puts an item in the editor's sort menu that does nothing, and
+        // nothing reports it.
+        const sortable_indexes = {
+          menu_order: { title: 'Position in parent' },
+          title: { title: 'Title' },
+          date: { title: 'Publication date' },
+          modified: { title: 'Last modified' },
+          id: { title: 'ID' },
+        };
+        return { indexes, sortable_indexes };
       }
 
       case 'querystringSearch': {
+
+        // Refused here, not translated: see assertSortable. The admin's
+
+        // menus are built from what this adapter advertises.
+
+        await this.assertSortable(args.sortOn);
         const params = {
           status: 'any',
           context: 'edit',
@@ -2171,7 +2191,8 @@ export class WordPressAdapter extends BaseAdapter {
           }
         }
 
-        if (args.sortOn) params.orderby = sortFieldFor(args.sortOn);
+        await this.assertSortable(args.sortOn);
+        if (args.sortOn) params.orderby = orderByFor(args.sortOn);
         if (args.sortOrder) {
           // WordPress accepts only asc|desc and 400s on anything else. The
           // canonical value is Plone's long form ("descending"), which passed
@@ -2370,51 +2391,16 @@ function isEditableField(name) {
 }
 
 /**
- * A WordPress orderby, from whatever index name the admin sent.
- *
- * INTERIM. Volto's contents view offers sorting from a hard-coded list of
- * PLONE index names — id, sortable_title, EffectiveDate, CreationDate,
- * ModificationDate, portal_type — rather than from querystring.getIndexes,
- * which is what its own query builder uses and what every adapter answers with
- * its real indexes. So a click on "sort by modified" arrives here as
- * `ModificationDate`, which WordPress has never heard of.
- *
- * The proper fix is in the admin: drive that menu from the advertised indexes.
- * Until then this translates the six, so sorting works rather than silently
- * doing nothing.
- *
- * Anything unrecognised is passed through untouched — it is most likely
- * already a native name, from the query builder — and WordPress rejects what
- * it cannot sort by, which is louder than quietly ignoring it.
- */
-/**
- * WordPress's own name for an index the admin asks to sort by.
- *
- * `getObjPositionInParent` is the folder's OWN order — the sibling order an
- * editor arranges by hand — which WordPress keeps in menu_order. It is also
- * what the contents view sends when nothing else has been chosen, so leaving
- * it to fall through put a Plone index name into orderby and WordPress
- * answered 400 for every listing.
- */
-function sortFieldFor(index) {
-  const PLONE_TO_WP = {
-    ModificationDate: 'modified',
-    CreationDate: 'date',
-    EffectiveDate: 'date', // WordPress has no separate effective date
-    sortable_title: 'title',
-    id: 'id',
-    getObjPositionInParent: 'menu_order',
-  };
-  return PLONE_TO_WP[index] ?? index;
-}
-
-/**
  * What WordPress will actually accept in `orderby` for a page collection.
  *
- * An index it does not know is a 400, and a 400 here means no listing at all —
- * so anything unrecognised falls back to the folder's own order rather than
- * taking the whole view down. Sorting by something WordPress cannot sort by is
- * a missing feature; an empty listing is a broken one.
+ * No translation table any more. The admin's menus are built from this
+ * adapter's own `sortable_indexes`, so the names that arrive are WordPress's;
+ * anything else is refused by `assertSortable` before it gets here.
+ *
+ * This used to map six PLONE index names onto WordPress fields, and — worse —
+ * substitute `menu_order` for anything unrecognised. A sort WordPress cannot
+ * perform then looked exactly like one it could: the editor picked
+ * "publication date" and got the folder's own order, silently.
  */
 const WP_ORDERBY = new Set([
   'author',
@@ -2431,6 +2417,10 @@ const WP_ORDERBY = new Set([
 ]);
 
 function orderByFor(index) {
-  const mapped = sortFieldFor(index);
-  return WP_ORDERBY.has(mapped) ? mapped : 'menu_order';
+  if (WP_ORDERBY.has(index)) return index;
+  throw new AdapterError(
+    `wordpress cannot order a page collection by '${index}'. WordPress ` +
+      `accepts: ${[...WP_ORDERBY].join(', ')}.`,
+    { code: 'BAD_REQUEST', status: 400 },
+  );
 }

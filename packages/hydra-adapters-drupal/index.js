@@ -1438,10 +1438,25 @@ export class DrupalAdapter extends BaseAdapter {
           };
         }
 
-        return { indexes };
+        // WHAT JSON:API WILL SORT A NODE COLLECTION BY, as Drupal names its
+        // fields. A separate vocabulary from the queryable indexes above, the
+        // same way Plone's sort keys are separate from its indexes.
+        const sortable_indexes = {
+          title: { title: 'Title' },
+          changed: { title: 'Last modified' },
+          created: { title: 'Created on' },
+          drupal_internal__nid: { title: 'ID' },
+        };
+        return { indexes, sortable_indexes };
       }
 
       case 'querystringSearch': {
+
+        // Refused here, not translated: see assertSortable. The admin's
+
+        // menus are built from what this adapter advertises.
+
+        await this.assertSortable(args.sortOn);
         const params = new URLSearchParams();
         let menuParent = null;
 
@@ -1602,23 +1617,13 @@ export class DrupalAdapter extends BaseAdapter {
 export default DrupalAdapter;
 
 /**
- * A JSON:API sort field, from whatever index name the admin sent.
+ * The JSON:API sort field, which is the name as given.
  *
- * INTERIM, and the same story as the WordPress adapter: Volto's contents view
- * hard-codes PLONE index names for its sort menu instead of using
- * querystring.getIndexes, which is what its own query builder uses. `changed`
- * is what this adapter actually advertises as its sortable date.
- *
- * Unrecognised names pass through — they are most likely already field names
- * from the query builder — and JSON:API rejects fields it cannot sort by.
+ * There was a table here mapping Plone's index names onto Drupal's fields,
+ * from when Volto's contents view hard-coded them. The admin's menus now come
+ * from this adapter's `sortable_indexes`, so the names arriving ARE Drupal's,
+ * and `assertSortable` refuses anything else rather than guessing at it.
  */
 function sortFieldFor(index) {
-  const PLONE_TO_DRUPAL = {
-    ModificationDate: 'changed',
-    CreationDate: 'created',
-    EffectiveDate: 'created',
-    sortable_title: 'title',
-    id: 'drupal_internal__nid',
-  };
-  return PLONE_TO_DRUPAL[index] ?? index;
+  return index;
 }

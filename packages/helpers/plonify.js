@@ -91,14 +91,45 @@ function resultsToPlone(result, path) {
   };
 }
 
-function indexesToPlone(indexes) {
+function indexesToPlone(result) {
   // Volto's query builder reads `indexes` for the dropdown and
-  // `sortable_indexes` for the sort-on select; they are separate maps.
-  const sortable = {};
-  for (const [name, idx] of Object.entries(indexes ?? {})) {
-    if (idx.sortable) sortable[name] = { title: idx.title };
+  // `sortable_indexes` for the sort-on select; they are separate maps, and
+  // each adapter answers with BOTH.
+  //
+  // This used to take the intent's whole result and walk it looking for a
+  // `sortable` flag — but the result is `{ indexes, sortable_indexes }`, so the
+  // names it walked were the two KEYS, neither of which carries a flag. Every
+  // adapter-backed CMS therefore got `sortable_indexes: {}` and an `indexes`
+  // nested one level too deep. The sort-on select was empty and the index
+  // dropdown offered one bogus entry called "indexes". The unit test covering
+  // this passed a bare index map, a shape no caller sends, so it asserted a
+  // split that never happened in production.
+  //
+  // Nor is the sortable subset DERIVABLE from a flag. Plone's sort keys are
+  // their own vocabulary: the queryable index is `Title` while the sort key is
+  // `sortable_title`, and `getObjPositionInParent` is a sort key that is no
+  // queryable index at all. Deriving would silently rename half of them, so
+  // the adapter's own answer is passed through.
+  //
+  // Missing keys THROW rather than default to empty: an empty map renders as a
+  // CMS that cannot sort or cannot be queried, which looks like a backend
+  // limitation instead of an adapter that did not answer.
+  if (!result?.indexes) {
+    throw new Error(
+      'querystring.getIndexes answered no `indexes` map — the query builder ' +
+        'cannot be built from nothing',
+    );
   }
-  return { indexes: indexes ?? {}, sortable_indexes: sortable };
+  if (!result?.sortable_indexes) {
+    throw new Error(
+      'querystring.getIndexes answered no `sortable_indexes` map — the sort ' +
+        'menus read it, and an empty one reads as a CMS that cannot sort',
+    );
+  }
+  return {
+    indexes: result.indexes,
+    sortable_indexes: result.sortable_indexes,
+  };
 }
 
 function permissionsToPlone(pas) {

@@ -94,6 +94,67 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
     },
 
     /**
+     * What the SITE is called, for a visitor.
+     *
+     * From the REST root, which is public: `/wp-json` carries `name` and
+     * `description`. `wp/v2/settings` has more (including the language) but is
+     * permission-gated — a visitor reading it gets 401, so a frontend that
+     * asked for the site's own name would need a credential to render a header.
+     *
+     * `language` is therefore NULL here, not guessed: WordPress does not
+     * publish it to an anonymous client. A caller that needs the page's
+     * language should read the document's.
+     */
+    async site() {
+      const res = await fetchImpl(`${base}/wp-json`);
+      if (!res.ok) return null;
+      const root = await res.json();
+      return {
+        title: root.name ?? '',
+        description: root.description ?? '',
+        language: null,
+      };
+    },
+
+    /**
+     * The trail from the site root to this page, as paths and titles.
+     *
+     * Walked up the `parent` chain, one request per ancestor, because
+     * WordPress has no breadcrumb endpoint and no ancestors field — the
+     * hierarchy is only ever a parent id. Plone expands breadcrumbs with the
+     * page in a single request; this is the honest cost of the same answer
+     * here, and it is why the walk is bounded: a cycle in the data would
+     * otherwise hang the page.
+     */
+    async breadcrumbs(path) {
+      const post = await readPage(path);
+      if (!post) return null;
+
+      const trail = [];
+      let current = post;
+      for (let depth = 0; depth < 10 && current; depth += 1) {
+        trail.unshift({
+          path: `/${current.slug}`,
+          title: current.title?.rendered ?? '',
+        });
+        if (!current.parent) break;
+        const res = await fetchImpl(
+          api(`/wp/v2/pages/${current.parent}`, { status: 'publish' }),
+        );
+        if (!res.ok) break;
+        current = await res.json();
+      }
+
+      // Paths rebuilt from the chain, so a child's breadcrumb carries its
+      // ancestors' slugs rather than only its own.
+      let prefix = '';
+      return trail.map((entry) => {
+        prefix = `${prefix}${entry.path}`;
+        return { path: prefix, title: entry.title };
+      });
+    },
+
+    /**
      * A LISTING, as a visitor: published pages, optionally under a parent and
      * narrowed by text.
      *
@@ -205,7 +266,26 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
         }),
       });
       if (!res.ok) return null;
-      const body = await res.json();
+
+      // A 200 that is NOT JSON means WPGraphQL is not answering. WordPress
+      // serves its ordinary HTML page for a query string it does not
+      // recognise, so the request succeeds and only the parse gives it away —
+      // as `Unexpected token '<'` from deep inside whatever was rendering,
+      // naming neither WordPress nor the plugin. Caught here, with the reason.
+      const text = await res.text();
+      let body;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        throw new Error(
+          `wordpress: index.php?graphql answered ${res.status} with ` +
+            `${res.headers.get('content-type') ?? 'no content-type'} rather ` +
+            `than JSON, which means WPGraphQL is not installed. Core ` +
+            `WordPress has no public menu endpoint — a visitor's read of ` +
+            `core menus is 401 — so without the plugin there is no curated ` +
+            `menu to serve. The page TREE is readable: use navigation().`,
+        );
+      }
       if (body.errors) {
         throw new Error(
           `wordpress: the public menu query failed, which usually means ` +

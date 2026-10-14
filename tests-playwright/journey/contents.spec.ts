@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { fixtureFor } from './fixtures';
 import { seedFor } from './seedFor';
-import { browseListing, waitForRows } from './steps';
+import { browseListing, stableRows, waitForRows } from './steps';
 
 /**
  * The contents view's own behaviour: listing, filtering, sorting.
@@ -73,11 +73,10 @@ test('the listing can be sorted', async ({ page }, testInfo) => {
   // which has to be opened before any sort item exists in the DOM — hence a
   // bare [class*="sort_"] finding nothing.
   //
-  // The indexes it offers are a FIXED Plone list — id, sortable_title,
-  // EffectiveDate, CreationDate, ModificationDate, portal_type — hard-coded in
-  // Volto's contents view rather than taken from querystring.getIndexes. So
-  // this drives whichever the UI presents rather than naming one, and the
-  // Plone-shaped index list is noted as a separate finding, not asserted here.
+  // This drives whichever index the UI presents FIRST, which is enough for the
+  // claim it makes: that the control is wired to the CMS at all. The menu's
+  // contents are a separate claim — that every index it offers really sorts —
+  // and the sibling test below makes it over all of them.
   // The CONFIGURATION trigger specifically. `.dropdown-popup-trigger` is worn
   // by three different controls — this one, the selected-items menu, and one
   // per row — so `.first()` picked whichever the DOM happened to order first
@@ -106,7 +105,10 @@ test('the listing can be sorted', async ({ page }, testInfo) => {
     // where it is.
     await item.dispatchEvent('click');
     await waitForRows(page);
-    return page.locator('tbody tr').allInnerTexts();
+    // Settled, not first-paint: see stableRows. Reading straight after the
+    // click returned the order from BEFORE the rearrange landed, so the two
+    // directions compared equal and this failed on a sort that works.
+    return stableRows(page);
   };
 
   const sorted = await sortBy('descending');
@@ -116,4 +118,110 @@ test('the listing can be sorted', async ({ page }, testInfo) => {
   // would be weaker: an ignored sort leaves it untouched and would still pass
   // whichever way the default happened to fall.
   expect(sorted).not.toEqual(resorted);
+});
+
+test('the rearrange menu is the CMS\'s own sort keys', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(240_000);
+  const { root: ROOT } = fixtureFor(testInfo.project.name);
+
+  const helper = new AdminUIHelper(page);
+  await helper.login();
+  await browseListing(page, helper, ROOT);
+
+  const expected = await page.locator('tbody tr').count();
+  expect(expected).toBeGreaterThan(1);
+
+  const configure = page.locator('.dropdown-popup-trigger.configuration-svg');
+  await expect(configure).toHaveCount(1, { timeout: 15_000 });
+
+  // Opening is idempotent BY STATE rather than by clicking: the trigger is a
+  // toggle, so a second click on an already-open popup closes it, and the
+  // items then time out as invisible.
+  const anyItem = page.locator('[class*="_descending"]').first();
+  const openConfigure = async () => {
+    if (await anyItem.isVisible()) return;
+    await configure.click({ timeout: 30_000 });
+    await anyItem.waitFor({ state: 'visible', timeout: 10_000 });
+  };
+
+  await openConfigure();
+  const offered = await page
+    .locator('[class*="_descending"]')
+    .evaluateAll((nodes) =>
+      nodes
+        .map(
+          (n) =>
+            /sort_(.+)_descending/.exec(
+              [...n.classList].find((c) => c.endsWith('_descending')) ?? '',
+            )?.[1],
+        )
+        .filter((name): name is string => Boolean(name)),
+    );
+
+  // NOT EMPTY, which is the regression this guards.
+  //
+  // The menu is built from `state.querystring.sortable_indexes`, and that was
+  // `{}` for every adapter-backed CMS: plonify was handed the intent's whole
+  // result (`{ indexes, sortable_indexes }`) while being written for a bare
+  // index map, so it looked for a `sortable` flag on the two KEYS and found
+  // none. Its unit test passed a bare map — a shape no caller sends — so the
+  // split it asserted never happened in production. An empty sort menu reads
+  // as a CMS that cannot sort.
+  expect(
+    offered.length,
+    'the rearrange menu offered nothing: the backend\'s sortable_indexes ' +
+      'never reached the store',
+  ).toBeGreaterThan(1);
+
+  // The names are the BACKEND's, not Plone's. The menu used to hard-code six
+  // Plone index names for every CMS — id, sortable_title, EffectiveDate,
+  // CreationDate, ModificationDate, portal_type — and send Plone's `sort_on`
+  // for each. On anything but Plone most of those did nothing at all: the
+  // adapter keyed every row the same and the order came back untouched, with
+  // nothing reporting a problem.
+  //
+  // Asserted as "not Plone's list" rather than against an expected set per
+  // project, because the expected set is the ADAPTER's answer and the contract
+  // suite already checks it there — including that every key it advertises
+  // really reverses the order, which is the claim this cannot make: whether a
+  // given key reorders THIS fixture depends on the fixture (a Plone draft has
+  // no publication date at all, so ordering by it is legitimately a no-op).
+  if (!testInfo.project.name.includes('plone')) {
+    expect(offered).not.toContain('EffectiveDate');
+    expect(offered).not.toContain('ModificationDate');
+    expect(offered).not.toContain('portal_type');
+  }
+
+  // And the control is WIRED: picking one reorders the listing and keeps the
+  // same rows. A menu of correct names that did nothing when clicked would
+  // pass everything above.
+  const rearrangeBy = async (index: string, direction: string) => {
+    await expect(configure).toHaveCount(1, { timeout: 15_000 });
+    await openConfigure();
+    const item = page.locator(`.sort_${index}_${direction}`).first();
+    await item.waitFor({ state: 'visible', timeout: 10_000 });
+    await item.dispatchEvent('click');
+    await waitForRows(page);
+    const rows = await stableRows(page);
+    // A sort that emptied the listing — an adapter answering an error — is a
+    // different failure from one that did nothing, and both are failures.
+    expect(rows).toHaveLength(expected);
+    return rows;
+  };
+
+  const reordered = [];
+  for (const index of offered) {
+    const ascending = await rearrangeBy(index, 'ascending');
+    const descending = await rearrangeBy(index, 'descending');
+    if (JSON.stringify(ascending) !== JSON.stringify(descending)) {
+      reordered.push(index);
+    }
+  }
+  expect(
+    reordered,
+    `none of the offered sorts (${offered.join(', ')}) changed the order: the ` +
+      `menu is not wired to the CMS at all`,
+  ).not.toHaveLength(0);
 });

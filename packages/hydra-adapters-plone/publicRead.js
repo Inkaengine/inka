@@ -61,6 +61,24 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
       };
     },
 
+    /**
+     * What the SITE is called, and the language it is in.
+     *
+     * `@site` is public in Plone, and it carries both — which is why the
+     * WordPress reader's answer has a null language rather than this shape
+     * being invented for it.
+     */
+    async site() {
+      const res = await fetchImpl(`${base}/@site`, json());
+      if (!res.ok) return null;
+      const body = await res.json();
+      return {
+        title: body['plone.site_title'] ?? '',
+        description: body['plone.site_description'] ?? '',
+        language: body['plone.default_language'] ?? null,
+      };
+    },
+
     /** The navigation, as paths and titles. */
     async navigation() {
       const res = await fetchImpl(`${base}/@navigation`, json());
