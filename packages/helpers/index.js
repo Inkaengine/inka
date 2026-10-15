@@ -4716,6 +4716,23 @@ export function expandTemplatesSync(inputItems, options = {}) {
       for (const blockId of layout) {
         const block = blocks[blockId];
         if (!block) continue;
+        // A block of a template that is neither this layout nor the page's
+        // previous one — a snippet the page inserted (allowedTemplates) — is
+        // the page's content, not a leftover of a layout: it goes in default
+        // whole, marks and all, to expand as its snippet. The previous layout
+        // is the template of the page's first templated block
+        // (previousTemplateId); only ITS blocks are leftovers.
+        if (
+          block.templateId &&
+          !templateIdsMatch(block.templateId, templateId) &&
+          !(previousTemplateId && templateIdsMatch(block.templateId, previousTemplateId))
+        ) {
+          if (!ctx.pendingContent.has('default')) {
+            ctx.pendingContent.set('default', []);
+          }
+          ctx.pendingContent.get('default').push({ blockId, block });
+          continue;
+        }
         if (block.templateId && block.templateId !== templateId) {
           ctx.newTemplateIds.add(block.templateId);
         }

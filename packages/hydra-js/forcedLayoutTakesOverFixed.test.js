@@ -91,3 +91,37 @@ describe('a forced layout takes over the page', () => {
     );
   });
 });
+
+describe("a forced layout keeps a snippet the page inserted", () => {
+  // A template inserted as a snippet (allowedTemplates) leaves blocks marked
+  // with ITS template. Those are not leftovers of the page's previous layout
+  // (the template of its first templated block) — they are the page's
+  // content, and go in default with their ids and content, as the layout's
+  // content from then on.
+  test("the snippet's blocks go in default, kept whole", () => {
+    const blocks = {
+      'page-title': { '@type': 'title', templateId: LAYOUT, slotId: 'heading', fixed: true },
+      'snip-form': {
+        '@type': 'form',
+        templateId: '/templates/a-snippet',
+        templateInstanceId: 'snip-1',
+        slotId: 'form',
+        fixed: true,
+        readOnly: true,
+      },
+      body: { '@type': 'slate', value: [] },
+    };
+    const out = expandTemplatesSync(['page-title', 'snip-form', 'body'], {
+      blocks,
+      templateState: {},
+      templates: { [LAYOUT]: TEMPLATE },
+      allowedLayouts: [LAYOUT, '/templates/other-layout'],
+    });
+    expect(out).toHaveLength(1);
+    const main = region(out[0], 'main');
+    expect(main.map((b) => b.id)).toEqual(['snip-form', 'body']);
+    expect(main[0]['@type']).toBe('form');
+    expect(main[0].readOnly).toBe(true);
+    expect(region(out[0], 'heading').map((b) => b.id)).toEqual(['page-title']);
+  });
+});
