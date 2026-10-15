@@ -502,6 +502,46 @@ describe('plonify', () => {
     expect(p['@type']).toBe('Image');
   });
 
+  it('keeps the sizes an adapter knows about its own image', () => {
+    // `image.scales` is a SLOT. It used to be emptied, which threw away
+    // whatever the CMS knew — and with it any chance of a srcset on a backend
+    // whose sizes are not Plone's.
+    //
+    // The contents are the adapter's own: WordPress names its sizes and gives
+    // each a `source_url`, and the frontend that ships with the adapter reads
+    // that. Nothing here maps them onto Plone's scale names.
+    const p = plonify('asset.upload', {
+      id: '41',
+      path: '/logo',
+      title: 'logo.png',
+      fields: {
+        url: 'http://cms.example/wp-content/uploads/logo.png',
+        filename: 'logo.png',
+        scales: {
+          thumbnail: {
+            source_url: 'http://cms.example/wp-content/uploads/logo-150x150.png',
+            width: 150,
+            height: 150,
+          },
+        },
+      },
+    });
+
+    expect(p['@id']).toBe('http://cms.example/wp-content/uploads/logo.png');
+    expect(p.image.scales.thumbnail).toEqual({
+      source_url: 'http://cms.example/wp-content/uploads/logo-150x150.png',
+      width: 150,
+      height: 150,
+    });
+  });
+
+  it('has no sizes where the adapter offered none', () => {
+    const p = plonify('asset.upload', {
+      fields: { url: 'http://cms.example/x.png', filename: 'x.png' },
+    });
+    expect(p.image.scales).toEqual({});
+  });
+
   it('passes both index maps through, in the shape an adapter answers', () => {
     // The shape a REAL caller sends: the intent's result, which is
     // `{ indexes, sortable_indexes }`. This used to pass a bare index map —

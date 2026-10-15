@@ -101,6 +101,55 @@ in the block, and what the public site later renders from.
 
 </block>
 
+## What a picker leaves behind
+
+When an editor picks an image or a link, what the adapter hands back is what
+ends up in the block — and what the public site renders from later. The admin
+stores it and round-trips it; it does not interpret it.
+
+So this is **your CMS's own metadata, in your CMS's own terms**, the same way
+index names are. There is no shape to convert to. Volto's image widget wants
+one thing, an `@id` to identify what was picked, and the only other handling
+anywhere in the admin is resolving a RELATIVE url against the content — which
+Plone needs, because Plone's scales are relative. An absolute url passes
+through untouched.
+
+### Js
+
+```js
+// WordPress's asset result: its own size names, each with the absolute url
+// WordPress gave for it. Nothing restates these as Plone's scales.
+return {
+  id: String(media.id),
+  path: `/${media.slug}`,
+  fields: {
+    url: media.source_url,
+    filename: args.filename,
+    scales: {
+      thumbnail: { source_url: '…-150x150.png', width: 150, height: 150 },
+      medium: { source_url: '…-300x200.png', width: 300, height: 200 },
+    },
+  },
+};
+```
+
+Your frontend reads that, because it ships with the adapter. A frontend written
+for Plone reads Plone's `download` (relative, joined to the content path); one
+serving WordPress reads `source_url` (absolute, used as it stands). The same
+file can read both — what it must not do is assume one CMS's convention and
+apply it to another's data.
+
+<block type="callout" variation="warning">
+
+That assumption is worth naming, because it hides. A resolver that joins a
+scale's url to the content path is correct for Plone and silently wrong for a
+CMS whose urls are absolute: it produces `…/logo.png/http://…/logo.png`, which
+renders as a broken image rather than an error. It stays hidden for as long as
+the sizes are missing — with no scales there is no url to join, so the picture
+works — and appears the moment the adapter starts supplying them.
+
+</block>
+
 ## Install an adapter
 
 Install the package for your CMS. `@volto-hydra/hydra-types` is optional and carries the TypeScript definitions.

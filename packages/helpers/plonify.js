@@ -229,6 +229,20 @@ function actionsToPlone(pas) {
  * It uses content['@id'] as the stored value and content.image as
  * image_scales.image[0], so those two are the contract here — not the whole
  * canonical Document.
+ *
+ * `scales` is a SLOT, and what goes in it is the adapter's business.
+ *
+ * It used to be emptied — `scales: {}` — which threw away whatever the CMS knew
+ * about its own image. Nothing in the admin reads inside it: the image widget
+ * wants `@id` for identity, and the only other handling is rewriting a RELATIVE
+ * `download` against the content url, because Plone's scales are relative. An
+ * absolute url passes through untouched. So an adapter can put its CMS's own
+ * sizes here, in that CMS's own terms, and the frontend — which ships with the
+ * adapter — reads them.
+ *
+ * Mapping one CMS's sizes onto another's scale names would be the mistake the
+ * index vocabulary used to make: a shared helper holding knowledge about one
+ * particular CMS, and a frontend reading a dialect its backend does not speak.
  */
 function assetToPlone(doc) {
   const url = doc?.fields?.url ?? doc?.path;
@@ -240,7 +254,7 @@ function assetToPlone(doc) {
     image: {
       filename: doc?.fields?.filename,
       download: url,
-      scales: {},
+      scales: doc?.fields?.scales ?? {},
     },
   };
 }

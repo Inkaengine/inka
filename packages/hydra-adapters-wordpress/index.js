@@ -1709,7 +1709,31 @@ export class WordPressAdapter extends BaseAdapter {
           // `url` is what the image widget reads back after an upload (see
           // assetToPlone); source_url is already absolute, which is the
           // requirement — an <img src> cannot resolve a CMS-relative path.
-          fields: { link: media.source_url, url: media.source_url, filename: args.filename },
+          fields: {
+            link: media.source_url,
+            url: media.source_url,
+            filename: args.filename,
+            // WordPress's OWN sizes, in WordPress's terms, for whatever renders
+            // this later. The frontend ships with this adapter, so it can read
+            // them; nothing in the admin looks inside (it rewrites a relative
+            // `download`, and every url here is already absolute).
+            //
+            // Not mapped onto Plone's scale names: that would put WordPress in
+            // a shared helper and hand the frontend a dialect its backend does
+            // not speak — the mistake the index vocabulary used to make.
+            scales: Object.fromEntries(
+              Object.entries(media.media_details?.sizes ?? {}).map(
+                ([name, size]) => [
+                  name,
+                  {
+                    source_url: size.source_url,
+                    width: size.width,
+                    height: size.height,
+                  },
+                ],
+              ),
+            ),
+          },
           state: 'published',
           _adapter: { raw: media },
         };
