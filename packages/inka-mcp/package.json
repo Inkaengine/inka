@@ -1,0 +1,20 @@
+{
+  "name": "@inka/mcp",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The Inka MCP server: agents create and edit pages through a headless Inka admin.",
+  "type": "module",
+  "exports": {
+    "./pageFormat": "./pageFormat.mjs",
+    "./server": "./server.mjs"
+  },
+  "license": "MIT",
+  "bin": {
+    "inka-mcp": "./server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "playwright": "1.61.0",
+    "zod": "^3.25.0"
+  }
+}
