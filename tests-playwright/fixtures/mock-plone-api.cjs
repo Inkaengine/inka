@@ -753,6 +753,27 @@ function catalogImageFields(content, baseUrl, hasPreviewImage = hasServablePrevi
  * Includes is_folderish for folder navigation in object browser
  * Includes hasPreviewImage for teaser blocks to show target's preview image
  */
+/**
+ * Every block @type on a page, nested blocks included (plone.volto's
+ * block_types indexer): the entries of a `blocks` dict at any depth — not any
+ * object with an @type (a link's `{"@type": "Document"}` is not a block).
+ */
+function blockTypesOf(content) {
+  const types = new Set();
+  const visit = (node) => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== 'object') return;
+    if (node.blocks && typeof node.blocks === 'object' && !Array.isArray(node.blocks)) {
+      for (const block of Object.values(node.blocks)) {
+        if (typeof block?.['@type'] === 'string') types.add(block['@type']);
+      }
+    }
+    Object.values(node).forEach(visit);
+  };
+  visit(content);
+  return [...types];
+}
+
 function formatSearchItem(content, baseUrl) {
   const hasPreviewImage = hasServablePreviewImage(content);
 
@@ -5309,10 +5330,16 @@ app.get('*/@search', (req, res) => {
   // SearchableText and ANDs the parts — matchSearchableText replicates that on
   // title/description/id. The Title index is ZCTextIndex: whole words, with
   // optional right-truncation (`sea*`) — replicated on the title only.
-  if (searchableText || titleQuery) {
+  // block_types: plone.volto's KeywordIndex of every block's @type on a page,
+  // container children included.
+  const blockTypes = req.query.block_types === undefined ? null : [req.query.block_types].flat();
+  if (searchableText || titleQuery || blockTypes) {
     items = Object.keys(contentDirMap)
       .filter((itemPath) => itemPath !== '/')
-      .map((itemPath) => formatSearchItem(loadContentFromDisk(itemPath), baseUrl));
+      .map((itemPath) => loadContentFromDisk(itemPath))
+      .filter((content) => content != null)
+      .filter((content) => !blockTypes || blockTypesOf(content).some((t) => blockTypes.includes(t)))
+      .map((content) => formatSearchItem(content, baseUrl));
     if (searchableText) {
       items = items.filter((item) => matchSearchableText(searchableText, item));
     }

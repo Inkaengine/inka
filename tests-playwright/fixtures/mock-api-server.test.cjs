@@ -241,6 +241,16 @@ describe('@search', () => {
     assert.equal(new URL(data.items[0]['@id']).pathname, '/_test_data/test-page');
   });
 
+  it('block_types finds the pages using a block type, nested ones included', async () => {
+    // plone.volto's block_types index: every block's @type, containers' children too.
+    const accordions = await search('block_types=accordion');
+    const paths = accordions.items.map((i) => new URL(i['@id']).pathname);
+    assert.ok(paths.includes('/_test_data/accordion-test-page'), 'a top-level accordion');
+    for (const item of accordions.items) assert.notEqual(new URL(item['@id']).pathname, '/_test_data/another-page');
+    const columns = await search('block_types=column');
+    assert.ok(columns.items.some((i) => new URL(i['@id']).pathname === '/_test_data/container-test-page'), 'a column inside columns');
+  });
+
   it('pages a listing by b_start / b_size, items_total staying the whole', async () => {
     const all = await search('path.depth=1&path.query=/_test_data');
     const page1 = await search('path.depth=1&path.query=/_test_data&b_size=5');
