@@ -63,6 +63,44 @@ Adapters ship for Plone, WordPress and Drupal. The admin is byte-identical acros
 
 </block>
 
+## What an adapter is for
+
+An adapter serves **editing**. It is not a CMS proxy, and it is not a layer every
+request goes through.
+
+Its job is to tell the admin what this CMS can do and to carry out the editor's
+changes: what content types exist and what fields they have, what a listing can
+be queried on and ordered by, what a column holds, what a picked image or link
+should leave behind in a block. The admin is generic and is not customised per
+CMS, so everything it offers an editor comes from the adapter's answers. Where
+the admin guessed instead, it guessed in Plone's vocabulary and was wrong
+everywhere else.
+
+Two things follow, and they are easy to get the wrong way round.
+
+**A visitor's page does not go through the adapter.** The public site reads the
+CMS directly, the way any headless frontend does — Plone has never needed a
+bridge to serve a page, and neither does anything else. There is no adapter
+mounted in view mode at all: the editing bridge is in the editor's build, and a
+visitor's bundle has none of it. A frontend reading a CMS as a visitor uses that
+CMS's own public read, which is a separate, smaller thing (`publicRead`).
+
+**The adapter is not a translation layer.** It does not restate one CMS in
+another's terms. It answers in its own: WordPress says `parent` where Plone says
+`path`, and a listing block stores whichever name its adapter advertised. Each
+CMS then builds its own query from what it stored. The adapters that once
+carried tables mapping Plone's index names onto their own fields were papering
+over the admin's guessing, and those tables are gone.
+
+<block type="callout" variation="note">
+
+The frontend and its adapter are built and deployed together, so the frontend
+may rely on what its adapter stores. That is why a picker's result matters: what
+the adapter hands back when an editor chooses an image or a link is what ends up
+in the block, and what the public site later renders from.
+
+</block>
+
 ## Install an adapter
 
 Install the package for your CMS. `@volto-hydra/hydra-types` is optional and carries the TypeScript definitions.
@@ -118,43 +156,58 @@ new DrupalAdapter({ cmsBaseUrl, credentials, bundle });
 
 ## Rendering a site that is not on Plone
 
-The adapter is only for editing. Your frontend renders straight from its CMS, as it does on the public site, and inside the admin's view mode it does the same: the admin sends the page over the bridge only while editing. So a frontend needs a way to read its own CMS.
+The adapter is only for editing. Your frontend renders straight from its CMS,
+as any headless frontend does, and a visitor's page never goes near the adapter
+— the admin sends a page over the bridge only while that page is being edited.
 
-If your renderers were written against Plone's REST shape — every example here was — the adapter packages double as a read library. Construct the adapter for your CMS and read through `@volto-hydra/helpers`, which returns the Plone shape your renderers already consume:
-
-### Js
-
-```js
-import { adapterGetContent, adapterFetchItems } from '@volto-hydra/helpers';
-import { WordPressAdapter } from '@volto-hydra/hydra-adapters-wordpress';
-
-const adapter = new WordPressAdapter({ cmsBaseUrl, credentials });
-
-const content = await adapterGetContent(adapter, path, {
-  expand: ['navigation'],
-});
-const fetchItems = adapterFetchItems({ adapter }); // same contract as ploneFetchItems
-```
-
-The example listing variants take the adapter too. Pass `adapter` where a Plone frontend passes `apiUrl`, and name your CMS's vocabularies for Search Shortcuts:
+So each adapter package ships a second, much smaller thing: a **public read**,
+for a client with no credentials and no bridge.
 
 ### Js
 
 ```js
-import {
-  relatedItemsFetcher,
-  searchShortcutsFetcher,
-} from '@volto-hydra/helpers';
+import { createPublicReader } from '@volto-hydra/hydra-adapters-wordpress/public';
 
-const relatedItems = relatedItemsFetcher({ adapter, contextPath });
-const searchShortcuts = searchShortcutsFetcher({
-  adapter,
-  contextPath,
-  vocabularies: { Subject: 'tags' },
-});
+const cms = createPublicReader({ cmsBaseUrl });
+
+const page = await cms.document('/news/first-post'); // title and blocks
+const menu = await cms.navigation();                 // the page tree
+const trail = await cms.breadcrumbs('/news/first-post');
+const site = await cms.site();                       // the site's own name
 ```
 
-The credential is the frontend's own. A published page needs none; showing a draft in the preview needs one for your CMS, because the admin's session is not something WordPress or Drupal would accept.
+It answers only what a published page needs, and it asks the CMS only for what
+a visitor may see: WordPress's reader sends `status=publish` and never
+`context=edit`, because asking for either of the editor's parameters is what
+would demand a session.
+
+Listings are the same story. A listing block stores the criteria in the index
+names **its own** adapter advertised, and that CMS's reader builds its own
+request from them — nothing is translated on the way in:
+
+### Js
+
+```js
+import { publicFetchItems } from '@volto-hydra/helpers';
+
+// Plone's query builder is ploneFetchItems, which is already a direct read.
+// Every other CMS uses its own reader.
+const fetchItems = publicFetchItems({ reader: cms, contextPath });
+```
+
+<block type="callout" variation="note">
+
+`adapterGetContent` and `adapterFetchItems` read through an adapter you already
+hold and return Plone's REST shape. They are for a build that HAS an adapter —
+the editor's build, where the admin's view mode shows a draft — not for a
+visitor's page. A public bundle that carried an adapter would carry the editing
+bridge and a CMS credential with it.
+
+</block>
+
+The credential is the frontend's own. A published page needs none; showing a
+draft in the preview needs one for your CMS, because the admin's session is not
+something WordPress or Drupal would accept.
 
 A Plone frontend needs none of this and can keep fetching Plone directly.
 
