@@ -3647,8 +3647,22 @@ export function collectContentFromTree(
   // Capture ONE child block by slot/instance, then recurse into it. Shared by the blocks_layout
   // (shared `blocks` dict) and object_list (inline array) branches so both storages capture the
   // same way — the apply path already treats them uniformly (fillContainerInto).
-  const processBlock = (blockId, block) => {
+  const processBlock = (blockId, block, regionSlotId) => {
     if (!block) return;
+    // A template the page inserted (a snippet, a template-owned form), sitting
+    // in one of THIS instance's regions under its own instance: content of
+    // that region's slot, kept whole as a nested template reference. Not
+    // recursed into — what is inside it is its own template's.
+    if (
+      regionSlotId &&
+      block.templateId &&
+      block.templateInstanceId &&
+      block.templateInstanceId !== instanceId
+    ) {
+      if (!pendingContent.has(regionSlotId)) pendingContent.set(regionSlotId, []);
+      pendingContent.get(regionSlotId).push({ blockId, block });
+      return;
+    }
     if (block.templateInstanceId === instanceId) {
       const slotId = block.slotId;
       if (slotId) {
@@ -3695,8 +3709,18 @@ export function collectContentFromTree(
   // read, not a bespoke isBlocksMap scan with an all-keys fallback and a divergent object_list
   // heuristic. processBlock captures each child (by slot/instance) and recurses into it.
   for (const field of getChildFields(container)) {
-    for (const { id, block } of getChildBlockEntries(container, field)) {
-      processBlock(id, block);
+    const entries = getChildBlockEntries(container, field);
+    // In a region of this instance's own block, the slot its page content
+    // fills: a sibling slot block's, else `default`.
+    const regionSlotId =
+      container.templateInstanceId === instanceId
+        ? entries.find(
+            ({ block }) =>
+              block?.templateInstanceId === instanceId && block.slotId && !block.fixed,
+          )?.block.slotId || 'default'
+        : null;
+    for (const { id, block } of entries) {
+      processBlock(id, block, regionSlotId);
     }
   }
 }
@@ -3812,14 +3836,22 @@ function fillRegionEntries(entries, templateState, options) {
       if (userContent && userContent.length > 0) {
         ctx.pendingContent.delete(slotId);
         for (const { blockId, block } of userContent) {
+          // A nested template reference (a snippet, a template-owned form)
+          // keeps its own marks, so it still expands as its template.
+          const nested =
+            block.templateId &&
+            block.templateInstanceId &&
+            !templateIdsMatch(block.templateId, templateId);
           out.push({
             id: blockId,
-            block: {
-              ...block,
-              templateId,
-              templateInstanceId: instanceId,
-              slotId,
-            },
+            block: nested
+              ? block
+              : {
+                  ...block,
+                  templateId,
+                  templateInstanceId: instanceId,
+                  slotId,
+                },
           });
         }
       } else {

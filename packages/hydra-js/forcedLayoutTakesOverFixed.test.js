@@ -93,12 +93,13 @@ describe('a forced layout takes over the page', () => {
 });
 
 describe("a forced layout keeps a snippet the page inserted", () => {
-  // A template inserted as a snippet (allowedTemplates) leaves blocks marked
-  // with ITS template. Those are not leftovers of the page's previous layout
-  // (the template of its first templated block) — they are the page's
-  // content, and go in default with their ids and content, as the layout's
-  // content from then on.
-  test("the snippet's blocks go in default, kept whole", () => {
+  // A template the page inserted — a snippet, or a template-owned form whose
+  // questions come from the template on every render — leaves blocks marked
+  // with ITS template. Not leftovers of the page's previous layout (the
+  // template of its first templated block): the page's content, kept in
+  // default as a NESTED template reference, marks and all, so it still
+  // expands as its template.
+  test("the snippet's blocks go in default, as its own template", () => {
     const blocks = {
       'page-title': { '@type': 'title', templateId: LAYOUT, slotId: 'heading', fixed: true },
       'snip-form': {
@@ -120,8 +121,42 @@ describe("a forced layout keeps a snippet the page inserted", () => {
     expect(out).toHaveLength(1);
     const main = region(out[0], 'main');
     expect(main.map((b) => b.id)).toEqual(['snip-form', 'body']);
-    expect(main[0]['@type']).toBe('form');
-    expect(main[0].readOnly).toBe(true);
+    expect(main[0].templateId).toBe('/templates/a-snippet');
+    expect(main[0].templateInstanceId).toBe('snip-1');
     expect(region(out[0], 'heading').map((b) => b.id)).toEqual(['page-title']);
+  });
+});
+
+describe('a nested template in a layout slot survives a save', () => {
+  // After an editor save the page stores the layout instance; a template the
+  // page inserted sits in one of its regions under its own instance. The next
+  // expansion collected only this instance's blocks and dropped it.
+  test("it stays in its region's slot, in order", () => {
+    const blocks = {
+      'inst::frame': {
+        '@type': 'frame',
+        fixed: true,
+        readOnly: true,
+        slotId: 'frame',
+        templateId: LAYOUT,
+        templateInstanceId: 'inst',
+        blocks: {
+          'page-title': { '@type': 'title', templateId: LAYOUT, templateInstanceId: 'inst', slotId: 'heading', fixed: true },
+          rap: { '@type': 'form', templateId: '/templates/rap', templateInstanceId: 'rap-a', slotId: 'form', fixed: true, readOnly: true },
+          body: { '@type': 'slate', templateId: LAYOUT, templateInstanceId: 'inst', slotId: 'default', value: [] },
+        },
+        blocks_layout: { heading: ['page-title'], main: ['rap', 'body'] },
+      },
+    };
+    const out = expandTemplatesSync(['inst::frame'], {
+      blocks,
+      templateState: {},
+      templates: { [LAYOUT]: TEMPLATE },
+      allowedLayouts: [LAYOUT],
+    });
+    const main = region(out[0], 'main');
+    expect(main.map((b) => b.id)).toEqual(['rap', 'body']);
+    expect(main[0].templateId).toBe('/templates/rap');
+    expect(main[0].templateInstanceId).toBe('rap-a');
   });
 });
