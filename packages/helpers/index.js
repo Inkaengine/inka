@@ -3370,9 +3370,19 @@ export function getBlockAddability(
     pathInfo.siblingCount >= pathInfo.maxSiblings;
   result.maxReached = maxReached;
 
+  // No room after it, but its layout has a default slot: "+" adds at the top
+  // of that slot instead (buildBlockPathMap's markDefaultSlotAnchors) — where
+  // a fixed heading's content goes. Not while editing the template itself.
+  const anchor = anyTemplateUnlocked ? null : pathInfo.defaultSlotAnchor;
+  const toDefaultSlot = () => ({
+    ...result,
+    canInsertAfter: true,
+    insertAt: { blockId: anchor, action: 'before' },
+  });
+
   // If max is reached, can't add more blocks
   if (maxReached) {
-    return result;
+    return anchor ? toDefaultSlot() : result;
   }
 
   // Template edit mode handling:
@@ -3407,6 +3417,10 @@ export function getBlockAddability(
   } else {
     result.canInsertBefore = staticCanInsertBefore;
     result.canInsertAfter = staticCanInsertAfter;
+    if (!staticCanInsertAfter && anchor) {
+      result.canInsertAfter = true;
+      result.insertAt = { blockId: anchor, action: 'before' };
+    }
   }
 
   // For empty blocks (isEmptyBlock computed above, storage-agnostic): can replace (unless

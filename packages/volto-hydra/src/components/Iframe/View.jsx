@@ -274,7 +274,7 @@ import { getBlockTypeSchema } from '../../utils/blockPath';
 import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
-import { adoptTemplate, canContainAll, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
+import { adoptTemplate, canContainAll, getBlockAddability, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage } from '../../utils/mergeTemplates.mjs';
 import {
   applySchemaDefaultsToFormData,
@@ -734,7 +734,8 @@ const Iframe = (props) => {
   prevPropsRef.current = props;
 
   const [addNewBlockOpened, setAddNewBlockOpened] = useState(false);
-  // pendingAdd: { mode: 'sidebar', parentBlockId, fieldName } | { mode: 'iframe', afterBlockId }
+  // pendingAdd: { mode: 'sidebar', parentBlockId, fieldName } | { mode: 'iframe', afterBlockId, action? }
+  // (`action` 'before' when "+" redirects to the top of a layout's default slot)
   const [pendingAdd, setPendingAdd] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [popperElement, setPopperElement] = useState(null);
@@ -4916,9 +4917,18 @@ const Iframe = (props) => {
     // (e.g. table cells) offers only the type(s) the rule wouldn't immediately
     // re-type at this spot — usually one, so we skip the chooser and add directly.
     const bpm = iframeSyncState.blockPathMap;
-    const containerConfig = getContainerFieldConfig(selectedBlock, bpm, properties, blocksConfig, intl);
+    // A block with no room after it (a layout's fixed heading) adds at the top
+    // of the layout's default slot instead: insert BEFORE that slot's first
+    // block, with its region's types (getBlockAddability → insertAt).
+    const { insertAt } = getBlockAddability(
+      selectedBlock, bpm, getBlockById(properties, bpm, selectedBlock), iframeSyncState.templateEditMode,
+    );
+    const anchorId = insertAt?.blockId || selectedBlock;
+    const action = insertAt?.action || 'after';
+    const containerConfig = getContainerFieldConfig(anchorId, bpm, properties, blocksConfig, intl);
     const allowed = filterAddableTypesByRule(
-      iframeAllowedBlocks, properties, bpm, selectedBlock, containerConfig, blocksConfig, intl,
+      insertAt ? bpm[anchorId]?.allowedSiblingTypes : iframeAllowedBlocks,
+      properties, bpm, anchorId, containerConfig, blocksConfig, intl,
     );
     // Filling an EMPTY placeholder CONVERTS it in place to a real allowedBlock —
     // the region's `defaultBlockType: 'empty'` governs the passive seed, but the
@@ -4941,9 +4951,9 @@ const Iframe = (props) => {
         pendingSelectBlockUid: selectedBlock,
       }));
     } else if (allowed?.length === 1) {
-      insertAndSelectBlock(selectedBlock, allowed[0], 'after');
+      insertAndSelectBlock(anchorId, allowed[0], action);
     } else {
-      setPendingAdd({ mode: 'iframe', afterBlockId: selectedBlock, allowedBlocks: allowed });
+      setPendingAdd({ mode: 'iframe', afterBlockId: anchorId, action, allowedBlocks: allowed });
       setAddNewBlockOpened(true);
     }
   }, [iframeAllowedBlocks, selectedBlock, insertAndSelectBlock, iframeSyncState.blockPathMap, properties, blocksConfig, intl, onChangeFormData]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -5410,7 +5420,7 @@ const Iframe = (props) => {
                       insertAndSelectBlock(pendingAdd.parentBlockId, value['@type'], 'inside', pendingAdd.region, { region: pendingAdd.region });
                     } else {
                       const afterBlockId = pendingAdd?.afterBlockId || selectedBlock;
-                      insertAndSelectBlock(afterBlockId, value['@type'], 'after');
+                      insertAndSelectBlock(afterBlockId, value['@type'], pendingAdd?.action || 'after');
                     }
                     setPendingAdd(null);
                   };
