@@ -43,6 +43,16 @@ function expand(blocks, items) {
   return out;
 }
 
+// A template that owns a form outright: pages store a reference; the form's
+// content comes from here on every render.
+const FORM_TEMPLATE = {
+  '@id': '/templates/rap',
+  blocks: {
+    'rap-form': { '@type': 'form', title: 'Report a problem', fixed: true, readOnly: true, slotId: 'form' },
+  },
+  blocks_layout: { items: ['rap-form'] },
+};
+
 const region = (container, name) =>
   container.blocks_layout[name].map((id) => ({ id, ...container.blocks[id] }));
 
@@ -112,10 +122,15 @@ describe("a forced layout keeps a snippet the page inserted", () => {
       },
       body: { '@type': 'slate', value: [] },
     };
+    const SNIPPET = {
+      '@id': '/templates/a-snippet',
+      blocks: { form: { '@type': 'form', title: 'From the snippet', fixed: true, readOnly: true, slotId: 'form' } },
+      blocks_layout: { items: ['form'] },
+    };
     const out = expandTemplatesSync(['page-title', 'snip-form', 'body'], {
       blocks,
       templateState: {},
-      templates: { [LAYOUT]: TEMPLATE },
+      templates: { [LAYOUT]: TEMPLATE, '/templates/a-snippet': SNIPPET },
       allowedLayouts: [LAYOUT, '/templates/other-layout'],
     });
     expect(out).toHaveLength(1);
@@ -123,6 +138,7 @@ describe("a forced layout keeps a snippet the page inserted", () => {
     expect(main.map((b) => b.id)).toEqual(['snip-form', 'body']);
     expect(main[0].templateId).toBe('/templates/a-snippet');
     expect(main[0].templateInstanceId).toBe('snip-1');
+    expect(main[0].title).toBe('From the snippet');
     expect(region(out[0], 'heading').map((b) => b.id)).toEqual(['page-title']);
   });
 });
@@ -151,12 +167,57 @@ describe('a nested template in a layout slot survives a save', () => {
     const out = expandTemplatesSync(['inst::frame'], {
       blocks,
       templateState: {},
-      templates: { [LAYOUT]: TEMPLATE },
+      templates: { [LAYOUT]: TEMPLATE, '/templates/rap': FORM_TEMPLATE },
       allowedLayouts: [LAYOUT],
     });
     const main = region(out[0], 'main');
     expect(main.map((b) => b.id)).toEqual(['rap', 'body']);
     expect(main[0].templateId).toBe('/templates/rap');
     expect(main[0].templateInstanceId).toBe('rap-a');
+  });
+});
+
+describe('a nested template in a layout slot is expanded in the same pass', () => {
+  // The admin merges once and the editor frame does not expand again, so a
+  // nested reference left unexpanded showed a form with no questions while
+  // editing. Expanded where it is placed, both paths get it.
+  const formRef = { '@type': 'form', templateId: '/templates/rap', templateInstanceId: 'rap-a', slotId: 'form', fixed: true, readOnly: true };
+
+  test('on first application', () => {
+    const out = expandTemplatesSync(['page-title', 'rap', 'body'], {
+      blocks: {
+        'page-title': { '@type': 'title', templateId: LAYOUT, slotId: 'heading', fixed: true },
+        rap: formRef,
+        body: { '@type': 'slate', value: [] },
+      },
+      templateState: {},
+      templates: { [LAYOUT]: TEMPLATE, '/templates/rap': FORM_TEMPLATE },
+      allowedLayouts: [LAYOUT],
+    });
+    const [form] = region(out[0], 'main');
+    expect(form.title).toBe('Report a problem');
+    expect(form.templateId).toBe('/templates/rap');
+    // The layout's own state is untouched by the nested expansion.
+    expect(region(out[0], 'heading').map((b) => b.id)).toEqual(['page-title']);
+  });
+
+  test('after a save', () => {
+    const out = expandTemplatesSync(['inst::frame'], {
+      blocks: {
+        'inst::frame': {
+          '@type': 'frame', fixed: true, readOnly: true, slotId: 'frame', templateId: LAYOUT, templateInstanceId: 'inst',
+          blocks: {
+            'page-title': { '@type': 'title', templateId: LAYOUT, templateInstanceId: 'inst', slotId: 'heading', fixed: true },
+            rap: formRef,
+          },
+          blocks_layout: { heading: ['page-title'], main: ['rap'] },
+        },
+      },
+      templateState: {},
+      templates: { [LAYOUT]: TEMPLATE, '/templates/rap': FORM_TEMPLATE },
+      allowedLayouts: [LAYOUT],
+    });
+    const [form] = region(out[0], 'main');
+    expect(form.title).toBe('Report a problem');
   });
 });

@@ -3837,11 +3837,35 @@ function fillRegionEntries(entries, templateState, options) {
         ctx.pendingContent.delete(slotId);
         for (const { blockId, block } of userContent) {
           // A nested template reference (a snippet, a template-owned form)
-          // keeps its own marks, so it still expands as its template.
+          // keeps its own marks and is EXPANDED here, in the same pass, by
+          // this same routine: the admin merges once and the editor frame does
+          // not expand again, so left as a reference it showed no content
+          // while editing. The shared state's current template/instance are
+          // the layout's, so they are restored after.
           const nested =
             block.templateId &&
             block.templateInstanceId &&
             !templateIdsMatch(block.templateId, templateId);
+          if (nested) {
+            const outer = {
+              instanceId: templateState.instanceId,
+              templateId: templateState.templateId,
+            };
+            const expanded = expandTemplatesSync([blockId], {
+              ...options,
+              blocks: { [blockId]: block },
+              templateState,
+              allowedLayouts: undefined,
+              filterInstanceId: undefined,
+              idField: undefined,
+            });
+            templateState.instanceId = outer.instanceId;
+            templateState.templateId = outer.templateId;
+            for (const { '@uid': id, ...expandedBlock } of expanded) {
+              out.push({ id, block: expandedBlock });
+            }
+            continue;
+          }
           out.push({
             id: blockId,
             block: nested
