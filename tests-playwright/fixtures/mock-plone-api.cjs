@@ -1493,6 +1493,9 @@ const SPW = {
   published: [{ id: 'retract', title: 'Retract', to: 'private' }],
 };
 
+/** SPW states an anonymous reader may not view (Plone answers them 401). */
+const ANONYMOUS_HIDDEN_STATES = new Set(['private', 'pending']);
+
 const STATE_TITLES = {
   private: 'Private',
   pending: 'Pending review',
@@ -6270,6 +6273,16 @@ app.get('*', (req, res, next) => {
   if (content) {
     // Filter actions based on authentication
     const authenticated = isAuthenticated(req);
+    // Plone refuses an anonymous reader content the public may not view: under
+    // simple_publication_workflow, `private` (where a new page starts) and
+    // `pending`. Serving it anyway let a frontend that fetched WITHOUT the
+    // editor's token pass here and 401 on a real site.
+    if (!authenticated && ANONYMOUS_HIDDEN_STATES.has(content.review_state)) {
+      return res.status(401).json({
+        type: 'Unauthorized',
+        message: 'You are not authorized to access this resource.',
+      });
+    }
     const filteredContent = filterActionsForAuth(content, authenticated);
 
     if (process.env.DEBUG) {
