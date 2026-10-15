@@ -4722,6 +4722,15 @@ export function expandTemplatesSync(inputItems, options = {}) {
           }
           continue;
         }
+        // The page's own editable fixed block for THIS layout, with no instance
+        // yet — a forced layout's first application to the page. It takes over
+        // the layout's fixed block in its slot (id and edits), as one from a
+        // previous layout does above; as pending content a fixed slot never
+        // reads it, and it was dropped.
+        if (block.fixed && !block.readOnly && block.slotId) {
+          ctx.existingFixedBlockIds.set(block.slotId, { blockId, block });
+          continue;
+        }
         if (block.slotId) {
           const slotId = block.slotId;
           if (!ctx.pendingContent.has(slotId)) {
