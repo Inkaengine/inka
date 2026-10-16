@@ -11,6 +11,7 @@ import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage';
+import { usesAvailableSizes } from './imageSizes.mjs';
 import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
 import { settledCount } from './settled-count';
 import { wordsWithNowhereToGo } from './elementless';
@@ -557,7 +558,37 @@ export async function checkEditAnnotations(
         }
       }
 
-      return { linksWithout, trappedAnnotations, offSiteLinks, imagesWithout, brokenImages, brokenMedia, textViolations };
+      // What the renderer did with each schema image field that has a value.
+      // FACTS ONLY — whether that is acceptable is decided in Node, by
+      // imageSizes.mjs, which is unit-tested without a browser.
+      const imageFields: Array<{ field: string; rendered: boolean; srcset: string | null }> = [];
+      if (blockData && uid) {
+        const imgProps = (bridge?.getBlockSchema?.(uid) || null)?.properties as
+          Record<string, any> | undefined;
+        for (const [field, value] of Object.entries(blockData)) {
+          if (field.startsWith('@')) continue;
+          if (imgProps?.[field]?.widget !== 'image') continue;
+          const entry = Array.isArray(value) ? value[0] : value;
+          if (!entry || typeof entry !== 'object') continue;   // empty field claims nothing
+          const host = [...el.querySelectorAll(`[data-edit-media="${field}"]`)]
+            .find((n) => !n.closest('[data-block-readonly]'));
+          if (!host) {
+            imageFields.push({ field, rendered: false, srcset: null });
+            continue;
+          }
+          // Only an <img> can carry a srcset. A frontend may render a media
+          // field as a CSS background instead; that element still had to exist
+          // (checked above) but has no srcset to judge, so report null.
+          const img = host.tagName === 'IMG' ? host : host.querySelector('img');
+          imageFields.push({
+            field,
+            rendered: true,
+            srcset: img ? (img.getAttribute('srcset') ?? '') : null,
+          });
+        }
+      }
+
+      return { linksWithout, trappedAnnotations, offSiteLinks, imagesWithout, brokenImages, brokenMedia, textViolations, imageFields };
     },
     { blockData, uid: blockUid },
   );
@@ -580,6 +611,27 @@ export async function checkEditAnnotations(
     expect(r.brokenImages, 'All images should have valid src and load successfully').toEqual([]);
     expect(r.brokenMedia, 'All video/audio sources should exist').toEqual([]);
   }
+  // An image field with a value must render something, and must not throw away
+  // the sizes its data offers.
+  //
+  // The image rules above are element-shaped — "for each <img>, assert it
+  // loads" — and read `src` only. Two failures walk straight through them: an
+  // <img> whose every srcset candidate 404s (the browser falls back to `src`,
+  // which resolves, so naturalWidth > 0), and an <img> whose srcset lists the
+  // same URL at nine different width descriptors. Both are "the data offered
+  // sizes and the render ignored them", so that is what this asks — and it says
+  // nothing about HOW the frontend builds its URLs, which is its own business.
+  //
+  // Conditional on the data, deliberately: a single-scale image rendering one
+  // candidate is correct and must not be failed for it.
+  for (const { field, rendered, srcset } of r.imageFields) {
+    const value = (blockData as Record<string, unknown>)?.[field];
+    const entry = (Array.isArray(value) ? value[0] : value) as Record<string, unknown>;
+    if (srcset === null && rendered) continue;   // CSS background: nothing to judge
+    const verdict = usesAvailableSizes({ field, entry, srcset: srcset ?? '', rendered });
+    expect(verdict.ok, verdict.reason).toBe(true);
+  }
+
   for (const { field, value } of r.textViolations) {
     expect(
       false,
