@@ -37,9 +37,46 @@
  * image reports `large`, `huge` and `great` all at 200 — three names, one size,
  * and no real choice for the browser.
  */
+/**
+ * Find the object carrying an image field's scales, whichever shape it is in.
+ *
+ * Plone serialises image references two ways, and a check that knows only one
+ * silently skips the other:
+ *
+ *   NESTED   field: [{ '@id', image_field, image_scales }]      (teasers, hero
+ *                                                                references)
+ *   SIBLING  field: '/path/to.jpg'                              (image blocks)
+ *            image_field: 'image'
+ *            image_scales: { image: [...] }
+ *
+ * The sibling shape is what real image blocks use — the field holds a plain
+ * path string and the scales sit beside it on the block. An earlier version of
+ * this rule read only `blockData[field]` and bailed on `typeof !== 'object'`,
+ * so it skipped every image block in the suite and judged nothing at all while
+ * reporting success. Returns null when no scales can be found, which is not an
+ * error: a reference without scale data is simply not judged.
+ */
+export function resolveImageEntry(blockData, field) {
+  if (!blockData || typeof blockData !== 'object') return null;
+
+  const value = blockData[field];
+  const nested = Array.isArray(value) ? value[0] : value;
+  if (nested && typeof nested === 'object' && nested.image_scales) return nested;
+
+  // Sibling shape: scales live on the BLOCK, keyed by its own image_field.
+  if (blockData.image_scales && blockData.image_field) {
+    return { image_field: blockData.image_field, image_scales: blockData.image_scales };
+  }
+  return null;
+}
+
 export function scalesAvailable(entry, field) {
   if (!entry || typeof entry !== 'object') return 0;
-  const metas = entry.image_scales?.[field ?? entry.image_field];
+  // The scales are keyed by the IMAGE field, which is not always the schema
+  // field asked about: an image block's schema field is `url` while its scales
+  // sit under `image`. Try the requested name, then the entry's own.
+  const scales = entry.image_scales ?? {};
+  const metas = scales[field] ?? scales[entry.image_field];
   const meta = Array.isArray(metas) ? metas[0] : metas;
   if (!meta) return 0;
 

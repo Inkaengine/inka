@@ -11,7 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import {
   scalesAvailable, sizesOffered, usesAvailableSizes,
-  drainImageSizeCoverage, multiScaleSeen,
+  drainImageSizeCoverage, multiScaleSeen, resolveImageEntry,
 } from './imageSizes.mjs';
 
 const API = 'https://api.test';
@@ -120,8 +120,20 @@ test('the field is honoured, not assumed to be "image"', () => {
       }],
     },
   };
-  assert.equal(scalesAvailable(entry, 'preview_image'), 2);
-  assert.equal(scalesAvailable(entry, 'image'), 0, 'must not read scales from the wrong field');
+  assert.equal(scalesAvailable(entry, 'preview_image'), 2, 'the requested field wins');
+
+  // Asking by a name the scales are NOT keyed by falls back to the entry's own
+  // declared image_field. That looks lax, and an earlier version of this test
+  // asserted 0 here — but the strictness was wrong: an image block's SCHEMA
+  // field is `url` while its scales are keyed `image`, so requiring the two to
+  // match skipped every image block in the suite. The entry is self-describing;
+  // its own image_field is the authority when the requested name is absent.
+  assert.equal(scalesAvailable(entry, 'url'), 2, "falls back to the entry's own image_field");
+
+  // An entry that declares nothing still yields nothing — the fallback invents
+  // no scales.
+  assert.equal(scalesAvailable({ image_scales: {} }, 'image'), 0);
+  assert.equal(scalesAvailable({}, 'image'), 0);
 });
 
 test('malformed srcset values do not throw', () => {
@@ -148,4 +160,57 @@ test('a run that never saw a multi-scale image reports zero coverage', () => {
   usesAvailableSizes({ field: 'image', entry: { image_field: 'image' }, srcset: '' });
   assert.equal(multiScaleSeen(drainImageSizeCoverage()), 0,
     'this is the signal that the rule tested nothing');
+});
+
+// --- the shape that was being skipped ---------------------------------------
+// Real image blocks hold a plain path in the schema field and carry their
+// scales BESIDE it on the block. Taken from Inka's own discovered corpus:
+// /docs/examples/content-types/news-item, which offers 400/800/1126.
+const siblingShapeBlock = () => ({
+  '@type': 'image',
+  url: '/docs/examples/content-types/image-light.jpg',
+  image_field: 'image',
+  image_scales: {
+    image: [{
+      download: '@@images/image',
+      width: 1126,
+      height: 750,
+      scales: {
+        preview: { download: '@@images/image/preview', width: 400, height: 266 },
+        large: { download: '@@images/image/large', width: 800, height: 533 },
+      },
+    }],
+  },
+});
+
+test('scales found when they sit BESIDE the field, not inside it', () => {
+  const block = siblingShapeBlock();
+  const entry = resolveImageEntry(block, 'url');
+  assert.ok(entry, 'an image block keeps its scales on the block, not in `url`');
+  // Keyed by image_field ("image"), not by the schema field ("url").
+  assert.equal(scalesAvailable(entry, 'url'), 3, 'expected 400/800/1126');
+});
+
+test('the nested shape still resolves', () => {
+  const block = { image: [{ '@id': '/x.jpg', image_field: 'image', image_scales: { image: [{ width: 800, scales: { preview: { width: 400 } } }] } }] };
+  const entry = resolveImageEntry(block, 'image');
+  assert.ok(entry);
+  assert.equal(scalesAvailable(entry, 'image'), 2);
+});
+
+test('an image block rendering one size is caught', () => {
+  // The regression this rule exists for, in the shape it actually occurs in.
+  const block = siblingShapeBlock();
+  const entry = resolveImageEntry(block, 'url');
+  const v = usesAvailableSizes({ field: 'url', entry, srcset: '' });
+  assert.equal(v.ok, false, 'three sizes offered, none used');
+  assert.equal(v.available, 3);
+  assert.match(v.reason, /3 distinct sizes/);
+});
+
+test('no scales anywhere resolves to null and is not judged', () => {
+  for (const block of [{}, { url: '/x.jpg' }, { url: '/x.jpg', image_field: 'image' }]) {
+    assert.equal(resolveImageEntry(block, 'url'), null);
+    assert.ok(usesAvailableSizes({ field: 'url', entry: null, srcset: '' }).ok);
+  }
 });

@@ -11,7 +11,7 @@ import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage';
-import { usesAvailableSizes } from './imageSizes.mjs';
+import { usesAvailableSizes, resolveImageEntry } from './imageSizes.mjs';
 import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
 import { settledCount } from './settled-count';
 import { wordsWithNowhereToGo } from './elementless';
@@ -568,8 +568,12 @@ export async function checkEditAnnotations(
         for (const [field, value] of Object.entries(blockData)) {
           if (field.startsWith('@')) continue;
           if (imgProps?.[field]?.widget !== 'image') continue;
-          const entry = Array.isArray(value) ? value[0] : value;
-          if (!entry || typeof entry !== 'object') continue;   // empty field claims nothing
+          // A VALUE is all this needs. Resolving where the scales live is done
+          // in Node by resolveImageEntry, because they are not always inside
+          // the field: an image block holds a plain path string in `url` with
+          // `image_scales` beside it on the block. Requiring an object here
+          // skipped every image block in the suite.
+          if (value === null || value === undefined || value === '') continue;
           const host = [...el.querySelectorAll(`[data-edit-media="${field}"]`)]
             .find((n) => !n.closest('[data-block-readonly]'));
           if (!host) {
@@ -625,8 +629,7 @@ export async function checkEditAnnotations(
   // Conditional on the data, deliberately: a single-scale image rendering one
   // candidate is correct and must not be failed for it.
   for (const { field, rendered, srcset } of r.imageFields) {
-    const value = (blockData as Record<string, unknown>)?.[field];
-    const entry = (Array.isArray(value) ? value[0] : value) as Record<string, unknown>;
+    const entry = resolveImageEntry(blockData as Record<string, unknown>, field);
     if (srcset === null && rendered) continue;   // CSS background: nothing to judge
     const verdict = usesAvailableSizes({ field, entry, srcset: srcset ?? '', rendered });
     expect(verdict.ok, verdict.reason).toBe(true);

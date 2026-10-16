@@ -188,13 +188,25 @@ function getImageUrl(value) {
  * image `large`, `huge` and `great` all return 200 — three names, one size, and
  * nothing for the browser to choose between.
  */
-function getImageSrcset(value) {
-    if (!value || !value.image_scales || !value.image_field) return '';
-    const meta = value.image_scales[value.image_field]?.[0];
+function getImageSrcset(value, block) {
+    // The scales live in one of two places, and reading only the first one is
+    // how this function shipped broken the first time:
+    //   NESTED   value = { '@id', image_field, image_scales }   (teaser refs)
+    //   SIBLING  value = '/path/to.jpg'                         (image blocks)
+    //            block = { image_field, image_scales, ... }
+    const src = (value && typeof value === 'object' && value.image_scales && value.image_field)
+        ? value
+        : (block && block.image_scales && block.image_field)
+            ? block
+            : null;
+    if (!src) return '';
+    const meta = src.image_scales[src.image_field]?.[0];
     if (!meta) return '';
 
     const apiOrigin = window._apiOrigin || '';
-    const rawId = value['@id'] || '';
+    // A nested ref carries its own @id; the sibling shape's base is the path
+    // string sitting in the field.
+    const rawId = src['@id'] || (typeof value === 'string' ? value : '') || '';
     const baseUrl = /^https?:\/\//.test(rawId) ? rawId : `${apiOrigin}${rawId}`;
 
     const byWidth = new Map();
@@ -1028,7 +1040,7 @@ function renderTeaserBlock(block, blockUid) {
     // editor reveals an empty image with the toolbar toggle, not a grey stand-in
     // that also shows on the published page.
     // Offer the sizes the data advertises (empty when there is no real choice).
-    const teaserSrcset = block.preview_image ? getImageSrcset(block.preview_image) : '';
+    const teaserSrcset = block.preview_image ? getImageSrcset(block.preview_image, block) : '';
     const teaserSrcsetAttr = teaserSrcset ? ` srcset="${teaserSrcset}"` : '';
     const imageHtml = imageSrc
         ? `<img data-edit-media="preview_image" src="${imageSrc}"${teaserSrcsetAttr} alt="" style="max-width: 100%; height: auto; margin-bottom: 10px; border-radius: 4px;" />`
@@ -1136,7 +1148,7 @@ function renderImageBlock(block, { inListing = false } = {}) {
 
     // Offer the sizes the data advertises. Empty when there is no real choice,
     // and an empty srcset attribute is inert — see getImageSrcset.
-    const srcset = getImageSrcset(block.url);
+    const srcset = getImageSrcset(block.url, block);
     const srcsetAttr = srcset ? ` srcset="${srcset}"` : '';
 
     // Add data-edit-media="url" for inline image editing
