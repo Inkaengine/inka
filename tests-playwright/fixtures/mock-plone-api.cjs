@@ -232,6 +232,8 @@ const uidPositionMap = {};
 /** Renewed token -> the session id its state lives under. */
 const sessionAliases = {};
 
+const ANONYMOUS_SESSION = '_default';
+
 function getSessionId(req) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -239,7 +241,7 @@ function getSessionId(req) {
     return sessionIdentity(`token:${token}`);
   }
   // Unauthenticated requests use default session (no persistence)
-  return '_default';
+  return ANONYMOUS_SESSION;
 }
 
 /**
@@ -1235,6 +1237,7 @@ function getNavigationItems(basePath = '/', depth = 1, baseUrlIn, sessionId) {
       const rawContent = rawContentForComponents(itemPath, sessionId);
       if (!rawContent) return null;
       if (rawContent.exclude_from_nav) return null;
+      if (!mayView(rawContent, sessionId)) return null;
       if (rawContent['@type'] === 'Image' || rawContent['@type'] === 'File') return null;
       return formatNavItem(rawContent, itemPath, baseUrl, depth - 1, sessionId);
     })
@@ -1495,6 +1498,27 @@ const SPW = {
 
 /** SPW states an anonymous reader may not view (Plone answers them 401). */
 const ANONYMOUS_HIDDEN_STATES = new Set(['private', 'pending']);
+
+/**
+ * Whether the session's reader may view `item` (raw content or a summary).
+ *
+ * Plone filters EVERY catalog query by this (allowedRolesAndUsers), not just
+ * a fetch of the item itself: listings, searches and menus offer an anonymous
+ * reader published content only. Here only the GET of the item refused it, so
+ * a private page was listed to the public and its link 401'd when followed.
+ *
+ * A hidden state is viewable by the item's Owner and by roles such as Manager
+ * or Editor. @login here makes everyone who signs in a Manager, so being
+ * signed in is the whole test; ownership would decide only for a reader
+ * without such a role, and this mock has none.
+ */
+function mayView(item, sessionId) {
+  if (typeof sessionId !== 'string') {
+    throw new Error(`mayView needs the reader's session, got ${sessionId}`);
+  }
+  if (!ANONYMOUS_HIDDEN_STATES.has(item.review_state)) return true;
+  return sessionId !== ANONYMOUS_SESSION;
+}
 
 const STATE_TITLES = {
   private: 'Private',
@@ -2150,6 +2174,17 @@ function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId, params
  * folder-contents listing from here, so every child on every page would page
  * nothing.
  */
+/**
+ * A folder's `items` as its reader may see them (see mayView). Filtered here,
+ * where the reader is known, because the content itself is also built for
+ * internal reads that have no reader.
+ */
+function withViewableItems(content, sessionId) {
+  if (!Array.isArray(content.items)) return content;
+  const items = content.items.filter((item) => mayView(item, sessionId));
+  return { ...content, items, items_total: items.length };
+}
+
 function batchFolderItems(content, query = {}) {
   if (!Array.isArray(content.items)) return content;
   const start = Number(query.b_start ?? 0);
@@ -5036,7 +5071,8 @@ app.post('*/@querystring-search', (req, res) => {
         id: raw.id || itemPath.split('/').pop(),
       };
     })
-    .filter((content) => content !== null);
+    .filter((content) => content !== null)
+    .filter((content) => mayView(content, getSessionId(req)));
 
   // Apply query filters
   // plone.app.querystring `selection.*` operations apply by index TYPE,
@@ -5282,9 +5318,10 @@ app.get('*/@search', (req, res) => {
   // disk, or a renamed document keeps reporting its old title.
   if (req.query.UID) {
     const uidPath = uidToPathMap[req.query.UID];
-    const found = uidPath
+    const content = uidPath
       ? getContent(uidPath, getSessionId(req))
       : null;
+    const found = content && mayView(content, getSessionId(req)) ? content : null;
     return res.json({
       '@id': `http://localhost:${PORT}${searchPath}/@search`,
       items: found
@@ -5463,6 +5500,8 @@ app.get('*/@search', (req, res) => {
   // `Language=all` to opt out. A search that says nothing about language is
   // left alone: every single-language spec in this suite is one of those, and
   // filtering them by a default would answer a question they never asked.
+  items = items.filter((item) => mayView(item, getSessionId(req)));
+
   const languageQuery = req.query.Language;
   if (languageQuery && languageQuery !== 'all') {
     const wanted = Array.isArray(languageQuery) ? languageQuery : [languageQuery];
@@ -6283,7 +6322,10 @@ app.get('*', (req, res, next) => {
         message: 'You are not authorized to access this resource.',
       });
     }
-    const filteredContent = filterActionsForAuth(content, authenticated);
+    const filteredContent = withViewableItems(
+      filterActionsForAuth(content, authenticated),
+      sessionId,
+    );
 
     if (process.env.DEBUG) {
       console.log(`[DEBUG] Serving API content for ${cleanPath} (auth: ${authenticated})${sessionId ? ` (session: ${sessionId})` : ''}`);
