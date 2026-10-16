@@ -214,3 +214,26 @@ test('no scales anywhere resolves to null and is not judged', () => {
     assert.ok(usesAvailableSizes({ field: 'url', entry: null, srcset: '' }).ok);
   }
 });
+
+test('a candidate the browser would drop is not a size on offer', () => {
+  // `w400` instead of `400w`: the descriptor is NUMBER then unit. Browsers
+  // discard the malformed candidate and fall back to `src`, so the page ships
+  // one file at every viewport while the markup looks responsive. Inka's nuxt
+  // example emitted exactly this for every scale read from real metadata.
+  const bad = `${API}/a.jpg w400, ${API}/b.jpg w800`;
+  assert.equal(sizesOffered(bad), 0, 'reversed descriptors offer nothing');
+
+  const good = `${API}/a.jpg 400w, ${API}/b.jpg 800w`;
+  assert.equal(sizesOffered(good), 2);
+
+  // Density descriptors and a bare URL (implicitly 1x) are both valid.
+  assert.equal(sizesOffered(`${API}/a.jpg 1x, ${API}/b.jpg 2x`), 2);
+  assert.equal(sizesOffered(`${API}/a.jpg`), 1);
+
+  // Mixed: only the well-formed candidate counts.
+  assert.equal(sizesOffered(`${API}/a.jpg 400w, ${API}/b.jpg w800`), 1);
+
+  // And the whole point: malformed descriptors fail the contract.
+  const v = usesAvailableSizes({ field: 'url', entry: sixScales(), srcset: bad });
+  assert.equal(v.ok, false, 'markup the browser drops is not "using the sizes"');
+});

@@ -100,8 +100,16 @@ export function sizesOffered(srcset) {
   if (typeof srcset !== 'string' || !srcset.trim()) return 0;
   const urls = new Set();
   for (const part of srcset.split(',')) {
-    const url = part.trim().split(/\s+/)[0];
-    if (url) urls.add(url);
+    const [url, descriptor] = part.trim().split(/\s+/);
+    if (!url) continue;
+    // A candidate the browser will DROP is not a size on offer. The descriptor
+    // is NUMBER then unit (`400w`, `2x`); reversed or malformed (`w400`) is
+    // invalid and silently discarded, leaving the browser on `src` — the
+    // full-size file. Inka's own nuxt example emitted `w400` for every scale it
+    // read from real metadata, so counting URLs alone would have called that
+    // responsive. A bare URL with no descriptor is valid (implicitly 1x).
+    if (descriptor !== undefined && !/^\d+(\.\d+)?[wx]$/.test(descriptor)) continue;
+    urls.add(url);
   }
   return urls.size;
 }
