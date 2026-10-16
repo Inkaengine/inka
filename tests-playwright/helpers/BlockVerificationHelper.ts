@@ -563,11 +563,24 @@ export async function checkEditAnnotations(
       // imageSizes.mjs, which is unit-tested without a browser.
       const imageFields: Array<{ field: string; rendered: boolean; srcset: string | null }> = [];
       if (blockData && uid) {
-        const imgProps = (bridge?.getBlockSchema?.(uid) || null)?.properties as
-          Record<string, any> | undefined;
+        const imgSchema = bridge?.getBlockSchema?.(uid) || null;
+        const imgProps = imgSchema?.properties as Record<string, any> | undefined;
+        // A field hidden by fieldRules is NOT expected to render, and the
+        // resolved schema already says so — getBlockSchema applies the
+        // schemaEnhancer, and hiding drops the field from FIELDSETS while
+        // leaving it in `properties`. Reading properties alone therefore
+        // demanded an image for a field the author cannot even see: a hero
+        // whose variation is `text-only` still carries its image data.
+        // Fieldsets are how Volto expresses visibility and how blockSync
+        // already reads it; a schema with none has not restricted anything.
+        const imgFieldsets = imgSchema?.fieldsets as Array<{ fields?: string[] }> | undefined;
+        const visibleFields = imgFieldsets?.length
+          ? new Set(imgFieldsets.flatMap((fs) => fs?.fields ?? []))
+          : null;
         for (const [field, value] of Object.entries(blockData)) {
           if (field.startsWith('@')) continue;
           if (imgProps?.[field]?.widget !== 'image') continue;
+          if (visibleFields && !visibleFields.has(field)) continue;   // hidden by fieldRules
           // A VALUE is all this needs. Resolving where the scales live is done
           // in Node by resolveImageEntry, because they are not always inside
           // the field: an image block holds a plain path string in `url` with
