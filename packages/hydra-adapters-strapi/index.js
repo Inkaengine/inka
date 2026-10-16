@@ -74,6 +74,39 @@ const STRAPI_FIELD_TYPES = {
   dynamiczone: { type: 'array' },
 };
 
+/**
+ * Strapi's query operations: what each is called, and which input collects its
+ * value. The ids are this adapter's own, like the index names, and nothing
+ * translates them — behind them are Strapi's filter operators (`$containsi`,
+ * `$eq`, `$null`, `$gte`).
+ *
+ * `parent.under` is named for what it does: the addressing map is walked, so a
+ * location criterion really does match everything beneath a page, which is not
+ * true of every CMS.
+ */
+const OPERATORS = {
+  'selection.any': {
+    title: 'Matches any of',
+    widget: 'MultipleSelectionWidget',
+  },
+  'selection.none': {
+    title: 'Matches none of',
+    widget: 'MultipleSelectionWidget',
+  },
+  'string.contains': { title: 'Contains', widget: 'StringWidget' },
+  'string.is': { title: 'Is', widget: 'StringWidget' },
+  'parent.under': {
+    title: 'Somewhere under',
+    widget: 'ReferenceWidget',
+  },
+  'date.after': { title: 'After', widget: 'DateWidget' },
+  'date.before': { title: 'Before', widget: 'DateWidget' },
+};
+
+/** The operators map for one index: its own operations, described. */
+const operatorsFor = (ids) =>
+  Object.fromEntries(ids.map((id) => [id, { ...OPERATORS[id], operation: id }]));
+
 export class StrapiAdapter extends BaseAdapter {
   constructor({
     cmsBaseUrl,
@@ -141,6 +174,33 @@ export class StrapiAdapter extends BaseAdapter {
    * round trips below the cache — `adapter.requestJson.bind(adapter)`. A cache
    * that bypassed this seam would be untestable.
    */
+  /**
+   * What a VISITOR asked a search block for, as Strapi criteria.
+   *
+   * Its own ids, executed by the loop below like any stored criterion. The
+   * location window really is a window: the addressing map is walked, so
+   * `depth: 1` is the direct children and no depth is everything beneath.
+   */
+  visitorCriteria({ text, filters = [], ranges = [], under } = {}) {
+    const criteria = [];
+    if (text) criteria.push({ i: 'title', o: 'string.contains', v: text });
+    for (const f of filters) {
+      criteria.push({ i: f.i, o: 'selection.any', v: f.values });
+    }
+    for (const r of ranges) {
+      if (r.from) criteria.push({ i: r.i, o: 'date.after', v: r.from });
+      if (r.to) criteria.push({ i: r.i, o: 'date.before', v: r.to });
+    }
+    if (under) {
+      criteria.push({
+        i: 'parent',
+        o: 'parent.under',
+        v: under.depth ? `${under.path}::${under.depth}` : under.path,
+      });
+    }
+    return criteria;
+  }
+
   async requestJson(route, { method = 'GET', body, params } = {}) {
     const url = new URL(`${this.cmsBaseUrl}${route}`);
     for (const [key, value] of Object.entries(params ?? {})) {
@@ -1193,6 +1253,7 @@ export class StrapiAdapter extends BaseAdapter {
               // collection, so there is nothing to order BY type.
               sortable: false,
               operations: ['selection.any', 'selection.none'],
+              operators: operatorsFor(['selection.any', 'selection.none']),
               values: { [this.collection]: { title: this.collection } },
             },
             title: {
@@ -1203,6 +1264,7 @@ export class StrapiAdapter extends BaseAdapter {
               enabled: true,
               sortable: true,
               operations: ['string.contains', 'string.is'],
+              operators: operatorsFor(['string.contains', 'string.is']),
             },
             parent: {
               title: 'Location',
@@ -1211,7 +1273,8 @@ export class StrapiAdapter extends BaseAdapter {
               group: 'Metadata',
               enabled: true,
               sortable: false,
-              operations: ['string.absolutePath'],
+              operations: ['parent.under'],
+              operators: operatorsFor(['parent.under']),
             },
             publishedAt: {
               title: 'Published',
@@ -1223,6 +1286,15 @@ export class StrapiAdapter extends BaseAdapter {
               enabled: true,
               sortable: true,
               operations: ['selection.any'],
+              operators: operatorsFor(['selection.any']),
+              // The two it can be. Strapi's whole workflow is one nullable
+              // timestamp, and the query below compares against these names —
+              // but they were never declared, so the facet drew a multi-select
+              // with nothing in it and no criterion could be built by hand.
+              values: {
+                published: { title: 'Published' },
+                draft: { title: 'Draft' },
+              },
             },
             updatedAt: {
               title: 'Last edited',
@@ -1233,7 +1305,12 @@ export class StrapiAdapter extends BaseAdapter {
               group: 'Dates',
               enabled: true,
               sortable: true,
-              operations: ['date.afterRelativeDate', 'date.beforeRelativeDate'],
+              // A real date window, not a relative one: the old declaration
+              // said `date.afterRelativeDate`, which no branch below executed,
+              // so the criterion fell through to "Strapi has no index" — or,
+              // worse, read as a filter the editor could set and nothing honoured.
+              operations: ['date.after', 'date.before'],
+              operators: operatorsFor(['date.after', 'date.before']),
             },
           },
           // WHAT STRAPI WILL SORT A COLLECTION BY, in its own field names. A
@@ -1328,7 +1405,10 @@ export class StrapiAdapter extends BaseAdapter {
         };
         let candidates = null;
 
-        for (const criterion of args.query ?? []) {
+        for (const criterion of [
+          ...(args.query ?? []),
+          ...this.visitorCriteria(args),
+        ]) {
           const { i: index, o: operation, v: value } = criterion;
           const values = Array.isArray(value) ? value : [value];
           if (index === 'collection') {
@@ -1345,15 +1425,31 @@ export class StrapiAdapter extends BaseAdapter {
               return { items: [], total: 0 };
             }
           } else if (index === 'parent') {
-            if (operation !== 'string.absolutePath') {
+            if (operation !== 'parent.under') {
               throw new AdapterError(
                 `Strapi cannot apply '${operation}' to the location index`,
                 { code: 'BAD_REQUEST', status: 400 },
               );
             }
-            const root = String(values[0] ?? '').replace(/\/$/, '');
+            // `<path>::<depth>` limits how deep the window reaches, the way
+            // Plone's path query carries a depth: `::1` is the direct children.
+            // Without it the whole subtree matches, which is what this index's
+            // title promises.
+            const [rawRoot, rawDepth] = String(values[0] ?? '').split('::');
+            const root = rawRoot.replace(/\/$/, '');
+            const depth = rawDepth ? Number(rawDepth) : undefined;
+            const within = (path) => {
+              // The page itself belongs to the whole-subtree answer but not to
+              // "what is IN this page": a listing that included its own page
+              // would show the reader the page they are on.
+              if (!path.startsWith(`${root}/`)) {
+                return path === root && depth === undefined;
+              }
+              if (depth === undefined) return true;
+              return path.slice(root.length + 1).split('/').length <= depth;
+            };
             const under = [...paths.entries()]
-              .filter(([, path]) => path === root || path.startsWith(`${root}/`))
+              .filter(([, path]) => within(path))
               .map(([documentId]) => documentId);
             candidates = candidates
               ? candidates.filter((id) => under.includes(id))
@@ -1366,6 +1462,17 @@ export class StrapiAdapter extends BaseAdapter {
             } else {
               throw new AdapterError(
                 `Strapi cannot apply '${operation}' to the title index`,
+                { code: 'BAD_REQUEST', status: 400 },
+              );
+            }
+          } else if (index === 'updatedAt') {
+            if (operation === 'date.after') {
+              params['filters[updatedAt][$gte]'] = String(values[0] ?? '');
+            } else if (operation === 'date.before') {
+              params['filters[updatedAt][$lte]'] = String(values[0] ?? '');
+            } else {
+              throw new AdapterError(
+                `Strapi cannot apply '${operation}' to the updatedAt index`,
                 { code: 'BAD_REQUEST', status: 400 },
               );
             }

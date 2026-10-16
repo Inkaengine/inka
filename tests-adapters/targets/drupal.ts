@@ -101,6 +101,11 @@ const target: Target = {
     state: 'status',
     modified: 'changed',
   },
+  queryOps: {
+    typeIsAnyOf: 'selection.any',
+    titleContains: 'string.contains',
+    under: 'menu_parent.is',
+  },
   adapter,
 
   async start() {

@@ -19,6 +19,7 @@
  * path survives it unchanged — which is what every component wants anyway.
  */
 
+
 /** Plone marks folderishness explicitly; canonical Documents imply it. */
 const isFolderish = (doc) =>
   doc.fields?.isFolderish ?? ['Folder', 'Plone Site', 'page'].includes(doc.type);
@@ -126,6 +127,14 @@ function indexesToPlone(result) {
         'menus read it, and an empty one reads as a CMS that cannot sort',
     );
   }
+  // Passed through, both maps, exactly as the adapter answered. Every field
+  // the query builder reads about an operation — its title, and WHICH WIDGET
+  // draws its value — comes from the CMS, because the CMS is the only thing
+  // that knows what it can be queried on and how. Plone's /@querystring says
+  // it outright; the other adapters state it themselves. Deriving any of it
+  // here would mean overriding the backend's own answer: a real Plone
+  // advertises `string.showInactive` as a multi-select and `reference.is` as a
+  // content picker, and neither is guessable from the operation's name.
   return {
     indexes: result.indexes,
     sortable_indexes: result.sortable_indexes,

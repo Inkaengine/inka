@@ -74,6 +74,43 @@ function orderDocuments(items, sortOn, sortOrder) {
   });
 }
 
+/**
+ * Drupal's query operations: what each is called, and which input collects its
+ * value. The ids are this adapter's own, like the index names — nothing
+ * translates them, so a criterion is stored and executed in one spelling.
+ *
+ * JSON:API's filter operators are what is behind them: `IN` for a multi-value
+ * selection, `NOT IN` for its negation, `CONTAINS` for a substring. An index
+ * advertises only the ones that make sense for it.
+ */
+const OPERATORS = {
+  'selection.any': {
+    title: 'Matches any of',
+    widget: 'MultipleSelectionWidget',
+  },
+  'selection.none': {
+    title: 'Matches none of',
+    widget: 'MultipleSelectionWidget',
+  },
+  'string.contains': { title: 'Contains', widget: 'StringWidget' },
+  'reference.any': { title: 'Matches any of', widget: 'autocomplete' },
+  'reference.none': { title: 'Matches none of', widget: 'autocomplete' },
+  // Drupal's hierarchy IS the menu, so a location criterion is answered from
+  // the menu tree rather than a path prefix. The title says which it is.
+  'menu_parent.is': { title: 'Under this menu item', widget: 'ReferenceWidget' },
+  'date.after': { title: 'After', widget: 'DateWidget' },
+  'date.before': { title: 'Before', widget: 'DateWidget' },
+  'int.is': { title: 'Equals', widget: 'StringWidget' },
+  'int.largerThan': { title: 'More than', widget: 'StringWidget' },
+  'int.lessThan': { title: 'Less than', widget: 'StringWidget' },
+  'boolean.isTrue': { title: 'Yes', widget: null },
+  'boolean.isFalse': { title: 'No', widget: null },
+};
+
+/** The operators map for one index: its own operations, described. */
+const operatorsFor = (ids) =>
+  Object.fromEntries(ids.map((id) => [id, { ...OPERATORS[id], operation: id }]));
+
 export class DrupalAdapter extends BaseAdapter {
   /**
    * `translations` says how THIS Drupal holds them, because Drupal does both
@@ -123,6 +160,36 @@ export class DrupalAdapter extends BaseAdapter {
     this.bundle = bundle;
     this.translationsMode = translations;
     this.csrfToken = null;
+  }
+
+  /**
+   * What a VISITOR asked a search block for, as Drupal criteria.
+   *
+   * Its own ids, executed by the loop below like any stored criterion. A
+   * location window is the MENU tree, which is where Drupal keeps hierarchy;
+   * it answers for the items under a menu item, so a deeper window is refused
+   * rather than silently flattened.
+   */
+  visitorCriteria({ text, filters = [], ranges = [], under } = {}) {
+    const criteria = [];
+    if (text) criteria.push({ i: 'title', o: 'string.contains', v: text });
+    for (const f of filters) {
+      criteria.push({ i: f.i, o: 'selection.any', v: f.values });
+    }
+    for (const r of ranges) {
+      if (r.from) criteria.push({ i: r.i, o: 'date.after', v: r.from });
+      if (r.to) criteria.push({ i: r.i, o: 'date.before', v: r.to });
+    }
+    if (under) {
+      if (under.depth !== undefined && under.depth !== 1) {
+        throw new AdapterError(
+          `drupal lists the menu items directly under ${under.path}, not ${under.depth} levels of them`,
+          { code: 'BAD_REQUEST', status: 400 },
+        );
+      }
+      criteria.push({ i: 'menu_parent', o: 'menu_parent.is', v: under.path });
+    }
+    return criteria;
   }
 
   async init(ctx) {
@@ -1381,7 +1448,10 @@ export class DrupalAdapter extends BaseAdapter {
             group: 'Metadata',
             enabled: true,
             sortable: false,
+            // filter[node_type] is one equality; JSON:API can negate it with
+            // NOT IN, so both are real here.
             operations: ['selection.any', 'selection.none'],
+            operators: operatorsFor(['selection.any', 'selection.none']),
             values: Object.fromEntries(
               types.items.map((t) => [t.id, { title: t.title }]),
             ),
@@ -1393,9 +1463,8 @@ export class DrupalAdapter extends BaseAdapter {
             group: 'Metadata',
             enabled: true,
             sortable: false,
-            // Drupal's hierarchy is the menu, so "under this path" means
-            // "under this menu item" rather than a path prefix match.
-            operations: ['string.absolutePath'],
+            operations: ['menu_parent.is'],
+            operators: operatorsFor(['menu_parent.is']),
           },
           status: {
             title: 'State',
@@ -1406,6 +1475,7 @@ export class DrupalAdapter extends BaseAdapter {
             enabled: true,
             sortable: false,
             operations: ['selection.any'],
+            operators: operatorsFor(['selection.any']),
             values: {
               published: { title: 'Published' },
               draft: { title: 'Draft' },
@@ -1423,7 +1493,9 @@ export class DrupalAdapter extends BaseAdapter {
             // sortable date, and without one the query builder cannot offer
             // the ordering at all — the index has to exist, not just the sort.
             sortable: true,
-            operations: ['date.lessThan', 'date.largerThan'],
+            // filter[changed][operator]=< / > against a timestamp.
+            operations: ['date.after', 'date.before'],
+            operators: operatorsFor(['date.after', 'date.before']),
           },
           title: {
             title: 'Title',
@@ -1432,19 +1504,63 @@ export class DrupalAdapter extends BaseAdapter {
             enabled: true,
             sortable: true,
             operations: ['string.contains'],
+            operators: operatorsFor(['string.contains']),
           },
         };
 
         for (const f of flatFields) {
           const name = f.attributes.field_name;
           if (!name?.startsWith('field_') || name === 'field_hydra_blocks') continue;
-          indexes[name] = {
+          // What a field can be queried WITH follows from its type, and so
+          // does the input that collects the value. Declared uniformly as a
+          // selection, every field drew a multi-select: an integer field asked
+          // for a tick-list of nothing, and a reference field offered no way
+          // to find a term.
+          const kind = f.attributes.field_type;
+          const target =
+            f.attributes.settings?.handler_settings?.target_bundles?.[0];
+          const common = {
             title: f.attributes.label,
             group: 'Fields',
             enabled: true,
             sortable: false,
-            operations: ['selection.any'],
           };
+          if (kind === 'entity_reference' && target) {
+            indexes[name] = {
+              ...common,
+              type: 'array',
+              operations: ['reference.any', 'reference.none'],
+              operators: operatorsFor(['reference.any', 'reference.none']),
+              // Looked up, not listed: a vocabulary can run to thousands of
+              // terms, and `vocabulary.get` reads this bundle.
+              vocabulary: target,
+            };
+          } else if (['integer', 'decimal', 'float'].includes(kind)) {
+            indexes[name] = {
+              ...common,
+              type: 'number',
+              operations: ['int.is', 'int.largerThan', 'int.lessThan'],
+              operators: operatorsFor([
+                'int.is',
+                'int.largerThan',
+                'int.lessThan',
+              ]),
+            };
+          } else if (kind === 'boolean') {
+            indexes[name] = {
+              ...common,
+              type: 'boolean',
+              operations: ['boolean.isTrue', 'boolean.isFalse'],
+              operators: operatorsFor(['boolean.isTrue', 'boolean.isFalse']),
+            };
+          } else {
+            indexes[name] = {
+              ...common,
+              type: 'string',
+              operations: ['string.contains'],
+              operators: operatorsFor(['string.contains']),
+            };
+          }
         }
 
         // WHAT JSON:API WILL SORT A NODE COLLECTION BY, as Drupal names its
@@ -1469,23 +1585,100 @@ export class DrupalAdapter extends BaseAdapter {
         const params = new URLSearchParams();
         let menuParent = null;
 
-        for (const criterion of args.query ?? []) {
+        for (const criterion of [
+          ...(args.query ?? []),
+          ...this.visitorCriteria(args),
+        ]) {
           const value = Array.isArray(criterion.v) ? criterion.v : [criterion.v];
+          // The operation is honoured, not ignored: this used to switch on the
+          // INDEX alone, so an index advertising `selection.none` filtered
+          // exactly like `selection.any` and the sidebar's "matches none of"
+          // returned the nodes that matched. An operation this adapter did not
+          // advertise for this index is refused, like an unadvertised sort key.
+          const op = criterion.o;
+          const refuse = () => {
+            throw new AdapterError(
+              `drupal cannot apply '${op}' to '${criterion.i}'`,
+              { code: 'BAD_REQUEST', status: 400 },
+            );
+          };
+          const negated = op === 'selection.none';
           switch (criterion.i) {
             case 'node_type':
-              params.set('filter[node_type]', String(value[0]));
+              if (op !== 'selection.any' && !negated) refuse();
+              if (negated) {
+                params.set('filter[node_type][operator]', 'NOT IN');
+                for (const v of value) {
+                  params.append('filter[node_type][value][]', String(v));
+                }
+              } else {
+                params.set('filter[node_type]', String(value[0]));
+              }
               break;
             case 'menu_parent':
+              if (op !== 'menu_parent.is') refuse();
               menuParent = String(value[0]);
               break;
             case 'status':
+              if (op !== 'selection.any') refuse();
               params.set('filter[status]', value[0] === 'published' ? '1' : '0');
               break;
+            case 'changed':
+              if (op === 'date.after') {
+                params.set('filter[changed][operator]', '>');
+                params.set(
+                  'filter[changed][value]',
+                  String(Math.floor(new Date(String(value[0])).getTime() / 1000)),
+                );
+              } else if (op === 'date.before') {
+                params.set('filter[changed][operator]', '<');
+                params.set(
+                  'filter[changed][value]',
+                  String(Math.floor(new Date(String(value[0])).getTime() / 1000)),
+                );
+              } else refuse();
+              break;
             case 'title':
+              if (op !== 'string.contains') refuse();
               params.set('filter[title][operator]', 'CONTAINS');
               params.set('filter[title][value]', String(value[0]));
               break;
             default:
+              // A field_config-derived index. Which operations it has came
+              // from its field TYPE, so this honours the same split.
+              if (op === 'string.contains') {
+                params.set(`filter[${criterion.i}][operator]`, 'CONTAINS');
+                params.set(`filter[${criterion.i}][value]`, String(value[0]));
+                break;
+              }
+              if (op === 'int.is') {
+                params.set(`filter[${criterion.i}]`, String(value[0]));
+                break;
+              }
+              if (op === 'int.largerThan' || op === 'int.lessThan') {
+                params.set(
+                  `filter[${criterion.i}][operator]`,
+                  op === 'int.largerThan' ? '>' : '<',
+                );
+                params.set(`filter[${criterion.i}][value]`, String(value[0]));
+                break;
+              }
+              if (op === 'boolean.isTrue' || op === 'boolean.isFalse') {
+                params.set(
+                  `filter[${criterion.i}]`,
+                  op === 'boolean.isTrue' ? '1' : '0',
+                );
+                break;
+              }
+              if (!['selection.any', 'reference.any'].includes(op) && !negated
+                  && op !== 'reference.none') refuse();
+              if (negated || op === 'reference.none') {
+                params.set(`filter[${criterion.i}][operator]`, 'NOT IN');
+                for (const v of value) {
+                  params.append(`filter[${criterion.i}][value][]`, String(v));
+                }
+                break;
+              }
               // selection.any is multi-value, and Drupal has no comma syntax:
               // filter[x]=a,b is one equality against the literal "a,b" and
               // matches nothing. Every field_config-derived index advertises

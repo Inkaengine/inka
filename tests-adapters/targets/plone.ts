@@ -116,6 +116,11 @@ const target: Target = {
     state: 'review_state',
     modified: 'modified',
   },
+  queryOps: {
+    typeIsAnyOf: 'plone.app.querystring.operation.selection.any',
+    titleContains: 'plone.app.querystring.operation.string.contains',
+    under: 'plone.app.querystring.operation.string.absolutePath',
+  },
   adapter,
 
   async start() {

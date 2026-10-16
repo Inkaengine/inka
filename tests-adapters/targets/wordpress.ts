@@ -401,6 +401,11 @@ const target: Target = {
     state: 'status',
     modified: 'modified',
   },
+  queryOps: {
+    typeIsAnyOf: 'selection.any',
+    titleContains: 'string.contains',
+    under: 'parent.is',
+  },
   adapter,
 
   async start() {

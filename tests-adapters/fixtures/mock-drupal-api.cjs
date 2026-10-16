@@ -581,11 +581,25 @@ app.get('/jsonapi/node_type/node_type', (req, res) =>
 app.get('/jsonapi/field_config/field_config', (req, res) =>
   res.json(
     collection(
+      // The field KINDS matter, not just the names: what an index can be
+      // queried with follows from its field type, so a fixture with nothing
+      // but strings left the adapter's field loop unexercised — every
+      // field_* index was declared as a multi-select with nothing to select
+      // and no test could tell.
       [
         ['title', 'Title', 'string', true],
         ['field_hydra_blocks', 'Hydra blocks', 'string_long', false],
         ['status', 'Published', 'boolean', false],
-      ].map(([name, label, type, required]) => ({
+        [
+          'field_topic',
+          'Topic',
+          'entity_reference',
+          false,
+          { handler_settings: { target_bundles: ['categories'] } },
+        ],
+        ['field_rating', 'Rating', 'integer', false],
+        ['field_summary', 'Summary', 'string', false],
+      ].map(([name, label, type, required, settings]) => ({
         type: 'field_config--field_config',
         id: `field-${name}`,
         attributes: {
@@ -595,6 +609,7 @@ app.get('/jsonapi/field_config/field_config', (req, res) =>
           required,
           bundle: 'page',
           entity_type: 'node',
+          ...(settings ? { settings } : {}),
         },
       })),
     ),

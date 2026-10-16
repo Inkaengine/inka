@@ -146,6 +146,80 @@ export function parseBlocks(content) {
   };
 }
 
+/**
+ * A date criterion as WordPress will accept it.
+ *
+ * `?after=` and `?before=` take ISO 8601 and 400 on anything else, while the
+ * editor's date input produces a plain `2026-01-01` — so the criterion the
+ * sidebar wrote was refused by the endpoint, as a 400 on /wp/v2/pages that
+ * named no parameter.
+ *
+ * An unparseable value throws instead of being passed on: dropped, it would
+ * widen the query, and a date filter that quietly matches everything looks
+ * like a site with no recent content.
+ */
+function isoDateTime(value) {
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) {
+    throw new AdapterError(
+      `wordpress cannot read ${JSON.stringify(value)} as a date`,
+      { code: 'BAD_REQUEST', status: 400 },
+    );
+  }
+  return date.toISOString().replace(/\.\d{3}Z$/, '');
+}
+
+/**
+ * WordPress's query operations: what each is called, and which input collects
+ * its value.
+ *
+ * The ids are WordPress's own, the way the index names are. Nothing translates
+ * them to another CMS's spelling — a criterion is stored as it was declared and
+ * comes back here unchanged.
+ *
+ * Only operations WordPress can really serve appear below, and an index
+ * advertises only the ones it can serve ITSELF: `?author_exclude` exists, so
+ * author can be excluded; there is no equivalent for `status` or `post_type`,
+ * so those offer "any of" alone. An index that advertised an exclusion
+ * WordPress cannot do would put a filter in the sidebar that quietly returns
+ * everything.
+ *
+ * `widget` names the input the admin draws (the shared half of the contract).
+ */
+const OPERATORS = {
+  'selection.any': {
+    title: 'Matches any of',
+    widget: 'MultipleSelectionWidget',
+  },
+  'selection.none': {
+    title: 'Matches none of',
+    widget: 'MultipleSelectionWidget',
+  },
+  'string.contains': { title: 'Contains', widget: 'StringWidget' },
+  // WordPress's hierarchy query is `?parent=<id>`: the pages DIRECTLY under
+  // one page, not everything beneath it. The title says so, because that is
+  // all the editor needs to know and no scope flag can be inferred from an id.
+  'parent.is': { title: 'Directly under', widget: 'ReferenceWidget' },
+  'date.after': { title: 'After', widget: 'DateWidget' },
+  'date.before': { title: 'Before', widget: 'DateWidget' },
+};
+
+/**
+ * The operators map for one index: its own operations, described.
+ *
+ * `widget` overrides the table for an index whose choices are looked up rather
+ * than listed — a site's categories or its users can run to thousands, so the
+ * input is a type-ahead against the index's vocabulary, not a multi-select of
+ * everything.
+ */
+const operatorsFor = (ids, { widget } = {}) =>
+  Object.fromEntries(
+    ids.map((id) => [
+      id,
+      { ...OPERATORS[id], ...(widget ? { widget } : {}), operation: id },
+    ]),
+  );
+
 export class WordPressAdapter extends BaseAdapter {
   /**
    * `translations` is only meaningful once a plugin provides them: core
@@ -551,6 +625,73 @@ export class WordPressAdapter extends BaseAdapter {
    * from the id turns that into a 404 the caller cannot distinguish from a
    * broken request.
    */
+  /**
+   * What a VISITOR asked a search block for, as WordPress criteria.
+   *
+   * Its own operation ids, so the loop below executes them like any stored
+   * criterion. A location window is `?parent=`, which is the pages DIRECTLY
+   * under one page: asked for anything deeper, this refuses rather than
+   * quietly returning the children and calling it a subtree.
+   */
+  visitorCriteria({ text, filters = [], ranges = [], under } = {}) {
+    const criteria = [];
+    if (text) criteria.push({ i: 'title', o: 'string.contains', v: text });
+    for (const f of filters) {
+      criteria.push({ i: f.i, o: 'selection.any', v: f.values });
+    }
+    for (const r of ranges) {
+      if (r.from) criteria.push({ i: r.i, o: 'date.after', v: r.from });
+      if (r.to) criteria.push({ i: r.i, o: 'date.before', v: r.to });
+    }
+    if (under) {
+      if (under.depth !== undefined && under.depth !== 1) {
+        throw new AdapterError(
+          `wordpress can list the pages directly under ${under.path}, not ${under.depth} levels of them`,
+          { code: 'BAD_REQUEST', status: 400 },
+        );
+      }
+      criteria.push({ i: 'parent', o: 'parent.is', v: under.path });
+    }
+    return criteria;
+  }
+
+  /**
+   * Turn a vocabulary's tokens into the ids WordPress filters by.
+   *
+   * `vocabulary.get` answers with SLUGS, because a slug is the name a human
+   * recognises and the one that survives a re-import — but `?categories=` and
+   * `?author=` take numeric ids and silently ignore anything else. A criterion
+   * stored from the facet picker therefore has to be resolved before the query
+   * goes out, or the filter does nothing.
+   *
+   * An unknown slug throws rather than being dropped: dropping it widens the
+   * query, so a facet on a deleted term would quietly return everything.
+   */
+  async resolveTokens(name, values) {
+    const ids = [];
+    const slugs = [];
+    for (const v of values) {
+      if (/^\d+$/.test(String(v))) ids.push(String(v));
+      else slugs.push(String(v));
+    }
+    if (!slugs.length) return ids;
+    const found = await this.fetchJson(`/wp/v2/${encodeURIComponent(name)}`, {
+      params: { slug: slugs.join(','), per_page: '100' },
+    });
+    const bySlug = new Map((found ?? []).map((t) => [t.slug, t.id]));
+    for (const slug of slugs) {
+      const id = bySlug.get(slug);
+      if (id === undefined) {
+        throw new AdapterError(`wordpress has no '${slug}' in ${name}`, {
+          code: 'BAD_REQUEST',
+          status: 400,
+        });
+      }
+      ids.push(String(id));
+    }
+    return ids;
+  }
+
   async restBaseFor(typeId) {
     if (!this.restBases) {
       const types = await this.cachedMeta('types', () => this.fetchJson('/wp/v2/types'));
@@ -2079,6 +2220,7 @@ export class WordPressAdapter extends BaseAdapter {
             enabled: true,
             sortable: true,
             operations: ['string.contains'],
+            operators: operatorsFor(['string.contains']),
           },
           post_type: {
             title: 'Type',
@@ -2087,7 +2229,10 @@ export class WordPressAdapter extends BaseAdapter {
             group: 'Metadata',
             enabled: true,
             sortable: false,
-            operations: ['selection.any', 'selection.none'],
+            // No exclusion: /wp/v2/<type> IS the type, so a query reads one
+            // collection. "None of these types" is not a WordPress query.
+            operations: ['selection.any'],
+            operators: operatorsFor(['selection.any']),
             values: Object.fromEntries(
               Object.entries(types).map(([id, t]) => [id, { title: t.name }]),
             ),
@@ -2099,7 +2244,8 @@ export class WordPressAdapter extends BaseAdapter {
             group: 'Metadata',
             enabled: true,
             sortable: false,
-            operations: ['string.absolutePath'],
+            operations: ['parent.is'],
+            operators: operatorsFor(['parent.is']),
           },
           status: {
             title: 'State',
@@ -2110,7 +2256,9 @@ export class WordPressAdapter extends BaseAdapter {
             group: 'Metadata',
             enabled: true,
             sortable: false,
+            // `?status=` takes a list; there is no status_exclude.
             operations: ['selection.any'],
+            operators: operatorsFor(['selection.any']),
             values: {
               publish: { title: 'Published' },
               draft: { title: 'Draft' },
@@ -2124,7 +2272,17 @@ export class WordPressAdapter extends BaseAdapter {
             group: 'Metadata',
             enabled: true,
             sortable: false,
-            operations: ['selection.any'],
+            // `?author=` and `?author_exclude=` both exist.
+            operations: ['selection.any', 'selection.none'],
+            operators: operatorsFor(['selection.any', 'selection.none'], {
+              widget: 'autocomplete',
+            }),
+            // Looked up rather than listed: a site can have thousands of
+            // users, and an index that offered a selection with nothing to
+            // select drew an empty picker — the editor could open the facet
+            // and not tell whether the site had no authors or the adapter had
+            // not said.
+            vocabulary: 'users',
           },
           modified: {
             title: 'Last edited',
@@ -2137,7 +2295,12 @@ export class WordPressAdapter extends BaseAdapter {
             // WordPress accepts orderby=modified already; it simply was not
             // offered, so the query builder had no way to sort by it.
             sortable: true,
-            operations: ['date.lessThan', 'date.largerThan'],
+            // `?modified_after=` / `?modified_before=`. The old declaration
+            // said `date.lessThan`, which nothing here executed: the criterion
+            // became `?modified=<date>`, a parameter WordPress drops, so the
+            // listing came back unfiltered and nothing reported it.
+            operations: ['date.after', 'date.before'],
+            operators: operatorsFor(['date.after', 'date.before']),
           },
           date: {
             title: 'Date',
@@ -2145,16 +2308,33 @@ export class WordPressAdapter extends BaseAdapter {
             group: 'Dates',
             enabled: true,
             sortable: true,
-            operations: ['date.lessThan', 'date.largerThan'],
+            // `?after=` / `?before=`, WordPress's own date window.
+            operations: ['date.after', 'date.before'],
+            operators: operatorsFor(['date.after', 'date.before']),
           },
         };
 
         // One index per registered taxonomy, with its terms as values, so a
         // custom taxonomy shows up in the query builder without any change
         // here.
+        // The post type this adapter reads, as the types registry names it:
+        // `pages` is the REST base, `page` is the type.
+        const queriedType =
+          Object.entries(types).find(
+            ([, t]) => (t.rest_base ?? '') === this.postType,
+          )?.[0] ?? this.postType;
+
         for (const [id, tax] of Object.entries(taxonomies)) {
           if (tax.visibility && tax.visibility.public === false) continue;
-          indexes[id] = {
+          // Only taxonomies registered FOR this post type. `?categories=` on
+          // /wp/v2/pages is a 400 — pages are not categorised — so declaring
+          // every taxonomy put facets in the search block that could not be
+          // applied at all, and a visitor ticking one got an error rather than
+          // a narrower list.
+          if (Array.isArray(tax.types) && !tax.types.includes(queriedType)) {
+            continue;
+          }
+          indexes[tax.rest_base ?? id] = {
             title: tax.name,
             // A page holds a LIST of terms, so a column drawn from one joins
             // them. Typed here rather than left out: this fixture's pages
@@ -2165,7 +2345,17 @@ export class WordPressAdapter extends BaseAdapter {
             group: 'Categorization',
             enabled: true,
             sortable: false,
+            // `?<rest_base>=` and `?<rest_base>_exclude=`, which is why this
+            // index is keyed by the taxonomy's REST base rather than its id:
+            // the queryable name is `categories`, not `category`.
             operations: ['selection.any', 'selection.none'],
+            operators: operatorsFor(['selection.any', 'selection.none'], {
+              widget: 'autocomplete',
+            }),
+            // The terms are looked up by this name — `vocabulary.get` reads
+            // /wp/v2/<rest_base> — rather than sent inline: a site's tags run
+            // to thousands, which is why Plone does the same for its keywords.
+            vocabulary: tax.rest_base ?? id,
           };
         }
 
@@ -2200,34 +2390,79 @@ export class WordPressAdapter extends BaseAdapter {
         };
         let postType = this.postType;
 
-        for (const criterion of args.query ?? []) {
+        for (const criterion of [
+          ...(args.query ?? []),
+          ...this.visitorCriteria(args),
+        ]) {
           const value = Array.isArray(criterion.v) ? criterion.v : [criterion.v];
+          // The operation is honoured, not ignored. It used to be: this
+          // switched on the INDEX alone, so `selection.none` on a taxonomy
+          // filtered exactly like `selection.any` — a sidebar that said
+          // "matches none of" and returned the posts that matched. An
+          // operation this adapter did not advertise for this index is refused
+          // here for the same reason an unadvertised sort key is: the sidebar
+          // is built from what this adapter says it can do.
+          const op = criterion.o;
+          const refuse = () => {
+            throw new AdapterError(
+              `wordpress cannot apply '${op}' to '${criterion.i}'`,
+              { code: 'BAD_REQUEST', status: 400 },
+            );
+          };
           switch (criterion.i) {
             case 'post_type':
+              if (op !== 'selection.any') refuse();
               postType = await this.restBaseFor(String(value[0]));
               if (postType === null) return { items: [], total: 0 };
               break;
             case 'parent':
+              if (op !== 'parent.is') refuse();
               params.parent = String(
                 await this.resolvePath(String(value[0])).catch(() => 0),
               );
               break;
             case 'status':
+              if (op !== 'selection.any') refuse();
               params.status = value.join(',');
               break;
-            case 'author':
-              params.author = value.join(',');
+            case 'author': {
+              const ids = (await this.resolveTokens('users', value)).join(',');
+              if (op === 'selection.any') params.author = ids;
+              else if (op === 'selection.none') params.author_exclude = ids;
+              else refuse();
               break;
+            }
             case 'title':
+              if (op !== 'string.contains') refuse();
               // WordPress has no title query param — setting one is silently
               // ignored and the endpoint returns everything, which reads as a
               // filter that works. ?search= is the real one.
               params.search = String(value[0]);
               break;
-            default:
-              // A taxonomy index: WordPress filters by its rest_base with a
-              // comma-separated term list.
-              params[criterion.i] = value.join(',');
+            case 'modified':
+              if (op === 'date.after') {
+                params.modified_after = isoDateTime(value[0]);
+              } else if (op === 'date.before') {
+                params.modified_before = isoDateTime(value[0]);
+              } else refuse();
+              break;
+            case 'date':
+              if (op === 'date.after') params.after = isoDateTime(value[0]);
+              else if (op === 'date.before') params.before = isoDateTime(value[0]);
+              else refuse();
+              break;
+            default: {
+              // A taxonomy index, keyed by its REST base: `?categories=` takes
+              // a term list, `?categories_exclude=` the other way round — both
+              // by id, so the picker's slugs are resolved first.
+              const terms = (
+                await this.resolveTokens(criterion.i, value)
+              ).join(',');
+              if (op === 'selection.any') params[criterion.i] = terms;
+              else if (op === 'selection.none')
+                params[`${criterion.i}_exclude`] = terms;
+              else refuse();
+            }
           }
         }
 

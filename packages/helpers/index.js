@@ -165,6 +165,69 @@ export function contentPath(url, apiUrl) {
  * @param {string|string[]} [extraCriteria['facet.*']] - Facet filters (e.g., 'facet.portal_type': ['Document'])
  * @returns {Object} Request body for POST to @querystring-search
  */
+/**
+ * What a VISITOR asked a search block for, named rather than spelled as
+ * criteria.
+ *
+ * A listing's stored criteria are already in the backend's own spelling: they
+ * were written by the sidebar out of what the adapter advertised, and they come
+ * back untouched. The visitor's input is the other half, and it has no stored
+ * form at all — ticking two tags or typing in the search box has to become a
+ * query at request time.
+ *
+ * `buildQuerystringSearchBody` does that by writing Plone operation ids
+ * (`string.contains`, `selection.any`, `date.largerThan`), which is right when
+ * the frontend is reading Plone and wrong everywhere else: those ids mean
+ * nothing to WordPress, and a WordPress search block that sent them would
+ * return an unfiltered listing. So for an adapter the input stays NAMED — text,
+ * a set of values, a date window, a location — and the adapter turns it into
+ * its own operations, the only place that knows which ones exist.
+ *
+ * These four are the basic kinds a search block collects. A facet an adapter
+ * cannot serve never reaches here: the schema offers only indexes whose
+ * declared operations support it.
+ */
+export function searchInputsFrom(queryConfig, extraCriteria = {}, contextPath) {
+  const inputs = {};
+
+  if (extraCriteria.SearchableText) inputs.text = extraCriteria.SearchableText;
+
+  const filters = [];
+  const ranges = {};
+  for (const [key, value] of Object.entries(extraCriteria)) {
+    if (!key.startsWith('facet.')) continue;
+    const field = key.replace('facet.', '');
+    const dateMatch = field.match(/^(.+)\.(after|before)$/);
+    if (dateMatch) {
+      // A from and a to are two facet keys on ONE index, each carrying its
+      // direction, so they are collected back into a single window here.
+      const [, index, direction] = dateMatch;
+      const v = Array.isArray(value) ? value[0] : value;
+      if (v) {
+        ranges[index] = ranges[index] ?? { i: index };
+        ranges[index][direction === 'after' ? 'from' : 'to'] = v;
+      }
+    } else {
+      filters.push({ i: field, values: Array.isArray(value) ? value : [value] });
+    }
+  }
+  if (filters.length) inputs.filters = filters;
+  if (Object.keys(ranges).length) inputs.ranges = Object.values(ranges);
+
+  // A listing with no criteria of its own means "what is in this page",
+  // which is a location question the adapter answers in its own terms —
+  // Plone a path query, WordPress ?parent=, Drupal the menu. `depth: 1` is
+  // the children; a block that sets its own depth asks for the subtree.
+  const hasQuery = (queryConfig?.query ?? []).length > 0;
+  if (!hasQuery && contextPath) {
+    inputs.under = {
+      path: contextPath,
+      ...(queryConfig?.depth !== undefined ? {} : { depth: 1 }),
+    };
+  }
+  return inputs;
+}
+
 export function buildQuerystringSearchBody(
   queryConfig,
   paging = {},
@@ -1005,68 +1068,6 @@ async function fetchFolderContents({ apiUrl, contextPath, contextContent, mapped
   };
 }
 
-/**
- * A listing fetcher that reads a CMS DIRECTLY, as a visitor, through that CMS's
- * own public reader.
- *
- * The companion to `ploneFetchItems`, which is PLONE's: it builds a
- * `@querystring-search` body in Plone's vocabulary and with Plone's operator
- * names. There is no shared query builder, because each CMS has its own — this
- * TRANSLATES NOTHING. The stored criteria go across in the vocabulary that
- * CMS's `querystring.getIndexes` advertised and the reader works out its own
- * request from them.
- *
- * No adapter is involved: a visitor's page has none mounted (the same reason
- * Plone needs no bridge to serve a page), so what this takes is a reader.
- *
- * @param {object} options
- * @param {object} options.reader - the CMS's publicRead, with `listing()`
- * @param {string} [options.contextPath] - where an unconfigured listing looks
- * @param {object} [options.extraCriteria] - from the URL: SearchableText, facets
- */
-export function publicFetchItems({ reader, contextPath, extraCriteria = {} }) {
-  if (!reader || typeof reader.listing !== 'function') {
-    throw new Error(
-      'publicFetchItems needs a public reader with listing(). Plone has none ' +
-        'on purpose: its query builder IS ploneFetchItems, already a direct ' +
-        'read. Use that for Plone.',
-    );
-  }
-  return async function fetchItems(block, { start, size } = {}) {
-    const facets = Object.keys(extraCriteria).filter((k) =>
-      k.startsWith('facet.'),
-    );
-    if (facets.length) {
-      throw new Error(
-        `publicFetchItems: no public read for the facets ${facets.join(', ')}. ` +
-          `Add them to the CMS's publicRead rather than dropping them: a ` +
-          `listing that ignores a filter shows the wrong content and looks right.`,
-      );
-    }
-    const querystring = block?.querystring ?? {};
-    const page = await reader.listing({
-      // Untouched, in the CMS's own index names.
-      query: querystring.query ?? [],
-      // The url's search term, which is not vocabulary: every CMS answers
-      // "find this text" its own way.
-      text: extraCriteria.SearchableText,
-      contextPath: contextPath || '/',
-      sortOn: querystring.sort_on,
-      sortOrder: querystring.sort_order,
-      start: start ?? 0,
-      size: size ?? 25,
-    });
-    if (!page) return { items: [], total: 0 };
-    return {
-      items: (page.items ?? []).map((item) => ({
-        '@id': item.path,
-        title: item.title,
-        '@type': item['@type'] ?? 'Document',
-      })),
-      total: page.total ?? (page.items ?? []).length,
-    };
-  };
-}
 
 export function ploneFetchItems({
   apiUrl,
@@ -1170,22 +1171,36 @@ export async function adapterGetContent(adapter, path, { expand = [] } = {}) {
  *
  * The intent takes no offset — Plone and WordPress honour `limit`, Drupal
  * returns everything — so a page is asked for up to its end and sliced here.
- * Nor does it take a context: adapters search from the site root, so a relative
- * path criterion resolves from there, exactly as it does in the admin.
+ *
+ * The block's stored criteria go through untouched: they are already in the
+ * backend's own spelling, written by the sidebar out of what this adapter
+ * advertised. What the VISITOR asked for is passed as named inputs instead of
+ * as criteria — see searchInputsFrom — because no frontend can know which
+ * operation means "contains" on this CMS, and inventing Plone's name for it was
+ * how a WordPress search block came back unfiltered.
  */
-export function adapterFetchItems({ adapter, extraCriteria = {} } = {}) {
+export function adapterFetchItems({
+  adapter,
+  extraCriteria = {},
+  contextPath,
+} = {}) {
   if (!adapter) throw new Error('adapterFetchItems requires an adapter');
 
   return async function fetchItems(block, { start, size }) {
-    const body = buildQuerystringSearchBody(
-      block.querystring,
-      { b_start: start, b_size: size },
-      extraCriteria,
-    );
+    const stored = block.querystring ?? {};
+    const inputs = searchInputsFrom(stored, extraCriteria, contextPath);
+    const sortOn = extraCriteria.sort_on || stored.sort_on;
     const result = await adapter.dispatch('querystringSearch', {
-      query: body.query,
-      sortOn: body.sort_on,
-      sortOrder: body.sort_order,
+      query: stored.query ?? [],
+      ...inputs,
+      // No default sort key: an unsorted listing is the CMS's own order —
+      // Plone's folder position, WordPress's menu_order, Drupal's menu weight
+      // — and naming Plone's here made every other backend sort by a key it
+      // does not have.
+      ...(sortOn ? { sortOn } : {}),
+      ...(extraCriteria.sort_order || stored.sort_order
+        ? { sortOrder: extraCriteria.sort_order || stored.sort_order }
+        : {}),
       limit: start + size,
     });
     const plone = plonify('querystringSearch', result, { path: '/' });

@@ -230,19 +230,36 @@ a visitor may see: WordPress's reader sends `status=publish` and never
 `context=edit`, because asking for either of the editor's parameters is what
 would demand a session.
 
-Listings are the same story. A listing block stores the criteria in the index
-names **its own** adapter advertised, and that CMS's reader builds its own
-request from them — nothing is translated on the way in:
+Listings are the same story, and this is where a frontend stops being generic.
+A listing block stores its criteria in the index names and operation ids **its
+own** adapter advertised, so building the request is that CMS's own work. Each
+package ships the fetcher for its CMS, and a frontend imports the one for the
+CMS it reads:
 
 ### Js
 
 ```js
-import { publicFetchItems } from '@volto-hydra/helpers';
+// A WordPress frontend.
+import { wpFetchItems } from '@volto-hydra/hydra-adapters-wordpress/public';
+const fetchItems = wpFetchItems({ cmsBaseUrl, contextPath, extraCriteria });
 
-// Plone's query builder is ploneFetchItems, which is already a direct read.
-// Every other CMS uses its own reader.
-const fetchItems = publicFetchItems({ reader: cms, contextPath });
+// A Plone frontend.
+import { ploneFetchItems } from '@volto-hydra/helpers';
+const fetchItems = ploneFetchItems({ apiUrl, contextPath, extraCriteria });
 ```
+
+Both answer the same `fetchItems(block, { start, size })` that
+`expandListingBlocks` calls, and nothing sits between them. There used to be a
+generic `publicFetchItems({ reader })` here, programmed against whatever every
+CMS had in common, and every one of its limits came from that: it threw on
+facets, dropped every field but the title, ignored the OPERATION in a criterion
+so "none of" filtered as "any of", and carried a leftover Plone sort name. A
+frontend is written for a CMS; the fetcher it imports can answer all of those,
+because there is only one CMS in it.
+
+What a VISITOR asked for goes in as `extraCriteria` — `SearchableText`,
+`facet.<index>`, `facet.<index>.after|before`, `sort_on` — and the fetcher turns
+it into its own CMS's parameters.
 
 <block type="callout" variation="note">
 
@@ -325,6 +342,111 @@ export class MyCmsAdapter extends BaseAdapter {
   }
 }
 ```
+
+## What a listing can be queried on
+
+The query builder in the sidebar is built entirely from one answer, and the search block's facets come from the same one. `querystring.getIndexes` returns two maps: `indexes`, the fields that can be queried, and `sortable_indexes`, the keys that can be sorted on. They are separate vocabularies on purpose — Plone's queryable index is `Title` while its sort key is `sortable_title` — so neither is derived from the other.
+
+Index names, operation ids and sort keys are all the CMS's own. Nothing translates them: a criterion is stored as `{i, o, v}` in the spelling the adapter advertised, and comes back to the adapter unchanged. Plone's are `plone.app.querystring`'s long ids, because that is what Plone's content holds.
+
+Each index says what may be done with it, and for each operation, what it is called and **which widget collects its value**:
+
+### Js
+
+```js
+case 'querystring.getIndexes':
+  return {
+    indexes: {
+      post_type: {
+        title: 'Type',              // shown in the index dropdown
+        group: 'Metadata',
+        enabled: true,
+        sortable: false,
+        type: 'string',             // what KIND of value it holds, for a column
+        column: true,               // offered as a contents column by default
+        operations: ['selection.any'],
+        operators: {
+          'selection.any': {
+            title: 'Matches any of',
+            widget: 'MultipleSelectionWidget',
+          },
+        },
+        values: { post: { title: 'Post' }, page: { title: 'Page' } },
+      },
+      modified: {
+        title: 'Last modified',
+        enabled: true,
+        sortable: true,
+        type: 'date',
+        operations: ['date.after', 'date.before'],
+        operators: {
+          'date.after': { title: 'After', widget: 'DateWidget' },
+          'date.before': { title: 'Before', widget: 'DateWidget' },
+        },
+      },
+    },
+    sortable_indexes: {
+      modified: { title: 'Last modified' },
+      menu_order: { title: 'Position in parent' },
+    },
+  };
+```
+
+`sortable_indexes` is also what the admin's sort menus offer, and `BaseAdapter.assertSortable()` refuses a `sortOn` that is not in it — so an adapter never has to translate someone else's sort key into its own.
+
+Plone needs none of this written by hand: `/@querystring` already answers with exactly these fields, so the adapter forwards them.
+
+## The widgets are the shared half
+
+`widget` names an input the admin can draw. This list is the contract:
+
+<block type="slateTable" table.fixed table.celled>
+
+| widget | the input |
+| --- | --- |
+| `null` | none — the operation takes no value ("today", "current logged-in user") |
+| `StringWidget` | a text field |
+| `DateWidget` | one date |
+| `DateRangeWidget` | a from and a to |
+| `RelativeDateWidget` | a number of days |
+| `MultipleSelectionWidget` | a multi-select of the index's `values` |
+| `autocomplete` | a lookup against the index's `vocabulary` |
+| `ReferenceWidget` | a content picker |
+| `RelativePathWidget` | this page / the parent page |
+
+</block>
+
+Everything else is the CMS's own. A new operation needs nothing from the admin — declare it, title it, and name the widget that collects its value. Needing an input that is NOT on this list is the one case that cannot be declared: that is a change to the admin.
+
+### Advertise only what you can serve
+
+Advertise an operation and it will be used. An index that offers "matches none of" when the backend has no exclusion query returns everything that matched instead — a filter that reads as working and quietly does the opposite. WordPress is the worked example: `?author_exclude` exists, so `author` offers an exclusion; `?status=` has no counterpart, so `status` offers "any of" alone.
+
+Three more of the same rule, each of which the contract suite checks:
+
+- **Offer something to choose.** An operation whose widget is a selection draws a picker, so the index has to say what goes in it: `values` when the list is short enough to send, a `vocabulary` to look up when it is not. Neither, and the editor opens the facet to find nothing to tick, unable to tell whether the site has no categories or the adapter forgot to say.
+- **Only where it applies.** A WordPress taxonomy is registered for particular post types; `?categories=` on `/wp/v2/pages` is a 400, so the adapter declares a taxonomy index only for the type it reads. A facet that cannot be applied is worse than a missing one.
+- **Take the value the widget produces.** A `DateWidget` yields `2026-01-01`. WordPress's `?after=` wants ISO 8601 and refuses anything else, so the adapter converts it. The sidebar writes what its widget writes; making it fit is the adapter's job.
+
+For the same reason, state what the operation really does rather than borrowing a name that promises more. Plone's `string.absolutePath` matches a whole subtree; WordPress's `?parent=` is the pages directly under one page, so the WordPress adapter calls its own operation `parent.is` and titles it "Directly under". The editor then reads what they will get.
+
+### What a visitor asks for
+
+A listing's stored criteria are only half of a search block. The other half has no stored form at all: a visitor typing in the search box or ticking two facets has to become a query at request time, and no frontend can know which operation means "contains" on this CMS. So `querystringSearch` also takes the input NAMED, and the adapter turns it into its own operations:
+
+### Js
+
+```js
+dispatch('querystringSearch', {
+  query: [],                                  // the block's stored criteria
+  text: 'rain',                               // the search box
+  filters: [{ i: 'categories', values: ['weather'] }],
+  ranges: [{ i: 'modified', from: '2026-01-01', to: '2026-06-30' }],
+  under: { path: '/news', depth: 1 },          // "what is in this page"
+});
+```
+
+Four basic kinds, which is what a search block collects. Each adapter maps them onto its own operations — and refuses what it cannot do: asked for more than one level under a page, the WordPress adapter says so rather than returning the children and calling it a subtree.
 
 ### Declare only what you have
 

@@ -47,6 +47,22 @@ export interface Target {
     /** Whatever this CMS calls "last edited": modified, changed, … */
     modified: string;
   };
+  /**
+   * The OPERATION ids this CMS uses for the handful of things the shared
+   * assertions need to do. CMS-specific for the same reason the index names
+   * above are: nothing translates an operation, so a criterion is stored and
+   * executed in the backend's own spelling. Plone's come from its registry
+   * (`plone.app.querystring.operation.selection.any`), WordPress's are its own.
+   *
+   * `typeIsAnyOf` and the rest are named by what the assertion needs, not by
+   * what any one CMS calls it — that is what keeps the test shared.
+   */
+  queryOps: {
+    typeIsAnyOf: string;
+    titleContains: string;
+    /** Inside this location — children or deeper, whichever the CMS does. */
+    under: string;
+  };
   /** Boot the backing CMS (or mock) and seed it. */
   start(): Promise<void>;
   stop(): Promise<void>;

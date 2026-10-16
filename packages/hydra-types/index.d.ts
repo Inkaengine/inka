@@ -349,11 +349,44 @@ export interface Reference {
 }
 
 /**
+ * An input the admin can draw for a criterion's value. The shared half of the
+ * query contract: an adapter names one of these per operation, and everything
+ * else about a query — index names, operation ids, sort keys — is the CMS's
+ * own. `null` means the operation takes no value at all.
+ */
+export type QueryWidget =
+  | null
+  | 'StringWidget'
+  | 'DateWidget'
+  | 'DateRangeWidget'
+  | 'RelativeDateWidget'
+  | 'MultipleSelectionWidget'
+  | 'autocomplete'
+  | 'ReferenceWidget'
+  | 'RelativePathWidget';
+
+/** One operation: what it is called, and what collects its value. */
+export interface QueryOperator {
+  title: string;
+  description?: string;
+  widget: QueryWidget;
+  /** The operation's own id, as Plone's registry repeats it. */
+  operation?: string;
+}
+
+/**
  * One queryable field, and what may be done with it.
  *
- * Index NAMES are CMS-specific (Plone portal_type, WordPress post_type), the
- * same way content type names are — callers discover them here rather than
- * hardcoding. Operations are canonical so the query builder is CMS-neutral.
+ * Index NAMES and OPERATION ids are both CMS-specific (Plone's
+ * `portal_type` and `plone.app.querystring.operation.selection.any`,
+ * WordPress's `post_type` and `selection.any`), the same way content type
+ * names are: callers discover them here rather than hardcoding them, and
+ * nothing translates them, so a criterion is stored and executed in one
+ * spelling. Only the widget vocabulary is shared.
+ *
+ * Advertise an operation only if the backend can serve it: an index offering
+ * an exclusion the CMS cannot do returns the matches instead, which reads as a
+ * filter that works.
  */
 export interface QueryIndex {
   title: string;
@@ -361,17 +394,47 @@ export interface QueryIndex {
   group?: string;
   enabled: boolean;
   sortable: boolean;
-  /** Canonical operation ids this index supports, e.g. 'selection.any'. */
+  /** What KIND of value it holds, for a caller drawing it as a column. */
+  type?: 'string' | 'date' | 'boolean' | 'array' | 'number';
+  /** Offered as a contents column by default. */
+  column?: boolean;
+  /** This CMS's operation ids for this index, e.g. 'selection.any'. */
   operations: string[];
+  /** What each advertised operation is called, and what draws its value. */
+  operators: Record<string, QueryOperator>;
   /** Selectable values, when the index is an enumeration. */
   values?: Record<string, { title: string }>;
+  /** The vocabulary a selection index draws its choices from. */
+  vocabulary?: string;
 }
 
-/** One criterion: index, operation, value. */
+/** One criterion: index, operation, value — all in the CMS's own spelling. */
 export interface QueryCriterion {
   i: string;
   o: string;
   v?: unknown;
+}
+
+/**
+ * What a VISITOR asked a search block for, named rather than spelled as
+ * criteria.
+ *
+ * A listing's stored criteria are already in the backend's own spelling. A
+ * visitor's input has no stored form — typing in the search box or ticking two
+ * facets becomes a query at request time — and no frontend can know which
+ * operation means "contains" on this CMS. So `querystringSearch` takes these
+ * four basic kinds alongside `query`, and the adapter turns them into its own
+ * operations, refusing what it cannot do.
+ */
+export interface SearchInputs {
+  /** The search box. */
+  text?: string;
+  /** A facet selection: this index restricted to these values. */
+  filters?: Array<{ i: string; values: unknown[] }>;
+  /** A window on a date index. */
+  ranges?: Array<{ i: string; from?: string; to?: string }>;
+  /** "What is in this page": `depth: 1` is its children. */
+  under?: { path: string; depth?: number };
 }
 
 export interface Vocabulary {

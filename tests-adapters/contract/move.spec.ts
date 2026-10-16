@@ -222,27 +222,66 @@ describe('content.order and the menu', () => {
 });
 
 describe('content.sort', () => {
-  it('writes a new order for the children, by a field', async () => {
+  it('writes a new order for the children, by a key it advertises', async () => {
     // Persistent, not a sorted listing: after this, tree.list with no sort
     // returns them in the order that was written. A CMS with no manual ordering
     // to write must reject instead — reporting success for an order it cannot
     // keep is the one answer that misleads.
-    const before: any = await target.adapter.dispatch('tree.list', {
-      parent: '/news',
-    });
-    const titles = before.items.map((i: any) => i.title);
-    const descending = [...titles].sort().reverse();
+    //
+    // The key comes from `sortable_indexes`, not from this test. It used to ask
+    // every backend for `sortable_title`, which is PLONE's name for it — and
+    // passed only because the adapters carried a translation table that turned
+    // it into WordPress's `title` and Drupal's. Those tables are gone: a sort
+    // key is the CMS's own, the adapter advertises the ones it has, and asking
+    // for one it never advertised is refused. So the contract is the invariant,
+    // not the name: sorting by an advertised key reorders the children, the
+    // order persists, and descending is ascending backwards.
+    const { sortable_indexes: sortable }: any = await target.adapter.dispatch(
+      'querystring.getIndexes',
+      {},
+    );
+    const order = async () => {
+      const res: any = await target.adapter.dispatch('tree.list', {
+        parent: '/news',
+      });
+      return res.items.map((i: any) => i.path);
+    };
+    expect((await order()).length, 'nothing to reorder').toBeGreaterThan(1);
 
-    await target.adapter.dispatch('content.sort', {
-      path: '/news',
-      sortOn: 'sortable_title',
-      sortOrder: 'descending',
-    });
+    let reordered: string | null = null;
+    for (const key of Object.keys(sortable)) {
+      await target.adapter.dispatch('content.sort', {
+        path: '/news',
+        sortOn: key,
+        sortOrder: 'ascending',
+      });
+      const ascending = await order();
+      await target.adapter.dispatch('content.sort', {
+        path: '/news',
+        sortOn: key,
+        sortOrder: 'descending',
+      });
+      const descending = await order();
 
-    const after: any = await target.adapter.dispatch('tree.list', {
-      parent: '/news',
-    });
-    expect(after.items.map((i: any) => i.title)).toEqual(descending);
+      // Read back with no sort of its own: what tree.list returns is the order
+      // that was WRITTEN, which is the difference between ordering a folder and
+      // sorting one listing of it.
+      expect(descending, `descending by ${key} is ascending backwards`).toEqual(
+        [...ascending].reverse(),
+      );
+      // Ties are legitimate — a key every child shares (an unset effective
+      // date) cannot reorder anything — so one key proving it is enough.
+      if (ascending.join() !== descending.join()) {
+        reordered = key;
+        break;
+      }
+    }
+    expect(
+      reordered,
+      `none of the advertised sort keys (${Object.keys(sortable).join(
+        ', ',
+      )}) actually reordered the children`,
+    ).not.toBeNull();
   });
 });
 

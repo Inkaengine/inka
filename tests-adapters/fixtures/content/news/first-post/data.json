@@ -5,7 +5,7 @@
   "id": "first-post",
   "title": "First Post",
   "review_state": "published",
-  "is_folderish": false,
+  "is_folderish": true,
   "blocks": {
     "b1": {
       "@type": "slate",

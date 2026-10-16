@@ -57,6 +57,11 @@ const target: Target = {
     state: 'publishedAt',
     modified: 'updatedAt',
   },
+  queryOps: {
+    typeIsAnyOf: 'selection.any',
+    titleContains: 'string.contains',
+    under: 'parent.under',
+  },
   adapter,
 
   async start() {

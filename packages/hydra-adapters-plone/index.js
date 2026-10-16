@@ -30,19 +30,6 @@ function decodeBase64Url(segment) {
 /** Plone serves its REST API under a ++api++ traversal prefix. */
 const API_PREFIX = '/++api++';
 
-/**
- * Plone spells its query operations as fully-qualified dotted ids. The
- * canonical form drops the package prefix so a query builder written against
- * the contract does not have to know Plone exists.
- */
-const OPERATION_PREFIX = 'plone.app.querystring.operation.';
-
-const toCanonicalOperation = (op) =>
-  op.startsWith(OPERATION_PREFIX) ? op.slice(OPERATION_PREFIX.length) : op;
-
-const toPloneOperation = (op) =>
-  op.startsWith(OPERATION_PREFIX) ? op : `${OPERATION_PREFIX}${op}`;
-
 /** Plone review_state -> canonical state. */
 const STATE_MAP = { published: 'published', private: 'draft' };
 
@@ -103,6 +90,40 @@ export class PloneAdapter extends BaseAdapter {
     // sessionStorage during bootstrap), and a stale null there silently
     // downgrades every later call to cookie auth.
     this.getAuthToken = getAuthToken ?? null;
+  }
+
+  /**
+   * What a VISITOR asked a search block for, as Plone criteria.
+   *
+   * plone.app.querystring's own ids, because they are what this backend has
+   * and what its content already stores. A path window carries its depth in
+   * the VALUE, which is how Plone says "the children of" rather than
+   * "everything under".
+   */
+  visitorCriteria({ text, filters = [], ranges = [], under } = {}) {
+    const OP = 'plone.app.querystring.operation.';
+    const criteria = [];
+    if (text) {
+      criteria.push({ i: 'SearchableText', o: `${OP}string.contains`, v: text });
+    }
+    for (const f of filters) {
+      criteria.push({ i: f.i, o: `${OP}selection.any`, v: f.values });
+    }
+    for (const r of ranges) {
+      if (r.from) criteria.push({ i: r.i, o: `${OP}date.largerThan`, v: r.from });
+      if (r.to) criteria.push({ i: r.i, o: `${OP}date.lessThan`, v: r.to });
+    }
+    if (under) {
+      criteria.push({
+        i: 'path',
+        o: `${OP}string.absolutePath`,
+        // `path::depth` — the depth travels in the VALUE, which is how Plone
+        // and Volto spell it (`.::1` is the current page's children). The
+        // top-level `depth` on the request body is a different thing.
+        v: under.depth ? `${under.path}::${under.depth}` : under.path,
+      });
+    }
+    return criteria;
   }
 
   resolveToken() {
@@ -1127,7 +1148,15 @@ export class PloneAdapter extends BaseAdapter {
             group: index.group,
             enabled: index.enabled !== false,
             sortable: index.sortable === true,
-            operations: (index.operations ?? []).map(toCanonicalOperation),
+            // Plone's own operation ids, and Plone's own answer about each
+            // one: its title and WHICH WIDGET collects its value. Forwarded,
+            // not translated. plone.app.querystring is a registry, so this
+            // describes THIS site — an add-on's operation, or the
+            // elasticsearch fork's `string.search`, arrives here the same way
+            // the stock ones do. It is also what the content stores, so a
+            // criterion written years ago still matches an advertised id.
+            operations: index.operations ?? [],
+            operators: index.operators ?? {},
             values: index.values,
             // The vocabulary a selection index draws its choices from. Dropped
             // here once, which cost the query builder its value pickers — a
@@ -1163,11 +1192,9 @@ export class PloneAdapter extends BaseAdapter {
         const raw = await this.fetchJson('/@querystring-search', {
           method: 'POST',
           body: {
-            query: (args.query ?? []).map((c) => ({
-              i: c.i,
-              o: toPloneOperation(c.o),
-              v: c.v,
-            })),
+            // The block's stored criteria, plus what the visitor asked for in
+            // Plone's own spelling. See visitorCriteria.
+            query: [...(args.query ?? []), ...this.visitorCriteria(args)],
             ...(args.sortOn ? { sort_on: args.sortOn } : {}),
             ...(args.sortOrder ? { sort_order: args.sortOrder } : {}),
             ...(args.limit ? { b_size: args.limit } : {}),
@@ -1451,9 +1478,9 @@ export class PloneAdapter extends BaseAdapter {
  * keeps this honest as plone.app.querystring gains indexes.
  *
  * Reads Plone's OWN operation names, the long
- * `plone.app.querystring.operation.date.lessThan` form, before they are mapped
- * to canonical ones. That is deliberate: the long form carries the kind as a
- * path segment, which is what makes this readable at all.
+ * `plone.app.querystring.operation.date.lessThan` form, which is what this
+ * adapter advertises: the form carries the kind as a path segment, which is
+ * what makes this readable at all.
  *
  * The exception is the multi-valued ones. `Subject` (a page's keywords) and
  * `portal_type` (one token) advertise exactly the same `selection.any`, so

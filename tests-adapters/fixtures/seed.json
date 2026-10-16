@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical content set. Every conformance target projects this into its own CMS; every contract assertion refers to it rather than to per-CMS literals. `type` values are canonical names \u2014 each target maps them to its CMS's real type via Target.types. No template documents here: the frontend forces a layout only on paths it is not excluded from, and the journey's roots are excluded, so nothing needs them. They were seeded when forcing was still on for /news, and every WordPress test re-seeds \u2014 the extra document pushed two tests past the 30s timeout. Re-seed them if forcing is ever enabled for a journey root; templates ARE CMS content and each target must carry the ones its frontend references.",
+  "_comment": "Canonical content set. Every conformance target projects this into its own CMS; every contract assertion refers to it rather than to per-CMS literals. `type` values are canonical names \u2014 each target maps them to its CMS's real type via Target.types. No template documents here: the frontend forces a layout only on paths it is not excluded from, and the journey's roots are excluded, so nothing needs them. They were seeded when forcing was still on for /news, and every WordPress test re-seeds \u2014 the extra document pushed two tests past the 30s timeout. Re-seed them if forcing is ever enabled for a journey root; templates ARE CMS content and each target must carry the ones its frontend references. THREE LEVELS DEEP on purpose: /news/first-post/update is a grandchild of /news. Without one, a listing scoped to a path cannot be told apart from one scoped to direct children \u2014 the subtree test passed whichever an adapter returned, which is how the two came to disagree.",
   "documents": [
     {
       "path": "/",
@@ -27,6 +27,32 @@
               "children": [
                 {
                   "text": "Hello"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "blocksLayout": {
+        "items": [
+          "b1"
+        ]
+      }
+    },
+    {
+      "path": "/news/first-post/update",
+      "type": "page",
+      "title": "First Post Update",
+      "state": "published",
+      "blocks": {
+        "b1": {
+          "@type": "slate",
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "A follow-up, three levels deep."
                 }
               ]
             }

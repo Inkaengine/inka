@@ -112,6 +112,56 @@ describe('adapterFetchItems', () => {
     expect(args.sortOrder).toBe('descending');
   });
 
+  it("sends a visitor's search as named inputs, not as Plone criteria", async () => {
+    // What the visitor asked for has no stored form: typing in the search box
+    // or ticking two tags has to become a query at request time. It used to
+    // become PLONE criteria — `string.contains`, `selection.any`,
+    // `date.largerThan` — which are ids only Plone has, so the same search
+    // block on WordPress sent operations WordPress ignores and came back
+    // unfiltered, looking like a site with no matches rather than a broken
+    // filter. Named inputs instead: the adapter turns them into its own
+    // operations, which is the only place that knows what they are.
+    const adapter = fakeAdapter({ querystringSearch: results(1) });
+    const fetchItems = adapterFetchItems({
+      adapter,
+      extraCriteria: {
+        SearchableText: 'rain',
+        'facet.Subject': ['weather', 'climate'],
+        'facet.modified.after': '2026-01-01',
+        'facet.modified.before': '2026-06-30',
+      },
+    });
+
+    await fetchItems({ querystring: { query: [] } }, { start: 0, size: 5 });
+
+    const args = adapter.dispatch.mock.calls[0][1];
+    expect(args.query).toEqual([]);
+    expect(args.text).toBe('rain');
+    expect(args.filters).toEqual([{ i: 'Subject', values: ['weather', 'climate'] }]);
+    // A from and a to are two facet keys on one index, collected into one window.
+    expect(args.ranges).toEqual([
+      { i: 'modified', from: '2026-01-01', to: '2026-06-30' },
+    ]);
+    expect(JSON.stringify(args)).not.toContain('plone.app.querystring');
+  });
+
+  it('asks for the children of this page when a listing has no criteria', async () => {
+    // "What is in this page" is a location question, and which operation
+    // answers it differs per CMS: a path query in Plone, `?parent=` in
+    // WordPress, the menu in Drupal. Naming Plone's relativePath here made
+    // every unconfigured listing on another backend ask for an operation that
+    // backend does not have.
+    const adapter = fakeAdapter({ querystringSearch: results(2) });
+    const fetchItems = adapterFetchItems({ adapter, contextPath: '/news' });
+
+    await fetchItems({ querystring: {} }, { start: 0, size: 5 });
+
+    const args = adapter.dispatch.mock.calls[0][1];
+    expect(args.under).toEqual({ path: '/news', depth: 1 });
+    // And no sort key of its own: unsorted means the CMS's own order.
+    expect(args.sortOn).toBeUndefined();
+  });
+
   it('refuses to be built without an adapter', () => {
     expect(() => adapterFetchItems({})).toThrow(/adapter/);
   });

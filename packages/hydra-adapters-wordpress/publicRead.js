@@ -154,71 +154,6 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
       });
     },
 
-    /**
-     * A LISTING, as a visitor: published pages, optionally under a parent and
-     * narrowed by text.
-     *
-     * The SUBSET a public listing needs. `status=publish` and no
-     * `context=edit`, which is what keeps it a visitor's read.
-     *
-     * A path scope becomes `parent`, which is CHILDREN and not the subtree:
-     * core's pages endpoint has no descendant filter, and faking one by
-     * walking the tree would be several requests pretending to be one. A
-     * caller that needs a deeper scope has to say so; this does not pretend.
-     */
-    async listing({ query = [], text, contextPath = '/', sortOn, sortOrder, start = 0, size = 25 } = {}) {
-      const params = {
-        status: 'publish',
-        per_page: String(start + size),
-        page: '1',
-      };
-      // The criteria arrive in WORDPRESS's vocabulary — `parent`, `post_type`,
-      // `title` — because that is what this adapter's getIndexes advertises
-      // and therefore what the listing block stored. This file works out the
-      // request from them; nothing translates index names on the way in.
-      let scope = null;
-      for (const { i, v } of query) {
-        const value = Array.isArray(v) ? v[0] : v;
-        if (i === 'parent') {
-          scope = String(value);
-        } else if (i === 'post_type') {
-          // A visitor's listing is pages; a type criterion that asks for
-          // something else is answered by the endpoint it names.
-          params.type = Array.isArray(v) ? v.join(',') : String(value);
-        } else if (i === 'title') {
-          params.search = String(value);
-        } else {
-          throw new Error(
-            `wordpress public listing: no read for the '${i}' index. It is ` +
-              `one this adapter advertises, so add it here rather than ` +
-              `dropping it — WordPress answers an unknown parameter with ` +
-              `everything, which looks like a working listing.`,
-          );
-        }
-      }
-      if (text) params.search = text;
-      if (sortOn) {
-        params.orderby = sortOn === 'sortable_title' ? 'title' : sortOn;
-        params.order = String(sortOrder).startsWith('desc') ? 'desc' : 'asc';
-      }
-      if (scope === null) scope = contextPath;
-      if (scope && scope !== '/') {
-        const parent = await readPage(scope);
-        if (!parent) return { items: [], total: 0 };
-        params.parent = String(parent.id);
-      }
-      const res = await fetchImpl(api('/wp/v2/pages', params));
-      if (!res.ok) return null;
-      const posts = await res.json();
-      const items = posts.slice(start, start + size).map((post) => ({
-        path: new URL(post.link, base).pathname.replace(/\/+$/, '') || '/',
-        title: post.title?.rendered ?? '',
-      }));
-      // X-WP-Total is the unpaged count, which is what a listing's "N results"
-      // means; the array's length is only this page.
-      const total = Number(res.headers.get('X-WP-Total') ?? posts.length);
-      return { items, total };
-    },
 
     /**
      * The navigation: the top of the PAGE TREE, which is what WordPress builds its
@@ -302,5 +237,314 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
         parentLabel: n.parentId ? (labelById.get(n.parentId) ?? null) : null,
       }));
     },
+  };
+}
+
+/**
+ * A listing block's items, read from WordPress as a VISITOR.
+ *
+ * The peer of `ploneFetchItems`: same `fetchItems(block, {start, size})`
+ * contract, so `expandListingBlocks` calls either one — and nothing between
+ * them. A frontend is tied to a CMS; it imports the fetcher for the CMS it
+ * reads, and this file is where WordPress's own query lives.
+ *
+ * This replaces a generic `publicFetchItems({reader})` that could only pass
+ * through what every CMS had in common, and whose limits were all the same
+ * mistake: it threw on facets, dropped every field but title, ignored the
+ * OPERATION in a criterion, and carried a leftover Plone sort name. Each of
+ * those is answerable here, because here there is only WordPress.
+ *
+ * @param {object} options
+ * @param {string} options.cmsBaseUrl
+ * @param {string} [options.contextPath] The page the listing is on, which is
+ *   what an unconfigured listing means by "what is in this page".
+ * @param {Record<string, unknown>} [options.extraCriteria] What the VISITOR
+ *   asked for: `SearchableText`, `facet.<index>`, `facet.<index>.after|before`,
+ *   `sort_on`, `sort_order`.
+ * @param {typeof globalThis.fetch} [options.fetch]
+ */
+export function wpFetchItems({
+  cmsBaseUrl,
+  contextPath = '/',
+  extraCriteria = {},
+  fetch: fetchImpl = globalThis.fetch,
+} = {}) {
+  if (!cmsBaseUrl) throw new Error('wpFetchItems requires cmsBaseUrl');
+  const base = cmsBaseUrl.replace(/\/+$/, '');
+  const api = (route, params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return `${base}/wp-json${route}${qs ? `?${qs}` : ''}`;
+  };
+  const getJson = async (url) => {
+    const res = await fetchImpl(url);
+    if (!res.ok) {
+      throw new Error(`wpFetchItems: ${res.status} from ${url}`);
+    }
+    return { body: await res.json(), headers: res.headers };
+  };
+
+  /**
+   * A post type's REST base — `page` is read at /wp/v2/pages.
+   *
+   * Resolved rather than guessed by pluralising: a custom type registers its
+   * own `rest_base`, and `?type=` on /wp/v2/pages is not a parameter
+   * WordPress has. Setting it returned pages for a listing of posts and read
+   * as a listing that worked.
+   */
+  const restBaseFor = async (type) => {
+    const { body: types } = await getJson(api('/wp/v2/types'));
+    const found = types?.[type];
+    if (!found) {
+      throw new Error(
+        `wpFetchItems: this site has no '${type}' post type (has: ${Object.keys(
+          types ?? {},
+        ).join(', ')})`,
+      );
+    }
+    return found.rest_base ?? type;
+  };
+
+  /** A page's id, for `?parent=`. */
+  const idOfPath = async (path) => {
+    const slug = path.split('/').filter(Boolean).pop() ?? '';
+    if (!slug) return null;
+    const { body } = await getJson(
+      api('/wp/v2/pages', { slug, status: 'publish' }),
+    );
+    return body?.[0]?.id ?? null;
+  };
+
+  /**
+   * Taxonomy terms and users are filtered by ID, while a facet's stored value
+   * is a SLUG — the name a human recognises and the one that survives a
+   * re-import. Resolved here, and an unknown slug throws: dropped, it would
+   * widen the query, so a facet on a deleted term would return everything.
+   */
+  const idsFor = async (restBase, values) => {
+    const ids = [];
+    const slugs = [];
+    for (const v of values) {
+      if (/^\d+$/.test(String(v))) ids.push(String(v));
+      else slugs.push(String(v));
+    }
+    if (slugs.length) {
+      const { body: terms } = await getJson(
+        api(`/wp/v2/${restBase}`, { slug: slugs.join(','), per_page: '100' }),
+      );
+      const bySlug = new Map((terms ?? []).map((t) => [t.slug, t.id]));
+      for (const slug of slugs) {
+        const id = bySlug.get(slug);
+        if (id === undefined) {
+          throw new Error(`wpFetchItems: no '${slug}' in ${restBase}`);
+        }
+        ids.push(String(id));
+      }
+    }
+    return ids.join(',');
+  };
+
+  /** `?after=` wants ISO 8601; a date input produces `2026-01-01`. */
+  const isoDateTime = (value) => {
+    const date = new Date(String(value));
+    if (Number.isNaN(date.getTime())) {
+      throw new Error(`wpFetchItems: ${JSON.stringify(value)} is not a date`);
+    }
+    return date.toISOString().replace(/\.\d{3}Z$/, '');
+  };
+
+  return async function fetchItems(block, { start = 0, size = 25 } = {}) {
+    const stored = block?.querystring ?? {};
+    const params = {
+      // A visitor sees published content, and asking for anything else is what
+      // demands a session.
+      status: 'publish',
+      // The featured image and the author come back on the SAME request. Two
+      // reads per item would be a listing page of 24 extra requests.
+      _embed: 'wp:featuredmedia,author',
+      per_page: String(size),
+      offset: String(start),
+    };
+    let restBase = 'pages';
+    let parentPath = null;
+
+    // The stored criteria are in WORDPRESS's own index names and operation
+    // ids, because that is what this CMS's adapter advertised and therefore
+    // what the editor wrote. Both halves are honoured: an operation this
+    // listing cannot apply is said out loud rather than applied as its
+    // opposite.
+    for (const { i, o, v } of stored.query ?? []) {
+      const values = Array.isArray(v) ? v : [v];
+      const refuse = () => {
+        throw new Error(
+          `wpFetchItems: WordPress cannot apply '${o}' to '${i}'`,
+        );
+      };
+      switch (i) {
+        case 'post_type':
+          if (o !== 'selection.any') refuse();
+          restBase = await restBaseFor(String(values[0]));
+          break;
+        case 'parent':
+          if (o !== 'parent.is') refuse();
+          parentPath = String(values[0]);
+          break;
+        case 'title':
+          if (o !== 'string.contains') refuse();
+          params.search = String(values[0]);
+          break;
+        case 'author':
+          if (o === 'selection.any') {
+            params.author = await idsFor('users', values);
+          } else if (o === 'selection.none') {
+            params.author_exclude = await idsFor('users', values);
+          } else refuse();
+          break;
+        case 'status':
+          // A visitor reads published content whatever the listing says, so
+          // this is not applied. Refusing it would break a listing that is
+          // perfectly renderable in public; applying it could publish a draft.
+          break;
+        case 'modified':
+          if (o === 'date.after') params.modified_after = isoDateTime(values[0]);
+          else if (o === 'date.before') {
+            params.modified_before = isoDateTime(values[0]);
+          } else refuse();
+          break;
+        case 'date':
+          if (o === 'date.after') params.after = isoDateTime(values[0]);
+          else if (o === 'date.before') params.before = isoDateTime(values[0]);
+          else refuse();
+          break;
+        default:
+          // A taxonomy index, keyed by its REST base: `?categories=` by id,
+          // `?categories_exclude=` the other way round.
+          if (o === 'selection.any') params[i] = await idsFor(i, values);
+          else if (o === 'selection.none') {
+            params[`${i}_exclude`] = await idsFor(i, values);
+          } else refuse();
+      }
+    }
+
+    // What the VISITOR asked for, which has no stored form: the search box and
+    // the facets they ticked. WordPress's own parameters again — this is the
+    // same CMS, so there is nothing to translate.
+    if (extraCriteria.SearchableText) {
+      params.search = String(extraCriteria.SearchableText);
+    }
+    for (const [key, value] of Object.entries(extraCriteria)) {
+      if (!key.startsWith('facet.')) continue;
+      const field = key.replace('facet.', '');
+      const values = Array.isArray(value) ? value : [value];
+      if (!values.length || values.every((entry) => !entry)) continue;
+      const window = field.match(/^(.+)\.(after|before)$/);
+      if (window) {
+        const [, index, direction] = window;
+        const when = isoDateTime(values[0]);
+        if (index === 'modified') params[`modified_${direction}`] = when;
+        else if (index === 'date') params[direction] = when;
+        else {
+          throw new Error(
+            `wpFetchItems: '${index}' is not a date WordPress can window`,
+          );
+        }
+      } else if (field === 'author') {
+        params.author = await idsFor('users', values);
+      } else if (field === 'post_type') {
+        restBase = await restBaseFor(String(values[0]));
+      } else {
+        params[field] = await idsFor(field, values);
+      }
+    }
+
+    const sortOn = extraCriteria.sort_on || stored.sort_on;
+    if (sortOn) {
+      // WordPress's own orderby keys, which are what its adapter advertises as
+      // `sortable_indexes` and therefore what the editor could choose. There
+      // is no translation table here: one existed, mapping Plone's
+      // `sortable_title`, and it was the last place in this package that
+      // assumed a listing had been authored against Plone.
+      params.orderby = String(sortOn);
+      params.order = String(
+        extraCriteria.sort_order || stored.sort_order || 'asc',
+      ).startsWith('desc')
+        ? 'desc'
+        : 'asc';
+    }
+
+    // An unconfigured listing means "what is in this page", and WordPress's
+    // hierarchy question is `?parent=`: the pages directly under one page.
+    if (parentPath === null && !(stored.query ?? []).length) {
+      parentPath = contextPath;
+    }
+    if (parentPath && parentPath !== '/') {
+      const id = await idOfPath(parentPath);
+      if (id === null) return { items: [], total: 0 };
+      params.parent = String(id);
+    }
+
+    const { body: posts, headers } = await getJson(
+      api(`/wp/v2/${restBase}`, params),
+    );
+    const items = (posts ?? []).map((post) => itemFromPost(post, base));
+    return {
+      // X-WP-Total is the unpaged count, which is what a listing's "N results"
+      // means; the array's length is only this page.
+      items,
+      total: Number(headers.get('X-WP-Total') ?? items.length),
+    };
+  };
+}
+
+/**
+ * One WordPress post as a listing item.
+ *
+ * Carries the fields a teaser draws — a title, a description, an image, a date
+ * — not a title alone. A listing whose items had only titles rendered every
+ * teaser on the site empty, and looked like content with no images rather than
+ * a fetcher that dropped them.
+ *
+ * The WordPress field names are kept ALONGSIDE: `modified`, `date`, `author`
+ * are what this CMS's adapter advertises as indexes, so they are what a
+ * listing's fieldMapping was authored against in the editor.
+ */
+function itemFromPost(post, base) {
+  const media = post._embedded?.['wp:featuredmedia']?.[0];
+  const author = post._embedded?.author?.[0];
+  const path =
+    new URL(post.link, base).pathname.replace(/\/+$/, '') || '/';
+  const description = String(post.excerpt?.rendered ?? '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return {
+    '@id': path,
+    '@type': post.type,
+    id: post.slug,
+    UID: String(post.id),
+    title: post.title?.rendered ?? '',
+    description,
+    ...(media?.source_url
+      ? {
+          image: {
+            '@id': media.source_url,
+            // The sizes WordPress generated, under the names IT uses. A
+            // renderer asks for a named scale; which names exist is the CMS's
+            // business, not something to invent here.
+            scales: Object.fromEntries(
+              Object.entries(media.media_details?.sizes ?? {}).map(
+                ([name, s]) => [
+                  name,
+                  { download: s.source_url, width: s.width, height: s.height },
+                ],
+              ),
+            ),
+          },
+          image_field: 'image',
+        }
+      : {}),
+    date: post.date,
+    modified: post.modified,
+    ...(author?.name ? { author: author.name } : {}),
+    link: post.link,
   };
 }
