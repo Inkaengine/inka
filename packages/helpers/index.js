@@ -3835,25 +3835,39 @@ function fillRegionEntries(entries, templateState, options) {
       const userContent = ctx?.pendingContent?.get(slotId);
       if (userContent && userContent.length > 0) {
         ctx.pendingContent.delete(slotId);
-        for (const { blockId, block } of userContent) {
-          // A nested template reference (a snippet, a template-owned form)
-          // keeps its own marks and is EXPANDED here, in the same pass, by
-          // this same routine: the admin merges once and the editor frame does
-          // not expand again, so left as a reference it showed no content
-          // while editing. The shared state's current template/instance are
-          // the layout's, so they are restored after.
+        for (let u = 0; u < userContent.length; u++) {
+          const { blockId, block } = userContent[u];
+          // A nested template reference (a snippet, a template-owned form,
+          // a page built on a multi-block template) keeps its own marks and is
+          // EXPANDED here, in the same pass, by this same routine: the admin
+          // merges once and the editor frame does not expand again, so left as
+          // a reference it showed no content while editing. A run of blocks of
+          // ONE nested instance is expanded together — one at a time, each saw
+          // a single block of its template, and lost the fixed blocks between
+          // its slots. The shared state's current template/instance are the
+          // layout's, so they are restored after.
           const nested =
             block.templateId &&
             block.templateInstanceId &&
             !templateIdsMatch(block.templateId, templateId);
           if (nested) {
+            const run = { [blockId]: block };
+            const runIds = [blockId];
+            while (
+              u + 1 < userContent.length &&
+              userContent[u + 1].block.templateInstanceId === block.templateInstanceId
+            ) {
+              u += 1;
+              run[userContent[u].blockId] = userContent[u].block;
+              runIds.push(userContent[u].blockId);
+            }
             const outer = {
               instanceId: templateState.instanceId,
               templateId: templateState.templateId,
             };
-            const expanded = expandTemplatesSync([blockId], {
+            const expanded = expandTemplatesSync(runIds, {
               ...options,
-              blocks: { [blockId]: block },
+              blocks: run,
               templateState,
               allowedLayouts: undefined,
               filterInstanceId: undefined,

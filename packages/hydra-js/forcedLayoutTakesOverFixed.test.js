@@ -221,3 +221,39 @@ describe('a nested template in a layout slot is expanded in the same pass', () =
     expect(form.title).toBe('Report a problem');
   });
 });
+
+describe('a nested template of several blocks is expanded as one', () => {
+  // A page built on a multi-block template (fixed section headings with slots
+  // between them) sits in the forced layout's slot as a run of blocks of ONE
+  // instance. Expanded block by block, each call saw one block of the
+  // template: its fixed headings were lost and its slots ran together.
+  const DOC = {
+    '@id': '/templates/doc',
+    blocks: {
+      'ex-h': { '@type': 'slate', fixed: true, readOnly: true, slotId: 'ex-h', value: [{ type: 'h2', children: [{ text: 'Example' }] }] },
+      ex: { '@type': 'slate', slotId: 'example', value: [] },
+      'rel-h': { '@type': 'slate', fixed: true, readOnly: true, slotId: 'rel-h', value: [{ type: 'h2', children: [{ text: 'Related' }] }] },
+      rel: { '@type': 'slate', slotId: 'related', value: [] },
+    },
+    blocks_layout: { items: ['ex-h', 'ex', 'rel-h', 'rel'] },
+  };
+  const mark = (slotId, extra = {}) => ({ templateId: '/templates/doc', templateInstanceId: 'doc-1', slotId, ...extra });
+
+  test("the template's fixed headings stay between its slots", () => {
+    const out = expandTemplatesSync(['page-title', 'd-exh', 'd-ex', 'd-relh', 'd-rel'], {
+      blocks: {
+        'page-title': { '@type': 'title', templateId: LAYOUT, slotId: 'heading', fixed: true, readOnly: false },
+        'd-exh': { '@type': 'slate', ...mark('ex-h', { fixed: true, readOnly: true }) },
+        'd-ex': { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'An example' }] }], ...mark('example') },
+        'd-relh': { '@type': 'slate', ...mark('rel-h', { fixed: true, readOnly: true }) },
+        'd-rel': { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'A link' }] }], ...mark('related') },
+      },
+      templateState: {},
+      templates: { [LAYOUT]: TEMPLATE, '/templates/doc': DOC },
+      allowedLayouts: [LAYOUT],
+    });
+    const main = region(out[0], 'main');
+    expect(main.map((b) => b.slotId)).toEqual(['ex-h', 'example', 'rel-h', 'related']);
+    expect(main[2].value[0].children[0].text).toBe('Related');
+  });
+});
