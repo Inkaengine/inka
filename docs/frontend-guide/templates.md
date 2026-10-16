@@ -330,6 +330,8 @@ When a layout is applied, the rules are the same but applied across a whole bloc
 - In the top slot outside the first fixed template block
 - Otherwise it is dropped
 
+Content WITH a `slotId` goes in that slot. That holds for a fixed slot too: a page's editable fixed block (`fixed`, not `readOnly`) with the slot's `slotId` takes over the layout's fixed block there — its id and its edited fields — whether or not it carries the instance's id. So a page that has never been through a forced layout (its instance is minted when it renders) can still carry its own version of the layout's fixed heading, marked `templateId` + `slotId` + `fixed`.
+
 ### Diagram
 
 ```bash

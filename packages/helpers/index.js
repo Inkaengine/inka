@@ -3370,9 +3370,19 @@ export function getBlockAddability(
     pathInfo.siblingCount >= pathInfo.maxSiblings;
   result.maxReached = maxReached;
 
+  // No room after it, but its layout has a default slot: "+" adds at the top
+  // of that slot instead (buildBlockPathMap's markDefaultSlotAnchors) — where
+  // a fixed heading's content goes. Not while editing the template itself.
+  const anchor = anyTemplateUnlocked ? null : pathInfo.defaultSlotAnchor;
+  const toDefaultSlot = () => ({
+    ...result,
+    canInsertAfter: true,
+    insertAt: { blockId: anchor, action: 'before' },
+  });
+
   // If max is reached, can't add more blocks
   if (maxReached) {
-    return result;
+    return anchor ? toDefaultSlot() : result;
   }
 
   // Template edit mode handling:
@@ -3407,6 +3417,10 @@ export function getBlockAddability(
   } else {
     result.canInsertBefore = staticCanInsertBefore;
     result.canInsertAfter = staticCanInsertAfter;
+    if (!staticCanInsertAfter && anchor) {
+      result.canInsertAfter = true;
+      result.insertAt = { blockId: anchor, action: 'before' };
+    }
   }
 
   // For empty blocks (isEmptyBlock computed above, storage-agnostic): can replace (unless
@@ -3633,8 +3647,22 @@ export function collectContentFromTree(
   // Capture ONE child block by slot/instance, then recurse into it. Shared by the blocks_layout
   // (shared `blocks` dict) and object_list (inline array) branches so both storages capture the
   // same way — the apply path already treats them uniformly (fillContainerInto).
-  const processBlock = (blockId, block) => {
+  const processBlock = (blockId, block, regionSlotId) => {
     if (!block) return;
+    // A template the page inserted (a snippet, a template-owned form), sitting
+    // in one of THIS instance's regions under its own instance: content of
+    // that region's slot, kept whole as a nested template reference. Not
+    // recursed into — what is inside it is its own template's.
+    if (
+      regionSlotId &&
+      block.templateId &&
+      block.templateInstanceId &&
+      block.templateInstanceId !== instanceId
+    ) {
+      if (!pendingContent.has(regionSlotId)) pendingContent.set(regionSlotId, []);
+      pendingContent.get(regionSlotId).push({ blockId, block });
+      return;
+    }
     if (block.templateInstanceId === instanceId) {
       const slotId = block.slotId;
       if (slotId) {
@@ -3681,8 +3709,18 @@ export function collectContentFromTree(
   // read, not a bespoke isBlocksMap scan with an all-keys fallback and a divergent object_list
   // heuristic. processBlock captures each child (by slot/instance) and recurses into it.
   for (const field of getChildFields(container)) {
-    for (const { id, block } of getChildBlockEntries(container, field)) {
-      processBlock(id, block);
+    const entries = getChildBlockEntries(container, field);
+    // In a region of this instance's own block, the slot its page content
+    // fills: a sibling slot block's, else `default`.
+    const regionSlotId =
+      container.templateInstanceId === instanceId
+        ? entries.find(
+            ({ block }) =>
+              block?.templateInstanceId === instanceId && block.slotId && !block.fixed,
+          )?.block.slotId || 'default'
+        : null;
+    for (const { id, block } of entries) {
+      processBlock(id, block, regionSlotId);
     }
   }
 }
@@ -3798,14 +3836,46 @@ function fillRegionEntries(entries, templateState, options) {
       if (userContent && userContent.length > 0) {
         ctx.pendingContent.delete(slotId);
         for (const { blockId, block } of userContent) {
+          // A nested template reference (a snippet, a template-owned form)
+          // keeps its own marks and is EXPANDED here, in the same pass, by
+          // this same routine: the admin merges once and the editor frame does
+          // not expand again, so left as a reference it showed no content
+          // while editing. The shared state's current template/instance are
+          // the layout's, so they are restored after.
+          const nested =
+            block.templateId &&
+            block.templateInstanceId &&
+            !templateIdsMatch(block.templateId, templateId);
+          if (nested) {
+            const outer = {
+              instanceId: templateState.instanceId,
+              templateId: templateState.templateId,
+            };
+            const expanded = expandTemplatesSync([blockId], {
+              ...options,
+              blocks: { [blockId]: block },
+              templateState,
+              allowedLayouts: undefined,
+              filterInstanceId: undefined,
+              idField: undefined,
+            });
+            templateState.instanceId = outer.instanceId;
+            templateState.templateId = outer.templateId;
+            for (const { '@uid': id, ...expandedBlock } of expanded) {
+              out.push({ id, block: expandedBlock });
+            }
+            continue;
+          }
           out.push({
             id: blockId,
-            block: {
-              ...block,
-              templateId,
-              templateInstanceId: instanceId,
-              slotId,
-            },
+            block: nested
+              ? block
+              : {
+                  ...block,
+                  templateId,
+                  templateInstanceId: instanceId,
+                  slotId,
+                },
           });
         }
       } else {
@@ -4702,6 +4772,23 @@ export function expandTemplatesSync(inputItems, options = {}) {
       for (const blockId of layout) {
         const block = blocks[blockId];
         if (!block) continue;
+        // A block of a template that is neither this layout nor the page's
+        // previous one — a snippet the page inserted (allowedTemplates) — is
+        // the page's content, not a leftover of a layout: it goes in default
+        // whole, marks and all, to expand as its snippet. The previous layout
+        // is the template of the page's first templated block
+        // (previousTemplateId); only ITS blocks are leftovers.
+        if (
+          block.templateId &&
+          !templateIdsMatch(block.templateId, templateId) &&
+          !(previousTemplateId && templateIdsMatch(block.templateId, previousTemplateId))
+        ) {
+          if (!ctx.pendingContent.has('default')) {
+            ctx.pendingContent.set('default', []);
+          }
+          ctx.pendingContent.get('default').push({ blockId, block });
+          continue;
+        }
         if (block.templateId && block.templateId !== templateId) {
           ctx.newTemplateIds.add(block.templateId);
         }
@@ -4720,6 +4807,15 @@ export function expandTemplatesSync(inputItems, options = {}) {
           if (block.slotId) {
             ctx.existingFixedBlockIds.set(block.slotId, { blockId, block });
           }
+          continue;
+        }
+        // The page's own editable fixed block for THIS layout, with no instance
+        // yet — a forced layout's first application to the page. It takes over
+        // the layout's fixed block in its slot (id and edits), as one from a
+        // previous layout does above; as pending content a fixed slot never
+        // reads it, and it was dropped.
+        if (block.fixed && !block.readOnly && block.slotId) {
+          ctx.existingFixedBlockIds.set(block.slotId, { blockId, block });
           continue;
         }
         if (block.slotId) {
