@@ -26,9 +26,16 @@
     <template v-for="props in [imageProps(block)]">
       <template v-if="props.url">
         <a v-if="block.href" :href="getUrl(block.href)" class="image-link" data-edit-link="href">
-          <NuxtImg data-edit-media="url" :src="props.url" :width="props.width" :alt="block.alt" />
+          <!-- srcset/sizes, not just src: imageProps already derives Plone's
+               scale ladder from the block's image_scales, and dropping it left
+               @nuxt/image emitting one URL at every width — the browser then
+               downloads the full-size file on every viewport. -->
+          <NuxtImg data-edit-media="url" :src="props.url" :srcset="props.srcset || undefined"
+                   :sizes="props.sizes || undefined" :width="props.width" :alt="block.alt" />
         </a>
-        <NuxtImg v-else data-edit-media="url" data-edit-link="href" :src="props.url" :width="props.width" :alt="block.alt" />
+        <NuxtImg v-else data-edit-media="url" data-edit-link="href" :src="props.url"
+                 :srcset="props.srcset || undefined" :sizes="props.sizes || undefined"
+                 :width="props.width" :alt="block.alt" />
       </template>
       <img v-else-if="isInListing" data-edit-media="url" src="/placeholder.svg"
         :alt="block.alt" class="w-full h-48 object-cover rounded bg-gray-200" />
