@@ -24,6 +24,7 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { verifyBlockRendering, revealBlock } from '../helpers/BlockVerificationHelper';
 import { drainFieldCoverage } from '../helpers/field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../helpers/text-style-coverage';
+import { drainImageSizeCoverage } from '../helpers/imageSizes.mjs';
 import { axeCheckPage, formatViolations } from '../helpers/axe-sanity';
 import { getFrontendUrl, SANITY_PROJECTS } from './fixtures';
 import { URLS } from '../ports';
@@ -495,8 +496,9 @@ test.describe('Block sanity (auto-discovered)', () => {
   test.afterEach(async ({}, testInfo) => {
     const fields = drainFieldCoverage();
     const styles = drainStyleCoverage();
+    const imageSizes = drainImageSizeCoverage();
     await testInfo.attach('coverage', {
-      body: JSON.stringify({ fields, styles }),
+      body: JSON.stringify({ fields, styles, imageSizes }),
       contentType: 'application/json',
     });
   });

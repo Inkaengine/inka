@@ -9,7 +9,10 @@
  */
 import test from 'node:test';
 import assert from 'node:assert';
-import { scalesAvailable, sizesOffered, usesAvailableSizes } from './imageSizes.mjs';
+import {
+  scalesAvailable, sizesOffered, usesAvailableSizes,
+  drainImageSizeCoverage, multiScaleSeen,
+} from './imageSizes.mjs';
 
 const API = 'https://api.test';
 
@@ -126,4 +129,23 @@ test('malformed srcset values do not throw', () => {
     assert.doesNotThrow(() => sizesOffered(s));
   }
   assert.equal(sizesOffered('justaurl'), 1);
+});
+
+test('coverage records what was judged, so the rule cannot go vacuous', () => {
+  drainImageSizeCoverage();   // start clean
+
+  usesAvailableSizes({ field: 'image', entry: sixScales(), srcset: `${API}/a 400w, ${API}/b 800w` });
+  usesAvailableSizes({ field: 'image', entry: { image_field: 'image' }, srcset: `${API}/c` });
+
+  const records = drainImageSizeCoverage();
+  assert.equal(records.length, 2, 'both judgements recorded');
+  assert.equal(multiScaleSeen(records), 1, 'only the one offering a choice counts as coverage');
+  assert.equal(drainImageSizeCoverage().length, 0, 'draining clears');
+});
+
+test('a run that never saw a multi-scale image reports zero coverage', () => {
+  drainImageSizeCoverage();
+  usesAvailableSizes({ field: 'image', entry: { image_field: 'image' }, srcset: '' });
+  assert.equal(multiScaleSeen(drainImageSizeCoverage()), 0,
+    'this is the signal that the rule tested nothing');
 });

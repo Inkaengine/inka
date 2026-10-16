@@ -70,6 +70,26 @@ export function sizesOffered(srcset) {
 }
 
 /**
+ * Coverage, so the rule cannot go vacuous.
+ *
+ * This rule only bites when the data offers a choice. If no fixture ever
+ * carries multi-scale data, it passes everywhere by never applying — the exact
+ * blind spot it was written to close, turned on itself. The consuming spec
+ * drains this at the end of a run and asserts the rule actually fired.
+ */
+const judged = [];
+
+/** Everything judged since the last drain, then clear. */
+export function drainImageSizeCoverage() {
+  return judged.splice(0, judged.length);
+}
+
+/** How many judged fields actually offered a choice to test. */
+export function multiScaleSeen(records = judged) {
+  return records.filter((r) => r.available >= 2).length;
+}
+
+/**
  * The verdict for one image field.
  *
  * `{ ok: true }` when the render used what it was given, or when there was
@@ -77,8 +97,9 @@ export function sizesOffered(srcset) {
  * the render did with it, because "srcset assertion failed" tells a reader
  * nothing they can act on.
  */
-export function usesAvailableSizes({ field, entry, srcset, rendered = true }) {
+export function usesAvailableSizes({ field, entry, srcset, rendered = true, record = true }) {
   const available = scalesAvailable(entry, field);
+  if (record) judged.push({ field, available, offered: sizesOffered(srcset) });
 
   if (!rendered) {
     return {
