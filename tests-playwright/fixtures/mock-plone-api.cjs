@@ -5861,6 +5861,47 @@ app.get('*/@search', (req, res) => {
       const types = Array.isArray(portalType) ? portalType : [portalType];
       items = items.filter((item) => types.includes(item['@type']));
     }
+    // The PATH criteria apply to a text search too. Plone ANDs every criterion
+    // in a catalog query, so `path.query=/news&path.depth=1&SearchableText=x`
+    // is "the direct children of /news that match x" — but this branch filtered
+    // the whole site by text and dropped the path entirely.
+    //
+    // What that looked like: the contents view's filter box, which sends
+    // exactly those three, answered with matches from DEEPER in the tree. The
+    // folder it was listing had two children and typing a word that matched one
+    // of them came back with two rows again — the child, plus a GRANDCHILD the
+    // folder does not contain. The listing silently stopped being a listing of
+    // that folder.
+    //
+    // Only when a scope was asked for: a bare `?SearchableText=` from the
+    // object browser is a site-wide search, and `/news/@search` scopes to its
+    // own context the way plone.restapi does.
+    const scopeAsked = pathQuery !== undefined || pathDepth !== undefined;
+    if (scopeAsked) {
+      const asked = pathQuery
+        ? (String(pathQuery).startsWith('http')
+            ? new URL(String(pathQuery)).pathname
+            : String(pathQuery)
+          ).replace(/\/$/, '') || '/'
+        : (searchPath || '/');
+      const depth = pathDepth === undefined ? null : Number(pathDepth);
+      const pathOf = (item) => {
+        const id = String(item['@id'] || '');
+        return (id.startsWith('http') ? new URL(id).pathname : id)
+          .replace('/++api++', '')
+          .replace(/\/$/, '') || '/';
+      };
+      items = items.filter((item) => {
+        const itemPath = pathOf(item);
+        if (depth === 0) return itemPath === asked;
+        const inside =
+          asked === '/' ? itemPath !== '/' : itemPath.startsWith(`${asked}/`);
+        if (!inside) return false;
+        if (depth === null) return true;
+        const below = asked === '/' ? itemPath.slice(1) : itemPath.slice(asked.length + 1);
+        return below.split('/').length <= depth;
+      });
+    }
   }
   // Handle path.query with path.depth=0 (exact match for specific content)
   else
