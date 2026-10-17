@@ -1088,22 +1088,24 @@ function loadRawContentFromDisk(urlPath) {
     return null;
   };
 
-  const hit = readCached();
-  if (hit != null) return hit;
-  // Miss: reload the mount that owns this path (format-agnostic -- markdown
-  // re-reads its tree, JSON rescans) and retry once, so content added since
-  // startup is served without a restart.
+  // A miss is a miss. The read above already CHECKED THIS PATH on disk — the
+  // per-mount loop joins the mount's directory, the path and `data.json` and
+  // reads it if it is there — so content added after startup is served without
+  // anything being rescanned.
   //
-  // Only when nothing else already reloads on a disk change -- see
-  // shouldRescanOnMiss. With the fs watcher running, this was a SECOND trigger
-  // for the same reload, driven by misses that are not evidence of a disk
-  // change at all, and it starved concurrent requests.
-  const mount = mountFor(urlPath);
-  if (mount && shouldRescanOnMiss(mount)) {
-    reloadMount(mount);
-    return readCached();
-  }
-  return null;
+  // What used to be here was a reload of the whole mount on every miss, to
+  // pick up exactly that case. It could not have been needed for it, and it
+  // was ruinous: a miss is not evidence that disk changed (`resolveuid`,
+  // depth-less listings and image serving all miss on synthetic paths that are
+  // not content at all), and one local run of a frontend's component suite
+  // rescanned the tree 18,054 times. Each walk holds the event loop, so
+  // requests in flight were starved — chrome templates blowing their 5s budget
+  // and `ECONNRESET` mid-fetch, which reads as a flaky frontend.
+  //
+  // The two things the direct check cannot answer are a UID lookup (no path to
+  // check) and a new MARKDOWN item (the tree is parsed, not read per path).
+  // Both are the fs watcher's job: it reloads every mount 100ms after a change.
+  return readCached();
 }
 
 /**
@@ -1870,13 +1872,13 @@ function templateIdToPath(templateId) {
   if (!templateId || typeof templateId !== 'string') return null;
   const uidMatch = templateId.match(/(?:^|\/)resolveuid\/([^/?#]+)$/);
   if (uidMatch) {
-    let resolved = uidToPathMap[uidMatch[1]];
-    if (!resolved) {
-      // Same fallback resolveUidUrls uses: a template added after startup isn't in the
-      // index yet, so rescan before calling it missing (local dev only; see rescanOnMiss).
-      rescanOnMiss();
-      resolved = uidToPathMap[uidMatch[1]];
-    }
+    // The index, and nothing else. A `resolveuid` reference is internal to the
+    // API — it lives in stored content and is resolved on the way out — so a
+    // uid that is not in the index is a reference to content that is not
+    // there. It used to rescan the whole tree first, on the theory that the
+    // index might be stale; the fs watcher keeps it current, and rescanning per
+    // unresolved uid is what starved concurrent requests.
+    const resolved = uidToPathMap[uidMatch[1]];
     return resolved ? resolved.replace(/\/+$/, '') || '/' : null;
   }
   let p = templateId;
@@ -2072,13 +2074,10 @@ function resolveUidUrls(obj, parentKey = null) {
       || parentKey === 'templateInstanceId'
       || parentKey === 'slotId';
     return obj.replace(/(?:\.\.\/)*resolveuid\/([a-z0-9][-a-z0-9]*)/g, (match, uid) => {
-      let resolvedPath = uidToPathMap[uid];
-      if (!resolvedPath) {
-        // UID not found — rescan content dirs in case new files were added
-        // (local dev only; see rescanOnMiss).
-        rescanOnMiss();
-        resolvedPath = uidToPathMap[uid];
-      }
+      // Resolved from the index or left alone: an unresolvable uid is a stored
+      // link to content that is not there, which is what the untouched
+      // `resolveuid/...` in the output says.
+      const resolvedPath = uidToPathMap[uid];
       if (!resolvedPath) return match;
       return resolveAsPath ? resolvedPath : `http://localhost:${PORT}${resolvedPath}`;
     });
@@ -2876,56 +2875,18 @@ function initContentDirMap() {
 
 // A cache MISS used to rescan the whole tree in case a fixture was added after
 // startup. That's a LOCAL-DEV convenience only -- the same reason the content
-/** Mounts the fs watcher is actually watching (see setupContentWatchers). */
-const watchedDirs = new Set();
-
-/**
- * Whether a cache MISS should rescan content from disk.
- *
- * It should not, whenever something else already reloads on a disk change.
- *
- * A miss is not evidence that disk changed: `resolveuid` lookups, depth-less
- * listings and image serving all miss on synthetic paths that are not content
- * dirs at all, and the search and listing specs generate them by the thousand
- * — 2896 full-tree rescans in one local run of the component suite. Each one
- * walks every mount, and while it does the event loop is busy: concurrent
- * requests are starved, and the symptoms are a page whose chrome templates
- * blew their 5s budget and `ECONNRESET` on requests in flight. That reads as a
- * flaky frontend — the four tests it cost me were a form's radios, an image
- * figure and a thumbnail, none of which have anything to do with content
- * scanning — so it was repeatedly written off as machine load.
- *
- * Under CI it was already off, for the same reason plus the log flood. The
- * reason it is off LOCALLY too is that the fs watcher covers the same ground:
- * it reloads every mount 100ms after any change under it. Where the watcher is
- * NOT running (a platform without recursive fs.watch), a miss still rescans,
- * because then nothing else would — but coalesced, so a burst of misses costs
- * one scan rather than one each.
- */
-let lastMissRescan = 0;
-const MISS_RESCAN_INTERVAL_MS = 500;
-function shouldRescanOnMiss(mount) {
-  if (process.env.CI) return false;
-  const dirs = mount ? [mount.dirPath] : CONTENT_MOUNTS.map((m) => m.dirPath);
-  // Every mount involved is watched -> the watcher owns reloading.
-  if (dirs.every((dir) => watchedDirs.has(dir))) return false;
-  const now = Date.now();
-  if (now - lastMissRescan < MISS_RESCAN_INTERVAL_MS) return false;
-  lastMissRescan = now;
-  return true;
-}
-
-// watcher is gated (see setupContentWatchers). In CI the fixtures are a static
-// checkout; nothing is added mid-run, so a rescan can only re-find what's
-// already registered. But resolveuid lookups, depth-less listings, and image
-// serving all rescan on EVERY miss, and the search/listing specs generate many
-// synthetic misses -- each one ran a full scanContentDir (~260 log lines) and
-// pinned the CPU, flooding the CI log and starving concurrent requests
-// (truncated responses -> flaky failures). So on a miss, only rescan locally.
-function rescanOnMiss() {
-  if (!shouldRescanOnMiss()) return;
-  initContentDirMap();
-}
+// NOTHING rescans on a miss. Content is read by checking its own path (see
+// loadRawContentFromDisk), and the index behind uid lookups, depth-less
+// listings and image serving is kept current by the fs watcher below. A miss
+// means the content is not there.
+//
+// Rescanning per miss is what this used to do, gated to local runs because of
+// the log flood it caused in CI. The cost was worse than the log: a miss is not
+// evidence that disk changed, the specs produce them in their thousands, and
+// one local run of a frontend's component suite walked the content tree 18,054
+// times. Each walk holds the event loop, so requests already in flight were
+// starved -- chrome templates blowing their 5s budget, `ECONNRESET` mid-fetch
+// -- which reads as a flaky frontend and was written off as machine load.
 
 // Initialize on startup
 initContentDirMap();
@@ -2957,10 +2918,6 @@ function setupContentWatchers() {
     if (!fs.existsSync(dirPath)) continue;
     try {
       fs.watch(dirPath, { recursive: true, persistent: false }, onChange);
-      // Recorded so a cache MISS does not rescan as well: a watched mount
-      // already reloads on any disk change, so the miss-driven rescan is a
-      // second trigger for the same thing. See rescanOnMiss.
-      watchedDirs.add(dirPath);
       console.log(`Watching content dir: ${dirPath}`);
     } catch (err) {
       // Linux doesn't support recursive — let it throw so the missing
@@ -3070,11 +3027,7 @@ app.post('/@login', (req, res) => {
     // in under its own name would otherwise be unable to identify itself. This
     // mock accepts any credentials by design; registering the account keeps the
     // two endpoints telling the same story.
-    rememberUser(login);
-    const response = {
-      token,
-      user: userRecord(MOCK_USERS.find((user) => user.id === login)),
-    };
+    const response = { token, user: userRecord(login) };
 
     if (process.env.DEBUG) {
       console.log(`Login successful, returning token: ${token.substring(0, 20)}...`);
@@ -4903,61 +4856,31 @@ principalsAndRules.register(app, {
 });
 
 /**
- * The users this site has.
+ * The account summary @login echoes back.
  *
- * Shape from plone.restapi's own users.resp: the collection is an envelope, and
- * each member carries description, email, fullname, groups, home_page, id,
- * location, portrait, roles and username. Two of them, because one user cannot
- * show whether a picker filters — and the sharing screen's search is the caller
- * that asks this a real question.
+ * Not a user directory: users live in mock-principals-and-rules.cjs, which
+ * owns `/@users`. There used to be a second list here, left over from before
+ * that move, and keeping two was its own bug — the module seeds `Ed Editor`
+ * while this said `Edith Editor`, so a search by name matched in one and not
+ * the other depending on which file answered.
+ *
+ * Shaped from the login alone, because that is all @login knows: this mock
+ * accepts any credentials by design, so the account IS whoever just signed in.
+ * The module registers that same name against the session when a request
+ * arrives with the token (see signedInAs there), which is how the two agree.
  */
-const MOCK_USERS = [
-  {
-    id: 'admin',
-    fullname: 'Admin User',
-    email: 'admin@example.com',
-    description: 'The site administrator',
-    location: 'Berlin',
-    home_page: 'https://example.com',
-    roles: ['Manager', 'Authenticated'],
-  },
-  {
-    id: 'editor',
-    fullname: 'Edith Editor',
-    email: 'editor@example.com',
-    description: 'Writes and publishes',
-    location: 'Bangkok',
-    home_page: '',
-    roles: ['Editor', 'Authenticated'],
-  },
-];
-
-/** Register an account this mock has seen authenticate. */
-function rememberUser(id) {
-  if (MOCK_USERS.some((user) => user.id === id)) return;
-  MOCK_USERS.push({
+function userRecord(id) {
+  return {
+    '@id': `${API_ORIGIN}/@users/${id}`,
     id,
+    username: id,
     fullname: id === 'admin' ? 'Admin User' : id,
     email: `${id}@example.com`,
     description: '',
     location: '',
     home_page: '',
-    roles: ['Manager', 'Authenticated'],
-  });
-}
-
-function userRecord(user) {
-  return {
-    '@id': `${API_ORIGIN}/@users/${user.id}`,
-    id: user.id,
-    username: user.id,
-    fullname: user.fullname,
-    email: user.email,
-    description: user.description,
-    location: user.location,
-    home_page: user.home_page,
     portrait: null,
-    roles: user.roles,
+    roles: ['Manager', 'Authenticated'],
     groups: {
       '@id': `${API_ORIGIN}/@users`,
       items: [{ id: 'AuthenticatedUsers', title: 'AuthenticatedUsers' }],
@@ -4966,25 +4889,16 @@ function userRecord(user) {
   };
 }
 
-// RESTORED through the merge. main extracted users, groups, roles, control
-// panels and content rules into mock-principals-and-rules.cjs, which has no
-// equivalent of these: a login here registers the account so @users agrees
-// with it, which is what lets a test log in under its own name and then
-// identify itself. The module's own @users is registered after this route, so
-// this one answers.
-app.get(/^(?:\/\+\+api\+\+)?\/@users\/([^/]+)$/, (req, res) => {
-  const userid = req.params[0];
-  // An id nobody has is a 404, not a synthesised user. The adapter identifies
-  // the session by asking for its own id, and inventing an answer for any name
-  // would have that succeed against a CMS where the account does not exist.
-  const known = MOCK_USERS.find((user) => user.id === userid);
-  if (!known) {
-    return res.status(404).json({
-      error: { type: 'NotFound', message: `No such user: ${userid}` },
-    });
-  }
-  return res.json(userRecord(known));
-});
+// NO @users route here. main moved users into mock-principals-and-rules.cjs,
+// which registers `/@users/:userid` from `register()` above — earlier than
+// anything here, so an Express route added at this point can never run. One
+// was, restored through the merge, and it sat here looking like the thing that
+// answered: it did not, and the test that relied on it failed with a 404 that
+// pointed at neither file.
+//
+// The module answers from the session's own users, and a request that carries
+// a token is known to it (see signedInAs there). What @login echoes about the
+// account that just signed in is shaped by userRecord above.
 
 /**
  * GET /@types/:typeName
@@ -6057,11 +5971,9 @@ app.get('*/@search', (req, res) => {
       }
     }
   } else {
-    // No depth filter - return all content items from disk.
-    // Rescan so newly-added fixture directories surface without a server
-    // restart — same "rescan on miss" pattern as resolveUidUrls() above
-    // (local dev only; see rescanOnMiss).
-    rescanOnMiss();
+    // No depth filter - return all content items from disk, from the index the
+    // watcher keeps current. This used to rescan first, every time: it is the
+    // listing specs' own queries, so it ran constantly.
     items = Object.keys(contentDirMap)
       .filter((itemPath) => itemPath !== '/')
       .map((itemPath) => loadContentFromDisk(itemPath))
@@ -6696,11 +6608,10 @@ app.get('*/@@images/*', (req, res) => {
   // Try to serve actual image file from content directory
   // Use contentDirMap to find actual directory for nested paths
   // If not found, rescan in case content was added after startup
-  let dirInfo = contentDirMap[contentPath];
-  if (!dirInfo) {
-    rescanOnMiss(); // local dev only; see rescanOnMiss
-    dirInfo = contentDirMap[contentPath];
-  }
+  // From the index. A path that is not in it has no image to serve, and the
+  // watcher is what keeps the index current — see the note on
+  // loadRawContentFromDisk.
+  const dirInfo = contentDirMap[contentPath];
   const imageDir = dirInfo ? path.join(dirInfo.dirPath, fieldName) : null;
 
   const mimeTypes = {

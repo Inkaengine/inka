@@ -898,8 +898,13 @@ describe('@users', () => {
   });
 
   it('searches, so a picker has something to narrow', async () => {
+    // Against the seeded directory in mock-principals-and-rules.cjs, which is
+    // where users live. This asked for `edith` — a name from a SECOND user
+    // list that used to sit in mock-plone-api.cjs, where the same account was
+    // called Edith Editor. The module calls them Ed Editor, so the search
+    // matched nothing the moment the module started answering.
     const body = await (
-      await fetch(`${baseUrl}/@users?query=edith`, { headers })
+      await fetch(`${baseUrl}/@users?query=editor`, { headers })
     ).json();
     assert.equal(body.items_total, 1);
     assert.equal(body.items[0].id, 'editor');
@@ -912,15 +917,27 @@ describe('@users', () => {
     assert.equal(res.status, 404);
   });
 
-  it('knows anyone who has logged in', async () => {
+  it('knows the account a session signed in as', async () => {
     // Login accepts any credentials here by design, and a login that succeeds
-    // means the account exists — so the two endpoints have to agree.
-    await fetch(`${baseUrl}/@login`, {
+    // means the account exists — so the two endpoints have to agree. That is
+    // what the adapter depends on: it identifies its session by asking for its
+    // own id straight after signing in.
+    //
+    // WITH THE TOKEN, which is the flow being protected. The account is known
+    // to the session that signed in, not to the world: an anonymous reader
+    // asking after someone else's account gets the same 404 as above, which is
+    // what Plone does too. This asserted the anonymous case until the users
+    // endpoint moved into mock-principals-and-rules.cjs, where a user belongs
+    // to a session — and then nothing served it.
+    const login = await fetch(`${baseUrl}/@login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ login: 'newcomer', password: 'secret' }),
     });
-    const res = await fetch(`${baseUrl}/@users/newcomer`, { headers });
+    const { token } = await login.json();
+    const res = await fetch(`${baseUrl}/@users/newcomer`, {
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
     assert.equal(res.status, 200);
     assert.equal((await res.json()).id, 'newcomer');
   });
