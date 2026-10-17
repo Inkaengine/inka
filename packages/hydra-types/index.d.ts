@@ -148,6 +148,17 @@ export type Intent =
   | 'content.copy'
   | 'types.list'
   | 'types.getSchema'
+  /**
+   * Full-text search, optionally within a path.
+   *
+   * `{ query, path?, depth?, sortOn?, sortOrder?, limit? }`. A `path` scopes
+   * the search to what is inside it, and `depth: 1` to its direct children —
+   * which is what the contents view's filter box asks for, because it is
+   * filtering the folder it is listing. An adapter that honoured the path but
+   * not the depth answered with grandchildren the folder does not contain, and
+   * one that ignored both answered with matches from the whole site; either way
+   * the listing quietly stopped being a listing of that folder.
+   */
   | 'search'
   | 'navigation.get'
   | 'breadcrumbs.get'

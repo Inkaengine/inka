@@ -1362,8 +1362,18 @@ export class StrapiAdapter extends BaseAdapter {
         };
         if (args.path && args.path !== '/') {
           const root = String(args.path).replace(/\/$/, '');
+          // The depth belongs with the path: the contents view's filter box
+          // asks for one level, because it is filtering the folder it lists,
+          // and the whole subtree answered with grandchildren the folder does
+          // not contain. The page itself is never a result of searching INSIDE
+          // it.
+          const within = (path) => {
+            if (!path.startsWith(`${root}/`)) return false;
+            if (args.depth === undefined) return true;
+            return path.slice(root.length + 1).split('/').length <= args.depth;
+          };
           const under = [...paths.entries()]
-            .filter(([, path]) => path === root || path.startsWith(`${root}/`))
+            .filter(([, path]) => within(path))
             .map(([documentId]) => documentId);
           if (!under.length) return { items: [], total: 0 };
           under.forEach((id, n) => {

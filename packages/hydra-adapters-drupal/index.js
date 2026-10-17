@@ -964,7 +964,24 @@ export class DrupalAdapter extends BaseAdapter {
         const flat = flattenPayload(
           await this.fetchJson(`/jsonapi/node/${this.bundle}?${params}`),
         );
-        const items = (flat ?? []).map((n) => this.toDocument(n));
+        let items = (flat ?? []).map((n) => this.toDocument(n));
+        // Scoped, when a scope was asked for. This ignored `args.path`, so the
+        // contents view's filter box — which filters the folder it is listing
+        // — answered with matches from anywhere on the site.
+        //
+        // By PATH rather than by a JSON:API filter: Drupal's hierarchy is the
+        // menu, not a field on the node, so there is nothing to filter on in
+        // the node query. The matches are a page of search hits, so keeping
+        // the ones inside the scope costs nothing.
+        if (args.path) {
+          const scope = String(args.path).replace(/\/$/, '');
+          items = items.filter((doc) => {
+            const path = String(doc.path ?? '');
+            if (!path.startsWith(`${scope}/`)) return false;
+            if (args.depth === undefined) return true;
+            return path.slice(scope.length + 1).split('/').length <= args.depth;
+          });
+        }
         return { items, total: items.length };
       }
 

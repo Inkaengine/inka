@@ -1545,22 +1545,40 @@ export class WordPressAdapter extends BaseAdapter {
       }
 
       case 'search': {
+        // Scoped, when a scope was asked for. This ignored `args.path`
+        // altogether, so the contents view's filter box — which filters the
+        // folder it is listing — answered with matches from anywhere on the
+        // site, and the listing stopped being a listing of that folder.
+        //
+        // `?parent=` is WordPress's own answer for one level down. A deeper
+        // scope has no query of its own here, so the matches are kept by their
+        // path: the result set is a page of search hits, not a crawl.
+        const scopeId =
+          args.path && args.depth === 1
+            ? await this.resolvePath(String(args.path)).catch(() => null)
+            : null;
+        if (args.path && args.depth === 1 && scopeId === null) {
+          return { items: [], total: 0 };
+        }
         const posts = await this.fetchJson(`/wp/v2/${this.postType}`, {
           params: {
             search: args.query ?? '',
             status: 'any',
             context: 'edit',
             per_page: String(args.limit ?? 25),
+            ...(scopeId !== null ? { parent: String(scopeId) } : {}),
           },
         });
         const total = this.lastTotal;
         const items = [];
         for (const post of posts) {
-          items.push(
-            this.toDocument(post, await this.pathOfPost(post)),
-          );
+          const path = await this.pathOfPost(post);
+          if (args.path && args.depth !== 1 && !path.startsWith(`${args.path}/`)) {
+            continue;
+          }
+          items.push(this.toDocument(post, path));
         }
-        return { items, total };
+        return { items, total: args.path ? items.length : total };
       }
 
       case 'tree.list': {

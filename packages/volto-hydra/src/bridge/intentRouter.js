@@ -361,6 +361,16 @@ export function routeToIntent({ op, path, data }) {
           // Plone-shaped REST into a canonical intent.
           query,
           path: scope === '/' ? undefined : scope,
+          // How deep the search reaches. The contents view's filter box sends
+          // `path.depth=1` with its term — it is filtering the FOLDER it is
+          // listing — and dropping that turned every filter into a search of
+          // everything below the folder, or of the whole site on an adapter
+          // that ignored the path as well. Typing a word that matched one
+          // child came back with that child AND its grandchildren, so the
+          // listing quietly stopped being a listing of that folder.
+          ...(params.get('path.depth')
+            ? { depth: Number(params.get('path.depth')) }
+            : {}),
           // The ordering the editor asked for, named as an index the way the
           // contents view names it; each adapter maps it to whatever its CMS
           // calls that field.

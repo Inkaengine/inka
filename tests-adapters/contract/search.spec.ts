@@ -66,6 +66,45 @@ describe.skipIf(!resolved.capabilities.includes('search-fulltext'))(
       expect(typeof hit.title).toBe('string');
     });
 
+    it('searches inside a path, and only inside it', async () => {
+      // The contents view's filter box is a search scoped to the folder it is
+      // listing. Three of the four adapters ignored the scope entirely, so
+      // filtering a folder answered with matches from the whole site; the
+      // fourth honoured the path but not the depth, so it answered with
+      // grandchildren the folder does not contain. Either way the listing
+      // quietly stopped being a listing of that folder, and the only symptom
+      // was a filter that did not narrow.
+      const all: any = await target.adapter.dispatch('search', {
+        query: 'First',
+      });
+      expect(all.items.map((i: any) => i.path)).toContain('/news/first-post');
+
+      // The whole subtree: the grandchild is under /news, so it belongs.
+      const under: any = await target.adapter.dispatch('search', {
+        query: 'First',
+        path: '/news',
+      });
+      for (const item of under.items) {
+        expect(item.path.startsWith('/news/')).toBe(true);
+      }
+      expect(under.items.map((i: any) => i.path)).toContain(
+        '/news/first-post/update',
+      );
+
+      // One level: the child, never the grandchild.
+      const children: any = await target.adapter.dispatch('search', {
+        query: 'First',
+        path: '/news',
+        depth: 1,
+      });
+      expect(children.items.map((i: any) => i.path)).toContain(
+        '/news/first-post',
+      );
+      expect(children.items.map((i: any) => i.path)).not.toContain(
+        '/news/first-post/update',
+      );
+    });
+
     it('returns an empty result set rather than throwing on no match', async () => {
       const res: any = await target.adapter.dispatch('search', {
         query: 'zzzz-no-such-content-zzzz',

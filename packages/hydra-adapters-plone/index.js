@@ -1233,6 +1233,11 @@ export class PloneAdapter extends BaseAdapter {
         const params = new URLSearchParams();
         if (args.query) params.set('SearchableText', args.query);
         if (args.path) params.set('path.query', args.path);
+        // The depth belongs WITH the path: `path.query` alone is everything
+        // below it, and the contents view's filter box asks for one level.
+        if (args.path && args.depth !== undefined) {
+          params.set('path.depth', String(args.depth));
+        }
         if (args.limit) params.set('b_size', String(args.limit));
         // ASK for the UID. A catalog summary carries the six fields
         // plone.restapi defaults to plus whatever plone.volto adds, and UID is
