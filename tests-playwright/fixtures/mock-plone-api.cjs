@@ -1091,22 +1091,15 @@ function loadRawContentFromDisk(urlPath) {
   const hit = readCached();
   if (hit != null) return hit;
   // Miss: reload the mount that owns this path (format-agnostic -- markdown
-  // re-reads its tree, JSON rescans) and retry once. Content added since startup
-  // is picked up here rather than needing a restart.
+  // re-reads its tree, JSON rescans) and retry once, so content added since
+  // startup is served without a restart.
   //
-  // LOCAL-DEV ONLY, for the same reason the content watcher is (see
-  // setupContentWatchers): in CI the fixtures are a static checkout, so nothing
-  // is ever added to disk mid-run and a reload can only re-find what's already
-  // cached. But search/listing specs look up many synthetic paths (resolveuid,
-  // query results) that aren't content dirs -- every one misses, and an
-  // unconditional reload runs a full scanContentDir over the whole mount,
-  // re-logging ~260 lines PER MISS. That floods the CI log into the hundreds of
-  // thousands of lines and pins the CPU rescanning, which starves concurrent
-  // requests (truncated responses -> flaky search/listing failures). In CI a
-  // miss is just a miss.
-  if (process.env.CI) return null;
+  // Only when nothing else already reloads on a disk change -- see
+  // shouldRescanOnMiss. With the fs watcher running, this was a SECOND trigger
+  // for the same reload, driven by misses that are not evidence of a disk
+  // change at all, and it starved concurrent requests.
   const mount = mountFor(urlPath);
-  if (mount) {
+  if (mount && shouldRescanOnMiss(mount)) {
     reloadMount(mount);
     return readCached();
   }
@@ -2883,6 +2876,45 @@ function initContentDirMap() {
 
 // A cache MISS used to rescan the whole tree in case a fixture was added after
 // startup. That's a LOCAL-DEV convenience only -- the same reason the content
+/** Mounts the fs watcher is actually watching (see setupContentWatchers). */
+const watchedDirs = new Set();
+
+/**
+ * Whether a cache MISS should rescan content from disk.
+ *
+ * It should not, whenever something else already reloads on a disk change.
+ *
+ * A miss is not evidence that disk changed: `resolveuid` lookups, depth-less
+ * listings and image serving all miss on synthetic paths that are not content
+ * dirs at all, and the search and listing specs generate them by the thousand
+ * — 2896 full-tree rescans in one local run of the component suite. Each one
+ * walks every mount, and while it does the event loop is busy: concurrent
+ * requests are starved, and the symptoms are a page whose chrome templates
+ * blew their 5s budget and `ECONNRESET` on requests in flight. That reads as a
+ * flaky frontend — the four tests it cost me were a form's radios, an image
+ * figure and a thumbnail, none of which have anything to do with content
+ * scanning — so it was repeatedly written off as machine load.
+ *
+ * Under CI it was already off, for the same reason plus the log flood. The
+ * reason it is off LOCALLY too is that the fs watcher covers the same ground:
+ * it reloads every mount 100ms after any change under it. Where the watcher is
+ * NOT running (a platform without recursive fs.watch), a miss still rescans,
+ * because then nothing else would — but coalesced, so a burst of misses costs
+ * one scan rather than one each.
+ */
+let lastMissRescan = 0;
+const MISS_RESCAN_INTERVAL_MS = 500;
+function shouldRescanOnMiss(mount) {
+  if (process.env.CI) return false;
+  const dirs = mount ? [mount.dirPath] : CONTENT_MOUNTS.map((m) => m.dirPath);
+  // Every mount involved is watched -> the watcher owns reloading.
+  if (dirs.every((dir) => watchedDirs.has(dir))) return false;
+  const now = Date.now();
+  if (now - lastMissRescan < MISS_RESCAN_INTERVAL_MS) return false;
+  lastMissRescan = now;
+  return true;
+}
+
 // watcher is gated (see setupContentWatchers). In CI the fixtures are a static
 // checkout; nothing is added mid-run, so a rescan can only re-find what's
 // already registered. But resolveuid lookups, depth-less listings, and image
@@ -2891,7 +2923,7 @@ function initContentDirMap() {
 // pinned the CPU, flooding the CI log and starving concurrent requests
 // (truncated responses -> flaky failures). So on a miss, only rescan locally.
 function rescanOnMiss() {
-  if (process.env.CI) return;
+  if (!shouldRescanOnMiss()) return;
   initContentDirMap();
 }
 
@@ -2925,6 +2957,10 @@ function setupContentWatchers() {
     if (!fs.existsSync(dirPath)) continue;
     try {
       fs.watch(dirPath, { recursive: true, persistent: false }, onChange);
+      // Recorded so a cache MISS does not rescan as well: a watched mount
+      // already reloads on any disk change, so the miss-driven rescan is a
+      // second trigger for the same thing. See rescanOnMiss.
+      watchedDirs.add(dirPath);
       console.log(`Watching content dir: ${dirPath}`);
     } catch (err) {
       // Linux doesn't support recursive — let it throw so the missing
