@@ -763,7 +763,21 @@ export default defineConfig({
       // without a cookie jar follows forever. The journey blueprint resolves
       // the user server-side instead, because the adapter's cross-site calls
       // from the iframe cannot carry WordPress cookies at all.
-      command: `pnpm dlx @wp-playground/cli@3.1.51 server --port ${PORTS.wordpress} --blueprint tests-adapters/fixtures/wp-blueprint-journey.json`,
+      // RETRIED, because the CLI fetches WordPress and the PHP build from
+      // playground.wordpress.net on every boot and that fetch is intermittently
+      // unreliable: it dies with a bare `Error: fetch failed` before WordPress
+      // exists, on a machine whose network is otherwise fine. Playwright then
+      // reports only "Process from config.webServer was not able to start",
+      // and the whole project fails for a download. The contract suite's own
+      // boot does the same thing in tests-adapters/global-setup.ts.
+      //
+      // A healthy server never exits, so the loop only comes round again when
+      // the boot actually failed.
+      // Backing OFF between attempts, not retrying straight away: the failures
+      // come in bursts (two out of three boots, minutes apart, from a machine
+      // whose network is otherwise fine and which can `curl` the same host),
+      // which is what a rate limit looks like after a day of booting this.
+      command: `sh -c 'sleep_for=5; for attempt in 1 2 3 4; do pnpm dlx @wp-playground/cli@3.1.51 server --port ${PORTS.wordpress} --blueprint tests-adapters/fixtures/wp-blueprint-journey.json && exit 0; echo "[wp] boot failed (attempt $attempt); waiting $sleep_for" >&2; sleep $sleep_for; sleep_for=$((sleep_for * 3)); done; exit 1'`,
       // PINNED, not @latest: dlx fetches into the pnpm store, so @latest
       // quietly adds another copy of WordPress-on-WASM every time upstream
       // publishes. The design doc names this version; keeping them equal also

@@ -255,7 +255,10 @@ export async function setup(): Promise<void> {
   // false)" — a timeout, for a child that had already exited and said why. Now
   // a dead child ends the attempt at once, and its exit is what the last
   // failure reports.
-  const attempts = 2;
+  // Four, with a growing wait between them (see playwright.config.ts): the
+  // failures arrive in bursts, so two attempts seconds apart can both land
+  // inside one.
+  const attempts = 4;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     let exit: string | null = null;
     wp = spawn(
@@ -310,6 +313,7 @@ export async function setup(): Promise<void> {
     while (Date.now() < free && (await isUp())) {
       await new Promise((r) => setTimeout(r, 500));
     }
+    await new Promise((r) => setTimeout(r, 5_000 * 3 ** (attempt - 1)));
   }
 }
 
