@@ -334,14 +334,34 @@ export function routeToIntent({ op, path, data }) {
       //
       // Not routed to `search` instead: that is full-text search, and asking
       // it for an empty query scoped to a path returned nothing at all.
-      const sortOn = params.get('sort_on');
+      // `getObjPositionInParent` is PLONE'S NAME for "the folder's own order",
+      // which is what tree.list returns when no sort is asked for — so asking
+      // for it is asking for nothing. Passed through it reached the adapters as
+      // a sort key they had never advertised, and they refused it, correctly:
+      //
+      //   wordpress cannot order a page collection by 'getObjPositionInParent'
+      //
+      // The contents view sends it for an unsorted folder (it is Volto's own
+      // default), so on every adapter-backed CMS the listing's FIRST request
+      // was an error. Clicking a column then appeared to do nothing — the
+      // order never changed, because the request that would have changed it
+      // never ran — and three journey specs failed on that one name.
+      //
+      // Translated HERE, not in each adapter: a Plone index name reaching an
+      // adapter at all is this router's business.
+      const requested = params.get('sort_on');
+      const sortOn =
+        requested === 'getObjPositionInParent' ? null : requested;
       if (params.get('path.depth') === '1' && !query) {
         return {
           intent: 'tree.list',
           args: {
             parent: scope,
             sortOn: sortOn || undefined,
-            sortOrder: params.get('sort_order') || undefined,
+            // An order is only an order if there is something to order BY.
+            ...(sortOn && params.get('sort_order')
+              ? { sortOrder: params.get('sort_order') }
+              : {}),
           },
         };
       }

@@ -304,6 +304,47 @@ describe('routeToIntent', () => {
     expect(routeToIntent({ op: 'get', path: '/n/@search?b_size=5' }).intent).toBe('search');
   });
 
+  it("drops Plone's name for a folder's own order", () => {
+    // `getObjPositionInParent` is PLONE's index for the sibling order an
+    // editor arranges by hand — which is what a folder listing returns when
+    // nothing else is asked for. So asking for it is asking for nothing, and
+    // passing it on made it a sort key the adapters had never advertised:
+    // they refused it, correctly, with "wordpress cannot order a page
+    // collection by 'getObjPositionInParent'".
+    //
+    // Volto sends it from SEVEN places — the contents view and six in the
+    // object browser — so the listing's first request was an error on every
+    // adapter-backed CMS, clicking a column appeared to do nothing because the
+    // request that would have reordered never ran, and three journey specs
+    // failed on this one name.
+    const folder = routeToIntent({
+      op: 'get',
+      path: '/n/@search?path.depth=1&sort_on=getObjPositionInParent&sort_order=ascending',
+    });
+    expect(folder.intent).toBe('tree.list');
+    expect(folder.args.sortOn).toBeUndefined();
+    // And no order either: an order is only an order if there is something to
+    // order by.
+    expect(folder.args.sortOrder).toBeUndefined();
+
+    // A real sort key still travels.
+    const sorted = routeToIntent({
+      op: 'get',
+      path: '/n/@search?path.depth=1&sort_on=modified&sort_order=descending',
+    });
+    expect(sorted.args.sortOn).toBe('modified');
+    expect(sorted.args.sortOrder).toBe('descending');
+
+    // The full-text route too: the object browser's search box sends the same
+    // name beside its term.
+    const searched = routeToIntent({
+      op: 'get',
+      path: '/n/@search?SearchableText=x&sort_on=getObjPositionInParent',
+    });
+    expect(searched.intent).toBe('search');
+    expect(searched.args.sortOn).toBeUndefined();
+  });
+
   it('maps blocks_layout onto the canonical blocksLayout on update', () => {
     const r = routeToIntent({
       op: 'patch',
