@@ -290,3 +290,12 @@ add_action('rest_api_init', function () {
         },
     ));
 });
+
+/**
+ * The site importer, as a wp-cli command.
+ *
+ * Loaded from here so one plugin carries everything this adapter's deployments
+ * need, and guarded inside its own file: it registers nothing unless wp-cli is
+ * what is running, so a web request never pays for it.
+ */
+require_once __DIR__ . '/import-command.php';
