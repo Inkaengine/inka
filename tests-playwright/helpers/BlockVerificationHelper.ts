@@ -11,7 +11,9 @@ import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage';
-import { usesAvailableSizes, resolveImageEntry } from './imageSizes.mjs';
+import {
+  usesAvailableSizes, resolveImageEntry, availableWidths, isProportionate,
+} from './imageSizes.mjs';
 import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
 import { settledCount } from './settled-count';
 import { wordsWithNowhereToGo } from './elementless';
@@ -561,7 +563,8 @@ export async function checkEditAnnotations(
       // What the renderer did with each schema image field that has a value.
       // FACTS ONLY — whether that is acceptable is decided in Node, by
       // imageSizes.mjs, which is unit-tested without a browser.
-      const imageFields: Array<{ field: string; rendered: boolean; srcset: string | null }> = [];
+      const imageFields: Array<{ field: string; rendered: boolean; srcset: string | null;
+        boxWidth?: number; actualWidth?: number; currentSrc?: string | null }> = [];
       if (blockData && uid) {
         const imgSchema = bridge?.getBlockSchema?.(uid) || null;
         const imgProps = imgSchema?.properties as Record<string, any> | undefined;
@@ -597,10 +600,40 @@ export async function checkEditAnnotations(
           // field as a CSS background instead; that element still had to exist
           // (checked above) but has no srcset to judge, so report null.
           const img = host.tagName === 'IMG' ? host : host.querySelector('img');
+
+          // How big were the bytes, and how big was the box they went into?
+          //
+          // TRUE decoded width, via createImageBitmap on the fetched bytes —
+          // NOT naturalWidth. With srcset/sizes the browser divides
+          // naturalWidth by the chosen candidate's density, so a 480px file
+          // reports 316 and any arithmetic on it is confident nonsense.
+          //
+          // The fetch hits the browser cache (the image is already painted),
+          // so the cost here is the decode, not the network.
+          let boxWidth = 0;
+          let actualWidth = 0;
+          let currentSrc = null;
+          if (img) {
+            boxWidth = img.getBoundingClientRect().width * (window.devicePixelRatio || 1);
+            currentSrc = (img as HTMLImageElement).currentSrc || img.getAttribute('src') || null;
+            if (currentSrc && boxWidth > 0 && !currentSrc.startsWith('data:')) {
+              try {
+                const bmp = await createImageBitmap(await (await fetch(currentSrc)).blob());
+                actualWidth = bmp.width;
+                bmp.close?.();
+              } catch {
+                actualWidth = 0;   // undecodable (SVG, CORS, 404) — not judged
+              }
+            }
+          }
+
           imageFields.push({
             field,
             rendered: true,
             srcset: img ? (img.getAttribute('srcset') ?? '') : null,
+            boxWidth,
+            actualWidth,
+            currentSrc,
           });
         }
       }
@@ -641,11 +674,32 @@ export async function checkEditAnnotations(
   //
   // Conditional on the data, deliberately: a single-scale image rendering one
   // candidate is correct and must not be failed for it.
-  for (const { field, rendered, srcset } of r.imageFields) {
+  for (const { field, rendered, srcset, boxWidth, actualWidth, currentSrc } of r.imageFields) {
     const entry = resolveImageEntry(blockData as Record<string, unknown>, field);
     if (srcset === null && rendered) continue;   // CSS background: nothing to judge
     const verdict = usesAvailableSizes({ field, entry, srcset: srcset ?? '', rendered });
     expect(verdict.ok, verdict.reason).toBe(true);
+
+    // Offering sizes is not the same as USING one. The rule above passes a
+    // srcset of several distinct candidates even when the browser ignored them
+    // all and fell back to `src` — which is exactly what happened on a
+    // production site whose every candidate 404'd: it shipped the 1920px
+    // original to every viewport and no check noticed.
+    //
+    // So compare the bytes actually downloaded against the box they were
+    // painted into, measured against the SMALLEST OFFERED SCALE THAT WOULD
+    // HAVE COVERED IT. Plone caps scales at the source, so an image already at
+    // its smallest available size is optimal and must pass; the only defect
+    // expressible here is "a smaller scale existed and a bigger one was used".
+    const fit = isProportionate({
+      actualWidth: actualWidth ?? 0,
+      widths: availableWidths(entry, field),
+      boxWidth: boxWidth ?? 0,
+    });
+    // Name the URL. Without it "downloaded 2400px" cannot be told apart from
+    // "asked for a 400px scale and the server sent 2400px" — one is the
+    // renderer's bug and the other the server's, and they look identical.
+    expect(fit.ok, `field "${field}" ${fit.reason}\n    from: ${currentSrc}`).toBe(true);
   }
 
   for (const { field, value } of r.textViolations) {

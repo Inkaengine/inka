@@ -12,6 +12,7 @@ import assert from 'node:assert';
 import {
   scalesAvailable, sizesOffered, usesAvailableSizes,
   drainImageSizeCoverage, multiScaleSeen, resolveImageEntry,
+  availableWidths, neededWidth, isProportionate,
 } from './imageSizes.mjs';
 
 const API = 'https://api.test';
@@ -236,4 +237,83 @@ test('a candidate the browser would drop is not a size on offer', () => {
   // And the whole point: malformed descriptors fail the contract.
   const v = usesAvailableSizes({ field: 'url', entry: sixScales(), srcset: bad });
   assert.equal(v.ok, false, 'markup the browser drops is not "using the sizes"');
+});
+
+// --- proportionality: bytes vs the box they were painted into ---------------
+
+const ladder = () => ({
+  image_field: 'image',
+  image_scales: { image: [{ width: 1920, height: 1280, download: '@@images/image',
+    scales: { preview:{width:400}, large:{width:800}, great:{width:1200}, huge:{width:1600} } }] },
+});
+
+test('availableWidths is distinct and ascending', () => {
+  assert.deepEqual(availableWidths(ladder(), 'image'), [400, 800, 1200, 1600, 1920]);
+});
+
+test('capped scales collapse — three names, one size', () => {
+  // Plone caps at the source: on a 200px image large/huge/great all return 200.
+  const capped = { image_field:'image', image_scales:{ image:[{ width:200,
+    scales:{ large:{width:200}, huge:{width:200}, great:{width:200} } }] } };
+  assert.deepEqual(availableWidths(capped, 'image'), [200]);
+});
+
+test('needed is the smallest scale that COVERS the box', () => {
+  const w = [400, 800, 1200, 1600, 1920];
+  assert.equal(neededWidth(w, 266), 400);
+  assert.equal(neededWidth(w, 400), 400);
+  assert.equal(neededWidth(w, 401), 800);
+  assert.equal(neededWidth(w, 5000), 1920, 'nothing covers it — largest is the best available');
+});
+
+test('the original behind a small box fails', () => {
+  // The homepage hero: a 1920px file painted into a 266px logo box.
+  const v = isProportionate({ actualWidth: 1920, widths: availableWidths(ladder(),'image'), boxWidth: 266 });
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /1920px image for a 266px box/);
+  assert.match(v.reason, /400px scale was offered/);
+});
+
+test('an image already at its smallest available size passes', () => {
+  // A 266px logo with no smaller scale is optimal; failing it would demand
+  // something Plone cannot produce.
+  const small = { image_field:'image', image_scales:{ image:[{ width:266 }] } };
+  const v = isProportionate({ actualWidth: 266, widths: availableWidths(small,'image'), boxWidth: 266 });
+  assert.ok(v.ok, v.reason);
+});
+
+test('retina headroom is allowed', () => {
+  // boxWidth is already CSS width x DPR; the ladder is coarse, so the next
+  // scale up is often correct. 2x tolerance, not pixel-perfection.
+  const v = isProportionate({ actualWidth: 800, widths: [400, 800], boxWidth: 400 });
+  assert.ok(v.ok, v.reason);
+});
+
+test('unmeasurable cases are skipped, not failed', () => {
+  for (const args of [
+    { actualWidth: 0, widths: [400], boxWidth: 100 },
+    { actualWidth: 400, widths: [], boxWidth: 100 },
+    { actualWidth: 400, widths: [400], boxWidth: 0 },
+  ]) {
+    const v = isProportionate(args);
+    assert.ok(v.ok && v.skipped, JSON.stringify(args));
+  }
+});
+
+test('a ladder too coarse for the box is reported as a CONFIGURATION defect', () => {
+  // plone.allowed_sizes decides the ladder, so "nothing smaller is offered" is
+  // itself a defect, not an excuse. The frontend did the best it could and the
+  // visitor still paid for 2000px to paint 179px — the fix is a finer size.
+  const v = isProportionate({ actualWidth: 2000, widths: [2000], boxWidth: 179 });
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /no offered scale is finer/);
+  assert.match(v.reason, /plone\.allowed_sizes/);
+  assert.doesNotMatch(v.reason, /offered and not used/, 'must not blame the renderer');
+});
+
+test('when a usable scale existed, the renderer is named instead', () => {
+  const v = isProportionate({ actualWidth: 2400, widths: [400, 800, 2400], boxWidth: 179 });
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /400px scale was offered and not used/);
+  assert.doesNotMatch(v.reason, /plone\.allowed_sizes/, 'the ladder is fine here');
 });
