@@ -18,6 +18,28 @@ const BASE = `http://127.0.0.1:${PORT}`;
 let wp: ChildProcess | null = null;
 let pgCookie = '';
 
+/**
+ * Stop a spawned server AND whatever it spawned.
+ *
+ * `pnpm dlx <cli>` is a wrapper: killing the child leaves the node process it
+ * started holding the port, and the next boot — or the next run of this suite
+ * — is refused with "Port is already serving". That is exactly what a retry
+ * hit. Spawned with `detached`, the child leads its own process group, so one
+ * signal reaches the wrapper and the server both.
+ *
+ * ESRCH means it is already gone, which is the outcome asked for. Anything
+ * else is a real failure to stop a server and is thrown: a suite that silently
+ * left one running would hand the next run unknown content.
+ */
+function stopGroup(child: ChildProcess | null): void {
+  if (!child?.pid) return;
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
+  }
+}
+
 async function isUp(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE}/`, { redirect: 'manual' });
@@ -133,7 +155,9 @@ async function startStrapi(): Promise<void> {
       '--no-watch-admin',
       '--no-build-admin',
     ],
-    { cwd: resolve(STRAPI_APP), stdio: 'pipe' },
+    // Its own process group too, so teardown's stopGroup takes the Strapi
+    // server rather than only the node that launched it.
+    { cwd: resolve(STRAPI_APP), stdio: 'pipe', detached: true },
   );
   strapi.stderr?.on('data', (d) => process.stderr.write(`[strapi] ${d}`));
   strapi.stdout?.on('data', (d) => process.stderr.write(`[strapi] ${d}`));
@@ -220,47 +244,81 @@ export async function setup(): Promise<void> {
   );
   writeFileSync(runBlueprint, JSON.stringify(blueprint));
 
-  wp = spawn(
-    'pnpm',
-    [
-      'dlx',
-      // Pinned; see the note in playwright.config.ts.
-      '@wp-playground/cli@3.1.51',
-      'server',
-      '--port',
-      String(PORT),
-      '--login',
-      // Bulk-seeds the vocabulary in one PHP pass; 10k REST posts would
-      // dominate the run time.
-      // Plugins are MOUNTED from the repo, never downloaded at boot: Playground's
-      // installPlugin step reaches wordpress.org, and when that fetch fails it
-      // does so SILENTLY — you get a healthy WordPress with the plugin missing.
-      '--mount',
-      `${resolve(pluginDir)}:/wordpress/wp-content/plugins`,
-      '--blueprint',
-      runBlueprint,
-    ],
-    { stdio: 'pipe' },
-  );
-  wp.stderr?.on('data', (d) => process.stderr.write(`[wp] ${d}`));
-  // Blueprint steps echo to STDOUT, and discarding it meant a step that failed
-  // left no trace — the first sign was a later assertion about the CMS.
-  wp.stdout?.on('data', (d) => process.stderr.write(`[wp] ${d}`));
+  // Booted with a RETRY, because the CLI fetches WordPress and the PHP build
+  // from playground.wordpress.net on every boot and that fetch is not
+  // reliable: it dies with a bare `Error: fetch failed` before WordPress
+  // exists, intermittently, on a machine whose network is otherwise fine (one
+  // run of a single spec passed, the next boot failed, minutes apart).
+  //
+  // Each attempt also WATCHES THE PROCESS. It used to poll for the blueprint
+  // for four minutes and then report "never finished its blueprint (server up:
+  // false)" — a timeout, for a child that had already exited and said why. Now
+  // a dead child ends the attempt at once, and its exit is what the last
+  // failure reports.
+  const attempts = 2;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    let exit: string | null = null;
+    wp = spawn(
+      'pnpm',
+      [
+        'dlx',
+        // Pinned; see the note in playwright.config.ts.
+        '@wp-playground/cli@3.1.51',
+        'server',
+        '--port',
+        String(PORT),
+        '--login',
+        // Bulk-seeds the vocabulary in one PHP pass; 10k REST posts would
+        // dominate the run time.
+        // Plugins are MOUNTED from the repo, never downloaded at boot: Playground's
+        // installPlugin step reaches wordpress.org, and when that fetch fails it
+        // does so SILENTLY — you get a healthy WordPress with the plugin missing.
+        '--mount',
+        `${resolve(pluginDir)}:/wordpress/wp-content/plugins`,
+        '--blueprint',
+        runBlueprint,
+      ],
+      // Its own process group, so stopGroup can take the server with it.
+      { stdio: 'pipe', detached: true },
+    );
+    wp.on('exit', (code, signal) => {
+      exit = `exited with ${signal ? `signal ${signal}` : `code ${code}`}`;
+    });
+    wp.stderr?.on('data', (d) => process.stderr.write(`[wp] ${d}`));
+    // Blueprint steps echo to STDOUT, and discarding it meant a step that failed
+    // left no trace — the first sign was a later assertion about the CMS.
+    wp.stdout?.on('data', (d) => process.stderr.write(`[wp] ${d}`));
 
-  const deadline = Date.now() + 240_000;
-  while (Date.now() < deadline) {
-    if (await blueprintDone()) return;
-    await new Promise((r) => setTimeout(r, 1000));
+    const deadline = Date.now() + 240_000;
+    while (Date.now() < deadline && exit === null) {
+      if (await blueprintDone()) return;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    const why = exit ?? `never finished its blueprint (server up: ${await isUp()})`;
+    if (attempt === attempts) {
+      throw new Error(`WordPress Playground ${why} on ${BASE}`);
+    }
+    process.stderr.write(
+      `[wp] ${why}; booting again (attempt ${attempt + 1} of ${attempts})\n`,
+    );
+    stopGroup(wp);
+    wp = null;
+    // Let the port go before asking for it again: the next attempt's CLI binds
+    // it, and the suite refuses a WordPress it did not seed.
+    const free = Date.now() + 15_000;
+    while (Date.now() < free && (await isUp())) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
   }
-  throw new Error(
-    `WordPress Playground never finished its blueprint on ${BASE} ` +
-      `(server up: ${await isUp()})`,
-  );
 }
 
 export async function teardown(): Promise<void> {
-  wp?.kill('SIGTERM');
+  // The GROUP, not the child: see stopGroup. A `pnpm dlx` wrapper that is
+  // signalled alone leaves its server holding the port, and the next run of
+  // this suite is refused.
+  stopGroup(wp);
   wp = null;
-  strapi?.kill('SIGTERM');
+  stopGroup(strapi);
   strapi = null;
 }

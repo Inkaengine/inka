@@ -152,7 +152,10 @@
         import { StrapiAdapter } from '/strapi-adapter.js';
         // The PUBLIC readers. An anonymous view has no adapter — see publicSite().
         import { createPublicReader as plonePublic } from '/plone-public.js';
-        import { createPublicReader as wordpressPublic } from '/wordpress-public.js';
+        import {
+          createPublicReader as wordpressPublic,
+          wpFetchItems,
+        } from '/wordpress-public.js';
         import { createPublicReader as drupalPublic } from '/drupal-public.js';
         import { createPublicReader as strapiPublic } from '/strapi-public.js';
 
@@ -441,13 +444,18 @@
             tfLog('extraCriteria from URL:', JSON.stringify(extraCriteria), 'search:', window.location.search);
             window._searchCriteria = extraCriteria; // Store for form handlers
             const cms = frontendCms();
+            // A VISITOR's listing is a DIRECT read of the CMS this page is on,
+            // never an adapter — and the query is that CMS's own, so the
+            // fetcher is too. Plone has `ploneFetchItems`, WordPress
+            // `wpFetchItems`, both beside the CMS they read; the other two
+            // still answer through `publicRead.listing()`, which is the shape
+            // this file's `publicFetchItems` was written for.
             const fetchItems = cms.which === 'plone'
                 ? ploneFetchItems({ apiUrl: cms.base, contextPath, extraCriteria })
                 : !hasCmsCredential()
-                  // A VISITOR's listing: the public reader, never an adapter.
-                  // Plone's own fetcher is already a direct read, which is why
-                  // only the other three need this.
-                  ? publicFetchItems({ reader: publicReader(), contextPath, extraCriteria })
+                  ? cms.which === 'wordpress'
+                    ? wpFetchItems({ cmsBaseUrl: cms.base, contextPath, extraCriteria })
+                    : publicFetchItems({ reader: publicReader(), contextPath, extraCriteria })
                   : adapterFetchItems({ adapter: cmsAdapter(), extraCriteria });
             // Example listing-variant fetchers (see packages/helpers/index.js).
             // They read the SAME CMS the page renders from: Plone directly, any
