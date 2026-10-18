@@ -11,6 +11,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const { imageSize, scaledSize, pngOfSize } = require('./scaled-image.cjs');
 const os = require('os');
 const { execFileSync } = require('child_process');
 const principalsAndRules = require('./mock-principals-and-rules.cjs');
@@ -6080,12 +6081,45 @@ app.get('*/@@images/*', (req, res) => {
   // e.g., /block/grid-block/@@images/preview_image/large
   // e.g., /concepts/custom-blocks/@@images/image-800-1c983515.svg (listing expansion scale URL)
   // Match field name which may include hash suffix: image-800-1c983515.svg
-  const pathMatch = req.path.match(/^(.+?)\/@@images\/([a-z_]+(?:-[\w.-]+)?)/i);
+  // Third group is the SCALE. The old pattern had only two groups and read
+  // pathMatch[3], so `scale` was always undefined and every request fell back
+  // to 'preview' — the scale name was never actually parsed.
+  const pathMatch = req.path.match(/^(.+?)\/@@images\/([a-z_]+(?:-[\w.-]+)?)(?:\/([a-z0-9]+))?/i);
   const contentPath = pathMatch ? pathMatch[1] : '';
   // Strip hash suffix from field name (e.g., 'image-800-1c983515.svg' → 'image')
   const rawField = pathMatch ? pathMatch[2] : 'image';
   const fieldName = rawField.replace(/-\d+.*$/, '');
-  const scale = pathMatch && pathMatch[3] ? pathMatch[3] : 'preview';
+  const scale = pathMatch && pathMatch[3] ? pathMatch[3] : null;
+
+  // A SCALE must come back at the scale's SIZE. This endpoint used to serve the
+  // same bytes at every scale, so a frontend correctly asking for
+  // `@@images/image/preview` got the 2400px original back and was
+  // indistinguishable from one that asked for the original — which made any
+  // check that measures image size meaningless against this mock.
+  //
+  // We synthesise a blank PNG at the right dimensions rather than resizing: the
+  // picture does not matter here, the size does. SVG is excluded because it has
+  // no raster size, which is also why real Plone serves it unscaled.
+  //
+  // Shared, because this handler has TWO serving paths and patching only the
+  // first left the other still lying.
+  const sendScaledIfAsked = (imageFile) => {
+    const ext = path.extname(imageFile).toLowerCase();
+    if (!scale || ext === '.svg') return false;
+    try {
+      const source = imageSize(fs.readFileSync(imageFile));
+      const target = scaledSize(source, scale);
+      if (!target || (target.width === source.width && target.height === source.height)) {
+        return false;
+      }
+      res.set('Content-Type', 'image/png');
+      res.send(pngOfSize(target.width, target.height));
+      return true;
+    } catch {
+      return false;   // unreadable header — serve the original bytes instead
+    }
+  };
+
 
   // Bytes uploaded in this session take precedence: they have no directory on
   // disk, so contentDirMap will never find them.
@@ -6098,6 +6132,10 @@ app.get('*/@@images/*', (req, res) => {
   // that references it, so there is nothing to resolve.
   if (markdownBlobs.has(contentPath)) {
     const file = markdownBlobs.get(contentPath);
+    // Scale here too. This handler has THREE serving paths and each one that
+    // ignores the scale makes the mock lie about image size on exactly the
+    // content it owns — these docs fixtures live beside their markdown.
+    if (sendScaledIfAsked(file)) return;
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
     res.sendFile(file);
@@ -6124,9 +6162,10 @@ app.get('*/@@images/*', (req, res) => {
   };
   const isImageExt = (ext) => ext in mimeTypes;
   const serveFile = (imageFile) => {
+    if (sendScaledIfAsked(imageFile)) return undefined;
     const ext = path.extname(imageFile).toLowerCase();
     res.set('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-    res.sendFile(imageFile);
+    return res.sendFile(imageFile);
   };
 
   // Distribution lead/preview image may reference ANOTHER content item's blob
@@ -6188,6 +6227,10 @@ app.get('*/@@download/*', (req, res) => {
   // the distribution `<dir>/image/<file>` layout handled below.
   if (markdownBlobs.has(contentPath)) {
     const file = markdownBlobs.get(contentPath);
+    // Scale here too. This handler has THREE serving paths and each one that
+    // ignores the scale makes the mock lie about image size on exactly the
+    // content it owns — these docs fixtures live beside their markdown.
+    if (sendScaledIfAsked(file)) return;
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
     res.sendFile(file);
@@ -6211,6 +6254,7 @@ app.get('*/@@download/*', (req, res) => {
         '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
         '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pdf': 'application/pdf',
       };
+      if (sendScaledIfAsked(imageFile)) return;
       res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
       res.sendFile(imageFile);
       return;

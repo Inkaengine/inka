@@ -674,7 +674,7 @@ export async function checkEditAnnotations(
   //
   // Conditional on the data, deliberately: a single-scale image rendering one
   // candidate is correct and must not be failed for it.
-  for (const { field, rendered, srcset, boxWidth, actualWidth } of r.imageFields) {
+  for (const { field, rendered, srcset, boxWidth, actualWidth, currentSrc } of r.imageFields) {
     const entry = resolveImageEntry(blockData as Record<string, unknown>, field);
     if (srcset === null && rendered) continue;   // CSS background: nothing to judge
     const verdict = usesAvailableSizes({ field, entry, srcset: srcset ?? '', rendered });
@@ -696,7 +696,10 @@ export async function checkEditAnnotations(
       widths: availableWidths(entry, field),
       boxWidth: boxWidth ?? 0,
     });
-    expect(fit.ok, `field "${field}" ${fit.reason}`).toBe(true);
+    // Name the URL. Without it "downloaded 2400px" cannot be told apart from
+    // "asked for a 400px scale and the server sent 2400px" — one is the
+    // renderer's bug and the other the server's, and they look identical.
+    expect(fit.ok, `field "${field}" ${fit.reason}\n    from: ${currentSrc}`).toBe(true);
   }
 
   for (const { field, value } of r.textViolations) {

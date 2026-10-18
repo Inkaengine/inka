@@ -1149,7 +1149,15 @@ function renderImageBlock(block, { inListing = false } = {}) {
     // Offer the sizes the data advertises. Empty when there is no real choice,
     // and an empty srcset attribute is inert — see getImageSrcset.
     const srcset = getImageSrcset(block.url, block);
-    const srcsetAttr = srcset ? ` srcset="${srcset}"` : '';
+    // `sizes` as well as `srcset`. A srcset alone tells the browser which files
+    // EXIST, not how big the box is — absent `sizes` the spec default is
+    // `100vw`, so it sized for the viewport and pulled the 2400px original into
+    // a 179px grid cell. `auto` makes it measure the real box; browsers without
+    // support ignore it and fall back to today's behaviour, so nothing
+    // regresses. It requires `loading="lazy"` to take effect.
+    const srcsetAttr = srcset
+        ? ` srcset="${srcset}" sizes="auto" loading="lazy"`
+        : '';
 
     // Add data-edit-media="url" for inline image editing
     const img = `<img data-edit-media="url" src="${imageSrc}"${srcsetAttr} alt="${alt}" />`;
