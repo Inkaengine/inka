@@ -173,3 +173,90 @@ export function usesAvailableSizes({ field, entry, srcset, rendered = true, reco
   }
   return { ok: true, available, offered };
 }
+
+/**
+ * Every distinct width the data offers, ascending.
+ *
+ * The primary entry is the SOURCE; `scales` are the variants. Distinct, because
+ * Plone caps every scale at the source: on a 200px image `large`, `huge` and
+ * `great` all return 200, which is one size wearing three names.
+ */
+export function availableWidths(entry, field) {
+  if (!entry || typeof entry !== 'object') return [];
+  const scales = entry.image_scales ?? {};
+  const metas = scales[field] ?? scales[entry.image_field];
+  const meta = Array.isArray(metas) ? metas[0] : metas;
+  if (!meta) return [];
+  const widths = new Set();
+  if (Number(meta.width)) widths.add(Number(meta.width));
+  for (const s of Object.values(meta.scales ?? {})) {
+    if (Number(s?.width)) widths.add(Number(s.width));
+  }
+  return [...widths].sort((a, b) => a - b);
+}
+
+/**
+ * The smallest offered width that still covers `boxWidth`, or the largest
+ * offered width when none does.
+ *
+ * This is the yardstick, NOT the box itself. Plone caps scales at the source,
+ * so a 266px logo painted into a 266px box is already optimal and must not be
+ * failed for it. The only defect this can describe is "a smaller scale existed
+ * and the browser downloaded a bigger one".
+ */
+export function neededWidth(widths, boxWidth) {
+  if (!widths.length) return null;
+  return widths.find((w) => w >= boxWidth) ?? widths[widths.length - 1];
+}
+
+/**
+ * Did the browser download bytes proportionate to the box it painted them into?
+ *
+ * `actualWidth` must be the TRUE decoded width, from createImageBitmap on the
+ * fetched bytes — never `naturalWidth`. With `srcset`/`sizes` the browser
+ * divides naturalWidth by the candidate's density, so a 480px file reports 316
+ * and any arithmetic on it is confident nonsense.
+ *
+ * `tolerance` is generous on purpose: a 2x DPR screen legitimately wants twice
+ * the CSS width, and the ladder is coarse, so the next scale up is often the
+ * right answer. This is for gross over-fetching — a 1920px original behind a
+ * 266px logo — not for shaving the last few percent.
+ */
+export function isProportionate({ actualWidth, widths, boxWidth, tolerance = 2, coarse = 3 }) {
+  if (!actualWidth || !boxWidth || !widths.length) {
+    return { ok: true, skipped: true };          // nothing measurable to judge
+  }
+
+  const ratio = (actualWidth / boxWidth).toFixed(1);
+  const common = `downloaded a ${actualWidth}px image for a ${Math.round(boxWidth)}px box `
+    + `(${ratio}x wider than it is painted)`;
+
+  // Q1: was a MEANINGFULLY smaller scale available that still covered the box?
+  // `tolerance` guards the next rung up: a ladder is coarse, and taking 800 for
+  // a 400px box is a normal rounding, not a defect. Only a scale the download
+  // beats by more than `tolerance` counts as one that should have been used.
+  const better = widths.find((w) => w >= boxWidth && actualWidth > w * tolerance);
+  if (better) {
+    return {
+      ok: false, actualWidth, boxWidth,
+      reason: `${common} — a ${better}px scale was offered and not used `
+        + `(offered: ${widths.join(', ')})`,
+    };
+  }
+
+  // Q2: the download IS the best rung available — but is the ladder itself too
+  // coarse for where this image is used? `plone.allowed_sizes` is a
+  // CONFIGURATION choice, so "nothing finer exists" is a defect of its own
+  // rather than an excuse. Judged loosely (`coarse`), because demanding a rung
+  // per layout would fail every site.
+  if (actualWidth > boxWidth * coarse) {
+    return {
+      ok: false, actualWidth, boxWidth,
+      reason: `${common} — and no offered scale is finer: the smallest is `
+        + `${widths[0]}px (offered: ${widths.join(', ')}). The ladder is a `
+        + `configuration choice; add a finer size to plone.allowed_sizes`,
+    };
+  }
+
+  return { ok: true, actualWidth, boxWidth };
+}
