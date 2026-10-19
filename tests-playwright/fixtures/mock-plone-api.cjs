@@ -6610,6 +6610,39 @@ function findFirstImageFile(rootDir, maxDepth) {
   return null;
 }
 
+/**
+ * A SCALE comes back at the scale's size, as Plone's does.
+ *
+ * Shared by every serving path, because each one that ignores the scale makes
+ * the mock lie about image size on exactly the content it owns. A blank PNG at
+ * the right dimensions, not a resize: the picture does not matter here, the
+ * size does. SVG is excluded because it has no raster size, which is also why
+ * real Plone serves it unscaled.
+ *
+ * At MODULE scope, taking the scale as an argument. It used to be a closure
+ * inside the `@@images` handler while the SEPARATE `@@download` handler called
+ * it too, so every download of a file's bytes died with
+ * `ReferenceError: sendScaledIfAsked is not defined` — a 500 for the one route
+ * that serves a File. Nothing noticed until a WordPress import asked for the
+ * site's videos and was told each one was missing.
+ */
+function sendScaledIfAsked(res, imageFile, scale) {
+  const ext = path.extname(imageFile).toLowerCase();
+  if (!scale || ext === '.svg') return false;
+  try {
+    const source = imageSize(fs.readFileSync(imageFile));
+    const target = scaledSize(source, scale);
+    if (!target || (target.width === source.width && target.height === source.height)) {
+      return false;
+    }
+    res.set('Content-Type', 'image/png');
+    res.send(pngOfSize(target.width, target.height));
+    return true;
+  } catch {
+    return false;   // unreadable header — serve the original bytes instead
+  }
+}
+
 app.get('*/@@images/*', (req, res) => {
   // Extract content path and field name from URL. Serves the same image
   // file regardless of scale — the mock doesn't generate actual scales.
@@ -6637,24 +6670,6 @@ app.get('*/@@images/*', (req, res) => {
   // picture does not matter here, the size does. SVG is excluded because it has
   // no raster size, which is also why real Plone serves it unscaled.
   //
-  // Shared, because this handler has TWO serving paths and patching only the
-  // first left the other still lying.
-  const sendScaledIfAsked = (imageFile) => {
-    const ext = path.extname(imageFile).toLowerCase();
-    if (!scale || ext === '.svg') return false;
-    try {
-      const source = imageSize(fs.readFileSync(imageFile));
-      const target = scaledSize(source, scale);
-      if (!target || (target.width === source.width && target.height === source.height)) {
-        return false;
-      }
-      res.set('Content-Type', 'image/png');
-      res.send(pngOfSize(target.width, target.height));
-      return true;
-    } catch {
-      return false;   // unreadable header — serve the original bytes instead
-    }
-  };
 
 
   // Bytes uploaded in this session take precedence: they have no directory on
@@ -6671,7 +6686,7 @@ app.get('*/@@images/*', (req, res) => {
     // Scale here too. This handler has THREE serving paths and each one that
     // ignores the scale makes the mock lie about image size on exactly the
     // content it owns — these docs fixtures live beside their markdown.
-    if (sendScaledIfAsked(file)) return;
+    if (sendScaledIfAsked(res, file, scale)) return;
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
     res.sendFile(file);
@@ -6697,7 +6712,7 @@ app.get('*/@@images/*', (req, res) => {
   };
   const isImageExt = (ext) => ext in mimeTypes;
   const serveFile = (imageFile) => {
-    if (sendScaledIfAsked(imageFile)) return undefined;
+    if (sendScaledIfAsked(res, imageFile, scale)) return undefined;
     const ext = path.extname(imageFile).toLowerCase();
     res.set('Content-Type', mimeTypes[ext] || 'application/octet-stream');
     return res.sendFile(imageFile);
@@ -6762,10 +6777,11 @@ app.get('*/@@download/*', (req, res) => {
   // the distribution `<dir>/image/<file>` layout handled below.
   if (markdownBlobs.has(contentPath)) {
     const file = markdownBlobs.get(contentPath);
-    // Scale here too. This handler has THREE serving paths and each one that
-    // ignores the scale makes the mock lie about image size on exactly the
-    // content it owns — these docs fixtures live beside their markdown.
-    if (sendScaledIfAsked(file)) return;
+    // NO scaling on this route. `@@download/<field>/<filename>` serves what was
+    // stored — its last segment is a FILENAME, not a scale; a frontend that
+    // wants a scale asks `@@images`. This used to call the scaler with a
+    // `scale` that belonged to the other handler's scope, which is what made
+    // every download a 500.
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
     res.sendFile(file);
@@ -6789,7 +6805,6 @@ app.get('*/@@download/*', (req, res) => {
         '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
         '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pdf': 'application/pdf',
       };
-      if (sendScaledIfAsked(imageFile)) return;
       res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
       res.sendFile(imageFile);
       return;
