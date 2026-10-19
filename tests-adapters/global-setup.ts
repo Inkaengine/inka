@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { companionMuPluginSteps } from '../packages/hydra-adapters-wordpress/companion-plugin/blueprint-steps.mjs';
 
 /**
  * Boot the backing CMS ONCE per run, not once per spec file.
@@ -192,20 +193,10 @@ export async function setup(): Promise<void> {
     );
   }
 
-  // The companion plugin, injected into the blueprint as an mu-plugin.
-  //
-  // Read from where it SHIPS, beside the adapter, so the PHP has exactly one
-  // copy and the blueprint cannot drift from it.
-  //
-  // An mu-plugin rather than a mounted regular plugin: WordPress loads every
-  // file in mu-plugins with no activation step, and activating a plugin dir that
-  // appeared via a Playground mount fails with "Plugin file does not exist"
-  // even though get_plugins() lists it — the overlay filesystem shows it to a
-  // directory scan but not to validate_plugin's file check.
-  const companion = readFileSync(
-    'packages/hydra-adapters-wordpress/companion-plugin/hydra-companion/hydra-companion.php',
-    'utf8',
-  );
+  // The companion plugin, injected into the blueprint as mu-plugins by the
+  // helper that SHIPS with it (companion-plugin/blueprint-steps.mjs), so every
+  // harness that boots a Playground gets the same files. This used to inline
+  // one named file here, which went stale the moment the plugin grew a second.
   const blueprintPath =
     process.env.WP_BLUEPRINT ?? 'tests-adapters/fixtures/wp-blueprint.json';
   const blueprint = JSON.parse(readFileSync(blueprintPath, 'utf8'));
@@ -213,11 +204,7 @@ export async function setup(): Promise<void> {
   blueprint.steps.splice(
     blueprint.steps.length - 1,
     0,
-    {
-      step: 'writeFile',
-      path: '/wordpress/wp-content/mu-plugins/hydra-companion.php',
-      data: companion,
-    },
+    ...companionMuPluginSteps(),
     // Activated HERE rather than over REST after boot.
     //
     // The REST plugins endpoint refuses a mounted plugin with "Plugin file does

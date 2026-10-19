@@ -5,10 +5,13 @@
   "type": "module",
   "exports": {
     ".": "./index.js",
-    "./public": "./publicRead.js"
+    "./public": "./publicRead.js",
+    "./playground-blueprint": "./companion-plugin/blueprint-steps.mjs"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "publicRead.js",
+    "companion-plugin"
   ],
   "dependencies": {
     "@volto-hydra/hydra-adapters-core": "workspace:*",
