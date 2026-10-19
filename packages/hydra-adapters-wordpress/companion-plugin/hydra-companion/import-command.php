@@ -68,12 +68,20 @@ class Hydra_Import_Command
         kses_remove_filters();
 
         try {
-            $uploads = $this->import_assets(
+            // The uploads FIRST, because the documents reference them and only
+            // this pass knows the url each one ended up at: WordPress files an
+            // upload under the current year and month, so the address cannot be
+            // computed by the builder that made the manifest.
+            list($uploads, $asset_urls) = $this->import_assets(
                 dirname($manifest_path) . '/uploads',
                 $manifest['assets'] ?? [],
                 $dry_run
             );
-            $pages = $this->import_documents($manifest['documents'], $dry_run);
+            $pages = $this->import_documents(
+                $manifest['documents'],
+                $dry_run,
+                $asset_urls
+            );
         } finally {
             kses_init_filters();
         }
@@ -102,16 +110,23 @@ class Hydra_Import_Command
     private function import_assets($dir, array $assets, $dry_run)
     {
         if (!$assets) {
-            return 0;
+            return [0, []];
         }
         $upload_dir = wp_upload_dir();
         $written = 0;
+        // content path (e.g. /videos/frontpage-demo.mp4) => the url WordPress
+        // now serves that file at.
+        $urls = [];
 
         foreach ($assets as $asset) {
             $source = $dir . '/' . $asset['filename'];
             if (!file_exists($source)) {
-                WP_CLI::warning("missing asset file: {$source}");
-                continue;
+                // An ERROR, not a warning. The manifest lists what the builder
+                // had bytes for, so a file missing here means the bundle was
+                // built or copied wrong — and importing the documents anyway
+                // publishes a site whose every video and image is a 404, which
+                // is what shipped the first time this ran.
+                WP_CLI::error("missing asset file: {$source}");
             }
             $target = $upload_dir['path'] . '/' . $asset['filename'];
             $url = $upload_dir['url'] . '/' . $asset['filename'];
@@ -119,13 +134,13 @@ class Hydra_Import_Command
             $existing = $this->attachment_by_filename($asset['filename']);
             if ($dry_run) {
                 $written++;
+                $urls[$asset['path']] = $url;
                 continue;
             }
 
             wp_mkdir_p($upload_dir['path']);
             if (!copy($source, $target)) {
-                WP_CLI::warning("could not copy {$source} to {$target}");
-                continue;
+                WP_CLI::error("could not copy {$source} to {$target}");
             }
 
             if ($existing) {
@@ -139,8 +154,7 @@ class Hydra_Import_Command
                     'post_status' => 'inherit',
                 ], $target, 0, true);
                 if (is_wp_error($id)) {
-                    WP_CLI::warning("{$asset['filename']}: " . $id->get_error_message());
-                    continue;
+                    WP_CLI::error("{$asset['filename']}: " . $id->get_error_message());
                 }
             }
             // The named sizes a renderer addresses (`media_details.sizes`).
@@ -152,8 +166,9 @@ class Hydra_Import_Command
                 wp_generate_attachment_metadata($id, $target)
             );
             $written++;
+            $urls[$asset['path']] = $url;
         }
-        return $written;
+        return [$written, $urls];
     }
 
     private function attachment_by_filename($filename)
@@ -171,13 +186,44 @@ class Hydra_Import_Command
     }
 
     /**
+     * A document's blocks, with every asset marker pointing at WordPress.
+     *
+     * The builder leaves `{{hydra-asset:/videos/frontpage-demo.mp4}}` wherever
+     * the content referenced a file, because only this pass knows where the
+     * file ended up: WordPress serves an upload from wp-content/uploads, under
+     * the year and month it was filed in, so the url cannot be computed by
+     * whatever built the manifest. The content path is the key, and the upload
+     * pass recorded the url for it.
+     *
+     * A marker left over is an asset this bundle has no bytes for, so it FAILS
+     * here, by name. Publishing it instead is what the first deploy did: every
+     * video and image on the site was a 404, and nothing said a word.
+     */
+    private function with_asset_urls(array $doc, array $asset_urls)
+    {
+        $content = $doc['content'];
+        foreach ($asset_urls as $path => $url) {
+            $content = str_replace('{{hydra-asset:' . $path . '}}', $url, $content);
+        }
+        if (preg_match_all('#\{\{hydra-asset:([^}]*)\}\}#', $content, $m)) {
+            WP_CLI::error(
+                "{$doc['path']} references assets this import has no file for: "
+                . implode(', ', array_unique($m[1]))
+                . '. They are git-ignored artefacts: regenerate them, or build'
+                . ' the bundle in CI, which restores them from its cache.'
+            );
+        }
+        return $content;
+    }
+
+    /**
      * Pages, parents before children.
      *
      * The manifest is ordered that way by the builder, and a child whose parent
      * is not yet written would land at the site root — addressable at the wrong
      * url, which is the kind of mistake that looks like missing content.
      */
-    private function import_documents(array $documents, $dry_run)
+    private function import_documents(array $documents, $dry_run, array $asset_urls = [])
     {
         $id_by_path = [];
         $written = 0;
@@ -202,7 +248,7 @@ class Hydra_Import_Command
                 'post_name' => $doc['slug'],
                 'post_title' => $doc['title'],
                 'post_excerpt' => $doc['description'] ?? '',
-                'post_content' => $doc['content'],
+                'post_content' => $this->with_asset_urls($doc, $asset_urls),
                 'post_parent' => $parent,
                 'menu_order' => $doc['order'] ?? 0,
             ];

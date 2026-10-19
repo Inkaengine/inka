@@ -89,6 +89,13 @@ jobs:
         # match, navigation, folder ordering). Was not previously wired
         # into CI even though the test file existed.
         run: pnpm test:api
+      - name: Run the WordPress importer's unit tests (php)
+        # The deploy-critical half of `wp hydra import`: a block references a
+        # file by the path it was authored against, and only the import knows
+        # the url WordPress filed that file at. Nothing checked the
+        # substitution, and a deploy shipped a site whose every video and image
+        # was a 404 while reporting success. php is on the runner image.
+        run: pnpm test:import
       - name: Check the served test content
         # Every mount the mock serves (docs, /_test_data fixtures, site root),
         # validated as one site. The mock refuses to start on the same errors;

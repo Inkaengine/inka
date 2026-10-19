@@ -14,8 +14,8 @@
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "start": "VOLTOCONFIG=$(pwd)/volto.config.js razzle start",
-    "start:test": "PORT=${HYDRA_VOLTO_SSR_PORT:?not set — run via the make target, or export the port} RAZZLE_API_PATH=http://localhost:${HYDRA_MOCK_API_PORT:?not set — run via the make target, or export the port} RAZZLE_DEFAULT_IFRAME_URL=\"Test frontend|http://localhost:${HYDRA_TEST_FRONTEND_PORT:?not set — run via the make target, or export the port},Nuxt blog|http://localhost:${HYDRA_NUXT_PORT:?not set — run via the make target, or export the port},F7 Mobile|http://localhost:${HYDRA_F7_PORT:?not set — run via the make target, or export the port}/#!,Next.js|http://localhost:${HYDRA_NEXTJS_PORT:?not set — run via the make target, or export the port}\" VOLTOCONFIG=$(pwd)/volto.config.js razzle start",
-    "start:mock-api": "PORT=${HYDRA_MOCK_API_PORT:?not set — run via the make target, or export the port} CONTENT_MOUNTS='/docs:docs,/_test_data:tests-playwright/fixtures/content,/:tests-playwright/fixtures/site-root' node --watch --watch-path=tests-playwright/fixtures --watch-path=packages/hydra-js --watch-path=docs tests-playwright/fixtures/mock-api-server.cjs",
+    "start:test": "PORT=${HYDRA_VOLTO_SSR_PORT:?not set \u2014 run via the make target, or export the port} RAZZLE_API_PATH=http://localhost:${HYDRA_MOCK_API_PORT:?not set \u2014 run via the make target, or export the port} RAZZLE_DEFAULT_IFRAME_URL=\"Test frontend|http://localhost:${HYDRA_TEST_FRONTEND_PORT:?not set \u2014 run via the make target, or export the port},Nuxt blog|http://localhost:${HYDRA_NUXT_PORT:?not set \u2014 run via the make target, or export the port},F7 Mobile|http://localhost:${HYDRA_F7_PORT:?not set \u2014 run via the make target, or export the port}/#!,Next.js|http://localhost:${HYDRA_NEXTJS_PORT:?not set \u2014 run via the make target, or export the port}\" VOLTOCONFIG=$(pwd)/volto.config.js razzle start",
+    "start:mock-api": "PORT=${HYDRA_MOCK_API_PORT:?not set \u2014 run via the make target, or export the port} CONTENT_MOUNTS='/docs:docs,/_test_data:tests-playwright/fixtures/content,/:tests-playwright/fixtures/site-root' node --watch --watch-path=tests-playwright/fixtures --watch-path=packages/hydra-js --watch-path=docs tests-playwright/fixtures/mock-api-server.cjs",
     "start:test-frontend": "npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js",
     "start:nuxt:test": "cd examples/nuxt-blog-starter && pnpm run dev:test",
     "start:react:test": "cd docs/examples/test-react && pnpm run dev:test",
@@ -55,7 +55,8 @@
     "example:nextjs": "pnpm --filter hydra-nextjs run dev",
     "example:nuxt": "pnpm --filter nuxt-blog-starter install && pnpm --filter nuxt-blog-starter run dev",
     "wp:plugins": "node scripts/fetch-wp-plugins.mjs",
-    "strapi:fixture": "node scripts/fetch-strapi-fixture.mjs"
+    "strapi:fixture": "node scripts/fetch-strapi-fixture.mjs",
+    "test:import": "php packages/hydra-adapters-wordpress/companion-plugin/import-command.test.php"
   },
   "dependencies": {
     "@adobe/remark-gridtables": "3.0.20",
