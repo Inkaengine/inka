@@ -11,6 +11,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const { imageSize, scaledSize, pngOfSize } = require('./scaled-image.cjs');
 const os = require('os');
 const { execFileSync } = require('child_process');
 const principalsAndRules = require('./mock-principals-and-rules.cjs');
@@ -232,43 +233,7 @@ const uidPositionMap = {};
 /** Renewed token -> the session id its state lives under. */
 const sessionAliases = {};
 
-/**
- * States an anonymous visitor may NOT see, from Plone's default workflows:
- * simple_publication_workflow's `private` and `pending`, and the `draft` a
- * fixture may use. Anything else — `published`, or no workflow at all — is
- * public.
- */
-const PRIVATE_STATES = new Set(['private', 'pending', 'draft']);
-
-/**
- * A menu with nothing in it the caller may not open.
- *
- * The content route already refuses a private document to an anonymous
- * visitor. Navigation did not apply the same rule, so the menu ADVERTISED
- * exactly what the next request would be refused — every page of the public
- * site carried a link that answered 401/404, which is what page-integrity
- * reported the moment a private fixture existed to be listed.
- *
- * Real Plone cannot produce that combination: @navigation is built from a
- * catalog search, and the search only returns what the caller may view. An
- * editor still sees their drafts in the menu, which is why this filters on
- * authentication rather than always.
- *
- * Applied at the ROUTES, where authentication is already known, rather than
- * threaded down through the component builders: getContent and
- * generateComponents would both need the flag, and every caller of getContent
- * with it.
- */
-function withoutPrivateItems(items) {
-  if (!Array.isArray(items)) return items;
-  return items
-    .filter((item) => !PRIVATE_STATES.has(item?.review_state))
-    .map((item) =>
-      item?.items
-        ? { ...item, items: withoutPrivateItems(item.items) }
-        : item,
-    );
-}
+const ANONYMOUS_SESSION = '_default';
 
 function getSessionId(req) {
   const authHeader = req.headers.authorization;
@@ -293,7 +258,7 @@ function getSessionId(req) {
     return sessionIdentity(`token:${named}`);
   }
   // Unauthenticated requests use default session (no persistence)
-  return '_default';
+  return ANONYMOUS_SESSION;
 }
 
 /**
@@ -1442,6 +1407,7 @@ function getNavigationItems(basePath = '/', depth = 1, baseUrlIn, sessionId) {
       const rawContent = rawContentForComponents(itemPath, sessionId);
       if (!rawContent) return null;
       if (rawContent.exclude_from_nav) return null;
+      if (!mayView(rawContent, sessionId)) return null;
       if (rawContent['@type'] === 'Image' || rawContent['@type'] === 'File') return null;
       return formatNavItem(rawContent, itemPath, baseUrl, depth - 1, sessionId);
     })
@@ -1698,6 +1664,30 @@ const SPW = {
   ],
   published: [{ id: 'retract', title: 'Retract', to: 'private' }],
 };
+
+/** SPW states an anonymous reader may not view (Plone answers them 401). */
+const ANONYMOUS_HIDDEN_STATES = new Set(['private', 'pending']);
+
+/**
+ * Whether the session's reader may view `item` (raw content or a summary).
+ *
+ * Plone filters EVERY catalog query by this (allowedRolesAndUsers), not just
+ * a fetch of the item itself: listings, searches and menus offer an anonymous
+ * reader published content only. Here only the GET of the item refused it, so
+ * a private page was listed to the public and its link 401'd when followed.
+ *
+ * A hidden state is viewable by the item's Owner and by roles such as Manager
+ * or Editor. @login here makes everyone who signs in a Manager, so being
+ * signed in is the whole test; ownership would decide only for a reader
+ * without such a role, and this mock has none.
+ */
+function mayView(item, sessionId) {
+  if (typeof sessionId !== 'string') {
+    throw new Error(`mayView needs the reader's session, got ${sessionId}`);
+  }
+  if (!ANONYMOUS_HIDDEN_STATES.has(item.review_state)) return true;
+  return sessionId !== ANONYMOUS_SESSION;
+}
 
 const STATE_TITLES = {
   private: 'Private',
@@ -2383,6 +2373,17 @@ function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId, params
  * folder-contents listing from here, so every child on every page would page
  * nothing.
  */
+/**
+ * A folder's `items` as its reader may see them (see mayView). Filtered here,
+ * where the reader is known, because the content itself is also built for
+ * internal reads that have no reader.
+ */
+function withViewableItems(content, sessionId) {
+  if (!Array.isArray(content.items)) return content;
+  const items = content.items.filter((item) => mayView(item, sessionId));
+  return { ...content, items, items_total: items.length };
+}
+
 function batchFolderItems(content, query = {}) {
   if (!Array.isArray(content.items)) return content;
   const start = Number(query.b_start ?? 0);
@@ -5364,11 +5365,9 @@ app.get(/.*\/@navigation$/, (req, res) => {
     const rootPath = rootPathParam || '/';
     res.json({
       '@id': `${baseUrl}${cleanPath}/@navigation`,
-      items: isAuthenticated(req)
-        ? getNavigationItems(rootPath, depth, baseUrl, getSessionId(req))
-        : withoutPrivateItems(
-            getNavigationItems(rootPath, depth, baseUrl, getSessionId(req)),
-          ),
+      // No filtering here: getNavigationItems already drops what this
+      // reader may not view (mayView), for every level of the subtree.
+      items: getNavigationItems(rootPath, depth, baseUrl, getSessionId(req)),
     });
     return;
   }
@@ -5377,11 +5376,7 @@ app.get(/.*\/@navigation$/, (req, res) => {
     baseUrl,
     getSessionId(req),
   );
-  res.json(
-    isAuthenticated(req)
-      ? navigation
-      : { ...navigation, items: withoutPrivateItems(navigation.items) },
-  );
+  res.json(navigation);
 });
 
 app.get(/.*\/@navroot$/, (req, res) => {
@@ -5530,7 +5525,8 @@ app.post('*/@querystring-search', (req, res) => {
         id: raw.id || itemPath.split('/').pop(),
       };
     })
-    .filter((content) => content !== null);
+    .filter((content) => content !== null)
+    .filter((content) => mayView(content, getSessionId(req)));
 
   // Apply query filters
   // plone.app.querystring `selection.*` operations apply by index TYPE,
@@ -5741,11 +5737,7 @@ app.post('*/@querystring-search', (req, res) => {
   // Found by the public-site spec's listing test, which asks for the whole
   // subtree: the draft is in it, and the only reason it should not appear is
   // publication.
-  if (!isAuthenticated(req)) {
-    allItems = allItems.filter(
-      (content) => !PRIVATE_STATES.has(content?.review_state),
-    );
-  }
+  allItems = allItems.filter((content) => mayView(content, getSessionId(req)));
 
   // Apply results limit (different from b_size which is for pagination)
   if (limit && limit > 0) {
@@ -5809,9 +5801,10 @@ app.get('*/@search', (req, res) => {
   // disk, or a renamed document keeps reporting its old title.
   if (req.query.UID) {
     const uidPath = uidToPathMap[req.query.UID];
-    const found = uidPath
+    const content = uidPath
       ? getContent(uidPath, getSessionId(req))
       : null;
+    const found = content && mayView(content, getSessionId(req)) ? content : null;
     return res.json({
       '@id': `http://localhost:${PORT}${searchPath}/@search`,
       items: found
@@ -6029,6 +6022,8 @@ app.get('*/@search', (req, res) => {
   // `Language=all` to opt out. A search that says nothing about language is
   // left alone: every single-language spec in this suite is one of those, and
   // filtering them by a default would answer a question they never asked.
+  items = items.filter((item) => mayView(item, getSessionId(req)));
+
   const languageQuery = req.query.Language;
   if (languageQuery && languageQuery !== 'all') {
     const wanted = Array.isArray(languageQuery) ? languageQuery : [languageQuery];
@@ -6622,12 +6617,45 @@ app.get('*/@@images/*', (req, res) => {
   // e.g., /block/grid-block/@@images/preview_image/large
   // e.g., /concepts/custom-blocks/@@images/image-800-1c983515.svg (listing expansion scale URL)
   // Match field name which may include hash suffix: image-800-1c983515.svg
-  const pathMatch = req.path.match(/^(.+?)\/@@images\/([a-z_]+(?:-[\w.-]+)?)/i);
+  // Third group is the SCALE. The old pattern had only two groups and read
+  // pathMatch[3], so `scale` was always undefined and every request fell back
+  // to 'preview' — the scale name was never actually parsed.
+  const pathMatch = req.path.match(/^(.+?)\/@@images\/([a-z_]+(?:-[\w.-]+)?)(?:\/([a-z0-9]+))?/i);
   const contentPath = pathMatch ? pathMatch[1] : '';
   // Strip hash suffix from field name (e.g., 'image-800-1c983515.svg' → 'image')
   const rawField = pathMatch ? pathMatch[2] : 'image';
   const fieldName = rawField.replace(/-\d+.*$/, '');
-  const scale = pathMatch && pathMatch[3] ? pathMatch[3] : 'preview';
+  const scale = pathMatch && pathMatch[3] ? pathMatch[3] : null;
+
+  // A SCALE must come back at the scale's SIZE. This endpoint used to serve the
+  // same bytes at every scale, so a frontend correctly asking for
+  // `@@images/image/preview` got the 2400px original back and was
+  // indistinguishable from one that asked for the original — which made any
+  // check that measures image size meaningless against this mock.
+  //
+  // We synthesise a blank PNG at the right dimensions rather than resizing: the
+  // picture does not matter here, the size does. SVG is excluded because it has
+  // no raster size, which is also why real Plone serves it unscaled.
+  //
+  // Shared, because this handler has TWO serving paths and patching only the
+  // first left the other still lying.
+  const sendScaledIfAsked = (imageFile) => {
+    const ext = path.extname(imageFile).toLowerCase();
+    if (!scale || ext === '.svg') return false;
+    try {
+      const source = imageSize(fs.readFileSync(imageFile));
+      const target = scaledSize(source, scale);
+      if (!target || (target.width === source.width && target.height === source.height)) {
+        return false;
+      }
+      res.set('Content-Type', 'image/png');
+      res.send(pngOfSize(target.width, target.height));
+      return true;
+    } catch {
+      return false;   // unreadable header — serve the original bytes instead
+    }
+  };
+
 
   // Bytes uploaded in this session take precedence: they have no directory on
   // disk, so contentDirMap will never find them.
@@ -6640,6 +6668,10 @@ app.get('*/@@images/*', (req, res) => {
   // that references it, so there is nothing to resolve.
   if (markdownBlobs.has(contentPath)) {
     const file = markdownBlobs.get(contentPath);
+    // Scale here too. This handler has THREE serving paths and each one that
+    // ignores the scale makes the mock lie about image size on exactly the
+    // content it owns — these docs fixtures live beside their markdown.
+    if (sendScaledIfAsked(file)) return;
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
     res.sendFile(file);
@@ -6665,9 +6697,10 @@ app.get('*/@@images/*', (req, res) => {
   };
   const isImageExt = (ext) => ext in mimeTypes;
   const serveFile = (imageFile) => {
+    if (sendScaledIfAsked(imageFile)) return undefined;
     const ext = path.extname(imageFile).toLowerCase();
     res.set('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-    res.sendFile(imageFile);
+    return res.sendFile(imageFile);
   };
 
   // Distribution lead/preview image may reference ANOTHER content item's blob
@@ -6729,6 +6762,10 @@ app.get('*/@@download/*', (req, res) => {
   // the distribution `<dir>/image/<file>` layout handled below.
   if (markdownBlobs.has(contentPath)) {
     const file = markdownBlobs.get(contentPath);
+    // Scale here too. This handler has THREE serving paths and each one that
+    // ignores the scale makes the mock lie about image size on exactly the
+    // content it owns — these docs fixtures live beside their markdown.
+    if (sendScaledIfAsked(file)) return;
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
     res.sendFile(file);
@@ -6752,6 +6789,7 @@ app.get('*/@@download/*', (req, res) => {
         '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
         '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pdf': 'application/pdf',
       };
+      if (sendScaledIfAsked(imageFile)) return;
       res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
       res.sendFile(imageFile);
       return;
@@ -6853,46 +6891,20 @@ app.get('*', (req, res, next) => {
   if (content) {
     // Filter actions based on authentication
     const authenticated = isAuthenticated(req);
-
-    // Workflow decides what an anonymous visitor may see.
-    //
-    // The public site is read with NO credentials — the frontend fetches the
-    // CMS directly, with no adapter and no session — so what anonymous gets is
-    // not a detail, it is the whole published site. Serving a draft here made
-    // the mock a Plone with no access control at all, and a test asking "can a
-    // visitor see unpublished work?" could only ever answer no.
-    //
-    // Only an EXPLICITLY private state is refused. Content with no
-    // review_state is not workflowed (the site root, mounted fixtures), and
-    // denying that by default would say "unpublished" about things that were
-    // never subject to publication.
-    if (!authenticated && PRIVATE_STATES.has(content.review_state)) {
+    // Plone refuses an anonymous reader content the public may not view: under
+    // simple_publication_workflow, `private` (where a new page starts) and
+    // `pending`. Serving it anyway let a frontend that fetched WITHOUT the
+    // editor's token pass here and 401 on a real site.
+    if (!authenticated && ANONYMOUS_HIDDEN_STATES.has(content.review_state)) {
       return res.status(401).json({
-        error: {
-          type: 'Unauthorized',
-          message: 'You are not authorized to access this resource.',
-        },
+        type: 'Unauthorized',
+        message: 'You are not authorized to access this resource.',
       });
     }
-
-    let filteredContent = filterActionsForAuth(content, authenticated);
-    // The menu travels with the page as `?expand=navigation`, which is how a
-    // frontend reads it — so filtering only the standalone route would leave
-    // every rendered page still carrying the links.
-    if (!authenticated && filteredContent?.['@components']?.navigation?.items) {
-      filteredContent = {
-        ...filteredContent,
-        '@components': {
-          ...filteredContent['@components'],
-          navigation: {
-            ...filteredContent['@components'].navigation,
-            items: withoutPrivateItems(
-              filteredContent['@components'].navigation.items,
-            ),
-          },
-        },
-      };
-    }
+    const filteredContent = withViewableItems(
+      filterActionsForAuth(content, authenticated),
+      sessionId,
+    );
 
     if (process.env.DEBUG) {
       console.log(`[DEBUG] Serving API content for ${cleanPath} (auth: ${authenticated})${sessionId ? ` (session: ${sessionId})` : ''}`);

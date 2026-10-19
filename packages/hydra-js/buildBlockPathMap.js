@@ -391,6 +391,32 @@ function _hashString(str) {
   return 's' + hash.toString(36);
 }
 
+/**
+ * Where "+" goes from a block with no room after it.
+ *
+ * A layout's other slots — a fixed heading in a one-block region, say — take
+ * nothing after their block, so "+" there had nowhere to add. The page's
+ * content goes in the layout's DEFAULT slot: each block outside it, in a
+ * parent that has one, gets `defaultSlotAnchor`, the default slot's first
+ * block, and "+" adds before it (getBlockAddability → insertAt). Not the next
+ * region in order: after a heading that may be a sidebar.
+ */
+function markDefaultSlotAnchors(pathMap) {
+  const firstDefault = {};
+  for (const [id, info] of Object.entries(pathMap)) {
+    if (info?.slotId !== 'default' || info.parentId == null) continue;
+    const current = firstDefault[info.parentId];
+    if (!current || info.regionIndex < pathMap[current].regionIndex) {
+      firstDefault[info.parentId] = id;
+    }
+  }
+  for (const info of Object.values(pathMap)) {
+    if (!info?.slotId || info.slotId === 'default') continue;
+    const anchor = firstDefault[info.parentId];
+    if (anchor) info.defaultSlotAnchor = anchor;
+  }
+}
+
 export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
   const pathMap = {};
   // Deduplicated schema store — most blocks of the same type share identical
@@ -764,6 +790,8 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
         // Insert restrictions for fixed block boundaries
         ...(!canInsertBefore && { canInsertBefore: false }),
         ...(!canInsertAfter && { canInsertAfter: false }),
+        // Its layout slot and position, for markDefaultSlotAnchors.
+        ...(block?.slotId && { slotId: block.slotId, regionIndex: index }),
       };
 
       // RECURSE: process this block's container fields. `disallow` is the set
@@ -1029,5 +1057,6 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
     pathInfo.emptyRequiredFields = getEmptyRequiredFields(blockData, enhancedSchema);
   }
 
+  markDefaultSlotAnchors(pathMap);
   return pathMap;
 }

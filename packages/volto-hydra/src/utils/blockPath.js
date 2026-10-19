@@ -905,6 +905,21 @@ export function insertBlockInContainer(
   return setBlockByPath(formData, parentPath, updatedParentBlock);
 }
 
+// A block's membership of a layout's slot. The block IN the slot carries it:
+// on wrap that becomes the new container (its children would otherwise be
+// collected as the slot's content and pulled back out of it); on unwrap, the
+// promoted children.
+const SLOT_MARKS = ['templateId', 'templateInstanceId', 'slotId'];
+const slotMarksOf = (block) =>
+  Object.fromEntries(
+    SLOT_MARKS.filter((k) => block?.[k] !== undefined).map((k) => [k, block[k]]),
+  );
+const withoutSlotMarks = (block) => {
+  const out = { ...block };
+  for (const k of SLOT_MARKS) delete out[k];
+  return out;
+};
+
 /**
  * Wrap a set of selected blocks in a new container of `newContainerType`.
  *
@@ -1017,12 +1032,20 @@ export function wrapBlocksInContainer(
     }
     nestedBlocks[id] = data;
   }
+  // Blocks in a layout's slot: the container takes the slot, its children
+  // leave it.
+  const slotMarks = slotMarksOf(
+    sortedIds.map((id) => nestedBlocks[id]).find((b) => b?.templateInstanceId),
+  );
+  if (Object.keys(slotMarks).length > 0) {
+    for (const id of sortedIds) nestedBlocks[id] = withoutSlotMarks(nestedBlocks[id]);
+  }
 
   // Build the new container block. Its children go into whatever storage the container's own
   // child field uses — blocks_layout (section, columns) or object_list (a slider's `slides`) —
   // resolved once as a descriptor and written through the funnel, so there is no branch here.
   const newContainerId = uuidGen();
-  const newContainer = { '@type': newContainerType };
+  const newContainer = { '@type': newContainerType, ...slotMarks };
   setChildBlockEntries(
     newContainer,
     getContainerRegionDescriptors(newContainerType, blocksConfig, intl)[0],
@@ -1160,13 +1183,15 @@ export function unwrapContainer(
   // Merge the container's children into the parent's blocks dict.
   const newParentBlocks = { ...parentBlock.blocks };
   delete newParentBlocks[containerId];
+  // A container in a layout's slot hands the slot to its children.
+  const slotMarks = slotMarksOf(containerBlock);
   for (const id of childIds) {
     if (id in newParentBlocks) {
       throw new Error(
         `[HYDRA] unwrapContainer: child id ${id} collides with parent blocks`,
       );
     }
-    newParentBlocks[id] = childData[id];
+    newParentBlocks[id] = { ...childData[id], ...slotMarks };
   }
 
   const updatedParent = setContainerItems(

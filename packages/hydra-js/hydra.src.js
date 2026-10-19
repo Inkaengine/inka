@@ -8929,10 +8929,14 @@ export class Bridge {
       this._readonlyStyleEl.type = 'text/css';
       document.head.appendChild(this._readonlyStyleEl);
     }
-    let newCSS = '';
+    // NOT inherited. A custom property inherits by default, so a read-only
+    // container (a layout's frame) marked every block inside it locked — the
+    // editable content of its slots included. Each block reports its own lock.
+    let newCSS =
+      "@property --hydra-block-locked { syntax: '<integer>'; inherits: false; initial-value: 0; }";
     if (readonlyUids.length > 0) {
       const selector = readonlyUids.map(uid => `[data-block-uid="${uid}"]`).join(', ');
-      newCSS = `${selector} { --hydra-block-locked: 1; }`;
+      newCSS += `\n${selector} { --hydra-block-locked: 1; }`;
     }
     // Only update DOM when CSS actually changes to avoid unnecessary style recalculations
     if (this._readonlyStyleEl.textContent !== newCSS) {
