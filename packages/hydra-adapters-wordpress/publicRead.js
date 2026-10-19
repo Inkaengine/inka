@@ -52,6 +52,39 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
   /** The one request every public page read makes. */
   const readPage = async (path) => {
     const slug = path.split('/').filter(Boolean).pop() ?? '';
+    if (!slug) {
+      // The SITE ROOT, which is not a slug. Asked for by slug it sent
+      // `?slug=`, WordPress read that as no filter at all, and the root served
+      // whichever page the site listed first — "Videos", on a demo whose home
+      // page was sitting right there.
+      //
+      // Which page `/` is is `page_on_front`, and WordPress does not tell a
+      // visitor: /wp/v2/settings needs manage_options. The companion plugin
+      // says, because that is what it is for — see hydra/v1/front-page.
+      const res = await fetchImpl(api('/hydra/v1/front-page'));
+      if (!res.ok) {
+        throw new Error(
+          `This WordPress does not answer /hydra/v1/front-page (${res.status}), ` +
+            `so the site root cannot be resolved. The hydra-companion plugin ` +
+            `provides it; without the plugin a visitor cannot be told which ` +
+            `page is the front page.`,
+        );
+      }
+      const { front_page: front, shows } = await res.json();
+      if (!front) {
+        throw new Error(
+          `This WordPress shows "${shows}" on its front page, not a page, so ` +
+            `there is nothing for the site root to render. Set a static front ` +
+            `page (Settings > Reading).`,
+        );
+      }
+      const page = await fetchImpl(
+        api('/wp/v2/pages', { slug: front.slug, status: 'publish' }),
+      );
+      if (!page.ok) return null;
+      const [post] = await page.json();
+      return post ?? null;
+    }
     const res = await fetchImpl(
       api('/wp/v2/pages', { slug, status: 'publish' }),
     );

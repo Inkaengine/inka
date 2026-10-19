@@ -111,6 +111,45 @@ add_action('rest_api_init', function () {
         ));
     }
 
+    /**
+     * WHICH PAGE IS THE FRONT PAGE, to anyone.
+     *
+     * A headless frontend asks for `/` and has to turn that into a page.
+     * WordPress knows the answer — `page_on_front` — and does not tell a
+     * visitor: `/wp/v2/settings` requires `manage_options`, and the REST root
+     * carries the site's url but not its front page. Without this a reader
+     * can only guess, and guessing by slug made the site root serve whichever
+     * page WordPress happened to list first ("Videos", on the demo).
+     *
+     * Public and read-only: the front page is already public — it is what `/`
+     * serves — so naming it reveals nothing the site does not.
+     */
+    register_rest_route('hydra/v1', '/front-page', array(
+        'methods' => 'GET',
+        'permission_callback' => '__return_true',
+        'callback' => function () {
+            $id = (int) get_option('page_on_front');
+            if (get_option('show_on_front') !== 'page' || !$id) {
+                // Posts on the front page, which has no page at all. Said
+                // plainly rather than as an empty object a caller would read
+                // as "a page with no id".
+                return array('front_page' => null, 'shows' => get_option('show_on_front'));
+            }
+            $page = get_post($id);
+            if (!$page || $page->post_status !== 'publish') {
+                return array('front_page' => null, 'shows' => 'page');
+            }
+            return array(
+                'shows' => 'page',
+                'front_page' => array(
+                    'id' => $id,
+                    'slug' => $page->post_name,
+                    'link' => get_permalink($id),
+                ),
+            );
+        },
+    ));
+
     register_rest_route('hydra/v1', '/lock/(?P<id>[\d]+)', array(
         array(
             'methods' => 'POST',

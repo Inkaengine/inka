@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wpFetchItems } from './publicRead.js';
+import { createPublicReader, wpFetchItems } from './publicRead.js';
 
 /**
  * A fake WordPress, recording every url asked for.
@@ -21,6 +21,9 @@ function fakeWordPress({ posts = [], total, terms = {}, users = [] } = {}) {
     asked.push(url);
     const { pathname, searchParams } = new URL(url);
     const route = pathname.replace('/wp-json', '');
+    if (route === '/hydra/v1/front-page') {
+      return json({ shows: 'page', front_page: { id: 7, slug: 'home', link: '/' } });
+    }
     if (route === '/wp/v2/types') {
       return json({
         page: { rest_base: 'pages' },
@@ -70,6 +73,48 @@ const fetchFor = (fake, extraCriteria, contextPath) =>
     extraCriteria,
     contextPath,
   });
+
+describe('the public reader', () => {
+  it('resolves the site root through the front page, not by slug', async () => {
+    // `/` is not a slug. Asked for by one it sent `?slug=`, which WordPress
+    // reads as no filter at all — so the site root served whichever page the
+    // site listed first, on a demo whose home page was sitting right there.
+    //
+    // `page_on_front` is the answer and WordPress does not give it to a
+    // visitor (/wp/v2/settings needs manage_options), so the companion plugin
+    // does: hydra/v1/front-page.
+    const fake = fakeWordPress({
+      posts: [post({ slug: 'home', title: { rendered: 'Home' } })],
+    });
+    const reader = createPublicReader({
+      cmsBaseUrl: 'http://wp.example',
+      fetch: fake.fetch,
+    });
+
+    await reader.document('/');
+
+    expect(fake.asked.some((u) => u.includes('/hydra/v1/front-page'))).toBe(true);
+    expect(fake.asked.some((u) => u.includes('slug=home'))).toBe(true);
+    // Never the empty filter that caused it.
+    expect(fake.asked.some((u) => /slug=(&|$)/.test(u))).toBe(false);
+  });
+
+  it('says so when the front page is not a page', async () => {
+    // A site showing posts on its front page has nothing for the root to
+    // render. Reported, rather than answered with the first page found.
+    const fake = fakeWordPress();
+    fake.frontPage = null;
+    const reader = createPublicReader({
+      cmsBaseUrl: 'http://wp.example',
+      fetch: async (url) =>
+        url.includes('/hydra/v1/front-page')
+          ? { ok: true, status: 200, headers: new Headers(), json: async () => ({ shows: 'posts', front_page: null }) }
+          : fake.fetch(url),
+    });
+
+    await expect(reader.document('/')).rejects.toThrow(/front page/i);
+  });
+});
 
 describe('wpFetchItems', () => {
   it('carries the fields a teaser draws, not a title alone', async () => {
