@@ -91,6 +91,16 @@ export default defineConfig({
       '/wordpress-public.js': path.resolve(__dirname, '../../../packages/hydra-adapters-wordpress/publicRead.js'),
       '/drupal-public.js': path.resolve(__dirname, '../../../packages/hydra-adapters-drupal/publicRead.js'),
       '/strapi-public.js': path.resolve(__dirname, '../../../packages/hydra-adapters-strapi/publicRead.js'),
+      // The one BARE specifier the adapters themselves use: each imports
+      // `@volto-hydra/hydra-adapters-core` for BaseAdapter. Inside this repo
+      // the workspace links it; in a CONSUMING repo that pins hydra as a
+      // submodule it is only linked if that repo lists these packages in its
+      // own workspace — and when it does not, this fixture's vite server dies
+      // with "The following dependencies are imported but could not be
+      // resolved: @volto-hydra/hydra-adapters-core". Resolved by path, like
+      // every other alias here, so the fixture carries its own dependencies
+      // wherever it is mounted.
+      '@volto-hydra/hydra-adapters-core': path.resolve(__dirname, '../../../packages/hydra-adapters-core/baseAdapter.js'),
       '/merge-frontend-block.js': path.resolve(__dirname, '../../../packages/hydra-js/mergeFrontendBlock.js'),
       // The same merge the admin runs before it posts INITIAL_DATA (View.jsx),
       // so the mock parent hands the bridge a page with its forced layouts and
