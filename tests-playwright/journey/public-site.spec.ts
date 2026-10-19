@@ -62,6 +62,19 @@ test.describe('the public site', () => {
       storageState: { cookies: [], origins: [] },
     });
     const page = await context.newPage();
+    // The frontend's own log, in the TEST's output.
+    //
+    // A visitor's page builds its query in the browser, and when it came back
+    // empty the suite could only say `#content` was empty: the criteria it
+    // used, the url it called and the count it got were all in a console
+    // nobody captured, and diagnosing it meant guessing from a screenshot.
+    page.on('console', (message) => {
+      const text = message.text();
+      if (text.includes('[TEST-FRONTEND]') || message.type() === 'error') {
+        console.log(`[browser.${message.type()}] ${text}`);
+      }
+    });
+    page.on('pageerror', (error) => console.log(`[browser.pageerror] ${error.message}`));
 
     const { cms } = frontendFor(projectName);
     // A REQUEST, not a navigation. It shares the context's cookie jar, which
