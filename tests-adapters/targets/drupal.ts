@@ -6,7 +6,12 @@ import { createPublicReader } from '@volto-hydra/hydra-adapters-drupal/public';
 import type { Target } from './index';
 import { seedFixture } from '../fixtures/seed-documents';
 // Drupal's path index is `menu_parent` — its hierarchy lives in menu links.
-const seed = seedFixture('menu_parent');
+// Drupal's own query vocabulary, as this adapter advertises it.
+const seed = seedFixture({
+  pathIndex: 'menu_parent',
+  pathOperator: 'menu_parent.is',
+  sortOn: 'title',
+});
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

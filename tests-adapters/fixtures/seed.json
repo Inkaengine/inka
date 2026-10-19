@@ -120,11 +120,11 @@
             "query": [
               {
                 "i": "__PATH_INDEX__",
-                "o": "plone.app.querystring.operation.string.absolutePath",
+                "o": "__PATH_OP__",
                 "v": "/"
               }
             ],
-            "sort_on": "sortable_title",
+            "sort_on": "__SORT_ON__",
             "sort_order": "ascending"
           }
         }
