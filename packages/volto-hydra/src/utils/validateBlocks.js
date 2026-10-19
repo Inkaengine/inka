@@ -61,6 +61,24 @@ export function validateBlocksAgainstSchemas(
     const blockData = getBlockById(formData, blockPathMap, blockId);
     if (!blockData) continue;
 
+    // A template-owned block is readOnly: the author is shown static values
+    // rather than widgets and cannot change a single field on it. Validating it
+    // lets one bad value in one template refuse the save on EVERY page using
+    // that template, naming a field the author has no way to reach — which is
+    // exactly what happened to 43 case studies when a `widget: 'url'` field
+    // held the site-relative "/case-studies" that Volto's URL validator
+    // rejects. A page that merely uses a template must stay saveable.
+    //
+    // The value still gets validated where it can be fixed: editing the
+    // template itself, whose own blocks are deliberately not readOnly (see
+    // inheritFixed in blockPath.js — inheriting it would freeze inline editing
+    // of a template page).
+    //
+    // `fixed` alone is NOT enough to skip. A fixed-but-editable block is the
+    // page's own: the merge keeps all of its fields, so its values are the
+    // author's to correct and must still be enforced.
+    if (blockData.readOnly === true) continue;
+
     const errors = FormValidation.validateFieldsPerFieldset({
       schema,
       formData: blockData,
