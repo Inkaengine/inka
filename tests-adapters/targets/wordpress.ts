@@ -1,15 +1,11 @@
 import { WordPressAdapter, serializeBlocks } from '@volto-hydra/hydra-adapters-wordpress';
 import { createPublicReader } from '@volto-hydra/hydra-adapters-wordpress/public';
 import type { Target } from './index';
-import { seedFixture } from '../fixtures/seed-documents';
+import { seedFixture, VOCABULARIES } from '../fixtures/seed-documents';
 // WordPress's own query vocabulary, as this adapter advertises it:
 // `parent` + `parent.is` for the hierarchy, `title` among its
 // sortable_indexes. Plone's names mean nothing here and are refused.
-const seed = seedFixture({
-  pathIndex: 'parent',
-  pathOperator: 'parent.is',
-  sortOn: 'title',
-});
+const seed = seedFixture(VOCABULARIES.wordpress);
 
 const PORT = 8790;
 const BASE = `http://127.0.0.1:${PORT}`;

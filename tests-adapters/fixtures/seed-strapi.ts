@@ -1,4 +1,4 @@
-import { seedDocuments } from './seed-documents';
+import { seedDocuments, VOCABULARIES } from './seed-documents';
 
 /**
  * Write the canonical fixture into a Strapi instance.
@@ -39,13 +39,7 @@ export async function seedStrapi({
   // Strapi has no hierarchy of its own; the tree is that relation.
   // Projected into Strapi's own query vocabulary: its path index is
   // `parent`, which is what its getIndexes advertises.
-  const docs = seedDocuments({
-    // Strapi's own: `parent.under`, not `parent.is` — its relation filter
-    // is a subtree match. See its getIndexes declaration.
-    pathIndex: 'parent',
-    pathOperator: 'parent.under',
-    sortOn: 'title',
-  })
+  const docs = seedDocuments(VOCABULARIES.strapi)
     .filter((d: any) => d.path !== '/')
     .sort((a: any, b: any) => a.path.split('/').length - b.path.split('/').length);
 

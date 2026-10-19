@@ -19,6 +19,10 @@
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
+const {
+  VOCABULARIES,
+  projectQueryVocabulary,
+} = require('./query-vocabulary.cjs');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -90,17 +94,16 @@ function buildState() {
   };
 
   const spec = JSON.parse(fs.readFileSync(SEED_PATH, 'utf8'));
-  // The fixture's path-index token becomes Drupal's own name. A stored listing
-  // block holds the indexes its adapter advertised, and Drupal's path index is
-  // `menu_parent` — its hierarchy lives in menu links. See
-  // fixtures/seed-documents.ts for why the fixture carries a token at all.
-  for (const doc of spec.documents) {
-    for (const block of Object.values(doc.blocks || {})) {
-      for (const criterion of block?.querystring?.query || []) {
-        if (criterion.i === '__PATH_INDEX__') criterion.i = 'menu_parent';
-      }
-    }
-  }
+  // The fixture, in DRUPAL's query vocabulary — index, operator and sort key
+  // together, through the shared projection. A stored listing block holds what
+  // its adapter advertised, and Drupal's path index is `menu_parent`, its
+  // hierarchy living in menu links. This file used to substitute the index
+  // NAME alone, which left the rest as Plone's on a CMS that never advertised
+  // them. See query-vocabulary.cjs.
+  spec.documents = projectQueryVocabulary(
+    spec.documents,
+    VOCABULARIES.drupal,
+  );
   const byPath = new Map();
 
   for (const doc of spec.documents) {
