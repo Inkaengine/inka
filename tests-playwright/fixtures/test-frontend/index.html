@@ -486,7 +486,26 @@
                 // Forward `seen` so a listing run continues the SAME page window
                 // that a preceding staticBlocks run started — combined paging over a
                 // mixed container (static cards + a listing) is one window, not two.
-                return await expandListingBlocks(layout, { blocks, fetchItems: { listing: fi, ...exampleFetchers }, paging, itemTypeField: 'variation', seen: paging?.seen });
+                try {
+                    return await expandListingBlocks(layout, { blocks, fetchItems: { listing: fi, ...exampleFetchers }, paging, itemTypeField: 'variation', seen: paging?.seen });
+                } catch (err) {
+                    // SHOWN, not swallowed. A listing whose read fails used to
+                    // leave the block's empty row on the page and nothing
+                    // else: the suite saw `#content` with children and no
+                    // text, the screenshot showed a blank grey strip, and the
+                    // reason — the CMS's own refusal, naming the index or
+                    // operator it does not have — was only in a console
+                    // nobody captures. That cost a day.
+                    console.error('[TEST-FRONTEND] listing failed:', err);
+                    const target = document.getElementById('content');
+                    if (target) {
+                        const p = document.createElement('p');
+                        p.setAttribute('data-listing-error', '');
+                        p.textContent = `Listing failed: ${err?.message ?? err}`;
+                        target.appendChild(p);
+                    }
+                    throw err;
+                }
             };
 
             // Convert layout IDs to block objects with @uid
