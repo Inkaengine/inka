@@ -227,3 +227,54 @@ describe('block validation — a rule error on a region', () => {
     expect(validateSetOf(1).fieldTitles).toEqual({ set: { items: 'Items' } });
   });
 });
+
+/**
+ * A page that merely USES a template must stay saveable.
+ *
+ * A forced template's blocks are merged into every consuming page and saved
+ * with it, so this walk sees them like any other block. But a template-owned
+ * block is `readOnly` — the author is shown static values, not widgets, and
+ * cannot change a single field on it. Validating it anyway means one bad value
+ * in one template makes every page using that template unsaveable, with an
+ * error naming a field the author cannot reach. That is what happened to all
+ * 43 pretagov case studies: /templates/case-study-layout carried
+ * `searchUrl: "/case-studies"` on a field declared `widget: 'url'`, Volto's URL
+ * validator rejects site-relative paths, and the editor refused every save.
+ *
+ * `fixed` alone does not mean template-owned: a fixed-but-editable block is the
+ * page's own, the merge keeps all its fields, and its values are the author's
+ * to fix — so it must still be validated.
+ */
+describe('block validation — blocks the author cannot edit', () => {
+  const readOnlyBad = () => ({ ...badBlock(), fixed: true, readOnly: true });
+
+  test('a template-owned (readOnly) block does not refuse the save', () => {
+    const { blocksErrors } = validate({
+      blocks: { locked: readOnlyBad() },
+      blocks_layout: { items: ['locked'] },
+    });
+    expect(blocksErrors.locked).toBeUndefined();
+  });
+
+  test('…not even nested inside a container', () => {
+    const { blocksErrors } = validate({
+      blocks: {
+        col: {
+          '@type': 'columns',
+          blocks: { nested: readOnlyBad() },
+          blocks_layout: { items: ['nested'] },
+        },
+      },
+      blocks_layout: { items: ['col'] },
+    });
+    expect(blocksErrors.nested).toBeUndefined();
+  });
+
+  test('a fixed but EDITABLE block is still validated — its fields are the page’s', () => {
+    const { blocksErrors } = validate({
+      blocks: { mine: { ...badBlock(), fixed: true, readOnly: false } },
+      blocks_layout: { items: ['mine'] },
+    });
+    expect(blocksErrors.mine?.req).toBeTruthy();
+  });
+});
