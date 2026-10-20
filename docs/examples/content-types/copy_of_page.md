@@ -35,7 +35,7 @@ And carajillo aromatic affogato instant cream grinder kopi panna. Qui robusta mi
 
 <block type="image">
 
-![](/images/penguin4.jpg "penguin4.jpg")
+![](./image-dark "Title Image")
 
 <fields align="right" image_field="image" />
 
