@@ -402,11 +402,21 @@ describe('plone-content-validator validate()', () => {
 });
 
 /**
- * redirects.json holds PHYSICAL paths. plone.exportimport's importer hands each
- * pair to plone.app.redirector's storage as is, and the storage is keyed by
- * physical path (/Plone/old), which is also what an export writes. A
- * site-relative "/old" is stored where no request ever looks: the site deploys
- * green and every redirect 404s.
+ * redirects.json: judge CONSISTENCY, not conformance.
+ *
+ * plone.exportimport's importer hands each pair to plone.app.redirector's
+ * storage as is, and that storage is keyed by PHYSICAL path (/Plone/old) —
+ * which is what a raw export writes. A site-relative "/old" sitting among
+ * physical ones is stored where no request looks: deploys green, 404s forever.
+ * That MIX is the bug.
+ *
+ * A wholly site-relative file is a different thing. A consumer may convert the
+ * raw export into a site-relative tree on purpose — pretagov's
+ * convert-export-to-local.py strips the site prefix from redirect keys and
+ * values — and demanding the prefix there is undone by the next export, so the
+ * check would churn forever against redirects that demonstrably work (verified:
+ * /about/about-us 302s on the live API). Previously this file was rejected
+ * outright, which is why that rule is now about mixing.
  */
 describe('plone-content-validator redirects.json paths', () => {
   const withRedirects = (redirects) => {
@@ -422,17 +432,30 @@ describe('plone-content-validator redirects.json paths', () => {
     assert.deepEqual(r.errors, []);
   });
 
-  it('reports a site-relative redirect (it would never fire)', () => {
-    const { root, contentDir } = withRedirects({ '/old': '/page-a' });
+  it('accepts a WHOLLY site-relative file (a converted tree)', () => {
+    // Was rejected outright. A converted tree strips the site prefix by
+    // design, so requiring it here fights the converter and churns every
+    // export, against redirects that work.
+    const { root, contentDir } = withRedirects({ '/old': '/page-a', '/x': '/y' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a MIX of physical and site-relative (the ones that never fire)', () => {
+    const { root, contentDir } = withRedirects({
+      '/Plone/old': '/Plone/page-a',
+      '/stray': '/Plone/page-a',
+    });
     const r = validate(contentDir);
     cleanup(root);
     assert.ok(
-      r.errors.some((e) => e.includes('"/old"') && e.includes('/Plone')),
+      r.errors.some((e) => e.includes('mixes physical and site-relative') && e.includes('"/stray"')),
       r.errors.join('\n'),
     );
   });
 
-  it('reports a redirect whose target is site-relative', () => {
+  it('reports a mixed pair whose target alone is site-relative', () => {
     const { root, contentDir } = withRedirects({ '/Plone/old': '/page-a' });
     const r = validate(contentDir);
     cleanup(root);

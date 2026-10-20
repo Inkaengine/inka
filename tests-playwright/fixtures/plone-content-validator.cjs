@@ -156,22 +156,40 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
       if (Array.isArray(redirectsData) || typeof redirectsData !== 'object' || redirectsData === null) {
         errors.push(`  redirects.json: must be a plain {path: target} object, got ${Array.isArray(redirectsData) ? 'array' : typeof redirectsData}`);
       } else {
+        // Physical vs site-relative. The importer hands each pair to
+        // plone.app.redirector's storage as is, and that storage is keyed by
+        // PHYSICAL path — so a site-relative "/old" sitting among physical ones
+        // is stored where no request looks, never fires, and says nothing. That
+        // is the bug worth catching.
+        //
+        // A WHOLLY site-relative file is not that bug. A consumer may convert
+        // the raw export into a site-relative tree deliberately (pretagov's
+        // convert-export-to-local.py strips the site prefix from redirect keys
+        // and values), and re-adding the prefix there is undone by the next
+        // export — churn forever, against redirects that demonstrably work.
+        // So judge CONSISTENCY rather than conformance to one of the two.
+        const prefixed = [];
+        const bare = [];
         for (const [key, value] of Object.entries(redirectsData)) {
           if (typeof value !== 'string') {
             errors.push(`  redirects.json: value for "${key}" is ${Array.isArray(value) ? 'an array' : typeof value} — use {"/old": "/new"}, not the REST-API {items: [...]} shape`);
           } else if (!key.startsWith('/') || !value.startsWith('/')) {
             errors.push(`  redirects.json: paths must be absolute (start with /): ${JSON.stringify(key)} -> ${JSON.stringify(value)}`);
           } else if (sitePath) {
-            // Physical paths: the importer gives each pair to
-            // plone.app.redirector's storage as is, and the storage is keyed
-            // by physical path. A site-relative "/old" is stored where no
-            // request looks — the redirect never fires, and nothing says so.
             for (const p of [key, value]) {
-              if (p !== sitePath && !p.startsWith(sitePath + '/')) {
-                errors.push(`  redirects.json: ${JSON.stringify(p)} is not under the site's physical path ${JSON.stringify(sitePath)} — Plone stores redirects by physical path, so write ${JSON.stringify(sitePath + p)}`);
-              }
+              (p === sitePath || p.startsWith(sitePath + '/') ? prefixed : bare).push(p);
             }
           }
+        }
+        if (prefixed.length && bare.length) {
+          const sample = bare.slice(0, 3).map((x) => JSON.stringify(x)).join(', ');
+          errors.push(
+            `  redirects.json: mixes physical and site-relative paths — ` +
+            `${prefixed.length} under ${JSON.stringify(sitePath)} and ${bare.length} not ` +
+            `(${sample}${bare.length > 3 ? ', …' : ''}). Plone keys its redirect storage ` +
+            `by PHYSICAL path, so the site-relative ones are stored where no request ` +
+            `looks and never fire. Use one form throughout.`,
+          );
         }
       }
     }
