@@ -756,6 +756,71 @@ function catalogImageFields(content, baseUrl, hasPreviewImage = hasServablePrevi
  * Includes is_folderish for folder navigation in object browser
  * Includes hasPreviewImage for teaser blocks to show target's preview image
  */
+/**
+ * What a summary may carry, as plone.restapi 10.0.4 decides it.
+ *
+ * Both sets were CAPTURED from a real Plone 6.2 + plone.volto backend rather
+ * than reasoned about, by asking it for one item with no metadata_fields and
+ * then with _all. Guessing them from restapi's source gives the wrong answer:
+ * its own default set is six fields, and plone.volto widens it — which is why
+ * a listing receives image_scales without asking for it.
+ *
+ * CATALOG_SCHEMA is that site's catalog columns, so it carries site-specific
+ * ones (block_types, sync_uid). A consumer whose catalog differs can pass
+ * MOCK_CATALOG_COLUMNS to add its own, the way
+ * RESTAPI_ADDITIONAL_NON_METADATA_ATTRIBUTES widens the real one.
+ *
+ * Note what is NOT a column: getObjPositionInParent. Before 10.0.4 a backend
+ * echoed any attribute named in metadata_fields, so asking for it appeared to
+ * work; 10.0.4 drops it and logs the rejection at DEBUG, which is to say
+ * silently. Serving it here unconditionally is exactly how a frontend comes to
+ * depend on a field production will not send.
+ */
+const DEFAULT_METADATA_FIELDS = new Set([
+  '@id', '@type', 'description', 'effective', 'end', 'getObjSize',
+  'getRemoteUrl', 'head_title', 'image_field', 'image_scales', 'mime_type',
+  'nav_title', 'review_state', 'start', 'title', 'type_title',
+]);
+
+const CATALOG_SCHEMA = new Set([
+  ...DEFAULT_METADATA_FIELDS,
+  'CreationDate', 'Creator', 'Date', 'Description', 'EffectiveDate',
+  'ExpirationDate', 'ModificationDate', 'Subject', 'Title', 'Type', 'UID',
+  'block_types', 'cmf_uid', 'created', 'exclude_from_nav', 'expires',
+  'getIcon', 'getId', 'getPath', 'getURL', 'hasPreviewImage', 'id',
+  'is_folderish', 'is_working_copy', 'listCreators', 'location', 'modified',
+  'portal_type', 'review_state', 'sync_uid',
+  ...String(process.env.MOCK_CATALOG_COLUMNS || '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean),
+]);
+
+/**
+ * Narrow a summary to what the query asked for: the default set, plus any
+ * requested field that is a catalog column, or the whole schema for `_all`.
+ * A requested field outside the schema is dropped, as the real one drops it.
+ */
+function applyMetadataFields(item, req) {
+  // A GET carries it in the query string; @querystring-search is a POST and
+  // carries it in the body, which is why the real one falls back to json_body
+  // when the form is empty. Reading only the query would leave every POST
+  // listing unfiltered — the exact blind spot this is here to remove.
+  const raw = req?.query?.metadata_fields ?? req?.body?.metadata_fields;
+  const asked = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
+  const allowed = asked.includes('_all')
+    ? CATALOG_SCHEMA
+    : new Set([
+        ...DEFAULT_METADATA_FIELDS,
+        ...asked.filter((f) => CATALOG_SCHEMA.has(f)),
+      ]);
+  const out = {};
+  for (const [key, value] of Object.entries(item)) {
+    if (allowed.has(key)) out[key] = value;
+  }
+  return out;
+}
+
 function formatSearchItem(content, baseUrl) {
   const hasPreviewImage = hasServablePreviewImage(content);
 
@@ -5292,7 +5357,7 @@ app.post('*/@querystring-search', (req, res) => {
 
   res.json({
     '@id': searchUrl,
-    items,
+    items: items.map((item) => applyMetadataFields(item, req)),
     items_total: itemsTotal,
     batching: {
       '@id': searchUrl,
@@ -5563,7 +5628,7 @@ app.get('*/@search', (req, res) => {
 
   res.json({
     '@id': searchUrl,
-    'items': items,
+    'items': items.map((item) => applyMetadataFields(item, req)),
     'items_total': total,
     'batching': {
       '@id': searchUrl,
@@ -5993,7 +6058,7 @@ app.get('*/@form-data', (req, res) => {
     if (blockId && block !== blockId) continue;
     items.push(...records);
   }
-  res.json({ items, items_total: items.length });
+  res.json({ items: items.map((item) => applyMetadataFields(item, req)), items_total: items.length });
 });
 
 /**

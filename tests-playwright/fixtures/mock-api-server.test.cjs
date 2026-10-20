@@ -30,7 +30,9 @@ async function querystringSearch(contextPath, body) {
   const res = await fetch(`${baseUrl}${contextPath}/@querystring-search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(body),
+    // `id` is not in the default summary set — a real backend sends it only
+    // when asked. These tests read item.id, so they ask, as a frontend must.
+    body: JSON.stringify({ metadata_fields: ['id'], ...body }),
   });
   assert.equal(res.status, 200);
   return res.json();
@@ -893,5 +895,77 @@ describe('GET @search sorted by folder order', () => {
       await childIds('sort_on=getObjPositionInParent&sort_order=descending'),
       [...ORDER].reverse(),
     );
+  });
+});
+
+/**
+ * metadata_fields decides what a summary carries — the mock ignored it.
+ *
+ * Verified against a real Plone 6.2 + plone.volto backend rather than guessed:
+ *
+ *   no metadata_fields  16 fields: @id @type description effective end
+ *                       getObjSize getRemoteUrl head_title image_field
+ *                       image_scales mime_type nav_title review_state start
+ *                       title type_title
+ *   _all                44 fields — the catalog schema (UID, Subject, id,
+ *                       is_folderish, created, portal_type, …)
+ *
+ * plone.volto widens restapi's own small default set, which is why a listing
+ * gets image_scales without asking. What it does NOT get without asking is
+ * UID, id, Subject or is_folderish.
+ *
+ * The mock served its whole brain to every query, so a frontend reading a
+ * field the real default set omits stayed green here and lost the value
+ * against a real backend — silently, since 10.0.4 logs a rejected field at
+ * DEBUG and drops it.
+ */
+describe('@search: metadata_fields decides what is serialized', () => {
+  const search = (qs) =>
+    fetch(
+      `${baseUrl}/_test_data/@search?path.query=/_test_data/annual-report&path.depth=0${qs}`,
+      { headers: { Accept: 'application/json' } },
+    );
+
+  it('serves the default set when nothing is asked for', async () => {
+    const res = await search('');
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    // In the real default set, so a listing may rely on them.
+    assert.equal(item.mime_type, 'application/pdf');
+    assert.equal(item.getObjSize, '19.5 KB');
+    // NOT in it. A frontend reading these without asking breaks in production.
+    for (const field of ['UID', 'id', 'Subject', 'is_folderish']) {
+      assert.ok(
+        !(field in item),
+        `${field} is not in the default set — asking for it must be required`,
+      );
+    }
+  });
+
+  it('adds a catalog column that was asked for', async () => {
+    const res = await search('&metadata_fields=UID');
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    assert.ok(item.UID, 'the requested column arrives');
+    assert.equal(item.mime_type, 'application/pdf', 'the default set stays');
+    assert.ok(!('Subject' in item), 'and nothing else comes with it');
+  });
+
+  it('drops an attribute that is not a catalog column', async () => {
+    const res = await search('&metadata_fields=getObjPositionInParent');
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    assert.ok(
+      !('getObjPositionInParent' in item),
+      'a non-column attribute must not be serialized, as 10.0.4 drops it',
+    );
+  });
+
+  it('_all carries the catalog schema', async () => {
+    const res = await search('&metadata_fields=_all');
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    assert.ok(item.UID, '_all reaches beyond the default set');
+    assert.equal(item.portal_type, 'File');
   });
 });
