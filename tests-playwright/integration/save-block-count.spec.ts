@@ -47,7 +47,6 @@ test.describe('saving an edit', () => {
     };
 
     const before = await readPage();
-    const idsBefore = Object.keys(before.blocks).sort();
     const textBefore = JSON.stringify(before.blocks[BLOCK]);
 
     await helper.navigateToEdit(PAGE);
@@ -68,19 +67,27 @@ test.describe('saving an edit', () => {
     // nothing at all.
     expect(JSON.stringify(after.blocks[BLOCK])).toContain(TYPED);
 
-    // Not one block more, and not one id different: a duplicate arrives under
-    // a new uuid, so the id SET is what catches it, not the length.
-    expect(Object.keys(after.blocks).sort()).toEqual(idsBefore);
+    // The page's own layout is unchanged: a duplicate arrives under a new uuid
+    // and is spliced in beside the original, so the ITEM LIST is what catches
+    // it, not a count.
+    //
+    // Scoped to blocks_layout deliberately. The whole `blocks` id set is NOT
+    // stable across a save and must not be asserted on: a frontend that forces
+    // a footer template (examples/nuxt-blog-starter declares
+    // footerAllowedLayouts) materialises that template's slots on save, with
+    // fresh instance ids, and drops fixture blocks that belong to no layout.
+    // That is the templating working, and asserting it away would fail this
+    // test on admin-nuxt for a reason that has nothing to do with duplication.
     expect(after.blocks_layout.items).toEqual(before.blocks_layout.items);
 
-    // And nothing is still holding the pre-edit value. This is the shape the
-    // production duplicate had: the original moved on, the copy kept the text
-    // as it was at the moment it was made.
-    const stale = Object.entries(after.blocks).filter(
-      ([id, block]) => id !== BLOCK && JSON.stringify(block) === textBefore,
+    // …and nothing in the page's own layout is still holding the pre-edit
+    // value. This is the shape the production duplicate had: the original
+    // moved on, the copy kept the text as it was when it was made.
+    const stale = after.blocks_layout.items.filter(
+      (id) => id !== BLOCK && JSON.stringify(after.blocks[id]) === textBefore,
     );
     expect(
-      stale.map(([id]) => id),
+      stale,
       'no block carries the value this block had before the edit',
     ).toEqual([]);
   });
