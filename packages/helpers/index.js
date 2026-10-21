@@ -4884,8 +4884,13 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // `blocks_layout.footer`, not just `items`. Walk every region via the shared
   // region API, or reverse-merging a non-items forced layout harvests nothing
   // and returns an empty template. (Forward templates only have `items`, so this
-  // is a no-op there.)
-  const templateLayout = allRegionIds(template.blocks_layout);
+  // is a no-op there.) Only the merged instance's own blocks belong to it: the
+  // page's other regions hold OTHER templates' instances (a forced layout in
+  // `items`, an announcement), and walking them as this template's would save
+  // them into it.
+  const templateLayout = allRegionIds(template.blocks_layout).filter(
+    (id) => !filterInstanceId || template.blocks?.[id]?.templateInstanceId === filterInstanceId,
+  );
   let firstFixedIndex = -1;
   let lastFixedIndex = -1;
   const slotPositions = {};
