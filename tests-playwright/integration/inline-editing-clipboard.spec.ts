@@ -346,4 +346,57 @@ test.describe('Inline Editing - Clipboard', () => {
       })
       .toBe('Test clipboard text');
   });
+
+  /**
+   * Pasting copy into a slate field must not throw.
+   *
+   * Reported from production: "this just came up after I pasted new copy in a
+   * box" — TypeError: Cannot read properties of undefined (reading 'offset'),
+   * with a React component stack ending in SyncedSlateToolbar.
+   *
+   * The paste path splits a multi-paragraph paste into separate blocks by
+   * keeping the FIRST child in the editor and removing the rest:
+   *
+   *     for (let i = editor.children.length - 1; i > 0; i--)
+   *       Transforms.removeNodes(editor, { at: [i] });
+   *
+   * Slate leaves the caret at the end of what was pasted — inside one of the
+   * children being removed — so the selection is dangling by the time the
+   * toolbar next renders off it.
+   *
+   * Asserts on uncaught page errors rather than on the resulting text: the
+   * blocks come out right, which is why this went unnoticed.
+   */
+  test('pasting several paragraphs does not throw', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(`${e.name}: ${e.message}`));
+
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const blockId = 'block-1-uuid';
+    const editor = await helper.enterEditMode(blockId);
+    await helper.selectAllTextInEditor(editor);
+    await editor.pressSequentially('Before', { delay: 10 });
+    await helper.waitForEditorText(editor, /Before/);
+    await editor.press('End');
+
+    const initialBlocks = await helper.getStableBlockCount();
+
+    await editor.evaluate((el) => {
+      const dt = new DataTransfer();
+      dt.setData(
+        'text/html',
+        '<p>Systems integrators</p><p>We deliver Onyx AI and Python development.</p><p>Talk to us about partnering.</p>',
+      );
+      const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', { value: dt });
+      el.dispatchEvent(event);
+    });
+
+    await helper.waitForBlockCountToBe(initialBlocks + 2, 8000);
+
+    expect(errors, `uncaught page error(s) after paste:\n${errors.join('\n')}`).toEqual([]);
+  });
 });
