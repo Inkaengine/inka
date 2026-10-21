@@ -56,7 +56,7 @@ import {
 } from '@volto-hydra/helpers';
 import Api from '@plone/volto/helpers/Api/Api';
 import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
-import { buildIdFieldMap, getBlockTypeSchema } from '../../../../../utils/blockPath';
+import { buildIdFieldMap, getBlockTypeSchema, getBlockById } from '../../../../../utils/blockPath';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
 import {
@@ -694,41 +694,89 @@ class Form extends Component {
       // Changes the focus to the metadata tab in the sidebar if error
       this.props.setSidebarTab(0);
     } else if (keys(blocksErrors).length > 0) {
-      // Block errors - show a toast naming the first, and select its block.
-      const firstBlockId = Object.keys(blocksErrors)[0];
-      const [firstField, firstError] = Object.entries(blocksErrors[firstBlockId])[0];
+      // Block errors — say that the save is blocked, name every block that
+      // blocks it, and make each one a link that opens it.
+      //
+      // The toast used to title itself after the first failing FIELD, which
+      // for an image block's `url` reads "Image" — a word that names neither
+      // the problem nor the block, and said twice over when two blocks failed
+      // it told an author nothing she could act on. It also reported only the
+      // first block, so a second needed another save to discover.
+      //
+      // The link matters more than the wording: the block at fault is often
+      // one the author cannot find — inside a template container, or scrolled
+      // out of view — so "where is it" is the actual question to answer.
+      const blockPathMap = schemaValidation.blockPathMap || {};
+
+      const offenders = Object.keys(blocksErrors).map((blockId) => {
+        const blockData = getBlockById(persistedFormData, blockPathMap, blockId);
+        const blockType = blockData?.['@type'];
+        // A template error is { title, message }; a schema error is Volto's
+        // list of messages for one field, named by the field's title since a
+        // region is not drawn as a widget.
+        const reasons = Object.entries(blocksErrors[blockId]).flatMap(
+          ([field, err]) => {
+            if (Array.isArray(err)) {
+              const label =
+                schemaValidation.fieldTitles?.[blockId]?.[field] || field;
+              return [`${label}: ${err.join(', ')}`];
+            }
+            return [err?.message || err?.title].filter(Boolean);
+          },
+        );
+        return {
+          blockId,
+          name: config.blocks.blocksConfig?.[blockType]?.title || blockType,
+          reasons,
+        };
+      });
 
       this.setState({
         errors: { blocks: blocksErrors },
       });
 
-      // A template error is { title, message }; a schema error is Volto's list
-      // of messages for one field, named here by the field's title — a region
-      // is not drawn as a widget, so this toast is where an author learns which
-      // field refused the save, and why.
+      const goToBlock = (blockId) => {
+        this.props.setUIState({
+          selected: blockId,
+          multiSelected: [],
+          hovered: null,
+        });
+        this.props.setSidebarTab(1);
+      };
+
       toast.error(
-        Array.isArray(firstError) ? (
-          <Toast
-            error
-            title={schemaValidation.fieldTitles[firstBlockId]?.[firstField] || firstField}
-            content={firstError.join(', ')}
-          />
-        ) : (
-          <Toast
-            error
-            title={firstError.title || 'Template Error'}
-            content={firstError.message}
-          />
-        ),
+        <Toast
+          error
+          title="Can't save yet"
+          content={
+            <div className="block-save-errors">
+              {offenders.map(({ blockId, name, reasons }) => (
+                <div key={blockId} className="block-save-error">
+                  <button
+                    type="button"
+                    className="block-save-error-link"
+                    onClick={() => {
+                      goToBlock(blockId);
+                      toast.dismiss();
+                    }}
+                  >
+                    {name ? `Open the ${name} block` : 'Open the block'}
+                  </button>
+                  {reasons.length > 0 && (
+                    <div className="block-save-error-why">
+                      {reasons.join('; ')}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          }
+        />,
       );
 
-      // Select the first block with error
-      this.props.setUIState({
-        selected: firstBlockId,
-        multiSelected: [],
-        hovered: null,
-      });
-      this.props.setSidebarTab(1);
+      // Still jump to the first one, so the fix stays one click away even if
+      // the toast is dismissed before it is read.
+      goToBlock(offenders[0].blockId);
     } else {
       // Save templates first if the Iframe has set up the save function. It returns the
       // page data with finalized template ids ONLY when a new template's placeholder id

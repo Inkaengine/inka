@@ -35,14 +35,52 @@ const PAGE_BLOCK = '_page';
  *   blocksErrors: blockId → { fieldName: [messages] };
  *   fieldTitles: blockId → { fieldName: title } for each field in error, so a
  *   refused save can name it (a region is not drawn as a widget).
+ *   blockPathMap: the map already built here, so a caller reporting the errors
+ *   can look the offending blocks up — their type, to name them — without
+ *   building a second one, and without reaching into formData.blocks, which
+ *   misses every nested block.
  */
+/**
+ * Drop fields set to an empty string, so they read as NOT SET.
+ *
+ * Volto's checkFieldErrors skips a field only when it is `undefined` or `null`:
+ *
+ *     fieldData === undefined || fieldData === null ? null : criterion.method(...)
+ *
+ * So an empty string reaches the format validators — and an empty string is
+ * not a valid url, nor a valid email. An image block whose image was never set,
+ * or was CLEARED (which is how the field becomes ''), therefore reports "Input
+ * must be valid url", and no value the author can type will satisfy it short of
+ * a real url. Clearing the field is the very thing that triggers the error,
+ * which is why it cannot be cleared away. This refused a save on a production
+ * page, on a block the author could not reach.
+ *
+ * "Not set" and "set to nonsense" are different, and only the second is an
+ * error. Required-ness is unaffected: validateRequiredFields walks the schema's
+ * `required` list and treats a missing field exactly as it treats '', so a
+ * field that genuinely must be filled still reports — pinned by tests.
+ *
+ * Scoped to blocks, the walk this module owns. The same shape sits under
+ * Volto's content-field validation, where an empty url or email content field
+ * behaves the same way; fixing that is a core change.
+ */
+function withUnsetFieldsOmitted(blockData) {
+  const out = {};
+  for (const [key, value] of Object.entries(blockData)) {
+    if (value === '') continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 export function validateBlocksAgainstSchemas(
   formData,
   { blocksConfig, intl, formatMessage },
 ) {
   const blocksErrors = {};
   const fieldTitles = {};
-  if (!formData || !blocksConfig) return { blocksErrors, fieldTitles };
+  if (!formData || !blocksConfig)
+    return { blocksErrors, fieldTitles, blockPathMap: {} };
 
   const blockPathMap = buildBlockPathMap(formData, blocksConfig, intl);
 
@@ -81,7 +119,7 @@ export function validateBlocksAgainstSchemas(
 
     const errors = FormValidation.validateFieldsPerFieldset({
       schema,
-      formData: blockData,
+      formData: withUnsetFieldsOmitted(blockData),
       formatMessage,
     });
     // A rule's error on a REGION. Volto runs a field's validators only when
@@ -103,5 +141,5 @@ export function validateBlocksAgainstSchemas(
     }
   }
 
-  return { blocksErrors, fieldTitles };
+  return { blocksErrors, fieldTitles, blockPathMap };
 }
