@@ -784,6 +784,84 @@ function imageDimensions(file) {
     }
   }
 
+  // Pass 2c-quater: a TEMPLATE's own slot ARRANGEMENT.
+  //
+  // `fixed` chrome is what separates one slot group from the next — it tells the
+  // merge where one slot's content ends. Two OPEN slots side by side leave an
+  // added block ambiguous, which is what hydra's validateTemplatePlaceholders
+  // reports as "Missing Fixed Block"; the same function also requires the blocks
+  // of one slotId to be contiguous.
+  //
+  // That check ran only in the EDITOR, at save time, against a merged page. So a
+  // template saved with two adjacent open slots passed every gate here, and the
+  // first anyone knew was an author refused on a page whose offending blocks sit
+  // inside a readOnly, template-owned container they cannot reach: an error
+  // about the template, raised against the page, with no route back to the
+  // cause.
+  //
+  // The comment on 2c-ter says the arrangement "needs a render". That is true of
+  // a PAGE, where the merge interleaves template and page blocks. It is not true
+  // of a TEMPLATE's own blocks: their order is right there in blocks_layout.
+  //
+  // These two rules are a second copy of the editor's, which is a cost — the
+  // editor's stays authoritative for merged pages. It is worth it because this
+  // runs on the commit that introduces the fault, where the message can still
+  // name the template.
+  for (const { rel, data } of items) {
+    // The same notion of "is a definition" the chrome pass uses: a doc whose
+    // top blocks name itself, OR one whose top blocks hold slots and name no
+    // other template. A definition need not name itself.
+    const topBlocks = ((data.blocks_layout || {}).items || [])
+      .map((bid) => (data.blocks || {})[bid])
+      .filter(Boolean);
+    const ownRefs = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
+    const isDefinition =
+      topBlocks.some((block) => ownRefs.includes(block.templateId)) ||
+      (topBlocks.some((block) => block.slotId) && !topBlocks.some((block) => block.templateId));
+    if (!isDefinition) continue;
+
+    const checkRegion = (container, where) => {
+      const kids = container.blocks || {};
+      const order = (container.blocks_layout || {}).items || [];
+      const groups = new Map(); // slotId -> indexes
+      let lastSlotId = null;
+      order.forEach((bid, i) => {
+        const block = kids[bid];
+        if (!block) return;
+        if (block.fixed === true) { lastSlotId = null; return; }
+        const slotId = block.slotId;
+        if (!slotId) return;
+        if (!groups.has(slotId)) groups.set(slotId, []);
+        groups.get(slotId).push(i);
+        if (lastSlotId !== null && lastSlotId !== slotId) {
+          errors.push(
+            `${rel}: slot groups "${lastSlotId}" and "${slotId}" sit next to each other in ${where} ` +
+            `with no fixed block between them — chrome is what marks where one slot ends, so a block ` +
+            `added here could belong to either. Mark the one that is chrome (a heading, usually) ` +
+            `fixed: true, or put a fixed block between them. Until then the EDITOR refuses to save ` +
+            `any page using this template, naming blocks the author cannot reach.`,
+          );
+        }
+        lastSlotId = slotId;
+      });
+      for (const [slotId, at] of groups) {
+        for (let i = 1; i < at.length; i++) {
+          if (at[i] !== at[i - 1] + 1) {
+            errors.push(
+              `${rel}: the blocks of slot "${slotId}" are not contiguous in ${where} — ` +
+              `a slot's blocks must sit together, or the merge cannot tell which slot a block joins`,
+            );
+            break;
+          }
+        }
+      }
+      for (const [bid, block] of Object.entries(kids)) {
+        if (block && typeof block === 'object') checkRegion(block, `${where} > ${bid}`);
+      }
+    };
+    checkRegion(data, 'the page');
+  }
+
   // Pass 2c-ter: an INSTANCE must agree with its template about what is chrome.
   //
   // Pass 2c-bis above checks a TEMPLATE's own blocks. This checks the pages that
