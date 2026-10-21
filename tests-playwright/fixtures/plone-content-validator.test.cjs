@@ -1570,3 +1570,72 @@ describe('validating against a site\'s schemas', () => {
   });
 });
 
+
+/**
+ * A TEMPLATE's own slot arrangement is checkable here, statically.
+ *
+ * `fixed` chrome is what separates one slot group from the next: it tells the
+ * merge where one slot's content ends. Two OPEN slots side by side leave an
+ * added block ambiguous — it could belong to either — so hydra's
+ * validateTemplatePlaceholders reports "Missing Fixed Block".
+ *
+ * That check ran only in the editor, at SAVE time, against the merged page. So
+ * a template saved with two adjacent open slots passed every gate, and the
+ * first anyone knew was an author being refused on a page whose offending
+ * blocks live inside a readOnly, template-owned container they cannot reach —
+ * an error about the template, raised against the page, with no way back to
+ * the cause.
+ *
+ * The arrangement of a TEMPLATE's own blocks needs no merge and no render: it
+ * is right there in its blocks_layout. Checking it here turns that into a gate
+ * failure on the commit that introduces it.
+ */
+describe('plone-content-validator template slot arrangement', () => {
+  const definition = (children, layout) => ({
+    '@id': '/templates/case-study-layout',
+    '@type': 'Document',
+    id: 'case-study-layout',
+    UID: 'tpl-uid',
+    blocks: {
+      'lead-text': {
+        '@type': 'column',
+        fixed: true,
+        slotId: 'lead-text',
+        blocks: children,
+        blocks_layout: { items: layout },
+      },
+    },
+    blocks_layout: { items: ['lead-text'] },
+  });
+  const slotErrors = (data) =>
+    checkIntegrity([{ rel: '/templates/case-study-layout', data }]).errors.filter((e) =>
+      /sit next to each other|not contiguous/.test(e),
+    );
+
+  it('reports two adjacent OPEN slots in a template column', () => {
+    const errs = slotErrors(definition({
+      title: { '@type': 'title', slotId: 'title', fixed: false },
+      'lead-intro': { '@type': 'slate', slotId: 'lead-intro', fixed: false },
+    }, ['title', 'lead-intro']));
+    assert.ok(
+      errs.some((e) => e.includes('"title"') && e.includes('"lead-intro"')),
+      `expected an error naming both slot groups, got:\n${errs.join('\n')}`,
+    );
+  });
+
+  it('accepts the same column once the heading is chrome', () => {
+    assert.deepEqual(slotErrors(definition({
+      title: { '@type': 'title', slotId: 'title', fixed: true },
+      'lead-intro': { '@type': 'slate', slotId: 'lead-intro', fixed: false },
+    }, ['title', 'lead-intro'])), []);
+  });
+
+  it('reports one slot split by another', () => {
+    const errs = slotErrors(definition({
+      a1: { '@type': 'slate', slotId: 'body', fixed: false },
+      gap: { '@type': 'slate', slotId: 'aside', fixed: false },
+      a2: { '@type': 'slate', slotId: 'body', fixed: false },
+    }, ['a1', 'gap', 'a2']));
+    assert.ok(errs.some((e) => /not contiguous/.test(e)), errs.join('\n'));
+  });
+});
