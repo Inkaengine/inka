@@ -278,3 +278,109 @@ describe('block validation — blocks the author cannot edit', () => {
     expect(blocksErrors.mine?.req).toBeTruthy();
   });
 });
+
+
+/**
+ * An image block with no image set must not refuse the save.
+ *
+ * Reported from production: an author could not save a case study. The sidebar
+ * read "Input must be valid url (www.something.com or http(s)://www.something.com)"
+ * against an image she had not set, and clearing the image did not help —
+ * clearing it is what produces the empty string that triggers it.
+ *
+ * The cause is upstream: Volto's checkFieldErrors skips a field only when it is
+ * `undefined` or `null`, so an empty STRING is handed to urlValidator, which
+ * regex-tests it and reports a malformed url.
+ */
+describe('an image block with no image set', () => {
+  const imageBlocksConfig = {
+    image: {
+      id: 'image',
+      title: 'Image',
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Image', fields: ['url', 'alt'] }],
+        properties: {
+          url: { title: 'Image', widget: 'url' },
+          alt: { title: 'Alt text', type: 'string' },
+        },
+        required: [],
+      },
+    },
+  };
+  const pageWith = (url) => ({
+    '@id': '/a-case-study',
+    blocks: {
+      'img-1': { '@type': 'image', ...(url === undefined ? {} : { url }) },
+    },
+    blocks_layout: { items: ['img-1'] },
+  });
+  const run = (page) =>
+    validateBlocksAgainstSchemas(page, {
+      blocksConfig: imageBlocksConfig,
+      intl: { formatMessage },
+      formatMessage,
+    });
+
+  test('an unset image does not refuse the save', () => {
+    expect(run(pageWith(undefined)).blocksErrors).toEqual({});
+  });
+
+  test('an image CLEARED to an empty string does not refuse the save either', () => {
+    expect(run(pageWith('')).blocksErrors).toEqual({});
+  });
+
+  test('a genuinely malformed url is still reported', () => {
+    expect(Object.keys(run(pageWith('not a url')).blocksErrors)).toEqual(['img-1']);
+  });
+
+  test('the path map comes back, so a refused save can name the block', () => {
+    expect(run(pageWith('not a url')).blockPathMap).toHaveProperty('img-1');
+  });
+});
+
+/**
+ * Omitting empty strings must not become a way to skip `required`.
+ *
+ * The exemption above is about FORMAT validators. Required-ness is checked
+ * separately, against the schema's `required` list, and treats a missing field
+ * exactly as it treats '' — these pin that, because "ignore empty strings" is
+ * precisely the shape of fix that quietly disables required.
+ */
+describe('a required block field left empty', () => {
+  const cfg = {
+    needy: {
+      id: 'needy',
+      title: 'Needy',
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['mustHave'] }],
+        properties: { mustHave: { title: 'Must have', type: 'string' } },
+        required: ['mustHave'],
+      },
+    },
+  };
+  const page = (v) => ({
+    '@id': '/p',
+    blocks: {
+      'n-1': { '@type': 'needy', ...(v === undefined ? {} : { mustHave: v }) },
+    },
+    blocks_layout: { items: ['n-1'] },
+  });
+  const run = (v) =>
+    validateBlocksAgainstSchemas(page(v), {
+      blocksConfig: cfg,
+      intl: { formatMessage },
+      formatMessage,
+    });
+
+  test('still reports when set to an empty string', () => {
+    expect(Object.keys(run('').blocksErrors)).toEqual(['n-1']);
+  });
+
+  test('still reports when absent altogether', () => {
+    expect(Object.keys(run(undefined).blocksErrors)).toEqual(['n-1']);
+  });
+
+  test('passes when filled', () => {
+    expect(run('something').blocksErrors).toEqual({});
+  });
+});
