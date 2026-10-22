@@ -1663,10 +1663,13 @@ const Iframe = (props) => {
     };
   }, [saveTemplatesRef, flushIframeEdits, persistTemplateDoc, iframeSyncState.templateEditMode]);
 
-  // v2 lock-commit ("Change on all pages"): after the iframe flushes pending
-  // inline edits, reverse-merge the instance's blocks back into the template
-  // cache AND save that template document now (at lock time). Then drop just this
-  // instance from the unlocked set — other unlocked templates stay unlocked.
+  // v2 lock ("Change on all pages" or "Reset changes"): both act only after the
+  // iframe flushes pending inline edits, so neither works on stale data and no
+  // buffered keystroke lands afterwards. Commit reverse-merges the instance's
+  // blocks back into the template cache AND saves that template document now (at
+  // lock time); reset restores the instance from its unlock-time snapshot. Then
+  // drop just this instance from the unlocked set — other unlocked templates stay
+  // unlocked.
   useEffect(() => {
     const pending = pendingTemplateEditExitRef.current;
     if (!pending) return;
@@ -1687,6 +1690,18 @@ const Iframe = (props) => {
       delete templateSnapshotsRef.current[prevInstanceId];
       setCommittingTemplate(false); // commit round-trip done — drop the saving overlay
     };
+
+    if (pending.mode === 'reset') {
+      // Restore against the FLUSHED page: the typed text is in it now, so the
+      // restore really changes the page and the frontend redraws the instance.
+      const snap = templateSnapshotsRef.current[prevInstanceId];
+      if (snap) {
+        // Wherever the instance sits — top level, a footer region, a container.
+        onChangeFormData(restoreInstance(formData, snap, prevInstanceId, idFieldMap));
+      }
+      finish();
+      return;
+    }
 
     // The instance's own blocks, wherever it sits — top level, a footer region,
     // or inside a container (instanceContent) — and its template.
@@ -1733,7 +1748,7 @@ const Iframe = (props) => {
     } else {
       finish();
     }
-  }, [iframeSyncState.completedFlushRequestId, iframeSyncState.formData, postTemplateEditMode, persistTemplateDoc, idFieldMap]);
+  }, [iframeSyncState.completedFlushRequestId, iframeSyncState.formData, postTemplateEditMode, persistTemplateDoc, idFieldMap, onChangeFormData]);
 
   // Pending INITIAL_DATA: when templates are loading during INIT, store data here
   // Sync effect will send INITIAL_DATA after templates are merged
@@ -5256,7 +5271,7 @@ const Iframe = (props) => {
       return false; // keep it unlocked so the user can fix it
     }
     const requestId = `tpl-commit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    pendingTemplateEditExitRef.current = { requestId, prevInstanceId: instanceId };
+    pendingTemplateEditExitRef.current = { requestId, prevInstanceId: instanceId, mode: 'commit' };
     setCommittingTemplate(true); // show the saving overlay until finish() clears it
     if (referenceElement?.contentWindow) {
       referenceElement.contentWindow.postMessage({ type: 'FLUSH_BUFFER', requestId }, '*');
@@ -5268,18 +5283,13 @@ const Iframe = (props) => {
   // blocks from the unlock-time snapshot, while KEEPING page-content edits made in
   // the meantime. The template cache is untouched (nothing is saved).
   const resetTemplateEdit = (instanceId) => {
-    const snap = templateSnapshotsRef.current[instanceId];
-    if (snap) {
-      // Wherever the instance sits — top level, a footer region, a container.
-      onChangeFormData(restoreInstance(properties, snap, instanceId, idFieldMap));
+    // Flush the iframe's pending inline edits first, as the commit does; the
+    // flush-completion handler then restores the instance (mode 'reset').
+    const requestId = `tpl-reset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    pendingTemplateEditExitRef.current = { requestId, prevInstanceId: instanceId, mode: 'reset' };
+    if (referenceElement?.contentWindow) {
+      referenceElement.contentWindow.postMessage({ type: 'FLUSH_BUFFER', requestId }, '*');
     }
-    const next = (iframeSyncState.templateEditMode || []).filter((id) => id !== instanceId);
-    setIframeSyncState((prev) => ({
-      ...prev,
-      templateEditMode: (prev.templateEditMode || []).filter((id) => id !== instanceId),
-    }));
-    postTemplateEditMode(next);
-    delete templateSnapshotsRef.current[instanceId];
   };
 
   // Entry point for the sidebar "Edit template" toggle AND the Quanta toolbar lock
