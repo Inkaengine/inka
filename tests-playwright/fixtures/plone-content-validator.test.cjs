@@ -487,14 +487,31 @@ describe('plone-content-validator checkIntegrity()', () => {
       assert.deepEqual(fillErrors([{ rel: '/templates/frame', data: definition }]), []);
     });
 
-    it('still has the pages that fill it checked', () => {
+    it('still has the pages that fill it checked — for slotId', () => {
       const items = (fill) => [
         { rel: '/templates/frame', data: definition },
         { rel: '/p', data: page(fill) },
       ];
+      // readOnly is NOT required on a page block. It is authored on the
+      // template, and on an instance absent and false are indistinguishable
+      // everywhere they are read.
       assert.deepEqual(fillErrors(items({ readOnly: false })), []);
-      const missing = fillErrors(items({}));
-      assert.ok(missing.some((e) => e.includes('/p') && e.includes('missing readOnly')), missing.join('\n'));
+      assert.deepEqual(fillErrors(items({})), []);
+
+      // slotId is required, because the merge matches by it and silently drops
+      // a block that has none.
+      const noSlot = fillErrors([
+        { rel: '/templates/frame', data: definition },
+        {
+          rel: '/p',
+          data: {
+            '@id': '/p', '@type': 'Document', id: 'p', UID: 'page-uid',
+            blocks: { f: { '@type': 'slate', templateId: '/templates/frame' } },
+            blocks_layout: { items: ['f'] },
+          },
+        },
+      ]);
+      assert.ok(noSlot.some((e) => e.includes('/p') && e.includes('slotId')), noSlot.join('\n'));
     });
   });
 
@@ -599,12 +616,12 @@ describe('plone-content-validator checkIntegrity()', () => {
         UID: 'pageauid1234567', parent: { '@id': '/' },
         blocks: {
           row: {
-            '@type': 'columns', templateId: 'resolveuid/pageauid1234567', slotId: 'row', fixed: true,
+            '@type': 'columns', templateId: 'resolveuid/pageauid1234567', slotId: 'row', fixed: true, readOnly: true,
             blocks: {
               col: {
-                '@type': 'column', templateId: 'resolveuid/pageauid1234567', slotId: 'col', fixed: true,
+                '@type': 'column', templateId: 'resolveuid/pageauid1234567', slotId: 'col', fixed: true, readOnly: true,
                 blocks: {
-                  buried: { '@type': 'slate', slotId: 'buried', fixed: true },
+                  buried: { '@type': 'slate', slotId: 'buried', fixed: true, readOnly: true },
                 },
                 blocks_layout: { items: ['buried'] },
               },
@@ -631,7 +648,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         UID: 'pageauid1234567', parent: { '@id': '/' },
         blocks: {
           row: {
-            '@type': 'columns', templateId: 'resolveuid/pageauid1234567', slotId: 'row', fixed: true,
+            '@type': 'columns', templateId: 'resolveuid/pageauid1234567', slotId: 'row', fixed: true, readOnly: true,
             blocks: {
               nameless: { '@type': 'slate', templateId: 'resolveuid/pageauid1234567', fixed: false },
             },
@@ -673,7 +690,7 @@ describe('plone-content-validator checkIntegrity()', () => {
   });
 
   it('PASSES a fully-tagged nested template', () => {
-    const tag = (extra) => ({ templateId: 'resolveuid/pageauid1234567', fixed: true, ...extra });
+    const tag = (extra) => ({ templateId: 'resolveuid/pageauid1234567', fixed: true, readOnly: true, ...extra });
     const { root, contentDir } = buildFixture({
       pageA: {
         '@id': '/templates/thing', '@type': 'Document', id: 'thing',
@@ -728,7 +745,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         '@id': '/templates/thing', '@type': 'Document', id: 'thing',
         UID: 'pageauid1234567', parent: { '@id': '/' },
         blocks: {
-          decided: { '@type': 'slate', templateId: '/templates/thing', slotId: 'decided', fixed: true },
+          decided: { '@type': 'slate', templateId: '/templates/thing', slotId: 'decided', fixed: true, readOnly: true },
           vague: { '@type': 'slate', templateId: '/templates/thing', slotId: 'vague' },
         },
         blocks_layout: { items: ['decided', 'vague'] },
@@ -864,11 +881,23 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.ok(!r.errors.some((e) => e.includes('block good ')), r.errors.join('\n'));
   });
 
-  it('FAILS on an INSTANCE slot-fill missing fixed/readOnly (emit did not run)', () => {
-    // A block that has a valid slotId but no fixed/readOnly means the emit
-    // synthesis (markdown-mount normalizeInstanceTemplateFields, which stamps both
-    // false on a page slot-fill) never ran for it — a real pipeline gap, not an
-    // authoring nit. The coupling must hold: all three or the block is flagged.
+  it('ACCEPTS an INSTANCE slot-fill that does not state fixed/readOnly', () => {
+    // These two are authored on the TEMPLATE, not repeated on every page that
+    // fills it. On an instance, absent and false are indistinguishable wherever
+    // they are read — the merge branches on `if (block.fixed)`, isSlot is
+    // `!b.fixed && !b.readOnly`, and isBlockPositionLocked / isBlockReadonly are
+    // both `!!`. Requiring them here asked a real site to write two inert fields
+    // onto every block filling a template: 719 of them on the first content tree
+    // this was ever run against, not one of which changed any behaviour.
+    //
+    // Stating TRUE still matters and is still checked: a page block is
+    // classified as chrome by its OWN `fixed`, so a slot the template marks
+    // fixed must say so on the instance too (covered separately).
+    //
+    // NOTE: this test used to stand in for blockmd's emit synthesis
+    // (markdown-mount normalizeInstanceTemplateFields). That belongs in
+    // blockmd's own tests, against blockmd's own output, rather than in a rule
+    // every hand-authored content tree has to satisfy.
     const { root, contentDir } = buildFixture({
       dataFiles: [
         'plone_site_root/data.json',
@@ -903,8 +932,7 @@ describe('plone-content-validator checkIntegrity()', () => {
     });
     const r = checkIntegrity(contentDir);
     cleanup(root);
-    assert.ok(r.errors.some((e) => e.includes('halfway') && e.includes('fixed') && e.includes('readOnly')),
-      r.errors.join('\n'));
+    assert.deepEqual(r.errors.filter((e) => e.includes('halfway')), []);
   });
 
   it('FAILS on a broken path inside a SLATE link node', () => {
