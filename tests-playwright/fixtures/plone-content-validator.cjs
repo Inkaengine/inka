@@ -764,6 +764,19 @@ function imageDimensions(file) {
         missing.push(block.fixed === undefined
           ? 'fixed (true = template-controlled, false = a slot the page fills)'
           : `fixed as a boolean (got ${JSON.stringify(block.fixed)})`);
+      } else if (block.fixed === true && typeof block.readOnly !== 'boolean') {
+        // `fixed: true` alone is ambiguous, and the two readings differ in who
+        // owns the content: with readOnly the template owns it and the merge
+        // re-derives it on every page; without, the block is the PAGE's — fixed
+        // in place, still editable, its own text kept. A heading the author
+        // types into and a heading the template dictates look identical here.
+        //
+        // `fixed: false` needs no readOnly: the page's own block fills that
+        // slot and carries its own flags, so the placeholder has nothing to say.
+        missing.push(
+          'readOnly (true = the template owns the content, false = the page ' +
+          'owns it and the block is merely fixed in place)',
+        );
       }
       if (missing.length) {
         stats.templateBlocksBroken = (stats.templateBlocksBroken || 0) + 1;
@@ -896,12 +909,12 @@ function imageDimensions(file) {
       return top.some((block) => block.slotId) && !top.some((block) => block.templateId);
     };
     const templateChrome = new Map(); // templateRef -> Map(slotId -> fixed)
-    for (const { data } of items) {
+    for (const { rel, data } of items) {
       const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
       if (!isTemplateDoc(data)) continue;
       const slots = new Map();
       const collect = (container) => {
-        for (const [, block] of Object.entries(container.blocks || {})) {
+        for (const [bid, block] of Object.entries(container.blocks || {})) {
           if (!block || typeof block !== 'object') continue;
           if (block.slotId) slots.set(block.slotId, block.fixed === true);
           collect(block);
@@ -918,31 +931,35 @@ function imageDimensions(file) {
           if (!block || typeof block !== 'object') continue;
           const chrome = block.templateId && templateChrome.get(block.templateId);
           if (chrome) {
-            // A block that fills THIS template must carry the coupled markers:
-            // slotId + fixed + readOnly. slotId is the render-critical one —
-            // forced-layout expansion (helpers/fillRegionEntries) matches a block
-            // to a slot by slotId and silently DROPS one that has none: the block
-            // is composed into the page (block-sanity discovers it) yet no frontend
-            // has a slot to render it, so its data-block-uid never appears and the
-            // only symptom is a reveal timeout. That is exactly how the slate page's
-            // `callout` slipped through — 2c-ter used to only look at blocks whose
-            // slotId already matched a slot. fixed and readOnly are the content-model
-            // half: a page slot-fill is editable page content (both false), stated
-            // so the coupling holds and the merge locks it right. Emit synthesises
-            // both for a slot-fill (markdown-mount normalizeInstanceTemplateFields),
-            // so a miss here means the emit path did not run — a real gap.
+            // On an INSTANCE only `slotId` is required, and it is the one that
+            // matters: forced-layout expansion (helpers/fillRegionEntries) matches
+            // a block to a slot by slotId and silently DROPS one that has none —
+            // the block is composed into the page (block-sanity discovers it) yet
+            // no frontend has a slot to render it, so its data-block-uid never
+            // appears and the only symptom is a reveal timeout. That is how the
+            // slate page's `callout` slipped through.
+            //
+            // `fixed` and `readOnly` are NOT required here. They are authored on
+            // the template (checked above), and on a page block absent and false
+            // are indistinguishable everywhere they are read — the merge branches
+            // on `if (block.fixed)`, isSlot is `!b.fixed && !b.readOnly`,
+            // isBlockPositionLocked and isBlockReadonly are both `!!`. Demanding
+            // them here asked a real site to write two inert fields onto every
+            // block that fills a template — 719 of them on the first tree this
+            // ever ran against, none of which changed any behaviour.
+            //
+            // Stating TRUE still matters, and is still checked below: a page
+            // block is classified as chrome by its OWN `fixed`, so a slot the
+            // template marks fixed must say so on the instance too.
             const missing = [];
             if (!block.slotId) missing.push('slotId');
-            if (typeof block.fixed !== 'boolean') missing.push('fixed');
-            if (typeof block.readOnly !== 'boolean') missing.push('readOnly');
             if (missing.length) {
               stats.instanceBlocksBroken = (stats.instanceBlocksBroken || 0) + 1;
               errors.push(
                 `  ${rel}: block ${bid} (${block['@type']}) fills template ` +
                 `${block.templateId} but is missing ${missing.join(', ')} — a block ` +
                 `with no slotId is dropped by forced-layout expansion and never ` +
-                `renders; fixed and readOnly must be stated (both false for an ` +
-                `editable slot-fill)`,
+                `renders`,
               );
             } else if (chrome.has(block.slotId)) {
               const shouldBeFixed = chrome.get(block.slotId);
