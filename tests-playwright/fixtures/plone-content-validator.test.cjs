@@ -1423,7 +1423,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
   // to a default, which is how it used to read as typed by accident.
   const accordionSchema = (t) =>
     t === 'accordion'
-      ? { properties: { panels: { widget: 'object_list', allowedBlocks: ['panel'] } } }
+      ? { properties: { panels: { widget: 'object_list', allowedBlocks: ['panel'], typeField: '@type' } } }
       : null;
 
   const pageWithAccordion = (panels) => ({

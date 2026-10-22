@@ -706,6 +706,14 @@ function imageDimensions(file) {
           if (!def.schema && !isTyped && def.subBlocks !== false) {
             errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares none of \`schema\`, \`allowedBlocks\`/\`typeField\` or \`subBlocks: false\` — a list is records of one shape, items that vary in kind, or a plain list, and the schema has to say which`);
           }
+          // allowedBlocks means the items vary in kind, so the schema has to
+          // name the field that says which — the type does not live in a fixed
+          // place. form.subblocks keys by `field_type`, search.facets by
+          // `@type`; both state it. Defaulting to `@type` here guessed on the
+          // schema's behalf and would read the wrong field without a word.
+          if (def.allowedBlocks && !def.typeField) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares \`allowedBlocks\` but no \`typeField\` — its items vary in kind, so the schema has to name the field their type is read from`);
+          }
           checkItemIds(v, def.idField || '@id', `object_list field "${field}" item`, `  ${rel}: block ${bid} (${block['@type']})`);
           if (isTyped) {
             // The schema-named field first, `@type` as the alternative — the
@@ -713,6 +721,9 @@ function imageDimensions(file) {
             // `blockData?.['@type'] ?? blockData?.[typeField]`, so an item
             // carrying either IS typed and renders. Requiring the named field
             // alone looked tidier and would have failed content that works.
+            // The field the schema names. No fallback: a list with
+            // allowedBlocks and no typeField is reported above, so by here the
+            // schema has said where the type lives.
             const typeKey = def.typeField || '@type';
             v.forEach((item, i) => {
               if (item && typeof item === 'object' && item[typeKey] == null && item['@type'] == null) {
