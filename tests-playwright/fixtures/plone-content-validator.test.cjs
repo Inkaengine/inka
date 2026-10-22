@@ -664,12 +664,20 @@ describe('plone-content-validator checkIntegrity()', () => {
       r.errors.join('\n'));
   });
 
-  it('PASSES an untagged block inside a non-fixed SLOT', () => {
-    // A slot's children are the PAGE's content, not the template's: the merge
-    // fills the slot from the page and carries its nesting through untouched,
-    // so those blocks need no templateId/slotId of their own. /templates/
-    // contact-cta ships exactly this shape — a `fixed: false` section whose
-    // `cta-btn` carries nothing — and the button comes through the merge intact.
+  it('REPORTS an untagged block inside a non-fixed SLOT', () => {
+    // This used to pass, on the reasoning that a slot's children are the
+    // PAGE's content and so need no tags of their own — true of the merge as
+    // it runs today, and /templates/contact-cta ships exactly this shape: a
+    // `fixed: false` section whose `cta-btn` carries nothing, which does come
+    // through intact.
+    //
+    // But it comes through intact only because of that one flag. A template is
+    // the authored source of truth, and an untagged block in one says nothing
+    // about who owns it. Set the section `fixed: true` — an ordinary change —
+    // and fillRegionEntries drops the button on its first rule,
+    // `if (!child || !child.templateId) continue`, silently, from every page
+    // using the template. The sibling /templates/contact-cta-info tags the
+    // same button, so the tagged shape is already the house style.
     const { root, contentDir } = buildFixture({
       pageA: {
         '@id': '/templates/thing', '@type': 'Document', id: 'thing',
@@ -686,7 +694,8 @@ describe('plone-content-validator checkIntegrity()', () => {
     });
     const r = checkIntegrity(contentDir);
     cleanup(root);
-    assert.ok(!r.errors.some((e) => e.includes('btn')), r.errors.join('\n'));
+    assert.ok(r.errors.some((e) => e.includes('btn') && e.includes('slotId')),
+      r.errors.join('\n') || '(no error raised)');
   });
 
   it('PASSES a fully-tagged nested template', () => {
