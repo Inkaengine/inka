@@ -65,6 +65,7 @@ const takeFlag = (name) => {
   return value;
 };
 const schemasPath = takeFlag('--schemas');
+const noSchemas = argv.includes('--no-schemas') && (argv.splice(argv.indexOf('--no-schemas'), 1), true);
 const fieldsPath = takeFlag('--fields');
 // The report as data — { <check>: { errors, warnings, stats } } for each
 // check run — for a program that acts on it rather than a person reading it.
@@ -85,6 +86,30 @@ const [cmd, dirArg] = argv;
 if (!cmd || !['validate', 'check', 'schema', 'all'].includes(cmd) || argv.length > 2) usage();
 if (cmd === 'schema' && !schemas && !fieldsPath) {
   console.error('schema needs --schemas <schemas.json>');
+  process.exit(2);
+}
+// `check` and `all` without schemas ran a REDUCED check and said nothing about
+// it: checkBlockSchemas and checkEditorRules were skipped, and getChildFields
+// got no idFieldMap, so every object_list keyed by anything but `@id` went
+// unwalked. A gate that quietly tests less than it appears to is worse than no
+// gate — a site ran this way and the first run WITH schemas found seven errors
+// it had never reported, one of them a block the editor refuses to save.
+//
+// So refuse. Validating content without its schema is not validation.
+// --no-schemas is there for the one honest case (a tree whose site has no
+// schema file yet) and it says in the output what is not being checked.
+if ((cmd === 'check' || cmd === 'all') && !schemas && !fieldsPath && !noSchemas) {
+  console.error(
+    `ERROR: ${cmd} needs --schemas <schemas.json>.\n` +
+    '\n' +
+    '  Without it the block-schema and editor-rule passes do not run at all,\n' +
+    '  and object_list regions are not walked. That is a structure-only check,\n' +
+    '  and it will report success while a page the editor refuses to save sits\n' +
+    '  in the content.\n' +
+    '\n' +
+    '  If the site genuinely has no schemas yet, pass --no-schemas to say so\n' +
+    '  deliberately; the report will state which checks were skipped.',
+  );
   process.exit(2);
 }
 
