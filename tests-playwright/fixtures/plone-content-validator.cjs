@@ -828,19 +828,23 @@ function imageDimensions(file) {
         for (const { id, block } of getChildBlockEntries(container, descriptor)) {
           if (!block || typeof block !== 'object') continue;
           const label = prefix ? `${prefix} > ${id}` : id;
-          yieldBlock(label, block);
+          yieldBlock(label, block, !!descriptor.isObjectList);
           walk(block, label);
         }
       }
     };
-    const yieldBlock = (label, block) => {
+    const yieldBlock = (label, block, isObjectListItem = false) => {
       const missing = [];
       if (!block.templateId) missing.push('templateId');
       // A non-fixed child is a SLOT, matched to the page's content by slotId
       // (`else if (child.slotId)`); without one it matches neither branch and is
       // dropped too. A fixed child needs it to be matched when the page has
       // overridden it, and the top-level rule has always required it.
-      if (!block.slotId) missing.push('slotId');
+      // An object_list item is addressed by its field's idField (@id,
+      // field_type, key…), not by a slot — slotId is how a blocks_layout
+      // region matches children. Requiring it flagged a template's own
+      // socialLinks, which are correct and render.
+      if (!block.slotId && !isObjectListItem) missing.push('slotId');
       // `fixed` must be stated, true or false. Omitting it does not mean "not
       // fixed" — it makes the block a SLOT for the page to fill, so on a page
       // whose region is empty the block renders as nothing. Requiring the
