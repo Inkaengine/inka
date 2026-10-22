@@ -550,9 +550,11 @@ test.describe('Template Edit Mode - wherever the instance sits', () => {
       await expect(editor).toHaveAttribute('contenteditable', 'true', { timeout: 5000 });
       await editor.click();
       await expect(editor).toBeFocused({ timeout: 2000 });
-      await page.keyboard.press('End');
+      // Not the End key: in a narrow container the header wraps, and End goes to
+      // the end of the first visual line.
+      await helper.moveCursorToEnd(editor);
       await page.keyboard.type(` ${marker}`);
-      await expect(header).toContainText(marker, { timeout: 5000 });
+      await expect(header).toContainText(`${SNIPPET_HEADER} ${marker}`, { timeout: 5000 });
       return { headerId, header };
     };
 

@@ -147,6 +147,20 @@
         // (non-listing) container children with combined paging, hand-in-hand with
         // expandListingBlocks — the two abstract object_list/blocks_layout and paging.
         window._staticBlocks = staticBlocks;
+        // Expose the merge for the renderer's containers: every container passes
+        // its children through it (docs/frontend-guide/templates.md "Expand every
+        // container"), sharing the render's window._templateState.
+        window._expandTemplates = expandTemplates;
+        window._loadTemplate = async (templateId) => {
+            const headers = { 'Accept': 'application/json' };
+            const token = getAccessToken();
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const tplPath = templateId.startsWith('http')
+                ? new URL(templateId).pathname
+                : `/${templateId.replace(/^\//, '')}`;
+            const res = await fetch(`${window._apiOrigin}/++api++${tplPath}`, { headers });
+            return res.json();
+        };
         import { sharedBlocksConfig } from '/shared-block-schemas.js';
 
         // Parse page numbers from URL query params (format: ?pg_{blockId}={pageNumber})
