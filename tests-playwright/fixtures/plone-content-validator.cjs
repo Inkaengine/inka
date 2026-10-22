@@ -27,6 +27,32 @@ const { UNDECLARED_EXEMPT } = require('../helpers/discover-blocks.cjs');
 const { getChildFields, getChildBlockEntries } = require('../../packages/helpers/index.js');
 
 /**
+ * Every child of a container, across every region it has, in order.
+ *
+ * The ONE place this file enumerates children. Each pass used to read
+ * `blocks_layout` itself, which is why they disagreed with each other and with
+ * the editor: 2c-bis saw only `items` and only inside fixed blocks, the slot
+ * pass saw only `items`, and an object_list region was invisible to both. The
+ * editor's validateTemplatePlaceholders walks via these same two helpers, so
+ * routing everything through them makes the gate and the save-time check agree
+ * by construction.
+ *
+ * The exception is pass 2d, which validates blocks_layout's own integrity and
+ * must read it raw: getChildBlockEntries drops entries whose block is missing,
+ * which is precisely the corruption 2d exists to report.
+ */
+function childEntries(container) {
+  if (!container || typeof container !== 'object') return [];
+  const out = [];
+  for (const descriptor of getChildFields(container, null, { allObjectLists: true })) {
+    for (const entry of getChildBlockEntries(container, descriptor)) {
+      if (entry.block && typeof entry.block === 'object') out.push({ ...entry, region: descriptor.region });
+    }
+  }
+  return out;
+}
+
+/**
  * Content ids that break their PARENT, not themselves.
  *
  * `BTreeFolder2Base.__getattr__` resolves an attribute miss out of `self._tree`,
@@ -508,13 +534,29 @@ function imageDimensions(file) {
   // while this gate reported "Links: N ok, 0 broken".
   const LINK_FIELDS = ['url', 'href', 'image', 'preview_image', 'preview_image_link', 'backgroundImage'];
 
-  function* walkBlocks(blocks) {
-    for (const [bid, block] of Object.entries(blocks || {})) {
-      if (!block || typeof block !== 'object') continue;
-      yield [bid, block];
-      if (block.blocks && typeof block.blocks === 'object') {
-        yield* walkBlocks(block.blocks);
+  // Every block stored under a container, at any depth.
+  //
+  // Region children come from the container API, so an object_list child — a
+  // slider's slide, a form's subblock — is walked like a blocks_layout one.
+  // This used to recurse on `block.blocks` alone and saw neither, so a broken
+  // link inside a slide was never ref-checked.
+  //
+  // Blocks present in the dict but listed by no region are yielded too: they
+  // are stored, so a dangling reference or a repeated id in one still counts,
+  // and an orphan is exactly the state those checks exist to catch.
+  function* walkBlocks(blocks, container = null, where = null) {
+    const seenIds = new Set();
+    if (container) {
+      for (const { id, block } of childEntries(container)) {
+        seenIds.add(id);
+        yield [id, block, where];
+        yield* walkBlocks(block.blocks, block, id);
       }
+    }
+    for (const [bid, block] of Object.entries(blocks || {})) {
+      if (!block || typeof block !== 'object' || seenIds.has(bid)) continue;
+      yield [bid, block, where];
+      yield* walkBlocks(block.blocks, block, bid);
     }
   }
 
@@ -700,7 +742,7 @@ function imageDimensions(file) {
   }
 
   for (const { rel, data } of items) {
-    for (const [bid, block] of walkBlocks(data.blocks)) {
+    for (const [bid, block] of walkBlocks(data.blocks, data)) {
       checkBlockRefs(rel, bid, block);
     }
   }
@@ -720,10 +762,8 @@ function imageDimensions(file) {
   // every other block on the page. Inferred from content, not from the path, so
   // a template stored outside /templates is still checked.
   for (const { rel, data } of items) {
-    const blocks = data.blocks || {};
-    const top = (data.blocks_layout || {}).items || [];
     const own = new Set([data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean));
-    const isTemplate = top.some((bid) => blocks[bid] && own.has(blocks[bid].templateId));
+    const isTemplate = childEntries(data).some(({ block }) => own.has(block.templateId));
     if (!isTemplate) continue;
     // EVERY depth, not just the top. fillRegionEntries is the same function for
     // a nested container's regions as for the page's, and it opens with
@@ -749,13 +789,15 @@ function imageDimensions(file) {
       // same button, so the tagged shape is already the house style; the
       // untagged one is the outlier, and the exemption existed to accommodate
       // exactly one block rather than because the shape is sound.
-      const kids = container.blocks || {};
-      const order = Object.values(container.blocks_layout || {}).flat();
-      for (const bid of order.length ? order : Object.keys(kids)) {
-        const block = kids[bid];
-        if (!block || typeof block !== 'object') continue;
-        yieldBlock(prefix ? `${prefix} > ${bid}` : bid, block);
-        walk(block, prefix ? `${prefix} > ${bid}` : bid);
+      // Regions via hydra's container API, so an object_list region is walked
+      // like a blocks_layout one. Reading blocks_layout here saw neither.
+      for (const descriptor of getChildFields(container, null, { allObjectLists: true })) {
+        for (const { id, block } of getChildBlockEntries(container, descriptor)) {
+          if (!block || typeof block !== 'object') continue;
+          const label = prefix ? `${prefix} > ${id}` : id;
+          yieldBlock(label, block);
+          walk(block, label);
+        }
       }
     };
     const yieldBlock = (label, block) => {
@@ -800,11 +842,9 @@ function imageDimensions(file) {
         stats.templateBlocksOk = (stats.templateBlocksOk || 0) + 1;
       }
     };
-    for (const bid of top) {
-      const block = blocks[bid];
-      if (!block || typeof block !== 'object') continue;
-      yieldBlock(bid, block);
-      walk(block, bid);
+    for (const { id, block } of childEntries(data)) {
+      yieldBlock(id, block);
+      walk(block, id);
     }
   }
 
@@ -835,9 +875,7 @@ function imageDimensions(file) {
     // The same notion of "is a definition" the chrome pass uses: a doc whose
     // top blocks name itself, OR one whose top blocks hold slots and name no
     // other template. A definition need not name itself.
-    const topBlocks = ((data.blocks_layout || {}).items || [])
-      .map((bid) => (data.blocks || {})[bid])
-      .filter(Boolean);
+    const topBlocks = childEntries(data).map(({ block }) => block);
     const ownRefs = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
     const isDefinition =
       topBlocks.some((block) => ownRefs.includes(block.templateId)) ||
@@ -932,7 +970,7 @@ function imageDimensions(file) {
     // not name itself — whose top-level blocks hold slots and name no template at all.
     const isTemplateDoc = (data) => {
       const blocks = data.blocks || {};
-      const top = ((data.blocks_layout || {}).items || []).map((bid) => blocks[bid]).filter(Boolean);
+      const top = childEntries(data).map(({ block }) => block);
       const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
       if (top.some((block) => own.includes(block.templateId))) return true;
       return top.some((block) => block.slotId) && !top.some((block) => block.templateId);
@@ -1053,24 +1091,27 @@ function imageDimensions(file) {
   // of two blocks sharing an id only one can be selected or edited. Each
   // container's own layout can resolve perfectly (every summary-list row's value
   // block was "v1"), so the layout checks above can't see it.
-  function checkUniqueIds(rel, blocks, parent, firstIn) {
-    for (const [bid, block] of Object.entries(blocks || {})) {
+  // Ids are checked over walkBlocks' tree, so an id repeated inside an
+  // object_list — a slider's slides, a form's subblocks — is caught like one
+  // in a blocks_layout container. Walking `blocks` dicts alone missed those.
+  function checkUniqueIds(rel, blocks, parent, firstIn, container = null) {
+    for (const [bid, block, parentId] of walkBlocks(blocks, container)) {
       if (!block || typeof block !== 'object') continue;
-      const where = parent ?? 'the page';
+      const where = parentId ?? parent ?? 'the page';
       if (firstIn.has(bid)) {
         errors.push(`  ${rel}: block id ${bid} is used twice (in ${firstIn.get(bid)} and ${where}) — a block id must be unique on its page, or the editor can select and edit only one of them`);
       } else {
         firstIn.set(bid, where);
       }
-      if (block.blocks && typeof block.blocks === 'object') checkUniqueIds(rel, block.blocks, bid, firstIn);
+
     }
   }
   for (const { rel, data } of items) {
     checkLayout(rel, null, data);  // page-level blocks_layout
-    for (const [bid, block] of walkBlocks(data.blocks)) {
+    for (const [bid, block] of walkBlocks(data.blocks, data)) {
       if (block.blocks && typeof block.blocks === 'object') checkLayout(rel, bid, block);
     }
-    checkUniqueIds(rel, data.blocks, null, new Map());
+    checkUniqueIds(rel, data.blocks, null, new Map(), data);
   }
 
   // Parent containers (metadata cross-check for completeness). Uses the `@id`
