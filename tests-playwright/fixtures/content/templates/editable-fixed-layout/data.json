@@ -15,10 +15,15 @@
       "value": [
         {
           "type": "h1",
-          "children": [{ "text": "Editable Header" }]
+          "children": [
+            {
+              "text": "Editable Header"
+            }
+          ]
         }
       ],
-      "plaintext": "Editable Header"
+      "plaintext": "Editable Header",
+      "readOnly": false
     },
     "default-slot": {
       "@type": "slate",
@@ -29,7 +34,11 @@
       "value": [
         {
           "type": "p",
-          "children": [{ "text": "" }]
+          "children": [
+            {
+              "text": ""
+            }
+          ]
         }
       ],
       "plaintext": ""
@@ -43,14 +52,23 @@
       "value": [
         {
           "type": "p",
-          "children": [{ "text": "Editable Footer" }]
+          "children": [
+            {
+              "text": "Editable Footer"
+            }
+          ]
         }
       ],
-      "plaintext": "Editable Footer"
+      "plaintext": "Editable Footer",
+      "readOnly": false
     }
   },
   "blocks_layout": {
-    "items": ["editable-header", "default-slot", "editable-footer"]
+    "items": [
+      "editable-header",
+      "default-slot",
+      "editable-footer"
+    ]
   },
   "@components": {
     "actions": {
@@ -67,8 +85,14 @@
     "breadcrumbs": {
       "@id": "/templates/editable-fixed-layout/@breadcrumbs",
       "items": [
-        { "@id": "/templates", "title": "Templates" },
-        { "@id": "/templates/editable-fixed-layout", "title": "Editable Fixed Layout" }
+        {
+          "@id": "/templates",
+          "title": "Templates"
+        },
+        {
+          "@id": "/templates/editable-fixed-layout",
+          "title": "Editable Fixed Layout"
+        }
       ]
     }
   }
