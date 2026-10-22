@@ -1417,8 +1417,14 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
   // schema names. Absent a schema this can't be known, so the check runs only
   // when a schemaFor is supplied. Regression guard for the `tab`/socialLinks
   // "no editable example" bug the bridge suite caught 17 minutes in.
+  // `allowedBlocks` is what makes this list TYPED: its items vary in kind, so
+  // each must say which. A list with one inline `schema` is a record list and
+  // carries no type — the fixture states the difference rather than leaving it
+  // to a default, which is how it used to read as typed by accident.
   const accordionSchema = (t) =>
-    t === 'accordion' ? { properties: { panels: { widget: 'object_list' } } } : null;
+    t === 'accordion'
+      ? { properties: { panels: { widget: 'object_list', allowedBlocks: ['panel'] } } }
+      : null;
 
   const pageWithAccordion = (panels) => ({
     '@id': '/page-a', '@type': 'Document', id: 'page-a',

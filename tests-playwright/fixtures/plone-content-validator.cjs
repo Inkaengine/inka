@@ -690,23 +690,42 @@ function imageDimensions(file) {
         } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
         } else if (def.widget === 'object_list' && Array.isArray(v)) {
-          // Every object_list item must carry its type in the field the schema
-          // names — `def.typeField`, defaulting to `@type` (the same key the
-          // decode stamps and the region declares). object_list items are block
-          // instances (they get a @uid, are selectable/editable), and a block
-          // without a @type can't be discovered/rendered. A decode or author
-          // that drops it (the bug that made `tab` read as "no editable example",
-          // and that left socialLinks' links untyped) is caught here in seconds
-          // instead of 17 minutes into the bridge suite.
-          const typeKey = def.typeField || '@type';
+          // A TYPED object_list's items must carry their type. A typed one is
+          // the schema's own statement: it names `typeField`, or lists
+          // `allowedBlocks`, so its items vary in kind and a reader has to ask
+          // which. Dropping the type there is the bug this was written for —
+          // `tab` reading as "no editable example", socialLinks' links untyped.
+          //
+          // A field with ONE inline `schema` is not that. Its items are records
+          // of a single fixed shape — a feature card's icon/title/description, a
+          // stat's number/label — and there is no type to carry: the schema does
+          // not define the field, nothing reads it, and the parent block renders
+          // them itself. Requiring it demanded a field that does not exist, on
+          // 70 items across one site's features, clients, stats and process
+          // blocks, every one of them correct.
+          const isTyped = !!(def.typeField || def.allowedBlocks);
+          // A field must say which kind of list it is. `schema` means records
+          // of one fixed shape; `typeField`/`allowedBlocks` means items that
+          // vary in kind. Declaring neither leaves a reader unable to tell
+          // whether a missing type is a fault or meaningless, and this gate
+          // unable to check it either way.
+          if (!isTyped && !def.schema) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares neither \`schema\` nor \`allowedBlocks\`/\`typeField\` — a list is records of one shape or items that vary in kind, and the schema has to say which`);
+          }
           checkItemIds(v, def.idField || '@id', `object_list field "${field}" item`, `  ${rel}: block ${bid} (${block['@type']})`);
-          v.forEach((item, i) => {
-            // Read the way hydra's getBlockType does: `@type` first, then the
-            // schema's typeField — an item carrying either is typed.
-            if (item && typeof item === 'object' && item['@type'] == null && item[typeKey] == null) {
-              errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — an object_list item is a block and must carry its type`);
-            }
-          });
+          if (isTyped) {
+            // The schema-named field first, `@type` as the alternative — the
+            // way hydra's own reader works: getBlockType is
+            // `blockData?.['@type'] ?? blockData?.[typeField]`, so an item
+            // carrying either IS typed and renders. Requiring the named field
+            // alone looked tidier and would have failed content that works.
+            const typeKey = def.typeField || '@type';
+            v.forEach((item, i) => {
+              if (item && typeof item === 'object' && item[typeKey] == null && item['@type'] == null) {
+                errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — this field names a type (typeField/allowedBlocks), so its items vary in kind and must say which`);
+              }
+            });
+          }
         }
       }
     }
