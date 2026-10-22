@@ -1301,6 +1301,35 @@ function checkBlockSchemas(source, fieldMap) {
  * would not put them (documentation examples): their placement and maxLength
  * are not checked, every other rule is.
  */
+// The groups the block chooser orders: Volto's four, plus the `templates`
+// group hydra appends. A block whose `group` is none of these is offered
+// under a heading the chooser never renders.
+const CHOOSER_GROUPS = new Set(['mostUsed', 'text', 'media', 'common', 'templates']);
+
+/**
+ * Every block an author can add must say where it lives in the chooser.
+ *
+ * A block with no `group` falls into an unnamed bucket; one naming a group
+ * the chooser does not order is worse, because it reads as deliberate. Neither
+ * shows up in content, so no content check can find it — this is about the
+ * config itself, which is why it sits with the other schema-aware passes.
+ *
+ * `restricted` blocks are exempt: they are not in the picker at all, they are
+ * placed by a template or a parent block.
+ */
+function checkChooserGroups(schemas, errors) {
+  for (const [type, def] of Object.entries(schemas || {})) {
+    if (!def || typeof def !== 'object' || type.startsWith('_')) continue;
+    if (def.restricted) continue;
+    if (!def.blockSchema) continue; // not a block config
+    if (!def.group) {
+      errors.push(`  ${type}: no \`group\`, so the block chooser offers it under no heading — one of ${[...CHOOSER_GROUPS].join(', ')}`);
+    } else if (!CHOOSER_GROUPS.has(def.group)) {
+      errors.push(`  ${type}: group "${def.group}" is not one the chooser orders (${[...CHOOSER_GROUPS].join(', ')}), so the block is offered under a heading that never renders`);
+    }
+  }
+}
+
 async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
   const exempt = new Set(exemptSlots);
   const hydraJs = (file) =>
@@ -1434,6 +1463,8 @@ async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
       );
     }
   }
+    checkChooserGroups(schemas, errors);
+
   return { errors, warnings, stats };
 }
 
