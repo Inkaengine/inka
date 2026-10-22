@@ -402,11 +402,21 @@ describe('plone-content-validator validate()', () => {
 });
 
 /**
- * redirects.json holds PHYSICAL paths. plone.exportimport's importer hands each
- * pair to plone.app.redirector's storage as is, and the storage is keyed by
- * physical path (/Plone/old), which is also what an export writes. A
- * site-relative "/old" is stored where no request ever looks: the site deploys
- * green and every redirect 404s.
+ * redirects.json: judge CONSISTENCY, not conformance.
+ *
+ * plone.exportimport's importer hands each pair to plone.app.redirector's
+ * storage as is, and that storage is keyed by PHYSICAL path (/Plone/old) —
+ * which is what a raw export writes. A site-relative "/old" sitting among
+ * physical ones is stored where no request looks: deploys green, 404s forever.
+ * That MIX is the bug.
+ *
+ * A wholly site-relative file is a different thing. A consumer may convert the
+ * raw export into a site-relative tree on purpose — pretagov's
+ * convert-export-to-local.py strips the site prefix from redirect keys and
+ * values — and demanding the prefix there is undone by the next export, so the
+ * check would churn forever against redirects that demonstrably work (verified:
+ * /about/about-us 302s on the live API). Previously this file was rejected
+ * outright, which is why that rule is now about mixing.
  */
 describe('plone-content-validator redirects.json paths', () => {
   const withRedirects = (redirects) => {
@@ -422,17 +432,30 @@ describe('plone-content-validator redirects.json paths', () => {
     assert.deepEqual(r.errors, []);
   });
 
-  it('reports a site-relative redirect (it would never fire)', () => {
-    const { root, contentDir } = withRedirects({ '/old': '/page-a' });
+  it('accepts a WHOLLY site-relative file (a converted tree)', () => {
+    // Was rejected outright. A converted tree strips the site prefix by
+    // design, so requiring it here fights the converter and churns every
+    // export, against redirects that work.
+    const { root, contentDir } = withRedirects({ '/old': '/page-a', '/x': '/y' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a MIX of physical and site-relative (the ones that never fire)', () => {
+    const { root, contentDir } = withRedirects({
+      '/Plone/old': '/Plone/page-a',
+      '/stray': '/Plone/page-a',
+    });
     const r = validate(contentDir);
     cleanup(root);
     assert.ok(
-      r.errors.some((e) => e.includes('"/old"') && e.includes('/Plone')),
+      r.errors.some((e) => e.includes('mixes physical and site-relative') && e.includes('"/stray"')),
       r.errors.join('\n'),
     );
   });
 
-  it('reports a redirect whose target is site-relative', () => {
+  it('reports a mixed pair whose target alone is site-relative', () => {
     const { root, contentDir } = withRedirects({ '/Plone/old': '/page-a' });
     const r = validate(contentDir);
     cleanup(root);
@@ -1547,3 +1570,72 @@ describe('validating against a site\'s schemas', () => {
   });
 });
 
+
+/**
+ * A TEMPLATE's own slot arrangement is checkable here, statically.
+ *
+ * `fixed` chrome is what separates one slot group from the next: it tells the
+ * merge where one slot's content ends. Two OPEN slots side by side leave an
+ * added block ambiguous — it could belong to either — so hydra's
+ * validateTemplatePlaceholders reports "Missing Fixed Block".
+ *
+ * That check ran only in the editor, at SAVE time, against the merged page. So
+ * a template saved with two adjacent open slots passed every gate, and the
+ * first anyone knew was an author being refused on a page whose offending
+ * blocks live inside a readOnly, template-owned container they cannot reach —
+ * an error about the template, raised against the page, with no way back to
+ * the cause.
+ *
+ * The arrangement of a TEMPLATE's own blocks needs no merge and no render: it
+ * is right there in its blocks_layout. Checking it here turns that into a gate
+ * failure on the commit that introduces it.
+ */
+describe('plone-content-validator template slot arrangement', () => {
+  const definition = (children, layout) => ({
+    '@id': '/templates/case-study-layout',
+    '@type': 'Document',
+    id: 'case-study-layout',
+    UID: 'tpl-uid',
+    blocks: {
+      'lead-text': {
+        '@type': 'column',
+        fixed: true,
+        slotId: 'lead-text',
+        blocks: children,
+        blocks_layout: { items: layout },
+      },
+    },
+    blocks_layout: { items: ['lead-text'] },
+  });
+  const slotErrors = (data) =>
+    checkIntegrity([{ rel: '/templates/case-study-layout', data }]).errors.filter((e) =>
+      /sit next to each other|not contiguous/.test(e),
+    );
+
+  it('reports two adjacent OPEN slots in a template column', () => {
+    const errs = slotErrors(definition({
+      title: { '@type': 'title', slotId: 'title', fixed: false },
+      'lead-intro': { '@type': 'slate', slotId: 'lead-intro', fixed: false },
+    }, ['title', 'lead-intro']));
+    assert.ok(
+      errs.some((e) => e.includes('"title"') && e.includes('"lead-intro"')),
+      `expected an error naming both slot groups, got:\n${errs.join('\n')}`,
+    );
+  });
+
+  it('accepts the same column once the heading is chrome', () => {
+    assert.deepEqual(slotErrors(definition({
+      title: { '@type': 'title', slotId: 'title', fixed: true },
+      'lead-intro': { '@type': 'slate', slotId: 'lead-intro', fixed: false },
+    }, ['title', 'lead-intro'])), []);
+  });
+
+  it('reports one slot split by another', () => {
+    const errs = slotErrors(definition({
+      a1: { '@type': 'slate', slotId: 'body', fixed: false },
+      gap: { '@type': 'slate', slotId: 'aside', fixed: false },
+      a2: { '@type': 'slate', slotId: 'body', fixed: false },
+    }, ['a1', 'gap', 'a2']));
+    assert.ok(errs.some((e) => /not contiguous/.test(e)), errs.join('\n'));
+  });
+});

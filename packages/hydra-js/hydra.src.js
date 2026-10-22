@@ -3150,6 +3150,14 @@ export class Bridge {
       return true;
     }
 
+    // Shift+Enter in a plain string field: nothing. A string is one line, but
+    // left to the browser Shift+Enter inserts a <br>, putting a second line on
+    // the page that the stored value never has.
+    if (key === 'Enter' && shiftKey &&
+        this.fieldTypeIsPlainString(this.getFieldType(blockId, this.focusedFieldName))) {
+      return true;
+    }
+
     // Enter
     if (key === 'Enter' && !shiftKey) {
       const isPreElement = editableField?.tagName === 'PRE' || !!editableField?.closest('pre');
