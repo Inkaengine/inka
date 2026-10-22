@@ -242,6 +242,16 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 
 </block>
 
+## Expand every container
+
+**Pass the children of every container through the merge** — every `blocks_layout` region and every object_list field, in every container block you render, at every depth — with the same `templateState` the page-level call used.
+
+An editor can place a template anywhere a block can go: inside a grid, a column, an accordion panel, a slider. The merge has no block schema, so it cannot find your containers by itself. It fills the regions of a template it applies, but a template placed inside a plain container stays exactly as stored — stale fixed content, no instance — until that container hands its children to the merge. A container that renders its children directly is a place where templates silently don't work.
+
+The page-level call is no exception: each of the page's own blocks fields (`items`, a `footer` region, …) goes through the merge too.
+
+The Inka editor follows the same contract for the page it edits (see [Merging templates](../architecture.md#merging-templates-every-container-is-expanded-by-whoever-renders)).
+
 ## Pre-loading with loadTemplates
 
 **\`loadTemplates(data, loadTemplate)\`** scans page data for `templateId` references and loads them all in parallel. It follows nested references (templates referencing other templates) and has a 5s per-template timeout. It only loads templates actually in the page data — `allowedLayouts` options are loaded on demand when a forced layout is applied.

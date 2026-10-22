@@ -4183,6 +4183,12 @@ export async function loadTemplates(
  * Async version of expandTemplates.
  * Loads templates on-demand using loadTemplates callback, then delegates to expandTemplatesSync.
  *
+ * Expands ONE list of blocks. It fills the regions of a template it applies, but it
+ * has no schema: a template placed inside a plain container is expanded only when the
+ * caller passes that container's children through here too. Every renderer — each
+ * frontend AND the admin — re-enters every container. Read docs/frontend-guide/
+ * templates.md "Expand every container" before changing how this is called.
+ *
  * @param {Array} inputItems - Input items (block IDs or block objects)
  * @param {Object} options - Configuration options
  * @param {Object} options.blocks - Blocks dict for ID lookup
@@ -4406,6 +4412,11 @@ function objectListItemId(item, idField) {
   return id;
 }
 
+// Expands ONE list of blocks. It fills the regions of a template it applies, but it
+// has no schema: a template placed inside a plain container is expanded only when the
+// caller passes that container's children through here too. Every renderer — each
+// frontend AND the admin — re-enters every container. Read docs/frontend-guide/
+// templates.md "Expand every container" before changing how this is called.
 export function expandTemplatesSync(inputItems, options = {}) {
   const {
     blocks: blocksDict,

@@ -2,6 +2,15 @@
 
 Read `docs/architecture.md` for the iframe ↔ admin bridge: Slate transforms, selection sync, and the chrome pattern. The chrome pattern is non-negotiable — selection outlines, toolbars, drag handles, edge handles, etc. are rendered in the admin (React) so frontend CSS/JS can't interfere; the iframe only measures rects and captures pointer events through invisible elements layered under the admin's visuals.
 
+## Template merging - every container is expanded, frontend AND admin
+
+Read `docs/architecture.md` ("Merging templates: every container is expanded, by whoever renders") and `docs/frontend-guide/templates.md` ("Expand every container") BEFORE changing anything that merges templates, renders containers, or walks a page's blocks.
+
+- The merge (`expandTemplates`/`expandTemplatesSync`) has no schema: it fills the regions of a template it APPLIES, never a template placed inside a plain container.
+- Every renderer re-enters every container's children with the shared `templateState`: each frontend (the contract), AND the admin (`mergeTemplatesIntoPage` → `expandContainers`), because the admin merges the templates it edits itself.
+- Never remove the admin's re-entry as "redundant", and never render a container's children without passing them through the merge. A template can be anywhere a block can.
+- Test new template behaviour with the template placed at the top level AND inside a container.
+
 ## Block Access - NEVER use formData.blocks[blockId] directly
 
 Blocks can be nested inside container blocks (columns, accordions, etc.), so they may NOT be at `formData.blocks[blockId]`. A block inside a column might be at `formData.blocks.columns-1.column_items.col-1.blocks.text-1`.
