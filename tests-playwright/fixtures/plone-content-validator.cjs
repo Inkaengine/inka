@@ -40,11 +40,20 @@ const { getChildFields, getChildBlockEntries } = require('../../packages/helpers
  * The exception is pass 2d, which validates blocks_layout's own integrity and
  * must read it raw: getChildBlockEntries drops entries whose block is missing,
  * which is precisely the corruption 2d exists to report.
+ *
+ * `idFieldMap` is not optional in spirit. getChildFields recognises an
+ * object_list field when its items carry `templateId` OR when the map names
+ * the field for that block type — and an object_list is keyed by its own
+ * idField (a form's subblocks by `field_id`, a table's rows by `key`), so
+ * without the map those fields are skipped and any id taken from one is
+ * bogus. Built by buildIdFieldMap from the site's schemas; when the caller has
+ * no schemas, only templateId-marked lists are seen, which is a REDUCED check,
+ * not the intended one.
  */
-function childEntries(container) {
+function childEntries(container, idFieldMap = null) {
   if (!container || typeof container !== 'object') return [];
   const out = [];
-  for (const descriptor of getChildFields(container, null, { allObjectLists: true })) {
+  for (const descriptor of getChildFields(container, idFieldMap, { allObjectLists: true })) {
     for (const entry of getChildBlockEntries(container, descriptor)) {
       if (entry.block && typeof entry.block === 'object') out.push({ ...entry, region: descriptor.region });
     }
@@ -361,7 +370,7 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
 /**
  * Graph integrity. Mirrors test-content.py.
  */
-function checkIntegrity(source, { schemaFor, allowMissingBlobs = false } = {}) {
+function checkIntegrity(source, { schemaFor, allowMissingBlobs = false, idFieldMap = null } = {}) {
   const onDisk = typeof source === 'string';
   const contentDir = onDisk ? source : null;
   const errors = [];
@@ -547,7 +556,7 @@ function imageDimensions(file) {
   function* walkBlocks(blocks, container = null, where = null) {
     const seenIds = new Set();
     if (container) {
-      for (const { id, block } of childEntries(container)) {
+      for (const { id, block } of childEntries(container, idFieldMap)) {
         seenIds.add(id);
         yield [id, block, where];
         yield* walkBlocks(block.blocks, block, id);
@@ -763,7 +772,7 @@ function imageDimensions(file) {
   // a template stored outside /templates is still checked.
   for (const { rel, data } of items) {
     const own = new Set([data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean));
-    const isTemplate = childEntries(data).some(({ block }) => own.has(block.templateId));
+    const isTemplate = childEntries(data, idFieldMap).some(({ block }) => own.has(block.templateId));
     if (!isTemplate) continue;
     // EVERY depth, not just the top. fillRegionEntries is the same function for
     // a nested container's regions as for the page's, and it opens with
@@ -842,7 +851,7 @@ function imageDimensions(file) {
         stats.templateBlocksOk = (stats.templateBlocksOk || 0) + 1;
       }
     };
-    for (const { id, block } of childEntries(data)) {
+    for (const { id, block } of childEntries(data, idFieldMap)) {
       yieldBlock(id, block);
       walk(block, id);
     }
@@ -875,7 +884,7 @@ function imageDimensions(file) {
     // The same notion of "is a definition" the chrome pass uses: a doc whose
     // top blocks name itself, OR one whose top blocks hold slots and name no
     // other template. A definition need not name itself.
-    const topBlocks = childEntries(data).map(({ block }) => block);
+    const topBlocks = childEntries(data, idFieldMap).map(({ block }) => block);
     const ownRefs = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
     const isDefinition =
       topBlocks.some((block) => ownRefs.includes(block.templateId)) ||
@@ -970,7 +979,7 @@ function imageDimensions(file) {
     // not name itself — whose top-level blocks hold slots and name no template at all.
     const isTemplateDoc = (data) => {
       const blocks = data.blocks || {};
-      const top = childEntries(data).map(({ block }) => block);
+      const top = childEntries(data, idFieldMap).map(({ block }) => block);
       const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
       if (top.some((block) => own.includes(block.templateId))) return true;
       return top.some((block) => block.slotId) && !top.some((block) => block.templateId);
