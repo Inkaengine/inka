@@ -1,0 +1,1 @@
+A block dragged into a container inside a template you are editing joins that template, so locking with "Change on all pages" saves it into the template. It was left with no template and marked read-only, and the save dropped it.
