@@ -100,7 +100,20 @@ function readRedirects(mount) {
   const rootFile = path.join(dirPath, 'plone_site_root', 'data.json');
   const rootId = fs.existsSync(rootFile) ? JSON.parse(fs.readFileSync(rootFile, 'utf8'))['@id'] : '/';
   const sitePath = rootId === '/' ? '' : rootId;
+  // A site may keep its redirects site-relative and add the physical prefix
+  // itself when it imports them (MOCK_REDIRECTS_SITE_RELATIVE=1). Opt-in, so a
+  // plain plone.exportimport archive is still held to the physical-path rule.
+  const siteRelative = process.env.MOCK_REDIRECTS_SITE_RELATIVE === '1';
   const relative = (p) => {
+    if (siteRelative) {
+      if (!p.startsWith('/') || (sitePath && p.startsWith(sitePath + '/'))) {
+        throw new Error(
+          `${redirectsFile}: MOCK_REDIRECTS_SITE_RELATIVE=1 expects site-relative paths ` +
+          `("/old"), got ${JSON.stringify(p)}`,
+        );
+      }
+      return p;
+    }
     if (p === sitePath) return '/';
     if (p.startsWith(sitePath + '/')) return p.slice(sitePath.length);
     throw new Error(
