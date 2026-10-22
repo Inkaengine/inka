@@ -730,14 +730,22 @@ function imageDimensions(file) {
     // removing `templateId` from one widget nested in a footer column removed
     // that widget AND its three slates from the merged footer.
     const walk = (container, prefix) => {
-      // Descend into FIXED containers only. A fixed block is template-owned
-      // structure: the merge re-derives its children from the template, so each
-      // one needs its own tags or it is dropped. A NON-fixed block is a SLOT —
-      // its children are the page's content, carried through as-is and needing
-      // no tags at all. Checked: /templates/contact-cta's `cta-section` is
-      // `fixed: false` and its untagged `cta-btn` survives the merge intact, so
-      // flagging it would be a false alarm on shipping content.
-      if (container.fixed !== true && prefix) return;
+      // Descend into EVERY container, fixed or not.
+      //
+      // This used to stop at a non-fixed block, reasoning that a slot's
+      // children are the page's content and need no tags — checked against
+      // /templates/contact-cta, whose `cta-section` is `fixed: false` and whose
+      // untagged `cta-btn` does survive the merge.
+      //
+      // It survives only because of that one flag. A template is the authored
+      // source of truth, and an untagged block in one says nothing about who
+      // owns it: set the section `fixed: true` — the kind of change made
+      // routinely — and fillRegionEntries drops the button on its first rule,
+      // `if (!child || !child.templateId) continue`, silently, from every page
+      // using the template. The sibling /templates/contact-cta-info tags the
+      // same button, so the tagged shape is already the house style; the
+      // untagged one is the outlier, and the exemption existed to accommodate
+      // exactly one block rather than because the shape is sound.
       const kids = container.blocks || {};
       const order = Object.values(container.blocks_layout || {}).flat();
       for (const bid of order.length ? order : Object.keys(kids)) {
@@ -833,9 +841,38 @@ function imageDimensions(file) {
       (topBlocks.some((block) => block.slotId) && !topBlocks.some((block) => block.templateId));
     if (!isDefinition) continue;
 
-    const checkRegion = (container, where) => {
-      const kids = container.blocks || {};
-      const order = (container.blocks_layout || {}).items || [];
+    // EVERY region, not just `items`. The editor's validateTemplatePlaceholders
+    // walks "the page's regions AND every nested container's regions
+    // (blocks_layout AND object_list)", so checking only `items` here left the
+    // same template passing on one side and refused on the other. A columns
+    // region is not exotic: case-study-layout's own `lead-row` is one, and it
+    // holds the lead slots — two open slots side by side in there would have
+    // gone unreported.
+    const regionsOf = (container) => {
+      const out = [];
+      for (const [region, order] of Object.entries(container.blocks_layout || {})) {
+        if (Array.isArray(order)) out.push([region, order, container.blocks || {}]);
+      }
+      // An object_list region stores its children inline, in order, each item
+      // its own block — so the sequence IS the array and there is no id to look
+      // up. Keyed by index so the adjacency rules read the same way.
+      for (const [field, value] of Object.entries(container)) {
+        if (field === 'blocks' || field === 'blocks_layout') continue;
+        if (!Array.isArray(value)) continue;
+        if (!value.some((it) => it && typeof it === 'object' && (it.slotId || it['@type']))) continue;
+        const kids = {};
+        const order = [];
+        value.forEach((it, i) => {
+          if (!it || typeof it !== 'object') return;
+          kids[`${field}[${i}]`] = it;
+          order.push(`${field}[${i}]`);
+        });
+        if (order.length) out.push([field, order, kids]);
+      }
+      return out;
+    };
+
+    const checkOrder = (order, kids, where) => {
       const groups = new Map(); // slotId -> indexes
       let lastSlotId = null;
       order.forEach((bid, i) => {
@@ -868,8 +905,20 @@ function imageDimensions(file) {
           }
         }
       }
-      for (const [bid, block] of Object.entries(kids)) {
-        if (block && typeof block === 'object') checkRegion(block, `${where} > ${bid}`);
+    };
+
+    const seen = new Set();
+    const checkRegion = (container, where) => {
+      if (!container || typeof container !== 'object' || seen.has(container)) return;
+      seen.add(container);
+      for (const [region, order, kids] of regionsOf(container)) {
+        checkOrder(order, kids, regionsOf(container).length > 1 ? `${where} (${region})` : where);
+        for (const bid of order) checkRegion(kids[bid], `${where} > ${bid}`);
+      }
+      // A container may hold blocks that no region lists; still walk them, so a
+      // nested template inside an unlisted block is not skipped.
+      for (const [bid, block] of Object.entries(container.blocks || {})) {
+        checkRegion(block, `${where} > ${bid}`);
       }
     };
     checkRegion(data, 'the page');

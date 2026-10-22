@@ -1667,3 +1667,50 @@ describe('plone-content-validator template slot arrangement', () => {
     assert.ok(errs.some((e) => /not contiguous/.test(e)), errs.join('\n'));
   });
 });
+
+/**
+ * The slot rules apply to EVERY region, not just `items`.
+ *
+ * The editor's validateTemplatePlaceholders walks "the page's regions AND every
+ * nested container's regions (blocks_layout AND object_list)". This pass read
+ * only `blocks_layout.items`, so a template could pass here and still be
+ * refused in the editor — and a columns region is not exotic: a case-study
+ * layout's own lead row is one, holding the lead slots.
+ */
+describe('template slot arrangement covers every region', () => {
+  const tpl = (blocksLayout, blocks) => [{
+    rel: '/templates/t',
+    data: {
+      '@id': '/templates/t', '@type': 'Document', id: 't', UID: 'tuid000000000000',
+      blocks: { row: { '@type': 'columns', slotId: 'row', fixed: true, readOnly: true, ...blocks } },
+      blocks_layout: { items: ['row'] },
+      ...blocksLayout,
+    },
+  }];
+  const slot = (id) => ({ '@type': 'slate', slotId: id, fixed: false, readOnly: false });
+  const errs = (items) => checkIntegrity(items).errors.filter((e) => /sit next to each other|not contiguous/.test(e));
+
+  it('reports two adjacent OPEN slots in a COLUMNS region', () => {
+    const r = errs(tpl({}, {
+      blocks: { a: slot('alpha'), b: slot('beta') },
+      blocks_layout: { columns: ['a', 'b'] },
+    }));
+    assert.ok(r.some((e) => e.includes('"alpha"') && e.includes('"beta"')), r.join('\n') || '(no error raised)');
+  });
+
+  it('accepts the same columns region once a fixed block separates them', () => {
+    const r = errs(tpl({}, {
+      blocks: { a: slot('alpha'), sep: { '@type': 'slate', slotId: 'sep', fixed: true, readOnly: true }, b: slot('beta') },
+      blocks_layout: { columns: ['a', 'sep', 'b'] },
+    }));
+    assert.deepEqual(r, []);
+  });
+
+  it('reports two adjacent OPEN slots in an object_list region', () => {
+    const r = errs(tpl({}, {
+      slides: [slot('alpha'), slot('beta')],
+      blocks: {}, blocks_layout: { items: [] },
+    }));
+    assert.ok(r.some((e) => e.includes('"alpha"') && e.includes('"beta"')), r.join('\n') || '(no error raised)');
+  });
+});
