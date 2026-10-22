@@ -1716,8 +1716,12 @@ describe('template slot arrangement covers every region', () => {
   });
 
   it('reports two adjacent OPEN slots in an object_list region', () => {
+    // An object_list child carries `templateId` — that is what marks it as the
+    // template's own, and what getChildFields keys off to call the field a
+    // region at all. A bare array is not one, so the fixture states it.
+    const inList = (id) => ({ ...slot(id), '@id': `oid-${id}`, templateId: 'resolveuid/tuid000000000000' });
     const r = errs(tpl({}, {
-      slides: [slot('alpha'), slot('beta')],
+      slides: [inList('alpha'), inList('beta')],
       blocks: {}, blocks_layout: { items: [] },
     }));
     assert.ok(r.some((e) => e.includes('"alpha"') && e.includes('"beta"')), r.join('\n') || '(no error raised)');

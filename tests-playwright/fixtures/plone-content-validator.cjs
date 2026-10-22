@@ -22,6 +22,9 @@
 const fs = require('fs');
 const path = require('path');
 const { UNDECLARED_EXEMPT } = require('../helpers/discover-blocks.cjs');
+// hydra's container API. Node require()s sync ESM, so a sync validator can use
+// the same enumeration the editor does instead of reading blocks_layout itself.
+const { getChildFields, getChildBlockEntries } = require('../../packages/helpers/index.js');
 
 /**
  * Content ids that break their PARENT, not themselves.
@@ -841,42 +844,20 @@ function imageDimensions(file) {
       (topBlocks.some((block) => block.slotId) && !topBlocks.some((block) => block.templateId));
     if (!isDefinition) continue;
 
-    // EVERY region, not just `items`. The editor's validateTemplatePlaceholders
-    // walks "the page's regions AND every nested container's regions
-    // (blocks_layout AND object_list)", so checking only `items` here left the
-    // same template passing on one side and refused on the other. A columns
-    // region is not exotic: case-study-layout's own `lead-row` is one, and it
-    // holds the lead slots — two open slots side by side in there would have
-    // gone unreported.
-    const regionsOf = (container) => {
-      const out = [];
-      for (const [region, order] of Object.entries(container.blocks_layout || {})) {
-        if (Array.isArray(order)) out.push([region, order, container.blocks || {}]);
-      }
-      // An object_list region stores its children inline, in order, each item
-      // its own block — so the sequence IS the array and there is no id to look
-      // up. Keyed by index so the adjacency rules read the same way.
-      for (const [field, value] of Object.entries(container)) {
-        if (field === 'blocks' || field === 'blocks_layout') continue;
-        if (!Array.isArray(value)) continue;
-        if (!value.some((it) => it && typeof it === 'object' && (it.slotId || it['@type']))) continue;
-        const kids = {};
-        const order = [];
-        value.forEach((it, i) => {
-          if (!it || typeof it !== 'object') return;
-          kids[`${field}[${i}]`] = it;
-          order.push(`${field}[${i}]`);
-        });
-        if (order.length) out.push([field, order, kids]);
-      }
-      return out;
-    };
-
-    const checkOrder = (order, kids, where) => {
+    // Regions come from hydra's own container API, not from reading
+    // blocks_layout here. getChildFields enumerates a block's regions —
+    // blocks_layout regions AND object_list fields — and getChildBlockEntries
+    // returns a region's children in order, for either storage. They are what
+    // the editor's validateTemplatePlaceholders walks, so this gate and the
+    // save-time check see the same tree by construction rather than by two
+    // implementations agreeing.
+    //
+    // I hand-rolled this first, on the assumption that a sync checkIntegrity
+    // could not reach the ESM helpers. It can: Node require()s sync ESM.
+    const checkOrder = (entries, where) => {
       const groups = new Map(); // slotId -> indexes
       let lastSlotId = null;
-      order.forEach((bid, i) => {
-        const block = kids[bid];
+      entries.forEach(({ block }, i) => {
         if (!block) return;
         if (block.fixed === true) { lastSlotId = null; return; }
         const slotId = block.slotId;
@@ -911,14 +892,13 @@ function imageDimensions(file) {
     const checkRegion = (container, where) => {
       if (!container || typeof container !== 'object' || seen.has(container)) return;
       seen.add(container);
-      for (const [region, order, kids] of regionsOf(container)) {
-        checkOrder(order, kids, regionsOf(container).length > 1 ? `${where} (${region})` : where);
-        for (const bid of order) checkRegion(kids[bid], `${where} > ${bid}`);
-      }
-      // A container may hold blocks that no region lists; still walk them, so a
-      // nested template inside an unlisted block is not skipped.
-      for (const [bid, block] of Object.entries(container.blocks || {})) {
-        checkRegion(block, `${where} > ${bid}`);
+      const fields = getChildFields(container, null, { allObjectLists: true });
+      for (const descriptor of fields) {
+        const entries = getChildBlockEntries(container, descriptor);
+        if (!entries.length) continue;
+        const label = fields.length > 1 ? `${where} (${descriptor.region})` : where;
+        checkOrder(entries, label);
+        for (const { id, block } of entries) checkRegion(block, `${where} > ${id}`);
       }
     };
     checkRegion(data, 'the page');
