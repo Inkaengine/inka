@@ -25,7 +25,6 @@ const { UNDECLARED_EXEMPT } = require('../helpers/discover-blocks.cjs');
 // hydra's container API. Node require()s sync ESM, so a sync validator can use
 // the same enumeration the editor does instead of reading blocks_layout itself.
 const { getChildFields, getChildBlockEntries } = require('../../packages/helpers/index.js');
-const { isObjectListRegion } = require('../../packages/hydra-js/regionWidgets.js');
 
 /**
  * Every child of a container, across every region it has, in order.
@@ -691,28 +690,24 @@ function imageDimensions(file) {
         } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
         } else if (def.widget === 'object_list' && Array.isArray(v)) {
-          // Whether items are sub-blocks is DECLARED, not inferred:
-          // isObjectListRegion is `widget === 'object_list' && subBlocks !==
-          // false`. A region's items are blocks — selectable on the canvas,
-          // seeded when empty, added with + — so each must carry its type or
-          // the editor cannot tell which schema to show. `subBlocks: false`
-          // says the opposite: a plain list of objects, edited in the sidebar,
-          // stored as it is, with no type to carry.
+          // An object_list must declare ONE of three things, and which one it
+          // declares is the whole answer:
           //
-          // I first keyed this off the shape of the schema instead — "one
-          // inline `schema` means records" — which contradicted the declared
-          // model and would have excused content that is genuinely untyped.
-          const isRegion = isObjectListRegion(def);
-          // A field must say which kind of list it is. `schema` means records
-          // of one fixed shape; `typeField`/`allowedBlocks` means items that
-          // vary in kind. Declaring neither leaves a reader unable to tell
-          // whether a missing type is a fault or meaningless, and this gate
-          // unable to check it either way.
-          if (!def.schema && !def.allowedBlocks && !def.typeField) {
-            errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares neither \`schema\` nor \`allowedBlocks\`/\`typeField\` — a list is records of one shape or items that vary in kind, and the schema has to say which`);
+          //   schema          items are records of that one shape. Nothing
+          //                   varies, so there is no type to carry.
+          //   allowedBlocks /
+          //   typeField       items vary in kind, so each must say which.
+          //   subBlocks:false a plain list of objects, edited in the sidebar
+          //                   and stored as it is. No type either.
+          //
+          // Declaring none of them is the fault: a reader cannot tell what the
+          // items are, and nor can this gate.
+          const isTyped = !!(def.typeField || def.allowedBlocks);
+          if (!def.schema && !isTyped && def.subBlocks !== false) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares none of \`schema\`, \`allowedBlocks\`/\`typeField\` or \`subBlocks: false\` — a list is records of one shape, items that vary in kind, or a plain list, and the schema has to say which`);
           }
           checkItemIds(v, def.idField || '@id', `object_list field "${field}" item`, `  ${rel}: block ${bid} (${block['@type']})`);
-          if (isRegion) {
+          if (isTyped) {
             // The schema-named field first, `@type` as the alternative — the
             // way hydra's own reader works: getBlockType is
             // `blockData?.['@type'] ?? blockData?.[typeField]`, so an item
@@ -721,7 +716,7 @@ function imageDimensions(file) {
             const typeKey = def.typeField || '@type';
             v.forEach((item, i) => {
               if (item && typeof item === 'object' && item[typeKey] == null && item['@type'] == null) {
-                errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — this field is a REGION (no \`subBlocks: false\`), so its items are sub-blocks and the editor reads each one's type to know which schema to show`);
+                errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — this field declares \`allowedBlocks\`/\`typeField\`, so its items vary in kind and each must say which it is`);
               }
             });
           }
