@@ -301,7 +301,20 @@ const More = (props) => {
           {/* `sharing` was here. Changing who can reach a document is a state
               change, so it is an entry in the state menu above instead — see
               components/Toolbar/StateMenu.jsx. */}
-          <Plug pluggable="toolbar-more-menu-list" id="aliases">
+          {/* `dependencies` is not optional here, as it is in core. A Plug
+              registers its children ONCE, on mount: usePlug's effect takes
+              `dependencies` as its entire dependency list, defaulting to [].
+              With SSR there is a server render that fills the store first, so
+              core's mount already sees these actions. In bridge mode there is
+              none — the menu mounts while @actions is still in flight, `false`
+              is what gets registered, and no later render replaces it. Both
+              entries were simply absent, for every user and not only in a
+              test. */}
+          <Plug
+            pluggable="toolbar-more-menu-list"
+            id="aliases"
+            dependencies={[aliasesAction]}
+          >
             {aliasesAction && (
               <li>
                 <Link to={`${path}/aliases`}>
@@ -322,7 +335,11 @@ const More = (props) => {
                 </li>
               </Plug>
             )}
-          <Plug pluggable="toolbar-more-menu-list" id="rules">
+          <Plug
+            pluggable="toolbar-more-menu-list"
+            id="rules"
+            dependencies={[rulesAction]}
+          >
             {rulesAction && (
               <li>
                 <Link to={`${path}/rules`}>
