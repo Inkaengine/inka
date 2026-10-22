@@ -1989,7 +1989,10 @@ export function cloneBlockFilteringNested(block, uuidGenerator) {
   // Start with a shallow clone
   const cloned = { ...block };
 
-  const fields = getChildFields(cloned);
+  // Snippet insertion copies a TEMPLATE's blocks, so the same exception
+  // applies: its children are known by templateId, not by this caller's
+  // schema, which it does not have.
+  const fields = getChildFields(cloned, null, { templateChildren: true });
   if (fields.length === 0) return cloned;
 
   // blocks_layout regions share cloned.blocks — reset it once so template-internal blocks don't
@@ -3068,6 +3071,13 @@ export function getChildBlockEntries(parentBlock, descriptor = {}) {
  * @param {Object} block - the container block
  * @returns {Array<{ region?: string, isObjectList?: boolean, regionPath?: string[] }>}
  */
+/**
+ * @param {Object} [options]
+ * @param {boolean} [options.allObjectLists] include every object_list the
+ *   idFieldMap names for this type, not only those a template owns.
+ * @param {boolean} [options.templateChildren] MERGE ONLY. Treat an array whose
+ *   items carry `templateId` as a region even when no schema declares it.
+ */
 export function getChildFields(block, idFieldMap = null, options = {}) {
   const fields = [];
   if (block?.blocks && isBlocksMap(block.blocks)) {
@@ -3084,11 +3094,19 @@ export function getChildFields(block, idFieldMap = null, options = {}) {
   const typeIds = block?.['@type'] ? idFieldMap?.[block['@type']] : null;
   for (const [key, val] of Object.entries(block || {})) {
     if (!Array.isArray(val) || val.length === 0) continue;
-    // `templateId` marks a template's own children, which is all the insertion
-    // path cares about. `allObjectLists` is for callers copying a WHOLE page —
-    // a translation — where every child counts, template or not; the fields
-    // that hold them are the ones the idFieldMap names for this type.
-    const isTemplateList = !!val[0]?.templateId;
+    // What makes an array field a region is the SCHEMA saying so: the
+    // idFieldMap names the field for this block type, and names the key its
+    // items are addressed by. That is the only detection a caller should need.
+    //
+    // `templateChildren` is the merge's exception, and only the merge's. When
+    // inserting a template the question is narrower — which items are the
+    // TEMPLATE's own — and `templateId` on the items answers it without a
+    // schema. It used to be unconditional, so it also decided region-ness for
+    // callers that are not merging, which is wrong twice over: a field the
+    // schema never declared was walked anyway, and the id for it fell back to
+    // `@id` when the real key might be `field_type` or `key` — the API's own
+    // note for that case is "mints a bogus id".
+    const isTemplateList = !!(options.templateChildren && val[0]?.templateId);
     const isDeclaredList = !!(options.allObjectLists && typeIds?.[key]);
     if (isTemplateList || isDeclaredList) {
       fields.push({
@@ -3708,7 +3726,7 @@ export function collectContentFromTree(
   // shared funnel the apply path uses (getChildFields + getChildBlockEntries) — one region-aware
   // read, not a bespoke isBlocksMap scan with an all-keys fallback and a divergent object_list
   // heuristic. processBlock captures each child (by slot/instance) and recurses into it.
-  for (const field of getChildFields(container)) {
+  for (const field of getChildFields(container, null, { templateChildren: true })) {
     const entries = getChildBlockEntries(container, field);
     // In a region of this instance's own block, the slot its page content
     // fills: a sibling slot block's, else `default`.
@@ -3930,7 +3948,9 @@ function fillRegionEntries(entries, templateState, options) {
  * proxy / clone / postMessage copy of the dict → infinite re-application).
  */
 function fillContainerInto(stamped, tplBlock, templateState, options) {
-  const fields = getChildFields(tplBlock, options?.idFieldMap);
+  // Merge: the question is which items are the TEMPLATE's own, which
+  // `templateId` answers without a schema.
+  const fields = getChildFields(tplBlock, options?.idFieldMap, { templateChildren: true });
   if (fields.length === 0) return;
   // blocks_layout regions share stamped.blocks — reset it once so stale template blocks
   // don't linger (object_list fields are independent arrays, written in place).
@@ -4966,7 +4986,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
       // Keyed by the consumer's `field`: the shared 'blocks' dict for blocks_layout, or the
       // object_list field name (e.g. 'slides') — blockSync reads childSlotIds[field].
       let childSlotIds = undefined;
-      for (const field of getChildFields(tplBlock)) {
+      for (const field of getChildFields(tplBlock, null, { templateChildren: true })) {
         const key = field.isObjectList
           ? field.region
           : 'blocks';

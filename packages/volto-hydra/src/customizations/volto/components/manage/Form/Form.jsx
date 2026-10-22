@@ -642,7 +642,12 @@ class Form extends Component {
       : {};
 
     // Validate template slot contiguity
-    const templateValidation = validateTemplatePlaceholders(formData);
+    // The same map the merge is given below — the slot rules need it to see
+    // object_list regions at all.
+    const templateValidation = validateTemplatePlaceholders(
+      formData,
+      buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
+    );
     // …and every block against its own schema. Core's Form does this and this
     // shadow had lost it, so a block's `required`, `maxLength`, `pattern` — and
     // a fieldRules `error` — were never enforced on save. Nested, because
