@@ -208,6 +208,14 @@ docs-live: ## Start live-reloading documentation server
 export HYDRA_MOCK_API_PORT ?= 8888
 export HYDRA_TEST_FRONTEND_PORT ?= 8889
 export HYDRA_MOCK_PARENT_PORT ?= 8891
+# The journey's real backends. Absent from this block until now, so any
+# playwright run from here died in ports.ts before starting — PORTS is built at
+# import and every entry is required.
+export HYDRA_MOCK_DRUPAL_PORT ?= 8794
+export HYDRA_WORDPRESS_PORT ?= 8795
+export HYDRA_PLONE_SEED_PORT ?= 8898
+# Not 1337: that one is the contract suite's Strapi. See tests-playwright/ports.ts.
+export HYDRA_STRAPI_PORT ?= 1338
 export HYDRA_VOLTO_SSR_PORT ?= 3001
 export HYDRA_VOLTO_WEBPACK_PORT ?= 3002
 export HYDRA_NUXT_PORT ?= 3003

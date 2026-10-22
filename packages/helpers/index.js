@@ -1,3 +1,8 @@
+// Canonical adapter results in Plone's REST shape — shared by the admin and by
+// frontends that read a CMS through an adapter.
+export { plonify, documentToPlone } from './plonify.js';
+import { plonify } from './plonify.js';
+
 /**
  * @volto-hydra/helpers
  *
@@ -160,6 +165,69 @@ export function contentPath(url, apiUrl) {
  * @param {string|string[]} [extraCriteria['facet.*']] - Facet filters (e.g., 'facet.portal_type': ['Document'])
  * @returns {Object} Request body for POST to @querystring-search
  */
+/**
+ * What a VISITOR asked a search block for, named rather than spelled as
+ * criteria.
+ *
+ * A listing's stored criteria are already in the backend's own spelling: they
+ * were written by the sidebar out of what the adapter advertised, and they come
+ * back untouched. The visitor's input is the other half, and it has no stored
+ * form at all — ticking two tags or typing in the search box has to become a
+ * query at request time.
+ *
+ * `buildQuerystringSearchBody` does that by writing Plone operation ids
+ * (`string.contains`, `selection.any`, `date.largerThan`), which is right when
+ * the frontend is reading Plone and wrong everywhere else: those ids mean
+ * nothing to WordPress, and a WordPress search block that sent them would
+ * return an unfiltered listing. So for an adapter the input stays NAMED — text,
+ * a set of values, a date window, a location — and the adapter turns it into
+ * its own operations, the only place that knows which ones exist.
+ *
+ * These four are the basic kinds a search block collects. A facet an adapter
+ * cannot serve never reaches here: the schema offers only indexes whose
+ * declared operations support it.
+ */
+export function searchInputsFrom(queryConfig, extraCriteria = {}, contextPath) {
+  const inputs = {};
+
+  if (extraCriteria.SearchableText) inputs.text = extraCriteria.SearchableText;
+
+  const filters = [];
+  const ranges = {};
+  for (const [key, value] of Object.entries(extraCriteria)) {
+    if (!key.startsWith('facet.')) continue;
+    const field = key.replace('facet.', '');
+    const dateMatch = field.match(/^(.+)\.(after|before)$/);
+    if (dateMatch) {
+      // A from and a to are two facet keys on ONE index, each carrying its
+      // direction, so they are collected back into a single window here.
+      const [, index, direction] = dateMatch;
+      const v = Array.isArray(value) ? value[0] : value;
+      if (v) {
+        ranges[index] = ranges[index] ?? { i: index };
+        ranges[index][direction === 'after' ? 'from' : 'to'] = v;
+      }
+    } else {
+      filters.push({ i: field, values: Array.isArray(value) ? value : [value] });
+    }
+  }
+  if (filters.length) inputs.filters = filters;
+  if (Object.keys(ranges).length) inputs.ranges = Object.values(ranges);
+
+  // A listing with no criteria of its own means "what is in this page",
+  // which is a location question the adapter answers in its own terms —
+  // Plone a path query, WordPress ?parent=, Drupal the menu. `depth: 1` is
+  // the children; a block that sets its own depth asks for the subtree.
+  const hasQuery = (queryConfig?.query ?? []).length > 0;
+  if (!hasQuery && contextPath) {
+    inputs.under = {
+      path: contextPath,
+      ...(queryConfig?.depth !== undefined ? {} : { depth: 1 }),
+    };
+  }
+  return inputs;
+}
+
 export function buildQuerystringSearchBody(
   queryConfig,
   paging = {},
@@ -1000,6 +1068,7 @@ async function fetchFolderContents({ apiUrl, contextPath, contextContent, mapped
   };
 }
 
+
 export function ploneFetchItems({
   apiUrl,
   contextPath = '/',
@@ -1074,27 +1143,116 @@ export function ploneFetchItems({
 }
 
 /**
+ * Read a page through a CMS adapter, in the shape Plone's REST API returns.
+ *
+ * For a FRONTEND whose CMS is not Plone. A frontend renders from its CMS
+ * directly when it is not being edited — the adapter in the admin's proxy frame
+ * plays no part — and its renderers were written against Plone's shape. The
+ * adapter reads the CMS, plonify turns the canonical answer into that shape, and
+ * the renderers do not change.
+ *
+ * Takes an adapter INSTANCE, so helpers depends on no adapter package: a Plone
+ * frontend that fetches Plone itself never loads one. The credential is the
+ * frontend's own, given to the adapter it constructs — a published page needs
+ * none, a draft does.
+ */
+export async function adapterGetContent(adapter, path, { expand = [] } = {}) {
+  if (!adapter) throw new Error('adapterGetContent requires an adapter');
+  const doc = await adapter.dispatch('content.get', {
+    path,
+    ...(expand.length ? { expand } : {}),
+  });
+  return plonify('content.get', doc, { path });
+}
+
+/**
+ * The adapter-backed twin of ploneFetchItems: the same `fetchItems` contract
+ * for expandListingBlocks, answered by the adapter's querystringSearch.
+ *
+ * The intent takes no offset — Plone and WordPress honour `limit`, Drupal
+ * returns everything — so a page is asked for up to its end and sliced here.
+ *
+ * The block's stored criteria go through untouched: they are already in the
+ * backend's own spelling, written by the sidebar out of what this adapter
+ * advertised. What the VISITOR asked for is passed as named inputs instead of
+ * as criteria — see searchInputsFrom — because no frontend can know which
+ * operation means "contains" on this CMS, and inventing Plone's name for it was
+ * how a WordPress search block came back unfiltered.
+ */
+export function adapterFetchItems({
+  adapter,
+  extraCriteria = {},
+  contextPath,
+} = {}) {
+  if (!adapter) throw new Error('adapterFetchItems requires an adapter');
+
+  return async function fetchItems(block, { start, size }) {
+    const stored = block.querystring ?? {};
+    const inputs = searchInputsFrom(stored, extraCriteria, contextPath);
+    const sortOn = extraCriteria.sort_on || stored.sort_on;
+    const result = await adapter.dispatch('querystringSearch', {
+      query: stored.query ?? [],
+      ...inputs,
+      // No default sort key: an unsorted listing is the CMS's own order —
+      // Plone's folder position, WordPress's menu_order, Drupal's menu weight
+      // — and naming Plone's here made every other backend sort by a key it
+      // does not have.
+      ...(sortOn ? { sortOn } : {}),
+      ...(extraCriteria.sort_order || stored.sort_order
+        ? { sortOrder: extraCriteria.sort_order || stored.sort_order }
+        : {}),
+      limit: start + size,
+    });
+    const plone = plonify('querystringSearch', result, { path: '/' });
+    const items = plone.items.slice(start, start + size).map(normalizeCatalogImage);
+    return { items, total: plone.items_total };
+  };
+}
+
+/**
+ * Which CMS an example fetcher reads: Plone directly at `apiUrl`, or any CMS
+ * through an `adapter` (answers plonified, like adapterFetchItems). Exactly one —
+ * given both, there is no telling which site the block would render from.
+ */
+function _requireOneSource(name, apiUrl, adapter) {
+  if (!apiUrl === !adapter) {
+    throw new Error(`${name} requires exactly one of apiUrl or adapter`);
+  }
+}
+
+/** The context page, in Plone's shape, from whichever source the fetcher has. */
+async function _readContext({ apiUrl, adapter, contextPath }) {
+  if (adapter) return adapterGetContent(adapter, contextPath);
+  const res = await fetch(`${apiUrl}${contextPath}/++api++`, {
+    headers: _getAuthHeaders(),
+  });
+  return res.json();
+}
+
+/**
  * Fetcher for the Related Items example block: renders the CURRENT page's
  * relation field (default `relatedItems`). Reads the context content and pages
  * its relation summaries — no catalog query. A `fetchItems` value for
  * `expandListingBlocks`, same contract as `ploneFetchItems`.
+ *
+ * `apiUrl` reads Plone directly; `adapter` reads any CMS through its adapter.
  */
-export function relatedItemsFetcher({ apiUrl, contextPath = '/' } = {}) {
-  if (!apiUrl) throw new Error('relatedItemsFetcher requires apiUrl');
+export function relatedItemsFetcher({ apiUrl, adapter, contextPath = '/' } = {}) {
+  _requireOneSource('relatedItemsFetcher', apiUrl, adapter);
   return async function fetchItems(block, { start, size }) {
     const field = block.relationField || 'relatedItems';
-    const headers = _getAuthHeaders();
-    const res = await fetch(`${apiUrl}${contextPath}/++api++`, { headers });
-    const content = await res.json();
+    const content = await _readContext({ apiUrl, adapter, contextPath });
     const all = Array.isArray(content?.[field]) ? content[field] : [];
     const items = size ? all.slice(start, start + size) : [];
     return { items, total: all.length };
   };
 }
 
-// Catalog index → vocabulary of its unique values (site-wide mode). Extend as
-// needed; falls back to a same-named vocabulary.
-const SEARCH_SHORTCUT_INDEX_VOCAB = {
+// Plone's catalog index → the vocabulary of its unique values (site-wide mode).
+// The default when reading Plone directly; any other CMS names its vocabularies
+// its own way, so a caller using an adapter passes `vocabularies`. An index with
+// no entry falls back to a same-named vocabulary.
+const PLONE_SEARCH_SHORTCUT_VOCABULARIES = {
   Subject: 'plone.app.vocabularies.Keywords',
 };
 
@@ -1106,24 +1264,35 @@ const SEARCH_SHORTCUT_INDEX_VOCAB = {
  *
  * A linked `pageField` ⇒ THIS page's values of that field; no `pageField` ⇒ all
  * unique values of the index, site-wide (from the index's vocabulary).
+ *
+ * `apiUrl` reads Plone directly; `adapter` reads any CMS through its adapter,
+ * with `vocabularies` mapping an index to that CMS's vocabulary name.
  */
-export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
-  if (!apiUrl) throw new Error('searchShortcutsFetcher requires apiUrl');
+export function searchShortcutsFetcher({
+  apiUrl,
+  adapter,
+  contextPath = '/',
+  vocabularies = adapter ? {} : PLONE_SEARCH_SHORTCUT_VOCABULARIES,
+} = {}) {
+  _requireOneSource('searchShortcutsFetcher', apiUrl, adapter);
   return async function fetchItems(block, { start, size }) {
     const index = block.index || 'Subject';
     const searchUrl = block.searchUrl || '';
-    const headers = _getAuthHeaders();
 
     let values;
     if (block.pageField) {
-      const res = await fetch(`${apiUrl}${contextPath}/++api++`, { headers });
-      const content = await res.json();
+      const content = await _readContext({ apiUrl, adapter, contextPath });
       const v = content?.[block.pageField];
       values = Array.isArray(v) ? v : v == null ? [] : [v];
     } else {
-      const vocab = SEARCH_SHORTCUT_INDEX_VOCAB[index] || index;
-      const res = await fetch(`${apiUrl}/++api++/@vocabularies/${vocab}`, { headers });
-      const data = await res.json();
+      const vocab = vocabularies[index] || index;
+      const data = adapter
+        ? await adapter.dispatch('vocabulary.get', { name: vocab })
+        : await (
+            await fetch(`${apiUrl}/++api++/@vocabularies/${vocab}`, {
+              headers: _getAuthHeaders(),
+            })
+          ).json();
       values = (data?.items || []).map((t) => t.token);
     }
 

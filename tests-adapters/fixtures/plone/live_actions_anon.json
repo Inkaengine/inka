@@ -1,0 +1,41 @@
+{
+  "document_actions": [], 
+  "object": [
+    {
+      "icon": "toolbar-action/view", 
+      "id": "view", 
+      "title": "View", 
+      "url": "https://demo.plone.org"
+    }
+  ], 
+  "object_buttons": [], 
+  "portal_tabs": [], 
+  "site_actions": [
+    {
+      "icon": "plone-sitemap", 
+      "id": "sitemap", 
+      "title": "Site Map", 
+      "url": "https://demo.plone.org/sitemap"
+    }, 
+    {
+      "icon": "plone-contact-info", 
+      "id": "contact", 
+      "title": "Contact", 
+      "url": "https://demo.plone.org/contact-form"
+    }
+  ], 
+  "user": [
+    {
+      "icon": "plone-login", 
+      "id": "login", 
+      "title": "Log in", 
+      "url": "https://demo.plone.org/login"
+    }, 
+    {
+      "icon": "plone-controlpanel", 
+      "id": "plone_setup", 
+      "title": "Site Setup", 
+      "url": "https://demo.plone.org/@@overview-controlpanel"
+    }
+  ]
+}

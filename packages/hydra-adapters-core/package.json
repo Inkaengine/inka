@@ -1,0 +1,16 @@
+{
+  "name": "@volto-hydra/hydra-adapters-core",
+  "version": "1.0.0",
+  "description": "Shared behaviour for Hydra CMS adapters: BaseAdapter, error codes, retry-on-401.",
+  "type": "module",
+  "exports": {
+    ".": "./baseAdapter.js"
+  },
+  "files": [
+    "baseAdapter.js"
+  ],
+  "dependencies": {
+    "@volto-hydra/hydra-types": "workspace:*"
+  },
+  "license": "MIT"
+}
