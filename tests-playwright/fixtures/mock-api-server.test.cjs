@@ -686,6 +686,74 @@ describe('internal references under a prefix mount', () => {
   });
 });
 
+// An exportimport mount's redirects.json, beside its content dir. plone.exportimport
+// writes PHYSICAL paths ("/Plone/old"), and that is the default the mock holds a
+// mount to. A site that stores them site-relative ("/old") and adds the prefix
+// itself on import opts in with MOCK_REDIRECTS_SITE_RELATIVE=1 — without it
+// every 404 on that mount went through the redirect lookup and became a 500.
+describe('redirects.json of an exportimport mount', () => {
+  const mock = require('./mock-plone-api.cjs');
+  const MOUNT = '/_redirects_test';
+  let root;
+  let mount;
+
+  const writeRedirects = (map) =>
+    fs.writeFileSync(path.join(root, 'redirects.json'), JSON.stringify(map));
+  const get = (p) =>
+    fetch(`${baseUrl}/++api++${MOUNT}${p}`, {
+      headers: { Accept: 'application/json' },
+      redirect: 'manual',
+    });
+
+  before(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-redirects-'));
+    const site = path.join(root, 'content', 'plone_site_root');
+    fs.mkdirSync(site, { recursive: true });
+    fs.writeFileSync(path.join(site, 'data.json'), JSON.stringify({ '@id': '/Plone', '@type': 'Plone Site' }));
+    mount = { mountPath: MOUNT, dirPath: path.join(root, 'content') };
+    mock.CONTENT_MOUNTS.unshift(mount);
+  });
+  after(() => {
+    mock.CONTENT_MOUNTS.splice(mock.CONTENT_MOUNTS.indexOf(mount), 1);
+    fs.rmSync(root, { recursive: true, force: true });
+    delete process.env.MOCK_REDIRECTS_SITE_RELATIVE;
+  });
+
+  it('physical paths, as plone.exportimport writes them, redirect', async () => {
+    writeRedirects({ '/Plone/old': '/Plone/new' });
+    const res = await get('/old');
+    assert.equal(res.status, 302);
+    assert.ok(res.headers.get('location').endsWith(`/++api++${MOUNT}/new`), res.headers.get('location'));
+  });
+
+  it('site-relative paths are refused by default, naming the fix', () => {
+    writeRedirects({ '/old': '/new' });
+    assert.throws(() => mock.getRedirectTarget(`${MOUNT}/old`), /not under the site's physical path "\/Plone"/);
+  });
+
+  describe('with MOCK_REDIRECTS_SITE_RELATIVE=1', () => {
+    before(() => { process.env.MOCK_REDIRECTS_SITE_RELATIVE = '1'; });
+    after(() => { delete process.env.MOCK_REDIRECTS_SITE_RELATIVE; });
+
+    it('site-relative paths redirect', async () => {
+      writeRedirects({ '/old': '/new' });
+      const res = await get('/old');
+      assert.equal(res.status, 302);
+      assert.ok(res.headers.get('location').endsWith(`/++api++${MOUNT}/new`), res.headers.get('location'));
+    });
+
+    it('a path with no redirect is a 404, not a 500', async () => {
+      writeRedirects({ '/old': '/new' });
+      assert.equal((await get('/no-such-page')).status, 404);
+    });
+
+    it('physical paths are refused, so the switch cannot hide a mixed-up file', () => {
+      writeRedirects({ '/Plone/old': '/Plone/new' });
+      assert.throws(() => mock.getRedirectTarget(`${MOUNT}/old`), /expects site-relative paths/);
+    });
+  });
+});
+
 // Plone batches a folder's `items` (plone.restapi's HypermediaBatch): 25 by
 // default, from `b_start` / `b_size`, with `items_total` the whole folder.
 // ploneFetchItems now answers a folder-contents listing from here, so a mock
