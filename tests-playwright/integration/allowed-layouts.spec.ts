@@ -706,7 +706,8 @@ test.describe('allowedLayouts', () => {
       // The page's own block, in the main region — not in the footer yet.
       const movedId = 'block-1-uuid';
       const movedText = 'This is another test page';
-      await expect(iframe.locator(`#content [data-block-uid="${movedId}"]`)).toContainText(movedText);
+      // The main region: `main` in Nuxt, `#content` in the test frontend (as above).
+      await expect(iframe.locator(`main [data-block-uid="${movedId}"], #content [data-block-uid="${movedId}"]`)).toContainText(movedText);
       await expect(footerContent.locator(`[data-block-uid="${movedId}"]`)).toHaveCount(0);
 
       // Unlock the footer template, then drop the page block into its columns
@@ -716,7 +717,7 @@ test.describe('allowedLayouts', () => {
 
       // It left the page region and sits in the footer, beside the cell.
       await expect(footerContent.locator(`[data-block-uid="${movedId}"]`)).toContainText(movedText, { timeout: 5000 });
-      await expect(iframe.locator(`#content [data-block-uid="${movedId}"]`)).toHaveCount(0);
+      await expect(iframe.locator(`main [data-block-uid="${movedId}"], #content [data-block-uid="${movedId}"]`)).toHaveCount(0);
 
       // Lock with "Change on all pages" — commits + saves the footer template.
       await helper.lockTemplate(brandingId, 'commit');
@@ -748,8 +749,7 @@ test.describe('allowedLayouts', () => {
       await helper.waitForIframeReady();
 
       // Both templates are on the page.
-      const content = iframe.locator('#content');
-      await expect(content.locator('[data-block-uid]').filter({ hasText: 'Template Header - From Template' }).first()).toBeVisible({ timeout: 10000 });
+      await expect(iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'Template Header - From Template' }).first()).toBeVisible({ timeout: 10000 });
       const footerContent = iframe.locator('#footer-content');
       const branding = footerContent.locator('[data-block-uid]').filter({ hasText: 'Footer Branding' }).last();
       await expect(branding).toBeVisible({ timeout: 10000 });

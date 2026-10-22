@@ -1147,8 +1147,11 @@ const LISTING_TYPES = ['listing', 'relatedItemsListing', 'searchShortcuts', 'rss
 // { items, paging }; chain paging.seen for position tracking and surface the
 // final static paging for the manual-grid case below.
 const gridData = computed(() => {
-  const layout = block.value.blocks_layout?.items || [];
-  const blocks = block.value.blocks || {};
+  // Its children go through the merge first, like every container's (a template can
+  // be placed anywhere: docs/frontend-guide/templates.md "Expand every container").
+  const expanded = expand(block.value.blocks_layout?.items || [], block.value.blocks || {});
+  const layout = expanded.map((item) => item['@uid']);
+  const blocks = Object.fromEntries(expanded.map((item) => [item['@uid'], item]));
   const start = gridPageFromUrl.value * GRID_PAGE_SIZE;
   let seen = 0;
   let staticPaging = null;

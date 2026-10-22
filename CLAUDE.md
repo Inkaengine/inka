@@ -11,6 +11,10 @@ Read `docs/architecture.md` ("Merging templates: every container is expanded, by
 - Never remove the admin's re-entry as "redundant", and never render a container's children without passing them through the merge. A template can be anywhere a block can.
 - Test new template behaviour with the template placed at the top level AND inside a container.
 
+## Frontends render every onEditChange - no echo checks of their own
+
+The bridge drops echoes, comparing against its own copy of the page, which includes text typed into the frontend. A frontend's copy never gets that typing back, so a frontend comparing against its own data mistakes real changes (e.g. "Reset changes" after typing) for echoes and leaves stale text on screen. See `docs/frontend-guide/live-preview.md` ("Setting Up the Bridge").
+
 ## Block Access - NEVER use formData.blocks[blockId] directly
 
 Blocks can be nested inside container blocks (columns, accordions, etc.), so they may NOT be at `formData.blocks[blockId]`. A block inside a column might be at `formData.blocks.columns-1.column_items.col-1.blocks.text-1`.
