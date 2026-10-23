@@ -523,6 +523,88 @@ test.describe('Template Edit Mode - Save', () => {
   });
 });
 
+// The same template, inserted at the page's top level and inside a container.
+// Where an instance sits must not change what unlocking, committing and
+// resetting it do: a lookup that reads only the page's top-level blocks finds
+// a nested instance's blocks nowhere. Each page proves the other's commit,
+// since both use the snippet template.
+const SNIPPET_HEADER = 'Snippet Header - From Template';
+const SNIPPET_PLACEMENTS = [
+  { where: 'at the top level', edit: '/inserted-template-test-page', other: '/nested-snippet-page', marker: 'TOPEDIT' },
+  { where: 'inside a container', edit: '/nested-snippet-page', other: '/inserted-template-test-page', marker: 'NESTEDEDIT' },
+];
+
+test.describe('Template Edit Mode - wherever the instance sits', () => {
+  for (const { where, edit, other, marker } of SNIPPET_PLACEMENTS) {
+    // Unlock the snippet and type `marker` at the end of its fixed header.
+    const editHeader = async (helper: AdminUIHelper, page: import('@playwright/test').Page) => {
+      await helper.login();
+      await helper.navigateToEdit(edit);
+      const iframe = helper.getIframe();
+      const { blockId: headerId } = await helper.waitForBlockByContent(SNIPPET_HEADER);
+      await helper.unlockTemplate(headerId);
+      await helper.clickBlockInIframe(headerId);
+      await helper.waitForBlockSelectedInAdmin(headerId);
+      const header = iframe.locator(`[data-block-uid="${headerId}"]`);
+      const editor = helper.getSlateField(header);
+      await expect(editor).toHaveAttribute('contenteditable', 'true', { timeout: 5000 });
+      await editor.click();
+      await expect(editor).toBeFocused({ timeout: 2000 });
+      // Not the End key: in a narrow container the header wraps, and End goes to
+      // the end of the first visual line.
+      await helper.moveCursorToEnd(editor);
+      await page.keyboard.type(` ${marker}`);
+      await expect(header).toContainText(`${SNIPPET_HEADER} ${marker}`, { timeout: 5000 });
+      return { headerId, header };
+    };
+
+    test(`a template ${where}: committing saves the template, and another page using it shows the edit`, async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      const { headerId } = await editHeader(helper, page);
+
+      await helper.lockTemplate(headerId, 'commit');
+      await page.keyboard.press('Control+s');
+      await expect(page.locator('.toolbar-actions .edit, [aria-label="Edit"]')).toBeVisible({ timeout: 10000 });
+
+      await helper.navigateToView(other);
+      const { locator: otherHeader } = await helper.waitForBlockByContent(SNIPPET_HEADER);
+      await expect(otherHeader).toContainText(marker, { timeout: 15000 });
+    });
+
+    test(`a template ${where}: locking straight after typing still asks what to do with the edit`, async ({ page }) => {
+      // The page holds typing for a moment before sending it to the editor. Locking
+      // inside that moment must still see the edit: the lock flushes it first, so
+      // the "was it changed?" check finds it and asks — rather than locking silently
+      // and losing it.
+      const helper = new AdminUIHelper(page);
+      await editHeader(helper, page);
+      // The header is selected and the toolbar is showing it: press its lock straight
+      // away, with no other gesture first.
+      const toggle = page.locator('.quanta-toolbar .template-lock-toggle');
+      await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      await toggle.click();
+      const modal = page.locator('.template-lock-modal');
+      await expect(modal).toBeVisible({ timeout: 5000 });
+      await modal.locator('.template-commit').click();
+      await expect(toggle).toHaveAttribute('aria-pressed', 'false', { timeout: 10000 });
+
+      await page.keyboard.press('Control+s');
+      await expect(page.locator('.toolbar-actions .edit, [aria-label="Edit"]')).toBeVisible({ timeout: 10000 });
+      await helper.navigateToView(other);
+      const { locator: otherHeader } = await helper.waitForBlockByContent(SNIPPET_HEADER);
+      await expect(otherHeader).toContainText(marker, { timeout: 15000 });
+    });
+
+    test(`a template ${where}: resetting discards the edit`, async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      const { headerId, header } = await editHeader(helper, page);
+
+      await helper.lockTemplate(headerId, 'reset');
+      await expect(header).toHaveText(SNIPPET_HEADER, { timeout: 5000 });
+    });
+  }
+});
+
 test.describe('Template Edit Mode - Editability', () => {
   test('a fixed member can be REMOVED once the template is unlocked', async ({ page }) => {
     // `fixed` means "not yours to remove from THIS page" — the point of a

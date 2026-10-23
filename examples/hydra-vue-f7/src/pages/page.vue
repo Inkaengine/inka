@@ -9,14 +9,15 @@
     </f7-navbar>
 
     <f7-block v-if="data?.blocks_layout?.items">
-      <Block v-for="block_uid in data.blocks_layout.items" :key="block_uid" :block_uid="block_uid" :block="data.blocks[block_uid]" :data="data"></Block>
+      <Block v-for="item in items" :key="item['@uid']" :block_uid="item['@uid']" :block="item" :data="data"></Block>
     </f7-block>
   </f7-page>
 </template>
 
 <script>
-  import { provide, reactive } from 'vue';
+  import { provide, reactive, computed, unref } from 'vue';
   import Block from '../components/block.vue';
+  import { expandTemplatesSync } from '@hydra-js/helpers';
   import { useStore } from 'framework7-vue';
 
   export default {
@@ -39,7 +40,18 @@
       provide('apiBase', apiBase);
       provide('contextPath', contextPath);
 
-      return { data };
+      // The page's own region goes through the merge too, with the state every
+      // container re-enters with (docs/frontend-guide/templates.md "Expand every
+      // container"). unref: the store hands back refs; the merge needs plain objects.
+      const items = computed(() =>
+        expandTemplatesSync(unref(data)?.blocks_layout?.items || [], {
+          blocks: unref(data)?.blocks || {},
+          templateState,
+          templates: unref(templates),
+        }),
+      );
+
+      return { data, items };
     },
     methods: {
       changePanelFoo() {}

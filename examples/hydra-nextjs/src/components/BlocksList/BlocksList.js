@@ -11,7 +11,7 @@ import SwiperSlider from "@/components/SwiperSlider";
 import { pageFromPath } from "#utils/paging";
 
 // Template context for nested block expansion
-const TemplateContext = createContext({ templates: {}, templateState: {} });
+const TemplateContext = createContext({ templates: {}, templateState: {}, editMode: false });
 
 /**
  * Expand child blocks using expandTemplatesSync with template context
@@ -19,12 +19,13 @@ const TemplateContext = createContext({ templates: {}, templateState: {} });
  * For object_list arrays: expand(items, null, '@id')
  */
 function useExpand() {
-  const { templates, templateState } = useContext(TemplateContext);
+  const { templates, templateState, editMode } = useContext(TemplateContext);
   return (layout, blocks, idField) =>
     expandTemplatesSync(layout, {
       blocks,
       templateState,
       templates,
+      editMode,
       ...(idField && { idField }),
     });
 }
@@ -425,8 +426,12 @@ function GridBlock({ id, block, data, apiUrl, contextPath }) {
     if (typeof window !== "undefined") setCurrentPage(pageFromPath(window.location.pathname, id));
   }, [id]);
 
-  const layout = block.blocks_layout?.items || [];
-  const blocks = block.blocks || {};
+  // Its children go through the merge first, like every container's (a template can
+  // be placed anywhere: docs/frontend-guide/templates.md "Expand every container").
+  const expand = useExpand();
+  const expanded = expand(block.blocks_layout?.items || [], block.blocks || {});
+  const layout = expanded.map((item) => item["@uid"]);
+  const blocks = Object.fromEntries(expanded.map((item) => [item["@uid"], item]));
   const start = currentPage * DEFAULT_PAGE_SIZE;
   const hasListing = layout.some((cid) => blocks[cid]?.["@type"] === "listing");
 
@@ -1359,9 +1364,8 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
       return (
         <div data-block-uid={id} data-block-container="{allowed:['Column'],add:'horizontal'}" className="columns-block" style={{ display: "flex", gap: "1rem" }}>
           {block.title && <h3 data-edit-text="title">{block.title}</h3>}
-          {(block.blocks_layout?.columns || []).map((columnId) => {
-            const col = block.blocks?.[columnId];
-            if (!col) return null;
+          {expand(block.blocks_layout?.columns || [], block.blocks || {}).map((col) => {
+            const columnId = col["@uid"];
             const children = expand(col.blocks_layout?.items || [], col.blocks || {});
             return (
               <div key={columnId} data-block-uid={columnId} data-block-add="right" style={{ flex: 1 }}>
@@ -1844,29 +1848,34 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
 
 // ─── BlocksList (entry point) ────────────────────────────────────────────────
 
-const BlocksList = ({ data, apiUrl, contextPath }) => {
+const BlocksList = ({ data, apiUrl, contextPath, editMode }) => {
   if (!data?.blocks_layout?.items) return null;
 
   const templates = data._templates || {};
   const templateState = {};
+  // The page's own regions go through the merge too, with the state every
+  // container below re-enters with (docs/frontend-guide/templates.md
+  // "Expand every container").
+  // `editMode` (from the page's `_edit` flag) because the server can't see
+  // window.name: in the editor the admin has already merged the templates.
+  const expandRegion = (layout) =>
+    expandTemplatesSync(layout, { blocks: data.blocks, templateState, templates, editMode });
+  const items = expandRegion(data.blocks_layout.items);
+  const footer = expandRegion(data.blocks_layout.footer || []);
 
   return (
-    <TemplateContext.Provider value={{ templates, templateState }}>
+    <TemplateContext.Provider value={{ templates, templateState, editMode }}>
       <div className="blocks-list">
-        {data.blocks_layout.items.map((id) => {
-          const block = data.blocks[id];
-          if (!block) return null;
-          return <Block key={id} block={block} id={id} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
-        })}
+        {items.map((item) => (
+          <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+        ))}
       </div>
       {/* The page's footer region (blocks_layout.footer). */}
-      {data.blocks_layout.footer?.length > 0 && (
+      {footer.length > 0 && (
         <footer className="blocks-footer">
-          {data.blocks_layout.footer.map((id) => {
-            const block = data.blocks[id];
-            if (!block) return null;
-            return <Block key={id} block={block} id={id} data={data} apiUrl={apiUrl} contextPath={contextPath} />;
-          })}
+          {footer.map((item) => (
+            <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
+          ))}
         </footer>
       )}
     </TemplateContext.Provider>

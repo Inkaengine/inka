@@ -2727,6 +2727,11 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
     ? getBlockByPath(formData, containerPath)
     : formData;
   const fullLayout = container?.blocks_layout?.[containerRegion || 'items'] || [];
+  // The landing level's own blocks, where its neighbours live: the page's for a
+  // top-level drop, the container's for a drop inside one. formData.blocks holds
+  // only the top level, so a drop into a nested container found no neighbours and
+  // no container there, and joined no template even while editing it.
+  const siblings = container?.blocks || {};
   // The block itself is EXCLUDED from the neighbours: it already sits in the
   // layout at this index, so a naive getNeighborData(position) returns the block
   // itself and it offers its own (stale, source) slot back to itself — keeping
@@ -2739,7 +2744,7 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
   const editingThisTemplate =
     !!instId && (templateEditMode || []).includes(instId);
   const inSameInstance = (id) =>
-    id && formData.blocks?.[id]?.templateInstanceId === instId;
+    id && siblings[id]?.templateInstanceId === instId;
   const insideTemplate =
     editingThisTemplate &&
     layoutItems.slice(0, position).some(inSameInstance) &&
@@ -2759,7 +2764,10 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
     position,
     insertAfter,
     layoutItems,
-    allBlocks: formData.blocks,
+    allBlocks: siblings,
+    // The container itself, as the add path passes it: a block inside a template
+    // container joins that template even with no slot facing it.
+    parentBlock: container === formData ? undefined : container,
     blockPathMap,
     blocksConfig,
     intl,
