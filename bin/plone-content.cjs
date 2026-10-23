@@ -30,7 +30,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport } = require(
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, loadSchemas, formatReport } = require(
   path.join(__dirname, '..', 'tests-playwright', 'fixtures', 'plone-content-validator.cjs'),
 );
 

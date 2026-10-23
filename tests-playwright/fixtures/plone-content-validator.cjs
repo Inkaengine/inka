@@ -1648,10 +1648,6 @@ async function loadSchemas(file) {
   return mod.default ?? mod;
 }
 
-function schemaForFrom(schemas) {
-  return (type) => schemas[type]?.blockSchema ?? null;
-}
-
 /** The field map checkBlockSchemas reads, derived from the schemas: each
  *  block's declared fields (its schema properties), the prefix its per-item
  *  defaults are stored under (`<defaultsField>_<field>`), and the keys a
@@ -1683,4 +1679,4 @@ function fieldMapFromSchemas(schemas) {
   return { blocks, identityFields: [...identityFields] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, loadSchemas, formatReport };
