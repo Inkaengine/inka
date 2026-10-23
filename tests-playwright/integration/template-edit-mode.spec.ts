@@ -316,6 +316,12 @@ test.describe('Template Creation', () => {
     const iframe = helper.getIframe();
     await expect(iframe.getByText('Footer Branding - Forced Layout')).toHaveCount(1);
     await expect(iframe.getByText('Footer Column Cell')).toHaveCount(1);
+
+    // The same for a region stored as an object_list: test-layout's slider keeps
+    // its slides in an array, not blocks_layout.
+    await page.goto(helper.contentUrl('/templates/test-layout'));
+    await expect(iframe.getByText('Template Slide 1')).toHaveCount(1);
+    await expect(iframe.getByText('Template Slide 2')).toHaveCount(1);
   });
 
   // Editing the definition still goes through the SAME unlock gesture as editing

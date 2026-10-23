@@ -2159,25 +2159,30 @@ export function counterpartBlockId(blocks, blockId, otherBlocks, idFieldMap = nu
   return found;
 }
 
-/** A block by id, wherever it is nested. */
-function findBlockAnywhere(blocks, blockId, idFieldMap) {
+const DECLARED_REGIONS = { allObjectLists: true };
+
+/**
+ * A block by id, wherever it is nested. `regions` is getChildFields' options: which
+ * arrays count as regions (the merge also counts a template's own, by templateId).
+ */
+function findBlockAnywhere(blocks, blockId, idFieldMap, regions = DECLARED_REGIONS) {
   let found = null;
   walkBlocks(blocks, idFieldMap, (id, block) => {
     if (!found && id === blockId) found = block;
-  });
+  }, regions);
   return found;
 }
 
 /** Every block of a page, at every depth, through the container API. */
-function walkBlocks(blocks, idFieldMap, visit) {
+function walkBlocks(blocks, idFieldMap, visit, regions = DECLARED_REGIONS) {
   for (const [id, block] of Object.entries(blocks || {})) {
     visit(id, block);
-    for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+    for (const field of getChildFields(block, idFieldMap, regions)) {
       const nested = {};
       for (const entry of getChildBlockEntries(block, field)) {
         nested[entry.id] = entry.block;
       }
-      walkBlocks(nested, idFieldMap, visit);
+      walkBlocks(nested, idFieldMap, visit, regions);
     }
   }
 }
@@ -3483,29 +3488,6 @@ export function canContainAll(config, blockTypes, currentCount) {
   return true;
 }
 
-/**
- * A template's block by id, at any depth: in a `blocks` map, or an object_list item
- * whose `idField` is that id. `undefined` when the template has no such block.
- */
-function findTemplateBlock(template, blockId, idField) {
-  const stack = [template];
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || typeof node !== 'object') continue;
-    if (Array.isArray(node)) {
-      stack.push(...node);
-      continue;
-    }
-    if (idField && node[idField] === blockId) return node;
-    const nested = node.blocks;
-    if (nested && typeof nested === 'object' && !Array.isArray(nested) && Object.hasOwn(nested, blockId)) {
-      return nested[blockId];
-    }
-    stack.push(...Object.values(node));
-  }
-  return undefined;
-}
-
 /** Whether two blocks hold the same template content, whatever they are labelled. */
 function isSameTemplateBlock(a, b) {
   return JSON.stringify(withoutTemplateLabels(a)) === JSON.stringify(withoutTemplateLabels(b));
@@ -4753,14 +4735,18 @@ export function expandTemplatesSync(inputItems, options = {}) {
   if (!filterInstanceId && !removingTemplate) {
     const ownTemplate = templates?.[templateId];
     const templateBlockIds = layout.filter((id) => blocks[id]?.templateId);
-    // At any depth: a container's re-entry brings a region nested inside the
-    // definition, whose blocks are nested inside the template too.
+    // At any depth, through the container API, blocks_layout and object_list alike:
+    // a container's re-entry brings a region nested inside the definition, whose
+    // blocks are nested in the template — found by the merge's own region rule.
     if (
       ownTemplate?.blocks &&
       templateBlockIds.length > 0 &&
       templateBlockIds.every((id) => {
-        const own = findTemplateBlock(ownTemplate, id, idField);
-        return own !== undefined && isSameTemplateBlock(blocks[id], own);
+        const own = findBlockAnywhere(ownTemplate.blocks, id, idFieldMap, {
+          allObjectLists: true,
+          templateChildren: true,
+        });
+        return own !== null && isSameTemplateBlock(blocks[id], own);
       })
     ) {
       if (!templateState.definitions) templateState.definitions = new Set();
