@@ -1880,7 +1880,12 @@ async function discoverBlocks(
         rel: new URL(item['@id']).pathname.replace(/^\//, '') || '/',
         data: { '@id': new URL(item['@id']).pathname, '@type': item['@type'], UID: item.UID },
       }));
-    const { errors } = checkIntegrity([...fetchedPages, ...stubs]);
+    // The frontend's own blocksConfig, so references are found by the WIDGET
+    // that declares them. Without it the check falls back to recognising
+    // references by shape, which cannot tell a link from a headline.
+    const { errors } = checkIntegrity([...fetchedPages, ...stubs], {
+      schemasFor: () => blocksConfig,
+    });
     // A harness may mount extra content trees whose pages were authored for a
     // different root (the parent's /_test_data fixture mount): their internal
     // refs legitimately miss this merged view. Same idea as

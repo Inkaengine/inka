@@ -25,6 +25,7 @@ const { UNDECLARED_EXEMPT } = require('../helpers/discover-blocks.cjs');
 // hydra's container API. Node require()s sync ESM, so a sync validator can use
 // the same enumeration the editor does instead of reading blocks_layout itself.
 const { getChildFields, getChildBlockEntries } = require('../../packages/helpers/index.js');
+const { buildBlockPathMap, getResolvedSchema } = require('../../packages/hydra-js/buildBlockPathMap.js');
 
 /**
  * Every child of a container, across every region it has, in order.
@@ -370,7 +371,11 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
 /**
  * Graph integrity. Mirrors test-content.py.
  */
-function checkIntegrity(source, { schemaFor, allowMissingBlobs = false, idFieldMap = null } = {}) {
+function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idFieldMap = null } = {}) {
+  // Block types the caller supplied schemas for but which have none. Their
+  // fields and references cannot be checked against anything, so the count is
+  // surfaced rather than silently meaning "nothing wrong".
+  const unschemad = new Set();
   const onDisk = typeof source === 'string';
   const contentDir = onDisk ? source : null;
   const errors = [];
@@ -541,7 +546,6 @@ function imageDimensions(file) {
   // `url: [{ "@id": "/images/test-image" }]` (object_browser ARRAY form) pointing
   // at a nonexistent object was never checked, and 5 such dead blocks shipped
   // while this gate reported "Links: N ok, 0 broken".
-  const LINK_FIELDS = ['url', 'href', 'image', 'preview_image', 'preview_image_link', 'backgroundImage'];
 
   // Every block stored under a container, at any depth.
   //
@@ -553,21 +557,8 @@ function imageDimensions(file) {
   // Blocks present in the dict but listed by no region are yielded too: they
   // are stored, so a dangling reference or a repeated id in one still counts,
   // and an orphan is exactly the state those checks exist to catch.
-  function* walkBlocks(blocks, container = null, where = null) {
-    const seenIds = new Set();
-    if (container) {
-      for (const { id, block } of childEntries(container, idFieldMap)) {
-        seenIds.add(id);
-        yield [id, block, where];
-        yield* walkBlocks(block.blocks, block, id);
-      }
-    }
-    for (const [bid, block] of Object.entries(blocks || {})) {
-      if (!block || typeof block !== 'object' || seenIds.has(bid)) continue;
-      yield [bid, block, where];
-      yield* walkBlocks(block.blocks, block, bid);
-    }
-  }
+  const walkBlocks = (blocks, container = null, where = null) =>
+    walkAllBlocks(blocks, container, idFieldMap, where);
 
   // Extract every reference string from a field value in any shape it takes:
   //   "…"                  plain string
@@ -659,7 +650,7 @@ function imageDimensions(file) {
     });
   }
 
-  function checkBlockRefs(rel, bid, block) {
+  function checkBlockRefs(rel, bid, block, schema = null) {
     // A table's rows and each row's cells are keyed by `key` — Volto's slateTable
     // shape, which every frontend reads. Not a schema object_list, so checked
     // here by type.
@@ -675,17 +666,27 @@ function imageDimensions(file) {
     // block.value, so a mismatched FIELD (a slate field stored as {value:[…]}
     // instead of a bare array, or a richtext HTML field stored as slate) slips
     // straight through. Schema-driven on purpose — "which field is slate" only
-    // exists in the schema, so this runs when a `schemaFor` is supplied.
-    // `schemaFor(type, rel)` — the item is passed so a caller serving content
-    // from several owners can answer with THAT content's schemas (or none).
-    const schema = schemaFor && block['@type'] ? schemaFor(block['@type'], rel) : null;
+    // exists in the schema, so this runs when `schemasFor` is supplied.
+    // `schemasFor(rel, data)` — the item is passed so a caller serving content
+    // from several owners can answer with THAT content's config (or none).
     if (schema && schema.properties) {
       const shape = (v) => Array.isArray(v) ? 'an array'
         : (v && typeof v === 'object' ? `an object {${Object.keys(v).join(',')}}` : typeof v);
       for (const [field, def] of Object.entries(schema.properties)) {
         const v = block[field];
         if (v == null) continue;
-        if (def.widget === 'slate' && !Array.isArray(v)) {
+        if (REFERENCE_WIDGETS.has(def.widget)) {
+          // Every reference the field holds, in whichever shape it stores it.
+          for (const ref of refStrings(v)) {
+            const reason = refFailure(ref);
+            if (reason) {
+              stats.linksBroken += 1;
+              errors.push(`  ${rel}: block ${bid} (${block['@type']}) ${field}: ${reason}`);
+            } else {
+              stats.linksOk += 1;
+            }
+          }
+        } else if (def.widget === 'slate' && !Array.isArray(v)) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:slate but its value is ${shape(v)} — a slate field must be a bare array of nodes (a {value:[…]} wrapper or richtext value has leaked in)`);
         } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
@@ -752,31 +753,79 @@ function imageDimensions(file) {
         stats.linksOk += 1;
       }
     }
-    for (const field of LINK_FIELDS) {
-      if (!(field in block)) continue;
-      for (const ref of refStrings(block[field])) {
-        const reason = refFailure(ref);
-        if (reason) {
-          stats.linksBroken += 1;
-          errors.push(`  ${rel}: block ${bid} (${block['@type']}) ${field}: ${reason}`);
-        } else {
-          stats.linksOk += 1;
+    // With a schema, the loop above has already scanned every reference field:
+    // the widget says which they are, exactly.
+    //
+    // Without one — a consumer mount that ships no schemas — the references
+    // are still there and still have to resolve, so they are found by SHAPE.
+    // A reference is uid-encoded, path-rooted or an absolute URL; an
+    // object_list item's own id is a bare token, which is how the two are told
+    // apart without asking the schema. This is strictly a fallback: it cannot
+    // know that a field was MEANT to hold a reference, so a field that should
+    // have one and is empty reads as fine.
+    if (!schema) {
+      for (const [field, v] of Object.entries(block)) {
+        if (field === '@id' || field === 'templateId') continue; // identity, not a link
+        for (const ref of refStrings(v)) {
+          if (!looksLikeReference(ref)) continue;
+          const reason = refFailure(ref);
+          if (reason) {
+            stats.linksBroken += 1;
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) ${field}: ${reason}`);
+          } else {
+            stats.linksOk += 1;
+          }
         }
       }
     }
-    // object_list / column sub-items carry the same link/media fields
-    for (const key of ['items', 'columns', 'column_items']) {
-      const arr = block[key];
-      if (!Array.isArray(arr)) continue;
-      arr.forEach((it, i) => {
-        if (it && typeof it === 'object') checkBlockRefs(rel, `${bid}.${key}[${i}]`, it);
-      });
-    }
+    // Children are not recursed into here: the walk that calls this yields
+    // every child the container API reports, in either storage, so a sub-item
+    // is visited as a block in its own right.
   }
 
   for (const { rel, data } of items) {
+    // buildBlockPathMap is the single source of truth for where every block
+    // lives, what type it is and which schema it is checked against — an
+    // object_list item included, whose kind comes from the parent's
+    // `typeField` and whose schema may be the field's own inline one, and
+    // whose id in the map is composite (`parent::item`). Enumerating it
+    // separately and joining on id silently misses exactly those.
+    //
+    // Blocks the map does not address are not content the editor can reach:
+    // a readOnly template INSTANCE copy, re-derived at render from a template
+    // that is itself walked as a document. Checking those again would report
+    // one broken template link once per page using the template.
+    const blocksConfig = schemasFor ? schemasFor(rel, data) : null;
+    const seen = new Set(); // by block IDENTITY: the two walks key blocks differently
+    if (blocksConfig) {
+      const pathMap = buildBlockPathMap(data, blocksConfig);
+      for (const [bid, info] of Object.entries(pathMap)) {
+        if (bid.startsWith('_') || !info || !info.blockType) continue;
+        if (!Array.isArray(info.path)) continue; // a virtual container, not storage
+        const block = info.path.reduce((node, key) => (node == null ? node : node[key]), data);
+        if (!block || typeof block !== 'object') continue;
+        seen.add(block);
+        // A type the config does not declare at all. A declared one whose
+        // schema has no properties (a `title` block renders page metadata and
+        // has no fields) is not that: there is simply nothing to check.
+        if (!info.isVirtualBlockType && !blocksConfig[info.blockType]) unschemad.add(info.blockType);
+        checkBlockRefs(rel, bid, block, getResolvedSchema(info, pathMap));
+      }
+    }
+    // Blocks the path map did not address. It maps what the EDITOR can reach,
+    // and integrity is about everything STORED, so the remainder still counts:
+    //   - an orphan, in the dict but in no region. It is dead weight, but a
+    //     broken reference in one is exactly what this pass exists to find.
+    //   - a readOnly template INSTANCE copy, re-derived at render from a
+    //     template that is itself walked as a document. Those are skipped:
+    //     checking them would report one broken template link once per page
+    //     that uses the template.
+    // Their schema can only come from their own `@type` — nothing addresses
+    // them, so no parent region declares their shape.
     for (const [bid, block] of walkBlocks(data.blocks, data)) {
-      checkBlockRefs(rel, bid, block);
+      if (seen.has(block)) continue;
+      if (block.readOnly === true && block.templateId) continue;
+      checkBlockRefs(rel, bid, block, blocksConfig?.[block['@type']]?.blockSchema ?? null);
     }
   }
 
@@ -963,7 +1012,7 @@ function imageDimensions(file) {
     const checkRegion = (container, where) => {
       if (!container || typeof container !== 'object' || seen.has(container)) return;
       seen.add(container);
-      const fields = getChildFields(container, null, { allObjectLists: true });
+      const fields = getChildFields(container, idFieldMap, { allObjectLists: true });
       for (const descriptor of fields) {
         const entries = getChildBlockEntries(container, descriptor);
         if (!entries.length) continue;
@@ -1013,9 +1062,13 @@ function imageDimensions(file) {
       const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
       if (!isTemplateDoc(data)) continue;
       const slots = new Map();
+      // A region is a region: a slot held in an object_list (a slider's
+      // slides) is a slot, so the container API enumerates both storages.
+      // This used to recurse on `.blocks` alone and saw only blocks_layout,
+      // so an object_list slot was never collected and its instances were
+      // never checked against it.
       const collect = (container) => {
-        for (const [bid, block] of Object.entries(container.blocks || {})) {
-          if (!block || typeof block !== 'object') continue;
+        for (const { block } of childEntries(container, idFieldMap)) {
           if (block.slotId) slots.set(block.slotId, block.fixed === true);
           collect(block);
         }
@@ -1027,8 +1080,7 @@ function imageDimensions(file) {
     for (const { rel, data } of items) {
       if (isTemplateDoc(data)) continue; // a template, not an instance
       const check = (container) => {
-        for (const [bid, block] of Object.entries(container.blocks || {})) {
-          if (!block || typeof block !== 'object') continue;
+        for (const { id: bid, block } of childEntries(container, idFieldMap)) {
           const chrome = block.templateId && templateChrome.get(block.templateId);
           if (chrome) {
             // On an INSTANCE only `slotId` is required, and it is the one that
@@ -1166,6 +1218,13 @@ function imageDimensions(file) {
     }
   }
 
+  stats.unschemadTypes = unschemad.size;
+  if (unschemad.size) {
+    warnings.push(
+      `  ${unschemad.size} block type(s) have no schema, so their fields and ` +
+        `references were NOT checked: ${[...unschemad].sort().join(', ')}`,
+    );
+  }
   return { errors, warnings, stats };
 }
 
@@ -1191,7 +1250,7 @@ function imageDimensions(file) {
  * either a block the frontend cannot render or a map gone stale, and both are
  * worth hearing about.
  */
-function checkBlockSchemas(source, fieldMap) {
+function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
   // `{ blocks: { type: { fields, defaultsPrefix } }, identityFields: [...] }`.
   // A bare `{ type: [fields] }` map still works, for a caller that has one.
   const declaredFields = fieldMap && fieldMap.blocks ? fieldMap.blocks : fieldMap;
@@ -1255,16 +1314,18 @@ function checkBlockSchemas(source, fieldMap) {
         }
       }
     }
-    for (const value of Object.values(block)) {
-      if (Array.isArray(value)) value.forEach((v) => visit(v, rel));
-      else if (value && typeof value === 'object') visit(value, rel);
-    }
   };
 
   for (const entry of onDisk ? walkData(source) : source) {
     const { rel, data } = entry;
     stats.items += 1;
-    visit(data.blocks, rel);
+    // walkAllBlocks is the one enumeration point: it reports children of both
+    // storages and nothing else. This used to descend into EVERY value and
+    // call anything with an `@type` a block — so a link field, whose value is
+    // the restapi's summary of the TARGET, was read as a child block and the
+    // target's content type ("Document", "CaseStudy") reported as an
+    // unrenderable block type.
+    for (const [, block] of walkAllBlocks(data.blocks, data, idFieldMap)) visit(block, rel);
   }
 
   for (const [key, rel] of [...strays.entries()].sort()) {
@@ -1304,6 +1365,57 @@ function checkBlockSchemas(source, fieldMap) {
 // The groups the block chooser orders: Volto's four, plus the `templates`
 // group hydra appends. A block whose `group` is none of these is offered
 // under a heading the chooser never renders.
+// A field holds a reference when its schema says so. These are the widgets
+// that store one: an object_browser/url entry, or an image field. Which FIELD
+// that is varies per block and is not knowable from its name — `link` and
+// `searchPath` hold references, `items` and `steps` do not.
+/** Whether a value is a REFERENCE rather than a local identifier or prose:
+ *  uid-encoded (`resolveuid/…`, possibly with `../` hops), rooted at the site
+ *  (`/about`), or an absolute URL. An object_list item's id (`slide-1`) is
+ *  none of those, and neither is a headline — whitespace rules out prose,
+ *  which a bare `scheme:` test does not ("Listing: Default" is not a mailto).
+ *  Used only where no schema says which fields are links. */
+function looksLikeReference(ref) {
+  if (typeof ref !== 'string' || ref === '' || /\s/.test(ref)) return false;
+  return (
+    /^(\.\.\/)*resolveuid\//.test(ref) ||
+    ref.startsWith('/') ||
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(ref) ||
+    /^(mailto|tel):/i.test(ref)
+  );
+}
+
+const REFERENCE_WIDGETS = new Set(['object_browser', 'url', 'image']);
+
+/**
+ * Every block stored under a container, at any depth — the ONE place the
+ * validator enumerates blocks.
+ *
+ * Region children come from the container API, so an object_list child — a
+ * slider's slide, a form's subblock — is walked like a blocks_layout one.
+ *
+ * Blocks present in the dict but listed by no region are yielded too: they are
+ * stored, so a dangling reference, a repeated id or an undeclared field in one
+ * still counts, and an orphan is exactly the state those checks exist to catch.
+ */
+function* walkAllBlocks(blocks, container = null, idFieldMap = null, where = null) {
+  const seenIds = new Set();
+  if (container) {
+    for (const { id, block } of childEntries(container, idFieldMap)) {
+      seenIds.add(id);
+      yield [id, block, where];
+      yield* walkAllBlocks(block.blocks, block, idFieldMap, id);
+    }
+  }
+  for (const [bid, block] of Object.entries(blocks || {})) {
+    if (!block || typeof block !== 'object' || seenIds.has(bid)) continue;
+    yield [bid, block, where];
+    yield* walkAllBlocks(block.blocks, block, idFieldMap, bid);
+  }
+}
+
+
+
 const CHOOSER_GROUPS = new Set(['mostUsed', 'text', 'media', 'common', 'templates']);
 
 /**
@@ -1523,8 +1635,8 @@ function formatReport(title, result) {
  * A site's block schemas -- `{ blockType: { blockSchema, schemaEnhancer? } }`,
  * the JSON its frontend config loads -- read for the two questions content is
  * checked against: which fields a block declares (checkBlockSchemas) and what
- * shape each field's value has (checkIntegrity's `schemaFor`). One source; no
- * map derived from it and stored.
+ * shape each field's value has (checkIntegrity, through buildBlockPathMap).
+ * One source; no map derived from it and stored.
  */
 /** Load a site's schemas: a JS module (`.mjs`/`.js`, its default export) --
  *  plain data the frontend config also imports, so shared pieces are written
@@ -1534,10 +1646,6 @@ async function loadSchemas(file) {
   if (abs.endsWith('.json')) return JSON.parse(require('fs').readFileSync(abs, 'utf8'));
   const mod = await import(require('url').pathToFileURL(abs).href);
   return mod.default ?? mod;
-}
-
-function schemaForFrom(schemas) {
-  return (type) => schemas[type]?.blockSchema ?? null;
 }
 
 /** The field map checkBlockSchemas reads, derived from the schemas: each
@@ -1571,4 +1679,4 @@ function fieldMapFromSchemas(schemas) {
   return { blocks, identityFields: [...identityFields] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, loadSchemas, formatReport };
