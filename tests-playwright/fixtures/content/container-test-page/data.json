@@ -53,7 +53,7 @@
             },
             "col1-img-1": {
               "@type": "image",
-              "url": "/docs/examples/content-types/image-dark",
+              "url": "/images/test-image-1",
               "alt": "Sample image"
             }
           },
