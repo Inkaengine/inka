@@ -3497,6 +3497,27 @@ export function canContainAll(config, blockTypes, currentCount) {
  * The path of a template DOCUMENT, whichever way it was referenced (a path, a URL, a
  * `resolveuid/…`): its own `@id` when loaded, else the reference itself.
  */
+function isSameTemplateBlock(a, b) {
+  return JSON.stringify(withoutTemplateLabels(a)) === JSON.stringify(withoutTemplateLabels(b));
+}
+
+/**
+ * A block for comparing CONTENT: `templateId` removed at every depth (the merge
+ * relabels a loaded template's blocks with the id it was referenced by, while the
+ * document stores its own), `@uid` removed (added by the merge), and object keys
+ * sorted so the order a block was built in doesn't matter.
+ */
+function withoutTemplateLabels(value) {
+  if (Array.isArray(value)) return value.map(withoutTemplateLabels);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const key of Object.keys(value).sort()) {
+    if (key === 'templateId' || key === '@uid') continue;
+    out[key] = withoutTemplateLabels(value[key]);
+  }
+  return out;
+}
+
 function templateDocPath(template, templateId) {
   return templateIdToPath(template?.['@id'] || templateId);
 }
@@ -4694,9 +4715,10 @@ export function expandTemplatesSync(inputItems, options = {}) {
   }
 
   // A template's own DEFINITION is not a use of it. A region whose template blocks ARE
-  // the template's own blocks — the same ids; a page using a template has its own ids, or
-  // ids minted per instance — is the template document itself, opened or viewed as a
-  // page. Merging it against itself re-keys its nested blocks (`${instanceId}::childId`):
+  // the template's own blocks — the same ids AND the same content, because it is the same
+  // document — is the template document itself, opened or viewed as a page. (Ids alone
+  // aren't enough: a page can be saved with the template's ids and stale content, which
+  // must be re-applied.) Merging it against itself re-keys its nested blocks (`${instanceId}::childId`):
   // ids the admin, which never merges a document against its own template
   // (skipOwnTemplate), doesn't know. Leave it as it is. Register its instance, so its
   // containers' re-entries are recognised as expanded; and remember the definition, so
@@ -4708,7 +4730,11 @@ export function expandTemplatesSync(inputItems, options = {}) {
     if (
       ownTemplate?.blocks &&
       templateBlockIds.length > 0 &&
-      templateBlockIds.every((id) => Object.hasOwn(ownTemplate.blocks, id))
+      templateBlockIds.every(
+        (id) =>
+          Object.hasOwn(ownTemplate.blocks, id) &&
+          isSameTemplateBlock(blocks[id], ownTemplate.blocks[id]),
+      )
     ) {
       if (!templateState.definitions) templateState.definitions = new Set();
       templateState.definitions.add(templateDocPath(ownTemplate, templateId));
