@@ -51,8 +51,8 @@ TOKEN="$(curl -sf -X POST "$PLONE_URL/++api++/@login" \
 [ -n "$TOKEN" ] || { echo "Login to Plone as $PLONE_USER failed" >&2; exit 1; }
 
 if curl -sf -o /dev/null -H 'Accept: application/json' -H "Authorization: Bearer $TOKEN" \
-  "$PLONE_URL/++api++/templates/site-footer"; then
-  echo "Plone already has /templates/site-footer — it looks seeded already." >&2
+  "$PLONE_URL/++api++/inka-templates/site-footer"; then
+  echo "Plone already has /inka-templates/site-footer — it looks seeded already." >&2
   echo "For a fresh copy: make backend-clean && make backend-start && make backend-seed" >&2
   exit 1
 fi

@@ -14,7 +14,7 @@ import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block
 // not hand-copied, so what's documented is what renders. Rendering itself is
 // covered by block-sanity; this locks in the single-source property, fast and
 // browser-free.
-const TEMPLATE = '/templates/block-reference-layout';
+const TEMPLATE = '/inka-templates/block-reference-layout';
 const DOCS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'docs');
 const schemaFor = schemaRegistryFromBlockDefinitions(sharedBlocksConfig);
 

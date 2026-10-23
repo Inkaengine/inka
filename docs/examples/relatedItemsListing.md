@@ -39,7 +39,7 @@ Renders the current page's related items relation field (default relatedItems). 
 
 <block type="relatedItemsListing" relationField="relatedItems" variation="summary" />
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

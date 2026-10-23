@@ -18,7 +18,7 @@ blocks-matched: |
   <block type="title" _="${h1}" />
 ---
 
-<fields templateId="/templates/newsitem-view" templateInstanceId="tpl-ni-def">
+<fields templateId="/inka-templates/newsitem-view" templateInstanceId="tpl-ni-def">
 
 <fields data-json='{"fixed":true,"readOnly":false}'>
 

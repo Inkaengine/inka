@@ -16,7 +16,7 @@ blocks-matched: |
   </block>
 ---
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-block-ref-def">
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-block-ref-def">
 
 <fields data-json='{"fixed":true,"readOnly":true}'>
 

@@ -2,7 +2,7 @@
 
 The templates the @templates tests run against are the SAME ones the JS suites use, so
 neither side can drift from the other's idea of what a template looks like. They live in
-the inka repo as markdown (`tests-playwright/fixtures/site-root/templates/*.md`), decoded
+the inka repo as markdown (`tests-playwright/fixtures/site-root/inka-templates/*.md`), decoded
 into memory by the mock API at load time — there is no distribution on disk to point
 Plone at.
 

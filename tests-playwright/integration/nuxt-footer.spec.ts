@@ -1,7 +1,7 @@
 /**
  * Tests for the Nuxt site footer rendered via forced template.
  *
- * The footer uses a forced template (/templates/site-footer) containing:
+ * The footer uses a forced template (/inka-templates/site-footer) containing:
  * - A socialLinks block with icon links (GitHub, Discord, Plone, YouTube)
  * - A slate block with copyright text
  *

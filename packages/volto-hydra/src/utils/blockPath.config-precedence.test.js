@@ -41,9 +41,9 @@ describe('resolveRegionConstraints — field → block → page precedence', () 
     ).toEqual(['/templates/site-announcement']);
     // From the block config when the field is silent, and null when neither says.
     expect(
-      resolveRegionConstraints({}, { allowedLayouts: ['/templates/site-footer'] }, page)
+      resolveRegionConstraints({}, { allowedLayouts: ['/inka-templates/site-footer'] }, page)
         .allowedLayouts,
-    ).toEqual(['/templates/site-footer']);
+    ).toEqual(['/inka-templates/site-footer']);
     expect(resolveRegionConstraints({}, {}, page).allowedLayouts).toBeNull();
   });
 

@@ -34,7 +34,7 @@ blocks-tagged: |
   <block type="introduction" value="${p,h*/slate}" />
 ---
 
-<fields templateId="/templates/newsitem-view" templateInstanceId="tpl-ni-def">
+<fields templateId="/inka-templates/newsitem-view" templateInstanceId="tpl-ni-def">
 
 <fields fixed=true readOnly=true>
 
