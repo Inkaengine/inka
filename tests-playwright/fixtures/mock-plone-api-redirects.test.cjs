@@ -87,10 +87,16 @@ describe('mock API: redirects.json holds physical paths', () => {
     assert.deepEqual(evaluate(`/site:${content}`, `m.getRedirectTarget('/site/old')`), { value: '/site/new' });
   });
 
-  it('fails on a site-relative entry, which Plone would never fire', () => {
+  it('serves a site-relative entry too, which is how the archive stores every other @id', () => {
+    // Content ids in an exportimport archive are portal-relative (`/about`),
+    // so the archive imports into a site of any id. Only redirects are keyed
+    // physical, because plone.exportimport copies IRedirectionStorage verbatim
+    // — which makes that one file non-portable. A distribution may therefore
+    // hold either form, and the validator already accepts a wholly
+    // site-relative file, reporting only a MIX. Serving it is this layer's
+    // job; judging the form is the validator's.
     const content = distribution({ '/old': '/new' });
-    const result = evaluate(`/:${content}`, `m.getRedirectTarget('/old')`);
-    assert.match(result.threw ?? '', /"\/old".*\/Plone/);
+    assert.deepEqual(evaluate(`/:${content}`, `m.getRedirectTarget('/old')`), { value: '/new' });
   });
 });
 

@@ -100,10 +100,12 @@
        class="columns-block">
     <h3 v-if="block.title" data-edit-text="title">{{ block.title }}</h3>
     <div class="row">
-      <div v-for="columnId in (block.blocks_layout?.columns || [])" :key="columnId"
-           class="col" :data-block-uid="columnId" data-block-add="right">
-        <h4 v-if="block.blocks?.[columnId]?.title" data-edit-text="title">{{ block.blocks[columnId].title }}</h4>
-        <Block v-for="item in expand(block.blocks?.[columnId]?.blocks_layout?.items || [], block.blocks?.[columnId]?.blocks || {})"
+      <!-- Every region goes through the merge, the columns list included
+           (docs/frontend-guide/templates.md "Expand every container"). -->
+      <div v-for="column in expand(block.blocks_layout?.columns || [], block.blocks || {})" :key="column['@uid']"
+           class="col" :data-block-uid="column['@uid']" data-block-add="right">
+        <h4 v-if="column.title" data-edit-text="title">{{ column.title }}</h4>
+        <Block v-for="item in expand(column.blocks_layout?.items || [], column.blocks || {})"
                :key="item['@uid']" :block_uid="item['@uid']" :block="item" :data="data" />
       </div>
     </div>
@@ -113,14 +115,15 @@
   <f7-block v-else-if="block['@type'] == 'gridBlock'" :data-block-uid="block_uid"
             data-block-container="{}"
             :class="['grid', 'grid-cols-' + (block.blocks_layout?.items?.length || 1), 'grid-gap']">
-    <template v-for="childId in (block.blocks_layout?.items || [])" :key="childId">
+    <!-- The whole region through the merge at once: an inserted template is a run
+         of sibling blocks, which expanding one child at a time breaks apart. -->
+    <template v-for="item in expand(block.blocks_layout?.items || [], block.blocks || {})" :key="item['@uid']">
       <!-- Listing child -->
-      <ListingBlock v-if="block.blocks?.[childId]?.['@type'] === 'listing'"
-                    :id="childId" :block="block.blocks[childId]" :data="data"
+      <ListingBlock v-if="item['@type'] === 'listing'"
+                    :id="item['@uid']" :block="item" :data="data"
                     :api-url="apiBase?.value || apiBase || ''" :context-path="contextPath?.value || contextPath || '/'" />
       <!-- Static child -->
-      <Block v-else v-for="item in expand([childId], block.blocks || {})"
-             :key="item['@uid']" :block_uid="item['@uid']" :block="item" :data="data" />
+      <Block v-else :block_uid="item['@uid']" :block="item" :data="data" />
     </template>
   </f7-block>
 
@@ -679,7 +682,7 @@
 </template>
 
 <script>
-import { inject, ref, reactive, computed, watch } from 'vue';
+import { inject, ref, reactive, computed, watch, unref } from 'vue';
 import RichText from './richtext.vue';
 import ListingBlock from './ListingBlock.vue';
 import { expandTemplatesSync, expandListingBlocks, ploneFetchItems, contentPath } from '@hydra-js/helpers';
@@ -788,7 +791,8 @@ export default {
       expandTemplatesSync(layout, {
         blocks,
         templateState,
-        templates,
+        // unref: the store hands back a ref; the merge needs the plain object.
+        templates: unref(templates),
         ...(idField && { idField }),
       });
 

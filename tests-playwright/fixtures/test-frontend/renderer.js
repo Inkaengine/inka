@@ -71,7 +71,25 @@ const LISTING_BLOCK_TYPES = ['listing', 'relatedItemsListing', 'searchShortcuts'
 // with a listing. Returning all items with paging:null (as the old no-listing
 // shortcut did) meant a manual grid silently lost paging and its pager, so a
 // paged-out child (which the reveal needs) had no page-step control to reach it.
-async function expandItems(blocks, layout, containerId, paging) {
+// The frontend contract (docs/frontend-guide/templates.md "Expand every container"):
+// a template can be placed in ANY container, and the merge has no schema to find
+// them, so every container passes each region of children through the merge,
+// sharing the render's templateState. Returns the region's blocks dict (with the
+// expanded blocks) and its expanded layout.
+async function expandRegion(blocks, layout) {
+    if (layout.length === 0) return { blocks, layout };
+    const items = await window._expandTemplates(layout, {
+        blocks,
+        templateState: window._templateState,
+        loadTemplate: window._loadTemplate,
+    });
+    const expanded = { ...blocks };
+    for (const item of items) expanded[item['@uid']] = item;
+    return { blocks: expanded, layout: items.map((item) => item['@uid']) };
+}
+
+async function expandItems(rawBlocks, rawLayout, containerId, paging) {
+    const { blocks, layout } = await expandRegion(rawBlocks, rawLayout);
     const isListing = (id) => {
         const t = blocks[id]?.['@type'];
         if (t === 'listing') return !!blocks[id]?.querystring?.query;
@@ -1362,8 +1380,7 @@ async function renderCalloutBlock(block) {
     const level = levels[block.variation] || levels.note;
     // The body is a region of child blocks (blocks_layout.items) — render each
     // through renderBlock, the shared container primitive.
-    const blocks = block.blocks || {};
-    const items = block.blocks_layout?.items || [];
+    const { blocks, layout: items } = await expandRegion(block.blocks || {}, block.blocks_layout?.items || []);
     let bodyHtml = '';
     for (const id of items) {
         const el = await renderBlock(id, { ...blocks[id], '@uid': id });
@@ -1548,8 +1565,7 @@ function attachFormValidation(formEl, block) {
  */
 async function renderObjectBlocksBlock(block) {
     const content = block.content || {};
-    const blocks = content.blocks || {};
-    const bodyItems = content.blocks_layout?.body || [];
+    const { blocks, layout: bodyItems } = await expandRegion(content.blocks || {}, content.blocks_layout?.body || []);
 
     // Inline-editable text field living directly on the object
     // (block.content.headline) — a slate field, marked data-edit-text so hydra
@@ -1598,8 +1614,7 @@ async function renderObjectBlocksBlock(block) {
 async function renderColumnsBlock(block) {
     // 'columns' is a blocks field: its name is the key in the shared blocks_layout
     // dict, and child blocks live in the shared blocks dict.
-    const blocks = block.blocks || {};
-    const columnsItems = block.blocks_layout?.columns || [];
+    const { blocks, layout: columnsItems } = await expandRegion(block.blocks || {}, block.blocks_layout?.columns || []);
     const title = block.title || '';
 
     let html = '';
@@ -1704,8 +1719,7 @@ function renderColumnBlock(block) {
  * horizontal without this) — keeping drop-position resolution on the Y axis.
  */
 async function renderConvBox(block) {
-    const blocks = block.blocks || {};
-    const items = block.blocks_layout?.items || [];
+    const { blocks, layout: items } = await expandRegion(block.blocks || {}, block.blocks_layout?.items || []);
     let html = '<div class="section-body" style="padding: 12px; border: 1px dashed #888; border-radius: 4px;">';
     for (const childId of items) {
         const child = blocks[childId];
@@ -1730,8 +1744,7 @@ async function renderConvBox(block) {
  * converted type, and renders children with `data-block-add="bottom"` (vertical).
  */
 async function renderConvGroup(block) {
-    const blocks = block.blocks || {};
-    const items = block.blocks_layout?.items || [];
+    const { blocks, layout: items } = await expandRegion(block.blocks || {}, block.blocks_layout?.items || []);
     let html = `<div class="section-body" data-container-type="${block['@type']}" style="padding: 12px; border: 1px solid #4a90d9; border-radius: 4px;">`;
     for (const childId of items) {
         const child = blocks[childId];
@@ -1751,8 +1764,7 @@ async function renderConvGroup(block) {
 }
 
 async function renderSectionBlock(block) {
-    const blocks = block.blocks || {};
-    const items = block.blocks_layout?.items || [];
+    const { blocks, layout: items } = await expandRegion(block.blocks || {}, block.blocks_layout?.items || []);
 
     let html = '<div class="section-body" style="padding: 12px; border: 1px dashed #888; border-radius: 4px;">';
     for (const childId of items) {
@@ -1781,8 +1793,7 @@ async function renderSectionBlock(block) {
  */
 async function renderContextNavigationBlock(block, blockId) {
     const ariaLabel = block.ariaLabel;
-    const blocks = block.blocks;
-    const items = block.blocks_layout?.items || [];
+    const { blocks, layout: items } = await expandRegion(block.blocks || {}, block.blocks_layout?.items || []);
     const uid = blockId;
 
     // Hydra seeds an '@type: empty' placeholder when a container has no defaultBlockType and
@@ -2735,8 +2746,11 @@ async function renderSearchBlock(block, blockId) {
     const showSortOn = block.showSortOn;
     const facets = block.facets || [];
     const sortOnOptions = block.sortOnOptions || [];
-    const blocks = block.blocks || {};
-    const listingLayout = block.blocks_layout?.listing || [];
+    // Its two regions share one blocks dict; each goes through the merge.
+    const listingRegion = await expandRegion(block.blocks || {}, block.blocks_layout?.listing || []);
+    const quickAnswerRegion = await expandRegion(listingRegion.blocks, block.blocks_layout?.quickAnswer || []);
+    const blocks = quickAnswerRegion.blocks;
+    const listingLayout = listingRegion.layout;
 
     let html = '<div class="search-block" style="padding: 20px; border: 1px solid #ddd; border-radius: 8px;">';
 
@@ -2748,7 +2762,7 @@ async function renderSearchBlock(block, blockId) {
     // A block that exists ONLY once a query has been asked — the quick-answer
     // region. Declared here so the form below can say how to reveal it: the
     // input carries the sample question, the submit button carries the uid.
-    const quickAnswerLayout = block.blocks_layout?.quickAnswer || [];
+    const quickAnswerLayout = quickAnswerRegion.layout;
     const quickAnswerUid = quickAnswerLayout[0] || '';
     const sampleQuestion = block.quickAnswerSample || '';
 

@@ -197,6 +197,18 @@ Different parts of the same site can sit at different rows — inline-editable h
 
 This section is for people working on Inka itself. You don't need it to build a front end. It describes how the editor, which builds on Volto (Plone's React editor), handles template membership and URLs.
 
+### Merging templates: every container is expanded, by whoever renders
+
+A template can be placed anywhere a block can: at the top of a page, in a page's footer region, or inside any container — a grid, a column, an accordion panel, a slider. Nobody knows in advance where an editor will put one. So wherever blocks are rendered, every container's children are expanded.
+
+**The merge does not know your containers.** `expandTemplates` / `expandTemplatesSync` have no block schema. When they apply a template they fill that template's own regions, at every depth. But a template placed inside a *plain* container — one that is not part of a template being applied — is left exactly as stored until that container's children are themselves passed through the merge.
+
+**So the renderer re-enters every container.** That is the frontend contract (see [Templates](./frontend-guide/templates.md#expand-every-container)): each container passes its children — every `blocks_layout` region and every object_list field — through the merge, sharing one `templateState` for the whole render. Content this render already expanded is recognised by its instance id and passed through, so re-entering a template's own regions does not apply it twice.
+
+**The admin is a renderer too, and keeps the same contract.** It merges templates itself, because it edits them: the page it hands the iframe, the blocks you unlock, and what "Change on all pages" saves all come from its own merge. `mergeTemplatesIntoPage` runs the merge on each page blocks field and then re-enters every container of the result, at every depth (`expandContainers`, reading regions through the helpers' `getChildFields` / `getChildBlockEntries` / `setChildBlockEntries`). Without that, a template inside a container is never merged in the editor: it shows its stale stored copy, and unlocking, committing and resetting cannot find it.
+
+This re-entry was removed once (2026-07, "use only the public merge — remove redundant re-entry") on the belief that the merge already fills every nested region. It fills only the regions of a template it applies. **Do not remove the admin's re-entry, and do not ship a frontend container that renders its children without passing them through the merge.** The tests that guard this place the same template at the top level and inside a container (`template-edit-mode.spec.ts`, "wherever the instance sits").
+
 ### Template membership (edit-side slot assignment)
 
 A block's template membership — `templateId`, `templateInstanceId`, `slotId`, `fixed`, `readOnly` — is not intrinsic to the block; the admin **assigns** it at edit time. The [merge](./frontend-guide/templates.md#how-the-merge-works) reads these fields to place content at render time. Crucially, assignment is **gated on edit mode** — editing a template is a different act from moving content around inside a template you're *not* editing:

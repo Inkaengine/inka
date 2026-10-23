@@ -1,0 +1,1 @@
+The mock API's `@form-data` returns stored form submissions whole again; it had been trimming them to catalog summary fields, losing their answers and captcha.

@@ -686,11 +686,11 @@ describe('internal references under a prefix mount', () => {
   });
 });
 
-// An exportimport mount's redirects.json, beside its content dir. plone.exportimport
-// writes PHYSICAL paths ("/Plone/old"), and that is the default the mock holds a
-// mount to. A site that stores them site-relative ("/old") and adds the prefix
-// itself on import opts in with MOCK_REDIRECTS_SITE_RELATIVE=1 — without it
-// every 404 on that mount went through the redirect lookup and became a 500.
+// An exportimport mount's redirects.json, beside its content dir. A key may be
+// physical ("/Plone/old"), as plone.exportimport round-trips it, or site-relative
+// ("/old"), as a converted tree stores it (pretagov-site does, and prefixes on
+// import). Both must serve. The site-relative form used to THROW while the mount
+// was parsed, so every 404 on that mount went through the lookup and became a 500.
 describe('redirects.json of an exportimport mount', () => {
   const mock = require('./mock-plone-api.cjs');
   const MOUNT = '/_redirects_test';
@@ -704,6 +704,12 @@ describe('redirects.json of an exportimport mount', () => {
       headers: { Accept: 'application/json' },
       redirect: 'manual',
     });
+  const assertRedirectsTo = async (from, to) => {
+    const res = await get(from);
+    assert.equal(res.status, 302);
+    const location = res.headers.get('location');
+    assert.ok(location.endsWith(`/++api++${MOUNT}${to}`), location);
+  };
 
   before(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-redirects-'));
@@ -716,41 +722,28 @@ describe('redirects.json of an exportimport mount', () => {
   after(() => {
     mock.CONTENT_MOUNTS.splice(mock.CONTENT_MOUNTS.indexOf(mount), 1);
     fs.rmSync(root, { recursive: true, force: true });
-    delete process.env.MOCK_REDIRECTS_SITE_RELATIVE;
   });
 
-  it('physical paths, as plone.exportimport writes them, redirect', async () => {
+  it('physical keys, as plone.exportimport writes them, redirect', async () => {
     writeRedirects({ '/Plone/old': '/Plone/new' });
-    const res = await get('/old');
-    assert.equal(res.status, 302);
-    assert.ok(res.headers.get('location').endsWith(`/++api++${MOUNT}/new`), res.headers.get('location'));
+    await assertRedirectsTo('/old', '/new');
   });
 
-  it('site-relative paths are refused by default, naming the fix', () => {
+  it('site-relative keys, as a converted tree stores them, redirect', async () => {
     writeRedirects({ '/old': '/new' });
-    assert.throws(() => mock.getRedirectTarget(`${MOUNT}/old`), /not under the site's physical path "\/Plone"/);
+    await assertRedirectsTo('/old', '/new');
   });
 
-  describe('with MOCK_REDIRECTS_SITE_RELATIVE=1', () => {
-    before(() => { process.env.MOCK_REDIRECTS_SITE_RELATIVE = '1'; });
-    after(() => { delete process.env.MOCK_REDIRECTS_SITE_RELATIVE; });
+  it('a path with no redirect is a 404, not a 500, whichever form the file uses', async () => {
+    writeRedirects({ '/old': '/new' });
+    assert.equal((await get('/no-such-page')).status, 404);
+    writeRedirects({ '/Plone/old': '/Plone/new' });
+    assert.equal((await get('/no-such-page')).status, 404);
+  });
 
-    it('site-relative paths redirect', async () => {
-      writeRedirects({ '/old': '/new' });
-      const res = await get('/old');
-      assert.equal(res.status, 302);
-      assert.ok(res.headers.get('location').endsWith(`/++api++${MOUNT}/new`), res.headers.get('location'));
-    });
-
-    it('a path with no redirect is a 404, not a 500', async () => {
-      writeRedirects({ '/old': '/new' });
-      assert.equal((await get('/no-such-page')).status, 404);
-    });
-
-    it('physical paths are refused, so the switch cannot hide a mixed-up file', () => {
-      writeRedirects({ '/Plone/old': '/Plone/new' });
-      assert.throws(() => mock.getRedirectTarget(`${MOUNT}/old`), /expects site-relative paths/);
-    });
+  it('a key that is not a path is refused, naming both accepted forms', () => {
+    writeRedirects({ 'old': '/new' });
+    assert.throws(() => mock.getRedirectTarget(`${MOUNT}/old`), /is not a path/);
   });
 });
 

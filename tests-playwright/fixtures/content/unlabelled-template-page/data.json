@@ -87,6 +87,7 @@
         {
           "@id": "tpl-slide-1",
           "@type": "slide",
+          "slotId": "slide",
           "fixed": true,
           "readOnly": true,
           "templateId": "/_test_data/templates/unlabelled-layout",
@@ -97,6 +98,7 @@
         {
           "@id": "tpl-slide-2",
           "@type": "slide",
+          "slotId": "slide",
           "fixed": true,
           "readOnly": true,
           "templateId": "/_test_data/templates/unlabelled-layout",

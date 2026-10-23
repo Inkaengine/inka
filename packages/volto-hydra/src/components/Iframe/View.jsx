@@ -6,6 +6,8 @@ import {
   translationStatus,
   sourceFingerprint,
   withAllBlocksReadOnly,
+  getChildFields,
+  setChildBlockEntries,
 } from '@volto-hydra/helpers';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { isEqual } from 'lodash';
@@ -34,6 +36,104 @@ import {
   setFieldValue,
 } from '@volto-hydra/helpers';
 import Api from '@plone/volto/helpers/Api/Api';
+
+/**
+ * Every block of one template instance, wherever it sits — the page's top level, a
+ * footer region, or inside a container at any depth — and the order each region
+ * holds them in, keyed by the region's path. Read through the helpers' container
+ * accessors (blocks_layout regions and object_list fields alike), never from
+ * formData.blocks alone: an instance inside a container is not there (CLAUDE.md,
+ * "Block Access"; docs/architecture.md, "Merging templates").
+ *
+ * @param {Object} formData - the page
+ * @param {string} instanceId
+ * @param {Object} idFieldMap - { blockType: { field: idField } }
+ * @returns {{ blocks: Object, regions: Object, layouts: Object }} the instance's
+ *   blocks, the order of its blocks in each region, and each region's full order
+ */
+function instanceContent(formData, instanceId, idFieldMap) {
+  const blocks = {};
+  const regions = {};
+  const layouts = {};
+  const visit = (container, path) => {
+    for (const field of getChildFields(container, idFieldMap, { allObjectLists: true })) {
+      const entries = getChildBlockEntries(container, field);
+      layouts[`${path}/${field.region}`] = entries.map((entry) => entry.id);
+      const own = entries
+        .filter((entry) => entry.block?.templateInstanceId === instanceId)
+        .map((entry) => entry.id);
+      if (own.length) regions[`${path}/${field.region}`] = own;
+      for (const { id, block } of entries) {
+        if (block?.templateInstanceId === instanceId) blocks[id] = block;
+        else if (block) visit(block, `${path}/${id}`);
+      }
+    }
+  };
+  visit(formData, '');
+  return { blocks, regions, layouts };
+}
+
+/**
+ * The page with one template instance put back as it was in `snapshot` (Reset
+ * changes), wherever the instance sits; everything else stays as currently edited.
+ * In each region the instance's current blocks are replaced, at its first position,
+ * by its blocks from the snapshot. A region where every one of its blocks was
+ * deleted gets them back after their nearest preceding neighbour in the snapshot.
+ *
+ * @param {Object} current - the page now
+ * @param {Object} snapshot - the page when the instance was unlocked
+ * @param {string} instanceId
+ * @param {Object} idFieldMap - { blockType: { field: idField } }
+ * @returns {Object} the restored page
+ */
+function restoreInstance(current, snapshot, instanceId, idFieldMap) {
+  const saved = instanceContent(snapshot, instanceId, idFieldMap);
+  const isInstance = (block) => block?.templateInstanceId === instanceId;
+  const rebuild = (container, path) => {
+    const fields = getChildFields(container, idFieldMap, { allObjectLists: true });
+    if (fields.length === 0) return container;
+    // setChildBlockEntries writes into its argument. Drop the instance's current
+    // blocks from the shared dict; the snapshot's are written back below.
+    const out = { ...container };
+    if (container.blocks) {
+      out.blocks = Object.fromEntries(
+        Object.entries(container.blocks).filter(([, block]) => !isInstance(block)),
+      );
+    }
+    for (const field of fields) {
+      const key = `${path}/${field.region}`;
+      const restored = (saved.regions[key] || []).map((id) => ({ id, block: saved.blocks[id] }));
+      const next = [];
+      let spliced = false;
+      for (const { id, block } of getChildBlockEntries(container, field)) {
+        if (isInstance(block)) {
+          if (!spliced) {
+            next.push(...restored);
+            spliced = true;
+          }
+        } else {
+          next.push({ id, block: rebuild(block, `${path}/${id}`) });
+        }
+      }
+      if (!spliced && restored.length) {
+        const order = saved.layouts[key] || [];
+        const first = order.indexOf(restored[0].id);
+        let at = next.length;
+        for (let i = first - 1; i >= 0; i--) {
+          const pos = next.findIndex((entry) => entry.id === order[i]);
+          if (pos !== -1) {
+            at = pos + 1;
+            break;
+          }
+        }
+        next.splice(at, 0, ...restored);
+      }
+      setChildBlockEntries(out, field, next);
+    }
+    return out;
+  };
+  return rebuild(current, '');
+}
 
 import { setBlocksClipboard, resetBlocksClipboard } from '@plone/volto/actions/blocksClipboard/blocksClipboard';
 import { cloneBlocks } from '@plone/volto/helpers/Blocks/cloneBlocks';
@@ -1048,6 +1148,10 @@ const Iframe = (props) => {
   // per-instance snapshot of formData taken at unlock time (so "Reset changes"
   // can revert only that template's blocks, keeping page edits).
   const [templateModal, setTemplateModal] = useState(null); // { kind, instanceId } | null
+  // The latest page from the store, for code that awaits something first (the lock
+  // button awaits a flush) and must then read the page as it is now.
+  const propertiesRef = useRef(properties);
+  propertiesRef.current = properties;
   // True while a template lock-commit is persisting (flush → reverse-merge → PATCH →
   // unlock). That round-trip can be slow and, unlike a page save, has no Volto request
   // spinner — so show a Dimmer+Loader over the editor and block interaction until it
@@ -1296,25 +1400,22 @@ const Iframe = (props) => {
   const pendingTemplateEditExitRef = useRef(null);
 
   // True when the instance's blocks are identical to the snapshot taken at unlock
-  // (i.e. the template wasn't edited). Compares the instance's blocks + their
-  // top-level order; nested container/object_list changes live inside the block
-  // objects, so the deep compare of the blocks dict catches them too. Both sides
+  // (i.e. the template wasn't edited). Compares the instance's blocks and the order
+  // of every region holding them, wherever the instance sits (instanceContent): at
+  // the top level, in a footer region, or inside a container. Changes nested inside
+  // the instance's own blocks are caught by the deep compare of those blocks. Both sides
   // are the Redux `properties` representation, so the compare is apples-to-apples;
   // structural edits and (debounced) inline text edits are already reflected there.
   const isInstanceUnchanged = useCallback((instanceId, formData) => {
     const snap = templateSnapshotsRef.current[instanceId];
     if (!snap) return true;
-    const pick = (fd) => {
-      const blocks = {};
-      for (const [id, b] of Object.entries(fd?.blocks || {})) {
-        if (b?.templateInstanceId === instanceId) blocks[id] = b;
-      }
-      const items = (fd?.blocks_layout?.items || []).filter(
-        (id) => fd?.blocks?.[id]?.templateInstanceId === instanceId,
-      );
-      return { blocks, items };
+    // idFieldMap is read when this runs, not when it is created (it is declared
+    // further down the component); it is memoised on intl, so it never goes stale.
+    const own = (fd) => {
+      const { blocks, regions } = instanceContent(fd, instanceId, idFieldMap);
+      return { blocks, regions };
     };
-    return isEqual(pick(snap), pick(formData));
+    return isEqual(own(snap), own(formData));
   }, []);
 
   // v2: broadcast the current set of unlocked template instance ids to the iframe
@@ -1566,10 +1667,13 @@ const Iframe = (props) => {
     };
   }, [saveTemplatesRef, flushIframeEdits, persistTemplateDoc, iframeSyncState.templateEditMode]);
 
-  // v2 lock-commit ("Change on all pages"): after the iframe flushes pending
-  // inline edits, reverse-merge the instance's blocks back into the template
-  // cache AND save that template document now (at lock time). Then drop just this
-  // instance from the unlocked set — other unlocked templates stay unlocked.
+  // v2 lock ("Change on all pages" or "Reset changes"): both act only after the
+  // iframe flushes pending inline edits, so neither works on stale data and no
+  // buffered keystroke lands afterwards. Commit reverse-merges the instance's
+  // blocks back into the template cache AND saves that template document now (at
+  // lock time); reset restores the instance from its unlock-time snapshot. Then
+  // drop just this instance from the unlocked set — other unlocked templates stay
+  // unlocked.
   useEffect(() => {
     const pending = pendingTemplateEditExitRef.current;
     if (!pending) return;
@@ -1591,10 +1695,24 @@ const Iframe = (props) => {
       setCommittingTemplate(false); // commit round-trip done — drop the saving overlay
     };
 
-    // Find the templateId for this instance.
+    if (pending.mode === 'reset') {
+      // Restore against the FLUSHED page: the typed text is in it now, so the
+      // restore really changes the page and the frontend redraws the instance.
+      const snap = templateSnapshotsRef.current[prevInstanceId];
+      if (snap) {
+        // Wherever the instance sits — top level, a footer region, a container.
+        onChangeFormData(restoreInstance(formData, snap, prevInstanceId, idFieldMap));
+      }
+      finish();
+      return;
+    }
+
+    // The instance's own blocks, wherever it sits — top level, a footer region,
+    // or inside a container (instanceContent) — and its template.
+    const instance = instanceContent(formData, prevInstanceId, idFieldMap);
     let templateId = null;
-    for (const block of Object.values(formData.blocks || {})) {
-      if (block.templateInstanceId === prevInstanceId && block.templateId) {
+    for (const block of Object.values(instance.blocks)) {
+      if (block.templateId) {
         templateId = block.templateId;
         break;
       }
@@ -1602,9 +1720,16 @@ const Iframe = (props) => {
 
     if (templateId && templateCacheRef.current[templateId]) {
       const template = templateCacheRef.current[templateId];
-      // Capture edits to the instance's fixed+readOnly blocks into the template.
+      // Capture edits to the instance's fixed+readOnly blocks into the template,
+      // merged against the instance alone, in its own order: the merge reads a
+      // page's top-level regions, and a nested instance is not in them.
+      const instancePage = {
+        ...formData,
+        blocks: instance.blocks,
+        blocks_layout: { items: Object.values(instance.regions).flat() },
+      };
       mergeTemplatesIntoPage(template, {
-        loadTemplate: async () => formData,
+        loadTemplate: async () => instancePage,
         filterInstanceId: prevInstanceId,
         uuidGenerator: uuid,
         idFieldMap,
@@ -1627,7 +1752,7 @@ const Iframe = (props) => {
     } else {
       finish();
     }
-  }, [iframeSyncState.completedFlushRequestId, iframeSyncState.formData, postTemplateEditMode, persistTemplateDoc, idFieldMap]);
+  }, [iframeSyncState.completedFlushRequestId, iframeSyncState.formData, postTemplateEditMode, persistTemplateDoc, idFieldMap, onChangeFormData]);
 
   // Pending INITIAL_DATA: when templates are loading during INIT, store data here
   // Sync effect will send INITIAL_DATA after templates are merged
@@ -4443,6 +4568,9 @@ const Iframe = (props) => {
           blocksConfig: config.blocks.blocksConfig,
           intl,
           idFieldMap,
+          // The same document opened to edit as on the load path above: never merged
+          // against its own template, and a definition's own blocks are unlockable.
+          skipOwnTemplate: true,
         });
         if (moreTemplateIds.length > 0) {
           log('[INITIAL_DATA] Discovered nested templates:', moreTemplateIds);
@@ -5150,7 +5278,7 @@ const Iframe = (props) => {
       return false; // keep it unlocked so the user can fix it
     }
     const requestId = `tpl-commit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    pendingTemplateEditExitRef.current = { requestId, prevInstanceId: instanceId };
+    pendingTemplateEditExitRef.current = { requestId, prevInstanceId: instanceId, mode: 'commit' };
     setCommittingTemplate(true); // show the saving overlay until finish() clears it
     if (referenceElement?.contentWindow) {
       referenceElement.contentWindow.postMessage({ type: 'FLUSH_BUFFER', requestId }, '*');
@@ -5162,77 +5290,32 @@ const Iframe = (props) => {
   // blocks from the unlock-time snapshot, while KEEPING page-content edits made in
   // the meantime. The template cache is untouched (nothing is saved).
   const resetTemplateEdit = (instanceId) => {
-    const snap = templateSnapshotsRef.current[instanceId];
-    if (snap) {
-      const isInst = (id, blocks) => blocks?.[id]?.templateInstanceId === instanceId;
-      // Blocks: drop the instance's current blocks, restore the snapshot's.
-      const blocks = {};
-      for (const [id, b] of Object.entries(properties.blocks || {})) {
-        if (b?.templateInstanceId !== instanceId) blocks[id] = b;
-      }
-      for (const [id, b] of Object.entries(snap.blocks || {})) {
-        if (b?.templateInstanceId === instanceId) blocks[id] = b;
-      }
-      // Layout: keep the current (page-edited) order of non-instance blocks; splice
-      // the snapshot's instance block ids back in at the instance's first position.
-      const snapInstanceItems = (snap.blocks_layout?.items || []).filter((id) =>
-        isInst(id, snap.blocks),
-      );
-      const items = [];
-      let spliced = false;
-      for (const id of properties.blocks_layout?.items || []) {
-        if (isInst(id, properties.blocks)) {
-          if (!spliced) {
-            items.push(...snapInstanceItems);
-            spliced = true;
-          }
-        } else {
-          items.push(id);
-        }
-      }
-      if (!spliced) {
-        // No surviving instance anchor (all instance blocks were deleted): place the
-        // group after the nearest preceding non-instance neighbour from the snapshot.
-        const snapItems = snap.blocks_layout?.items || [];
-        const firstIdx = snapItems.findIndex((id) => isInst(id, snap.blocks));
-        let anchorAt = items.length;
-        for (let i = firstIdx - 1; i >= 0; i--) {
-          const pos = items.indexOf(snapItems[i]);
-          if (pos !== -1) {
-            anchorAt = pos + 1;
-            break;
-          }
-        }
-        items.splice(anchorAt, 0, ...snapInstanceItems);
-      }
-      onChangeFormData({
-        ...properties,
-        blocks,
-        blocks_layout: { ...properties.blocks_layout, items },
-      });
+    // Flush the iframe's pending inline edits first, as the commit does; the
+    // flush-completion handler then restores the instance (mode 'reset').
+    const requestId = `tpl-reset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    pendingTemplateEditExitRef.current = { requestId, prevInstanceId: instanceId, mode: 'reset' };
+    if (referenceElement?.contentWindow) {
+      referenceElement.contentWindow.postMessage({ type: 'FLUSH_BUFFER', requestId }, '*');
     }
-    const next = (iframeSyncState.templateEditMode || []).filter((id) => id !== instanceId);
-    setIframeSyncState((prev) => ({
-      ...prev,
-      templateEditMode: (prev.templateEditMode || []).filter((id) => id !== instanceId),
-    }));
-    postTemplateEditMode(next);
-    delete templateSnapshotsRef.current[instanceId];
   };
 
   // Entry point for the sidebar "Edit template" toggle AND the Quanta toolbar lock
   // icon. Unlocking warns first; locking asks what to do with the edits. The actual
   // enter/commit/reset run from the modal's buttons.
-  const handleToggleTemplateEditMode = (instanceId) => {
+  const handleToggleTemplateEditMode = async (instanceId) => {
     const unlocked = iframeSyncState.templateEditMode || [];
     if (!unlocked.includes(instanceId)) {
       // Unlocking → warn first.
       setTemplateModal({ kind: 'unlock', instanceId });
       return;
     }
-    // Locking → if the template wasn't changed during the unlock session, lock
-    // silently (no prompt, no save); otherwise show the Change/Reset/Cancel modal.
-    if (isInstanceUnchanged(instanceId, properties)) {
+    // Locking → flush the page's pending typing first: the page holds it for a
+    // moment before sending it, and an edit typed just before pressing the lock
+    // must count. Then, from the page as it is now: if the template wasn't changed
+    // during the unlock session, lock silently (no prompt, no save); otherwise show
+    // the Change/Reset/Cancel modal.
+    await flushIframeEdits();
+    if (isInstanceUnchanged(instanceId, propertiesRef.current)) {
       exitTemplateEditNoSave(instanceId);
     } else {
       setTemplateModal({ kind: 'lock', instanceId });

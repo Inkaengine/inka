@@ -671,6 +671,9 @@ const UNDECLARED_EXEMPT = new Set([
   'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'value',
   'styles', 'override', 'block',
   'fixed', 'slotId', 'templateId', 'templateInstanceId', 'readOnly',
+  // Written by the merge beside slotId when a fixed slot separates two groups
+  // (apply-templates stamps it); hydra's bookkeeping, never sidebar-authored.
+  'nextSlotId',
   // codeExample selector directives (single-source example pages): `source`
   // names a block/@type on the page and `format` (json|schema) says what to
   // show; resolved to `tabs` at load/build, not sidebar-authored schema fields.
@@ -1204,9 +1207,15 @@ function collectWidgetShapeIssues(
   // is not). They're set by the container, not sidebar-authored, so exempt them.
   const idField = pathInfo?.idField;
   const typeField = pathInfo?.typeField;
+  // Declared is a question about the TYPE. `props` is this block's resolved
+  // schema, from which its fieldRules remove what they hide for this data (a
+  // content block's image while its image position is "hidden"); a hidden field
+  // is still the type's own, and its stored value is not stray.
+  const typeSchema = blockConfig?.blockSchema;
+  const declaredByType = (typeof typeSchema === 'function' ? null : typeSchema?.properties) || {};
   if (blockType) {
     for (const key of Object.keys(blockData)) {
-      if (key.startsWith('@') || UNDECLARED_EXEMPT.has(key) || props[key]) continue;
+      if (key.startsWith('@') || UNDECLARED_EXEMPT.has(key) || props[key] || declaredByType[key]) continue;
       if (key === idField || key === typeField) continue;
       if (defaultsPrefix && key.startsWith(defaultsPrefix)) continue;
       const dedupeKey = `${blockType} ${key}`;
@@ -1877,7 +1886,12 @@ async function discoverBlocks(
         rel: new URL(item['@id']).pathname.replace(/^\//, '') || '/',
         data: { '@id': new URL(item['@id']).pathname, '@type': item['@type'], UID: item.UID },
       }));
-    const { errors } = checkIntegrity([...fetchedPages, ...stubs]);
+    // The frontend's own blocksConfig, so references are found by the WIDGET
+    // that declares them. Without it the check falls back to recognising
+    // references by shape, which cannot tell a link from a headline.
+    const { errors } = checkIntegrity([...fetchedPages, ...stubs], {
+      schemasFor: () => blocksConfig,
+    });
     // A harness may mount extra content trees whose pages were authored for a
     // different root (the parent's /_test_data fixture mount): their internal
     // refs legitimately miss this merged view. Same idea as

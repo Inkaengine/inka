@@ -22,6 +22,7 @@
 import { getBlockType } from '../helpers/index.js';
 import { foldSlateStyleRules } from './slateStyles.js';
 import { isObjectListRegion } from './regionWidgets.js';
+import { createFieldRulesEnhancer } from './fieldRules.js';
 
 // Same value as PAGE_BLOCK_UID in hydra.js — defined locally to avoid
 // importing from @volto-hydra/hydra-js (which would pull in Volto deps).
@@ -160,13 +161,16 @@ export function getBlockTypeSchema(blockType, intl, blocksConfig) {
     };
   }
 
-  if (typeof blockConfig.schemaEnhancer === 'function') {
+  const enhancers = enhancerParts(blockConfig.schemaEnhancer);
+  if (enhancers.length > 0) {
     const base = schema;
-    schema = blockConfig.schemaEnhancer({
-      schema,
-      formData: {},
-      intl,
-    });
+    for (const enhancer of enhancers) {
+      schema = enhancer({
+        schema,
+        formData: {},
+        intl,
+      });
+    }
     // This is the TYPE's schema, built with empty data, so a fieldRule that
     // shows a field only for some data (`links: { when: { mode: 'links' },
     // else: false }`, a teaser's title until "customise" is ticked) hides it
@@ -227,6 +231,20 @@ export function buildIdFieldMap(blocksConfig, intl) {
  * @param {Object} [blockPathMap] - Block path map (passed to enhancer for parent/sibling lookups)
  * @returns {Object|null} - The enhanced block schema or null
  */
+/**
+ * A schemaEnhancer as the functions to run: a function as it is, and a
+ * `fieldRules` recipe — how a frontend sends its rules — converted exactly as
+ * the admin converts it, so a field the rules hide is hidden here too. Other
+ * recipes (`inheritSchemaFrom`) need the admin, which alone converts them.
+ */
+function enhancerParts(schemaEnhancer) {
+  const parts = Array.isArray(schemaEnhancer) ? schemaEnhancer : schemaEnhancer ? [schemaEnhancer] : [];
+  return parts.flatMap((part) => {
+    if (typeof part === 'function') return [part];
+    return part?.fieldRules ? [createFieldRulesEnhancer(part.fieldRules)] : [];
+  });
+}
+
 export function getBlockSchema(blockType, intl, blocksConfig, formData, pageFormData, blockId, blockPathMap) {
   if (!blockType) return null;
   if (!blocksConfig) throw new Error('getBlockSchema requires blocksConfig');
@@ -278,9 +296,10 @@ export function getBlockSchema(blockType, intl, blocksConfig, formData, pageForm
     }
   }
 
-  // Run schemaEnhancer with instance data (skip recipe objects — only admin converts those)
-  if (typeof blockConfig.schemaEnhancer === 'function') {
-    schema = blockConfig.schemaEnhancer({
+  // Run schemaEnhancer with instance data, part by part (mergeFrontendBlock
+  // chains the admin's enhancer before a frontend's into a list).
+  for (const enhancer of enhancerParts(blockConfig.schemaEnhancer)) {
+    schema = enhancer({
       schema,
       formData: effectiveFormData,
       intl,
@@ -1032,7 +1051,7 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
     // virtual type is REGISTERED into blocksConfig at mint time (see
     // registerVirtualType), so its inline schemaEnhancer is found here by name —
     // the same path as a real typed block.
-    if (!blockConfig || typeof blockConfig.schemaEnhancer !== 'function') continue;
+    if (!blockConfig || enhancerParts(blockConfig.schemaEnhancer).length === 0) continue;
 
     // Look up block data via path
     let blockData = formData;
