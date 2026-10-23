@@ -6085,7 +6085,8 @@ app.get('*/@form-data', (req, res) => {
     if (blockId && block !== blockId) continue;
     items.push(...records);
   }
-  res.json({ items: items.map((item) => applyMetadataFields(item, req)), items_total: items.length });
+  // Stored submissions, not catalog brains: metadata_fields does not apply.
+  res.json({ items, items_total: items.length });
 });
 
 /**

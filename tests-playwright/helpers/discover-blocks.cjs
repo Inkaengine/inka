@@ -1207,9 +1207,15 @@ function collectWidgetShapeIssues(
   // is not). They're set by the container, not sidebar-authored, so exempt them.
   const idField = pathInfo?.idField;
   const typeField = pathInfo?.typeField;
+  // Declared is a question about the TYPE. `props` is this block's resolved
+  // schema, from which its fieldRules remove what they hide for this data (a
+  // content block's image while its image position is "hidden"); a hidden field
+  // is still the type's own, and its stored value is not stray.
+  const typeSchema = blockConfig?.blockSchema;
+  const declaredByType = (typeof typeSchema === 'function' ? null : typeSchema?.properties) || {};
   if (blockType) {
     for (const key of Object.keys(blockData)) {
-      if (key.startsWith('@') || UNDECLARED_EXEMPT.has(key) || props[key]) continue;
+      if (key.startsWith('@') || UNDECLARED_EXEMPT.has(key) || props[key] || declaredByType[key]) continue;
       if (key === idField || key === typeField) continue;
       if (defaultsPrefix && key.startsWith(defaultsPrefix)) continue;
       const dedupeKey = `${blockType} ${key}`;
