@@ -303,6 +303,27 @@ test.describe('Template Creation', () => {
     await helper.waitForBlockSelectedInAdmin(brandingId);
   });
 
+  // Viewed, not edited, the frontend merges the page itself — and a definition is not
+  // a use of its own template, at ANY depth. footer-layout nests a cell inside
+  // columns inside a column; each of those regions is the definition too, so the
+  // cell is shown exactly once. (Recognising only the top level as the definition
+  // merged the nested regions against the template and repeated the cell.)
+  test('a template definition page, viewed, shows its nested blocks once', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(helper.contentUrl('/templates/footer-layout'));
+
+    const iframe = helper.getIframe();
+    await expect(iframe.getByText('Footer Branding - Forced Layout')).toHaveCount(1);
+    await expect(iframe.getByText('Footer Column Cell')).toHaveCount(1);
+
+    // The same for a region stored as an object_list: test-layout's slider keeps
+    // its slides in an array, not blocks_layout.
+    await page.goto(helper.contentUrl('/templates/test-layout'));
+    await expect(iframe.getByText('Template Slide 1')).toHaveCount(1);
+    await expect(iframe.getByText('Template Slide 2')).toHaveCount(1);
+  });
+
   // Editing the definition still goes through the SAME unlock gesture as editing
   // it from a page — the lock is what says "this changes everywhere", and that is
   // true on the definition page too. All that is needed for the toggle to appear

@@ -28,11 +28,6 @@ export default async function Page({ params, searchParams }) {
   // view is exactly that: the move succeeds, the URL is right, and the iframe
   // shows a 404.
   const token = (await searchParams)?.access_token;
-  // Whether this render is the editor's iframe. The template merge needs to know
-  // — in edit mode the admin has already merged the templates, and merging them
-  // again mints new block ids it doesn't know — and on the server it can't see
-  // window.name, so tell it, from the same `_edit` flag the browser reads.
-  const editMode = (await searchParams)?._edit === 'true';
 
   let data;
   try {
@@ -46,5 +41,5 @@ export default async function Page({ params, searchParams }) {
     return notFound();
   }
 
-  return <PageClient initialData={data} apiUrl={apiPath} editMode={editMode} />;
+  return <PageClient initialData={data} apiUrl={apiPath} />;
 }

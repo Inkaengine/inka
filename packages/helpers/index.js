@@ -2159,25 +2159,30 @@ export function counterpartBlockId(blocks, blockId, otherBlocks, idFieldMap = nu
   return found;
 }
 
-/** A block by id, wherever it is nested. */
-function findBlockAnywhere(blocks, blockId, idFieldMap) {
+const DECLARED_REGIONS = { allObjectLists: true };
+
+/**
+ * A block by id, wherever it is nested. `regions` is getChildFields' options: which
+ * arrays count as regions (the merge also counts a template's own, by templateId).
+ */
+function findBlockAnywhere(blocks, blockId, idFieldMap, regions = DECLARED_REGIONS) {
   let found = null;
   walkBlocks(blocks, idFieldMap, (id, block) => {
     if (!found && id === blockId) found = block;
-  });
+  }, regions);
   return found;
 }
 
 /** Every block of a page, at every depth, through the container API. */
-function walkBlocks(blocks, idFieldMap, visit) {
+function walkBlocks(blocks, idFieldMap, visit, regions = DECLARED_REGIONS) {
   for (const [id, block] of Object.entries(blocks || {})) {
     visit(id, block);
-    for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+    for (const field of getChildFields(block, idFieldMap, regions)) {
       const nested = {};
       for (const entry of getChildBlockEntries(block, field)) {
         nested[entry.id] = entry.block;
       }
-      walkBlocks(nested, idFieldMap, visit);
+      walkBlocks(nested, idFieldMap, visit, regions);
     }
   }
 }
@@ -3483,6 +3488,38 @@ export function canContainAll(config, blockTypes, currentCount) {
   return true;
 }
 
+/** Whether two blocks hold the same template content, whatever they are labelled. */
+function isSameTemplateBlock(a, b) {
+  return JSON.stringify(withoutTemplateLabels(a)) === JSON.stringify(withoutTemplateLabels(b));
+}
+
+/**
+ * A block for comparing CONTENT: its labels removed at every depth — `templateId`
+ * (the merge relabels a loaded template's blocks with the id it was referenced by,
+ * while the document stores its own), `templateInstanceId` (the admin stamps one on
+ * a definition's own blocks so they can be unlocked) and `@uid` (added by the
+ * merge) — and object keys sorted so the order a block was built in doesn't matter.
+ */
+const TEMPLATE_LABELS = new Set(['templateId', 'templateInstanceId', '@uid']);
+function withoutTemplateLabels(value) {
+  if (Array.isArray(value)) return value.map(withoutTemplateLabels);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const key of Object.keys(value).sort()) {
+    if (TEMPLATE_LABELS.has(key)) continue;
+    out[key] = withoutTemplateLabels(value[key]);
+  }
+  return out;
+}
+
+/**
+ * The path of a template DOCUMENT, whichever way it was referenced (a path, a URL, a
+ * `resolveuid/…`): its own `@id` when loaded, else the reference itself.
+ */
+function templateDocPath(template, templateId) {
+  return templateIdToPath(template?.['@id'] || templateId);
+}
+
 /**
  * Extract the pathname from a template ID, which may be a full URL or a path.
  * Plone's API resolves resolveuid/UID references to full URLs (e.g.
@@ -4683,6 +4720,56 @@ export function expandTemplatesSync(inputItems, options = {}) {
       }
     }
     return items;
+  }
+
+  // A template's own DEFINITION is not a use of it. A region whose template blocks ARE
+  // the template's own blocks — the same ids AND the same content, because it is the same
+  // document — is the template document itself, opened or viewed as a page. (Ids alone
+  // aren't enough: a page can be saved with the template's ids and stale content, which
+  // must be re-applied.) Merging it against itself re-keys its nested blocks (`${instanceId}::childId`):
+  // ids the admin, which never merges a document against its own template
+  // (skipOwnTemplate), doesn't know. Leave it as it is. Register its instance, so its
+  // containers' re-entries are recognised as expanded; and remember the definition, so
+  // this render doesn't force the same template into another region of its own page
+  // (the admin drops a document's own template from the forced layouts, too).
+  if (!filterInstanceId && !removingTemplate) {
+    const ownTemplate = templates?.[templateId];
+    const templateBlockIds = layout.filter((id) => blocks[id]?.templateId);
+    // At any depth, through the container API, blocks_layout and object_list alike:
+    // a container's re-entry brings a region nested inside the definition, whose
+    // blocks are nested in the template — found by the merge's own region rule.
+    if (
+      ownTemplate?.blocks &&
+      templateBlockIds.length > 0 &&
+      templateBlockIds.every((id) => {
+        const own = findBlockAnywhere(ownTemplate.blocks, id, idFieldMap, {
+          allObjectLists: true,
+          templateChildren: true,
+        });
+        return own !== null && isSameTemplateBlock(blocks[id], own);
+      })
+    ) {
+      if (!templateState.definitions) templateState.definitions = new Set();
+      templateState.definitions.add(templateDocPath(ownTemplate, templateId));
+      if (existingInstanceId) {
+        templateState.instances[existingInstanceId] = { templateId, definition: true };
+      }
+      for (const blockId of layout) {
+        if (blocks[blockId]) addItem(blocks[blockId], blockId);
+      }
+      return items;
+    }
+    // A forced layout of a template this render met as a definition: its own page.
+    if (
+      !existingInstanceId &&
+      allowedLayouts?.length &&
+      templateState.definitions?.has(templateDocPath(templates?.[templateId], templateId))
+    ) {
+      for (const blockId of layout) {
+        if (blocks[blockId]) addItem(blocks[blockId], blockId);
+      }
+      return items;
+    }
   }
 
   // Get or generate instanceId.
