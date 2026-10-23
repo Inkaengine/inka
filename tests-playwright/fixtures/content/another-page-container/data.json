@@ -42,7 +42,10 @@
           "label": "Moved container field",
           "plaintext": "Moved container field"
         }
-      ]
+      ],
+      "default_to": "admin@example.com",
+      "default_from": "noreply@example.com",
+      "default_subject": "Moved container form submission"
     }
   },
   "blocks_layout": {
