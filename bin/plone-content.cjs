@@ -123,22 +123,23 @@ if (cmd === 'validate' || cmd === 'all') {
   console.log(formatReport('validate', r));
   if (r.errors.length) hasErrors = true;
 }
+// The idFieldMap names each block type's object_list fields and the key each
+// is addressed by. Without it getChildFields sees only object_lists whose
+// items carry templateId, so a form's subblocks or a table's rows go
+// unchecked — and any id read from one is bogus. Derived from the site's own
+// schemas, so it is only as complete as --schemas.
+let idFieldMap = null;
+if (schemas) {
+  const { buildIdFieldMap } = require('../packages/hydra-js/buildBlockPathMap.js');
+  idFieldMap = buildIdFieldMap(schemas, { formatMessage: (m) => m?.defaultMessage || '' });
+}
+
 if (cmd === 'check' || cmd === 'all') {
   if (cmd === 'all') console.log('');
-  // The idFieldMap names each block type's object_list fields and the key each
-  // is addressed by. Without it getChildFields sees only object_lists whose
-  // items carry templateId, so a form's subblocks or a table's rows go
-  // unchecked — and any id read from one is bogus. Derived from the site's own
-  // schemas, so it is only as complete as --schemas.
-  let idFieldMap = null;
-  if (schemas) {
-    const { buildIdFieldMap } = require('../packages/hydra-js/buildBlockPathMap.js');
-    idFieldMap = buildIdFieldMap(schemas, { formatMessage: (m) => m?.defaultMessage || '' });
-  }
   const r = checkIntegrity(contentDir, {
     allowMissingBlobs,
     idFieldMap,
-    ...(schemas ? { schemaFor: schemaForFrom(schemas) } : {}),
+    ...(schemas ? { schemasFor: () => schemas } : {}),
   });
   report.check = r;
   console.log(formatReport('check', r));
@@ -148,7 +149,7 @@ if (cmd === 'check' || cmd === 'all') {
 if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
   if (cmd === 'all') console.log('');
   const fields = schemas ? fieldMapFromSchemas(schemas) : JSON.parse(fs.readFileSync(path.resolve(fieldsPath), 'utf8'));
-  const r = checkBlockSchemas(contentDir, fields);
+  const r = checkBlockSchemas(contentDir, fields, { idFieldMap });
   report.schema = r;
   console.log(formatReport('schema', r));
   if (r.errors.length) hasErrors = true;

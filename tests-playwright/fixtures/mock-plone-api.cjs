@@ -2534,12 +2534,16 @@ function validateServedContent() {
     if (data == null) throw new Error(`content-check: ${urlPath} is registered but has no content`);
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
-  keep(checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent, allowMissingBlobs }));
+  keep(checkIntegrity(source, { schemasFor: hydraSchemasForOwnContent, allowMissingBlobs }));
   for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   if (siteSchemas) {
     const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+    const { buildIdFieldMap } = require('../../packages/hydra-js/buildBlockPathMap.js');
+    // Without the idFieldMap the container API sees only object_lists whose
+    // items carry templateId, so a slider's slides go unchecked.
+    const idFieldMap = buildIdFieldMap(siteSchemas, { formatMessage: (m) => m?.defaultMessage || '' });
     const own = source.filter((item) => !isHydraOwned(item.rel));
-    errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas)).errors);
+    errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas), { idFieldMap }).errors);
   }
   return withoutExpectedErrors(errors.map((m) => m.trim()));
 }
@@ -2581,9 +2585,8 @@ function withoutExpectedErrors(errors) {
  * this `hero` — so its blocks get the structural checks, not these shapes.
  */
 const HYDRA_ROOT = path.resolve(__dirname, '..', '..');
-function hydraSchemaForOwnContent(type, urlPath) {
-  if (isHydraOwned(urlPath)) return blockSchemaFor(type);
-  return siteSchemas ? siteSchemas[type]?.blockSchema ?? null : null;
+function hydraSchemasForOwnContent(urlPath) {
+  return isHydraOwned(urlPath) ? hydraBlocksConfig : siteSchemas;
 }
 
 /** Whether the content at `urlPath` is served from inside this hydra checkout
@@ -2671,7 +2674,13 @@ async function initMarkdownMounts() {
   if (!mounts.length) return;
   const { readTree } = await import('../../lib/markdown-mount.mjs');
   const { checkIntegrity } = require('./plone-content-validator.cjs');
-  mdRuntime = { readTree, checkIntegrity, schemaFor: blockSchemaFor };
+  // readTree takes a type -> blockSchema function; only checkIntegrity takes
+  // the whole config. Two different contracts, so both are supplied.
+  mdRuntime = {
+    readTree,
+    checkIntegrity,
+    schemaFor: (type) => hydraBlocksConfig?.[type]?.blockSchema ?? null,
+  };
   for (const mount of mounts) loadMarkdownMount(mount);
 }
 
@@ -2680,10 +2689,10 @@ async function initMarkdownMounts() {
  *  the complete registry the frontends register from, so neither can drift from
  *  what renders. A type it does not know is not schema-checked. Imported here,
  *  not via markdown-mount, so a JSON-only consumer needs no markdown toolchain. */
-let blockSchemaFor = null;
+let hydraBlocksConfig = null;
 async function loadBlockSchemas() {
   const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
-  blockSchemaFor = (type) => sharedBlocksConfig[type]?.blockSchema;
+  hydraBlocksConfig = sharedBlocksConfig;
 }
 
 // Scan content directories on startup (content loaded on-demand)
@@ -3574,7 +3583,7 @@ app.post('/@export', async (req, res) => {
     const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
     const contentDir = path.join(staging, 'content');
     const v = validate(contentDir, { allowMissingBlobs });
-    const c = checkIntegrity(contentDir, { schemaFor: blockSchemaFor, allowMissingBlobs });
+    const c = checkIntegrity(contentDir, { schemasFor: () => hydraBlocksConfig, allowMissingBlobs });
     const errors = [...v.errors, ...c.errors];
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
