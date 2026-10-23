@@ -1416,6 +1416,9 @@ function* walkAllBlocks(blocks, container = null, idFieldMap = null, where = nul
 
 
 
+// The admin's own chooser order. A frontend that declares its own
+// (voltoConfig.blocks.groupBlocksOrder) replaces it — the INIT merge replaces
+// arrays — and its --schemas module passes that order as `_groupBlocksOrder`.
 const CHOOSER_GROUPS = new Set(['mostUsed', 'text', 'media', 'common', 'templates']);
 
 /**
@@ -1432,14 +1435,16 @@ const CHOOSER_GROUPS = new Set(['mostUsed', 'text', 'media', 'common', 'template
  */
 function checkChooserGroups(schemas) {
   const errors = [];
+  const declared = schemas?._groupBlocksOrder;
+  const groups = declared ? new Set(declared.map((g) => g.id)) : CHOOSER_GROUPS;
   for (const [type, def] of Object.entries(schemas || {})) {
     if (!def || typeof def !== 'object' || type.startsWith('_')) continue;
     if (def.restricted) continue;
     if (!def.blockSchema) continue; // not a block config
     if (!def.group) {
-      errors.push(`  ${type}: no \`group\`, so the block chooser offers it under no heading — one of ${[...CHOOSER_GROUPS].join(', ')}`);
-    } else if (!CHOOSER_GROUPS.has(def.group)) {
-      errors.push(`  ${type}: group "${def.group}" is not one the chooser orders (${[...CHOOSER_GROUPS].join(', ')}), so the block is offered under a heading that never renders`);
+      errors.push(`  ${type}: no \`group\`, so the block chooser offers it under no heading — one of ${[...groups].join(', ')}`);
+    } else if (!groups.has(def.group)) {
+      errors.push(`  ${type}: group "${def.group}" is not one the chooser orders (${[...groups].join(', ')}), so the block is offered under a heading that never renders`);
     }
   }
   return { errors, warnings: [], stats: { blocks: Object.keys(schemas || {}).length, ungrouped: errors.length } };

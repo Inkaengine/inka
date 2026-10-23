@@ -24,7 +24,10 @@
  * loads ({ blockType: { blockSchema,
  * schemaEnhancer? } }): `check` then also checks each field's value against its
  * schema, and `schema` reports fields a block doesn't declare. (`--fields`, a
- * names-only map, still works until every frontend ships schemas.)
+ * names-only map, still works until every frontend ships schemas.) Keys starting
+ * `_` are not blocks: `_page` is the page's own schema, and `_groupBlocksOrder`
+ * the frontend's chooser order (voltoConfig.blocks.groupBlocksOrder), which
+ * replaces the admin's — every offered block must name one of its groups.
  */
 'use strict';
 

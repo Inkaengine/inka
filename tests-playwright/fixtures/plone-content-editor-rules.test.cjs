@@ -332,6 +332,26 @@ describe('checkChooserGroups()', () => {
     assert.match(r.errors[0], /group "bespoke" is not one the chooser orders/);
   });
 
+  // A frontend's own voltoConfig.blocks.groupBlocksOrder REPLACES the admin's
+  // (the INIT merge replaces arrays), so the chooser renders exactly the groups
+  // it declares. Its --schemas module passes that order as `_groupBlocksOrder`.
+  it("accepts a group the frontend's own chooser order declares", () => {
+    const r = checkChooserGroups({
+      _groupBlocksOrder: [{ id: 'mostUsed' }, { id: 'layout' }],
+      hero: { group: 'layout', blockSchema: {} },
+    });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it("reports a group the frontend's own chooser order leaves out", () => {
+    const r = checkChooserGroups({
+      _groupBlocksOrder: [{ id: 'layout' }],
+      hero: { group: 'common', blockSchema: {} },
+    });
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /group "common" is not one the chooser orders \(layout\)/);
+  });
+
   it('exempts a restricted block, which the chooser never offers', () => {
     const r = checkChooserGroups({ slide: { restricted: true, blockSchema: {} } });
     assert.deepEqual(r.errors, []);
