@@ -2785,11 +2785,12 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
     blocksConfig,
     intl,
   });
-  if (!keepsIdentity) {
-    // Then what the insert does for an ADDED block (insertBlockInContainer): it
-    // joins the instance of the block it lands beside, else of the container —
-    // fixed, like it, inside a template container. Same order, same result as
-    // adding a block at this position.
+  if (!keepsIdentity && parentBlock?.templateInstanceId) {
+    // Then, inside a template CONTAINER, what the insert does for an ADDED block
+    // (insertBlockInContainer): it joins the instance of the block it lands
+    // beside, else of the container, fixed like it — the same order, and result,
+    // as adding a block at this position. At a page's own level the position
+    // rules above decide alone: a drop beside a template's outer anchor is out.
     const besideId = insertAfter ? layoutItems[position - 1] : layoutItems[position];
     updatedBlockData = inheritTemplateMembership(
       updatedBlockData,
