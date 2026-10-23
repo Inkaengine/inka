@@ -1,0 +1,115 @@
+{
+  "@id": "http://localhost:8888/another-page-container",
+  "@type": "Document",
+  "UID": "another-page-container-uid",
+  "id": "another-page-container",
+  "title": "Another Page With A Container",
+  "description": "A forced-footer page whose own content is a container",
+  "effective": "2024-11-01T00:00:00+00:00",
+  "review_state": "published",
+  "preview_image": true,
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "footer-user-content": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Footer user content - no layout markers"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Footer user content - no layout markers"
+    },
+    "moved-form": {
+      "@type": "form",
+      "title": "Moved container form",
+      "store": true,
+      "send": false,
+      "captcha": "honeypot",
+      "submit_label": "Submit",
+      "subblocks": [
+        {
+          "field_id": "moved-field",
+          "field_type": "text",
+          "label": "Moved container field",
+          "plaintext": "Moved container field"
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "moved-form"
+    ],
+    "footer": [
+      "footer-user-content"
+    ]
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": false,
+  "created": "2025-01-02T12:00:00+00:00",
+  "modified": "2025-01-02T12:00:00+00:00",
+  "lock": {
+    "locked": false,
+    "stealable": true
+  },
+  "@components": {
+    "actions": {
+      "@id": "http://localhost:8888/another-page-container/@actions",
+      "document_actions": [],
+      "object": [
+        {
+          "id": "view",
+          "title": "View"
+        },
+        {
+          "id": "edit",
+          "title": "Edit"
+        },
+        {
+          "id": "folderContents",
+          "title": "Contents"
+        }
+      ],
+      "object_buttons": [],
+      "portal_tabs": [],
+      "site_actions": [],
+      "user": []
+    },
+    "breadcrumbs": {
+      "@id": "http://localhost:8888/another-page-container/@breadcrumbs",
+      "items": [
+        {
+          "@id": "http://localhost:8888",
+          "title": "Home"
+        },
+        {
+          "@id": "http://localhost:8888/another-page-container",
+          "title": "Another Page With A Container"
+        }
+      ],
+      "root": "http://localhost:8888"
+    },
+    "navigation": {
+      "@id": "http://localhost:8888/another-page-container/@navigation",
+      "items": []
+    },
+    "workflow": {
+      "@id": "http://localhost:8888/another-page-container/@workflow"
+    }
+  },
+  "can_manage_portlets": true,
+  "can_view": true,
+  "can_edit": true,
+  "can_delete": true,
+  "can_add": true
+}

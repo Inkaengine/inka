@@ -7,5 +7,8 @@
   ],
   "/nested-bad-url-page": [
     "feedUrl: unrecognized reference form: not a url at all"
+  ],
+  "/conv-footer-page": [
+    "block moved-grp-child (convTargetA) fills template resolveuid/test-layout-template-uid but is missing slotId"
   ]
 }

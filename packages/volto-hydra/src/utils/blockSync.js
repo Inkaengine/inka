@@ -2700,6 +2700,10 @@ export function syncChildBlockTypes(formData, blockPathMap, blockId, oldBlockDat
  * @param {Object} options.intl
  * @param {Array|null} [options.templateEditMode] - unlocked instance ids
  * @param {boolean} [options.insertAfter]
+ * @param {string|null} [options.fromInstanceId] - the template instance the block
+ *   belonged to BEFORE it moved. The insert may already have stamped the landing
+ *   instance on it, so its descendants that came along are recognised by this,
+ *   not by what the block says now. Omitted: the block's own (nothing restamped it).
  * @returns {Object} formData (unchanged object identity when nothing changed)
  */
 export function applyMembershipAfterMove(formData, blockPathMap, blockId, options) {
@@ -2776,10 +2780,10 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
   // templateId on every block, nested ones included (the merge drops a nested
   // block without one as malformed), so a container that joined a template
   // brings its children into it, and one that left takes them out.
-  const withContents = withDescendantMembership(
-    updatedBlockData,
-    originalBlockData.templateInstanceId ?? null,
-  );
+  const fromInstanceId = Object.hasOwn(options, 'fromInstanceId')
+    ? options.fromInstanceId
+    : originalBlockData.templateInstanceId ?? null;
+  const withContents = withDescendantMembership(updatedBlockData, fromInstanceId);
   // Compare against originalBlockData, not the (possibly membership-stripped)
   // copy — otherwise a stripped block whose recompute is a no-op is never
   // written back, and the stored block keeps its stale source membership.
@@ -2865,6 +2869,10 @@ export function settleBlockStructure(formData, blockPathMap, what, options) {
     templateEditMode = null,
     metadata,
     insertAfterById = {},
+    // Each landed block's template instance before it moved (null: none). The
+    // insert stamps the landing instance on the block itself, so without this its
+    // descendants from another template look like a template nested inside it.
+    fromInstanceById = {},
   } = options;
   let out = formData;
   let map = blockPathMap;
@@ -2878,6 +2886,9 @@ export function settleBlockStructure(formData, blockPathMap, what, options) {
       intl,
       templateEditMode,
       insertAfter: insertAfterById[blockId],
+      ...(Object.hasOwn(fromInstanceById, blockId)
+        ? { fromInstanceId: fromInstanceById[blockId] }
+        : {}),
     });
     if (next !== out) {
       out = next;

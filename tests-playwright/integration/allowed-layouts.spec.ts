@@ -736,6 +736,115 @@ test.describe('allowedLayouts', () => {
       await expect(iframe.locator('#footer-content [data-block-uid]').filter({ hasText: movedText }).last()).toBeVisible({ timeout: 15000 });
     });
 
+    // The same move with a CONTAINER: its children come with it, and the footer
+    // template is saved with them. A block moved in alone is not the whole of it —
+    // a container's children live in their own region (here a form's fields, an
+    // object_list), and are saved with it or not at all.
+    test('a page container dragged into an unlocked forced footer is saved with its children', async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      const iframe = helper.getIframe();
+
+      await helper.login();
+      await helper.navigateToEdit('/another-page-container');
+      await helper.waitForIframeReady();
+
+      const footerContent = iframe.locator('#footer-content');
+      const branding = footerContent.locator('[data-block-uid]').filter({ hasText: 'Footer Branding' }).last();
+      await expect(branding).toBeVisible({ timeout: 10000 });
+      const brandingId = await branding.getAttribute('data-block-uid');
+      const cell = footerContent.locator('[data-block-uid]').filter({ hasText: 'Footer Column Cell' }).last();
+      await expect(cell).toBeVisible({ timeout: 10000 });
+      const cellId = await cell.getAttribute('data-block-uid');
+
+      const movedText = 'Moved container field';
+      const pageForm = iframe.locator('#content [data-block-uid="moved-form"], main [data-block-uid="moved-form"]');
+      await expect(pageForm).toContainText(movedText);
+      await expect(footerContent.locator('[data-block-uid="moved-form"]')).toHaveCount(0);
+
+      await helper.unlockTemplate(brandingId);
+      // A container is selected through a child: its field, then up to the form.
+      await helper.clickBlockInIframe('moved-field');
+      await helper.navigateToParentBlock('moved-form');
+      const target = iframe.locator(`[data-block-uid="${cellId}"]`).first();
+      await helper.dragBlockWithMouse(target, target, true);
+
+      // The form and its field are in the footer now, and gone from the page.
+      await expect(footerContent.locator('[data-block-uid="moved-form"]')).toContainText(movedText, { timeout: 5000 });
+      await expect(pageForm).toHaveCount(0);
+
+      await helper.lockTemplate(brandingId, 'commit');
+      await page.keyboard.press('Control+s');
+      const pencilIcon = page.locator('.toolbar-actions .edit, [aria-label="Edit"]');
+      await expect(pencilIcon).toBeVisible({ timeout: 10000 });
+
+      // Another page forcing the same footer shows the form's field.
+      await helper.navigateToView('/another-page-2');
+      await helper.waitForIframeReady();
+      await expect(iframe.locator('[data-block-uid]').filter({ hasText: 'second forced-footer page' }).first()).toBeVisible({ timeout: 15000 });
+      await expect(iframe.locator('#footer-content').getByText(movedText).first()).toBeVisible({ timeout: 15000 });
+    });
+
+    // What a real site does with it: a page's content usually sits in the page's
+    // own LAYOUT template, so a container dragged into the footer leaves one
+    // template for another, with its children — and here also converts, because
+    // the footer's box only takes another type (conv-footer-layout's box takes
+    // only convGroupDst; the page's convGroupSrc sits in test-layout's `primary`
+    // slot). Committing saves it, children and all, into the footer template: the
+    // children are the footer's now, not the layout's. (The toy conversion types
+    // live only in the mock frontend.)
+    test('a layout container converted on its way into an unlocked forced footer is saved with its children', async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name !== 'admin-mock', 'mock-only synthetic conversion blocks');
+      const helper = new AdminUIHelper(page);
+      const iframe = helper.getIframe();
+
+      await helper.login();
+      await helper.navigateToEdit('/conv-footer-page');
+      await helper.waitForIframeReady();
+
+      const footerContent = iframe.locator('#footer-content');
+      const footerGroups = footerContent.locator('[data-container-type="convGroupDst"]');
+      await expect(footerGroups).toHaveCount(1, { timeout: 10000 });
+      const footerGroupId = await footerGroups
+        .first()
+        .evaluate((el) => el.closest('[data-block-uid]')!.getAttribute('data-block-uid'));
+      expect(footerGroupId).toMatch(/::cf-dst-1$/);
+      const memberId = await footerContent
+        .locator('[data-block-uid]')
+        .filter({ hasText: 'Footer group child' })
+        .last()
+        .getAttribute('data-block-uid');
+
+      const movedText = 'Moved group child';
+      await expect(iframe.locator('#content [data-block-uid="moved-grp"]')).toContainText(movedText);
+
+      await helper.unlockTemplate(memberId);
+
+      // Select the container through its child, drag it after the footer's group:
+      // it converts (confirm), and its child comes with it.
+      await helper.clickBlockInIframe('moved-grp-child');
+      await helper.navigateToParentBlock('moved-grp');
+      const dragHandle = await helper.getDragHandle();
+      const target = iframe.locator(`[data-block-uid="${footerGroupId}"]`).first();
+      await helper.dragBlockWithMouseNoDrop(dragHandle, target, true);
+      await page.mouse.up();
+      await helper.confirmConvert();
+
+      await expect(footerGroups).toHaveCount(2, { timeout: 5000 });
+      await expect(footerContent.locator('[data-block-uid="moved-grp"]')).toContainText(movedText);
+      await expect(iframe.locator('#content [data-block-uid="moved-grp"]')).toHaveCount(0);
+
+      await helper.lockTemplate(memberId, 'commit');
+      await page.keyboard.press('Control+s');
+      const pencilIcon = page.locator('.toolbar-actions .edit, [aria-label="Edit"]');
+      await expect(pencilIcon).toBeVisible({ timeout: 10000 });
+
+      // Another page forcing the same footer has the converted container's child.
+      await helper.navigateToView('/conv-footer-page-2');
+      await helper.waitForIframeReady();
+      await expect(iframe.locator('[data-block-uid]').filter({ hasText: 'second conv-footer page' }).first()).toBeVisible({ timeout: 15000 });
+      await expect(iframe.locator('#footer-content').getByText(movedText).first()).toBeVisible({ timeout: 15000 });
+    });
+
     test('committing a forced footer on a page with another template saves only the footer', async ({ page }) => {
       // The page's main region holds a DIFFERENT template instance (test-layout)
       // beside the forced footer. Committing the footer saves the footer

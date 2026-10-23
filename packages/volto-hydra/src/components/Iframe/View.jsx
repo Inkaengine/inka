@@ -2048,6 +2048,15 @@ const Iframe = (props) => {
     if (rejectMove) return 'rejected';
     if (deferredToChooser) return 'needs-choice';
 
+    // Where each block came FROM, before the convert and the move restamp it —
+    // its descendants that came along are recognised by this.
+    const fromInstanceById = Object.fromEntries(
+      blocksToMove.map((bid) => [
+        bid,
+        getBlockById(currentFormData, currentBlockPathMap, bid)?.templateInstanceId ?? null,
+      ]),
+    );
+
     // Move all blocks in sequence, each one after the previous
     // Track insertAfter for each block (needed for template inheritance)
     let newFormData = currentFormData;
@@ -2113,6 +2122,7 @@ const Iframe = (props) => {
           templateEditMode: templateEditModeRef.current,
           metadata,
           insertAfterById: blockInsertAfterMap,
+          fromInstanceById,
         },
       );
       newFormData = settledMove.formData;
@@ -5186,6 +5196,7 @@ const Iframe = (props) => {
                 templateEditMode: templateEditModeRef.current,
                 metadata,
                 insertAfterById: { [chooser.blockId]: pm.insertAfter },
+                fromInstanceById: { [chooser.blockId]: blockData.templateInstanceId ?? null },
               },
             );
             updatedProperties = settledDrop.formData;
