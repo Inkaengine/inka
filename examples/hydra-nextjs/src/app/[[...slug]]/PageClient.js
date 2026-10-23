@@ -15,7 +15,7 @@ import { sharedBlocksConfig } from "@test-fixtures/shared-block-schemas.js";
 const docBlocksConfig = sharedBlocksConfig;
 
 
-export default function PageClient({ initialData, apiUrl, editMode }) {
+export default function PageClient({ initialData, apiUrl }) {
   const [data, setData] = useState(initialData);
   // The blocks below use this as the CONTENT path they belong to (a listing
   // queries relative to it), so the paging segment has to come off — it names a
@@ -72,7 +72,7 @@ export default function PageClient({ initialData, apiUrl, editMode }) {
 
   return (
     <div className="page">
-      <BlocksList data={data} apiUrl={apiUrl} contextPath={pathname} editMode={editMode} />
+      <BlocksList data={data} apiUrl={apiUrl} contextPath={pathname} />
     </div>
   );
 }

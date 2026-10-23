@@ -1,0 +1,1 @@
+A template's own document, viewed or rendered as a page, is no longer merged against itself by the frontends' merge, so its blocks keep their ids and can be selected in the editor; frontends no longer need to tell the merge when they render for the editor.

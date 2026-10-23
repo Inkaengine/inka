@@ -3493,6 +3493,14 @@ export function canContainAll(config, blockTypes, currentCount) {
  * @param {string|null} id - Template ID (URL or path)
  * @returns {string|null} The pathname portion, or the original value
  */
+/**
+ * The path of a template DOCUMENT, whichever way it was referenced (a path, a URL, a
+ * `resolveuid/…`): its own `@id` when loaded, else the reference itself.
+ */
+function templateDocPath(template, templateId) {
+  return templateIdToPath(template?.['@id'] || templateId);
+}
+
 export function templateIdToPath(id) {
   if (!id || typeof id !== 'string') return id;
   // Fast path: already a relative path
@@ -4683,6 +4691,46 @@ export function expandTemplatesSync(inputItems, options = {}) {
       }
     }
     return items;
+  }
+
+  // A template's own DEFINITION is not a use of it. A region whose template blocks ARE
+  // the template's own blocks — the same ids; a page using a template has its own ids, or
+  // ids minted per instance — is the template document itself, opened or viewed as a
+  // page. Merging it against itself re-keys its nested blocks (`${instanceId}::childId`):
+  // ids the admin, which never merges a document against its own template
+  // (skipOwnTemplate), doesn't know. Leave it as it is. Register its instance, so its
+  // containers' re-entries are recognised as expanded; and remember the definition, so
+  // this render doesn't force the same template into another region of its own page
+  // (the admin drops a document's own template from the forced layouts, too).
+  if (!filterInstanceId && !removingTemplate) {
+    const ownTemplate = templates?.[templateId];
+    const templateBlockIds = layout.filter((id) => blocks[id]?.templateId);
+    if (
+      ownTemplate?.blocks &&
+      templateBlockIds.length > 0 &&
+      templateBlockIds.every((id) => Object.hasOwn(ownTemplate.blocks, id))
+    ) {
+      if (!templateState.definitions) templateState.definitions = new Set();
+      templateState.definitions.add(templateDocPath(ownTemplate, templateId));
+      if (existingInstanceId) {
+        templateState.instances[existingInstanceId] = { templateId, definition: true };
+      }
+      for (const blockId of layout) {
+        if (blocks[blockId]) addItem(blocks[blockId], blockId);
+      }
+      return items;
+    }
+    // A forced layout of a template this render met as a definition: its own page.
+    if (
+      !existingInstanceId &&
+      allowedLayouts?.length &&
+      templateState.definitions?.has(templateDocPath(templates?.[templateId], templateId))
+    ) {
+      for (const blockId of layout) {
+        if (blocks[blockId]) addItem(blocks[blockId], blockId);
+      }
+      return items;
+    }
   }
 
   // Get or generate instanceId.
