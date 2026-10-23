@@ -22,6 +22,44 @@
 const fs = require('fs');
 const path = require('path');
 const { UNDECLARED_EXEMPT } = require('../helpers/discover-blocks.cjs');
+// hydra's container API. Node require()s sync ESM, so a sync validator can use
+// the same enumeration the editor does instead of reading blocks_layout itself.
+const { getChildFields, getChildBlockEntries } = require('../../packages/helpers/index.js');
+
+/**
+ * Every child of a container, across every region it has, in order.
+ *
+ * The ONE place this file enumerates children. Each pass used to read
+ * `blocks_layout` itself, which is why they disagreed with each other and with
+ * the editor: 2c-bis saw only `items` and only inside fixed blocks, the slot
+ * pass saw only `items`, and an object_list region was invisible to both. The
+ * editor's validateTemplatePlaceholders walks via these same two helpers, so
+ * routing everything through them makes the gate and the save-time check agree
+ * by construction.
+ *
+ * The exception is pass 2d, which validates blocks_layout's own integrity and
+ * must read it raw: getChildBlockEntries drops entries whose block is missing,
+ * which is precisely the corruption 2d exists to report.
+ *
+ * `idFieldMap` is not optional in spirit. getChildFields recognises an
+ * object_list field when its items carry `templateId` OR when the map names
+ * the field for that block type — and an object_list is keyed by its own
+ * idField (a form's subblocks by `field_id`, a table's rows by `key`), so
+ * without the map those fields are skipped and any id taken from one is
+ * bogus. Built by buildIdFieldMap from the site's schemas; when the caller has
+ * no schemas, only templateId-marked lists are seen, which is a REDUCED check,
+ * not the intended one.
+ */
+function childEntries(container, idFieldMap = null) {
+  if (!container || typeof container !== 'object') return [];
+  const out = [];
+  for (const descriptor of getChildFields(container, idFieldMap, { allObjectLists: true })) {
+    for (const entry of getChildBlockEntries(container, descriptor)) {
+      if (entry.block && typeof entry.block === 'object') out.push({ ...entry, region: descriptor.region });
+    }
+  }
+  return out;
+}
 
 /**
  * Content ids that break their PARENT, not themselves.
@@ -332,7 +370,7 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
 /**
  * Graph integrity. Mirrors test-content.py.
  */
-function checkIntegrity(source, { schemaFor, allowMissingBlobs = false } = {}) {
+function checkIntegrity(source, { schemaFor, allowMissingBlobs = false, idFieldMap = null } = {}) {
   const onDisk = typeof source === 'string';
   const contentDir = onDisk ? source : null;
   const errors = [];
@@ -505,13 +543,29 @@ function imageDimensions(file) {
   // while this gate reported "Links: N ok, 0 broken".
   const LINK_FIELDS = ['url', 'href', 'image', 'preview_image', 'preview_image_link', 'backgroundImage'];
 
-  function* walkBlocks(blocks) {
-    for (const [bid, block] of Object.entries(blocks || {})) {
-      if (!block || typeof block !== 'object') continue;
-      yield [bid, block];
-      if (block.blocks && typeof block.blocks === 'object') {
-        yield* walkBlocks(block.blocks);
+  // Every block stored under a container, at any depth.
+  //
+  // Region children come from the container API, so an object_list child — a
+  // slider's slide, a form's subblock — is walked like a blocks_layout one.
+  // This used to recurse on `block.blocks` alone and saw neither, so a broken
+  // link inside a slide was never ref-checked.
+  //
+  // Blocks present in the dict but listed by no region are yielded too: they
+  // are stored, so a dangling reference or a repeated id in one still counts,
+  // and an orphan is exactly the state those checks exist to catch.
+  function* walkBlocks(blocks, container = null, where = null) {
+    const seenIds = new Set();
+    if (container) {
+      for (const { id, block } of childEntries(container, idFieldMap)) {
+        seenIds.add(id);
+        yield [id, block, where];
+        yield* walkBlocks(block.blocks, block, id);
       }
+    }
+    for (const [bid, block] of Object.entries(blocks || {})) {
+      if (!block || typeof block !== 'object' || seenIds.has(bid)) continue;
+      yield [bid, block, where];
+      yield* walkBlocks(block.blocks, block, bid);
     }
   }
 
@@ -636,23 +690,47 @@ function imageDimensions(file) {
         } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
         } else if (def.widget === 'object_list' && Array.isArray(v)) {
-          // Every object_list item must carry its type in the field the schema
-          // names — `def.typeField`, defaulting to `@type` (the same key the
-          // decode stamps and the region declares). object_list items are block
-          // instances (they get a @uid, are selectable/editable), and a block
-          // without a @type can't be discovered/rendered. A decode or author
-          // that drops it (the bug that made `tab` read as "no editable example",
-          // and that left socialLinks' links untyped) is caught here in seconds
-          // instead of 17 minutes into the bridge suite.
-          const typeKey = def.typeField || '@type';
+          // An object_list must declare ONE of three things, and which one it
+          // declares is the whole answer:
+          //
+          //   schema          items are records of that one shape. Nothing
+          //                   varies, so there is no type to carry.
+          //   allowedBlocks /
+          //   typeField       items vary in kind, so each must say which.
+          //   subBlocks:false a plain list of objects, edited in the sidebar
+          //                   and stored as it is. No type either.
+          //
+          // Declaring none of them is the fault: a reader cannot tell what the
+          // items are, and nor can this gate.
+          const isTyped = !!(def.typeField || def.allowedBlocks);
+          if (!def.schema && !isTyped && def.subBlocks !== false) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares none of \`schema\`, \`allowedBlocks\`/\`typeField\` or \`subBlocks: false\` — a list is records of one shape, items that vary in kind, or a plain list, and the schema has to say which`);
+          }
+          // allowedBlocks means the items vary in kind, so the schema has to
+          // name the field that says which — the type does not live in a fixed
+          // place. form.subblocks keys by `field_type`, search.facets by
+          // `@type`; both state it. Defaulting to `@type` here guessed on the
+          // schema's behalf and would read the wrong field without a word.
+          if (def.allowedBlocks && !def.typeField) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares \`allowedBlocks\` but no \`typeField\` — its items vary in kind, so the schema has to name the field their type is read from`);
+          }
           checkItemIds(v, def.idField || '@id', `object_list field "${field}" item`, `  ${rel}: block ${bid} (${block['@type']})`);
-          v.forEach((item, i) => {
-            // Read the way hydra's getBlockType does: `@type` first, then the
-            // schema's typeField — an item carrying either is typed.
-            if (item && typeof item === 'object' && item['@type'] == null && item[typeKey] == null) {
-              errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — an object_list item is a block and must carry its type`);
-            }
-          });
+          if (isTyped) {
+            // The schema-named field first, `@type` as the alternative — the
+            // way hydra's own reader works: getBlockType is
+            // `blockData?.['@type'] ?? blockData?.[typeField]`, so an item
+            // carrying either IS typed and renders. Requiring the named field
+            // alone looked tidier and would have failed content that works.
+            // The field the schema names. No fallback: a list with
+            // allowedBlocks and no typeField is reported above, so by here the
+            // schema has said where the type lives.
+            const typeKey = def.typeField || '@type';
+            v.forEach((item, i) => {
+              if (item && typeof item === 'object' && item[typeKey] == null && item['@type'] == null) {
+                errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — this field declares \`allowedBlocks\`/\`typeField\`, so its items vary in kind and each must say which it is`);
+              }
+            });
+          }
         }
       }
     }
@@ -697,7 +775,7 @@ function imageDimensions(file) {
   }
 
   for (const { rel, data } of items) {
-    for (const [bid, block] of walkBlocks(data.blocks)) {
+    for (const [bid, block] of walkBlocks(data.blocks, data)) {
       checkBlockRefs(rel, bid, block);
     }
   }
@@ -717,10 +795,8 @@ function imageDimensions(file) {
   // every other block on the page. Inferred from content, not from the path, so
   // a template stored outside /templates is still checked.
   for (const { rel, data } of items) {
-    const blocks = data.blocks || {};
-    const top = (data.blocks_layout || {}).items || [];
     const own = new Set([data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean));
-    const isTemplate = top.some((bid) => blocks[bid] && own.has(blocks[bid].templateId));
+    const isTemplate = childEntries(data, idFieldMap).some(({ block }) => own.has(block.templateId));
     if (!isTemplate) continue;
     // EVERY depth, not just the top. fillRegionEntries is the same function for
     // a nested container's regions as for the page's, and it opens with
@@ -730,21 +806,31 @@ function imageDimensions(file) {
     // removing `templateId` from one widget nested in a footer column removed
     // that widget AND its three slates from the merged footer.
     const walk = (container, prefix) => {
-      // Descend into FIXED containers only. A fixed block is template-owned
-      // structure: the merge re-derives its children from the template, so each
-      // one needs its own tags or it is dropped. A NON-fixed block is a SLOT —
-      // its children are the page's content, carried through as-is and needing
-      // no tags at all. Checked: /templates/contact-cta's `cta-section` is
-      // `fixed: false` and its untagged `cta-btn` survives the merge intact, so
-      // flagging it would be a false alarm on shipping content.
-      if (container.fixed !== true && prefix) return;
-      const kids = container.blocks || {};
-      const order = Object.values(container.blocks_layout || {}).flat();
-      for (const bid of order.length ? order : Object.keys(kids)) {
-        const block = kids[bid];
-        if (!block || typeof block !== 'object') continue;
-        yieldBlock(prefix ? `${prefix} > ${bid}` : bid, block);
-        walk(block, prefix ? `${prefix} > ${bid}` : bid);
+      // Descend into EVERY container, fixed or not.
+      //
+      // This used to stop at a non-fixed block, reasoning that a slot's
+      // children are the page's content and need no tags — checked against
+      // /templates/contact-cta, whose `cta-section` is `fixed: false` and whose
+      // untagged `cta-btn` does survive the merge.
+      //
+      // It survives only because of that one flag. A template is the authored
+      // source of truth, and an untagged block in one says nothing about who
+      // owns it: set the section `fixed: true` — the kind of change made
+      // routinely — and fillRegionEntries drops the button on its first rule,
+      // `if (!child || !child.templateId) continue`, silently, from every page
+      // using the template. The sibling /templates/contact-cta-info tags the
+      // same button, so the tagged shape is already the house style; the
+      // untagged one is the outlier, and the exemption existed to accommodate
+      // exactly one block rather than because the shape is sound.
+      // Regions via hydra's container API, so an object_list region is walked
+      // like a blocks_layout one. Reading blocks_layout here saw neither.
+      for (const descriptor of getChildFields(container, null, { allObjectLists: true })) {
+        for (const { id, block } of getChildBlockEntries(container, descriptor)) {
+          if (!block || typeof block !== 'object') continue;
+          const label = prefix ? `${prefix} > ${id}` : id;
+          yieldBlock(label, block);
+          walk(block, label);
+        }
       }
     };
     const yieldBlock = (label, block) => {
@@ -789,11 +875,9 @@ function imageDimensions(file) {
         stats.templateBlocksOk = (stats.templateBlocksOk || 0) + 1;
       }
     };
-    for (const bid of top) {
-      const block = blocks[bid];
-      if (!block || typeof block !== 'object') continue;
-      yieldBlock(bid, block);
-      walk(block, bid);
+    for (const { id, block } of childEntries(data, idFieldMap)) {
+      yieldBlock(id, block);
+      walk(block, id);
     }
   }
 
@@ -824,22 +908,27 @@ function imageDimensions(file) {
     // The same notion of "is a definition" the chrome pass uses: a doc whose
     // top blocks name itself, OR one whose top blocks hold slots and name no
     // other template. A definition need not name itself.
-    const topBlocks = ((data.blocks_layout || {}).items || [])
-      .map((bid) => (data.blocks || {})[bid])
-      .filter(Boolean);
+    const topBlocks = childEntries(data, idFieldMap).map(({ block }) => block);
     const ownRefs = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
     const isDefinition =
       topBlocks.some((block) => ownRefs.includes(block.templateId)) ||
       (topBlocks.some((block) => block.slotId) && !topBlocks.some((block) => block.templateId));
     if (!isDefinition) continue;
 
-    const checkRegion = (container, where) => {
-      const kids = container.blocks || {};
-      const order = (container.blocks_layout || {}).items || [];
+    // Regions come from hydra's own container API, not from reading
+    // blocks_layout here. getChildFields enumerates a block's regions —
+    // blocks_layout regions AND object_list fields — and getChildBlockEntries
+    // returns a region's children in order, for either storage. They are what
+    // the editor's validateTemplatePlaceholders walks, so this gate and the
+    // save-time check see the same tree by construction rather than by two
+    // implementations agreeing.
+    //
+    // I hand-rolled this first, on the assumption that a sync checkIntegrity
+    // could not reach the ESM helpers. It can: Node require()s sync ESM.
+    const checkOrder = (entries, where) => {
       const groups = new Map(); // slotId -> indexes
       let lastSlotId = null;
-      order.forEach((bid, i) => {
-        const block = kids[bid];
+      entries.forEach(({ block }, i) => {
         if (!block) return;
         if (block.fixed === true) { lastSlotId = null; return; }
         const slotId = block.slotId;
@@ -868,8 +957,19 @@ function imageDimensions(file) {
           }
         }
       }
-      for (const [bid, block] of Object.entries(kids)) {
-        if (block && typeof block === 'object') checkRegion(block, `${where} > ${bid}`);
+    };
+
+    const seen = new Set();
+    const checkRegion = (container, where) => {
+      if (!container || typeof container !== 'object' || seen.has(container)) return;
+      seen.add(container);
+      const fields = getChildFields(container, null, { allObjectLists: true });
+      for (const descriptor of fields) {
+        const entries = getChildBlockEntries(container, descriptor);
+        if (!entries.length) continue;
+        const label = fields.length > 1 ? `${where} (${descriptor.region})` : where;
+        checkOrder(entries, label);
+        for (const { id, block } of entries) checkRegion(block, `${where} > ${id}`);
       }
     };
     checkRegion(data, 'the page');
@@ -903,7 +1003,7 @@ function imageDimensions(file) {
     // not name itself — whose top-level blocks hold slots and name no template at all.
     const isTemplateDoc = (data) => {
       const blocks = data.blocks || {};
-      const top = ((data.blocks_layout || {}).items || []).map((bid) => blocks[bid]).filter(Boolean);
+      const top = childEntries(data, idFieldMap).map(({ block }) => block);
       const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
       if (top.some((block) => own.includes(block.templateId))) return true;
       return top.some((block) => block.slotId) && !top.some((block) => block.templateId);
@@ -1024,24 +1124,27 @@ function imageDimensions(file) {
   // of two blocks sharing an id only one can be selected or edited. Each
   // container's own layout can resolve perfectly (every summary-list row's value
   // block was "v1"), so the layout checks above can't see it.
-  function checkUniqueIds(rel, blocks, parent, firstIn) {
-    for (const [bid, block] of Object.entries(blocks || {})) {
+  // Ids are checked over walkBlocks' tree, so an id repeated inside an
+  // object_list — a slider's slides, a form's subblocks — is caught like one
+  // in a blocks_layout container. Walking `blocks` dicts alone missed those.
+  function checkUniqueIds(rel, blocks, parent, firstIn, container = null) {
+    for (const [bid, block, parentId] of walkBlocks(blocks, container)) {
       if (!block || typeof block !== 'object') continue;
-      const where = parent ?? 'the page';
+      const where = parentId ?? parent ?? 'the page';
       if (firstIn.has(bid)) {
         errors.push(`  ${rel}: block id ${bid} is used twice (in ${firstIn.get(bid)} and ${where}) — a block id must be unique on its page, or the editor can select and edit only one of them`);
       } else {
         firstIn.set(bid, where);
       }
-      if (block.blocks && typeof block.blocks === 'object') checkUniqueIds(rel, block.blocks, bid, firstIn);
+
     }
   }
   for (const { rel, data } of items) {
     checkLayout(rel, null, data);  // page-level blocks_layout
-    for (const [bid, block] of walkBlocks(data.blocks)) {
+    for (const [bid, block] of walkBlocks(data.blocks, data)) {
       if (block.blocks && typeof block.blocks === 'object') checkLayout(rel, bid, block);
     }
-    checkUniqueIds(rel, data.blocks, null, new Map());
+    checkUniqueIds(rel, data.blocks, null, new Map(), data);
   }
 
   // Parent containers (metadata cross-check for completeness). Uses the `@id`
@@ -1198,6 +1301,38 @@ function checkBlockSchemas(source, fieldMap) {
  * would not put them (documentation examples): their placement and maxLength
  * are not checked, every other rule is.
  */
+// The groups the block chooser orders: Volto's four, plus the `templates`
+// group hydra appends. A block whose `group` is none of these is offered
+// under a heading the chooser never renders.
+const CHOOSER_GROUPS = new Set(['mostUsed', 'text', 'media', 'common', 'templates']);
+
+/**
+ * Every block an author can add must say where it lives in the chooser.
+ *
+ * A block with no `group` falls into an unnamed bucket; one naming a group
+ * the chooser does not order is worse, because it reads as deliberate. Neither
+ * shows up in content, so no content check can find it: this is a defect in
+ * the config, not in any page, which is why it is its own pass rather than
+ * part of the per-page rule check.
+ *
+ * `restricted` blocks are exempt: they are not in the picker at all, they are
+ * placed by a template or a parent block.
+ */
+function checkChooserGroups(schemas) {
+  const errors = [];
+  for (const [type, def] of Object.entries(schemas || {})) {
+    if (!def || typeof def !== 'object' || type.startsWith('_')) continue;
+    if (def.restricted) continue;
+    if (!def.blockSchema) continue; // not a block config
+    if (!def.group) {
+      errors.push(`  ${type}: no \`group\`, so the block chooser offers it under no heading — one of ${[...CHOOSER_GROUPS].join(', ')}`);
+    } else if (!CHOOSER_GROUPS.has(def.group)) {
+      errors.push(`  ${type}: group "${def.group}" is not one the chooser orders (${[...CHOOSER_GROUPS].join(', ')}), so the block is offered under a heading that never renders`);
+    }
+  }
+  return { errors, warnings: [], stats: { blocks: Object.keys(schemas || {}).length, ungrouped: errors.length } };
+}
+
 async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
   const exempt = new Set(exemptSlots);
   const hydraJs = (file) =>
@@ -1353,6 +1488,10 @@ function formatReport(title, result) {
         `${result.stats.emptyRequired} required empty, ${result.stats.restyled} disallowed styles, ` +
         `${result.stats.ruleErrors} rule errors, ${result.stats.ruleWarnings} rule warnings`,
     );
+  } else if (title === 'chooser') {
+    lines.push(
+      `Chooser: ${result.stats.blocks} block types, ${result.stats.ungrouped} not offered under any heading`,
+    );
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
   } else {
@@ -1432,4 +1571,4 @@ function fieldMapFromSchemas(schemas) {
   return { blocks, identityFields: [...identityFields] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };

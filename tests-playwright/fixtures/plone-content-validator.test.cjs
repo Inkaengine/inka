@@ -664,12 +664,20 @@ describe('plone-content-validator checkIntegrity()', () => {
       r.errors.join('\n'));
   });
 
-  it('PASSES an untagged block inside a non-fixed SLOT', () => {
-    // A slot's children are the PAGE's content, not the template's: the merge
-    // fills the slot from the page and carries its nesting through untouched,
-    // so those blocks need no templateId/slotId of their own. /templates/
-    // contact-cta ships exactly this shape — a `fixed: false` section whose
-    // `cta-btn` carries nothing — and the button comes through the merge intact.
+  it('REPORTS an untagged block inside a non-fixed SLOT', () => {
+    // This used to pass, on the reasoning that a slot's children are the
+    // PAGE's content and so need no tags of their own — true of the merge as
+    // it runs today, and /templates/contact-cta ships exactly this shape: a
+    // `fixed: false` section whose `cta-btn` carries nothing, which does come
+    // through intact.
+    //
+    // But it comes through intact only because of that one flag. A template is
+    // the authored source of truth, and an untagged block in one says nothing
+    // about who owns it. Set the section `fixed: true` — an ordinary change —
+    // and fillRegionEntries drops the button on its first rule,
+    // `if (!child || !child.templateId) continue`, silently, from every page
+    // using the template. The sibling /templates/contact-cta-info tags the
+    // same button, so the tagged shape is already the house style.
     const { root, contentDir } = buildFixture({
       pageA: {
         '@id': '/templates/thing', '@type': 'Document', id: 'thing',
@@ -686,7 +694,8 @@ describe('plone-content-validator checkIntegrity()', () => {
     });
     const r = checkIntegrity(contentDir);
     cleanup(root);
-    assert.ok(!r.errors.some((e) => e.includes('btn')), r.errors.join('\n'));
+    assert.ok(r.errors.some((e) => e.includes('btn') && e.includes('slotId')),
+      r.errors.join('\n') || '(no error raised)');
   });
 
   it('PASSES a fully-tagged nested template', () => {
@@ -1408,8 +1417,14 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
   // schema names. Absent a schema this can't be known, so the check runs only
   // when a schemaFor is supplied. Regression guard for the `tab`/socialLinks
   // "no editable example" bug the bridge suite caught 17 minutes in.
+  // `allowedBlocks` is what makes this list TYPED: its items vary in kind, so
+  // each must say which. A list with one inline `schema` is a record list and
+  // carries no type — the fixture states the difference rather than leaving it
+  // to a default, which is how it used to read as typed by accident.
   const accordionSchema = (t) =>
-    t === 'accordion' ? { properties: { panels: { widget: 'object_list' } } } : null;
+    t === 'accordion'
+      ? { properties: { panels: { widget: 'object_list', allowedBlocks: ['panel'], typeField: '@type' } } }
+      : null;
 
   const pageWithAccordion = (panels) => ({
     '@id': '/page-a', '@type': 'Document', id: 'page-a',
@@ -1665,5 +1680,56 @@ describe('plone-content-validator template slot arrangement', () => {
       a2: { '@type': 'slate', slotId: 'body', fixed: false },
     }, ['a1', 'gap', 'a2']));
     assert.ok(errs.some((e) => /not contiguous/.test(e)), errs.join('\n'));
+  });
+});
+
+/**
+ * The slot rules apply to EVERY region, not just `items`.
+ *
+ * The editor's validateTemplatePlaceholders walks "the page's regions AND every
+ * nested container's regions (blocks_layout AND object_list)". This pass read
+ * only `blocks_layout.items`, so a template could pass here and still be
+ * refused in the editor — and a columns region is not exotic: a case-study
+ * layout's own lead row is one, holding the lead slots.
+ */
+describe('template slot arrangement covers every region', () => {
+  const tpl = (blocksLayout, blocks) => [{
+    rel: '/templates/t',
+    data: {
+      '@id': '/templates/t', '@type': 'Document', id: 't', UID: 'tuid000000000000',
+      blocks: { row: { '@type': 'columns', slotId: 'row', fixed: true, readOnly: true, ...blocks } },
+      blocks_layout: { items: ['row'] },
+      ...blocksLayout,
+    },
+  }];
+  const slot = (id) => ({ '@type': 'slate', slotId: id, fixed: false, readOnly: false });
+  const errs = (items) => checkIntegrity(items).errors.filter((e) => /sit next to each other|not contiguous/.test(e));
+
+  it('reports two adjacent OPEN slots in a COLUMNS region', () => {
+    const r = errs(tpl({}, {
+      blocks: { a: slot('alpha'), b: slot('beta') },
+      blocks_layout: { columns: ['a', 'b'] },
+    }));
+    assert.ok(r.some((e) => e.includes('"alpha"') && e.includes('"beta"')), r.join('\n') || '(no error raised)');
+  });
+
+  it('accepts the same columns region once a fixed block separates them', () => {
+    const r = errs(tpl({}, {
+      blocks: { a: slot('alpha'), sep: { '@type': 'slate', slotId: 'sep', fixed: true, readOnly: true }, b: slot('beta') },
+      blocks_layout: { columns: ['a', 'sep', 'b'] },
+    }));
+    assert.deepEqual(r, []);
+  });
+
+  it('reports two adjacent OPEN slots in an object_list region', () => {
+    // An object_list child carries `templateId` — that is what marks it as the
+    // template's own, and what getChildFields keys off to call the field a
+    // region at all. A bare array is not one, so the fixture states it.
+    const inList = (id) => ({ ...slot(id), '@id': `oid-${id}`, templateId: 'resolveuid/tuid000000000000' });
+    const r = errs(tpl({}, {
+      slides: [inList('alpha'), inList('beta')],
+      blocks: {}, blocks_layout: { items: [] },
+    }));
+    assert.ok(r.some((e) => e.includes('"alpha"') && e.includes('"beta"')), r.join('\n') || '(no error raised)');
   });
 });

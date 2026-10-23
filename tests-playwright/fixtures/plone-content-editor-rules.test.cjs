@@ -302,3 +302,69 @@ describe('checkEditorRules()', () => {
     });
   });
 });
+
+/**
+ * checkChooserGroups(): a block the chooser cannot offer is unreachable, no
+ * matter how correct every page is. That makes it a defect in the config, not
+ * in the content — which is why it is its own pass and not folded into
+ * checkEditorRules, where it would re-report the same config error once per
+ * page checked.
+ */
+describe('checkChooserGroups()', () => {
+  const { checkChooserGroups } = require('./plone-content-validator.cjs');
+
+  it('passes a block that names a group the chooser orders', () => {
+    const r = checkChooserGroups({ hero: { group: 'common', blockSchema: {} } });
+    assert.deepEqual(r.errors, []);
+    assert.equal(r.stats.ungrouped, 0);
+  });
+
+  it('reports a block with no group', () => {
+    const r = checkChooserGroups({ hero: { blockSchema: {} } });
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /hero: no `group`/);
+    assert.equal(r.stats.ungrouped, 1);
+  });
+
+  it('reports a group the chooser does not order', () => {
+    const r = checkChooserGroups({ hero: { group: 'bespoke', blockSchema: {} } });
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /group "bespoke" is not one the chooser orders/);
+  });
+
+  it('exempts a restricted block, which the chooser never offers', () => {
+    const r = checkChooserGroups({ slide: { restricted: true, blockSchema: {} } });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('ignores an entry that is not a block config', () => {
+    const r = checkChooserGroups({ _page: { title: 'x' }, notABlock: {} });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports every ungrouped block, not just the first', () => {
+    const r = checkChooserGroups({
+      a: { blockSchema: {} },
+      b: { group: 'media', blockSchema: {} },
+      c: { group: 'nope', blockSchema: {} },
+    });
+    assert.equal(r.errors.length, 2);
+    assert.equal(r.stats.blocks, 3);
+  });
+});
+
+/**
+ * The chooser rule must NOT fire from the per-page pass: these fixture schemas
+ * declare no groups, and a content check that reported them would report the
+ * same config defect once for every page in the site.
+ */
+describe('checkEditorRules() does not report config defects', () => {
+  it('says nothing about an ungrouped block while checking a clean page', async () => {
+    const r = await checkEditorRules(page({ s: { '@type': 'slate', value: [] } }, ['s']), SCHEMAS);
+    assert.equal(
+      r.errors.filter((e) => /group/.test(e)).length,
+      0,
+      `the per-page pass reported a chooser defect:\n${r.errors.join('\n')}`,
+    );
+  });
+});
