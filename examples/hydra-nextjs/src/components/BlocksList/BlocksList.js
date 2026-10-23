@@ -11,7 +11,7 @@ import SwiperSlider from "@/components/SwiperSlider";
 import { pageFromPath } from "#utils/paging";
 
 // Template context for nested block expansion
-const TemplateContext = createContext({ templates: {}, templateState: {} });
+const TemplateContext = createContext({ templates: {}, templateState: {}, editMode: false });
 
 /**
  * Expand child blocks using expandTemplatesSync with template context
@@ -19,12 +19,13 @@ const TemplateContext = createContext({ templates: {}, templateState: {} });
  * For object_list arrays: expand(items, null, '@id')
  */
 function useExpand() {
-  const { templates, templateState } = useContext(TemplateContext);
+  const { templates, templateState, editMode } = useContext(TemplateContext);
   return (layout, blocks, idField) =>
     expandTemplatesSync(layout, {
       blocks,
       templateState,
       templates,
+      editMode,
       ...(idField && { idField }),
     });
 }
@@ -1847,7 +1848,7 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
 
 // ─── BlocksList (entry point) ────────────────────────────────────────────────
 
-const BlocksList = ({ data, apiUrl, contextPath }) => {
+const BlocksList = ({ data, apiUrl, contextPath, editMode }) => {
   if (!data?.blocks_layout?.items) return null;
 
   const templates = data._templates || {};
@@ -1855,13 +1856,15 @@ const BlocksList = ({ data, apiUrl, contextPath }) => {
   // The page's own regions go through the merge too, with the state every
   // container below re-enters with (docs/frontend-guide/templates.md
   // "Expand every container").
+  // `editMode` (from the page's `_edit` flag) because the server can't see
+  // window.name: in the editor the admin has already merged the templates.
   const expandRegion = (layout) =>
-    expandTemplatesSync(layout, { blocks: data.blocks, templateState, templates });
+    expandTemplatesSync(layout, { blocks: data.blocks, templateState, templates, editMode });
   const items = expandRegion(data.blocks_layout.items);
   const footer = expandRegion(data.blocks_layout.footer || []);
 
   return (
-    <TemplateContext.Provider value={{ templates, templateState }}>
+    <TemplateContext.Provider value={{ templates, templateState, editMode }}>
       <div className="blocks-list">
         {items.map((item) => (
           <Block key={item["@uid"]} block={item} id={item["@uid"]} data={data} apiUrl={apiUrl} contextPath={contextPath} />
