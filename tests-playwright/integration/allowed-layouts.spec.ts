@@ -10,6 +10,7 @@
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { URLS } from '../ports';
 import type { Page } from '@playwright/test';
 
 /**
@@ -837,6 +838,24 @@ test.describe('allowedLayouts', () => {
       await page.keyboard.press('Control+s');
       const pencilIcon = page.locator('.toolbar-actions .edit, [aria-label="Edit"]');
       await expect(pencilIcon).toBeVisible({ timeout: 10000 });
+
+      // Saved as a block ADDED there would be: it and its child are the footer's,
+      // fixed, and it takes the slot an add at that position mints — not the
+      // `primary` slot it had in the page's layout.
+      const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+      const saved = await (
+        await page.request.get(`${URLS.mockApi}/_test_data/templates/conv-footer-layout`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        })
+      ).json();
+      const box = Object.values<any>(saved.blocks).find((b) => b['@type'] === 'convGroupBox');
+      const moved = Object.values<any>(box.blocks).find((b) =>
+        Object.values<any>(b.blocks ?? {}).some((c) => c.title === movedText),
+      );
+      const footerTemplateId = box.templateId;
+      expect(moved).toMatchObject({ '@type': 'convGroupDst', fixed: true, slotId: 'convGroupDst-1', templateId: footerTemplateId });
+      const child = Object.values<any>(moved.blocks).find((c) => c.title === movedText);
+      expect(child).toMatchObject({ fixed: true, templateId: footerTemplateId });
 
       // Another page forcing the same footer has the converted container's child.
       await helper.navigateToView('/conv-footer-page-2');

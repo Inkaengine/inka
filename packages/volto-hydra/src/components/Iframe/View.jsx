@@ -2048,13 +2048,11 @@ const Iframe = (props) => {
     if (rejectMove) return 'rejected';
     if (deferredToChooser) return 'needs-choice';
 
-    // Where each block came FROM, before the convert and the move restamp it —
-    // its descendants that came along are recognised by this.
-    const fromInstanceById = Object.fromEntries(
-      blocksToMove.map((bid) => [
-        bid,
-        getBlockById(currentFormData, currentBlockPathMap, bid)?.templateInstanceId ?? null,
-      ]),
+    // Each block's membership before the move restamps it: where it came FROM
+    // decides how it lands (applyMembershipAfterMove).
+    const membershipOf = (b) => ({ templateInstanceId: b?.templateInstanceId, fixed: b?.fixed });
+    const sourceById = Object.fromEntries(
+      blocksToMove.map((bid) => [bid, membershipOf(getBlockById(currentFormData, currentBlockPathMap, bid))]),
     );
 
     // Move all blocks in sequence, each one after the previous
@@ -2122,7 +2120,7 @@ const Iframe = (props) => {
           templateEditMode: templateEditModeRef.current,
           metadata,
           insertAfterById: blockInsertAfterMap,
-          fromInstanceById,
+          sourceById,
         },
       );
       newFormData = settledMove.formData;
@@ -5196,7 +5194,9 @@ const Iframe = (props) => {
                 templateEditMode: templateEditModeRef.current,
                 metadata,
                 insertAfterById: { [chooser.blockId]: pm.insertAfter },
-                fromInstanceById: { [chooser.blockId]: blockData.templateInstanceId ?? null },
+                sourceById: {
+                  [chooser.blockId]: { templateInstanceId: blockData.templateInstanceId, fixed: blockData.fixed },
+                },
               },
             );
             updatedProperties = settledDrop.formData;
