@@ -3484,6 +3484,61 @@ export function canContainAll(config, blockTypes, currentCount) {
 }
 
 /**
+ * A template's block by id, at any depth: in a `blocks` map, or an object_list item
+ * whose `idField` is that id. `undefined` when the template has no such block.
+ */
+function findTemplateBlock(template, blockId, idField) {
+  const stack = [template];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || typeof node !== 'object') continue;
+    if (Array.isArray(node)) {
+      stack.push(...node);
+      continue;
+    }
+    if (idField && node[idField] === blockId) return node;
+    const nested = node.blocks;
+    if (nested && typeof nested === 'object' && !Array.isArray(nested) && Object.hasOwn(nested, blockId)) {
+      return nested[blockId];
+    }
+    stack.push(...Object.values(node));
+  }
+  return undefined;
+}
+
+/** Whether two blocks hold the same template content, whatever they are labelled. */
+function isSameTemplateBlock(a, b) {
+  return JSON.stringify(withoutTemplateLabels(a)) === JSON.stringify(withoutTemplateLabels(b));
+}
+
+/**
+ * A block for comparing CONTENT: its labels removed at every depth — `templateId`
+ * (the merge relabels a loaded template's blocks with the id it was referenced by,
+ * while the document stores its own), `templateInstanceId` (the admin stamps one on
+ * a definition's own blocks so they can be unlocked) and `@uid` (added by the
+ * merge) — and object keys sorted so the order a block was built in doesn't matter.
+ */
+const TEMPLATE_LABELS = new Set(['templateId', 'templateInstanceId', '@uid']);
+function withoutTemplateLabels(value) {
+  if (Array.isArray(value)) return value.map(withoutTemplateLabels);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const key of Object.keys(value).sort()) {
+    if (TEMPLATE_LABELS.has(key)) continue;
+    out[key] = withoutTemplateLabels(value[key]);
+  }
+  return out;
+}
+
+/**
+ * The path of a template DOCUMENT, whichever way it was referenced (a path, a URL, a
+ * `resolveuid/…`): its own `@id` when loaded, else the reference itself.
+ */
+function templateDocPath(template, templateId) {
+  return templateIdToPath(template?.['@id'] || templateId);
+}
+
+/**
  * Extract the pathname from a template ID, which may be a full URL or a path.
  * Plone's API resolves resolveuid/UID references to full URLs (e.g.
  * "http://plone.example.com/templates/foo"), but allowedLayouts may use
@@ -3493,35 +3548,6 @@ export function canContainAll(config, blockTypes, currentCount) {
  * @param {string|null} id - Template ID (URL or path)
  * @returns {string|null} The pathname portion, or the original value
  */
-/**
- * The path of a template DOCUMENT, whichever way it was referenced (a path, a URL, a
- * `resolveuid/…`): its own `@id` when loaded, else the reference itself.
- */
-function isSameTemplateBlock(a, b) {
-  return JSON.stringify(withoutTemplateLabels(a)) === JSON.stringify(withoutTemplateLabels(b));
-}
-
-/**
- * A block for comparing CONTENT: `templateId` removed at every depth (the merge
- * relabels a loaded template's blocks with the id it was referenced by, while the
- * document stores its own), `@uid` removed (added by the merge), and object keys
- * sorted so the order a block was built in doesn't matter.
- */
-function withoutTemplateLabels(value) {
-  if (Array.isArray(value)) return value.map(withoutTemplateLabels);
-  if (!value || typeof value !== 'object') return value;
-  const out = {};
-  for (const key of Object.keys(value).sort()) {
-    if (key === 'templateId' || key === '@uid') continue;
-    out[key] = withoutTemplateLabels(value[key]);
-  }
-  return out;
-}
-
-function templateDocPath(template, templateId) {
-  return templateIdToPath(template?.['@id'] || templateId);
-}
-
 export function templateIdToPath(id) {
   if (!id || typeof id !== 'string') return id;
   // Fast path: already a relative path
@@ -4727,14 +4753,15 @@ export function expandTemplatesSync(inputItems, options = {}) {
   if (!filterInstanceId && !removingTemplate) {
     const ownTemplate = templates?.[templateId];
     const templateBlockIds = layout.filter((id) => blocks[id]?.templateId);
+    // At any depth: a container's re-entry brings a region nested inside the
+    // definition, whose blocks are nested inside the template too.
     if (
       ownTemplate?.blocks &&
       templateBlockIds.length > 0 &&
-      templateBlockIds.every(
-        (id) =>
-          Object.hasOwn(ownTemplate.blocks, id) &&
-          isSameTemplateBlock(blocks[id], ownTemplate.blocks[id]),
-      )
+      templateBlockIds.every((id) => {
+        const own = findTemplateBlock(ownTemplate, id, idField);
+        return own !== undefined && isSameTemplateBlock(blocks[id], own);
+      })
     ) {
       if (!templateState.definitions) templateState.definitions = new Set();
       templateState.definitions.add(templateDocPath(ownTemplate, templateId));

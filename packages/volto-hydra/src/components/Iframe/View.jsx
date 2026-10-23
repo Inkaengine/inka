@@ -4568,6 +4568,9 @@ const Iframe = (props) => {
           blocksConfig: config.blocks.blocksConfig,
           intl,
           idFieldMap,
+          // The same document opened to edit as on the load path above: never merged
+          // against its own template, and a definition's own blocks are unlockable.
+          skipOwnTemplate: true,
         });
         if (moreTemplateIds.length > 0) {
           log('[INITIAL_DATA] Discovered nested templates:', moreTemplateIds);
