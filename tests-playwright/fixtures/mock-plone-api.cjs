@@ -100,12 +100,30 @@ function readRedirects(mount) {
   const rootFile = path.join(dirPath, 'plone_site_root', 'data.json');
   const rootId = fs.existsSync(rootFile) ? JSON.parse(fs.readFileSync(rootFile, 'utf8'))['@id'] : '/';
   const sitePath = rootId === '/' ? '' : rootId;
+  // A key may be stored EITHER way, and both resolve to the same served path:
+  //
+  //   /Plone/old   what plone.exportimport round-trips today, because it copies
+  //                IRedirectionStorage verbatim and that storage is keyed by
+  //                Zope-physical path.
+  //   /old         portal-relative, as every other @id in the archive is. A
+  //                converted tree strips the site prefix by design, and a
+  //                distribution applied by its own boot/deploy step (pretagov's
+  //                apply_redirects_file) prefixes on the way in.
+  //
+  // This used to THROW on the second form. That is wrong twice over: the
+  // validator in this repo already accepts a wholly site-relative file and
+  // reports only a MIX, and throwing here happens while parsing the mount, so
+  // one unexpected key 500s EVERY page rather than reporting one bad entry.
+  // Whether a file is in the right form for its importer is the validator's
+  // question; serving it is this function's.
   const relative = (p) => {
     if (p === sitePath) return '/';
     if (p.startsWith(sitePath + '/')) return p.slice(sitePath.length);
+    if (p.startsWith('/')) return p;
     throw new Error(
-      `${redirectsFile}: ${JSON.stringify(p)} is not under the site's physical path ${JSON.stringify(sitePath)} ` +
-      `— Plone stores redirects by physical path, so write ${JSON.stringify(sitePath + p)}`,
+      `${redirectsFile}: ${JSON.stringify(p)} is not a path — a redirect key is ` +
+      `either portal-relative (${JSON.stringify('/old')}) or physical ` +
+      `(${JSON.stringify(sitePath + '/old')})`,
     );
   };
   return Object.entries(map).map(([from, to]) => [relative(from), relative(to)]);
