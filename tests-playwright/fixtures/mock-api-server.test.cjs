@@ -686,6 +686,67 @@ describe('internal references under a prefix mount', () => {
   });
 });
 
+// An exportimport mount's redirects.json, beside its content dir. A key may be
+// physical ("/Plone/old"), as plone.exportimport round-trips it, or site-relative
+// ("/old"), as a converted tree stores it (pretagov-site does, and prefixes on
+// import). Both must serve. The site-relative form used to THROW while the mount
+// was parsed, so every 404 on that mount went through the lookup and became a 500.
+describe('redirects.json of an exportimport mount', () => {
+  const mock = require('./mock-plone-api.cjs');
+  const MOUNT = '/_redirects_test';
+  let root;
+  let mount;
+
+  const writeRedirects = (map) =>
+    fs.writeFileSync(path.join(root, 'redirects.json'), JSON.stringify(map));
+  const get = (p) =>
+    fetch(`${baseUrl}/++api++${MOUNT}${p}`, {
+      headers: { Accept: 'application/json' },
+      redirect: 'manual',
+    });
+  const assertRedirectsTo = async (from, to) => {
+    const res = await get(from);
+    assert.equal(res.status, 302);
+    const location = res.headers.get('location');
+    assert.ok(location.endsWith(`/++api++${MOUNT}${to}`), location);
+  };
+
+  before(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-redirects-'));
+    const site = path.join(root, 'content', 'plone_site_root');
+    fs.mkdirSync(site, { recursive: true });
+    fs.writeFileSync(path.join(site, 'data.json'), JSON.stringify({ '@id': '/Plone', '@type': 'Plone Site' }));
+    mount = { mountPath: MOUNT, dirPath: path.join(root, 'content') };
+    mock.CONTENT_MOUNTS.unshift(mount);
+  });
+  after(() => {
+    mock.CONTENT_MOUNTS.splice(mock.CONTENT_MOUNTS.indexOf(mount), 1);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('physical keys, as plone.exportimport writes them, redirect', async () => {
+    writeRedirects({ '/Plone/old': '/Plone/new' });
+    await assertRedirectsTo('/old', '/new');
+  });
+
+  it('site-relative keys, as a converted tree stores them, redirect', async () => {
+    writeRedirects({ '/old': '/new' });
+    await assertRedirectsTo('/old', '/new');
+  });
+
+  it('a path with no redirect is a 404, not a 500, whichever form the file uses', async () => {
+    writeRedirects({ '/old': '/new' });
+    assert.equal((await get('/no-such-page')).status, 404);
+    writeRedirects({ '/Plone/old': '/Plone/new' });
+    assert.equal((await get('/no-such-page')).status, 404);
+  });
+
+  it('a key that is not a path is refused, naming both accepted forms', () => {
+    writeRedirects({ 'old': '/new' });
+    assert.throws(() => mock.getRedirectTarget(`${MOUNT}/old`), /is not a path/);
+  });
+});
+
 // Plone batches a folder's `items` (plone.restapi's HypermediaBatch): 25 by
 // default, from `b_start` / `b_size`, with `items_total` the whole folder.
 // ploneFetchItems now answers a folder-contents listing from here, so a mock
