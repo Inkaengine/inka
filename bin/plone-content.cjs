@@ -30,7 +30,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport } = require(
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport } = require(
   path.join(__dirname, '..', 'tests-playwright', 'fixtures', 'plone-content-validator.cjs'),
 );
 
@@ -160,6 +160,14 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
     report.rules = rules;
     console.log(formatReport('rules', rules));
     if (rules.errors.length) hasErrors = true;
+
+    // A defect in the config rather than in any page: a block the chooser
+    // cannot offer is unreachable however correct the content is.
+    console.log('');
+    const chooser = checkChooserGroups(schemas);
+    report.chooser = chooser;
+    console.log(formatReport('chooser', chooser));
+    if (chooser.errors.length) hasErrors = true;
   }
 }
 

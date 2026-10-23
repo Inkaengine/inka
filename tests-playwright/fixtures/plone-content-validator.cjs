@@ -1311,13 +1311,15 @@ const CHOOSER_GROUPS = new Set(['mostUsed', 'text', 'media', 'common', 'template
  *
  * A block with no `group` falls into an unnamed bucket; one naming a group
  * the chooser does not order is worse, because it reads as deliberate. Neither
- * shows up in content, so no content check can find it — this is about the
- * config itself, which is why it sits with the other schema-aware passes.
+ * shows up in content, so no content check can find it: this is a defect in
+ * the config, not in any page, which is why it is its own pass rather than
+ * part of the per-page rule check.
  *
  * `restricted` blocks are exempt: they are not in the picker at all, they are
  * placed by a template or a parent block.
  */
-function checkChooserGroups(schemas, errors) {
+function checkChooserGroups(schemas) {
+  const errors = [];
   for (const [type, def] of Object.entries(schemas || {})) {
     if (!def || typeof def !== 'object' || type.startsWith('_')) continue;
     if (def.restricted) continue;
@@ -1328,6 +1330,7 @@ function checkChooserGroups(schemas, errors) {
       errors.push(`  ${type}: group "${def.group}" is not one the chooser orders (${[...CHOOSER_GROUPS].join(', ')}), so the block is offered under a heading that never renders`);
     }
   }
+  return { errors, warnings: [], stats: { blocks: Object.keys(schemas || {}).length, ungrouped: errors.length } };
 }
 
 async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
@@ -1463,8 +1466,6 @@ async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
       );
     }
   }
-    checkChooserGroups(schemas, errors);
-
   return { errors, warnings, stats };
 }
 
@@ -1486,6 +1487,10 @@ function formatReport(title, result) {
       `Rules:   ${result.stats.misplaced} misplaced, ${result.stats.overfull} over maxLength, ` +
         `${result.stats.emptyRequired} required empty, ${result.stats.restyled} disallowed styles, ` +
         `${result.stats.ruleErrors} rule errors, ${result.stats.ruleWarnings} rule warnings`,
+    );
+  } else if (title === 'chooser') {
+    lines.push(
+      `Chooser: ${result.stats.blocks} block types, ${result.stats.ungrouped} not offered under any heading`,
     );
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
@@ -1566,4 +1571,4 @@ function fieldMapFromSchemas(schemas) {
   return { blocks, identityFields: [...identityFields] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };
