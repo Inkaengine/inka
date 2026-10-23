@@ -174,3 +174,32 @@ describe('the shape fallback does not read prose as a reference', () => {
     assert.deepEqual(r.errors, [], r.errors.join('\n'));
   });
 });
+
+/**
+ * A block type the config does not declare at all cannot be checked against
+ * anything, so the run says so rather than counting it as clean. A type that
+ * IS declared but whose schema has no properties is not that — a `title`
+ * block renders page metadata and has no fields to check.
+ */
+describe('a type with no schema is reported, not passed over', () => {
+  const page = (blocks) => [{
+    rel: 'content/x',
+    data: { '@id': '/x', UID: 'x1', blocks, blocks_layout: { items: Object.keys(blocks) } },
+  }];
+
+  it('names the undeclared type in a warning', () => {
+    const r = checkIntegrity(page({ m: { '@type': 'mystery', title: 'x' } }), {
+      schemasFor: () => SCHEMAS,
+    });
+    assert.equal(r.stats.unschemadTypes, 1);
+    assert.equal(r.warnings.filter((w) => /mystery/.test(w)).length, 1, r.warnings.join('\n'));
+  });
+
+  it('says nothing about a declared type whose schema has no fields', () => {
+    const r = checkIntegrity(page({ t: { '@type': 'bare' } }), {
+      schemasFor: () => ({ ...SCHEMAS, bare: { group: 'common', blockSchema: { properties: {} } } }),
+    });
+    assert.equal(r.stats.unschemadTypes, 0);
+    assert.deepEqual(r.warnings, [], r.warnings.join('\n'));
+  });
+});
