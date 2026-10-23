@@ -105,8 +105,12 @@ def build_distribution(dest: Path) -> Path:
     env = {
         **os.environ,
         "PORT": str(port),
-        # The site-root mount is the one carrying the shared templates.
-        "CONTENT_MOUNTS": "/:tests-playwright/fixtures/site-root",
+        # The site-root mount is the one carrying the shared templates. It
+        # also links into /docs (its home page points at the block examples),
+        # and the mock validates the content it serves — so a mount set that
+        # leaves /docs out makes valid content look broken. Most-specific
+        # mount first: '/' owns everything, so it goes last.
+        "CONTENT_MOUNTS": "/docs:docs,/:tests-playwright/fixtures/site-root",
     }
     proc = subprocess.Popen(
         ["node", str(MOCK_SERVER)],

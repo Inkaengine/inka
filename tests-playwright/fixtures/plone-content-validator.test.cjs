@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
 
 /**
  * Build a minimal plone.exportimport content tree under a temp dir.
@@ -1016,6 +1016,16 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.equal(r.stats.linksBroken, 0, r.errors.join('\n'));
   });
 
+  // The blocks these reference tests use, with the widget that says each
+  // field holds a reference. Which field is a reference is never knowable
+  // from its name, so a test about reference integrity has to declare it.
+  const REF_CONFIG = {
+    teaser: { blockSchema: { properties: { href: { widget: 'object_browser' } } } },
+    image: { blockSchema: { properties: { url: { widget: 'url' }, href: { widget: 'object_browser' } } } },
+    button: { blockSchema: { properties: { url: { widget: 'url' }, href: { widget: 'object_browser' } } } },
+    slate: { blockSchema: { properties: { value: { widget: 'slate' } } } },
+  };
+
   it('still FAILS when the page before the #fragment does not exist', () => {
     // Stripping the fragment must not become a way to smuggle a dead path past
     // the gate.
@@ -1028,7 +1038,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.ok(r.errors.some((e) => e.includes('/ghost')), r.errors.join('\n'));
     assert.equal(r.stats.linksBroken, 1);
@@ -1052,7 +1062,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.ok(r.errors.some((e) => e.includes('/does-not-exist')), r.errors.join('\n'));
     assert.equal(r.stats.linksBroken, 1);
@@ -1078,7 +1088,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.ok(
       r.errors.some((e) => e.includes('/images/test-image')),
@@ -1100,7 +1110,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.deepEqual(r.errors, []);
     assert.equal(r.stats.linksBroken, 0);
@@ -1123,7 +1133,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.ok(
       r.errors.some((e) => e.includes('garbage-not-a-ref')),
@@ -1145,7 +1155,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.deepEqual(r.errors, []);
     assert.equal(r.stats.linksOk, 2);
@@ -1383,6 +1393,9 @@ describe('checkBlockSchemas()', () => {
         },
       }),
       FIELDS,
+      // `columns` is an object_list; which fields hold children is declared,
+      // never guessed from the name.
+      { idFieldMap: { slateish: { columns: '@id' } } },
     );
     assert.match(r.errors[0], /contentBlock\.url/);
   });
@@ -1415,16 +1428,20 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
   // Schema-driven: an object_list field's items are block instances (they get a
   // @uid, are selectable/editable), so each must carry a type in the field the
   // schema names. Absent a schema this can't be known, so the check runs only
-  // when a schemaFor is supplied. Regression guard for the `tab`/socialLinks
+  // when schemas are supplied. Regression guard for the `tab`/socialLinks
   // "no editable example" bug the bridge suite caught 17 minutes in.
   // `allowedBlocks` is what makes this list TYPED: its items vary in kind, so
   // each must say which. A list with one inline `schema` is a record list and
   // carries no type — the fixture states the difference rather than leaving it
   // to a default, which is how it used to read as typed by accident.
-  const accordionSchema = (t) =>
-    t === 'accordion'
-      ? { properties: { panels: { widget: 'object_list', allowedBlocks: ['panel'], typeField: '@type' } } }
-      : null;
+  const accordionConfig = {
+    accordion: {
+      blockSchema: {
+        properties: { panels: { widget: 'object_list', allowedBlocks: ['panel'], typeField: '@type' } },
+      },
+    },
+    panel: { blockSchema: { properties: { title: {} } } },
+  };
 
   const pageWithAccordion = (panels) => ({
     '@id': '/page-a', '@type': 'Document', id: 'page-a',
@@ -1437,7 +1454,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
     const { root, contentDir } = buildFixture({
       pageA: pageWithAccordion([{ '@id': 'p1', '@type': 'panel', title: 'ok' }, { '@id': 'p2', title: 'no type' }]),
     });
-    const r = checkIntegrity(contentDir, { schemaFor: accordionSchema });
+    const r = checkIntegrity(contentDir, { schemasFor: () => accordionConfig });
     cleanup(root);
     assert.ok(
       r.errors.some((e) => e.includes('object_list field "panels" item 1') && e.includes('missing its type field "@type"')),
@@ -1451,15 +1468,18 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
     const { root, contentDir } = buildFixture({
       pageA: pageWithAccordion([{ '@id': 'p1', '@type': 'panel', title: 'a' }, { '@id': 'p2', '@type': 'panel', title: 'b' }]),
     });
-    const r = checkIntegrity(contentDir, { schemaFor: accordionSchema });
+    const r = checkIntegrity(contentDir, { schemasFor: () => accordionConfig });
     cleanup(root);
     assert.ok(!r.errors.some((e) => e.includes('missing its type field')), r.errors.join('\n'));
   });
 
   it('honors the schema-named typeField (not a hardcoded @type)', () => {
     // A field can name where the type lives; the check reads THAT key.
-    const schemaFor = (t) =>
-      t === 'facetgroup' ? { properties: { facets: { widget: 'object_list', typeField: 'type' } } } : null;
+    const facetConfig = {
+      facetgroup: {
+        blockSchema: { properties: { facets: { widget: 'object_list', typeField: 'type' } } },
+      },
+    };
     const { root, contentDir } = buildFixture({
       pageA: {
         '@id': '/page-a', '@type': 'Document', id: 'page-a',
@@ -1468,7 +1488,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
         blocks_layout: { items: ['fg'] },
       },
     });
-    const r = checkIntegrity(contentDir, { schemaFor });
+    const r = checkIntegrity(contentDir, { schemasFor: () => facetConfig });
     cleanup(root);
     assert.ok(
       r.errors.some((e) => e.includes('facets" item 0') && e.includes('missing its type field "type"')),
@@ -1480,8 +1500,11 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
     // hydra reads an item's type as `@type ?? item[typeField]` (getBlockType),
     // so an item carrying @type IS typed — a frontend whose facets are
     // `{"@type": "selectFacet"}` against a schema naming `type` renders fine.
-    const schemaFor = (t) =>
-      t === 'facetgroup' ? { properties: { facets: { widget: 'object_list', typeField: 'type' } } } : null;
+    const facetConfig = {
+      facetgroup: {
+        blockSchema: { properties: { facets: { widget: 'object_list', typeField: 'type' } } },
+      },
+    };
     const r = checkIntegrity(
       [{
         rel: '/p',
@@ -1491,7 +1514,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
           blocks_layout: { items: ['fg'] },
         },
       }],
-      { schemaFor },
+      { schemasFor: () => facetConfig },
     );
     assert.deepEqual(r.errors.filter((e) => e.includes('type field')), []);
   });
@@ -1508,24 +1531,30 @@ describe('checkIntegrity — every list item has its own id', () => {
       blocks, blocks_layout: { items: Object.keys(blocks) },
     },
   }];
-  const slidesSchema = (idField) => (t) => (t === 'slider'
-    ? { properties: { slides: { widget: 'object_list', ...(idField ? { idField } : {}) } } } : null);
+  const slidesConfig = (idField) => ({
+    slider: {
+      blockSchema: {
+        properties: { slides: { widget: 'object_list', ...(idField ? { idField } : {}) } },
+      },
+    },
+    slide: { blockSchema: { properties: { title: {} } } },
+  });
   const idErrors = (r) => r.errors.filter((e) => e.includes(' id '));
 
   it('FAILS an object_list item with no id (default idField @id)', () => {
-    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }, { '@type': 'slide' }] } }), { schemaFor: slidesSchema() });
+    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }, { '@type': 'slide' }] } }), { schemasFor: () => slidesConfig() });
     assert.ok(r.errors.some((e) => e.includes('slides" item 1') && e.includes('has no id "@id"')), r.errors.join('\n'));
     assert.ok(!r.errors.some((e) => e.includes('slides" item 0')), r.errors.join('\n'));
   });
 
   it('reads the id from the schema-named idField, so ids stored under the wrong key fail', () => {
     // A region that put ids in @id while the frontend reads `key`.
-    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }] } }), { schemaFor: slidesSchema('key') });
+    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }] } }), { schemasFor: () => slidesConfig('key') });
     assert.ok(r.errors.some((e) => e.includes('slides" item 0') && e.includes('has no id "key"')), r.errors.join('\n'));
   });
 
   it('FAILS two object_list items that share an id', () => {
-    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'x' }, { '@type': 'slide', '@id': 'x' }] } }), { schemaFor: slidesSchema() });
+    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'x' }, { '@type': 'slide', '@id': 'x' }] } }), { schemasFor: () => slidesConfig() });
     assert.ok(r.errors.some((e) => e.includes('slides" item 1') && e.includes('repeats id "x"')), r.errors.join('\n'));
   });
 
@@ -1547,7 +1576,7 @@ describe('checkIntegrity — every list item has its own id', () => {
     const r = checkIntegrity(page({
       s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }, { '@type': 'slide', '@id': 'b' }] },
       ...table([{ key: 'r1', cells: [cell('c1', 'a'), cell('c2', 'b')] }, { key: 'r2', cells: [cell('c3', 'c'), cell('c4', 'd')] }]),
-    }), { schemaFor: slidesSchema() });
+    }), { schemasFor: () => slidesConfig() });
     assert.deepEqual(idErrors(r), []);
   });
 });
@@ -1607,7 +1636,7 @@ describe('validating against a site\'s schemas', () => {
     // schema says it must be a bare array of nodes.
     const r = checkIntegrity(
       page({ b1: { '@type': 'card', title: 'T', body: { value: [{ type: 'p', children: [{ text: 'x' }] }] } } }),
-      { schemaFor: schemaForFrom(SCHEMAS) },
+      { schemasFor: () => SCHEMAS },
     );
     assert.ok(r.errors.some((e) => /card\) field "body" is widget:slate/.test(e)), r.errors.join('\n'));
   });
@@ -1703,7 +1732,13 @@ describe('template slot arrangement covers every region', () => {
     },
   }];
   const slot = (id) => ({ '@type': 'slate', slotId: id, fixed: false, readOnly: false });
-  const errs = (items) => checkIntegrity(items).errors.filter((e) => /sit next to each other|not contiguous/.test(e));
+  // `columns.slides` is an object_list. Since #548 the `templateId` shortcut
+  // is the MERGE's opt-in, not a default, so a caller that is not merging says
+  // which fields hold children — the validator always has the schemas to say.
+  const REGIONS = { columns: { slides: '@id' } };
+  const errs = (items) =>
+    checkIntegrity(items, { idFieldMap: REGIONS }).errors
+      .filter((e) => /sit next to each other|not contiguous/.test(e));
 
   it('reports two adjacent OPEN slots in a COLUMNS region', () => {
     const r = errs(tpl({}, {
