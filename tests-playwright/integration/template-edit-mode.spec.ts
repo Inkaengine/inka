@@ -571,6 +571,30 @@ test.describe('Template Edit Mode - wherever the instance sits', () => {
       await expect(otherHeader).toContainText(marker, { timeout: 15000 });
     });
 
+    test(`a template ${where}: locking straight after typing still asks what to do with the edit`, async ({ page }) => {
+      // The page holds typing for a moment before sending it to the editor. Locking
+      // inside that moment must still see the edit: the lock flushes it first, so
+      // the "was it changed?" check finds it and asks — rather than locking silently
+      // and losing it.
+      const helper = new AdminUIHelper(page);
+      await editHeader(helper, page);
+      // The header is selected and the toolbar is showing it: press its lock straight
+      // away, with no other gesture first.
+      const toggle = page.locator('.quanta-toolbar .template-lock-toggle');
+      await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      await toggle.click();
+      const modal = page.locator('.template-lock-modal');
+      await expect(modal).toBeVisible({ timeout: 5000 });
+      await modal.locator('.template-commit').click();
+      await expect(toggle).toHaveAttribute('aria-pressed', 'false', { timeout: 10000 });
+
+      await page.keyboard.press('Control+s');
+      await expect(page.locator('.toolbar-actions .edit, [aria-label="Edit"]')).toBeVisible({ timeout: 10000 });
+      await helper.navigateToView(other);
+      const { locator: otherHeader } = await helper.waitForBlockByContent(SNIPPET_HEADER);
+      await expect(otherHeader).toContainText(marker, { timeout: 15000 });
+    });
+
     test(`a template ${where}: resetting discards the edit`, async ({ page }) => {
       const helper = new AdminUIHelper(page);
       const { headerId, header } = await editHeader(helper, page);

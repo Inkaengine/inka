@@ -1148,6 +1148,10 @@ const Iframe = (props) => {
   // per-instance snapshot of formData taken at unlock time (so "Reset changes"
   // can revert only that template's blocks, keeping page edits).
   const [templateModal, setTemplateModal] = useState(null); // { kind, instanceId } | null
+  // The latest page from the store, for code that awaits something first (the lock
+  // button awaits a flush) and must then read the page as it is now.
+  const propertiesRef = useRef(properties);
+  propertiesRef.current = properties;
   // True while a template lock-commit is persisting (flush → reverse-merge → PATCH →
   // unlock). That round-trip can be slow and, unlike a page save, has no Volto request
   // spinner — so show a Dimmer+Loader over the editor and block interaction until it
@@ -5295,16 +5299,20 @@ const Iframe = (props) => {
   // Entry point for the sidebar "Edit template" toggle AND the Quanta toolbar lock
   // icon. Unlocking warns first; locking asks what to do with the edits. The actual
   // enter/commit/reset run from the modal's buttons.
-  const handleToggleTemplateEditMode = (instanceId) => {
+  const handleToggleTemplateEditMode = async (instanceId) => {
     const unlocked = iframeSyncState.templateEditMode || [];
     if (!unlocked.includes(instanceId)) {
       // Unlocking → warn first.
       setTemplateModal({ kind: 'unlock', instanceId });
       return;
     }
-    // Locking → if the template wasn't changed during the unlock session, lock
-    // silently (no prompt, no save); otherwise show the Change/Reset/Cancel modal.
-    if (isInstanceUnchanged(instanceId, properties)) {
+    // Locking → flush the page's pending typing first: the page holds it for a
+    // moment before sending it, and an edit typed just before pressing the lock
+    // must count. Then, from the page as it is now: if the template wasn't changed
+    // during the unlock session, lock silently (no prompt, no save); otherwise show
+    // the Change/Reset/Cancel modal.
+    await flushIframeEdits();
+    if (isInstanceUnchanged(instanceId, propertiesRef.current)) {
       exitTemplateEditNoSave(instanceId);
     } else {
       setTemplateModal({ kind: 'lock', instanceId });
