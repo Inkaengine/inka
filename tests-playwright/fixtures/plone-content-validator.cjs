@@ -1369,12 +1369,20 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
 // that store one: an object_browser/url entry, or an image field. Which FIELD
 // that is varies per block and is not knowable from its name — `link` and
 // `searchPath` hold references, `items` and `steps` do not.
-/** Whether a value is a REFERENCE rather than a local identifier: uid-encoded
- *  (`resolveuid/…`, possibly with `../` hops), rooted at the site (`/about`),
- *  or an absolute URL. An object_list item's id (`slide-1`, `pillar-advise`)
- *  is none of those. Used only where no schema says which fields are links. */
+/** Whether a value is a REFERENCE rather than a local identifier or prose:
+ *  uid-encoded (`resolveuid/…`, possibly with `../` hops), rooted at the site
+ *  (`/about`), or an absolute URL. An object_list item's id (`slide-1`) is
+ *  none of those, and neither is a headline — whitespace rules out prose,
+ *  which a bare `scheme:` test does not ("Listing: Default" is not a mailto).
+ *  Used only where no schema says which fields are links. */
 function looksLikeReference(ref) {
-  return typeof ref === 'string' && /^(\.\.\/)*resolveuid\/|^\/|^[a-z][a-z0-9+.-]*:/i.test(ref);
+  if (typeof ref !== 'string' || ref === '' || /\s/.test(ref)) return false;
+  return (
+    /^(\.\.\/)*resolveuid\//.test(ref) ||
+    ref.startsWith('/') ||
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(ref) ||
+    /^(mailto|tel):/i.test(ref)
+  );
 }
 
 const REFERENCE_WIDGETS = new Set(['object_browser', 'url', 'image']);

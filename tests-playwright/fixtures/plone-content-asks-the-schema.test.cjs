@@ -138,3 +138,39 @@ describe('a link target is not a block', () => {
     assert.match(r.errors[0], /slide\.bogus/);
   });
 });
+
+/**
+ * The shape fallback runs only where no schema exists, and it has to tell a
+ * reference from ordinary prose. `headline: "Listing: Default"` is a title,
+ * not a `mailto:` — a bare `scheme:` test reads it as one, and did: it failed
+ * every docs page in block-sanity.
+ */
+describe('the shape fallback does not read prose as a reference', () => {
+  const page = (blocks) => [{
+    rel: 'content/x',
+    data: { '@id': '/x', UID: 'x1', blocks, blocks_layout: { items: Object.keys(blocks) } },
+  }];
+
+  it('leaves a headline that merely contains a colon alone', () => {
+    const r = checkIntegrity(page({
+      l: { '@type': 'listing', headline: 'Listing: Default' },
+      g: { '@type': 'gridBlock', headline: 'Listing: Grid (Teaser)' },
+    }));
+    assert.deepEqual(r.errors, [], r.errors.join('\n'));
+    assert.equal(r.stats.linksBroken, 0);
+  });
+
+  it('still catches a broken reference with no schema to go on', () => {
+    const r = checkIntegrity(page({
+      t: { '@type': 'teaser', href: [{ '@id': 'resolveuid/deadbeefdeadbeefdeadbeefdeadbeef' }] },
+    }));
+    assert.equal(r.stats.linksBroken, 1, r.errors.join('\n'));
+  });
+
+  it('does not mistake an object_list item id for a reference', () => {
+    const r = checkIntegrity(page({
+      s: { '@type': 'slider', slides: [{ '@id': 'slide-1', title: 'x' }] },
+    }));
+    assert.deepEqual(r.errors, [], r.errors.join('\n'));
+  });
+});
