@@ -2048,6 +2048,13 @@ const Iframe = (props) => {
     if (rejectMove) return 'rejected';
     if (deferredToChooser) return 'needs-choice';
 
+    // Each block's membership before the move restamps it: where it came FROM
+    // decides how it lands (applyMembershipAfterMove).
+    const membershipOf = (b) => ({ templateInstanceId: b?.templateInstanceId, fixed: b?.fixed });
+    const sourceById = Object.fromEntries(
+      blocksToMove.map((bid) => [bid, membershipOf(getBlockById(currentFormData, currentBlockPathMap, bid))]),
+    );
+
     // Move all blocks in sequence, each one after the previous
     // Track insertAfter for each block (needed for template inheritance)
     let newFormData = currentFormData;
@@ -2113,6 +2120,7 @@ const Iframe = (props) => {
           templateEditMode: templateEditModeRef.current,
           metadata,
           insertAfterById: blockInsertAfterMap,
+          sourceById,
         },
       );
       newFormData = settledMove.formData;
@@ -5186,6 +5194,9 @@ const Iframe = (props) => {
                 templateEditMode: templateEditModeRef.current,
                 metadata,
                 insertAfterById: { [chooser.blockId]: pm.insertAfter },
+                sourceById: {
+                  [chooser.blockId]: { templateInstanceId: blockData.templateInstanceId, fixed: blockData.fixed },
+                },
               },
             );
             updatedProperties = settledDrop.formData;

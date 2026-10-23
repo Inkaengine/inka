@@ -1,0 +1,95 @@
+{
+  "@id": "/templates/conv-footer-layout",
+  "@type": "Document",
+  "UID": "conv-footer-layout-uid",
+  "id": "conv-footer-layout",
+  "title": "Conv Footer Layout",
+  "description": "A footer whose box only takes convGroupDst: a dropped convGroupSrc converts into it",
+  "blocks": {
+    "conv-footer-box": {
+      "@type": "convGroupBox",
+      "fixed": true,
+      "readOnly": true,
+      "templateId": "resolveuid/conv-footer-layout-uid",
+      "slotId": "conv-box",
+      "blocks": {
+        "cf-dst-1": {
+          "@type": "convGroupDst",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "resolveuid/conv-footer-layout-uid",
+          "slotId": "cf-dst-1",
+          "blocks": {
+            "cf-dst-child": {
+              "@type": "convTargetA",
+              "title": "Footer group child",
+              "fixed": true,
+              "readOnly": true,
+              "templateId": "resolveuid/conv-footer-layout-uid",
+              "slotId": "cf-dst-child"
+            }
+          },
+          "blocks_layout": {
+            "items": [
+              "cf-dst-child"
+            ]
+          }
+        }
+      },
+      "blocks_layout": {
+        "items": [
+          "cf-dst-1"
+        ]
+      }
+    },
+    "default-slot": {
+      "@type": "slate",
+      "fixed": false,
+      "templateId": "resolveuid/conv-footer-layout-uid",
+      "slotId": "default",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": ""
+            }
+          ]
+        }
+      ],
+      "plaintext": ""
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "conv-footer-box",
+      "default-slot"
+    ]
+  },
+  "@components": {
+    "actions": {
+      "@id": "/templates/conv-footer-layout/@actions",
+      "object": [
+        {
+          "@id": "/templates/conv-footer-layout/edit",
+          "id": "edit",
+          "title": "Edit"
+        }
+      ],
+      "object_buttons": []
+    },
+    "breadcrumbs": {
+      "@id": "/templates/conv-footer-layout/@breadcrumbs",
+      "items": [
+        {
+          "@id": "/templates",
+          "title": "Templates"
+        },
+        {
+          "@id": "/templates/conv-footer-layout",
+          "title": "Conv Footer Layout"
+        }
+      ]
+    }
+  }
+}

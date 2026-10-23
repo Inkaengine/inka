@@ -2700,6 +2700,12 @@ export function syncChildBlockTypes(formData, blockPathMap, blockId, oldBlockDat
  * @param {Object} options.intl
  * @param {Array|null} [options.templateEditMode] - unlocked instance ids
  * @param {boolean} [options.insertAfter]
+ * @param {{templateInstanceId?: string, fixed?: boolean}} [options.source] - the
+ *   block's membership BEFORE it moved. The insert stamps the landing template on
+ *   the block (as it does an added block), so what the block says now is not
+ *   where it came from: a block from outside would look like the template's own
+ *   fixed block and skip the rules below. Omitted: the block itself (nothing
+ *   restamped it).
  * @returns {Object} formData (unchanged object identity when nothing changed)
  */
 export function applyMembershipAfterMove(formData, blockPathMap, blockId, options) {
@@ -2711,6 +2717,7 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
   } = options;
   const originalBlockData = getBlockById(formData, blockPathMap, blockId);
   if (!originalBlockData) return formData;
+  const source = options.source ?? originalBlockData;
   const targetContainerConfig = getContainerFieldConfig(
     blockId,
     blockPathMap,
@@ -2740,7 +2747,7 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
   const position = fullLayout.indexOf(blockId);
   const layoutItems = fullLayout.filter((id) => id !== blockId);
 
-  const instId = originalBlockData.templateInstanceId;
+  const instId = source.templateInstanceId;
   const editingThisTemplate =
     !!instId && (templateEditMode || []).includes(instId);
   const inSameInstance = (id) =>
@@ -2750,15 +2757,21 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
     layoutItems.slice(0, position).some(inSameInstance) &&
     layoutItems.slice(position).some(inSameInstance);
 
+  // Kept as it is: a template's own fixed block, or a move inside the template
+  // being edited. Anything else lands as a block ADDED here would: its membership,
+  // slot and fixed are the add rules' for this position (applyBlockDefaultsWithContext).
+  const keepsIdentity = (source.fixed && source.templateInstanceId === originalBlockData.templateInstanceId) || insideTemplate;
   let blockData = originalBlockData;
-  if (!originalBlockData.fixed && !insideTemplate) {
+  if (!keepsIdentity) {
     blockData = { ...blockData };
     delete blockData.templateId;
     delete blockData.templateInstanceId;
     delete blockData.slotId;
+    delete blockData.fixed;
     delete blockData.readOnly;
   }
-  const updatedBlockData = applyBlockDefaultsWithContext(blockData, {
+  const parentBlock = container === formData ? undefined : container;
+  let updatedBlockData = applyBlockDefaultsWithContext(blockData, {
     containerId,
     field: containerRegion,
     position,
@@ -2767,18 +2780,31 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
     allBlocks: siblings,
     // The container itself, as the add path passes it: a block inside a template
     // container joins that template even with no slot facing it.
-    parentBlock: container === formData ? undefined : container,
+    parentBlock,
     blockPathMap,
     blocksConfig,
     intl,
   });
+  if (!keepsIdentity && parentBlock?.templateInstanceId) {
+    // Then, inside a template CONTAINER, what the insert does for an ADDED block
+    // (insertBlockInContainer): it joins the instance of the block it lands
+    // beside, else of the container, fixed like it — the same order, and result,
+    // as adding a block at this position. At a page's own level the position
+    // rules above decide alone: a drop beside a template's outer anchor is out.
+    const besideId = insertAfter ? layoutItems[position - 1] : layoutItems[position];
+    updatedBlockData = inheritTemplateMembership(
+      updatedBlockData,
+      siblings[besideId] || parentBlock,
+      { inheritFixed: !!parentBlock?.templateInstanceId },
+    );
+  }
   // The block's CONTENTS go where it went. A well-formed template carries
   // templateId on every block, nested ones included (the merge drops a nested
   // block without one as malformed), so a container that joined a template
   // brings its children into it, and one that left takes them out.
   const withContents = withDescendantMembership(
     updatedBlockData,
-    originalBlockData.templateInstanceId ?? null,
+    source.templateInstanceId ?? null,
   );
   // Compare against originalBlockData, not the (possibly membership-stripped)
   // copy — otherwise a stripped block whose recompute is a no-op is never
@@ -2865,6 +2891,10 @@ export function settleBlockStructure(formData, blockPathMap, what, options) {
     templateEditMode = null,
     metadata,
     insertAfterById = {},
+    // Each landed block's membership before it moved ({templateInstanceId, fixed}).
+    // The insert stamps the landing template on the block, so without this a block
+    // from outside looks like the template's own (applyMembershipAfterMove).
+    sourceById = {},
   } = options;
   let out = formData;
   let map = blockPathMap;
@@ -2878,6 +2908,7 @@ export function settleBlockStructure(formData, blockPathMap, what, options) {
       intl,
       templateEditMode,
       insertAfter: insertAfterById[blockId],
+      ...(sourceById[blockId] ? { source: sourceById[blockId] } : {}),
     });
     if (next !== out) {
       out = next;
