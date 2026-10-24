@@ -1368,9 +1368,9 @@ describe('a layout menu must not re-home a page', () => {
     const page = {
       '@id': '/docs/examples/an-event',
       blocks: {
-        'ev-title': { '@type': 'title', templateId: '/templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'title', readOnly: true, fixed: true },
-        'ev-meta': { '@type': 'eventMetadata', templateId: '/templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'event-metadata', fixed: true },
-        'ev-body': { '@type': 'slate', templateId: '/templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'content', value: [{ type: 'p', children: [{ text: 'Body' }] }] },
+        'ev-title': { '@type': 'title', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'title', readOnly: true, fixed: true },
+        'ev-meta': { '@type': 'eventMetadata', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'event-metadata', fixed: true },
+        'ev-body': { '@type': 'slate', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'content', value: [{ type: 'p', children: [{ text: 'Body' }] }] },
       },
       blocks_layout: { items: ['ev-title', 'ev-meta', 'ev-body'] },
     };
@@ -1379,18 +1379,18 @@ describe('a layout menu must not re-home a page', () => {
     // serves these from its template cache); what must NOT happen is the menu
     // swapping it for allowedLayouts[0].
     const eventView = {
-      '@id': '/templates/event-view',
+      '@id': '/inka-templates/event-view',
       blocks: {
-        't-title': { '@type': 'title', templateId: '/templates/event-view', slotId: 'title', readOnly: true, fixed: true },
-        't-meta': { '@type': 'eventMetadata', templateId: '/templates/event-view', slotId: 'event-metadata', fixed: true },
-        't-content': { '@type': 'slate', templateId: '/templates/event-view', slotId: 'content', value: [] },
+        't-title': { '@type': 'title', templateId: '/inka-templates/event-view', slotId: 'title', readOnly: true, fixed: true },
+        't-meta': { '@type': 'eventMetadata', templateId: '/inka-templates/event-view', slotId: 'event-metadata', fixed: true },
+        't-content': { '@type': 'slate', templateId: '/inka-templates/event-view', slotId: 'content', value: [] },
       },
       blocks_layout: { items: ['t-title', 't-meta', 't-content'] },
     };
 
     const { merged } = await mergeTemplatesIntoPage(page, {
       loadTemplate: async (id) => {
-        if (id !== '/templates/event-view') {
+        if (id !== '/inka-templates/event-view') {
           throw new Error(`the menu must not apply a different layout (asked for ${id})`);
         }
         return eventView;

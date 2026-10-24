@@ -304,7 +304,7 @@ With the `inkaengine.inka` backend addon installed (`backend/` in the Inka repos
 ### Javascript
 
 ```javascript
-const forcedLayouts = ['/templates/site-footer'];
+const forcedLayouts = ['/inka-templates/site-footer'];
 
 const response = await fetch(
     `${apiBase}/++api++${path}?expand=templates` +

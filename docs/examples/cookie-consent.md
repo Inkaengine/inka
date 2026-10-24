@@ -45,7 +45,7 @@ We use essential cookies to make this site work, and analytics cookies to see ho
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

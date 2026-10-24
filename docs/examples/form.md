@@ -48,7 +48,7 @@ A multi-field form with configurable field types, validation, and email submissi
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-form" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

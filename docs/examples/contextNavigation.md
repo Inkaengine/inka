@@ -67,7 +67,7 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-contextNavigation" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-contextNavigation" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

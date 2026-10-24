@@ -67,12 +67,12 @@ restart the container to pick changes up.
 | Target | What it does |
 | --- | --- |
 | `make backend-start` | Starts Plone with the addon. The database survives restarts. |
-| `make backend-seed` | Loads the content below. Run it on a fresh site: it refuses if the site already has `/templates/site-footer`. |
+| `make backend-seed` | Loads the content below. Run it on a fresh site: it refuses if the site already has `/inka-templates/site-footer`. |
 | `make backend-stop` | Stops it; content is kept. |
 | `make backend-clean` | Stops it and **deletes the database**: the next start creates a fresh site. |
 
 **What the seed loads.** The templates the example frontends force on every page
-(`/templates/site-footer`, `event-view`, `newsitem-view`, `context-navigation-layout`) and
+(`/inka-templates/site-footer`, `event-view`, `newsitem-view`, `context-navigation-layout`) and
 the docs site. They're stored in the repo as markdown (`tests-playwright/fixtures/site-root`,
 `docs/`), which Plone can't import, so `backend/seed.sh` has the mock API `@export` them as a
 `plone.exportimport` distribution and hands that to Plone's `@import`. The result: the
@@ -95,11 +95,11 @@ make backend-clean && make backend-start    # terminal 1: a fresh site
 make backend-seed                           # terminal 2
 ```
 
-Check the endpoint answers. It should list `/templates/site-footer` with no `errors`:
+Check the endpoint answers. It should list `/inka-templates/site-footer` with no `errors`:
 
 ```bash
 curl -s -H 'Accept: application/json' \
-  'http://localhost:8080/Plone/++api++/@templates?expand.templates.extra=/templates/site-footer'
+  'http://localhost:8080/Plone/++api++/@templates?expand.templates.extra=/inka-templates/site-footer'
 ```
 
 ### 2. Run the example against it
@@ -154,7 +154,7 @@ API=http://localhost:8080/Plone/++api++
 # A missing template is listed in `errors`; the page still returns 200.
 curl -s -H 'Accept: application/json' "$API/@templates?expand.templates.extra=/templates/nope"
 # The inline form, as the frontend asks for it.
-curl -s -H 'Accept: application/json' "$API/?expand=templates&expand.templates.extra=/templates/site-footer"
+curl -s -H 'Accept: application/json' "$API/?expand=templates&expand.templates.extra=/inka-templates/site-footer"
 ```
 
 In the example:
