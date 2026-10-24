@@ -32,7 +32,7 @@ MOCK_SERVER = INKA_ROOT / "tests-playwright" / "fixtures" / "mock-api-server.cjs
 # Only the /inka-templates tree is needed here. The export also carries images, the search page
 # and the site root; importing those into the test portal would be slower and would couple
 # these tests to fixtures they do not read.
-KEEP_PREFIX = "templates/"
+KEEP_PREFIX = "inka-templates/"
 
 
 def _free_port():
