@@ -6320,10 +6320,7 @@ app.get('*/@@download/*', (req, res) => {
   // the distribution `<dir>/image/<file>` layout handled below.
   if (markdownBlobs.has(contentPath)) {
     const file = markdownBlobs.get(contentPath);
-    // Scale here too. This handler has THREE serving paths and each one that
-    // ignores the scale makes the mock lie about image size on exactly the
-    // content it owns — these docs fixtures live beside their markdown.
-    if (sendScaledIfAsked(file)) return;
+    // The original, as uploaded: a download names no scale (that is @@images').
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
     res.sendFile(file);
@@ -6347,7 +6344,6 @@ app.get('*/@@download/*', (req, res) => {
         '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
         '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pdf': 'application/pdf',
       };
-      if (sendScaledIfAsked(imageFile)) return;
       res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
       res.sendFile(imageFile);
       return;
