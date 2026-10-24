@@ -994,6 +994,23 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.equal(r.stats.linksBroken, 0, r.errors.join('\n'));
   });
 
+  it('accepts a link to the site root, which every site has', () => {
+    // `/` names the site itself (a breadcrumb trail starts there). Content need
+    // not carry a site-root item for that to resolve — a frontend's test
+    // fixtures mounted on their own have none.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: { home: { '@type': 'teaser', href: [{ '@id': '/' }] } },
+      },
+    });
+    fs.rmSync(path.join(contentDir, 'plone_site_root'), { recursive: true });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.equal(r.stats.linksBroken, 0, r.errors.join('\n'));
+  });
+
   it('accepts a path carrying a #fragment, and still checks the path', () => {
     // Deep-linking to a heading is legitimate content — RichText emits slugged
     // ids for headings precisely so `page#section` resolves. The path branch
