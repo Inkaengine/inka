@@ -294,6 +294,7 @@ function splitMultiNodeSlateBlocks(formData, blockPathMap, blocksConfig, uuidGen
         setFieldValue(block, fieldName, [value[0]]),
       );
       let afterBlockId = blockId;
+      const added = [];
       for (let i = 0; i < restNodes.length; i++) {
         const newBlockId = uuidGenerator();
         const newBlockData = { '@type': 'slate', [fieldName]: [restNodes[i]] };
@@ -301,6 +302,7 @@ function splitMultiNodeSlateBlocks(formData, blockPathMap, blocksConfig, uuidGen
           result, blockPathMap, afterBlockId, newBlockId, newBlockData, containerConfig, 'after',
         );
         afterBlockId = newBlockId;
+        added.push(newBlockId);
         if (i === 0) selectBlockId = newBlockId;
       }
 
@@ -317,12 +319,12 @@ function splitMultiNodeSlateBlocks(formData, blockPathMap, blocksConfig, uuidGen
 
       // Only process one split per render cycle to avoid stale blockPathMap.
       // Flattens done so far this pass ride along in `result`.
-      return { formData: result, selectBlockId, selection: newSelection };
+      return { formData: result, selectBlockId, selection: newSelection, added };
     }
   }
 
   if (flattenedAny) {
-    return { formData: result, selectBlockId: null, selection: null };
+    return { formData: result, selectBlockId: null, selection: null, added: [] };
   }
   return null;
 }
@@ -381,7 +383,7 @@ import {
   previewSchemaDefaultConversions,
   filterAddableTypesByRule,
   applyBlockDefaultsWithContext,
-  applyMembershipAfterMove,
+  applyMembershipWhereLanded,
   settleBlockStructure,
   deleteBlocks,
   canInsertBesideBlock,
@@ -1144,6 +1146,30 @@ const Iframe = (props) => {
   // Keep the latest-ref current as of this render (see templateEditModeRef).
   templateEditModeRef.current = iframeSyncState.templateEditMode || [];
 
+  // New blocks an edit just created (a split, a list break, extra blocks, a
+  // paste) take their template membership from where they landed — the one rule
+  // for add, paste and move (applyMembershipWhereLanded; docs/architecture.md
+  // "Template membership"). A new block brings none of its own; a pasted one
+  // names the instance it was copied from (`sourceById`) so its children are
+  // recognised as coming along with it.
+  const placeAddedBlocks = (fd, ids, sourceById = Object.fromEntries(ids.map((id) => [id, {}]))) =>
+    ids.length === 0
+      ? fd
+      : settleBlockStructure(
+          fd,
+          buildBlockPathMap(fd, config.blocks.blocksConfig, intl),
+          { landed: ids },
+          {
+            blocksConfig: config.blocks.blocksConfig,
+            intl,
+            uuidGenerator: uuid,
+            templateEditMode: templateEditModeRef.current,
+            metadata,
+            insertAfterById: Object.fromEntries(ids.map((id) => [id, true])),
+            sourceById,
+          },
+        ).formData;
+
   // v2 template edit: the decision modal shown on unlock/lock/save-gate, and a
   // per-instance snapshot of formData taken at unlock time (so "Reset changes"
   // can revert only that template's blocks, keeping page edits).
@@ -1310,6 +1336,15 @@ const Iframe = (props) => {
         currentBpm = buildBlockPathMap(newFormData, blocksConfig, intl);
         lastId = newId;
       }
+      // Where they landed decides their membership (placeAddedBlocks); each names
+      // the instance it was copied from, never `fixed` — a copy is a new block.
+      newFormData = placeAddedBlocks(
+        newFormData,
+        pasteBlocks.map(([newId]) => newId),
+        Object.fromEntries(
+          pasteBlocks.map(([newId, b]) => [newId, { templateInstanceId: b.templateInstanceId }]),
+        ),
+      );
 
       const commitPaste = (fd) => {
         if (!keepClipboard) dispatch(resetBlocksClipboard());
@@ -2049,7 +2084,7 @@ const Iframe = (props) => {
     if (deferredToChooser) return 'needs-choice';
 
     // Each block's membership before the move restamps it: where it came FROM
-    // decides how it lands (applyMembershipAfterMove).
+    // decides how it lands (applyMembershipWhereLanded).
     const membershipOf = (b) => ({ templateInstanceId: b?.templateInstanceId, fixed: b?.fixed });
     const sourceById = Object.fromEntries(
       blocksToMove.map((bid) => [bid, membershipOf(getBlockById(currentFormData, currentBlockPathMap, bid))]),
@@ -2324,50 +2359,6 @@ const Iframe = (props) => {
     // Create block data (use custom data if provided)
     let blockData;
 
-    // Inherit template membership (templateId/slotId) for a block inserted into a
-    // container region — uniform across blocks_layout and object_list. Both are just an
-    // ordered region of child blocks; getChildBlockEntries (public helper) normalises the
-    // storage so this never branches on it. The neighbour is the LAST existing child for
-    // 'inside' (append at end), else the sibling blockId we insert relative to.
-    const inheritTemplateMembership = (bd) => {
-      // A pasted/added block takes on the membership of where it LANDS — strip any source
-      // template/slot it arrived carrying (e.g. copied from a template slot) so the
-      // recompute below derives membership purely from the destination. Fixed template
-      // blocks keep theirs. (Fresh adds have no membership, so this is a no-op for them.)
-      if (bd && !bd.fixed && (bd.templateId || bd.slotId)) {
-        bd = { ...bd };
-        delete bd.templateId;
-        delete bd.templateInstanceId;
-        delete bd.slotId;
-        delete bd.readOnly;
-      }
-      const region = containerConfig?.region || 'items';
-      // The REAL container the new block lands in: containerConfig.parentId (the page,
-      // or the container for a nested/inside add). NOT blockPathMap[blockId].parentId —
-      // for a template-member block that is the VIRTUAL templateInstanceId, not a real
-      // block, so getChildBlockEntries finds no siblings and nothing is inherited.
-      const containerId = action === 'inside' ? blockId : (containerConfig?.parentId || PAGE_BLOCK_UID);
-      const container = (containerId === PAGE_BLOCK_UID || containerId === 'page')
-        ? formData
-        : getBlockById(formData, blockPathMap, containerId);
-      const entries = getChildBlockEntries(container, containerConfig);
-      const refIndex = entries.findIndex((entry) => entry.id === blockId);
-      const position = action === 'inside' ? entries.length
-        : action === 'after' ? refIndex + 1
-        : refIndex;
-      const insertAfter = action === 'after' || action === 'inside';
-      return applyBlockDefaultsWithContext(bd, {
-        items: entries.map((entry) => entry.block),
-        position,
-        insertAfter,
-        parentBlock: container,
-        containerId,
-        field: region,
-        blocksConfig: mergedBlocksConfig,
-        intl,
-      });
-    };
-
     if (customBlockData) {
       blockData = customBlockData;
     } else if (isObjectList) {
@@ -2418,9 +2409,6 @@ const Iframe = (props) => {
       // Initialize nested containers (e.g., cells in a row)
       blockData = initializeContainerBlock(blockData, mergedBlocksConfig, uuid, { intl, metadata, properties, siblingData, blockType: effectiveType });
 
-      // Inherit template membership from the neighbour (uniform read; see helper above).
-      blockData = inheritTemplateMembership(blockData);
-
       // Store the type in the typeField (dropping the @type used only for schema
       // resolution) — the shared setBlockType.
       blockData = setBlockType(blockData, effectiveType, typeFieldName);
@@ -2430,9 +2418,6 @@ const Iframe = (props) => {
       if (blockType === 'slate') {
         blockData.value = [{ type: 'p', children: [{ text: '' }] }];
       }
-
-      // Inherit template membership from the neighbour (uniform read; see helper above).
-      blockData = inheritTemplateMembership(blockData);
 
       // Also apply regular applyBlockDefaults for non-context-aware schemas
       blockData = applyBlockDefaults({ data: blockData, formData: blockData, intl, metadata, properties });
@@ -2454,6 +2439,24 @@ const Iframe = (props) => {
       console.error('[VIEW] insertAndSelectBlock failed');
       return null;
     }
+
+    // Where it landed decides its template membership — the one rule for add,
+    // paste and move (applyMembershipWhereLanded; docs/architecture.md
+    // "Template membership"). An added block brings none of its own.
+    newFormData = settleBlockStructure(
+      newFormData,
+      buildBlockPathMap(newFormData, mergedBlocksConfig, intl),
+      { landed: [newBlockId] },
+      {
+        blocksConfig: mergedBlocksConfig,
+        intl,
+        uuidGenerator: uuid,
+        templateEditMode: templateEditModeRef.current,
+        metadata,
+        insertAfterById: { [newBlockId]: action === 'after' || action === 'inside' },
+        sourceById: { [newBlockId]: {} },
+      },
+    ).formData;
 
     // Ensure new container blocks have at least one child (for gridBlock etc.).
     // NOT settleBlockStructure's job: nothing was taken out of anything here — a
@@ -3231,12 +3234,14 @@ const Iframe = (props) => {
               let fd = mutateBlockInContainer(odForm, odBpm, odBlockId, updatedBlock, containerConfig);
               let bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
               let selectBlockId = odBlockId;
+              const added = [];
 
               // Insert paragraph block after current (only if current kept the before-list)
               if (split.before) {
                 const paraId = uuid();
                 fd = insertBlockInContainer(fd, bpm, odBlockId, paraId,
                   { '@type': blockType, [odFieldName]: split.paragraph }, containerConfig, 'after');
+                added.push(paraId);
                 bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
                 selectBlockId = paraId;
 
@@ -3245,6 +3250,7 @@ const Iframe = (props) => {
                   const afterId = uuid();
                   fd = insertBlockInContainer(fd, bpm, paraId, afterId,
                     { '@type': blockType, [odFieldName]: split.after }, containerConfig, 'after');
+                added.push(afterId);
                   bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
                 }
               } else if (split.after) {
@@ -3252,8 +3258,12 @@ const Iframe = (props) => {
                 const afterId = uuid();
                 fd = insertBlockInContainer(fd, bpm, odBlockId, afterId,
                   { '@type': blockType, [odFieldName]: split.after }, containerConfig, 'after');
+                added.push(afterId);
                 bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
               }
+
+              fd = placeAddedBlocks(fd, added);
+              bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
 
               // Set pending selection and blockPathMap, but NOT formData
               // formData will be updated by the useEffect after it sends FORM_DATA to iframe
@@ -4343,7 +4353,7 @@ const Iframe = (props) => {
       // Split any multi-node slate blocks before sending to iframe
       const toolbarSplit = splitMultiNodeSlateBlocks(toolbarFormData, toolbarBlockPathMap, config.blocks.blocksConfig, uuid, iframeSyncState.selection);
       if (toolbarSplit) {
-        toolbarFormData = toolbarSplit.formData;
+        toolbarFormData = placeAddedBlocks(toolbarSplit.formData, toolbarSplit.added);
         toolbarBlockPathMap = buildBlockPathMap(toolbarFormData, config.blocks.blocksConfig, intl);
         if (toolbarSplit.selectBlockId) {
           flushSync(() => {
@@ -4646,7 +4656,7 @@ const Iframe = (props) => {
     // Each top-level node becomes its own block.
     const splitResult = splitMultiNodeSlateBlocks(formToUse, newBlockPathMap, config.blocks.blocksConfig, uuid, iframeSyncState.selection);
     if (splitResult) {
-      formToUse = splitResult.formData;
+      formToUse = placeAddedBlocks(splitResult.formData, splitResult.added);
       newBlockPathMap = buildBlockPathMap(formToUse, config.blocks.blocksConfig, intl);
       // Select the new block that received the split content
       if (splitResult.selectBlockId) {
@@ -5150,6 +5160,9 @@ const Iframe = (props) => {
         let updatedProperties = insertBlockInContainer(
           properties, bpm, pp.afterBlockId, pp.newId, converted, cfg, 'after',
         );
+        updatedProperties = placeAddedBlocks(updatedProperties, [pp.newId], {
+          [pp.newId]: { templateInstanceId: pp.blockData.templateInstanceId },
+        });
         // The pick placed the block; run `@type` rules in case the position re-types
         // it or a sibling. No second confirm — the pick itself was the ask.
         updatedProperties = applySchemaDefaultsToFormData(
@@ -5984,6 +5997,8 @@ const Iframe = (props) => {
                     bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
                     lastId = newId;
                   }
+                  fd = placeAddedBlocks(fd, extraBlocks.map(([newId]) => newId));
+                  bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
                   pendingSelectBlockUid = lastId;
                   dataChanged = true;
                 }

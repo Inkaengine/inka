@@ -2563,37 +2563,7 @@ function validateServedContent() {
     const own = source.filter((item) => !isHydraOwned(item.rel));
     errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas), { idFieldMap }).errors);
   }
-  return withoutExpectedErrors(errors.map((m) => m.trim()));
-}
-
-/**
- * A fixture that is broken ON PURPOSE — it exists to show how a frontend copes
- * with that content — is declared in its mount's `expected-errors.json`:
- *
- *   { "/image-scales-test": ["url: path not in content: /image-scales-test/test-image.png"] }
- *
- * keyed by the item's path within the mount, each entry a substring of the one
- * problem it excuses. An entry excuses only the problems it matches on that
- * item, and an entry that matches nothing is an error in its own right, so a
- * declaration cannot outlive the breakage it describes.
- */
-function withoutExpectedErrors(errors) {
-  const remaining = [...errors];
-  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const file = path.join(dirPath, 'expected-errors.json');
-    if (!fs.existsSync(file)) continue;
-    for (const [rel, expected] of Object.entries(JSON.parse(fs.readFileSync(file, 'utf-8')))) {
-      const itemPath = mountPath === '/' ? rel : mountPath + (rel === '/' ? '' : rel);
-      for (const text of expected) {
-        const hits = remaining.filter((m) => m.startsWith(`${itemPath}: `) && m.includes(text));
-        if (!hits.length) {
-          remaining.push(`${itemPath}: expected-errors.json expects "${text}", which no longer occurs — remove it from ${file}`);
-        }
-        for (const m of hits) remaining.splice(remaining.indexOf(m), 1);
-      }
-    }
-  }
-  return remaining;
+  return errors.map((m) => m.trim());
 }
 
 /**
@@ -6669,4 +6639,4 @@ if (require.main === module) {
 }
 
 // Export for use by test frontend server or test harnesses
-module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution, getRedirectTarget, getAllRedirects };
+module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution, getRedirectTarget, getAllRedirects, mountInternalRefs };

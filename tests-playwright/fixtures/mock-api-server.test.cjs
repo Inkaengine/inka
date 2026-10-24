@@ -678,11 +678,17 @@ describe('internal references under a prefix mount', () => {
     assert.equal(page['@id'].replace(/^http:\/\/[^/]+/, ''), '/_test_data/container-test-page');
   });
 
-  it('a reference that names nothing under the mount either is left alone', async () => {
-    // image-scales-test points at a test-image.png that exists nowhere: there
-    // is no right answer to give it, so it stays as authored.
-    const text = await get('/_test_data/image-scales-test');
-    assert.ok(text.includes('"/image-scales-test/test-image.png"'));
+  it('a reference that names nothing under the mount either is left alone', () => {
+    // Content that names nothing anywhere can't be committed — the mock refuses
+    // to serve it — so it is made here, and handed to the rewrite directly:
+    // there is no right answer to give it, so it stays as authored.
+    const { mountInternalRefs } = require('./mock-plone-api.cjs');
+    const content = {
+      '@id': '/_test_data/showcase-page',
+      blocks: { a: { '@type': 'teaser', href: [{ '@id': '/no-such-page-anywhere' }] } },
+    };
+    const out = mountInternalRefs(content, '/_test_data/showcase-page');
+    assert.equal(out.blocks.a.href[0]['@id'], '/no-such-page-anywhere');
   });
 });
 

@@ -11,6 +11,15 @@ Read `docs/architecture.md` ("Merging templates: every container is expanded, by
 - Never remove the admin's re-entry as "redundant", and never render a container's children without passing them through the merge. A template can be anywhere a block can.
 - Test new template behaviour with the template placed at the top level AND inside a container.
 
+## Template membership - one rule for add, paste and move
+
+Read `docs/architecture.md` ("Template membership") BEFORE changing how a placed block gets its `templateId` / `templateInstanceId` / `slotId` / `fixed` / `readOnly`.
+
+- Every author placement — add, paste, move (drag and drop, cut and paste) — goes through ONE function, `applyMembershipWhereLanded` (blockSync.js), via `settleBlockStructure` after the insert. `insertBlockInContainer` only inserts; never stamp membership in a second place.
+- A block from another template lands as one with no template; the add rules for where it landed decide. A slot is invented only when no slot faces the gap.
+- Its descendants take its membership AND its `slotId`, except a nested template instance (a snippet), which keeps its own.
+- When the docs and the code disagree, stop and ask which is current. Never pick one silently.
+
 ## Frontends render every onEditChange - no echo checks of their own
 
 The bridge drops echoes, comparing against its own copy of the page, which includes text typed into the frontend. A frontend's copy never gets that typing back, so a frontend comparing against its own data mistakes real changes (e.g. "Reset changes" after typing) for echoes and leaves stale text on screen. See `docs/frontend-guide/live-preview.md` ("Setting Up the Bridge").

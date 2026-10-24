@@ -791,21 +791,20 @@ test.describe('Template Edit Mode - Editability', () => {
     // canAdd must resolve for the nested grid in edit mode — before recursive
     // stamping the cells had no instance id and the Add control never showed.
     // Assert against the iframe (render = source of truth, selection-independent).
-    // The merged grid has ONE real cell (fixture's tpl-grid-cell-2 is a markerless
-    // default the merge drops).
+    // The merged grid has the template's two cells.
     const gridCells = helper.getIframe().locator('.grid-row > [data-block-uid]');
-    await expect(gridCells).toHaveCount(1);
+    await expect(gridCells).toHaveCount(2);
 
     // ADD a child to the nested container while editing the template.
     // (gridBlock allowedBlocks = ['teaser','image'].)
     await helper.addBlockViaSidebar('Blocks', 'Teaser');
-    await expect(gridCells).toHaveCount(2);
+    await expect(gridCells).toHaveCount(3);
 
     // REMOVE a child from the nested container while editing the template.
     await page.evaluate((id) => {
       document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: [id] } }));
     }, cellId);
-    await expect(gridCells).toHaveCount(1);
+    await expect(gridCells).toHaveCount(2);
   });
 
   test('blocks outside template stay editable in edit mode (v2: no page lock)', async ({ page }) => {
