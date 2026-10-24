@@ -90,7 +90,7 @@ The slot a block lives in is identified by its `slotId`. This is the field name 
 
 <block type="callout" variation="important">
 
-**Every block in a template must declare a `slotId`** — not just slot blocks, but **`fixed` and `fixed+readOnly` blocks too, and every block *nested* inside a container.** The recursive merge keeps a nested block only when it has a `slotId` (or a `templateId`): `if (nested.slotId || nested.templateId)`. A block without one is **silently dropped** — the container survives but renders empty, with no error. This is the most common reason a template "half renders".
+**Every block in a template must declare a `slotId`** — not just slot blocks, but **`fixed` and `fixed+readOnly` blocks too, and every block *nested* inside a container.** The recursive merge keeps a nested block only when it has a `slotId` (or a `templateId`): `if (nested.slotId || nested.templateId)`. A block without one is **silently dropped** — the container survives but renders empty, with no error. This is the most common reason a template "half renders". The editor keeps this true for blocks an author places: an added, pasted or moved block, and everything nested in it, takes its slot from where it lands — one rule, described in [Template membership](../architecture.md#template-membership-edit-side-slot-assignment).
 
 </block>
 

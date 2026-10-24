@@ -19,8 +19,8 @@ vi.mock('../context', () => ({
   getLiveBlockData: () => undefined,
 }));
 
-import { buildBlockPathMap } from './blockPath.js';
-import { applyMembershipAfterMove } from './blockSync.js';
+import { buildBlockPathMap, getContainerFieldConfig, insertBlockInContainer } from './blockPath.js';
+import { applyMembershipWhereLanded } from './blockSync.js';
 
 const intl = { formatMessage: (m) => m?.defaultMessage || m?.id || '' };
 const blocksConfig = {
@@ -49,7 +49,7 @@ const pageWith = (items, moved) => ({
 
 const run = (formData, options = {}) => {
   const map = buildBlockPathMap(formData, blocksConfig, intl);
-  return applyMembershipAfterMove(formData, map, 'moved', {
+  return applyMembershipWhereLanded(formData, map, 'moved', {
     blocksConfig,
     intl,
     ...options,
@@ -177,7 +177,7 @@ describe("a moved container's children follow its membership", () => {
     ...extra,
   });
   const runWith = (formData, options = {}) =>
-    applyMembershipAfterMove(formData, buildBlockPathMap(formData, config, intl), 'moved', {
+    applyMembershipWhereLanded(formData, buildBlockPathMap(formData, config, intl), 'moved', {
       blocksConfig: config,
       intl,
       ...options,
@@ -208,5 +208,60 @@ describe("a moved container's children follow its membership", () => {
     expect(after.blocks.moved.templateInstanceId).toBeUndefined();
     expect(after.blocks.moved.blocks.c1.templateInstanceId).toBeUndefined();
     expect(after.blocks.moved.blocks.c1.templateId).toBeUndefined();
+  });
+});
+
+// ADDING goes through the same rule as moving and pasting: the insert only
+// inserts, and applyMembershipWhereLanded gives the new block (no membership of
+// its own) the membership of where it landed.
+describe('an added block takes the membership of where it landed', () => {
+  const cfg = {
+    _page: { id: '_page', schema: () => ({ properties: { items: { widget: 'blocks_layout' } } }) },
+    column: { id: 'column', schema: () => ({ properties: { items: { widget: 'blocks_layout', allowedBlocks: ['slate'] } } }) },
+    slate: { id: 'slate' },
+  };
+  const add = (form, afterId) => {
+    const map = buildBlockPathMap(form, cfg, intl);
+    const cc = getContainerFieldConfig(afterId, map, form, cfg, intl);
+    const inserted = insertBlockInContainer(form, map, afterId, 'b', { '@type': 'slate' }, cc, 'after');
+    return applyMembershipWhereLanded(inserted, buildBlockPathMap(inserted, cfg, intl), 'b', {
+      blocksConfig: cfg,
+      intl,
+      insertAfter: true,
+      source: {},
+    }).blocks.col1;
+  };
+  const column = (a) => ({
+    '@type': 'Document',
+    blocks: {
+      col1: {
+        '@type': 'column',
+        fixed: true,
+        readOnly: true,
+        templateId: 'resolveuid/x',
+        templateInstanceId: 'inst-1',
+        slotId: 'col1',
+        blocks: { a: { '@type': 'slate', templateId: 'resolveuid/x', templateInstanceId: 'inst-1', slotId: 'a', ...a } },
+        blocks_layout: { items: ['a'] },
+      },
+    },
+    blocks_layout: { items: ['col1'] },
+  });
+
+  test("beside a slot member: it joins that slot, in the member's instance", () => {
+    const col = add(column({}), 'a');
+    expect(col.blocks_layout.items).toEqual(['a', 'b']);
+    expect(col.blocks.b).toMatchObject({ templateId: 'resolveuid/x', templateInstanceId: 'inst-1', slotId: 'a', fixed: false });
+  });
+
+  test('beside a fixed block, no slot facing the gap: a fresh slot, fixed and readOnly like it', () => {
+    const col = add(column({ fixed: true, readOnly: true }), 'a');
+    expect(col.blocks.b).toMatchObject({
+      templateId: 'resolveuid/x',
+      templateInstanceId: 'inst-1',
+      slotId: 'slate-1',
+      fixed: true,
+      readOnly: true,
+    });
   });
 });
