@@ -3951,7 +3951,6 @@ const Iframe = (props) => {
             }
           }
 
-            for (const t of ['teaser', 'image', 'hero', 'gridBlock']) { const c = config.blocks.blocksConfig[t] || {}; console.log('[DBGMERGE]', t, JSON.stringify({ keys: Object.keys(c).sort(), title: c.title, group: c.group, fm: c.fieldMappings, se: typeof c.schemaEnhancer, bs: typeof c.blockSchema, s: typeof c.schema, bcKeys: c.blocksConfig ? Object.keys(c.blocksConfig).length : null, allowed: c.allowedBlocks })); }
           // 1c. Merge any additional voltoConfig (non-block settings)
           if (event.data.voltoConfig) {
             recurseUpdateVoltoConfig(event.data.voltoConfig);

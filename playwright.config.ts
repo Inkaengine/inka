@@ -68,8 +68,10 @@ export default defineConfig({
     /* Base URL to use in actions like `await page.goto('/')` */
     baseURL: URLS.voltoSsr,
 
-    /* Trace recording - disabled by default to save space. Enable with TRACE=1 */
-    trace: process.env.TRACE ? 'on-first-retry' : 'off',
+    /* Trace recording - disabled by default to save space. Enable with TRACE=1:
+       a test's first attempt is recorded and kept only if it fails, so a flake
+       that passes on retry still leaves the trace of the run that failed. */
+    trace: process.env.TRACE ? 'retain-on-first-failure' : 'off',
 
     /* Screenshot on failure */
     screenshot: 'only-on-failure',
