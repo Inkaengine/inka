@@ -667,9 +667,14 @@ test.describe('Inline Editing - Basic', () => {
 
     // Clear and type a bullet list using markdown "- "
     await sidebarEditor.click();
-    await page.keyboard.press('ControlOrMeta+a');
+    await expect(sidebarEditor).toBeFocused();
+    // Backspace acts on the selection the editor holds, so the whole text must
+    // be selected before it is pressed.
+    await helper.selectAllTextInEditor(sidebarEditor);
     await page.keyboard.press('Backspace');
-    await expect(sidebarEditor).toHaveText('');
+    // Empty: the widget shows its placeholder, and nothing else.
+    await expect(sidebarEditor.locator('[data-slate-placeholder]')).toBeVisible();
+    await expect(sidebarEditor.locator('[data-slate-string]')).toHaveCount(0);
     await page.keyboard.type('- First item', { delay: 50 });
     await expect(sidebarEditor.locator('li')).toHaveText(['First item']);
     await page.keyboard.press('Enter');
@@ -683,35 +688,31 @@ test.describe('Inline Editing - Basic', () => {
     const iframe = helper.getIframe();
     await expect(iframe.locator('[data-block-uid="block-1-uuid"] li')).toHaveText(['First item', 'Second item']);
 
-    // Place cursor at start of second li
-    await sidebarEditor.evaluate((el: HTMLElement) => {
-      const allLi = el.querySelectorAll('li');
-      const secondLi = allLi[1];
-      if (!secondLi) return;
-      const sel = window.getSelection();
-      const range = document.createRange();
-      const textNode = secondLi.firstChild?.firstChild || secondLi.firstChild;
-      if (textNode) {
-        range.setStart(textNode, 0);
-        range.collapse(true);
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-      }
-    });
-    // The cursor is where Backspace needs it: collapsed at the start of the
-    // second item.
-    await expect
-      .poll(() =>
-        sidebarEditor.evaluate((el: HTMLElement) => {
-          const sel = window.getSelection();
-          const secondLi = el.querySelectorAll('li')[1];
-          if (!sel || !sel.isCollapsed || !sel.anchorNode || !secondLi?.contains(sel.anchorNode)) return 'elsewhere';
-          return sel.anchorOffset;
-        }),
-      )
-      .toBe(0);
-
     const blocksBeforeBackspace = await helper.getStableBlockCount();
+
+    // The cursor where Backspace needs it: collapsed at the start of the second
+    // item. It is placed through the DOM, which the editor only takes in on its
+    // next selection update — a re-render before then puts its old cursor
+    // back — so place it until it holds.
+    await expect(async () => {
+      const where = await sidebarEditor.evaluate((el: HTMLElement) => {
+        const secondLi = el.querySelectorAll('li')[1];
+        const sel = window.getSelection()!;
+        const firstText = document.createTreeWalker(secondLi, NodeFilter.SHOW_TEXT).nextNode();
+        const range = document.createRange();
+        range.setStart(firstText!, 0);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return new Promise<string | number>((resolve) =>
+          requestAnimationFrame(() => {
+            const now = window.getSelection()!;
+            resolve(now.isCollapsed && now.anchorNode && secondLi.contains(now.anchorNode) ? now.anchorOffset : 'moved');
+          }),
+        );
+      });
+      expect(where).toBe(0);
+    }).toPass();
 
     // Press Backspace — should demote second item and split the block
     await page.keyboard.press('Backspace');
