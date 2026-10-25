@@ -51,7 +51,6 @@ for (const provider of [...PROVIDERS, 'honeypot', 'none', 'turnstile']) {
   );
 }
 process.env.CONTENT_MOUNTS = `/:${mount}`;
-process.env.SKIP_CONTENT_VALIDATION = 'true';
 const { app } = require('./mock-api-server.cjs');
 
 let server;

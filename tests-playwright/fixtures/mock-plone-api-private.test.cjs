@@ -59,7 +59,7 @@ function statuses(paths, headers) {
         process.exit(0);
       });`],
     {
-      env: { ...process.env, CONTENT_MOUNTS: `/:${content}`, PORT: '0', SKIP_CONTENT_VALIDATION: 'true' },
+      env: { ...process.env, CONTENT_MOUNTS: `/:${content}`, PORT: '0' },
       encoding: 'utf8',
       timeout: 60_000,
     },

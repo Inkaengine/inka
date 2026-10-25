@@ -51,7 +51,6 @@ describe('mock API startup', () => {
         env: {
           ...process.env,
           CONTENT_MOUNTS: `/:${exportTree()}`,
-          SKIP_CONTENT_VALIDATION: '',
         },
         encoding: 'utf8',
         timeout: 60_000,
@@ -89,7 +88,7 @@ function loadAndAwaitReady(mounts, env = {}) {
       () => process.exit(0),
       (e) => { console.error('READY REJECTED: ' + e.message); process.exit(3); })`],
     {
-      env: { ...process.env, CONTENT_MOUNTS: mounts, SKIP_CONTENT_VALIDATION: '', ...env },
+      env: { ...process.env, CONTENT_MOUNTS: mounts, ...env },
       encoding: 'utf8',
       timeout: 60_000,
     },
@@ -187,7 +186,6 @@ describe('mock API content validation', () => {
       env: {
         ...process.env,
         CONTENT_MOUNTS: `/:${jsonMount(teaserTo('/no-such-page'))}`,
-        SKIP_CONTENT_VALIDATION: '',
         PORT: '0',
       },
       encoding: 'utf8',
@@ -281,17 +279,13 @@ describe('mock API content validation', () => {
     assert.match(run.stderr, /href: path not in content: \/no-such-page/);
   });
 
-  it('SKIP_CONTENT_VALIDATION=true still starts', () => {
-    const run = loadAndAwaitReady(`/:${jsonMount(teaserTo('/no-such-page'))}`, { SKIP_CONTENT_VALIDATION: 'true' });
-    assert.equal(run.status, 0, run.stderr.slice(-2000));
-  });
 });
 
 describe('plone-content served', () => {
   const CLI = path.join(__dirname, '..', '..', 'bin', 'plone-content.cjs');
   const served = (mounts) =>
     spawnSync(process.execPath, [CLI, 'served'], {
-      env: { ...process.env, CONTENT_MOUNTS: mounts, SKIP_CONTENT_VALIDATION: '' },
+      env: { ...process.env, CONTENT_MOUNTS: mounts },
       encoding: 'utf8',
       timeout: 60_000,
     });
