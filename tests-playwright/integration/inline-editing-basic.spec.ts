@@ -669,15 +669,19 @@ test.describe('Inline Editing - Basic', () => {
     await sidebarEditor.click();
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.press('Backspace');
-    await page.waitForTimeout(200);
+    await expect(sidebarEditor).toHaveText('');
     await page.keyboard.type('- First item', { delay: 50 });
-    await page.waitForTimeout(500);
+    await expect(sidebarEditor.locator('li')).toHaveText(['First item']);
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(300);
+    await expect(sidebarEditor.locator('li')).toHaveCount(2);
     await page.keyboard.type('Second item', { delay: 10 });
 
-    // Wait for two list items in the sidebar widget
-    await expect(sidebarEditor.locator('li')).toHaveCount(2, { timeout: 5000 });
+    // Both items are in the sidebar widget AND have reached the iframe: the
+    // round trip re-renders the widget, which would reset a cursor placed
+    // before it arrived.
+    await expect(sidebarEditor.locator('li')).toHaveText(['First item', 'Second item']);
+    const iframe = helper.getIframe();
+    await expect(iframe.locator('[data-block-uid="block-1-uuid"] li')).toHaveText(['First item', 'Second item']);
 
     // Place cursor at start of second li
     await sidebarEditor.evaluate((el: HTMLElement) => {
@@ -694,6 +698,18 @@ test.describe('Inline Editing - Basic', () => {
         sel?.addRange(range);
       }
     });
+    // The cursor is where Backspace needs it: collapsed at the start of the
+    // second item.
+    await expect
+      .poll(() =>
+        sidebarEditor.evaluate((el: HTMLElement) => {
+          const sel = window.getSelection();
+          const secondLi = el.querySelectorAll('li')[1];
+          if (!sel || !sel.isCollapsed || !sel.anchorNode || !secondLi?.contains(sel.anchorNode)) return 'elsewhere';
+          return sel.anchorOffset;
+        }),
+      )
+      .toBe(0);
 
     const blocksBeforeBackspace = await helper.getStableBlockCount();
 
@@ -704,7 +720,6 @@ test.describe('Inline Editing - Basic', () => {
     await helper.waitForBlockCountToBe(blocksBeforeBackspace + 1, 10000);
 
     // Original block should still have the first bullet
-    const iframe = helper.getIframe();
     await expect(iframe.locator('[data-block-uid="block-1-uuid"]')).toContainText('First item', { timeout: 5000 });
 
     // Second item should be in a NEW block as a plain paragraph

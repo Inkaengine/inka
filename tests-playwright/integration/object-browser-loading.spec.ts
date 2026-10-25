@@ -20,11 +20,13 @@ test.describe('object browser loading state', () => {
     await helper.login();
     await helper.navigateToEdit('/deep-link-page');
 
-    // Slow, not stopped: long enough that the loading state is observable rather
-    // than a flash, short enough that the request still completes. The delay IS
-    // the subject — it makes a real state visible, it does not paper over a race.
+    // Held, then released: the level's query stays out until the test has seen
+    // the loading state, so that state is there to see however fast the mock
+    // answers.
+    let releaseLevel!: () => void;
+    const levelReleased = new Promise<void>((resolve) => { releaseLevel = resolve; });
     await page.route(/@search.*path\.depth=1/, async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await levelReleased;
       await route.continue();
     });
 
@@ -38,6 +40,7 @@ test.describe('object browser loading state', () => {
     // While the query is out, the browser says so rather than showing an empty
     // panel that reads as "nothing here".
     await expect(page.locator('.ob-listing-loading')).toBeVisible({ timeout: 10000 });
+    releaseLevel();
 
     // And it stops saying so once the level lands. What the level then CONTAINS
     // is the fixture's business, not this test's — a level with no children is a

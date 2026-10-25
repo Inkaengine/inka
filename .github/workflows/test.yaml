@@ -220,9 +220,8 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
-          # A test that fails keeps the Playwright trace of that failing attempt
-          # (its own console, network and DOM snapshots), uploaded below: what a
-          # flake needs. A retry's trace would only show the run that passed.
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
           # The editor screenshots the docs embed are git-ignored and generated
@@ -252,10 +251,10 @@ jobs:
             playwright-report/
             test-results/**/*.png
           retention-days: 7
-      # A test that failed and then passed on retry doesn't fail the job, but the
-      # trace of its failed attempt is the evidence the flake needs, so keep any
-      # traces whatever the outcome (none are kept when nothing failed).
-      - name: Upload failure traces
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -344,9 +343,8 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
-          # A test that fails keeps the Playwright trace of that failing attempt
-          # (its own console, network and DOM snapshots), uploaded below: what a
-          # flake needs. A retry's trace would only show the run that passed.
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           USE_PREBUILT: true
       - name: Server logs
@@ -361,10 +359,10 @@ jobs:
             playwright-report/
             test-results/**/*.png
           retention-days: 7
-      # A test that failed and then passed on retry doesn't fail the job, but the
-      # trace of its failed attempt is the evidence the flake needs, so keep any
-      # traces whatever the outcome (none are kept when nothing failed).
-      - name: Upload failure traces
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -474,9 +472,8 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
-          # A test that fails keeps the Playwright trace of that failing attempt
-          # (its own console, network and DOM snapshots), uploaded below: what a
-          # flake needs. A retry's trace would only show the run that passed.
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           USE_PREBUILT: true
       - name: Server logs
@@ -491,10 +488,10 @@ jobs:
             playwright-report/
             test-results/**/*.png
           retention-days: 7
-      # A test that failed and then passed on retry doesn't fail the job, but the
-      # trace of its failed attempt is the evidence the flake needs, so keep any
-      # traces whatever the outcome (none are kept when nothing failed).
-      - name: Upload failure traces
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -572,9 +569,8 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
-          # A test that fails keeps the Playwright trace of that failing attempt
-          # (its own console, network and DOM snapshots), uploaded below: what a
-          # flake needs. A retry's trace would only show the run that passed.
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
           # The editor screenshots the docs embed are git-ignored and generated
@@ -604,10 +600,10 @@ jobs:
             playwright-report/
             test-results/**/*.png
           retention-days: 7
-      # A test that failed and then passed on retry doesn't fail the job, but the
-      # trace of its failed attempt is the evidence the flake needs, so keep any
-      # traces whatever the outcome (none are kept when nothing failed).
-      - name: Upload failure traces
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -699,9 +695,8 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
-          # A test that fails keeps the Playwright trace of that failing attempt
-          # (its own console, network and DOM snapshots), uploaded below: what a
-          # flake needs. A retry's trace would only show the run that passed.
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           USE_PREBUILT: true
       - name: Server logs
@@ -716,10 +711,10 @@ jobs:
             playwright-report/
             test-results/**/*.png
           retention-days: 7
-      # A test that failed and then passed on retry doesn't fail the job, but the
-      # trace of its failed attempt is the evidence the flake needs, so keep any
-      # traces whatever the outcome (none are kept when nothing failed).
-      - name: Upload failure traces
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -825,9 +820,8 @@ jobs:
         env:
           CI: true
           NO_WEBSERVER: true
-          # A test that fails keeps the Playwright trace of that failing attempt
-          # (its own console, network and DOM snapshots), uploaded below: what a
-          # flake needs. A retry's trace would only show the run that passed.
+          # A failing test's first retry records a Playwright trace (its own console,
+          # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
           # The editor screenshots the docs embed are git-ignored and generated
@@ -857,10 +851,10 @@ jobs:
             playwright-report/
             test-results/**/*.png
           retention-days: 7
-      # A test that failed and then passed on retry doesn't fail the job, but the
-      # trace of its failed attempt is the evidence the flake needs, so keep any
-      # traces whatever the outcome (none are kept when nothing failed).
-      - name: Upload failure traces
+      # A test that failed and then passed on retry doesn't fail the job, but its
+      # first retry's trace is the evidence the flake needs, so keep any traces
+      # whatever the outcome (none are recorded when nothing was retried).
+      - name: Upload retry traces
         if: always()
         uses: actions/upload-artifact@v4
         with:

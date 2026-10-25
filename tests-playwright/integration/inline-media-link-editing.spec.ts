@@ -763,6 +763,19 @@ test.describe('Image upload and drag-drop', () => {
       0xae, 0x42, 0x60, 0x82
     ]);
 
+    // "Uploading image" shows only while the upload request is out, and the
+    // mock answers in milliseconds — so hold the request until the test has
+    // seen the state, then let it go.
+    let releaseUpload!: () => void;
+    const uploadReleased = new Promise<void>((resolve) => { releaseUpload = resolve; });
+    await page.route(
+      (url) => url.pathname.endsWith('/++api++/_test_data/test-page'),
+      async (route) => {
+        if (route.request().method() === 'POST') await uploadReleased;
+        await route.continue();
+      },
+    );
+
     await fileInput.setInputFiles({
       name: 'toolbar-upload.png',
       mimeType: 'image/png',
@@ -772,6 +785,7 @@ test.describe('Image upload and drag-drop', () => {
     // Should show "Uploading image" while in progress
     const uploadingText = imageOverlay.getByText('Uploading image');
     await expect(uploadingText).toBeVisible({ timeout: 2000 });
+    releaseUpload();
 
     // Wait for upload to complete - image src should update
     await expect(heroImage).toHaveAttribute('src', /uploaded-image/, { timeout: 10000 });
