@@ -917,6 +917,11 @@ const Iframe = (props) => {
     setBlockUI(null);
   }, [u]);
 
+  // Leaving edit mode (a save or cancel) leaves nothing selected to draw.
+  useEffect(() => {
+    if (!isEditMode) setBlockUI(null);
+  }, [isEditMode]);
+
   // Listen for sidebar "Page" click to deselect current block
   useEffect(() => {
     const handler = () => {
@@ -3560,6 +3565,13 @@ const Iframe = (props) => {
           break;
 
         case 'BLOCK_SELECTED': {
+          // Only an edited page has a selection. After a save the canvas can
+          // still announce one (it re-announces on scroll and resize), and a
+          // selection on the view page draws the editing toolbar with no form.
+          if (!isEditMode) {
+            log('BLOCK_SELECTED ignored: not in edit mode', event.data.blockUid, 'src:', event.data.src);
+            break;
+          }
           // Back to the page being edited when the editor is WORKING IN it —
           // and only then. This page also RE-ANNOUNCES its existing selection
           // on a re-render, on scroll and on resize, and those must not snatch
@@ -3951,7 +3963,6 @@ const Iframe = (props) => {
             }
           }
 
-            for (const t of ['teaser', 'image', 'hero', 'gridBlock']) { const c = config.blocks.blocksConfig[t] || {}; console.log('[DBGMERGE]', t, JSON.stringify({ keys: Object.keys(c).sort(), title: c.title, group: c.group, fm: c.fieldMappings, se: typeof c.schemaEnhancer, bs: typeof c.blockSchema, s: typeof c.schema, bcKeys: c.blocksConfig ? Object.keys(c.blocksConfig).length : null, allowed: c.allowedBlocks })); }
           // 1c. Merge any additional voltoConfig (non-block settings)
           if (event.data.voltoConfig) {
             recurseUpdateVoltoConfig(event.data.voltoConfig);
@@ -4310,6 +4321,7 @@ const Iframe = (props) => {
     history,
     history.location.pathname,
     iframeSrc,
+    isEditMode,
     onChangeFormData,
     onSelectBlock,
     openObjectBrowser,
