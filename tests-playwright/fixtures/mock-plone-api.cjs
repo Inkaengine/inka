@@ -2608,21 +2608,19 @@ function reportContentErrors(errors) {
 }
 
 /** Startup: invalid content is fatal — tests must not run against a site that
- *  would not import, or that links to nothing. SKIP_CONTENT_VALIDATION=true is
- *  the explicit way out. */
+ *  would not import, or that links to nothing. There is no way out: content a
+ *  test needs broken is created at runtime (session content), never served. */
 function assertServedContentValid() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
   const errors = validateServedContent();
   if (errors.length) {
     reportContentErrors(errors);
-    throw new Error(`${errors.length} content problem(s) — fix the content (listed above) or set SKIP_CONTENT_VALIDATION=true`);
+    throw new Error(`${errors.length} content problem(s) — fix the content (listed above)`);
   }
 }
 
 /** A reload (watcher or cache miss) only reports: one bad edit mid-session
  *  should not take the dev server down. The next start is the gate. */
 function reportServedContentProblems() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
   const errors = validateServedContent();
   if (errors.length) reportContentErrors(errors);
 }
