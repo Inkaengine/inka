@@ -598,6 +598,9 @@ function imageDimensions(file) {
       // smuggled past the gate by appending an anchor.
       base = base.split('#')[0].split('?')[0];
       base = base.split('/@@')[0].split('/++')[0].replace(/\/+$/, '') || '/';
+      // `/` is the site itself: every site has one, whether or not this content
+      // carries a site-root item (a frontend's fixtures mounted alone do not).
+      if (base === '/') return null;
       return pathMap.has(base) ? null : `path not in content: ${base}`;
     }
     // Plone action / browser-view URLs relative to the current context (they
