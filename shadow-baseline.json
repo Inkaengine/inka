@@ -4,11 +4,18 @@
   "shadows": {
     "@plone/volto-slate/blocks/Text/DefaultTextBlockEditor.jsx": {
       "upstream": "core/packages/volto-slate/src/blocks/Text/DefaultTextBlockEditor.jsx",
-      "hash": "93dc37c7f380f3e44815b97d7159ea18ac5add909069dbbbaf27d1faca576149"
+      "hash": "93dc37c7f380f3e44815b97d7159ea18ac5add909069dbbbaf27d1faca576149",
+      "why": "Owns the slate sidebar UX: adds a sidebar 'Body' field reading blocksConfig.slate.schema so the slate body is editable from the side panel, with the shortcut listing and markdown help below it. Deliberately drops upstream's inline <SlateEditor>, slash menu, image dropzone and BlockChooserButton — slate editing happens in the iframe, and the admin only mounts this inside a display:none div, so all of that would be invisible work.",
+      "declined": {
+        "c1ee09f78": "img -> Image component: in the inline editor render we deleted.",
+        "afcb3cfaa": "intl passed to initialValue: part of the inline editor path we do not run.",
+        "dd35efb7a": "barrel imports: the imports it rewrote are ones this fork does not have."
+      }
     },
     "@plone/volto-slate/blocks/Text/MarkdownIntroduction.jsx": {
       "upstream": "core/packages/volto-slate/src/blocks/Text/MarkdownIntroduction.jsx",
-      "hash": "7ee1b34bda1aa2f6640b9f3ea815a02585782f860cd6271275c28fecdca01dd3"
+      "hash": "7ee1b34bda1aa2f6640b9f3ea815a02585782f860cd6271275c28fecdca01dd3",
+      "why": "Makes the sidebar markdown help collapsible (collapsed by default) to cut sidebar clutter. Content is otherwise upstream's."
     },
     "@plone/volto-slate/blocks/Text/ShortcutListing.jsx": {
       "upstream": "core/packages/volto-slate/src/blocks/Text/ShortcutListing.jsx",
@@ -16,7 +23,8 @@
     },
     "@plone/volto-slate/editor/plugins/Markdown/extensions.js": {
       "upstream": "core/packages/volto-slate/src/editor/plugins/Markdown/extensions.js",
-      "hash": "58d6878852a802c683791a02e75e4cd97253bd65cf002d24e2aa939a328b726c"
+      "hash": "58d6878852a802c683791a02e75e4cd97253bd65cf002d24e2aa939a328b726c",
+      "why": "Fixes cursor placement after an autoformat wrap: upstream leaves the cursor INSIDE the new inline, so the trigger space lands inside <strong>/<em> instead of after it. Moves to the point after the inline, inserting an empty text node when the inline is the last child. Pure addition — upstream's logic above it is unchanged."
     },
     "@plone/volto-slate/elementEditor/utils.js": {
       "upstream": "core/packages/volto-slate/src/elementEditor/utils.js",
@@ -52,7 +60,11 @@
     },
     "volto/components/manage/Form/BlocksToolbar.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Form/BlocksToolbar.jsx",
-      "hash": "40e2bbd83ab4e0b2c86c2e3e5b29a565f6a9287d89a3b0e3fbd41d8cc10ef43d"
+      "hash": "40e2bbd83ab4e0b2c86c2e3e5b29a565f6a9287d89a3b0e3fbd41d8cc10ef43d",
+      "why": "Upstream assumes every block lives at formData.blocks / blocks_layout, i.e. page level. This fork fires `hydra-paste-blocks` / `hydra-delete-blocks` document events instead, which View.jsx handles with the container-aware helpers it already owns, rather than rebuilding blockPathMap here.",
+      "declined": {
+        "dd35efb7a": "rewrites Blocks/uuid imports this fork dropped when it moved the work into View.jsx."
+      }
     },
     "volto/components/manage/Form/Form.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Form/Form.jsx",
@@ -72,11 +84,19 @@
     },
     "volto/components/manage/Sidebar/SidebarPopup.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Sidebar/SidebarPopup.jsx",
-      "hash": "9ae7fb7bafb9d51bedc643ec6cbabbf811c71a242185ad3186f37fcf3cabb9dd"
+      "hash": "9ae7fb7bafb9d51bedc643ec6cbabbf811c71a242185ad3186f37fcf3cabb9dd",
+      "why": "Replaces semantic-ui's doesNodeContainClick with a bounding-rect hit test, and ignores untrusted events. doesNodeContainClick walks the parentNode chain, which fails when a React re-render detaches nodes between mousedown and the check — the popup then concluded the click was outside and closed the object browser unexpectedly.",
+      "declined": {
+        "dd35efb7a": "re-adds the doesNodeContainClick import — the very thing this fork removes on purpose."
+      }
     },
     "volto/components/manage/Sidebar/SidebarPortal.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Sidebar/SidebarPortal.tsx",
-      "hash": "87436fcacd0c1acc7cbbd03ac5f6a39b2ed79af728d4765b14ec7662f8d23c3e"
+      "hash": "87436fcacd0c1acc7cbbd03ac5f6a39b2ed79af728d4765b14ec7662f8d23c3e",
+      "why": "Returns null unless SidebarPortalTargetContext is set. Hydra drives all sidebar rendering through ParentBlocksWidget with an explicit target; upstream always portals into `tab` (default sidebar-properties), which would render block sidebars twice. Upstream is SidebarPortal.tsx now; this stays .jsx because the logic differs anyway and shadowing resolves by specifier, not extension.",
+      "declined": {
+        "e894c0654": "TypeScript refactor. Not adoptable wholesale: our render is conditional on the context and differs structurally. Nothing functional in it to port."
+      }
     },
     "volto/components/manage/Widgets/ImageWidget.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Widgets/ImageWidget.jsx",
