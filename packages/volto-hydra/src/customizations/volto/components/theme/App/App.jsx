@@ -133,7 +133,7 @@ export class App extends Component {
         {this.props.content && this.props.content['@type'] && (
           <BodyClass
             className={`contenttype-${this.props.content['@type']
-              .replace(' ', '-')
+              .replaceAll(' ', '-')
               .toLowerCase()}`}
           />
         )}
@@ -144,6 +144,14 @@ export class App extends Component {
             [trim(join(split(this.props.pathname, '/'), ' section-'))]:
               this.props.pathname !== '/',
             siteroot: this.props.pathname === '/',
+            [`is-adding-contenttype-${decodeURIComponent(
+              this.props.location?.search?.startsWith('?type=')
+                ? this.props.location?.search?.replace('?type=', '')
+                : '',
+            )
+              .replaceAll(' ', '-')
+              .toLowerCase()}`]:
+              this.props.location?.search?.startsWith('?type='),
             'is-authenticated': !!this.props.token,
             'is-anonymous': !this.props.token,
             'cms-ui': isCmsUI,
