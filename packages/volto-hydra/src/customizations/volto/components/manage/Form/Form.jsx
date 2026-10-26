@@ -235,8 +235,8 @@ class Form extends Component {
     // shows at least one block.  Consistent with getEmptyBlockType() in blockPath.js
     // which also uses config.settings.defaultBlockType for page-level blocks.
     if (
-      formData.hasOwnProperty(blocksFieldname) &&
-      formData.hasOwnProperty(blocksLayoutFieldname)
+      formData?.hasOwnProperty(blocksFieldname) &&
+      formData?.hasOwnProperty(blocksLayoutFieldname)
     ) {
       if (
         (!formData[blocksLayoutFieldname] ||
@@ -263,7 +263,7 @@ class Form extends Component {
 
     let selectedBlock = null;
     if (
-      formData.hasOwnProperty(blocksLayoutFieldname) &&
+      formData?.hasOwnProperty(blocksLayoutFieldname) &&
       formData[blocksLayoutFieldname].items.length > 0
     ) {
       if (config.blocks?.initialBlocksFocus === null) {
