@@ -300,6 +300,50 @@ describe('plone-content-validator validate()', () => {
     );
   });
 
+  // A page with id `text` is not shadowing its container: its SIBLINGS acquire
+  // it. A Volto page keeps no `text` of its own (its content is blocks), so
+  // `context.text` finds the sibling page, and Plone's classic document view
+  // calls output_relative_to on it — every page in that folder 500s. And
+  // `/<page>/text` is plone.restapi's block indexer (a named adapter, which
+  // traversal treats as a view), so a redirect from a removed `text` page never
+  // fires.
+  const reservedIdError = (id) => {
+    const { root, contentDir } = buildFixture({
+      dataFiles: ['plone_site_root/data.json', 'reserveduid123456/data.json'],
+    });
+    fs.mkdirSync(path.join(contentDir, 'reserveduid123456'), { recursive: true });
+    fs.writeFileSync(
+      path.join(contentDir, 'reserveduid123456', 'data.json'),
+      JSON.stringify({
+        '@id': `/page-a/${id}`, '@type': 'Document', id,
+        UID: 'reserveduid123456',
+      }),
+    );
+    const r = validate(contentDir);
+    cleanup(root);
+    return r.errors.find((e) => e.includes(`id "${id}" is reserved`));
+  };
+
+  it('reports a content id that its siblings acquire as their text', () => {
+    const error = reservedIdError('text');
+    assert.ok(error, 'a page named "text" is reported');
+    assert.match(error, /sibling/);
+  });
+
+  // Plone's own check_id (plone.base.utils) refuses these when content is
+  // created through the UI or the REST API; only an import gets them in.
+  for (const id of ['login', 'plone', 'zip', 'properties']) {
+    it(`reports "${id}", which Plone's check_id reserves`, () => {
+      const error = reservedIdError(id);
+      assert.ok(error, `a page named "${id}" is reported`);
+      assert.match(error, /check_id/);
+    });
+  }
+
+  it('leaves an ordinary id alone', () => {
+    assert.equal(reservedIdError('typography'), undefined);
+  });
+
   it('reports id starting with underscore', () => {
     const { root, contentDir } = buildFixture({
       dataFiles: ['plone_site_root/data.json', '_underscore/data.json'],

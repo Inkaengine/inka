@@ -63,23 +63,48 @@ function childEntries(container, idFieldMap = null) {
 }
 
 /**
- * Content ids that break their PARENT, not themselves.
+ * Content ids Plone cannot serve safely, each with why. A distribution's import
+ * creates content without Plone's own id check, so this is the check.
  *
- * `BTreeFolder2Base.__getattr__` resolves an attribute miss out of `self._tree`,
- * so a child whose id matches a name Plone reads off the container with
- * `getattr(aq_base(container), name)` is returned instead of that attribute.
- * Plone content is callable, so code like CMFDynamicViewFTI's
+ * Breaks its PARENT. `BTreeFolder2Base.__getattr__` resolves an attribute miss
+ * out of `self._tree`, so a child whose id matches a name Plone reads off the
+ * container with `getattr(aq_base(container), name)` is returned instead of
+ * that attribute. Plone content is callable, so code like CMFDynamicViewFTI's
  * `if safe_callable(layout): layout = layout()` then invokes the child on an
- * acquisition-stripped object and dies in `aq_acquire(self, 'REQUEST')` —
- * surfacing as a 500 on the container, with nothing wrong in the child.
+ * acquisition-stripped object and dies in `aq_acquire(self, 'REQUEST')` — a 500
+ * on the container, with nothing wrong in the child. Only names Dexterity does
+ * NOT keep as instance attributes: one that exists never reaches `__getattr__`.
+ * `layout` is confirmed against a live site; the others are the same read.
  *
- * Only names that Dexterity does NOT keep as instance attributes are listed:
- * an attribute that already exists never reaches `__getattr__`. `layout` is the
- * one confirmed against a live site (it 500'd /components and is covered by
- * tests/test_reserved_content_ids.py); the others are the same read pattern in
- * CMFPlone/CMFDynamicViewFTI and are reserved to prevent a repeat.
+ * Breaks its SIBLINGS. A Volto page keeps no `text` of its own (its content is
+ * blocks), so `context.text` acquires a sibling page named `text`, and Plone's
+ * classic document view calls `output_relative_to` on it: every page in the
+ * folder 500s (confirmed live). And `/<page>/text` is plone.restapi's block
+ * indexer — a named adapter, which traversal treats as a view — so it is a 400,
+ * never a NotFound, and a redirect from a removed `text` page never fires.
+ *
+ * Reserved by Plone. plone.base.utils.check_id refuses these when content is
+ * created through the UI or the REST API.
  */
-const RESERVED_CONTENT_IDS = new Set(['layout', 'default_page', 'index_html']);
+const BREAKS_PARENT =
+  'it shadows an attribute Plone reads off the container, which makes the ' +
+  'PARENT return 500 (AttributeError)';
+const RESERVED_BY_PLONE = "Plone's check_id refuses it; only an import gets it in";
+const RESERVED_CONTENT_IDS = new Map([
+  ['layout', BREAKS_PARENT],
+  ['default_page', BREAKS_PARENT],
+  ['index_html', BREAKS_PARENT],
+  [
+    'text',
+    'its sibling pages acquire it as their own `text`, and Plone\'s classic ' +
+      'document view then 500s on every page in the folder; a redirect from ' +
+      'it never fires (/<page>/text is plone.restapi\'s block indexer)',
+  ],
+  ['login', RESERVED_BY_PLONE],
+  ['plone', RESERVED_BY_PLONE],
+  ['zip', RESERVED_BY_PLONE],
+  ['properties', RESERVED_BY_PLONE],
+]);
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -259,9 +284,8 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
       errors.push(`  ${entry} id "${data.id}" starts with underscore (Plone OFS rejects this at import)`);
     } else if (RESERVED_CONTENT_IDS.has(data.id)) {
       errors.push(
-        `  ${entry} id "${data.id}" is reserved — it shadows an attribute Plone ` +
-        `reads off the container, which makes the PARENT return 500 ` +
-        `(AttributeError). Rename it (e.g. "page-${data.id}").`,
+        `  ${entry} id "${data.id}" is reserved — ${RESERVED_CONTENT_IDS.get(data.id)}. ` +
+        `Rename it (e.g. "page-${data.id}").`,
       );
     }
     if (data.UID) allUids.add(data.UID);
