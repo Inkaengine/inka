@@ -24,11 +24,13 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, dirname, extname, sep } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SHADOW_ROOT = join(ROOT, 'packages/volto-hydra/src/customizations');
-const CORE = join(ROOT, 'core/packages');
+const CORE_ROOT = join(ROOT, 'core');
+const CORE = join(CORE_ROOT, 'packages');
 const BASELINE = join(ROOT, 'shadow-baseline.json');
 
 /**
@@ -84,7 +86,41 @@ function walk(dir) {
   return out;
 }
 
-const sha = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
+/**
+ * Hash upstream's file AS THE PINNED TAG HAS IT, not as the working tree has
+ * it. core/ is a gitignored mrs-developer checkout that a stray edit can dirty
+ * — one accidental blank line in Url.js made a baseline that only agreed with
+ * itself, and CI, with a clean clone, failed on a shadow nobody had touched.
+ * The blob is reproducible on any machine; the working tree is not.
+ */
+const sha = (p) => {
+  const rel = relative(CORE_ROOT, p);
+  const tag = voltoTag();
+  const r = spawnSync('git', ['-C', CORE_ROOT, 'show', `${tag}:${rel}`], {
+    encoding: 'buffer',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (r.status !== 0) {
+    die([
+      `shadow-drift: cannot read ${rel} at ${tag} from core/'s git.`,
+      '  core/ must be the mrs-developer checkout, with the pinned tag present.',
+      `  git error: ${r.stderr?.toString().trim()}`,
+    ]);
+  }
+  return createHash('sha256').update(r.stdout).digest('hex');
+};
+
+/** Shadowed upstream files the working tree has diverged from the tag on. */
+function locallyPatched(paths) {
+  if (!paths.length) return [];
+  const r = spawnSync(
+    'git',
+    ['-C', CORE_ROOT, 'diff', '--name-only', voltoTag(), '--', ...paths],
+    { encoding: 'utf8' },
+  );
+  if (r.status !== 0) return [];
+  return r.stdout.split('\n').filter(Boolean);
+}
 
 function voltoTag() {
   const dev = JSON.parse(readFileSync(join(ROOT, 'mrs.developer.json'), 'utf8'));
@@ -201,6 +237,20 @@ if (problems.length) {
     '  whether the change belongs in our copy (PRETAGOVSITE-N was a missed null guard).',
     '  Then re-record:  pnpm shadows:record',
   ]);
+}
+
+// A dirty vendored checkout is invisible otherwise: hashes come from the tag
+// now, so a local edit no longer corrupts the baseline — but it DOES mean the
+// file you are reading is not the file this check compared.
+const patched = locallyPatched(
+  [...resolved.values()].map((v) => relative(CORE_ROOT, join(ROOT, v.upstream))),
+);
+if (patched.length) {
+  console.log(
+    `shadow-drift: WARNING — core/ differs from ${voltoTag()} for ${patched.length} shadowed file(s):`,
+  );
+  for (const f of patched) console.log(`      ${f}`);
+  console.log('  core/ is a mrs-developer checkout; local edits there are not durable.');
 }
 
 const undocumented = [...resolved.keys()].filter((s) => !base.shadows?.[s]?.why);

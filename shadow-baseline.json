@@ -157,7 +157,7 @@
     },
     "volto/helpers/Url/Url.js": {
       "upstream": "core/packages/volto/src/helpers/Url/Url.js",
-      "hash": "3384c2e35ca222153af22598bda6322acaf06b802e6a14ef54164261bd587e94",
+      "hash": "1bc67b7febce10a0db706c56fd398b715b2bd9364b41e79217a59033635e09bf",
       "why": "Identical to stock EXCEPT flattenToAppURL and isInternalURL, which gain awareness of iframe-frontend URLs registered via FrontendSettingsModal / RAZZLE_DEFAULT_IFRAME_URL. Stock only strips settings.apiPath / internalApiPath / publicURL, none of which match a Hydra iframe's published origin, so a link pasted from the published site survived the save round-trip as an absolute URL and broke resolveuid. Also adds resolveRelativeUrl, which is Hydra's own."
     },
     "volto/helpers/Url/Url.test.js": {
