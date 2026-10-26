@@ -1,0 +1,126 @@
+{
+  "_comment": "Upstream hashes at the moment each shadow was last reviewed. Regenerate with `pnpm shadows:record` ONLY after reading the upstream diff. See scripts/shadow-drift.mjs.",
+  "voltoTag": "19.1.1",
+  "shadows": {
+    "@plone/volto-slate/blocks/Text/DefaultTextBlockEditor.jsx": {
+      "upstream": "core/packages/volto-slate/src/blocks/Text/DefaultTextBlockEditor.jsx",
+      "hash": "93dc37c7f380f3e44815b97d7159ea18ac5add909069dbbbaf27d1faca576149"
+    },
+    "@plone/volto-slate/blocks/Text/MarkdownIntroduction.jsx": {
+      "upstream": "core/packages/volto-slate/src/blocks/Text/MarkdownIntroduction.jsx",
+      "hash": "7ee1b34bda1aa2f6640b9f3ea815a02585782f860cd6271275c28fecdca01dd3"
+    },
+    "@plone/volto-slate/blocks/Text/ShortcutListing.jsx": {
+      "upstream": "core/packages/volto-slate/src/blocks/Text/ShortcutListing.jsx",
+      "hash": "d0f6104afb52c223c1392fdc76e1b81ec7e0a0f65f1f6f947a2f6023f1737167"
+    },
+    "@plone/volto-slate/editor/plugins/Markdown/extensions.js": {
+      "upstream": "core/packages/volto-slate/src/editor/plugins/Markdown/extensions.js",
+      "hash": "58d6878852a802c683791a02e75e4cd97253bd65cf002d24e2aa939a328b726c"
+    },
+    "@plone/volto-slate/elementEditor/utils.js": {
+      "upstream": "core/packages/volto-slate/src/elementEditor/utils.js",
+      "hash": "302874b0b1d1935ff47ddc19a18f6d3800237f61a784e3cd2734a4d6efe67c8e"
+    },
+    "@plone/volto-slate/hooks/useSelectionPosition.js": {
+      "upstream": "core/packages/volto-slate/src/hooks/useSelectionPosition.js",
+      "hash": "5ce15118d3abe3432bad154c791f3cd2b68bef0de066ea88df380beb05c97e8b"
+    },
+    "@plone/volto-slate/utils/blocks.js": {
+      "upstream": "core/packages/volto-slate/src/utils/blocks.js",
+      "hash": "d00a841ef8c46e24c07b5ccbf2e3da12b45c0796038407d49d729c72ce42c258"
+    },
+    "volto/components/manage/Add/Add.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Add/Add.jsx",
+      "hash": "1b98007d15bc13c37c9f6168d4fb0cb837489b1ee4b106b5308d992fbb62637c"
+    },
+    "volto/components/manage/AnchorPlugin/components/LinkButton/AddLinkForm.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/AnchorPlugin/components/LinkButton/AddLinkForm.jsx",
+      "hash": "d20dff442e44fa71cafe62d29428b67ecd8985d1264568f744e8d2710e3f88c8"
+    },
+    "volto/components/manage/BlockChooser/BlockChooser.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/BlockChooser/BlockChooser.jsx",
+      "hash": "2a4038b8654217a1d4de7946810d50b45ddb5d3df93f0e107b317a181cc28017"
+    },
+    "volto/components/manage/BlockChooser/BlockChooser.test.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/BlockChooser/BlockChooser.test.jsx",
+      "hash": "b601f049ba0a0b08ce08081dde2fbfa13b55aedf6718b8d874ff5cb9cbc1c70c"
+    },
+    "volto/components/manage/Diff/Diff.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Diff/Diff.jsx",
+      "hash": "915dde2b3845318f1cac345864292733b5737d8b1a29a7049c26bb4c65fc1c74"
+    },
+    "volto/components/manage/Form/BlocksToolbar.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Form/BlocksToolbar.jsx",
+      "hash": "40e2bbd83ab4e0b2c86c2e3e5b29a565f6a9287d89a3b0e3fbd41d8cc10ef43d"
+    },
+    "volto/components/manage/Form/Form.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Form/Form.jsx",
+      "hash": "2f6f1bfd75842af8613ae6fd4a2d20e027037db09a128df1d7e97cd757314203"
+    },
+    "volto/components/manage/Sidebar/ObjectBrowserBody.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Sidebar/ObjectBrowserBody.jsx",
+      "hash": "a62a8debc467a6b036f676bda9bfd6a75a06e5f0ad35760001279a10fdb9a120"
+    },
+    "volto/components/manage/Sidebar/ObjectBrowserNav.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Sidebar/ObjectBrowserNav.jsx",
+      "hash": "221fe16535e72530ec56280be19b344d7f4a8fd44dd8252a5dd80f2509929773"
+    },
+    "volto/components/manage/Sidebar/Sidebar.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Sidebar/Sidebar.jsx",
+      "hash": "ed95d62a7a05aec2f6900993a5cd6fc77a178254807cfa9717b327a8e08e5ebf"
+    },
+    "volto/components/manage/Sidebar/SidebarPopup.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Sidebar/SidebarPopup.jsx",
+      "hash": "9ae7fb7bafb9d51bedc643ec6cbabbf811c71a242185ad3186f37fcf3cabb9dd"
+    },
+    "volto/components/manage/Sidebar/SidebarPortal.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Sidebar/SidebarPortal.tsx",
+      "hash": "87436fcacd0c1acc7cbbd03ac5f6a39b2ed79af728d4765b14ec7662f8d23c3e"
+    },
+    "volto/components/manage/Widgets/ImageWidget.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Widgets/ImageWidget.jsx",
+      "hash": "f027c50a37ac2ca503ff63aae1e91738e81d239bc7bed3cec9da6b60d44af682"
+    },
+    "volto/components/manage/Widgets/TextWidget.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Widgets/TextWidget.jsx",
+      "hash": "0c63c212df0693be2af82fb568d574285575b03c9ca668a9beebab545308f0cd"
+    },
+    "volto/components/manage/Widgets/TextWidget.test.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Widgets/TextWidget.test.jsx",
+      "hash": "2cc60f00233a3db01606e7c91121554191b5923520a06b1bd75f1ae045f1c219"
+    },
+    "volto/components/theme/App/App.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/App/App.jsx",
+      "hash": "86b5f86c9b0cb057742dc875abf9d3ea00a2df8c1b392272a8dcf26017ff7562"
+    },
+    "volto/components/theme/Login/Login.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/Login/Login.jsx",
+      "hash": "56c5c74736605a7aba34497f2b3728e9b5cd853508520effca9495a465ec2486"
+    },
+    "volto/components/theme/View/View.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/View/View.jsx",
+      "hash": "e1d14b40a52ba19e4ad5e136216038b50a5aed45b8f7a2bb30eae163b39ac6ed"
+    },
+    "volto/helpers/Url/Url.js": {
+      "upstream": "core/packages/volto/src/helpers/Url/Url.js",
+      "hash": "3384c2e35ca222153af22598bda6322acaf06b802e6a14ef54164261bd587e94"
+    },
+    "volto/helpers/Url/Url.test.js": {
+      "upstream": "core/packages/volto/src/helpers/Url/Url.test.js",
+      "hash": "c080a9c7b1907654903f59a57f52d6f59437c25f870d4e08ee339ef987a58585"
+    },
+    "volto/helpers/Utils/withSaveAsDraft.jsx": {
+      "upstream": "core/packages/volto/src/helpers/Utils/withSaveAsDraft.jsx",
+      "hash": "7b3af5b3344e571afa761f1834f5ba1ac2dd2e1357ccb35a3c27010ecd6eeefc"
+    },
+    "volto/routes.js": {
+      "upstream": "core/packages/volto/src/routes.js",
+      "hash": "6a2e6c5e259137d8f5b8a7bbdf0f681b1bf5ee02a0de39233e5b690f5050611f"
+    }
+  },
+  "additive": [
+    "volto/components/manage/Form/styles.css",
+    "volto/components/manage/Sidebar/Sidebar.css"
+  ]
+}
