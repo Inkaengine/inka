@@ -588,7 +588,7 @@ test.describe('Image upload and drag-drop', () => {
     await expect(emptyOverlay).toBeVisible({ timeout: 5000 });
 
     // Wait for the dropzone inside the overlay to be ready
-    const dropzone = emptyOverlay.locator('.hydra-image-picker-inline');
+    const dropzone = emptyOverlay.locator('[data-testid="image-picker-inline"]');
     await expect(dropzone).toBeVisible({ timeout: 5000 });
 
     // Drag-drop an image file onto the dropzone

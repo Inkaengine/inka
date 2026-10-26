@@ -453,12 +453,15 @@ const UnconnectedImageInput = (props) => {
         onDragLeave={onDragLeave}
       >
         {({ getRootProps, getInputProps }) => (
-          /* hydra-image-picker-inline is not styled: it is the handle the
-             drag-and-drop tests grab (inline-media-link-editing.spec.ts,
-             block-sync.spec.ts). Deleting it as "dead CSS" breaks them. */
+          /* A test hook, so it says so. This used to be a bare
+             `hydra-image-picker-inline` class, which reads as styling, is
+             styled by nothing, and duly got deleted as dead CSS. data-testid
+             is how Volto marks an element that exists only for tests to find
+             (e.g. DiffField). The drag-and-drop specs grab this element:
+             inline-media-link-editing.spec.ts, block-sync.spec.ts. */
           <div
             {...getRootProps()}
-            className="hydra-image-picker-inline"
+            data-testid="image-picker-inline"
             style={{
               // Don't use position:absolute - parent overlay already positions via flexbox
               // This allows clicks to pass through empty areas of the overlay
