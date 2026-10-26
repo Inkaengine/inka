@@ -3,10 +3,18 @@
  *
  * VOLTO-HYDRA SHADOW:
  * This file shadows @plone/volto's ImageWidget to:
- * - Use AddLinkForm for consistent UI with the toolbar image popup
- * - Add showPreview option for inline use (without image preview/Message wrapper)
- * - Support drag-and-drop via Dropzone wrapper
- * - Reuse upload logic for both sidebar and inline contexts
+ * - Add a showPreview option for INLINE use, without the preview/Message
+ *   wrapper, plus an onClose so the caller can dismiss itself. The slate
+ *   toolbar's image popup renders <ImageInput showPreview={false}> this way.
+ * - Take the accepted file types from the FIELD's schema (`accept={accept}`)
+ *   rather than hard-coding "image/*".
+ * - Use AddLinkForm for the picker, so it matches the toolbar's link popup.
+ * - Share the upload logic between the sidebar and inline paths.
+ *
+ * NOT a reason any more: drag-and-drop. The original header claimed it, but
+ * upstream 19.1.1 loads react-dropzone and renders its own <Dropzone onDrop>,
+ * so that is parity now, not a differentiator. The Dropzone calls below stay
+ * because this is a fork of the whole widget, not because upstream lacks them.
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
@@ -445,6 +453,9 @@ const UnconnectedImageInput = (props) => {
         onDragLeave={onDragLeave}
       >
         {({ getRootProps, getInputProps }) => (
+          /* hydra-image-picker-inline is not styled: it is the handle the
+             drag-and-drop tests grab (inline-media-link-editing.spec.ts,
+             block-sync.spec.ts). Deleting it as "dead CSS" breaks them. */
           <div
             {...getRootProps()}
             className="hydra-image-picker-inline"
