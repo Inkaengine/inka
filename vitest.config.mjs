@@ -22,7 +22,32 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // vite needs explicit aliases for subpath imports like
 // `@plone/volto-slate/utils` because the workspace packages don't declare
 // an `exports` map.
+// Shadows that EXTEND an upstream module rather than replace it, mapped so the
+// upstream specifier resolves to OUR copy — the way razzle's customization
+// machinery resolves it in the real app. That lets upstream's own test file run
+// against our fork (see `include` below), which is the only coverage the
+// untouched majority of a fork has: ours tests the additions, upstream's tests
+// everything we did not mean to change. The Url shadow is 385 lines, covered by
+// 14 cases of ours against upstream's 77.
+//
+// Only for EXTENDING shadows. Where a shadow replaces a component outright —
+// Header renders null, Sidebar is a different layout, Diff renders two iframes —
+// upstream's tests must fail by design, and aliasing them would be noise.
+//
+// Order matters: these specific paths must precede the '@plone/volto' prefix.
+const shadowAliases = {
+  '@plone/volto/helpers/Url/Url': path.resolve(
+    __dirname,
+    'packages/volto-hydra/src/customizations/volto/helpers/Url/Url.js',
+  ),
+  '@plone/volto-slate/utils/blocks': path.resolve(
+    __dirname,
+    'packages/volto-hydra/src/customizations/@plone/volto-slate/utils/blocks.js',
+  ),
+};
+
 const ploneAliases = {
+  ...shadowAliases,
   '@plone/volto-slate': path.resolve(__dirname, 'core/packages/volto-slate/src'),
   '@plone/volto': path.resolve(__dirname, 'core/packages/volto/src'),
   '@plone/components': path.resolve(__dirname, 'core/packages/components/src'),
@@ -38,6 +63,9 @@ export default defineConfig({
     environment: 'jsdom',
     include: [
       'packages/volto-hydra/**/*.{test,spec}.{js,jsx,ts,tsx}',
+      // Upstream's own suites, run against our shadows via shadowAliases.
+      'core/packages/volto/src/helpers/Url/Url.test.js',
+      'core/packages/volto-slate/src/utils/blocks.test.js',
       // any docs-tree unit tests
       'docs/**/*.{test,spec}.mjs',
       // blockmd: the prototype engine and the slate <-> markdown core
