@@ -126,10 +126,20 @@
       "hash": "2cc60f00233a3db01606e7c91121554191b5923520a06b1bd75f1ae045f1c219",
       "why": "Tests the shadow's `wrap` option (input vs textarea, Enter/Shift+Enter ignored). Ported from upstream's react-test-renderer snapshot to vitest + @testing-library, because a snapshot of upstream's widget says nothing about wrap."
     },
-    "volto/components/theme/App/App.jsx": {
-      "upstream": "core/packages/volto/src/components/theme/App/App.jsx",
-      "hash": "86b5f86c9b0cb057742dc875abf9d3ea00a2df8c1b392272a8dcf26017ff7562",
-      "why": "Drops the public-site chrome the admin must not draw: Header (commented), Breadcrumbs, the aboveApp slot and RouteAnnouncer — Hydra's admin frames a preview iframe and supplies its own chrome, and the frontend renders the page's own header inside the iframe."
+    "volto/components/theme/Breadcrumbs/Breadcrumbs.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/Breadcrumbs/Breadcrumbs.jsx",
+      "hash": "47a54a755e666d86c5ceeed9aa58564372d6dd276f3564d08ee2f9588af68cbc",
+      "why": "Renders null. The admin frames a preview iframe and supplies its own chrome; the page's own breadcrumbs is rendered by the frontend INSIDE the iframe. App.jsx is upstream's only consumer of this component, so suppressing it here is the same effect the App.jsx shadow achieved by commenting the tag out — and replaces forking a volatile 329-line App.jsx, which had already cost us e8fac8543's undefined-blockType guard and 61eb4d2f8's staticContext. A shadow that renders nothing cannot drift."
+    },
+    "volto/components/theme/Footer/Footer.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/Footer/Footer.jsx",
+      "hash": "ccb58313ed4acadf4e0b62be03a9ba729b4fcc9ea497c1dbc60ab07774521e46",
+      "why": "Renders null. The admin frames a preview iframe and supplies its own chrome; the page's own footer is rendered by the frontend INSIDE the iframe. App.jsx is upstream's only consumer of this component, so suppressing it here is the same effect the App.jsx shadow achieved by commenting the tag out — and replaces forking a volatile 329-line App.jsx, which had already cost us e8fac8543's undefined-blockType guard and 61eb4d2f8's staticContext. A shadow that renders nothing cannot drift."
+    },
+    "volto/components/theme/Header/Header.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/Header/Header.jsx",
+      "hash": "630dbec210c8205d4482257ae0a50c07425b2f908043cfd737c65f111fc2c5bc",
+      "why": "Renders null. The admin frames a preview iframe and supplies its own chrome; the page's own header is rendered by the frontend INSIDE the iframe. App.jsx is upstream's only consumer of this component, so suppressing it here is the same effect the App.jsx shadow achieved by commenting the tag out — and replaces forking a volatile 329-line App.jsx, which had already cost us e8fac8543's undefined-blockType guard and 61eb4d2f8's staticContext. A shadow that renders nothing cannot drift."
     },
     "volto/components/theme/Login/Login.jsx": {
       "upstream": "core/packages/volto/src/components/theme/Login/Login.jsx",
