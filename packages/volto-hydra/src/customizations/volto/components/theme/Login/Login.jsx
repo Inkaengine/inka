@@ -14,12 +14,15 @@ import {
 import { FormattedMessage, defineMessages, useIntl } from 'react-intl';
 import qs from 'query-string';
 
-import { Helmet } from '@plone/volto/helpers';
+import Helmet from '@plone/volto/helpers/Helmet/Helmet';
 import config from '@plone/volto/registry';
-import { Icon } from '@plone/volto/components';
-import { login, resetLoginRequest } from '@plone/volto/actions';
+import Icon from '@plone/volto/components/theme/Icon/Icon';
+import {
+  login,
+  resetLoginRequest,
+} from '@plone/volto/actions/userSession/userSession';
 import { toast } from 'react-toastify';
-import { Toast } from '@plone/volto/components';
+import Toast from '@plone/volto/components/manage/Toast/Toast';
 import aheadSVG from '@plone/volto/icons/ahead.svg';
 import clearSVG from '@plone/volto/icons/clear.svg';
 import { getURlsFromEnv } from '../../../../../utils/getSavedURLs';
@@ -153,7 +156,9 @@ const Login = (props) => {
     return (
       <div id="page-login">
         <Container>
-          <p style={{ margin: '3em 0', textAlign: 'center' }}>Opening the editor…</p>
+          <p style={{ margin: '3em 0', textAlign: 'center' }}>
+            Opening the editor…
+          </p>
         </Container>
       </div>
     );
@@ -169,15 +174,18 @@ const Login = (props) => {
           <Grid.Column>
             <Segment raised>
               <Header as="h2">
-                <a href="https://github.com/collective/volto-hydra" style={{ color: 'inherit' }}>
+                <a
+                  href="https://github.com/collective/volto-hydra"
+                  style={{ color: 'inherit' }}
+                >
                   Hydra
                 </a>
                 <Header.Subheader>Headless Visual Editor</Header.Subheader>
               </Header>
               {demoRequested && !demo ? (
                 <p role="alert" style={{ margin: '1em 0', color: '#a00' }}>
-                  This editor has no demo account to sign in with (RAZZLE_DEMO_LOGIN and
-                  RAZZLE_DEMO_PASSWORD are not set).
+                  This editor has no demo account to sign in with
+                  (RAZZLE_DEMO_LOGIN and RAZZLE_DEMO_PASSWORD are not set).
                 </p>
               ) : null}
               <p style={{ margin: '1em 0 0.5em' }}>Editor for</p>
@@ -203,18 +211,20 @@ const Login = (props) => {
                         fontSize: '0.9em',
                       }}
                     >
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '1.8em',
-                        height: '1.8em',
-                        borderRadius: '3px',
-                        background: '#007bb5',
-                        color: '#fff',
-                        fontWeight: 'bold',
-                        fontSize: '0.75em',
-                      }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '1.8em',
+                          height: '1.8em',
+                          borderRadius: '3px',
+                          background: '#007bb5',
+                          color: '#fff',
+                          fontWeight: 'bold',
+                          fontSize: '0.75em',
+                        }}
+                      >
                         {getDomainInitials(url)}
                       </span>
                       {name || new URL(displayUrl).hostname}

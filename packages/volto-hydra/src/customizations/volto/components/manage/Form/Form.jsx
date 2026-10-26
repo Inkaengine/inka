@@ -3,32 +3,31 @@
  * @module components/manage/Form/Form
  */
 
-import { Icon, Toast } from '@plone/volto/components';
+import Icon from '@plone/volto/components/theme/Icon/Icon';
+import Toast from '@plone/volto/components/manage/Toast/Toast';
 import { Field } from '@plone/volto/components/manage/Form';
 import BlocksToolbar from '@plone/volto/components/manage/Form/BlocksToolbar';
 import UndoToolbar from '@plone/volto/components/manage/Form/UndoToolbar';
+import FormValidation from '@plone/volto/helpers/FormValidation/FormValidation';
 import {
-  difference,
-  FormValidation,
   getBlocksFieldname,
   getBlocksLayoutFieldname,
-  messages,
-} from '@plone/volto/helpers';
+} from '@plone/volto/helpers/Blocks/Blocks';
+import { messages } from '@plone/volto/helpers/MessageLabels/MessageLabels';
+import { difference } from '@plone/volto/helpers/Utils/Utils';
 import aheadSVG from '@plone/volto/icons/ahead.svg';
 import clearSVG from '@plone/volto/icons/clear.svg';
 import upSVG from '@plone/volto/icons/up-key.svg';
 import downSVG from '@plone/volto/icons/down-key.svg';
-import {
-  findIndex,
-  isEmpty,
-  isEqual,
-  keys,
-  map,
-  mapValues,
-  pickBy,
-  cloneDeep,
-  xor,
-} from 'lodash';
+import findIndex from 'lodash/findIndex';
+import isEmpty from 'lodash/isEmpty';
+import isEqual from 'lodash/isEqual';
+import keys from 'lodash/keys';
+import map from 'lodash/map';
+import mapValues from 'lodash/mapValues';
+import pickBy from 'lodash/pickBy';
+import cloneDeep from 'lodash/cloneDeep';
+import xor from 'lodash/xor';
 import isBoolean from 'lodash/isBoolean';
 import PropTypes from 'prop-types';
 import React, { Component } from 'react';
@@ -56,17 +55,20 @@ import {
 } from '@volto-hydra/helpers';
 import Api from '@plone/volto/helpers/Api/Api';
 import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
-import { buildIdFieldMap, getBlockTypeSchema, getBlockById } from '../../../../../utils/blockPath';
+import {
+  buildIdFieldMap,
+  getBlockTypeSchema,
+  getBlockById,
+} from '../../../../../utils/blockPath';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
+import { updateContent } from '@plone/volto/actions/content/content';
+import { setFormData, setUIState } from '@plone/volto/actions/form/form';
 import {
-  setMetadataFieldsets,
   resetMetadataFocus,
+  setMetadataFieldsets,
   setSidebarTab,
-  setFormData,
-  setUIState,
-  updateContent,
-} from '@plone/volto/actions';
+} from '@plone/volto/actions/sidebar/sidebar';
 import { getQuerystring } from '@plone/volto/actions/querystring/querystring';
 import { compose } from 'redux';
 import config from '@plone/volto/registry';
@@ -489,7 +491,8 @@ class Form extends Component {
     // per-block markers both want the same page, and one read serves all
     // three.
     this.translationSourceRequest.then((source) => {
-      if (source && !this.unmounted) this.setState({ translationSource: source });
+      if (source && !this.unmounted)
+        this.setState({ translationSource: source });
     });
 
     // Offer back anything autosaved from a previous visit to this page.
@@ -575,7 +578,8 @@ class Form extends Component {
   onSelectBlock(id) {
     // In selection mode (multiSelected has blocks), preserve the selection
     // so users can navigate the sidebar without losing what they've selected
-    const inSelectionMode = (this.props.uiState?.multiSelected?.length || 0) > 0;
+    const inSelectionMode =
+      (this.props.uiState?.multiSelected?.length || 0) > 0;
     this.props.setUIState({
       selected: id,
       ...(inSelectionMode ? {} : { multiSelected: [], gridSelected: null }),
@@ -714,7 +718,11 @@ class Form extends Component {
       const blockPathMap = schemaValidation.blockPathMap || {};
 
       const offenders = Object.keys(blocksErrors).map((blockId) => {
-        const blockData = getBlockById(persistedFormData, blockPathMap, blockId);
+        const blockData = getBlockById(
+          persistedFormData,
+          blockPathMap,
+          blockId,
+        );
         const blockType = blockData?.['@type'];
         // A template error is { title, message }; a schema error is Volto's
         // list of messages for one field, named by the field's title since a
@@ -791,7 +799,10 @@ class Form extends Component {
       let finalizedFormData = null;
       if (this.props.isEditForm && this.saveTemplatesRef.current) {
         const currentPath = this.props.pathname;
-        const result = await this.saveTemplatesRef.current(formData, currentPath);
+        const result = await this.saveTemplatesRef.current(
+          formData,
+          currentPath,
+        );
         // v2: the page save is gated while a template is unlocked — the Iframe
         // raised the "lock your templates first" modal and returns this sentinel.
         // Abort the page save.
@@ -844,29 +855,34 @@ class Form extends Component {
     if (!this.props.isEditForm) return Promise.resolve(null);
     const content = this.props.content;
     const language =
-      typeof content?.language === 'object' ? content.language?.token : content?.language;
+      typeof content?.language === 'object'
+        ? content.language?.token
+        : content?.language;
     const defaultLanguage = this.props.defaultLanguage;
     if (!language || !defaultLanguage || language === defaultLanguage) {
       return Promise.resolve(null);
     }
     const translations = content?.['@components']?.translations?.items || [];
-    const origin = translations.find((item) => item.language === defaultLanguage);
+    const origin = translations.find(
+      (item) => item.language === defaultLanguage,
+    );
     if (!origin?.['@id']) return Promise.resolve(null);
 
-    return new Api()
-      .get(flattenToAppURL(origin['@id']))
-      .catch(() => {
-        // The original cannot be read. Saving the page matters more than
-        // moving a marker, so the save goes ahead and the blocks keep the
-        // fingerprints they had — staying flagged, which is the safe
-        // direction to be wrong in.
-        log('translation source could not be read; fingerprints left as they are');
-        return null;
-      });
+    return new Api().get(flattenToAppURL(origin['@id'])).catch(() => {
+      // The original cannot be read. Saving the page matters more than
+      // moving a marker, so the save goes ahead and the blocks keep the
+      // fingerprints they had — staying flagged, which is the safe
+      // direction to be wrong in.
+      log(
+        'translation source could not be read; fingerprints left as they are',
+      );
+      return null;
+    });
   };
 
   restampTranslation = async (pageFormData) => {
-    const source = await (this.translationSourceRequest || Promise.resolve(null));
+    const source = await (this.translationSourceRequest ||
+      Promise.resolve(null));
     if (!source) return pageFormData;
 
     const blocks = restampTranslatedBlocks(
@@ -874,7 +890,10 @@ class Form extends Component {
       this.state.initialFormData?.blocks,
       source?.blocks,
       {
-        idFieldMap: buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
+        idFieldMap: buildIdFieldMap(
+          config.blocks.blocksConfig,
+          this.props.intl,
+        ),
         fingerprintOf: (block, id, type) => {
           const schema = getBlockTypeSchema(
             type,
@@ -906,7 +925,11 @@ class Form extends Component {
     // `sourceFormData` defaults to state, but the save flow passes the template-id-
     // finalized page data so those rewritten references reach the PATCH.
     const formData = stripFixedInsideSlots(
-      stripEmptyBlocks(sourceFormData, config.blocks.blocksConfig, this.props.intl),
+      stripEmptyBlocks(
+        sourceFormData,
+        config.blocks.blocksConfig,
+        this.props.intl,
+      ),
     );
 
     const fieldsModified = Object.keys(
@@ -1088,9 +1111,11 @@ class Form extends Component {
             pathname={this.props.pathname}
             selectedBlock={this.props.uiState.selected}
             multiSelected={this.props.uiState.multiSelected}
-            onSetMultiSelected={(blockIds) => this.props.setUIState({
-              multiSelected: blockIds,
-            })}
+            onSetMultiSelected={(blockIds) =>
+              this.props.setUIState({
+                multiSelected: blockIds,
+              })
+            }
             manage={this.props.isAdminForm}
             allowedBlocks={this.props.allowedBlocks}
             showRestricted={this.props.showRestricted}
@@ -1107,72 +1132,70 @@ class Form extends Component {
             this.state.sidebarMetadataIsAvailable &&
             this.props.editable &&
             createPortal(
-                  <UiForm
-                    method="post"
-                    onSubmit={this.onSubmit}
-                    error={keys(this.state.errors).length > 0}
-                  >
-                    {schema &&
-                      map(schema.fieldsets, (fieldset) => (
-                        <Accordion
-                          fluid
-                          styled
-                          className="form"
-                          key={fieldset.title}
+              <UiForm
+                method="post"
+                onSubmit={this.onSubmit}
+                error={keys(this.state.errors).length > 0}
+              >
+                {schema &&
+                  map(schema.fieldsets, (fieldset) => (
+                    <Accordion
+                      fluid
+                      styled
+                      className="form"
+                      key={fieldset.title}
+                    >
+                      <div
+                        key={fieldset.id}
+                        id={`metadataform-fieldset-${fieldset.id}`}
+                      >
+                        <Accordion.Title
+                          active={metadataFieldsets.includes(fieldset.id)}
+                          index={fieldset.id}
+                          onClick={this.onToggleMetadataFieldset}
                         >
-                          <div
-                            key={fieldset.id}
-                            id={`metadataform-fieldset-${fieldset.id}`}
-                          >
-                            <Accordion.Title
-                              active={metadataFieldsets.includes(fieldset.id)}
-                              index={fieldset.id}
-                              onClick={this.onToggleMetadataFieldset}
-                            >
-                              {fieldset.title}
-                              {metadataFieldsets.includes(fieldset.id) ? (
-                                <Icon name={upSVG} size="20px" />
-                              ) : (
-                                <Icon name={downSVG} size="20px" />
-                              )}
-                            </Accordion.Title>
-                            <Accordion.Content
-                              active={metadataFieldsets.includes(fieldset.id)}
-                            >
-                              <Segment className="attached">
-                                {map(fieldset.fields, (field, index) => (
-                                  <FormField
-                                    {...schema.properties[field]}
-                                    id={field}
-                                    fieldSet={fieldset.title.toLowerCase()}
-                                    formData={formData}
-                                    focus={
-                                      this.state.isClient &&
-                                      document
-                                        .getElementById('sidebar-metadata')
-                                        ?.contains(document.activeElement)
-                                        ? this.state.inFocus[field]
-                                        : false
-                                    }
-                                    value={formData?.[field]}
-                                    required={
-                                      schema.required.indexOf(field) !== -1
-                                    }
-                                    onChange={this.onChangeField}
-                                    onBlur={this.onBlurField}
-                                    onClick={this.onClickInput}
-                                    key={field}
-                                    error={this.state.errors[field]}
-                                  />
-                                ))}
-                              </Segment>
-                            </Accordion.Content>
-                          </div>
-                        </Accordion>
-                      ))}
-                  </UiForm>,
-                  document.getElementById('sidebar-metadata'),
-                )}
+                          {fieldset.title}
+                          {metadataFieldsets.includes(fieldset.id) ? (
+                            <Icon name={upSVG} size="20px" />
+                          ) : (
+                            <Icon name={downSVG} size="20px" />
+                          )}
+                        </Accordion.Title>
+                        <Accordion.Content
+                          active={metadataFieldsets.includes(fieldset.id)}
+                        >
+                          <Segment className="attached">
+                            {map(fieldset.fields, (field, index) => (
+                              <FormField
+                                {...schema.properties[field]}
+                                id={field}
+                                fieldSet={fieldset.title.toLowerCase()}
+                                formData={formData}
+                                focus={
+                                  this.state.isClient &&
+                                  document
+                                    .getElementById('sidebar-metadata')
+                                    ?.contains(document.activeElement)
+                                    ? this.state.inFocus[field]
+                                    : false
+                                }
+                                value={formData?.[field]}
+                                required={schema.required.indexOf(field) !== -1}
+                                onChange={this.onChangeField}
+                                onBlur={this.onBlurField}
+                                onClick={this.onClickInput}
+                                key={field}
+                                error={this.state.errors[field]}
+                              />
+                            ))}
+                          </Segment>
+                        </Accordion.Content>
+                      </div>
+                    </Accordion>
+                  ))}
+              </UiForm>,
+              document.getElementById('sidebar-metadata'),
+            )}
 
           <SlotRenderer
             name="belowContent"

@@ -100,7 +100,8 @@
     },
     "volto/components/manage/Widgets/ImageWidget.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Widgets/ImageWidget.jsx",
-      "hash": "f027c50a37ac2ca503ff63aae1e91738e81d239bc7bed3cec9da6b60d44af682"
+      "hash": "f027c50a37ac2ca503ff63aae1e91738e81d239bc7bed3cec9da6b60d44af682",
+      "why": "Exposes the widget for INLINE use from the slate toolbar's image popup, which upstream cannot do: `showPreview={false}` drops the preview/Message wrapper (SyncedSlateToolbar renders <ImageInput showPreview={false}>), `onClose` lets the popup close itself, and the picker UI is AddLinkForm so it matches the toolbar's link popup. Upload logic is shared between the sidebar and inline paths. PARTLY OBSOLETE: the header also claims drag-and-drop via a Dropzone wrapper, but upstream 19.1.1 now loads react-dropzone and renders its own <Dropzone onDrop>, so that reason is gone and the fork could likely shed it. The hydra-image-picker-inline class is dead — no stylesheet references it."
     },
     "volto/components/manage/Widgets/TextWidget.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Widgets/TextWidget.jsx",
