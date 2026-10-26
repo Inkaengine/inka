@@ -16,7 +16,11 @@
       "value": [
         {
           "type": "h1",
-          "children": [{ "text": "Template Header - From Template" }]
+          "children": [
+            {
+              "text": "Template Header - From Template"
+            }
+          ]
         }
       ],
       "plaintext": "Template Header - From Template"
@@ -36,16 +40,44 @@
           "templateId": "resolveuid/test-layout-template-uid",
           "templateInstanceId": "test-layout-def-instance",
           "slotId": "grid-cell-1",
-          "value": [{ "type": "p", "children": [{ "text": "Template Grid Cell 1" }] }],
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "Template Grid Cell 1"
+                }
+              ]
+            }
+          ],
           "plaintext": "Template Grid Cell 1"
         },
         "tpl-grid-cell-2": {
           "@type": "slate",
-          "value": [{ "type": "p", "children": [{ "text": "Template Grid Cell 2" }] }],
-          "plaintext": "Template Grid Cell 2"
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "Template Grid Cell 2"
+                }
+              ]
+            }
+          ],
+          "plaintext": "Template Grid Cell 2",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "resolveuid/test-layout-template-uid",
+          "templateInstanceId": "test-layout-def-instance",
+          "slotId": "grid-cell-2"
         }
       },
-      "blocks_layout": { "items": ["tpl-grid-cell-1", "tpl-grid-cell-2"] }
+      "blocks_layout": {
+        "items": [
+          "tpl-grid-cell-1",
+          "tpl-grid-cell-2"
+        ]
+      }
     },
     "main-placeholder": {
       "@type": "slate",
@@ -57,7 +89,11 @@
       "value": [
         {
           "type": "p",
-          "children": [{ "text": "Default placeholder content" }]
+          "children": [
+            {
+              "text": "Default placeholder content"
+            }
+          ]
         }
       ],
       "plaintext": "Default placeholder content"
@@ -104,13 +140,23 @@
       "value": [
         {
           "type": "p",
-          "children": [{ "text": "Template Footer - From Template" }]
+          "children": [
+            {
+              "text": "Template Footer - From Template"
+            }
+          ]
         }
       ],
       "plaintext": "Template Footer - From Template"
     }
   },
   "blocks_layout": {
-    "items": ["header-block", "grid-block", "main-placeholder", "slider-block", "footer-block"]
+    "items": [
+      "header-block",
+      "grid-block",
+      "main-placeholder",
+      "slider-block",
+      "footer-block"
+    ]
   }
 }

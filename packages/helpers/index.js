@@ -3725,9 +3725,14 @@ export function collectContentFromTree(
           // Track existing fixed block ID and content for reuse
           existingFixedBlockIds.set(slotId, { blockId, block });
         } else {
-          // User content block
+          // User content block: the page's, taken WHOLE into its slot
+          // (docs/frontend-guide/templates.md "How the Merge Works", step 2) — its
+          // children go with it. Recursing on would collect each child that
+          // carries the slot a second time, as content of its own, and render it
+          // twice: inside the block and again at this level.
           if (!pendingContent.has(slotId)) pendingContent.set(slotId, []);
           pendingContent.get(slotId).push({ blockId, block });
+          return;
         }
       }
     } else if (!block.templateId && !block.slotId) {

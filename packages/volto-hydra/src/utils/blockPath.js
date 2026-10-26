@@ -861,19 +861,14 @@ export function insertBlockInContainer(
   const items = getContainerItems(parentBlock, containerConfig);
   let updatedParentBlock;
 
-  // A block added into a container that is part of a template instance joins that
-  // instance (inherit from the ref sibling, else the container) — otherwise it renders
-  // read-only in template edit mode, the same failure as unstamped seeded auto-content.
+  // Template membership is NOT decided here: whoever places a block (add, paste,
+  // move) runs applyMembershipWhereLanded after the insert — the one rule,
+  // docs/architecture.md "Template membership". This only inserts.
   if (isObjectList) {
     const idField = containerConfig.idField || '@id';
     const refIndex = items.findIndex((item) => item[idField] === refBlockId);
     const insertIndex = getInsertIndex(items, refIndex);
-    const stamped = inheritTemplateMembership(
-      newBlockData,
-      items[refIndex] || parentBlock,
-      { inheritFixed: !!parentBlock?.templateInstanceId },
-    );
-    items.splice(insertIndex, 0, { [idField]: newBlockId, ...stamped });
+    items.splice(insertIndex, 0, { [idField]: newBlockId, ...newBlockData });
     updatedParentBlock = setContainerItems(parentBlock, containerConfig, items);
   } else {
     // Standard container: shared blocks dict + layout field. The dict may live
@@ -882,14 +877,9 @@ export function insertBlockInContainer(
       parentBlock,
       containerConfig.regionPath,
     );
-    const stamped = inheritTemplateMembership(
-      newBlockData,
-      regionContainer.blocks?.[refBlockId] || parentBlock,
-      { inheritFixed: !!parentBlock?.templateInstanceId },
-    );
     const newContainerBlocks = {
       ...regionContainer.blocks,
-      [newBlockId]: stamped,
+      [newBlockId]: newBlockData,
     };
     const refIndex = items.indexOf(refBlockId);
     const insertIndex = getInsertIndex(items, refIndex);
@@ -3159,7 +3149,7 @@ export function getCommonAncestor(blockPathMap, blockUids) {
  * dropped block takes its position rather than sitting beside it.
  *
  * Call this AFTER the dropped block's membership has been re-derived
- * (applyMembershipAfterMove). The placeholder is a neighbour, and in a forced
+ * (applyMembershipWhereLanded). The placeholder is a neighbour, and in a forced
  * region it is the only neighbour carrying the template — remove it first and
  * there is nothing left to derive membership from, so the block that just landed
  * in the region does not belong to it.

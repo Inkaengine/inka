@@ -2563,37 +2563,7 @@ function validateServedContent() {
     const own = source.filter((item) => !isHydraOwned(item.rel));
     errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas), { idFieldMap }).errors);
   }
-  return withoutExpectedErrors(errors.map((m) => m.trim()));
-}
-
-/**
- * A fixture that is broken ON PURPOSE — it exists to show how a frontend copes
- * with that content — is declared in its mount's `expected-errors.json`:
- *
- *   { "/image-scales-test": ["url: path not in content: /image-scales-test/test-image.png"] }
- *
- * keyed by the item's path within the mount, each entry a substring of the one
- * problem it excuses. An entry excuses only the problems it matches on that
- * item, and an entry that matches nothing is an error in its own right, so a
- * declaration cannot outlive the breakage it describes.
- */
-function withoutExpectedErrors(errors) {
-  const remaining = [...errors];
-  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const file = path.join(dirPath, 'expected-errors.json');
-    if (!fs.existsSync(file)) continue;
-    for (const [rel, expected] of Object.entries(JSON.parse(fs.readFileSync(file, 'utf-8')))) {
-      const itemPath = mountPath === '/' ? rel : mountPath + (rel === '/' ? '' : rel);
-      for (const text of expected) {
-        const hits = remaining.filter((m) => m.startsWith(`${itemPath}: `) && m.includes(text));
-        if (!hits.length) {
-          remaining.push(`${itemPath}: expected-errors.json expects "${text}", which no longer occurs — remove it from ${file}`);
-        }
-        for (const m of hits) remaining.splice(remaining.indexOf(m), 1);
-      }
-    }
-  }
-  return remaining;
+  return errors.map((m) => m.trim());
 }
 
 /**
@@ -2638,21 +2608,19 @@ function reportContentErrors(errors) {
 }
 
 /** Startup: invalid content is fatal — tests must not run against a site that
- *  would not import, or that links to nothing. SKIP_CONTENT_VALIDATION=true is
- *  the explicit way out. */
+ *  would not import, or that links to nothing. There is no way out: content a
+ *  test needs broken is created at runtime (session content), never served. */
 function assertServedContentValid() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
   const errors = validateServedContent();
   if (errors.length) {
     reportContentErrors(errors);
-    throw new Error(`${errors.length} content problem(s) — fix the content (listed above) or set SKIP_CONTENT_VALIDATION=true`);
+    throw new Error(`${errors.length} content problem(s) — fix the content (listed above)`);
   }
 }
 
 /** A reload (watcher or cache miss) only reports: one bad edit mid-session
  *  should not take the dev server down. The next start is the gate. */
 function reportServedContentProblems() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
   const errors = validateServedContent();
   if (errors.length) reportContentErrors(errors);
 }
@@ -6320,10 +6288,7 @@ app.get('*/@@download/*', (req, res) => {
   // the distribution `<dir>/image/<file>` layout handled below.
   if (markdownBlobs.has(contentPath)) {
     const file = markdownBlobs.get(contentPath);
-    // Scale here too. This handler has THREE serving paths and each one that
-    // ignores the scale makes the mock lie about image size on exactly the
-    // content it owns — these docs fixtures live beside their markdown.
-    if (sendScaledIfAsked(file)) return;
+    // The original, as uploaded: a download names no scale (that is @@images').
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
     res.sendFile(file);
@@ -6347,7 +6312,6 @@ app.get('*/@@download/*', (req, res) => {
         '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogg': 'video/ogg',
         '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pdf': 'application/pdf',
       };
-      if (sendScaledIfAsked(imageFile)) return;
       res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
       res.sendFile(imageFile);
       return;
@@ -6673,4 +6637,4 @@ if (require.main === module) {
 }
 
 // Export for use by test frontend server or test harnesses
-module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution, getRedirectTarget, getAllRedirects };
+module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution, getRedirectTarget, getAllRedirects, mountInternalRefs };

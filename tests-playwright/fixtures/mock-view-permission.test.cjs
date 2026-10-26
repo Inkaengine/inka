@@ -43,7 +43,6 @@ function distribution() {
 // CONTENT_MOUNTS is read when the mock loads, and node --test runs each file in
 // its own process, so this mock serves only the site above.
 process.env.CONTENT_MOUNTS = `/:${distribution()}`;
-process.env.SKIP_CONTENT_VALIDATION = 'true';
 const { app, ready } = require('./mock-plone-api.cjs');
 
 let server;

@@ -93,12 +93,32 @@
           "@type": "convTargetA",
           "title": "Moved group child",
           "templateId": "resolveuid/test-layout-template-uid",
-          "templateInstanceId": "tpl-instance-1"
+          "templateInstanceId": "tpl-instance-1",
+          "slotId": "primary"
+        },
+        "moved-snip-heading": {
+          "@type": "convTargetA",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "resolveuid/conv-snippet-uid",
+          "templateInstanceId": "conv-snip-inst",
+          "slotId": "conv-snippet-heading",
+          "title": "Conv snippet heading"
+        },
+        "moved-snip-body": {
+          "@type": "convTargetA",
+          "fixed": false,
+          "templateId": "resolveuid/conv-snippet-uid",
+          "templateInstanceId": "conv-snip-inst",
+          "slotId": "conv-snippet-body",
+          "title": "Snippet body on the page"
         }
       },
       "blocks_layout": {
         "items": [
-          "moved-grp-child"
+          "moved-grp-child",
+          "moved-snip-heading",
+          "moved-snip-body"
         ]
       }
     },

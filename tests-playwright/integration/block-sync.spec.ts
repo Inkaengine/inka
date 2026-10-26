@@ -8,6 +8,7 @@
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { URLS } from '../ports';
 
 test.describe('Block Sync - Listing Block Item Type', () => {
   test('listing block shows variation selector in sidebar', async ({ page }) => {
@@ -1687,6 +1688,65 @@ test.describe('fieldRules - a rule that refuses a value', () => {
   test('a bad value inside a container does not save', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
+    // Broken on purpose, so it is made here, in this login's session — never a
+    // committed fixture the content check would have to excuse.
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+    const created = await page.request.post(`${URLS.mockApi}/_test_data`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+      data: {
+        "@type": "Document",
+        "id": "nested-bad-url-page",
+        "title": "A bad value inside a container",
+        "blocks": {
+          "intro-1": {
+            "@type": "slate",
+            "value": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "The feed inside the column below has a url that is not one. Core's validation walked the top level and would never have opened this container."
+                  }
+                ]
+              }
+            ]
+          },
+          "cols-1": {
+            "@type": "columns",
+            "blocks": {
+              "col-1": {
+                "@type": "column",
+                "blocks": {
+                  "rss-nested": {
+                    "@type": "rssFeed",
+                    "feedUrl": "not a url at all",
+                    "count": 6,
+                    "variation": "summary"
+                  }
+                },
+                "blocks_layout": {
+                  "items": [
+                    "rss-nested"
+                  ]
+                }
+              }
+            },
+            "blocks_layout": {
+              "items": [
+                "col-1"
+              ]
+            }
+          }
+        },
+        "blocks_layout": {
+          "items": [
+            "intro-1",
+            "cols-1"
+          ]
+        }
+      },
+    });
+    expect(created.status()).toBe(201);
     await helper.navigateToEdit('/nested-bad-url-page');
     await expect(
       helper.getIframe().locator('[data-block-uid="intro-1"]'),

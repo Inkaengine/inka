@@ -58,7 +58,7 @@ function evaluate(mounts, expr) {
         catch (e) { console.log('THREW ' + e.message); process.exit(0); }
       });`],
     {
-      env: { ...process.env, CONTENT_MOUNTS: mounts, PORT: '0', SKIP_CONTENT_VALIDATION: 'true' },
+      env: { ...process.env, CONTENT_MOUNTS: mounts, PORT: '0' },
       encoding: 'utf8',
       timeout: 60_000,
     },
