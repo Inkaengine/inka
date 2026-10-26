@@ -11,7 +11,7 @@ description: The Grid block allows adding multi-column blocks. A grid block can
 effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
-id: text
+id: grid-text
 is_folderish: true
 language: "##DEFAULT##"
 layout: document_view

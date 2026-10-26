@@ -1086,7 +1086,7 @@ export const sharedBlocksConfig = {
         group: 'common',
         // Match Volto core's grid (allowedBlocks: ['image','listing','slate','teaser']).
         // gridBlock is used with slate cards and listings throughout the content
-        // (e.g. docs/examples/grid/text, docs/examples/grid/listing, the homepage
+        // (e.g. docs/examples/grid/grid-text, docs/examples/grid/listing, the homepage
         // "Why Hydra" cards); the old ['teaser','image'] wrongly rejected those, which
         // made the chevron move (and drop) walk children OUT of the grid to a parent
         // that accepts the type. Keep gridBlock (no nesting) and hero out of it.
