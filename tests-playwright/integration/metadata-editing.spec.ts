@@ -348,7 +348,12 @@ test.describe('Page Metadata Editing', () => {
     });
 
     const iframe = helper.getIframe();
-    await expect(iframe.locator(titleSelector)).toBeVisible({ timeout: 30000 });
+
+    // Deliberately NOT waiting for the title to render here. With the schema
+    // held the admin never sends INITIAL_DATA, and the Nuxt frontend does not
+    // paint its title without it — the mock renders regardless, which is why
+    // this passed on admin-mock and failed on admin-nuxt. The real precondition
+    // is the INIT poll below, which is admin-side and frontend-independent.
 
     // The race must actually have been constructed, or this test proves
     // nothing: the admin has to have asked for the schema over the wire while
@@ -373,6 +378,7 @@ test.describe('Page Metadata Editing', () => {
     // completes its handshake and the page's own field is editable.
     await helper.waitForBridgeConnected();
     const pageTitle = iframe.locator(titleSelector);
+    await expect(pageTitle).toBeVisible({ timeout: 30000 });
     await pageTitle.click();
     await expect(pageTitle).toHaveAttribute('contenteditable', 'true', {
       timeout: 5000,
