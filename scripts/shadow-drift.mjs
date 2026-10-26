@@ -118,23 +118,40 @@ for (const s of shadows) {
 }
 
 if (record) {
+  // Carry `why` and `declined` forward. They are the expensive part of this
+  // file — the reasoning someone did once about whether a fork is still
+  // needed and which upstream changes were consciously refused. Re-recording
+  // must never silently discard them, or the audit gets re-derived every time.
+  const prior = existsSync(BASELINE)
+    ? JSON.parse(readFileSync(BASELINE, 'utf8')).shadows ?? {}
+    : {};
+  const shadowsOut = {};
+  for (const [k, v] of resolved) {
+    const { why, declined } = prior[k] ?? {};
+    shadowsOut[k] = { ...v, ...(why ? { why } : {}), ...(declined ? { declined } : {}) };
+  }
   writeFileSync(
     BASELINE,
     JSON.stringify(
       {
         _comment:
-          'Upstream hashes at the moment each shadow was last reviewed. Regenerate with `pnpm shadows:record` ONLY after reading the upstream diff. See scripts/shadow-drift.mjs.',
+          'Upstream hashes at the moment each shadow was last reviewed. Regenerate with `pnpm shadows:record` ONLY after reading the upstream diff. `why` says what the fork is for; `declined` lists upstream commits deliberately not ported, so the next reviewer does not re-derive it. See scripts/shadow-drift.mjs.',
         voltoTag: voltoTag(),
-        shadows: Object.fromEntries([...resolved].map(([k, v]) => [k, v])),
+        shadows: shadowsOut,
         additive,
       },
       null,
       2,
     ) + '\n',
   );
+  const undocumented = Object.entries(shadowsOut).filter(([, v]) => !v.why).length;
   console.log(
     `shadow-drift: recorded ${resolved.size} shadows + ${additive.length} additive files at Volto ${voltoTag()}`,
   );
+  if (undocumented)
+    console.log(
+      `  ${undocumented} shadow(s) still have no \`why\`. A fork nobody can justify is a fork nobody can retire.`,
+    );
   process.exit(0);
 }
 
@@ -148,7 +165,8 @@ for (const [s, { upstream, hash }] of resolved) {
   const prev = base.shadows?.[s];
   if (!prev) {
     problems.push(
-      `  NEW SHADOW, never recorded: ${s}\n      forks ${upstream}`,
+      `  NEW SHADOW, never recorded: ${s}\n      forks ${upstream}\n` +
+        `      Record it, and give it a \`why\`: what does this fork do that upstream cannot?`,
     );
   } else if (prev.hash !== hash) {
     problems.push(
@@ -185,6 +203,15 @@ if (problems.length) {
   ]);
 }
 
+const undocumented = [...resolved.keys()].filter((s) => !base.shadows?.[s]?.why);
 console.log(
   `shadow-drift: ${resolved.size} shadows unchanged upstream, ${additive.length} additive (Volto ${voltoTag()})`,
 );
+if (undocumented.length) {
+  // Not a failure: the backlog predates this check, and failing CI over it
+  // would only get the check disabled. New shadows DO have to justify
+  // themselves (above), so the debt can only shrink.
+  console.log(`  ${undocumented.length} of them have no \`why\` recorded yet:`);
+  for (const s of undocumented.slice(0, 5)) console.log(`      ${s}`);
+  if (undocumented.length > 5) console.log(`      ... and ${undocumented.length - 5} more`);
+}

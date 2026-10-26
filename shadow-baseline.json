@@ -1,5 +1,5 @@
 {
-  "_comment": "Upstream hashes at the moment each shadow was last reviewed. Regenerate with `pnpm shadows:record` ONLY after reading the upstream diff. See scripts/shadow-drift.mjs.",
+  "_comment": "Upstream hashes at the moment each shadow was last reviewed. Regenerate with `pnpm shadows:record` ONLY after reading the upstream diff. `why` says what the fork is for; `declined` lists upstream commits deliberately not ported, so the next reviewer does not re-derive it. See scripts/shadow-drift.mjs.",
   "voltoTag": "19.1.1",
   "shadows": {
     "@plone/volto-slate/blocks/Text/DefaultTextBlockEditor.jsx": {
@@ -100,7 +100,12 @@
     },
     "volto/components/theme/View/View.jsx": {
       "upstream": "core/packages/volto/src/components/theme/View/View.jsx",
-      "hash": "e1d14b40a52ba19e4ad5e136216038b50a5aed45b8f7a2bb30eae163b39ac6ed"
+      "hash": "e1d14b40a52ba19e4ad5e136216038b50a5aed45b8f7a2bb30eae163b39ac6ed",
+      "why": "Hydra renders the page in the preview iframe, so the admin must NOT render RenderedView at all; this fork replaces it with <Iframe>, mounted as the FIRST child so it keeps its position in the React tree whether content is null (loading) or loaded, and so is never remounted. A slot can add to the view, not remove its content render, so this cannot become a slot registration. Also redirects to /login without a token, where upstream renders <span/>.",
+      "declined": {
+        "29a1bbb6e": "key={flattenToAppURL(content['@id'])} on RenderedView — we never render RenderedView, so there is nothing to key.",
+        "6a8f3bdec": "AlternateHrefLangs — public-site SEO markup. The admin is not the public site; www is served by Nuxt/SSG, which emits its own hreflang."
+      }
     },
     "volto/helpers/Url/Url.js": {
       "upstream": "core/packages/volto/src/helpers/Url/Url.js",
