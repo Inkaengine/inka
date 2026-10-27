@@ -511,16 +511,15 @@ export const sharedBlocksConfig = {
                                 widget: 'blocks_layout',
                                 // Accordion panels accept the general page-level content blocks
                                 // (the demo panels hold separator/teaser/listing/slateTable, not
-                                // just slate/image) — EXCEPT accordion itself, to prevent nesting
-                                // accordions inside accordions.
+                                // just slate/image), and accordion itself: panels can nest.
                                 allowedBlocks: [
                                     'slate', 'image', 'separator', 'teaser', 'listing', 'slateTable',
                                     'hero', 'columns', 'slider', 'gridBlock', 'section',
                                     'contextNavigation', 'codeExample', 'toc', 'highlight', 'introduction',
                                     // `button`'s id is also a class of every chooser button, so
                                     // it is picked by its label (block-add-remove.spec.ts).
-                                    'button',
-                                , 'accordion'],
+                                    'button', 'accordion',
+                                ],
                                 defaultBlockType: 'slate',
                             },
                         },
@@ -692,7 +691,7 @@ export const sharedBlocksConfig = {
                                             idField: 'key',
                                             schema: {
                                                 properties: {
-                                                    value: { widget: 'slate' },
+                                                    value: { title: 'Content', widget: 'slate' },
                                                 },
                                             },
                                         },
@@ -857,7 +856,29 @@ export const sharedBlocksConfig = {
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['variation', 'fieldMapping', 'headline', 'headlineTag', 'querystring'] }],
             properties: {
-                fieldMapping: { title: 'Field mapping' },
+                // The frontend declares its own mapping widget and what a result
+                // offers to map: these are the fields its fetcher (ploneFetchItems,
+                // @querystring-search) returns. A listing of another kind (related
+                // items, a feed) declares the fields ITS fetcher returns.
+                fieldMapping: {
+                    title: 'Field mapping',
+                    widget: 'field_mapping',
+                    description: 'Map query result fields to item block fields',
+                    sourceFields: {
+                        '@id': { title: 'URL', type: 'string' },
+                        title: { title: 'Title', type: 'string' },
+                        description: { title: 'Description', type: 'string' },
+                        image: { title: 'Lead Image', type: 'image' },
+                        created: { title: 'Created', type: 'date' },
+                        effective: { title: 'Published', type: 'date' },
+                        Creator: { title: 'Author', type: 'string' },
+                        review_state: { title: 'State', type: 'string' },
+                        Subject: { title: 'Categories', type: 'array' },
+                    },
+                    // …and every metadata column the site's catalog holds, so a
+                    // site's own fields can be mapped too.
+                    vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
+                },
                 headline: { title: 'Headline', type: 'string' },
                 headlineTag: { title: 'Headline tag', widget: 'select', choices: [['h1','h1'],['h2','h2'],['h3','h3'],['h4','h4'],['h5','h5'],['h6','h6']] },
                 querystring: { title: 'Search criteria', widget: 'querystring' },
@@ -871,7 +892,6 @@ export const sharedBlocksConfig = {
                     filterConvertibleFrom: '@default',
                     blocksField: '..',
                 },
-                // fieldMapping field is rendered by inheritSchemaFrom via mappingField
             },
         },
         schemaEnhancer: {
@@ -1066,7 +1086,7 @@ export const sharedBlocksConfig = {
         group: 'common',
         // Match Volto core's grid (allowedBlocks: ['image','listing','slate','teaser']).
         // gridBlock is used with slate cards and listings throughout the content
-        // (e.g. docs/examples/grid/text, docs/examples/grid/listing, the homepage
+        // (e.g. docs/examples/grid/grid-text, docs/examples/grid/listing, the homepage
         // "Why Hydra" cards); the old ['teaser','image'] wrongly rejected those, which
         // made the chevron move (and drop) walk children OUT of the grid to a parent
         // that accepts the type. Keep gridBlock (no nesting) and hero out of it.

@@ -169,3 +169,22 @@ describe('sourceFingerprint', () => {
     expect(sourceFingerprint({ '@type': 'separator', align: 'left' }, separator)).toBeNull();
   });
 });
+
+describe('translatableFieldIds — a wrapped field', () => {
+  it('is judged by the field it wraps (baseWidget), not by the wrapper', () => {
+    // copy-from-target wraps a teaser's title and description so they can be
+    // taken from the page linked to; they are still the teaser's prose.
+    const wrapped = {
+      properties: {
+        title: { title: 'Title', widget: 'copyFromTargetField', baseWidget: { title: 'Title' } },
+        description: {
+          title: 'Description',
+          widget: 'copyFromTargetField',
+          baseWidget: { title: 'Description', widget: 'textarea' },
+        },
+        href: { title: 'Target', widget: 'copyFromTargetField', baseWidget: { title: 'Target', widget: 'object_browser' } },
+      },
+    };
+    expect(translatableFieldIds(wrapped)).toEqual(['title', 'description']);
+  });
+});

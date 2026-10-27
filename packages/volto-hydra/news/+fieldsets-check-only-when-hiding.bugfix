@@ -1,0 +1,1 @@
+Adding a block works again: the check for a block schema without fieldsets only fires when a field actually has to be hidden, so schemas Volto builds for itself (adding a block, filling defaults) pass through again. @djay

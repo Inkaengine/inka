@@ -119,3 +119,42 @@ describe('gap #4 — a loaded (prior-pass) instance is re-applied, not passed th
     expect(body?.value?.[0]?.text).toBe('My Body');          // user content preserved
   });
 });
+
+describe("a template's definition is not a use of it — in every region, both storages", () => {
+  // A definition opened as a page: its regions hold the template's OWN blocks. Each
+  // container's re-entry brings one of its nested regions; the merge must recognise it
+  // as the definition too, whether the region is blocks_layout or an object_list.
+  const template = {
+    '@id': '/t/def',
+    blocks: {
+      cols: {
+        '@type': 'columns', fixed: true, readOnly: true, templateId: '/t/def', slotId: 'cols',
+        blocks: {
+          cell: { '@type': 'slate', fixed: true, readOnly: true, templateId: '/t/def', slotId: 'cell', plaintext: 'Cell' },
+        },
+        blocks_layout: { items: ['cell'] },
+      },
+      slider: {
+        '@type': 'slider', fixed: true, readOnly: true, templateId: '/t/def', slotId: 'slider',
+        slides: [
+          { '@id': 'slide-1', '@type': 'slide', fixed: true, readOnly: true, templateId: '/t/def', slotId: 'slide', title: 'One' },
+          { '@id': 'slide-2', '@type': 'slide', fixed: true, readOnly: true, templateId: '/t/def', slotId: 'slide', title: 'Two' },
+        ],
+      },
+    },
+    blocks_layout: { items: ['cols', 'slider'] },
+  };
+  const expand = (items, options) =>
+    expandTemplatesSync(items, { templates: { '/t/def': template }, templateState: {}, editMode: false, ...options })
+      .map((b) => b['@uid']);
+
+  test('a nested blocks_layout region of the definition is left as it is', () => {
+    const { blocks } = structuredClone(template.blocks.cols);
+    expect(expand(['cell'], { blocks })).toEqual(['cell']);
+  });
+
+  test('a nested object_list region of the definition is left as it is', () => {
+    const slides = structuredClone(template.blocks.slider.slides);
+    expect(expand(slides, { idField: '@id' })).toEqual(['slide-1', 'slide-2']);
+  });
+});

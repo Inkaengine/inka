@@ -22,6 +22,7 @@
 import { getBlockType } from '../helpers/index.js';
 import { foldSlateStyleRules } from './slateStyles.js';
 import { isObjectListRegion } from './regionWidgets.js';
+import { createFieldRulesEnhancer } from './fieldRules.js';
 
 // Same value as PAGE_BLOCK_UID in hydra.js — defined locally to avoid
 // importing from @volto-hydra/hydra-js (which would pull in Volto deps).
@@ -92,8 +93,20 @@ export function addableSiblingTypes(
   return types;
 }
 
-// Cache for getBlockTypeSchema — keyed by blockType
+// Cache for getBlockTypeSchema — keyed by blockType. Each entry remembers the
+// config it was built from (the entry object, its schema and its enhancer): the
+// admin's Form reads schemas before INIT, and INIT replaces an entry with the
+// frontend's merged one (and installs enhancers on it), so a schema built from
+// anything else is stale and is built again. A schema built from the config as
+// it stands is reused — the same object every time, so nothing that compares
+// schemas by identity sees a change that did not happen.
 const _typeSchemaCache = new Map();
+
+const builtFrom = (blockConfig) => [
+  blockConfig,
+  blockConfig?.blockSchema || blockConfig?.schema,
+  blockConfig?.schemaEnhancer,
+];
 
 /**
  * Get the default schema for a block type (with empty formData).
@@ -110,10 +123,11 @@ export function getBlockTypeSchema(blockType, intl, blocksConfig) {
   if (!blockType) return null;
   if (!blocksConfig) throw new Error('getBlockTypeSchema requires blocksConfig');
 
-  const cached = _typeSchemaCache.get(blockType);
-  if (cached) return cached;
-
   const blockConfig = blocksConfig[blockType];
+  const cached = _typeSchemaCache.get(blockType);
+  const from = builtFrom(blockConfig);
+  if (cached && cached.from.every((ref, i) => ref === from[i])) return cached.schema;
+
   if (!blockConfig) return null;
 
   const schemaSource = blockConfig.blockSchema || blockConfig.schema;
@@ -147,19 +161,39 @@ export function getBlockTypeSchema(blockType, intl, blocksConfig) {
     };
   }
 
-  if (typeof blockConfig.schemaEnhancer === 'function') {
-    schema = blockConfig.schemaEnhancer({
-      schema,
-      formData: {},
-      intl,
-    });
+  const enhancers = enhancerParts(blockConfig.schemaEnhancer);
+  if (enhancers.length > 0) {
+    const base = schema;
+    for (const enhancer of enhancers) {
+      schema = enhancer({
+        schema,
+        formData: {},
+        intl,
+      });
+    }
+    // This is the TYPE's schema, built with empty data, so a fieldRule that
+    // shows a field only for some data (`links: { when: { mode: 'links' },
+    // else: false }`, a teaser's title until "customise" is ticked) hides it
+    // here. Hiding a field is one block's form's concern (pass 2 resolves each
+    // instance's own schema). The type has every field it declares: pass 1
+    // walks its regions by it, a listing maps onto its fields, a container
+    // owns their defaults, a translation fingerprints its prose by it.
+    const removed = Object.entries(base?.properties || {}).filter(
+      ([name]) => !(name in (schema?.properties || {})),
+    );
+    if (removed.length > 0) {
+      schema = {
+        ...schema,
+        properties: { ...(schema?.properties || {}), ...Object.fromEntries(removed) },
+      };
+    }
   }
 
   const result = schema?.properties && Object.keys(schema.properties).length > 0
     ? schema
     : null;
 
-  _typeSchemaCache.set(blockType, result);
+  _typeSchemaCache.set(blockType, { schema: result, from });
   return result;
 }
 
@@ -197,6 +231,20 @@ export function buildIdFieldMap(blocksConfig, intl) {
  * @param {Object} [blockPathMap] - Block path map (passed to enhancer for parent/sibling lookups)
  * @returns {Object|null} - The enhanced block schema or null
  */
+/**
+ * A schemaEnhancer as the functions to run: a function as it is, and a
+ * `fieldRules` recipe — how a frontend sends its rules — converted exactly as
+ * the admin converts it, so a field the rules hide is hidden here too. Other
+ * recipes (`inheritSchemaFrom`) need the admin, which alone converts them.
+ */
+function enhancerParts(schemaEnhancer) {
+  const parts = Array.isArray(schemaEnhancer) ? schemaEnhancer : schemaEnhancer ? [schemaEnhancer] : [];
+  return parts.flatMap((part) => {
+    if (typeof part === 'function') return [part];
+    return part?.fieldRules ? [createFieldRulesEnhancer(part.fieldRules)] : [];
+  });
+}
+
 export function getBlockSchema(blockType, intl, blocksConfig, formData, pageFormData, blockId, blockPathMap) {
   if (!blockType) return null;
   if (!blocksConfig) throw new Error('getBlockSchema requires blocksConfig');
@@ -248,9 +296,10 @@ export function getBlockSchema(blockType, intl, blocksConfig, formData, pageForm
     }
   }
 
-  // Run schemaEnhancer with instance data (skip recipe objects — only admin converts those)
-  if (typeof blockConfig.schemaEnhancer === 'function') {
-    schema = blockConfig.schemaEnhancer({
+  // Run schemaEnhancer with instance data, part by part (mergeFrontendBlock
+  // chains the admin's enhancer before a frontend's into a list).
+  for (const enhancer of enhancerParts(blockConfig.schemaEnhancer)) {
+    schema = enhancer({
       schema,
       formData: effectiveFormData,
       intl,
@@ -359,6 +408,32 @@ function _hashString(str) {
     hash = ((hash << 5) + hash + str.charCodeAt(i)) & 0x7fffffff;
   }
   return 's' + hash.toString(36);
+}
+
+/**
+ * Where "+" goes from a block with no room after it.
+ *
+ * A layout's other slots — a fixed heading in a one-block region, say — take
+ * nothing after their block, so "+" there had nowhere to add. The page's
+ * content goes in the layout's DEFAULT slot: each block outside it, in a
+ * parent that has one, gets `defaultSlotAnchor`, the default slot's first
+ * block, and "+" adds before it (getBlockAddability → insertAt). Not the next
+ * region in order: after a heading that may be a sidebar.
+ */
+function markDefaultSlotAnchors(pathMap) {
+  const firstDefault = {};
+  for (const [id, info] of Object.entries(pathMap)) {
+    if (info?.slotId !== 'default' || info.parentId == null) continue;
+    const current = firstDefault[info.parentId];
+    if (!current || info.regionIndex < pathMap[current].regionIndex) {
+      firstDefault[info.parentId] = id;
+    }
+  }
+  for (const info of Object.values(pathMap)) {
+    if (!info?.slotId || info.slotId === 'default') continue;
+    const anchor = firstDefault[info.parentId];
+    if (anchor) info.defaultSlotAnchor = anchor;
+  }
 }
 
 export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
@@ -700,6 +775,8 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
       pathMap[blockId] = {
         path: blockPath,
         parentId: effectiveParentId,
+        // The container as a person reads it — what the drop indicator names.
+        containerTitle: containerTitleOf(effectiveParentId, parent),
         region, // The container field (region) this block lives in
         ...(regionPath.length > 0 && { regionPath }), // object prefix to the blocks dict (#245)
         blockType, // Block type for uniform lookups (single source of truth)
@@ -732,6 +809,8 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
         // Insert restrictions for fixed block boundaries
         ...(!canInsertBefore && { canInsertBefore: false }),
         ...(!canInsertAfter && { canInsertAfter: false }),
+        // Its layout slot and position, for markDefaultSlotAnchors.
+        ...(block?.slotId && { slotId: block.slotId, regionIndex: index }),
       };
 
       // RECURSE: process this block's container fields. `disallow` is the set
@@ -870,6 +949,7 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
       pathMap[itemId] = {
         path: itemPath,
         parentId,
+        containerTitle: containerTitleOf(parentId, parent),
         region: fieldName, // The container field (region) — same concept as blocks fields
         blockType: itemBlockType, // Real type (from typeField) or virtual type (from parent:field)
         isObjectListItem: true,
@@ -922,6 +1002,14 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
     });
   }
 
+  // The container a block lives in, as a person reads it: the parent block
+  // type's title (its id when it has none), or "Page" on the page itself.
+  function containerTitleOf(parentId, parent) {
+    if (parentId === PAGE_BLOCK_UID || parentId == null) return 'Page';
+    const parentType = pathMap[parentId]?.blockType || parent?.['@type'];
+    return blocksConfig?.[parentType]?.title || parentType;
+  }
+
   // Add entry for the page itself (PAGE_BLOCK_UID virtual block)
   // This allows getBlockById, getParentChain, etc. to handle PAGE_BLOCK_UID consistently
   pathMap[PAGE_BLOCK_UID] = {
@@ -963,7 +1051,7 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
     // virtual type is REGISTERED into blocksConfig at mint time (see
     // registerVirtualType), so its inline schemaEnhancer is found here by name —
     // the same path as a real typed block.
-    if (!blockConfig || typeof blockConfig.schemaEnhancer !== 'function') continue;
+    if (!blockConfig || enhancerParts(blockConfig.schemaEnhancer).length === 0) continue;
 
     // Look up block data via path
     let blockData = formData;
@@ -988,5 +1076,6 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
     pathInfo.emptyRequiredFields = getEmptyRequiredFields(blockData, enhancedSchema);
   }
 
+  markDefaultSlotAnchors(pathMap);
   return pathMap;
 }

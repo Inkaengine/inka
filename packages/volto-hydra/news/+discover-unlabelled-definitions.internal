@@ -1,0 +1,1 @@
+Block-sanity finds an editable example in a template definition that does not name itself, as it does in one that does (a footer whose only home is its template no longer reports "no editable content example").

@@ -127,8 +127,11 @@ function buildEmptyRegionCases(blocksConfig, blocks) {
     if (!example) continue;
     cases.push({ parentType, field, pagePath: example.pagePath, blockId: example.blockId });
   }
-  const templated = new Set((blocks || []).filter((b) => b.blockData?.templateId).map((b) => b.pagePath));
+  // A page holding template content — by the same test as the examples above: a
+  // definition need not name itself, so a templateId alone misses one.
+  const templated = new Set((blocks || []).filter(isTemplated).map((b) => b.pagePath));
   const plainPage = [...new Set((blocks || []).map((b) => b.pagePath))]
+    .filter(Boolean)
     .sort()
     .find((p) => !templated.has(p) && p.startsWith('/_test_data/'));
   if (plainPage) cases.push({ parentType: 'page', field: '*', pagePath: plainPage, blockId: '_page' });
@@ -393,6 +396,22 @@ function isOwnDefinition(content, templateId) {
 }
 
 /**
+ * Is this document a template definition that does not name itself? A definition
+ * need not: its top-level blocks hold slots and name no template at all (the same
+ * test the editor's merge uses when the document is opened).
+ *
+ * @param {Object} content - The page JSON
+ * @returns {boolean}
+ */
+function isUnlabelledDefinition(content) {
+  const top = Object.values(content?.blocks_layout || {})
+    .flatMap((ids) => (Array.isArray(ids) ? ids : []))
+    .map((id) => content.blocks?.[id])
+    .filter(Boolean);
+  return top.some((block) => block.slotId) && !top.some((block) => block.templateId);
+}
+
+/**
  * Can an author edit this instance, and what does it take? Only an editable
  * instance is a valid subject for the sanity checks, which click a field and
  * require it to become editable.
@@ -434,7 +453,9 @@ function isOwnDefinition(content, templateId) {
  */
 function editableInstance(content, blockData) {
   const templateId = blockData?.templateId;
-  const onOwnDefinition = isOwnDefinition(content, templateId);
+  const onOwnDefinition =
+    isOwnDefinition(content, templateId) ||
+    (!templateId && Boolean(blockData?.slotId) && isUnlabelledDefinition(content));
   // Template CHROME (`fixed` or `readOnly`) as opposed to slot CONTENT (neither,
   // and the author's own). A `fixed` member is re-inserted from the template on
   // every render — "copy block content from a page block with the same slotId" —
@@ -650,6 +671,9 @@ const UNDECLARED_EXEMPT = new Set([
   'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'value',
   'styles', 'override', 'block',
   'fixed', 'slotId', 'templateId', 'templateInstanceId', 'readOnly',
+  // Written by the merge beside slotId when a fixed slot separates two groups
+  // (apply-templates stamps it); hydra's bookkeeping, never sidebar-authored.
+  'nextSlotId',
   // codeExample selector directives (single-source example pages): `source`
   // names a block/@type on the page and `format` (json|schema) says what to
   // show; resolved to `tabs` at load/build, not sidebar-authored schema fields.
@@ -786,6 +810,34 @@ const KNOWN_MAPPING_TYPES = new Set([
 // The allowed sources come from the listing's OWN schema — hydra hangs
 // `sourceFields` on the fieldMapping field — so this reads the same list the
 // sidebar offers rather than keeping a copy of it.
+// The terms of each vocabulary a field-mapping widget names (`vocabulary:
+// { '@id' }` beside `sourceFields`), fetched once per discovery from the API
+// being discovered: the sidebar offers those columns too, so the check below
+// must accept them. Filled by loadMappingVocabularies before any page is read.
+const mappingVocabularyTerms = new Map();
+
+function mappingVocabularyNames(blocksConfig) {
+  const names = new Set();
+  for (const config of Object.values(blocksConfig || {})) {
+    const props = config?.blockSchema?.properties;
+    const name = props?.fieldMapping?.vocabulary?.['@id'];
+    if (name) names.add(name);
+  }
+  return names;
+}
+
+async function loadMappingVocabularies(apiUrl, blocksConfig) {
+  for (const name of mappingVocabularyNames(blocksConfig)) {
+    const url = `${apiUrl}/@vocabularies/${name}?b_size=1000`;
+    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!resp.ok) {
+      throw new Error(`field mapping vocabulary ${name}: ${url} answered ${resp.status}`);
+    }
+    const body = await resp.json();
+    mappingVocabularyTerms.set(name, new Set((body.items || []).map((t) => t.token)));
+  }
+}
+
 function collectFieldMappingIssues(blockData, blockSchema, blocksConfig, issues) {
   const mapping = blockData?.fieldMapping;
   if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return;
@@ -810,7 +862,16 @@ function collectFieldMappingIssues(blockData, blockSchema, blocksConfig, issues)
       issues.push(`fieldMapping "${source}": no target field — the value goes nowhere.`);
       continue;
     }
-    if (sourceFields && !sourceFields[source]) {
+    const vocabularyName = mappingDef?.vocabulary?.['@id'];
+    const vocabularyTokens = vocabularyName ? mappingVocabularyTerms.get(vocabularyName) : null;
+    if (vocabularyName && !vocabularyTokens) {
+      throw new Error(`field mapping vocabulary ${vocabularyName} was never loaded (loadMappingVocabularies)`);
+    }
+    // A column differing from a declared source only in case is not offered
+    // (mergeVocabularySources: the catalog's Title IS the result's title).
+    const declaredLower = new Set(Object.keys(sourceFields || {}).map((key) => key.toLowerCase()));
+    const offeredByVocabulary = vocabularyTokens?.has(source) && !declaredLower.has(source.toLowerCase());
+    if (sourceFields && !sourceFields[source] && !offeredByVocabulary) {
       issues.push(
         `fieldMapping "${source}": not a source the sidebar offers (${Object.keys(sourceFields).join(', ')}) — ` +
           `nobody can create or repair this mapping in the editor.`,
@@ -1146,9 +1207,15 @@ function collectWidgetShapeIssues(
   // is not). They're set by the container, not sidebar-authored, so exempt them.
   const idField = pathInfo?.idField;
   const typeField = pathInfo?.typeField;
+  // Declared is a question about the TYPE. `props` is this block's resolved
+  // schema, from which its fieldRules remove what they hide for this data (a
+  // content block's image while its image position is "hidden"); a hidden field
+  // is still the type's own, and its stored value is not stray.
+  const typeSchema = blockConfig?.blockSchema;
+  const declaredByType = (typeof typeSchema === 'function' ? null : typeSchema?.properties) || {};
   if (blockType) {
     for (const key of Object.keys(blockData)) {
-      if (key.startsWith('@') || UNDECLARED_EXEMPT.has(key) || props[key]) continue;
+      if (key.startsWith('@') || UNDECLARED_EXEMPT.has(key) || props[key] || declaredByType[key]) continue;
       if (key === idField || key === typeField) continue;
       if (defaultsPrefix && key.startsWith(defaultsPrefix)) continue;
       const dedupeKey = `${blockType} ${key}`;
@@ -1356,6 +1423,7 @@ async function discoverBlocks(
   // child-block enhancers + inject blocksConfig, exactly as the addon does at
   // init. After this, resolveEffectiveSchemaFn gives the dynamic required set.
   await loadOfflineBlockSyncApi(blocksConfig);
+  await loadMappingVocabularies(apiUrl, blocksConfig);
 
   const seen = new Map();
   const slateIssues = [];
@@ -1818,7 +1886,12 @@ async function discoverBlocks(
         rel: new URL(item['@id']).pathname.replace(/^\//, '') || '/',
         data: { '@id': new URL(item['@id']).pathname, '@type': item['@type'], UID: item.UID },
       }));
-    const { errors } = checkIntegrity([...fetchedPages, ...stubs]);
+    // The frontend's own blocksConfig, so references are found by the WIDGET
+    // that declares them. Without it the check falls back to recognising
+    // references by shape, which cannot tell a link from a headline.
+    const { errors } = checkIntegrity([...fetchedPages, ...stubs], {
+      schemasFor: () => blocksConfig,
+    });
     // A harness may mount extra content trees whose pages were authored for a
     // different root (the parent's /_test_data fixture mount): their internal
     // refs legitimately miss this merged view. Same idea as
@@ -1931,11 +2004,13 @@ async function discoverBlocks(
 
 module.exports = {
   paragraphShapeOf,
+  editableInstance,
   // Exported so the content validator asks the same question this does — a
   // second list of "fields that are not schema fields" would drift, and the
   // drift would show up as a validator shouting about `slotId` on every block.
   UNDECLARED_EXEMPT,
   collectFieldMappingIssues,
+  loadMappingVocabularies,
   collectSlateIssues,
   discoverBlocks,
   extractBlocks,

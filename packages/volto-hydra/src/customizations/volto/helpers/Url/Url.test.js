@@ -17,7 +17,13 @@
 import Cookies from 'js-cookie';
 import config from '@plone/volto/registry';
 import { getSavedUrlsCookieName } from '../../../../utils/cookieNames';
-import { flattenToAppURL, isInternalURL, flattenScales } from './Url';
+import {
+  checkAndNormalizeUrl,
+  flattenToAppURL,
+  flattenScales,
+  isInternalURL,
+  resolveRelativeUrl,
+} from './Url';
 
 beforeEach(() => {
   // Make config.settings deterministic — flattenToAppURL strips these
@@ -72,6 +78,58 @@ describe('isInternalURL (Hydra shadow)', () => {
 
   it('still rejects unknown absolute URLs', () => {
     expect(isInternalURL('https://elsewhere.example.org/x')).toBe(false);
+  });
+});
+
+describe('checkAndNormalizeUrl (Hydra shadow) — relative paths', () => {
+  // Stock Volto only lets `/` and `#` through as paths: `./page` was given an
+  // `http://` prefix, failed the URL check, and the link editor silently
+  // refused it.
+  it('accepts a path relative to the page, unchanged', () => {
+    expect(checkAndNormalizeUrl('./another-page')).toMatchObject({
+      url: './another-page',
+      isValid: true,
+    });
+  });
+
+  it('accepts a path to a parent folder, unchanged', () => {
+    expect(checkAndNormalizeUrl('../elsewhere')).toMatchObject({
+      url: '../elsewhere',
+      isValid: true,
+    });
+  });
+
+  it('still prefixes a bare host', () => {
+    expect(checkAndNormalizeUrl('plone.org')).toMatchObject({
+      url: 'http://plone.org',
+      isValid: true,
+    });
+  });
+});
+
+describe('resolveRelativeUrl (Hydra shadow)', () => {
+  // Resolved like a browser resolves a link on the page: `./x` on
+  // /about/team is /about/x, a sibling.
+  it('resolves ./ against the page, as a sibling', () => {
+    expect(resolveRelativeUrl('./login', '/about/team')).toBe('/about/login');
+  });
+
+  it('resolves ../ up from the page\'s folder', () => {
+    expect(resolveRelativeUrl('../contact', '/about/team')).toBe('/contact');
+  });
+
+  it('keeps a fragment and a query string', () => {
+    expect(resolveRelativeUrl('./faq?x=1#top', '/about/team')).toBe(
+      '/about/faq?x=1#top',
+    );
+  });
+
+  it('leaves anything that is not relative alone', () => {
+    expect(resolveRelativeUrl('/about', '/about/team')).toBe('/about');
+    expect(resolveRelativeUrl('#top', '/about/team')).toBe('#top');
+    expect(resolveRelativeUrl('https://plone.org', '/about/team')).toBe(
+      'https://plone.org',
+    );
   });
 });
 

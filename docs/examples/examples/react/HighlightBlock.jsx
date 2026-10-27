@@ -25,7 +25,7 @@ function HighlightBlock({ block }) {
       className="highlight-block"
       style={{ ...bgStyle, padding: '40px 20px', color: 'white', borderRadius: '8px' }}
     >
-      <div className="highlight-overlay" style={{ background: 'rgba(0,0,0,0.4)', padding: '30px', borderRadius: '8px' }}>
+      <div className="highlight-overlay" data-edit-media="image" style={{ background: 'rgba(0,0,0,0.4)', padding: '30px', borderRadius: '8px' }}>
         <h2 data-edit-text="title">{title}</h2>
         <div className="highlight-body" data-edit-text="description">
           {description.map((node, i) => (

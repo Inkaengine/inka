@@ -1,0 +1,1 @@
+A block can say what it is for with a short `description`, shown at the top of its settings in the sidebar and as its tooltip in the block chooser. A description and a field rule's `warning` may contain markdown links, `[text](url)`, which the sidebar draws as links (opened in a new tab) so advice can point to the guidance it comes from. @djay

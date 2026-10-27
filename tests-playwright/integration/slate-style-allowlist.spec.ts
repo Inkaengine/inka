@@ -553,6 +553,23 @@ test.describe('block formats declared as data', () => {
     await expect(page.locator('.format-dropdown-menu [data-format="h2"] svg path')).toHaveCount(1);
   });
 
+  test('a list style is offered in a list, and keeps it a list', async ({ page }) => {
+    // Declared `appliesTo: ['ul', 'ol']`. On a paragraph it is not offered (the
+    // menu above is exactly Paragraph, the headings and Lead); here it is, and
+    // choosing it styles the list instead of turning it into a paragraph.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    const titles = await formatOptions(page, helper, 'list-target');
+    expect(titles).toContain('Spaced list');
+    await page.locator('.format-dropdown-menu [data-style="list-spaced"]').click();
+    const list = helper.getIframe().locator('[data-block-uid="list-target"] ul, ul[data-block-uid="list-target"]').first();
+    await expect(list).toHaveClass(/\blist-spaced\b/);
+    await expect(list.locator('li')).toHaveText('A list item to style');
+  });
+
   test('a declared format applies', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -563,6 +580,30 @@ test.describe('block formats declared as data', () => {
     await page.locator('.format-dropdown-menu [data-format="h5"]').click();
     const iframe = helper.getIframe();
     await expect(iframe.locator('[data-block-uid="target"] h5')).toHaveText('Some text to format');
+  });
+
+  test("a block's description and a warning link to their guidance", async ({ page }) => {
+    // This page's frontend says what its text block is for, and both that
+    // description and its Heading 5 warning carry a markdown link to guidance.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    await formatOptions(page, helper, 'target');
+    const about = page.locator('#sidebar-properties .hydra-block-about');
+    await expect(about).toHaveText('Paragraphs, headings and lists. Text guidance');
+    await expect(about.getByRole('link', { name: 'Text guidance' })).toHaveAttribute(
+      'href',
+      'https://example.com/guidance/text',
+    );
+
+    await page.locator('.format-dropdown-menu [data-format="h5"]').click();
+    const warning = page.locator('.hydra-field-warning').filter({ hasText: /Heading 5 is advice-worthy/ });
+    await expect(warning.getByRole('link', { name: 'Heading guidance' })).toHaveAttribute(
+      'href',
+      'https://example.com/guidance/headings',
+    );
   });
 
   test("a rule's warning shows for a block with its own edit component", async ({ page }) => {

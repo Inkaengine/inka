@@ -128,6 +128,7 @@ Per-block options (most are passed through to Volto's block config):
 - **\`id\`** — block type identifier (matches the key).
 - **\`title\`** — display name in the BlockChooser. **Required for a new block type** — nothing makes one up from the key; a block without one fails to register with an error naming it.
 - **\`icon\`** — icon shown in the BlockChooser (data URL or SVG component).
+- **\`description\`** — what the block is for, kept short: the sidebar shows it at the top of the block's settings, and the BlockChooser as the block button's tooltip. It may link to the block's guidance with a markdown link, `[text](url)` (see [Links in advice](#links-in-advice)).
 - **\`group\`** — chooser group (e.g. `'common'`). **Required for a new block type**, like `title`.
 - **\`restricted\`** — `true` hides the block from the chooser; can also be a function for conditional restrictions.
 - **\`mostUsed\`** — pin to the top of the chooser.
@@ -167,7 +168,7 @@ This is deliberate: before, the admin's fields were merged in and its edit compo
 An entry for a block the admin already has applies key by key:
 
 - **`blockSchema` / `schema`** — replaces the admin's schema, as above; your fields are not merged into its.
-- **`schemaEnhancer`** — **adds**: it runs after the admin's own enhancer, so you can add `fieldRules` to a built-in block without replacing it.
+- **`schemaEnhancer`** — **adds**: with no `blockSchema`, it runs after the admin's own enhancer, so you can add `fieldRules` to a built-in block without replacing it. **With** a `blockSchema` the admin's enhancer does not run at all — it changes the admin's schema (adds its fields, seeds its regions), and yours is the whole schema; only your own enhancer applies.
 - **Any other key** (`title`, `group`, `fieldMappings`, `allowedBlocks`…) — replaces that key. Send every `fieldMappings` source type you want, including the admin's own conversions.
 - **A key you don't send** — the admin's value stands: a built-in block keeps its name, group and schema.
 
@@ -422,7 +423,7 @@ One widget covers both shapes: `multiple: false` (the default) stores one index 
 
 | widget | for |
 | --- | --- |
-| [\`query\_sort\_on\`](https://github.com/plone/volto/blob/main/packages/volto/src/components/manage/Widgets/QuerySortOnWidget.jsx) | ONE index to sort by — a menu grouped by the registry's `group` |
+| [\`query_sort_on\`](https://github.com/plone/volto/blob/main/packages/volto/src/components/manage/Widgets/QuerySortOnWidget.jsx) | ONE index to sort by — a menu grouped by the registry's `group` |
 | `select_querystring_field` | ONE index to query on (what the facet examples use) |
 
 </block>
@@ -532,6 +533,8 @@ fieldRules: {
 
 The message lands on the field, and everything an author sees is Volto's own: the widget goes red, the form shows its error summary, and **the save is blocked** (`Form.onSubmit` validates every block against its enhanced schema and refuses to submit while any block has errors).
 
+This holds for a rule on a **region** too — one counting its children, say "at least two" (`items: { when: { items: { lt: 2 } }, error: '…' }`): the region's children live in `blocks_layout`, not on the field Volto validates, so hydra's own block validation adds the error there and the save is blocked the same way. A region has no widget to turn red, so its error is shown at the top of the block's settings, beside any warnings, as soon as the rule holds, and the refused save's toast names it.
+
 An `error` composes with a `set` in the same rule — the field can be re-titled *and* marked — and it is skipped entirely when the rule's `when` does not match, so a form that has not been filled in yet is not scolded for it.
 
 **Write a cross-field rule on the field that should show the error.** There is no block-level address, and adding one would do less: an error keyed to a field is the only shape Volto acts on, so a block-level error would show a banner and let the save through. If a constraint genuinely belongs to no single field, list the same rule under each field it concerns.
@@ -553,9 +556,23 @@ fieldRules: {
 
 An `error` is **refused** — a registered validator turns it into a form error and `Form.onSubmit` will not submit. A `warning` is **said**: it is deliberately not a validator, so nothing blocks. The sidebar shows it beside the field, and the page saves.
 
+A warning can point to the guidance it comes from with a markdown link in its message — see [Links in advice](#links-in-advice).
+
 Use a warning when the value may well be right and the author should simply know: artwork a little off the 48×48 grid is still the right artwork, and refusing to save over it would be hostile. Use an error when the value cannot work at all — a raster where the design system inlines an SVG.
 
 Both actions compose with `set`, and both work in a switch (`[rule, rule, …]`), where the first matching entry wins — so a rule can refuse one case and merely advise on another.
+
+### Links in advice
+
+A block's `description` and a rule's `warning` are plain strings that may contain markdown links, `[text](url)`. The sidebar draws each as a link that opens in a new tab, so the author does not leave the edit:
+
+### Javascript
+
+```javascript
+warning: 'Link text should say where it goes. [Writing links](https://example.com/guidance/links)',
+```
+
+Nothing else in the string is markup. Only `http(s):`, `mailto:` and relative URLs become links. A tooltip (the BlockChooser's) cannot hold a link, so it shows the link's words without the URL, and the content validator reports the string as written.
 
 ### Compare against another field
 
@@ -835,7 +852,7 @@ cells: {
 },
 ```
 
-The rule is evaluated in the same pass that applies field defaults (run on every edit): each typed item's target `@type` is re-resolved, and when it differs from the stored `@type` the item is **converted in place** via the bridge above. So moving a row to/from row 0 flips its cells between `tableHeaderCell` (a slate `value`) and `tableCell` (a `blocks` container), losslessly — no imperative "re-type the cells" code. Only meaningful on a **typed** object\_list (a `typeField` item has an `@type` to rewrite); it settles in one pass (the target type re-resolves to itself once the item is in place).
+The rule is evaluated in the same pass that applies field defaults (run on every edit): each typed item's target `@type` is re-resolved, and when it differs from the stored `@type` the item is **converted in place** via the bridge above. So moving a row to/from row 0 flips its cells between `tableHeaderCell` (a slate `value`) and `tableCell` (a `blocks` container), losslessly — no imperative "re-type the cells" code. Only meaningful on a **typed** object_list (a `typeField` item has an `@type` to rewrite); it settles in one pass (the target type re-resolves to itself once the item is in place).
 
 Each field's value is converted to the shape its destination widget expects (derived from the widget): strings copy across, an image field is assembled from the target's `image_scales` / `image_field`, multi-value fields (e.g. `Subject` → tags) pass through as-is.
 

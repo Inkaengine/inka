@@ -64,6 +64,12 @@ Don't set `RAZZLE_PUBLIC_URL`. Inka follows whichever front end the editor has s
 
 Build with `pnpm build` and run with `pnpm start:prod`. It needs Node.js 22 or 24.
 
+## Behind a CDN or caching proxy
+
+Every page the Inka editor's server sends is marked `Cache-Control: no-store`, so a shared cache never keeps one. Each page is for one signed-in editor and carries the deployment's settings, such as which front ends it frames. A CDN that kept a page would go on serving the old settings after a deploy. Volto itself leaves page caching to the proxy, and most CDNs keep a page without a `Cache-Control` header for days or weeks.
+
+The build's assets (`/static/…`) keep their long cache lifetime, because their names change with every build. You can cache those at the CDN.
+
 ## Stateless, so it can scale to zero
 
 Inka keeps no content, no database and no files. Content, users and history stay in the CMS. Each editor's own settings, such as the front ends they have added, are kept in their browser.
@@ -96,6 +102,19 @@ The token is the editor's CMS session token, so its lifetime is set by the CMS. 
 - Send `Referrer-Policy: no-referrer` (or `same-origin`) from the editing front end.
 - Serve everything over HTTPS.
 - Keep the CMS token lifetime short, and let editors sign out when they finish.
+
+## A demo site's "try editing" link
+
+A public demo can send visitors straight into editing a page, without a login form: link to your Inka's `/login?demo&return_url=/some/page/edit`. Inka signs in with the demo account you configure and opens the page in the editor. Set the account on the Inka server; it is read at runtime, so no rebuild is needed.
+
+### Settings
+
+```text
+RAZZLE_DEMO_LOGIN=demo
+RAZZLE_DEMO_PASSWORD=…
+```
+
+**These reach the browser** (every `RAZZLE_` setting does), so treat the account as public: it must be one whose saves the CMS throws away (for Plone, a subscriber that dooms every transaction the account makes), or a backend nobody else reads. Without both settings, a `?demo` link shows the login form with a message saying the editor has no demo account.
 
 ## Pin the bridge to Inka's origin
 

@@ -30,7 +30,9 @@ async function querystringSearch(contextPath, body) {
   const res = await fetch(`${baseUrl}${contextPath}/@querystring-search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(body),
+    // `id` is not in the default summary set — a real backend sends it only
+    // when asked. These tests read item.id, so they ask, as a frontend must.
+    body: JSON.stringify({ metadata_fields: ['id'], ...body }),
   });
   assert.equal(res.status, 200);
   return res.json();
@@ -210,6 +212,45 @@ describe('@querystring-search', () => {
     for (const id of page1Ids) {
       assert.ok(!page2Ids.includes(id), `${id} should not appear in both pages`);
     }
+  });
+});
+
+describe('@search', () => {
+  // Volto's searchContent sends an array option as `name:list=` (Zope's
+  // marshalling), e.g. several content types; a single one as `name=`.
+  const search = async (qs) => (await fetch(`${baseUrl}/@search?${qs}`, {
+    headers: { Accept: 'application/json' },
+  })).json();
+
+  it('reads a `:list` option as that option, as Zope does', async () => {
+    const data = await search('SearchableText=Test*&portal_type:list=Event');
+    assert.ok(data.items.length > 0, 'should find the test event');
+    for (const item of data.items) assert.equal(item['@type'], 'Event', `${item['@id']} is not an Event`);
+  });
+
+  it('a `:list` option with several values keeps all of them', async () => {
+    const data = await search('SearchableText=Test*&portal_type:list=Event&portal_type:list=Document');
+    const types = new Set(data.items.map((i) => i['@type']));
+    assert.deepEqual([...types].sort(), ['Document', 'Event']);
+  });
+
+  it('path.depth=0 at a page\'s @search is that page alone, as Plone answers it', async () => {
+    // The admin looks a link target up this way (copy-from-target), b_size 1.
+    const data = await (await fetch(`${baseUrl}/_test_data/test-page/@search?path.depth=0&metadata_fields=_all&b_size=1`, {
+      headers: { Accept: 'application/json' },
+    })).json();
+    assert.equal(data.items_total, 1);
+    assert.equal(new URL(data.items[0]['@id']).pathname, '/_test_data/test-page');
+  });
+
+  it('pages a listing by b_start / b_size, items_total staying the whole', async () => {
+    const all = await search('path.depth=1&path.query=/_test_data');
+    const page1 = await search('path.depth=1&path.query=/_test_data&b_size=5');
+    const page2 = await search('path.depth=1&path.query=/_test_data&b_size=5&b_start=5');
+    assert.ok(all.items.length > 10, 'the fixture folder has more than two pages');
+    assert.equal(page1.items_total, all.items.length);
+    assert.deepEqual(page1.items.map((i) => i['@id']), all.items.slice(0, 5).map((i) => i['@id']));
+    assert.deepEqual(page2.items.map((i) => i['@id']), all.items.slice(5, 10).map((i) => i['@id']));
   });
 });
 
@@ -637,11 +678,78 @@ describe('internal references under a prefix mount', () => {
     assert.equal(page['@id'].replace(/^http:\/\/[^/]+/, ''), '/_test_data/container-test-page');
   });
 
-  it('a reference that names nothing under the mount either is left alone', async () => {
-    // image-scales-test points at a test-image.png that exists nowhere: there
-    // is no right answer to give it, so it stays as authored.
-    const text = await get('/_test_data/image-scales-test');
-    assert.ok(text.includes('"/image-scales-test/test-image.png"'));
+  it('a reference that names nothing under the mount either is left alone', () => {
+    // Content that names nothing anywhere can't be committed — the mock refuses
+    // to serve it — so it is made here, and handed to the rewrite directly:
+    // there is no right answer to give it, so it stays as authored.
+    const { mountInternalRefs } = require('./mock-plone-api.cjs');
+    const content = {
+      '@id': '/_test_data/showcase-page',
+      blocks: { a: { '@type': 'teaser', href: [{ '@id': '/no-such-page-anywhere' }] } },
+    };
+    const out = mountInternalRefs(content, '/_test_data/showcase-page');
+    assert.equal(out.blocks.a.href[0]['@id'], '/no-such-page-anywhere');
+  });
+});
+
+// An exportimport mount's redirects.json, beside its content dir. A key may be
+// physical ("/Plone/old"), as plone.exportimport round-trips it, or site-relative
+// ("/old"), as a converted tree stores it (pretagov-site does, and prefixes on
+// import). Both must serve. The site-relative form used to THROW while the mount
+// was parsed, so every 404 on that mount went through the lookup and became a 500.
+describe('redirects.json of an exportimport mount', () => {
+  const mock = require('./mock-plone-api.cjs');
+  const MOUNT = '/_redirects_test';
+  let root;
+  let mount;
+
+  const writeRedirects = (map) =>
+    fs.writeFileSync(path.join(root, 'redirects.json'), JSON.stringify(map));
+  const get = (p) =>
+    fetch(`${baseUrl}/++api++${MOUNT}${p}`, {
+      headers: { Accept: 'application/json' },
+      redirect: 'manual',
+    });
+  const assertRedirectsTo = async (from, to) => {
+    const res = await get(from);
+    assert.equal(res.status, 302);
+    const location = res.headers.get('location');
+    assert.ok(location.endsWith(`/++api++${MOUNT}${to}`), location);
+  };
+
+  before(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-redirects-'));
+    const site = path.join(root, 'content', 'plone_site_root');
+    fs.mkdirSync(site, { recursive: true });
+    fs.writeFileSync(path.join(site, 'data.json'), JSON.stringify({ '@id': '/Plone', '@type': 'Plone Site' }));
+    mount = { mountPath: MOUNT, dirPath: path.join(root, 'content') };
+    mock.CONTENT_MOUNTS.unshift(mount);
+  });
+  after(() => {
+    mock.CONTENT_MOUNTS.splice(mock.CONTENT_MOUNTS.indexOf(mount), 1);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('physical keys, as plone.exportimport writes them, redirect', async () => {
+    writeRedirects({ '/Plone/old': '/Plone/new' });
+    await assertRedirectsTo('/old', '/new');
+  });
+
+  it('site-relative keys, as a converted tree stores them, redirect', async () => {
+    writeRedirects({ '/old': '/new' });
+    await assertRedirectsTo('/old', '/new');
+  });
+
+  it('a path with no redirect is a 404, not a 500, whichever form the file uses', async () => {
+    writeRedirects({ '/old': '/new' });
+    assert.equal((await get('/no-such-page')).status, 404);
+    writeRedirects({ '/Plone/old': '/Plone/new' });
+    assert.equal((await get('/no-such-page')).status, 404);
+  });
+
+  it('a key that is not a path is refused, naming both accepted forms', () => {
+    writeRedirects({ 'old': '/new' });
+    assert.throws(() => mock.getRedirectTarget(`${MOUNT}/old`), /is not a path/);
   });
 });
 
@@ -675,6 +783,50 @@ describe('folder items batching', () => {
   });
 });
 
+// A Volto site's summaries carry each item's image (plone.volto adds
+// image_field + image_scales to the default metadata), and a folder's `items`
+// are summaries like search results are. Checked against demo.plone.org: an
+// Image child has image_field "image" and a scale ladder, a page with no image
+// has image_field "" and image_scales null. The mock gave folder items neither,
+// so a folder view could not show a child's preview.
+describe('folder items carry the image fields', () => {
+  const child = async (folder, id) => {
+    const res = await fetch(`${baseUrl}${folder}?b_size=100`, { headers: { Accept: 'application/json' } });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    const item = data.items.find((i) => i['@id'].endsWith(`${folder}/${id}`));
+    assert.ok(item, `${folder} should list ${id}`);
+    return item;
+  };
+
+  it('an Image child names its field and carries its scale ladder', async () => {
+    const image = await child('/_test_data/images', 'test-image-1');
+    assert.equal(image.image_field, 'image');
+    const [original] = image.image_scales.image;
+    assert.equal(original.width, 400);
+    assert.equal(original.height, 300);
+    assert.ok(original.scales.preview.download, 'a preview scale to show in a listing');
+  });
+
+  it('a page with no image has an empty field and no scales', async () => {
+    const page = await child('/_test_data', 'another-page-2');
+    assert.equal(page.image_field, '');
+    assert.equal(page.image_scales, null);
+  });
+
+  it('matches what a search returns for the same item', async () => {
+    const image = await child('/_test_data/images', 'test-image-1');
+    const found = await querystringSearch('/_test_data', {
+      query: [{ i: 'portal_type', o: 'plone.app.querystring.operation.selection.any', v: ['Image'] }],
+      b_size: 100,
+    });
+    const searched = found.items.find((i) => i['@id'].endsWith('/_test_data/images/test-image-1'));
+    assert.ok(searched, 'the search should find test-image-1');
+    assert.equal(image.image_field, searched.image_field);
+    assert.deepEqual(image.image_scales, searched.image_scales);
+  });
+});
+
 describe('@breadcrumbs', () => {
   // plone.restapi's breadcrumbs list the page's ancestors and the page — NOT
   // the site root, which comes separately as `root`. The mock used to put a
@@ -704,5 +856,197 @@ describe('@breadcrumbs', () => {
   it('the expanded component matches the endpoint', async () => {
     const page = await getContent('/_test_data?expand=breadcrumbs');
     assert.deepEqual(paths(page['@components'].breadcrumbs.items), ['/_test_data']);
+  });
+});
+
+describe('@querystring-search: date operations', () => {
+  // The mock advertises date.largerThan / date.lessThan for its date indexes
+  // (/@querystring); a date-range filter sends them. Plone matches an item
+  // whose date is after (or before) the value, and never one with no date.
+  const AFTER = 'plone.app.querystring.operation.date.largerThan';
+  const BEFORE = 'plone.app.querystring.operation.date.lessThan';
+  const paths = (data) => data.items.map((i) => new URL(i['@id']).pathname);
+  const search = (o, v) =>
+    querystringSearch('/_test_data', {
+      query: [
+        { i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' },
+        { i: 'effective', o, v },
+      ],
+      b_size: 1000,
+    });
+
+  it('largerThan keeps items dated after the value, and none without a date', async () => {
+    const found = paths(await search(AFTER, '2024-06-01'));
+    assert.ok(found.includes('/_test_data/news'), `news (2024-11-01) should match: ${found}`);
+    assert.ok(!found.includes('/_test_data/news-test-page'), 'news-test-page (2023-01-15) should not match');
+  });
+
+  it('lessThan keeps items dated before the value', async () => {
+    const found = paths(await search(BEFORE, '2024-06-01'));
+    assert.ok(found.includes('/_test_data/news-test-page'), `news-test-page should match: ${found}`);
+    assert.ok(!found.includes('/_test_data/news'), 'news (2024-11-01) should not match');
+  });
+
+  it('an undated item matches neither', async () => {
+    const after = paths(await search(AFTER, '1900-01-01'));
+    const all = paths(
+      await querystringSearch('/_test_data', {
+        query: [{ i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' }],
+        b_size: 1000,
+      }),
+    );
+    assert.ok(after.length > 0 && after.length < all.length, `${after.length} dated of ${all.length}`);
+  });
+});
+
+describe('@querystring-search: sort_on sortable_title', () => {
+  // sortable_title is a catalog index made from the title (case folded); items
+  // carry no field of that name, so sorting on it must read the title.
+  it('orders results by title, A to Z', async () => {
+    const data = await querystringSearch('/_test_data', {
+      query: [{ i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' }],
+      sort_on: 'sortable_title',
+      b_size: 1000,
+    });
+    const titles = data.items.map((i) => String(i.title ?? '').toLowerCase());
+    assert.ok(titles.length > 2);
+    assert.deepEqual(titles, [...titles].sort());
+  });
+});
+
+describe('@search: catalog metadata of a file', () => {
+  // Plone's catalog keeps a file's type, its size (as getObjSize formats it) and
+  // who made it; a search with metadata_fields=_all returns them.
+  it('returns mime_type, getObjSize, portal_type and the creators', async () => {
+    const res = await fetch(
+      `${baseUrl}/_test_data/@search?path.query=/_test_data/annual-report&path.depth=0&metadata_fields=_all`,
+      { headers: { Accept: 'application/json' } },
+    );
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    assert.equal(item.title, 'Annual report');
+    assert.equal(item.portal_type, 'File');
+    assert.equal(item.mime_type, 'application/pdf');
+    assert.equal(item.getObjSize, '19.5 KB');
+    assert.equal(item.Creator, 'jane.author');
+    assert.deepEqual(item.listCreators, ['jane.author']);
+  });
+});
+
+describe('GET @search sorted by folder order', () => {
+  // The Contents view lists a folder's children with
+  // sort_on=getObjPositionInParent. Markdown content has no exportimport
+  // ordering to arrive in: its order is the folder's `order:` frontmatter
+  // (docs/index.md here), so the search has to sort on the position.
+  const ORDER = [
+    'architecture', 'deploy-and-secure', 'frontend-guide', 'editor-guide',
+    'compliance', 'adapters', 'testing', 'examples',
+  ];
+
+  async function childIds(query) {
+    await require('./mock-plone-api.cjs').ready;
+    const res = await fetch(`${baseUrl}/docs/@search?path.depth=1&${query}`, {
+      headers: { Accept: 'application/json' },
+    });
+    assert.equal(res.status, 200);
+    const { items } = await res.json();
+    return items.map((i) => i['@id'].split('/').pop()).filter((id) => ORDER.includes(id));
+  }
+
+  it('lists a markdown folder in its `order:`', async () => {
+    assert.deepEqual(await childIds('sort_on=getObjPositionInParent'), ORDER);
+  });
+
+  it('descending reverses it', async () => {
+    assert.deepEqual(
+      await childIds('sort_on=getObjPositionInParent&sort_order=descending'),
+      [...ORDER].reverse(),
+    );
+  });
+});
+
+/**
+ * metadata_fields decides what a summary carries — the mock ignored it.
+ *
+ * Verified against a real Plone 6.2 + plone.volto backend rather than guessed:
+ *
+ *   no metadata_fields  16 fields: @id @type description effective end
+ *                       getObjSize getRemoteUrl head_title image_field
+ *                       image_scales mime_type nav_title review_state start
+ *                       title type_title
+ *   _all                44 fields — the catalog schema (UID, Subject, id,
+ *                       is_folderish, created, portal_type, …)
+ *
+ * plone.volto widens restapi's own small default set, which is why a listing
+ * gets image_scales without asking. What it does NOT get without asking is
+ * UID, id, Subject or is_folderish.
+ *
+ * The mock served its whole brain to every query, so a frontend reading a
+ * field the real default set omits stayed green here and lost the value
+ * against a real backend — silently, since 10.0.4 logs a rejected field at
+ * DEBUG and drops it.
+ */
+describe('@search: metadata_fields decides what is serialized', () => {
+  const search = (qs) =>
+    fetch(
+      `${baseUrl}/_test_data/@search?path.query=/_test_data/annual-report&path.depth=0${qs}`,
+      { headers: { Accept: 'application/json' } },
+    );
+
+  it('serves the default set when nothing is asked for', async () => {
+    const res = await search('');
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    // In the real default set, so a listing may rely on them.
+    assert.equal(item.mime_type, 'application/pdf');
+    assert.equal(item.getObjSize, '19.5 KB');
+    // NOT in it. A frontend reading these without asking breaks in production.
+    for (const field of ['UID', 'id', 'Subject', 'is_folderish']) {
+      assert.ok(
+        !(field in item),
+        `${field} is not in the default set — asking for it must be required`,
+      );
+    }
+  });
+
+  it('adds a catalog column that was asked for', async () => {
+    const res = await search('&metadata_fields=UID');
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    assert.ok(item.UID, 'the requested column arrives');
+    assert.equal(item.mime_type, 'application/pdf', 'the default set stays');
+    assert.ok(!('Subject' in item), 'and nothing else comes with it');
+  });
+
+  it('drops an attribute that is not a catalog column', async () => {
+    const res = await search('&metadata_fields=getObjPositionInParent');
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    assert.ok(
+      !('getObjPositionInParent' in item),
+      'a non-column attribute must not be serialized, as 10.0.4 drops it',
+    );
+  });
+
+  it('_all carries the catalog schema', async () => {
+    const res = await search('&metadata_fields=_all');
+    assert.equal(res.status, 200);
+    const [item] = (await res.json()).items;
+    assert.ok(item.UID, '_all reaches beyond the default set');
+    assert.equal(item.portal_type, 'File');
+  });
+});
+
+describe('@@download', () => {
+  // @@download serves the field's file as it was uploaded: a download URL names
+  // no scale (that is @@images'), so there is nothing to scale it to.
+  it("serves an image's original bytes", async () => {
+    const original = fs.readFileSync(
+      path.join(__dirname, 'content', 'penguin1.jpg', 'image', 'penguin1.jpg'),
+    );
+    const res = await fetch(`${baseUrl}/_test_data/images/penguin1.jpg/@@download/image`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(Buffer.from(await res.arrayBuffer()), original);
   });
 });

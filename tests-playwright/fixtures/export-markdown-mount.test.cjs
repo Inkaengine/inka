@@ -80,3 +80,56 @@ describe('/@export json from a markdown mount', { skip: HAVE_ASSETS ? false : 'g
     }
   });
 });
+
+// The markdown IS the source. `format: 'markdown'` re-emits every page, and the
+// parent site runs that writeback over docs/ in CI, asserting the source comes
+// back unchanged — decode(emit(source)) == source, byte for byte.
+//
+// Nothing in THIS repo asserted that, so prose the emitter cannot reproduce
+// landed here and broke the consumer's gate instead of ours. The structural
+// round-trip test (lib/prototype-roundtrip.test.mjs) does not catch it: the
+// data-json escape hatch is structurally lossless, so a paragraph the emitter
+// cannot write as markdown passes there while destroying the authored prose.
+describe('/@export markdown re-emits docs/ unchanged', () => {
+  it('every docs page comes back byte-identical to its source', async () => {
+    const { DEFAULT_PROTOTYPES } = await import('../../lib/default-prototypes.mjs');
+    const { restoreDirectives } = await import('../../lib/restore-directives.mjs');
+    const res = await fetch(`${baseUrl}/@export`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format: 'markdown', prototypes: DEFAULT_PROTOTYPES }),
+    });
+    assert.equal(res.status, 200, `markdown export succeeded: ${res.status}`);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-reemit-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'e.zip'), Buffer.from(await res.arrayBuffer()));
+      execFileSync('unzip', ['-q', '-o', 'e.zip'], { cwd: dir });
+
+      const DOCS = abs('../../docs');
+      const walk = (d, out = []) => {
+        for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+          const p = path.join(d, e.name);
+          if (e.isDirectory()) walk(p, out);
+          else if (e.name.endsWith('.md')) out.push(p);
+        }
+        return out;
+      };
+      const exported = walk(path.join(dir, 'docs'));
+      assert.ok(exported.length > 50, `the whole docs tree was emitted (${exported.length} pages)`);
+
+      const changed = [];
+      for (const file of exported) {
+        const rel = path.relative(path.join(dir, 'docs'), file);
+        const source = path.join(DOCS, rel);
+        if (!fs.existsSync(source)) continue; // generated page with no source
+        const src = fs.readFileSync(source, 'utf8');
+        // The export ships directives expanded; the writeback splices the
+        // authored ones back before overwriting, so compare what it would write.
+        const baked = restoreDirectives(src, fs.readFileSync(file, 'utf8'), path.dirname(source));
+        if (baked !== src) changed.push(rel);
+      }
+      assert.deepEqual(changed, [], `pages the emitter did not reproduce:\n  ${changed.join('\n  ')}`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

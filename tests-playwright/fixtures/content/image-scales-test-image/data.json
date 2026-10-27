@@ -1,0 +1,35 @@
+{
+  "@id": "/image-scales-test/test-image.png",
+  "@type": "Image",
+  "UID": "image-scales-test-image-uid",
+  "id": "test-image.png",
+  "title": "test-image.png",
+  "description": "The Image the image-scales-test page's image block points at: 1200x800, as its image_scales say",
+  "is_folderish": false,
+  "review_state": "published",
+  "image": {
+    "content-type": "image/png",
+    "filename": "test-image.png",
+    "width": 1200,
+    "height": 800,
+    "size": 1010,
+    "download": "@@images/image",
+    "scales": {
+      "preview": {
+        "download": "@@images/image/preview",
+        "width": 400,
+        "height": 267
+      },
+      "large": {
+        "download": "@@images/image/large",
+        "width": 800,
+        "height": 533
+      }
+    }
+  },
+  "parent": {
+    "@id": "/image-scales-test",
+    "@type": "Document",
+    "title": "Image Scales Test"
+  }
+}

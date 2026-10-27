@@ -1,0 +1,1 @@
+The read-only marker a block carries in the editor (--hydra-block-locked) no longer inherits: a read-only layout frame no longer marks the editable content of its slots as locked.

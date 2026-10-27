@@ -1,0 +1,1 @@
+A container dragged from one template into another — a page's layout into an unlocked footer — brings its children into the new template, so committing the footer saves them; they used to keep the old template's membership and were dropped.

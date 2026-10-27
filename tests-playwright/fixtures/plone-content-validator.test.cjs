@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas, schemaForFrom } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
 
 /**
  * Build a minimal plone.exportimport content tree under a temp dir.
@@ -300,6 +300,50 @@ describe('plone-content-validator validate()', () => {
     );
   });
 
+  // A page with id `text` is not shadowing its container: its SIBLINGS acquire
+  // it. A Volto page keeps no `text` of its own (its content is blocks), so
+  // `context.text` finds the sibling page, and Plone's classic document view
+  // calls output_relative_to on it — every page in that folder 500s. And
+  // `/<page>/text` is plone.restapi's block indexer (a named adapter, which
+  // traversal treats as a view), so a redirect from a removed `text` page never
+  // fires.
+  const reservedIdError = (id) => {
+    const { root, contentDir } = buildFixture({
+      dataFiles: ['plone_site_root/data.json', 'reserveduid123456/data.json'],
+    });
+    fs.mkdirSync(path.join(contentDir, 'reserveduid123456'), { recursive: true });
+    fs.writeFileSync(
+      path.join(contentDir, 'reserveduid123456', 'data.json'),
+      JSON.stringify({
+        '@id': `/page-a/${id}`, '@type': 'Document', id,
+        UID: 'reserveduid123456',
+      }),
+    );
+    const r = validate(contentDir);
+    cleanup(root);
+    return r.errors.find((e) => e.includes(`id "${id}" is reserved`));
+  };
+
+  it('reports a content id that its siblings acquire as their text', () => {
+    const error = reservedIdError('text');
+    assert.ok(error, 'a page named "text" is reported');
+    assert.match(error, /sibling/);
+  });
+
+  // Plone's own check_id (plone.base.utils) refuses these when content is
+  // created through the UI or the REST API; only an import gets them in.
+  for (const id of ['login', 'plone', 'zip', 'properties']) {
+    it(`reports "${id}", which Plone's check_id reserves`, () => {
+      const error = reservedIdError(id);
+      assert.ok(error, `a page named "${id}" is reported`);
+      assert.match(error, /check_id/);
+    });
+  }
+
+  it('leaves an ordinary id alone', () => {
+    assert.equal(reservedIdError('typography'), undefined);
+  });
+
   it('reports id starting with underscore', () => {
     const { root, contentDir } = buildFixture({
       dataFiles: ['plone_site_root/data.json', '_underscore/data.json'],
@@ -401,7 +445,120 @@ describe('plone-content-validator validate()', () => {
   });
 });
 
+/**
+ * redirects.json: judge CONSISTENCY, not conformance.
+ *
+ * plone.exportimport's importer hands each pair to plone.app.redirector's
+ * storage as is, and that storage is keyed by PHYSICAL path (/Plone/old) —
+ * which is what a raw export writes. A site-relative "/old" sitting among
+ * physical ones is stored where no request looks: deploys green, 404s forever.
+ * That MIX is the bug.
+ *
+ * A wholly site-relative file is a different thing. A consumer may convert the
+ * raw export into a site-relative tree on purpose — pretagov's
+ * convert-export-to-local.py strips the site prefix from redirect keys and
+ * values — and demanding the prefix there is undone by the next export, so the
+ * check would churn forever against redirects that demonstrably work (verified:
+ * /about/about-us 302s on the live API). Previously this file was rejected
+ * outright, which is why that rule is now about mixing.
+ */
+describe('plone-content-validator redirects.json paths', () => {
+  const withRedirects = (redirects) => {
+    const fixture = buildFixture({ rootItem: { '@id': '/Plone' } });
+    fs.writeFileSync(path.join(fixture.root, 'redirects.json'), JSON.stringify(redirects));
+    return fixture;
+  };
+
+  it('accepts redirects under the site root\'s physical path', () => {
+    const { root, contentDir } = withRedirects({ '/Plone/old': '/Plone/page-a' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('accepts a WHOLLY site-relative file (a converted tree)', () => {
+    // Was rejected outright. A converted tree strips the site prefix by
+    // design, so requiring it here fights the converter and churns every
+    // export, against redirects that work.
+    const { root, contentDir } = withRedirects({ '/old': '/page-a', '/x': '/y' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a MIX of physical and site-relative (the ones that never fire)', () => {
+    const { root, contentDir } = withRedirects({
+      '/Plone/old': '/Plone/page-a',
+      '/stray': '/Plone/page-a',
+    });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(
+      r.errors.some((e) => e.includes('mixes physical and site-relative') && e.includes('"/stray"')),
+      r.errors.join('\n'),
+    );
+  });
+
+  it('reports a mixed pair whose target alone is site-relative', () => {
+    const { root, contentDir } = withRedirects({ '/Plone/old': '/page-a' });
+    const r = validate(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('"/page-a"')), r.errors.join('\n'));
+  });
+});
+
 describe('plone-content-validator checkIntegrity()', () => {
+  // A template definition need not name itself: its blocks hold slots and no
+  // templateId, and where it lives already says what it is.
+  describe('a definition that does not name itself', () => {
+    const definition = {
+      '@id': '/templates/frame', '@type': 'Document', id: 'frame', UID: 'frame-uid',
+      blocks: {
+        head: { '@type': 'slate', fixed: true, readOnly: true, slotId: 'head' },
+        body: { '@type': 'slate', fixed: false, slotId: 'body' },
+      },
+      blocks_layout: { items: ['head', 'body'] },
+    };
+    const page = (fill) => ({
+      '@id': '/p', '@type': 'Document', id: 'p', UID: 'page-uid',
+      blocks: { f: { '@type': 'slate', templateId: '/templates/frame', slotId: 'body', fixed: false, ...fill } },
+      blocks_layout: { items: ['f'] },
+    });
+    const fillErrors = (items) =>
+      checkIntegrity(items).errors.filter((e) => e.includes('fills template'));
+
+    it('is not reported as a page filling a template', () => {
+      assert.deepEqual(fillErrors([{ rel: '/templates/frame', data: definition }]), []);
+    });
+
+    it('still has the pages that fill it checked — for slotId', () => {
+      const items = (fill) => [
+        { rel: '/templates/frame', data: definition },
+        { rel: '/p', data: page(fill) },
+      ];
+      // readOnly is NOT required on a page block. It is authored on the
+      // template, and on an instance absent and false are indistinguishable
+      // everywhere they are read.
+      assert.deepEqual(fillErrors(items({ readOnly: false })), []);
+      assert.deepEqual(fillErrors(items({})), []);
+
+      // slotId is required, because the merge matches by it and silently drops
+      // a block that has none.
+      const noSlot = fillErrors([
+        { rel: '/templates/frame', data: definition },
+        {
+          rel: '/p',
+          data: {
+            '@id': '/p', '@type': 'Document', id: 'p', UID: 'page-uid',
+            blocks: { f: { '@type': 'slate', templateId: '/templates/frame' } },
+            blocks_layout: { items: ['f'] },
+          },
+        },
+      ]);
+      assert.ok(noSlot.some((e) => e.includes('/p') && e.includes('slotId')), noSlot.join('\n'));
+    });
+  });
+
   it('flags broken resolveuid refs', () => {
     const { root, contentDir } = buildFixture({
       pageA: {
@@ -503,12 +660,12 @@ describe('plone-content-validator checkIntegrity()', () => {
         UID: 'pageauid1234567', parent: { '@id': '/' },
         blocks: {
           row: {
-            '@type': 'columns', templateId: 'resolveuid/pageauid1234567', slotId: 'row', fixed: true,
+            '@type': 'columns', templateId: 'resolveuid/pageauid1234567', slotId: 'row', fixed: true, readOnly: true,
             blocks: {
               col: {
-                '@type': 'column', templateId: 'resolveuid/pageauid1234567', slotId: 'col', fixed: true,
+                '@type': 'column', templateId: 'resolveuid/pageauid1234567', slotId: 'col', fixed: true, readOnly: true,
                 blocks: {
-                  buried: { '@type': 'slate', slotId: 'buried', fixed: true },
+                  buried: { '@type': 'slate', slotId: 'buried', fixed: true, readOnly: true },
                 },
                 blocks_layout: { items: ['buried'] },
               },
@@ -535,7 +692,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         UID: 'pageauid1234567', parent: { '@id': '/' },
         blocks: {
           row: {
-            '@type': 'columns', templateId: 'resolveuid/pageauid1234567', slotId: 'row', fixed: true,
+            '@type': 'columns', templateId: 'resolveuid/pageauid1234567', slotId: 'row', fixed: true, readOnly: true,
             blocks: {
               nameless: { '@type': 'slate', templateId: 'resolveuid/pageauid1234567', fixed: false },
             },
@@ -551,12 +708,20 @@ describe('plone-content-validator checkIntegrity()', () => {
       r.errors.join('\n'));
   });
 
-  it('PASSES an untagged block inside a non-fixed SLOT', () => {
-    // A slot's children are the PAGE's content, not the template's: the merge
-    // fills the slot from the page and carries its nesting through untouched,
-    // so those blocks need no templateId/slotId of their own. /templates/
-    // contact-cta ships exactly this shape — a `fixed: false` section whose
-    // `cta-btn` carries nothing — and the button comes through the merge intact.
+  it('REPORTS an untagged block inside a non-fixed SLOT', () => {
+    // This used to pass, on the reasoning that a slot's children are the
+    // PAGE's content and so need no tags of their own — true of the merge as
+    // it runs today, and /templates/contact-cta ships exactly this shape: a
+    // `fixed: false` section whose `cta-btn` carries nothing, which does come
+    // through intact.
+    //
+    // But it comes through intact only because of that one flag. A template is
+    // the authored source of truth, and an untagged block in one says nothing
+    // about who owns it. Set the section `fixed: true` — an ordinary change —
+    // and fillRegionEntries drops the button on its first rule,
+    // `if (!child || !child.templateId) continue`, silently, from every page
+    // using the template. The sibling /templates/contact-cta-info tags the
+    // same button, so the tagged shape is already the house style.
     const { root, contentDir } = buildFixture({
       pageA: {
         '@id': '/templates/thing', '@type': 'Document', id: 'thing',
@@ -573,11 +738,12 @@ describe('plone-content-validator checkIntegrity()', () => {
     });
     const r = checkIntegrity(contentDir);
     cleanup(root);
-    assert.ok(!r.errors.some((e) => e.includes('btn')), r.errors.join('\n'));
+    assert.ok(r.errors.some((e) => e.includes('btn') && e.includes('slotId')),
+      r.errors.join('\n') || '(no error raised)');
   });
 
   it('PASSES a fully-tagged nested template', () => {
-    const tag = (extra) => ({ templateId: 'resolveuid/pageauid1234567', fixed: true, ...extra });
+    const tag = (extra) => ({ templateId: 'resolveuid/pageauid1234567', fixed: true, readOnly: true, ...extra });
     const { root, contentDir } = buildFixture({
       pageA: {
         '@id': '/templates/thing', '@type': 'Document', id: 'thing',
@@ -632,7 +798,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         '@id': '/templates/thing', '@type': 'Document', id: 'thing',
         UID: 'pageauid1234567', parent: { '@id': '/' },
         blocks: {
-          decided: { '@type': 'slate', templateId: '/templates/thing', slotId: 'decided', fixed: true },
+          decided: { '@type': 'slate', templateId: '/templates/thing', slotId: 'decided', fixed: true, readOnly: true },
           vague: { '@type': 'slate', templateId: '/templates/thing', slotId: 'vague' },
         },
         blocks_layout: { items: ['decided', 'vague'] },
@@ -768,11 +934,23 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.ok(!r.errors.some((e) => e.includes('block good ')), r.errors.join('\n'));
   });
 
-  it('FAILS on an INSTANCE slot-fill missing fixed/readOnly (emit did not run)', () => {
-    // A block that has a valid slotId but no fixed/readOnly means the emit
-    // synthesis (markdown-mount normalizeInstanceTemplateFields, which stamps both
-    // false on a page slot-fill) never ran for it — a real pipeline gap, not an
-    // authoring nit. The coupling must hold: all three or the block is flagged.
+  it('ACCEPTS an INSTANCE slot-fill that does not state fixed/readOnly', () => {
+    // These two are authored on the TEMPLATE, not repeated on every page that
+    // fills it. On an instance, absent and false are indistinguishable wherever
+    // they are read — the merge branches on `if (block.fixed)`, isSlot is
+    // `!b.fixed && !b.readOnly`, and isBlockPositionLocked / isBlockReadonly are
+    // both `!!`. Requiring them here asked a real site to write two inert fields
+    // onto every block filling a template: 719 of them on the first content tree
+    // this was ever run against, not one of which changed any behaviour.
+    //
+    // Stating TRUE still matters and is still checked: a page block is
+    // classified as chrome by its OWN `fixed`, so a slot the template marks
+    // fixed must say so on the instance too (covered separately).
+    //
+    // NOTE: this test used to stand in for blockmd's emit synthesis
+    // (markdown-mount normalizeInstanceTemplateFields). That belongs in
+    // blockmd's own tests, against blockmd's own output, rather than in a rule
+    // every hand-authored content tree has to satisfy.
     const { root, contentDir } = buildFixture({
       dataFiles: [
         'plone_site_root/data.json',
@@ -807,8 +985,7 @@ describe('plone-content-validator checkIntegrity()', () => {
     });
     const r = checkIntegrity(contentDir);
     cleanup(root);
-    assert.ok(r.errors.some((e) => e.includes('halfway') && e.includes('fixed') && e.includes('readOnly')),
-      r.errors.join('\n'));
+    assert.deepEqual(r.errors.filter((e) => e.includes('halfway')), []);
   });
 
   it('FAILS on a broken path inside a SLATE link node', () => {
@@ -861,6 +1038,23 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.equal(r.stats.linksBroken, 0, r.errors.join('\n'));
   });
 
+  it('accepts a link to the site root, which every site has', () => {
+    // `/` names the site itself (a breadcrumb trail starts there). Content need
+    // not carry a site-root item for that to resolve — a frontend's test
+    // fixtures mounted on their own have none.
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: { home: { '@type': 'teaser', href: [{ '@id': '/' }] } },
+      },
+    });
+    fs.rmSync(path.join(contentDir, 'plone_site_root'), { recursive: true });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.equal(r.stats.linksBroken, 0, r.errors.join('\n'));
+  });
+
   it('accepts a path carrying a #fragment, and still checks the path', () => {
     // Deep-linking to a heading is legitimate content — RichText emits slugged
     // ids for headings precisely so `page#section` resolves. The path branch
@@ -883,6 +1077,16 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.equal(r.stats.linksBroken, 0, r.errors.join('\n'));
   });
 
+  // The blocks these reference tests use, with the widget that says each
+  // field holds a reference. Which field is a reference is never knowable
+  // from its name, so a test about reference integrity has to declare it.
+  const REF_CONFIG = {
+    teaser: { blockSchema: { properties: { href: { widget: 'object_browser' } } } },
+    image: { blockSchema: { properties: { url: { widget: 'url' }, href: { widget: 'object_browser' } } } },
+    button: { blockSchema: { properties: { url: { widget: 'url' }, href: { widget: 'object_browser' } } } },
+    slate: { blockSchema: { properties: { value: { widget: 'slate' } } } },
+  };
+
   it('still FAILS when the page before the #fragment does not exist', () => {
     // Stripping the fragment must not become a way to smuggle a dead path past
     // the gate.
@@ -895,7 +1099,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.ok(r.errors.some((e) => e.includes('/ghost')), r.errors.join('\n'));
     assert.equal(r.stats.linksBroken, 1);
@@ -919,7 +1123,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.ok(r.errors.some((e) => e.includes('/does-not-exist')), r.errors.join('\n'));
     assert.equal(r.stats.linksBroken, 1);
@@ -945,7 +1149,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.ok(
       r.errors.some((e) => e.includes('/images/test-image')),
@@ -967,7 +1171,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.deepEqual(r.errors, []);
     assert.equal(r.stats.linksBroken, 0);
@@ -990,7 +1194,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.ok(
       r.errors.some((e) => e.includes('garbage-not-a-ref')),
@@ -1012,7 +1216,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         },
       },
     });
-    const r = checkIntegrity(contentDir);
+    const r = checkIntegrity(contentDir, { schemasFor: () => REF_CONFIG });
     cleanup(root);
     assert.deepEqual(r.errors, []);
     assert.equal(r.stats.linksOk, 2);
@@ -1250,6 +1454,9 @@ describe('checkBlockSchemas()', () => {
         },
       }),
       FIELDS,
+      // `columns` is an object_list; which fields hold children is declared,
+      // never guessed from the name.
+      { idFieldMap: { slateish: { columns: '@id' } } },
     );
     assert.match(r.errors[0], /contentBlock\.url/);
   });
@@ -1282,10 +1489,20 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
   // Schema-driven: an object_list field's items are block instances (they get a
   // @uid, are selectable/editable), so each must carry a type in the field the
   // schema names. Absent a schema this can't be known, so the check runs only
-  // when a schemaFor is supplied. Regression guard for the `tab`/socialLinks
+  // when schemas are supplied. Regression guard for the `tab`/socialLinks
   // "no editable example" bug the bridge suite caught 17 minutes in.
-  const accordionSchema = (t) =>
-    t === 'accordion' ? { properties: { panels: { widget: 'object_list' } } } : null;
+  // `allowedBlocks` is what makes this list TYPED: its items vary in kind, so
+  // each must say which. A list with one inline `schema` is a record list and
+  // carries no type — the fixture states the difference rather than leaving it
+  // to a default, which is how it used to read as typed by accident.
+  const accordionConfig = {
+    accordion: {
+      blockSchema: {
+        properties: { panels: { widget: 'object_list', allowedBlocks: ['panel'], typeField: '@type' } },
+      },
+    },
+    panel: { blockSchema: { properties: { title: {} } } },
+  };
 
   const pageWithAccordion = (panels) => ({
     '@id': '/page-a', '@type': 'Document', id: 'page-a',
@@ -1298,7 +1515,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
     const { root, contentDir } = buildFixture({
       pageA: pageWithAccordion([{ '@id': 'p1', '@type': 'panel', title: 'ok' }, { '@id': 'p2', title: 'no type' }]),
     });
-    const r = checkIntegrity(contentDir, { schemaFor: accordionSchema });
+    const r = checkIntegrity(contentDir, { schemasFor: () => accordionConfig });
     cleanup(root);
     assert.ok(
       r.errors.some((e) => e.includes('object_list field "panels" item 1') && e.includes('missing its type field "@type"')),
@@ -1312,15 +1529,18 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
     const { root, contentDir } = buildFixture({
       pageA: pageWithAccordion([{ '@id': 'p1', '@type': 'panel', title: 'a' }, { '@id': 'p2', '@type': 'panel', title: 'b' }]),
     });
-    const r = checkIntegrity(contentDir, { schemaFor: accordionSchema });
+    const r = checkIntegrity(contentDir, { schemasFor: () => accordionConfig });
     cleanup(root);
     assert.ok(!r.errors.some((e) => e.includes('missing its type field')), r.errors.join('\n'));
   });
 
   it('honors the schema-named typeField (not a hardcoded @type)', () => {
     // A field can name where the type lives; the check reads THAT key.
-    const schemaFor = (t) =>
-      t === 'facetgroup' ? { properties: { facets: { widget: 'object_list', typeField: 'type' } } } : null;
+    const facetConfig = {
+      facetgroup: {
+        blockSchema: { properties: { facets: { widget: 'object_list', typeField: 'type' } } },
+      },
+    };
     const { root, contentDir } = buildFixture({
       pageA: {
         '@id': '/page-a', '@type': 'Document', id: 'page-a',
@@ -1329,7 +1549,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
         blocks_layout: { items: ['fg'] },
       },
     });
-    const r = checkIntegrity(contentDir, { schemaFor });
+    const r = checkIntegrity(contentDir, { schemasFor: () => facetConfig });
     cleanup(root);
     assert.ok(
       r.errors.some((e) => e.includes('facets" item 0') && e.includes('missing its type field "type"')),
@@ -1341,8 +1561,11 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
     // hydra reads an item's type as `@type ?? item[typeField]` (getBlockType),
     // so an item carrying @type IS typed — a frontend whose facets are
     // `{"@type": "selectFacet"}` against a schema naming `type` renders fine.
-    const schemaFor = (t) =>
-      t === 'facetgroup' ? { properties: { facets: { widget: 'object_list', typeField: 'type' } } } : null;
+    const facetConfig = {
+      facetgroup: {
+        blockSchema: { properties: { facets: { widget: 'object_list', typeField: 'type' } } },
+      },
+    };
     const r = checkIntegrity(
       [{
         rel: '/p',
@@ -1352,7 +1575,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
           blocks_layout: { items: ['fg'] },
         },
       }],
-      { schemaFor },
+      { schemasFor: () => facetConfig },
     );
     assert.deepEqual(r.errors.filter((e) => e.includes('type field')), []);
   });
@@ -1369,24 +1592,30 @@ describe('checkIntegrity — every list item has its own id', () => {
       blocks, blocks_layout: { items: Object.keys(blocks) },
     },
   }];
-  const slidesSchema = (idField) => (t) => (t === 'slider'
-    ? { properties: { slides: { widget: 'object_list', ...(idField ? { idField } : {}) } } } : null);
+  const slidesConfig = (idField) => ({
+    slider: {
+      blockSchema: {
+        properties: { slides: { widget: 'object_list', ...(idField ? { idField } : {}) } },
+      },
+    },
+    slide: { blockSchema: { properties: { title: {} } } },
+  });
   const idErrors = (r) => r.errors.filter((e) => e.includes(' id '));
 
   it('FAILS an object_list item with no id (default idField @id)', () => {
-    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }, { '@type': 'slide' }] } }), { schemaFor: slidesSchema() });
+    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }, { '@type': 'slide' }] } }), { schemasFor: () => slidesConfig() });
     assert.ok(r.errors.some((e) => e.includes('slides" item 1') && e.includes('has no id "@id"')), r.errors.join('\n'));
     assert.ok(!r.errors.some((e) => e.includes('slides" item 0')), r.errors.join('\n'));
   });
 
   it('reads the id from the schema-named idField, so ids stored under the wrong key fail', () => {
     // A region that put ids in @id while the frontend reads `key`.
-    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }] } }), { schemaFor: slidesSchema('key') });
+    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }] } }), { schemasFor: () => slidesConfig('key') });
     assert.ok(r.errors.some((e) => e.includes('slides" item 0') && e.includes('has no id "key"')), r.errors.join('\n'));
   });
 
   it('FAILS two object_list items that share an id', () => {
-    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'x' }, { '@type': 'slide', '@id': 'x' }] } }), { schemaFor: slidesSchema() });
+    const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'x' }, { '@type': 'slide', '@id': 'x' }] } }), { schemasFor: () => slidesConfig() });
     assert.ok(r.errors.some((e) => e.includes('slides" item 1') && e.includes('repeats id "x"')), r.errors.join('\n'));
   });
 
@@ -1408,7 +1637,7 @@ describe('checkIntegrity — every list item has its own id', () => {
     const r = checkIntegrity(page({
       s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }, { '@type': 'slide', '@id': 'b' }] },
       ...table([{ key: 'r1', cells: [cell('c1', 'a'), cell('c2', 'b')] }, { key: 'r2', cells: [cell('c3', 'c'), cell('c4', 'd')] }]),
-    }), { schemaFor: slidesSchema() });
+    }), { schemasFor: () => slidesConfig() });
     assert.deepEqual(idErrors(r), []);
   });
 });
@@ -1468,9 +1697,135 @@ describe('validating against a site\'s schemas', () => {
     // schema says it must be a bare array of nodes.
     const r = checkIntegrity(
       page({ b1: { '@type': 'card', title: 'T', body: { value: [{ type: 'p', children: [{ text: 'x' }] }] } } }),
-      { schemaFor: schemaForFrom(SCHEMAS) },
+      { schemasFor: () => SCHEMAS },
     );
     assert.ok(r.errors.some((e) => /card\) field "body" is widget:slate/.test(e)), r.errors.join('\n'));
   });
 });
 
+
+/**
+ * A TEMPLATE's own slot arrangement is checkable here, statically.
+ *
+ * `fixed` chrome is what separates one slot group from the next: it tells the
+ * merge where one slot's content ends. Two OPEN slots side by side leave an
+ * added block ambiguous — it could belong to either — so hydra's
+ * validateTemplatePlaceholders reports "Missing Fixed Block".
+ *
+ * That check ran only in the editor, at SAVE time, against the merged page. So
+ * a template saved with two adjacent open slots passed every gate, and the
+ * first anyone knew was an author being refused on a page whose offending
+ * blocks live inside a readOnly, template-owned container they cannot reach —
+ * an error about the template, raised against the page, with no way back to
+ * the cause.
+ *
+ * The arrangement of a TEMPLATE's own blocks needs no merge and no render: it
+ * is right there in its blocks_layout. Checking it here turns that into a gate
+ * failure on the commit that introduces it.
+ */
+describe('plone-content-validator template slot arrangement', () => {
+  const definition = (children, layout) => ({
+    '@id': '/templates/case-study-layout',
+    '@type': 'Document',
+    id: 'case-study-layout',
+    UID: 'tpl-uid',
+    blocks: {
+      'lead-text': {
+        '@type': 'column',
+        fixed: true,
+        slotId: 'lead-text',
+        blocks: children,
+        blocks_layout: { items: layout },
+      },
+    },
+    blocks_layout: { items: ['lead-text'] },
+  });
+  const slotErrors = (data) =>
+    checkIntegrity([{ rel: '/templates/case-study-layout', data }]).errors.filter((e) =>
+      /sit next to each other|not contiguous/.test(e),
+    );
+
+  it('reports two adjacent OPEN slots in a template column', () => {
+    const errs = slotErrors(definition({
+      title: { '@type': 'title', slotId: 'title', fixed: false },
+      'lead-intro': { '@type': 'slate', slotId: 'lead-intro', fixed: false },
+    }, ['title', 'lead-intro']));
+    assert.ok(
+      errs.some((e) => e.includes('"title"') && e.includes('"lead-intro"')),
+      `expected an error naming both slot groups, got:\n${errs.join('\n')}`,
+    );
+  });
+
+  it('accepts the same column once the heading is chrome', () => {
+    assert.deepEqual(slotErrors(definition({
+      title: { '@type': 'title', slotId: 'title', fixed: true },
+      'lead-intro': { '@type': 'slate', slotId: 'lead-intro', fixed: false },
+    }, ['title', 'lead-intro'])), []);
+  });
+
+  it('reports one slot split by another', () => {
+    const errs = slotErrors(definition({
+      a1: { '@type': 'slate', slotId: 'body', fixed: false },
+      gap: { '@type': 'slate', slotId: 'aside', fixed: false },
+      a2: { '@type': 'slate', slotId: 'body', fixed: false },
+    }, ['a1', 'gap', 'a2']));
+    assert.ok(errs.some((e) => /not contiguous/.test(e)), errs.join('\n'));
+  });
+});
+
+/**
+ * The slot rules apply to EVERY region, not just `items`.
+ *
+ * The editor's validateTemplatePlaceholders walks "the page's regions AND every
+ * nested container's regions (blocks_layout AND object_list)". This pass read
+ * only `blocks_layout.items`, so a template could pass here and still be
+ * refused in the editor — and a columns region is not exotic: a case-study
+ * layout's own lead row is one, holding the lead slots.
+ */
+describe('template slot arrangement covers every region', () => {
+  const tpl = (blocksLayout, blocks) => [{
+    rel: '/templates/t',
+    data: {
+      '@id': '/templates/t', '@type': 'Document', id: 't', UID: 'tuid000000000000',
+      blocks: { row: { '@type': 'columns', slotId: 'row', fixed: true, readOnly: true, ...blocks } },
+      blocks_layout: { items: ['row'] },
+      ...blocksLayout,
+    },
+  }];
+  const slot = (id) => ({ '@type': 'slate', slotId: id, fixed: false, readOnly: false });
+  // `columns.slides` is an object_list. Since #548 the `templateId` shortcut
+  // is the MERGE's opt-in, not a default, so a caller that is not merging says
+  // which fields hold children — the validator always has the schemas to say.
+  const REGIONS = { columns: { slides: '@id' } };
+  const errs = (items) =>
+    checkIntegrity(items, { idFieldMap: REGIONS }).errors
+      .filter((e) => /sit next to each other|not contiguous/.test(e));
+
+  it('reports two adjacent OPEN slots in a COLUMNS region', () => {
+    const r = errs(tpl({}, {
+      blocks: { a: slot('alpha'), b: slot('beta') },
+      blocks_layout: { columns: ['a', 'b'] },
+    }));
+    assert.ok(r.some((e) => e.includes('"alpha"') && e.includes('"beta"')), r.join('\n') || '(no error raised)');
+  });
+
+  it('accepts the same columns region once a fixed block separates them', () => {
+    const r = errs(tpl({}, {
+      blocks: { a: slot('alpha'), sep: { '@type': 'slate', slotId: 'sep', fixed: true, readOnly: true }, b: slot('beta') },
+      blocks_layout: { columns: ['a', 'sep', 'b'] },
+    }));
+    assert.deepEqual(r, []);
+  });
+
+  it('reports two adjacent OPEN slots in an object_list region', () => {
+    // An object_list child carries `templateId` — that is what marks it as the
+    // template's own, and what getChildFields keys off to call the field a
+    // region at all. A bare array is not one, so the fixture states it.
+    const inList = (id) => ({ ...slot(id), '@id': `oid-${id}`, templateId: 'resolveuid/tuid000000000000' });
+    const r = errs(tpl({}, {
+      slides: [inList('alpha'), inList('beta')],
+      blocks: {}, blocks_layout: { items: [] },
+    }));
+    assert.ok(r.some((e) => e.includes('"alpha"') && e.includes('"beta"')), r.join('\n') || '(no error raised)');
+  });
+});
