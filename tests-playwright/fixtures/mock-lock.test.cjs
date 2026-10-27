@@ -49,7 +49,12 @@ describe('@lock', () => {
 
     const locked = await call('POST', `${PAGE}/@lock`, admin);
     assert.equal(locked.body.locked, true);
+    // plone.restapi's lock_info: `time` in epoch seconds, `created` the same as ISO.
     assert.equal(locked.body.creator, 'admin');
+    assert.equal(locked.body.creator_name, 'admin');
+    assert.equal(typeof locked.body.time, 'number');
+    assert.equal(Date.parse(locked.body.created), Math.floor(locked.body.time) * 1000);
+    assert.equal(typeof locked.body.token, 'string');
     assert.equal((await lockOf(admin)).locked, true);
 
     assert.equal((await call('DELETE', `${PAGE}/@lock`, admin)).body.locked, false);
