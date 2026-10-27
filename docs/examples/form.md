@@ -34,7 +34,7 @@ blocks-matched: |
 
 # Form
 
-A multi-field form with configurable field types, validation, and email submission. Fields are stored as a typed object\_list — each field has a field\_type that maps to a sub-block schema.
+A multi-field form with configurable field types, validation, and email submission. Fields are stored as a typed object_list — each field has a field_type that maps to a sub-block schema.
 
 <block type="image">
 
@@ -48,7 +48,7 @@ A multi-field form with configurable field types, validation, and email submissi
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-form" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

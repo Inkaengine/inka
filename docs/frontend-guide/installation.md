@@ -33,7 +33,7 @@ Adding Inka to a frontend is a small script and a few HTML attributes — there 
 
 ## Prerequisites
 
-- A running Inka admin and content backend for editors to log into (the hosted demo at [admin.inka.sh](https://admin.inka.sh) works while you develop).
+- A running Inka admin and content backend for editors to log into (the hosted demo works while you develop: [admin.inka.sh/login?demo](https://admin.inka.sh/login?demo\&return_url=/edit) signs you in as its demo account).
 - A frontend that renders your content — any framework, or none. The bridge only runs when the page is opened inside the admin's edit iframe.
 
 ## Get the bridge

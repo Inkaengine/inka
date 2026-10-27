@@ -1,0 +1,1 @@
+Wrapping blocks that sit in a layout's slot gives the new container the slot (the children drop its marks), and unwrapping gives it back, so the wrapped blocks are no longer pulled back out of the container and the container can be unwrapped.

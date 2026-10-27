@@ -71,7 +71,25 @@ const LISTING_BLOCK_TYPES = ['listing', 'relatedItemsListing', 'searchShortcuts'
 // with a listing. Returning all items with paging:null (as the old no-listing
 // shortcut did) meant a manual grid silently lost paging and its pager, so a
 // paged-out child (which the reveal needs) had no page-step control to reach it.
-async function expandItems(blocks, layout, containerId, paging) {
+// The frontend contract (docs/frontend-guide/templates.md "Expand every container"):
+// a template can be placed in ANY container, and the merge has no schema to find
+// them, so every container passes each region of children through the merge,
+// sharing the render's templateState. Returns the region's blocks dict (with the
+// expanded blocks) and its expanded layout.
+async function expandRegion(blocks, layout) {
+    if (layout.length === 0) return { blocks, layout };
+    const items = await window._expandTemplates(layout, {
+        blocks,
+        templateState: window._templateState,
+        loadTemplate: window._loadTemplate,
+    });
+    const expanded = { ...blocks };
+    for (const item of items) expanded[item['@uid']] = item;
+    return { blocks: expanded, layout: items.map((item) => item['@uid']) };
+}
+
+async function expandItems(rawBlocks, rawLayout, containerId, paging) {
+    const { blocks, layout } = await expandRegion(rawBlocks, rawLayout);
     const isListing = (id) => {
         const t = blocks[id]?.['@type'];
         if (t === 'listing') return !!blocks[id]?.querystring?.query;
@@ -171,6 +189,57 @@ function getImageUrl(value) {
         url = `${apiOrigin}${url}`;
     }
     return url;
+}
+
+/**
+ * Build a srcset from the scales the data offers, or '' when it offers no real
+ * choice.
+ *
+ * This reference frontend exists to demonstrate the contracts Inka asserts, and
+ * "an image must use the sizes its data offers" is one of them (see
+ * helpers/imageSizes.mjs). Rendering a bare `src` while the data advertises
+ * 400/800/1200 is exactly the failure that rule is for, so the reference has to
+ * do the thing it asks of everyone else — otherwise the rule either never fires
+ * or fires on Inka's own fixtures.
+ *
+ * Keyed on DISTINCT WIDTHS: Plone caps every scale at the source, so on a 200px
+ * image `large`, `huge` and `great` all return 200 — three names, one size, and
+ * nothing for the browser to choose between.
+ */
+function getImageSrcset(value, block) {
+    // The scales live in one of two places, and reading only the first one is
+    // how this function shipped broken the first time:
+    //   NESTED   value = { '@id', image_field, image_scales }   (teaser refs)
+    //   SIBLING  value = '/path/to.jpg'                         (image blocks)
+    //            block = { image_field, image_scales, ... }
+    const src = (value && typeof value === 'object' && value.image_scales && value.image_field)
+        ? value
+        : (block && block.image_scales && block.image_field)
+            ? block
+            : null;
+    if (!src) return '';
+    const meta = src.image_scales[src.image_field]?.[0];
+    if (!meta) return '';
+
+    const apiOrigin = window._apiOrigin || '';
+    // A nested ref carries its own @id; the sibling shape's base is the path
+    // string sitting in the field.
+    const rawId = src['@id'] || (typeof value === 'string' ? value : '') || '';
+    const baseUrl = /^https?:\/\//.test(rawId) ? rawId : `${apiOrigin}${rawId}`;
+
+    const byWidth = new Map();
+    for (const [, s] of Object.entries(meta.scales || {})) {
+        const w = Number(s?.width);
+        if (w && s.download && !byWidth.has(w)) byWidth.set(w, s.download);
+    }
+    const primary = Number(meta.width);
+    if (primary && meta.download && !byWidth.has(primary)) byWidth.set(primary, meta.download);
+
+    if (byWidth.size < 2) return '';   // no genuine choice to offer
+    return [...byWidth.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([w, download]) => `${baseUrl}/${download} ${w}w`)
+        .join(', ');
 }
 
 /**
@@ -368,9 +437,18 @@ async function renderBlock(blockId, block, { inListing = false } = {}) {
         case 'slide':
             wrapper.innerHTML = renderSlideBlock(block);
             break;
-        case 'accordion':
+        case 'accordion': {
+            // A group of one is drawn as just that one: a single panel, no
+            // group element — so the accordion draws no element of its own and
+            // the editor finds it through its panel (getAllBlockElements).
+            if ((block.panels || []).length === 1) {
+                const single = document.createElement('div');
+                single.innerHTML = await renderAccordionPanels(block.panels);
+                return single.firstElementChild;
+            }
             wrapper.innerHTML = await renderAccordionBlock(block, blockId);
             break;
+        }
         // accordionPanel is rendered inline by renderAccordionBlock (object_list items)
         case 'socialLinks':
             wrapper.innerHTML = renderSocialLinksBlock(block);
@@ -979,8 +1057,11 @@ function renderTeaserBlock(block, blockUid) {
     // Show teaser content when href has value. No image ⇒ no element (#296): the
     // editor reveals an empty image with the toolbar toggle, not a grey stand-in
     // that also shows on the published page.
+    // Offer the sizes the data advertises (empty when there is no real choice).
+    const teaserSrcset = block.preview_image ? getImageSrcset(block.preview_image, block) : '';
+    const teaserSrcsetAttr = teaserSrcset ? ` srcset="${teaserSrcset}"` : '';
     const imageHtml = imageSrc
-        ? `<img data-edit-media="preview_image" src="${imageSrc}" alt="" style="max-width: 100%; height: auto; margin-bottom: 10px; border-radius: 4px;" />`
+        ? `<img data-edit-media="preview_image" src="${imageSrc}"${teaserSrcsetAttr} alt="" style="max-width: 100%; height: auto; margin-bottom: 10px; border-radius: 4px;" />`
         : '';
 
     // When overwrite is false, add data-block-readonly to prevent editing
@@ -1083,8 +1164,21 @@ function renderImageBlock(block, { inListing = false } = {}) {
     const alt = block.placeholder || block.alt || '';
     const href = getLinkUrl(block.href);
 
+    // Offer the sizes the data advertises. Empty when there is no real choice,
+    // and an empty srcset attribute is inert — see getImageSrcset.
+    const srcset = getImageSrcset(block.url, block);
+    // `sizes` as well as `srcset`. A srcset alone tells the browser which files
+    // EXIST, not how big the box is — absent `sizes` the spec default is
+    // `100vw`, so it sized for the viewport and pulled the 2400px original into
+    // a 179px grid cell. `auto` makes it measure the real box; browsers without
+    // support ignore it and fall back to today's behaviour, so nothing
+    // regresses. It requires `loading="lazy"` to take effect.
+    const srcsetAttr = srcset
+        ? ` srcset="${srcset}" sizes="auto" loading="lazy"`
+        : '';
+
     // Add data-edit-media="url" for inline image editing
-    const img = `<img data-edit-media="url" src="${imageSrc}" alt="${alt}" />`;
+    const img = `<img data-edit-media="url" src="${imageSrc}"${srcsetAttr} alt="${alt}" />`;
 
     // If href is set, wrap in link with data-edit-link on the <a>
     // This ensures hydra.js prevents navigation in edit mode
@@ -1092,7 +1186,7 @@ function renderImageBlock(block, { inListing = false } = {}) {
         return `<a href="${href}" class="image-link" data-edit-link="href">${img}</a>`;
     }
     // No href yet - put data-edit-link on img so users can add a link
-    return `<img data-edit-media="url" data-edit-link="href" src="${imageSrc}" alt="${alt}" />`;
+    return `<img data-edit-media="url" data-edit-link="href" src="${imageSrc}"${srcsetAttr} alt="${alt}" />`;
 }
 
 /**
@@ -1286,8 +1380,7 @@ async function renderCalloutBlock(block) {
     const level = levels[block.variation] || levels.note;
     // The body is a region of child blocks (blocks_layout.items) — render each
     // through renderBlock, the shared container primitive.
-    const blocks = block.blocks || {};
-    const items = block.blocks_layout?.items || [];
+    const { blocks, layout: items } = await expandRegion(block.blocks || {}, block.blocks_layout?.items || []);
     let bodyHtml = '';
     for (const id of items) {
         const el = await renderBlock(id, { ...blocks[id], '@uid': id });
@@ -1472,8 +1565,7 @@ function attachFormValidation(formEl, block) {
  */
 async function renderObjectBlocksBlock(block) {
     const content = block.content || {};
-    const blocks = content.blocks || {};
-    const bodyItems = content.blocks_layout?.body || [];
+    const { blocks, layout: bodyItems } = await expandRegion(content.blocks || {}, content.blocks_layout?.body || []);
 
     // Inline-editable text field living directly on the object
     // (block.content.headline) — a slate field, marked data-edit-text so hydra
@@ -1522,8 +1614,7 @@ async function renderObjectBlocksBlock(block) {
 async function renderColumnsBlock(block) {
     // 'columns' is a blocks field: its name is the key in the shared blocks_layout
     // dict, and child blocks live in the shared blocks dict.
-    const blocks = block.blocks || {};
-    const columnsItems = block.blocks_layout?.columns || [];
+    const { blocks, layout: columnsItems } = await expandRegion(block.blocks || {}, block.blocks_layout?.columns || []);
     const title = block.title || '';
 
     let html = '';
@@ -1628,8 +1719,7 @@ function renderColumnBlock(block) {
  * horizontal without this) — keeping drop-position resolution on the Y axis.
  */
 async function renderConvBox(block) {
-    const blocks = block.blocks || {};
-    const items = block.blocks_layout?.items || [];
+    const { blocks, layout: items } = await expandRegion(block.blocks || {}, block.blocks_layout?.items || []);
     let html = '<div class="section-body" style="padding: 12px; border: 1px dashed #888; border-radius: 4px;">';
     for (const childId of items) {
         const child = blocks[childId];
@@ -1654,8 +1744,7 @@ async function renderConvBox(block) {
  * converted type, and renders children with `data-block-add="bottom"` (vertical).
  */
 async function renderConvGroup(block) {
-    const blocks = block.blocks || {};
-    const items = block.blocks_layout?.items || [];
+    const { blocks, layout: items } = await expandRegion(block.blocks || {}, block.blocks_layout?.items || []);
     let html = `<div class="section-body" data-container-type="${block['@type']}" style="padding: 12px; border: 1px solid #4a90d9; border-radius: 4px;">`;
     for (const childId of items) {
         const child = blocks[childId];
@@ -1675,8 +1764,7 @@ async function renderConvGroup(block) {
 }
 
 async function renderSectionBlock(block) {
-    const blocks = block.blocks || {};
-    const items = block.blocks_layout?.items || [];
+    const { blocks, layout: items } = await expandRegion(block.blocks || {}, block.blocks_layout?.items || []);
 
     let html = '<div class="section-body" style="padding: 12px; border: 1px dashed #888; border-radius: 4px;">';
     for (const childId of items) {
@@ -1705,8 +1793,7 @@ async function renderSectionBlock(block) {
  */
 async function renderContextNavigationBlock(block, blockId) {
     const ariaLabel = block.ariaLabel;
-    const blocks = block.blocks;
-    const items = block.blocks_layout?.items || [];
+    const { blocks, layout: items } = await expandRegion(block.blocks || {}, block.blocks_layout?.items || []);
     const uid = blockId;
 
     // Hydra seeds an '@type: empty' placeholder when a container has no defaultBlockType and
@@ -2485,18 +2572,25 @@ function renderSocialLinksBlock(block) {
  * @returns {Promise<string>} HTML string
  */
 async function renderAccordionBlock(block, blockId) {
-    const panels = block.panels || [];
+    return (
+        '<div class="accordion-container" style="border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">' +
+        (await renderAccordionPanels(block.panels || [])) +
+        '</div>'
+    );
+}
 
-    let html = '<div class="accordion-container" style="border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">';
-
+/**
+ * Each panel a native disclosure: <details> carrying the panel's uid, its
+ * title the <summary>. Open, so a panel's blocks are in reach without a click.
+ */
+async function renderAccordionPanels(panels) {
+    let html = '';
     for (const panel of panels) {
         const panelId = panel['@id'];
-        html += `<div data-block-uid="${panelId}" data-block-add="bottom">`;
+        html += `<details open data-block-uid="${panelId}" data-block-add="bottom">`;
         html += await renderAccordionPanelBlock(panel, panelId);
-        html += '</div>';
+        html += '</details>';
     }
-
-    html += '</div>';
     return html;
 }
 
@@ -2516,9 +2610,9 @@ async function renderAccordionPanelBlock(block, blockId) {
     let html = '';
 
     // Panel header (title)
-    html += '<div class="accordion-header" style="background: #f5f5f5; padding: 15px; border-bottom: 1px solid #ddd; cursor: pointer;">';
+    html += '<summary class="accordion-header" style="background: #f5f5f5; padding: 15px; border-bottom: 1px solid #ddd; cursor: pointer;">';
     html += `<strong data-edit-text="title">${block.title || ''}</strong>`;
-    html += '</div>';
+    html += '</summary>';
 
     // Panel content
     html += '<div class="accordion-content" style="padding: 15px;">';
@@ -2652,8 +2746,11 @@ async function renderSearchBlock(block, blockId) {
     const showSortOn = block.showSortOn;
     const facets = block.facets || [];
     const sortOnOptions = block.sortOnOptions || [];
-    const blocks = block.blocks || {};
-    const listingLayout = block.blocks_layout?.listing || [];
+    // Its two regions share one blocks dict; each goes through the merge.
+    const listingRegion = await expandRegion(block.blocks || {}, block.blocks_layout?.listing || []);
+    const quickAnswerRegion = await expandRegion(listingRegion.blocks, block.blocks_layout?.quickAnswer || []);
+    const blocks = quickAnswerRegion.blocks;
+    const listingLayout = listingRegion.layout;
 
     let html = '<div class="search-block" style="padding: 20px; border: 1px solid #ddd; border-radius: 8px;">';
 
@@ -2665,7 +2762,7 @@ async function renderSearchBlock(block, blockId) {
     // A block that exists ONLY once a query has been asked — the quick-answer
     // region. Declared here so the form below can say how to reveal it: the
     // input carries the sample question, the submit button carries the uid.
-    const quickAnswerLayout = block.blocks_layout?.quickAnswer || [];
+    const quickAnswerLayout = quickAnswerRegion.layout;
     const quickAnswerUid = quickAnswerLayout[0] || '';
     const sampleQuestion = block.quickAnswerSample || '';
 

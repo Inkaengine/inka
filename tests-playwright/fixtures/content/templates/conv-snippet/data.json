@@ -1,0 +1,33 @@
+{
+  "@id": "/templates/conv-snippet",
+  "@type": "Document",
+  "UID": "conv-snippet-uid",
+  "id": "conv-snippet",
+  "title": "Conv Snippet",
+  "description": "A snippet of convTargetA blocks, so it can sit inside the toy conversion containers",
+  "blocks": {
+    "conv-snippet-heading": {
+      "@type": "convTargetA",
+      "fixed": true,
+      "readOnly": true,
+      "templateId": "resolveuid/conv-snippet-uid",
+      "templateInstanceId": "conv-snippet-def-instance",
+      "slotId": "conv-snippet-heading",
+      "title": "Conv snippet heading"
+    },
+    "conv-snippet-body": {
+      "@type": "convTargetA",
+      "fixed": false,
+      "templateId": "resolveuid/conv-snippet-uid",
+      "templateInstanceId": "conv-snippet-def-instance",
+      "slotId": "conv-snippet-body",
+      "title": "Default conv snippet body"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "conv-snippet-heading",
+      "conv-snippet-body"
+    ]
+  }
+}

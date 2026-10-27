@@ -134,7 +134,13 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
         const scaleEntries = Object.values(meta.scales || {});
         srcset = Object.keys(meta.scales || {}).map((name) => {
             const scale = meta.scales[name];
-            return `${image_url}/${scale.download} w${scale.width}`;
+            // `400w`, not `w400`. The descriptor is NUMBER then unit; a
+            // reversed one is invalid, so the browser drops the candidate and
+            // falls back to `src` — the full-size file on every viewport. The
+            // PLONE_SCALES builders below always had this right; only the two
+            // paths that read real scale metadata were reversed, which is the
+            // path an image block takes.
+            return `${image_url}/${scale.download} ${scale.width}w`;
         }).join(", ");
         sizes = Object.keys(meta.scales || {}).map((name) => {
             const scale = meta.scales[name];
@@ -160,7 +166,13 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
     } else if (block?.scales) {
         srcset = Object.keys(block.scales).map((name) => {
             const scale = block.scales[name];
-            return `${image_url}/${scale.download} w${scale.width}`;
+            // `400w`, not `w400`. The descriptor is NUMBER then unit; a
+            // reversed one is invalid, so the browser drops the candidate and
+            // falls back to `src` — the full-size file on every viewport. The
+            // PLONE_SCALES builders below always had this right; only the two
+            // paths that read real scale metadata were reversed, which is the
+            // path an image block takes.
+            return `${image_url}/${scale.download} ${scale.width}w`;
         }).join(", ");
         image_url = block.download;
     } 

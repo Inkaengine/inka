@@ -1,4 +1,3 @@
-import { tabbable } from 'tabbable';
 
 // Pure data helpers live in @volto-hydra/helpers — imported here ONLY
 // for internal use by bridge methods (deepEqual, findChangedUnit,
@@ -2708,7 +2707,37 @@ export class Bridge {
     const nav = this.getArrowNavigationTarget(key, blockUid, blockElement);
     if (!nav) return;
     const { adjacentId, adjacentEl, direction, isTableVertical } = nav;
+    this.moveEditingPoint({
+      direction,
+      blockUid,
+      editableField,
+      blockElement,
+      isTableVertical,
+      adjacentId,
+      adjacentEl,
+    });
+  }
 
+  /**
+   * Move the editing point one step, the way both arrows and Tab mean it.
+   *
+   * Within a block with more than one editable, a step moves FOCUS to the next
+   * editable and leaves the selection alone — the author is still editing the
+   * same block, and the admin only needs to know which field. Stepping off the
+   * block's first/last editable is what moves the SELECTION, to the adjacent
+   * block's last/first field.
+   *
+   * @returns {boolean} true when the step was taken.
+   */
+  moveEditingPoint({
+    direction,
+    blockUid,
+    editableField,
+    blockElement,
+    isTableVertical = false,
+    adjacentId = null,
+    adjacentEl = null,
+  }) {
     // Check multi-field: navigate between fields within the block first
     const ownFields = this.getOwnEditableFields(blockElement);
     if (ownFields.length > 1 && !isTableVertical) {
@@ -2724,19 +2753,21 @@ export class Bridge {
           range.collapse(true); // Cursor at start
           sel.removeAllRanges();
           sel.addRange(range);
-          return;
+          return true;
         }
         if (direction === 'backward' && fieldIdx > 0) {
           // Move to previous field in same block
           const prevField = ownFields[fieldIdx - 1];
           prevField.focus();
           this._placeCursorAtEnd(prevField);
-          return;
+          return true;
         }
       }
     }
 
-    log('handleArrowAtEdge: navigating from', blockUid, 'to', adjacentId, 'direction:', direction);
+    if (!adjacentEl) return false;
+
+    log('moveEditingPoint: navigating from', blockUid, 'to', adjacentId, 'direction:', direction);
 
     // editMode stays 'text' — selectBlock will set up contenteditable
     this._navigatingToBlock = true;
@@ -2745,6 +2776,7 @@ export class Bridge {
       cursorAt: direction === 'backward' ? 'end' : 'start',
     });
     this._navigatingToBlock = false;
+    return true;
   }
 
   /**
@@ -3055,17 +3087,52 @@ export class Bridge {
           }
         }
       }
-      // Focus navigation via tabbable
+      // Tab walks the EDITING order, not the page's.
+      //
+      // The page's tab order belongs to the published site: it is made of the
+      // links, buttons and controls a visitor uses. An author is editing that
+      // content, not operating it, so stepping onto a teaser's link or a
+      // carousel's "next" button is an accident of the markup, not an
+      // affordance. It also differed per frontend, so the same keystroke did
+      // different things on Astro, Nuxt and Next.
+      //
+      // Walking our own order also removes an inference. Focusing an element
+      // and waiting for the focus listener to work out which block that was
+      // meant the bridge had to tell its OWN synthetic focus apart from one the
+      // frontend moved (a container re-rendering, a tab strip restoring focus)
+      // using a 300ms since-last-keypress heuristic. Here we know the target,
+      // so we select it outright and the listener no longer has to guess.
+      //
+      // Same step the arrows take, so multi-field blocks behave identically:
+      // focus moves between a block's own editables, and only stepping off the
+      // first/last one moves the selection.
       {
-        const ordered = tabbable(document.documentElement);
-        const currentIdx = ordered.indexOf(editableField || document.activeElement);
-        if (currentIdx !== -1 && ordered.length > 1) {
-          const nextIdx = shiftKey
-            ? (currentIdx - 1 + ordered.length) % ordered.length
-            : (currentIdx + 1) % ordered.length;
-          ordered[nextIdx].focus();
+        const direction = shiftKey ? 'backward' : 'forward';
+        const blockEl =
+          editableField?.closest('[data-block-uid]') ||
+          this.queryBlockElement(blockId);
+        const uid = blockEl?.getAttribute('data-block-uid') || blockId;
+        if (uid && blockEl) {
+          const adjacentId = this._resolveNavigationTarget(uid, direction, false);
+          const adjacentEl = adjacentId ? this.queryBlockElement(adjacentId) : null;
+          this.moveEditingPoint({
+            direction,
+            blockUid: uid,
+            editableField,
+            blockElement: blockEl,
+            adjacentId,
+            adjacentEl,
+          });
         }
       }
+      return true;
+    }
+
+    // Shift+Enter in a plain string field: nothing. A string is one line, but
+    // left to the browser Shift+Enter inserts a <br>, putting a second line on
+    // the page that the stored value never has.
+    if (key === 'Enter' && shiftKey &&
+        this.fieldTypeIsPlainString(this.getFieldType(blockId, this.focusedFieldName))) {
       return true;
     }
 
@@ -3682,6 +3749,41 @@ export class Bridge {
       : null;
   }
 
+  /**
+   * Say where a drop will land, on the indicator (or the replace shade) the
+   * user is looking at: a label naming the container the block will be put
+   * in, and the resolved target as data attributes. The drop goes to the
+   * nearest droppable edge at ANY nesting level, so the pointer can sit on a
+   * small block while the drop lands in the container around it; a line on
+   * a shared edge looked the same either way. The label tells them apart, and
+   * the attributes let a test confirm the target before it lets go.
+   */
+  _nameDropTarget(el, targetUid, insertAfter, isHorizontal) {
+    const info = this.blockPathMap?.[targetUid];
+    const container = info?.containerTitle || 'Page';
+    el.dataset.dropTarget = targetUid;
+    el.dataset.dropInsertAfter = insertAfter ? 'true' : 'false';
+    el.dataset.dropContainer = info?.parentId || '';
+    let label = el.querySelector(':scope > .volto-hydra-drop-label');
+    if (!label) {
+      label = document.createElement('span');
+      label.className = 'volto-hydra-drop-label';
+      // Inline and self-contained: this sits in the frontend's page, whose
+      // CSS must not restyle it.
+      label.style.cssText =
+        'position:absolute;white-space:nowrap;padding:1px 6px;border-radius:3px;' +
+        'background:#007bff;color:#fff;font:600 11px/16px system-ui,sans-serif;' +
+        'letter-spacing:normal;text-transform:none;pointer-events:none;';
+      el.appendChild(label);
+    }
+    label.textContent = `Into ${container}`;
+    // Off the line, so it never hides what it labels: above a horizontal line,
+    // at the top beside a vertical one.
+    Object.assign(label.style, isHorizontal
+      ? { left: '6px', top: '0', bottom: 'auto' }
+      : { left: '0', top: 'auto', bottom: '6px' });
+  }
+
   getAllBlockElements(blockUid, options = {}) {
     // includeStandIns: false asks for only the elements that ARE the block.
     // Chrome (outline, toolbar) measures the block's box, and a stand-in sits
@@ -3732,7 +3834,29 @@ export class Bridge {
         !!handle.querySelector('[data-edit-text], [data-edit-media]');
       if (carriesContent) own.push(handle);
     }
-    const elements = own;
+    // The page is not a container drawn somewhere; it is the whole canvas.
+    if (blockUid === PAGE_BLOCK_UID) return own;
+    // A container is drawn by its own parts AND by any children drawn outside
+    // them. Its parts need not wrap its children: a heading of its own can sit
+    // beside them, and a design system can draw a group of one as just that
+    // one, with no element of the container's at all (as a template instance
+    // never has one). Children inside its own elements are already covered —
+    // a carousel's slides, scrolled out of view, do not stretch it — so only
+    // those drawn outside are followed, through children that draw nothing
+    // either, down to the ones that do.
+    const inside = (el) => own.some((o) => o !== el && o.contains(el));
+    const children = Object.entries(this.blockPathMap || {})
+      .filter(([, info]) => info.parentId === blockUid)
+      .map(([id]) => id);
+    const outside = [];
+    for (const id of children) {
+      const drawn = [...document.querySelectorAll(`[data-block-uid="${id}"]`)];
+      if (drawn.length && drawn.every(inside)) continue;
+      for (const el of this.getAllBlockElements(id, options)) {
+        if (!inside(el)) outside.push(el);
+      }
+    }
+    const elements = [...own, ...outside];
     if (elements.length === 0) {
       log('getAllBlockElements: no DOM elements for', blockUid, 'pathInfo:', pathInfo ? 'exists' : 'missing', 'isTemplateInstance:', pathInfo?.isTemplateInstance);
     }
@@ -4657,17 +4781,10 @@ export class Bridge {
         // This avoids adding duplicate listeners and works for all blocks
         if (!this.fieldFocusListenerAdded) {
           this.fieldFocusListenerAdded = true;
-          // Track mouse button state so fieldFocusListener can distinguish
-          // keyboard navigation (Tab) from mouse click side-effects.
-          // During mouse clicks, the click handler handles block selection —
-          // the focus event between mousedown and click must not call selectBlock
-          // because restoreContentEditableOnFields would change the DOM and
-          // shift event.target before the click event fires.
-          // When the author last pressed a key, so a focus change can be told
-          // apart from one the frontend made on its own (see the focus listener).
-          document.addEventListener('keydown', () => { this._lastKeyDownAt = Date.now(); }, true);
-          document.addEventListener('mousedown', () => { this._mouseButtonDown = true; }, true);
-          document.addEventListener('mouseup', () => { this._mouseButtonDown = false; }, true);
+          // `_lastKeyDownAt` and `_mouseButtonDown` used to live here, so the
+          // focus listener could guess whether a focus change was the author's
+          // or the frontend's. It no longer decides anything from focus, so
+          // there is nothing to tell apart and nothing to track.
           document.addEventListener('focus', (e) => {
             // Firefox may fire focus on text nodes; get the nearest Element
             const target = e.target instanceof Element ? e.target : e.target?.parentElement;
@@ -4691,41 +4808,23 @@ export class Bridge {
             if (this.editMode === 'block') return;
 
             if (blockUid !== this.selectedBlockUid) {
-              // Skip if block-selector or arrow-key navigation is in progress —
-              // those flows manage their own block selection
-              if (this._blockSelectorNavigating || this._navigatingToBlock) {
-                return;
-              }
-              // During mouse clicks, defer to the click handler for block selection.
-              // The focus event fires between mousedown and click — calling selectBlock
-              // here would run restoreContentEditableOnFields before click, which can
-              // change event.target and break linkable/media field detection.
-              if (this._mouseButtonDown) {
-                return;
-              }
-              // Only a focus the AUTHOR moved may move the selection. Tab is
-              // theirs; a focus the frontend moves is not — a container
-              // refocusing itself after re-rendering, a tab strip restoring
-              // focus to its active tab, a carousel after a slide change.
+              // A focus landing in ANOTHER block never moves the selection.
               //
-              // Acting on those steals the selection: adding a block into a doc
-              // page's Example tab left the TAB selected, so the sidebar offered
-              // the container's settings instead of the block just added, and
-              // there was no way to configure it. Same argument the block-mode
-              // branch above already makes; just as true here.
+              // The author's own step selects its target outright —
+              // moveEditingPoint, shared by Tab and the arrows — so by the time
+              // a focus event reaches here, whatever the author did has already
+              // been accounted for. What is left is focus the FRONTEND moved: a
+              // container refocusing itself after re-rendering, a tab strip
+              // restoring focus to its active tab, a carousel after a slide
+              // change. Acting on those steals the selection — adding a PDF
+              // block into a doc page's Example tab left the TAB selected, so
+              // the sidebar offered the container's settings instead of the
+              // block just added, with no way to configure it.
               //
-              // Not "is the target editable": Tab legitimately lands on a
-              // button or a link in another block, and selection should follow
-              // there too (block-navigation.spec.ts pins exactly that).
-              if (Date.now() - (this._lastKeyDownAt || 0) > 300) return;
-              // Focus moved to a different block (e.g., via Tab) — select it
-              log('Focus moved to different block:', blockUid, 'from:', this.selectedBlockUid);
-              // Cancel any pending initial-selection — user navigated away
-              if (this._pendingInitialSelectTimer) {
-                clearTimeout(this._pendingInitialSelectTimer);
-                this._pendingInitialSelectTimer = null;
-              }
-              this.selectBlock(blockElement);
+              // This used to guess, with a 300ms since-last-keypress heuristic
+              // and a `_navigatingToBlock` latch, because selection depended on
+              // reading back the bridge's own synthetic focus. It does not any
+              // more, so there is nothing left to guess at.
               return;
             }
 
@@ -4802,6 +4901,17 @@ export class Bridge {
           event.data.type === 'TOGGLE_MARK_DONE'
         ) {
           log('Received', event.data.type, 'message');
+          // Number each admin message as it arrives. The queue drain below
+          // re-posts its entry to this window, which lands it BEHIND any
+          // admin message already waiting — so a re-posted entry that a
+          // newer arrival has overtaken is stale and must not render.
+          if (event.data._hydraArrival === undefined) {
+            this._formDataArrivals = (this._formDataArrivals || 0) + 1;
+            event.data._hydraArrival = this._formDataArrivals;
+          } else if (event.data._hydraArrival < this._formDataArrivals) {
+            log(event.data.type, ': dropping re-posted queue entry overtaken by a newer arrival');
+            return;
+          }
           if (event.data.data) {
             // Don't set isInlineEditing to false - user is still editing
             // Check if focused field content changed - if so, this is a sidebar edit,
@@ -8270,12 +8380,23 @@ export class Bridge {
         else if (c.nodeType === Node.ELEMENT_NODE) {
           if (c.tagName === 'BR') {
             if (!this.isPlaceholderBr(c)) out += '\n';
-          } else walk(c);
+          } else if (!this.isNonContentIsland(c)) walk(c);
         }
       }
     };
     walk(el);
     return out;
+  }
+
+  /**
+   * An element the frontend drew that is not the author's content: a
+   * non-editable island (contenteditable="false" — words the frontend writes
+   * itself, such as a file's size after a link) or decoration (aria-hidden).
+   * Skipped wherever it sits — as a node's child or inside a wrapper around the
+   * author's text — so its text is never read into the value.
+   */
+  isNonContentIsland(el) {
+    return el.getAttribute('contenteditable') === 'false' || el.getAttribute('aria-hidden') === 'true';
   }
 
   /**
@@ -8420,10 +8541,7 @@ export class Bridge {
         const childNodeId = child.getAttribute('data-node-id');
         if (childNodeId && isValidNodeId(childNodeId)) {
           children.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets));
-        } else if (
-          child.getAttribute('contenteditable') === 'false' ||
-          child.getAttribute('aria-hidden') === 'true'
-        ) {
+        } else if (this.isNonContentIsland(child)) {
           // Non-editable / decorative island with no data-node-id — e.g. a
           // frontend's external-link icon after a link's text, or any generated
           // chrome the editor should ignore. `contenteditable="false"` is the
@@ -8762,10 +8880,14 @@ export class Bridge {
       this._readonlyStyleEl.type = 'text/css';
       document.head.appendChild(this._readonlyStyleEl);
     }
-    let newCSS = '';
+    // NOT inherited. A custom property inherits by default, so a read-only
+    // container (a layout's frame) marked every block inside it locked — the
+    // editable content of its slots included. Each block reports its own lock.
+    let newCSS =
+      "@property --hydra-block-locked { syntax: '<integer>'; inherits: false; initial-value: 0; }";
     if (readonlyUids.length > 0) {
       const selector = readonlyUids.map(uid => `[data-block-uid="${uid}"]`).join(', ');
-      newCSS = `${selector} { --hydra-block-locked: 1; }`;
+      newCSS += `\n${selector} { --hydra-block-locked: 1; }`;
     }
     // Only update DOM when CSS actually changes to avoid unnecessary style recalculations
     if (this._readonlyStyleEl.textContent !== newCSS) {
@@ -11210,6 +11332,7 @@ export class Bridge {
             // placeholder via replaceTargetId.
             closestBlockUid = emptyTargetUid;
             replaceTargetUid = emptyTargetUid;
+            this._nameDropTarget(shade, emptyTargetUid, false, false);
             dropIndicatorVisible = true;
             insertAt = 0;
             return;
@@ -11319,6 +11442,7 @@ export class Bridge {
               borderLeft: 'none', borderTop: '3px dashed #007bff', display: 'block'
             });
           }
+          this._nameDropTarget(dropIndicator, closestBlockUid, insertAt === 1, isHorizontal);
           dropIndicatorVisible = true;
           // TODO(scroll-into-view): if the resolved edge is off-screen, scroll it into
           // view — deferred; scrolling mid-drag fights a held cursor, needs its own design.
@@ -12940,7 +13064,33 @@ export class Bridge {
     return found;
   }
 
+  /**
+   * Reveal a block, releasing `_navigatingToBlock` however the attempt ends.
+   *
+   * `_navigatingToBlock` tells the click handler "a programmatic navigation
+   * is in flight", so a synthetic click it generates is not mistaken for the
+   * author's (blockClickHandler). The reveal
+   * itself sets it and has ~nine synchronous `return false` paths for the
+   * cases it cannot handle — a block with no container, no paging control, no
+   * +1/-1 selector, already at the target. None of them cleared it, so the
+   * commonest case of all — an already-visible top-level block — left the
+   * latch set for the lifetime of the page and the focus listener never fired
+   * again. Tabbing from one block to another stopped moving the selection,
+   * which is what block-navigation.spec.ts pins.
+   *
+   * Only the async watcher may keep the latch past a synchronous return, and
+   * it says so by arming `_revealWatcherArmed`; it clears the latch itself on
+   * success or timeout.
+   */
   tryMakeBlockVisible(targetUid, depth = 0, fieldName = null) {
+    const enclosing = this._navigatingToBlock;
+    this._revealWatcherArmed = false;
+    const result = this._revealBlock(targetUid, depth, fieldName);
+    if (!this._revealWatcherArmed) this._navigatingToBlock = enclosing ?? null;
+    return result;
+  }
+
+  _revealBlock(targetUid, depth = 0, fieldName = null) {
     log(`tryMakeBlockVisible: ${targetUid}`);
     // Nested closed containers need one pass each. Bounded so a container that
     // never opens can't spin.
@@ -13318,6 +13468,9 @@ export class Bridge {
     };
 
     // Start checking on next frame (after click event has propagated)
+    // From here the watcher owns _navigatingToBlock and clears it when it
+    // reaches the target or times out; the wrapper must not clear it.
+    this._revealWatcherArmed = true;
     requestAnimationFrame(checkVisibility);
     return true;
   }
@@ -15672,13 +15825,19 @@ export function getAccessToken() {
     sessionStorage.setItem('hydra_access_token', urlToken);
     return urlToken;
   }
-  // Try sessionStorage (persists across SPA navigations)
-  const sessionToken = sessionStorage.getItem('hydra_access_token');
-  if (sessionToken) {
-    return sessionToken;
+  // A stored token (sessionStorage, or the bridge's cookie) is used inside the
+  // admin's iframe only. sessionStorage is shared by every page of this origin
+  // in the TAB, and the cookie by every page of the domain for 12 hours, so the
+  // public site's pages would find the editor's token, fetch their data signed
+  // in, and render that fetch failing as a 500 on every reload. Outside the
+  // iframe the token is not theirs.
+  const inAdminIframe =
+    window.name.startsWith('hydra-edit:') || window.name.startsWith('hydra-view:');
+  if (!inAdminIframe) {
+    return null;
   }
-  // Fallback to cookie
-  return getTokenFromCookie();
+  // sessionStorage persists across SPA navigations; the cookie is the fallback.
+  return sessionStorage.getItem('hydra_access_token') || getTokenFromCookie();
 }
 
 /**

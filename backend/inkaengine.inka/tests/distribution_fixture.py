@@ -2,7 +2,7 @@
 
 The templates the @templates tests run against are the SAME ones the JS suites use, so
 neither side can drift from the other's idea of what a template looks like. They live in
-the inka repo as markdown (`tests-playwright/fixtures/site-root/templates/*.md`), decoded
+the inka repo as markdown (`tests-playwright/fixtures/site-root/inka-templates/*.md`), decoded
 into memory by the mock API at load time — there is no distribution on disk to point
 Plone at.
 
@@ -29,10 +29,10 @@ import urllib.request
 # backend/inkaengine.inka/tests/ -> backend/inkaengine.inka -> backend -> <inka repo>
 INKA_ROOT = Path(__file__).resolve().parents[3]
 MOCK_SERVER = INKA_ROOT / "tests-playwright" / "fixtures" / "mock-api-server.cjs"
-# Only the /templates tree is needed here. The export also carries images, the search page
+# Only the /inka-templates tree is needed here. The export also carries images, the search page
 # and the site root; importing those into the test portal would be slower and would couple
 # these tests to fixtures they do not read.
-KEEP_PREFIX = "templates/"
+KEEP_PREFIX = "inka-templates/"
 
 
 def _free_port():
@@ -64,7 +64,7 @@ def _wait_for_health(port, proc, timeout=120):
 
 
 def _trim_to_templates(content_dir: Path):
-    """Keep only the /templates tree.
+    """Keep only the /inka-templates tree.
 
     The metadata lists every exported item; anything left in `_data_files_` must exist on
     disk or the import fails, so the file list and the directories are trimmed together.
@@ -87,7 +87,7 @@ def _trim_to_templates(content_dir: Path):
     for child in content_dir.iterdir():
         if child.name == "__metadata__.json":
             continue
-        if child.is_dir() and child.name == "templates":
+        if child.is_dir() and child.name == "inka-templates":
             continue
         shutil.rmtree(child) if child.is_dir() else child.unlink()
 
@@ -105,8 +105,12 @@ def build_distribution(dest: Path) -> Path:
     env = {
         **os.environ,
         "PORT": str(port),
-        # The site-root mount is the one carrying the shared templates.
-        "CONTENT_MOUNTS": "/:tests-playwright/fixtures/site-root",
+        # The site-root mount is the one carrying the shared templates. It
+        # also links into /docs (its home page points at the block examples),
+        # and the mock validates the content it serves — so a mount set that
+        # leaves /docs out makes valid content look broken. Most-specific
+        # mount first: '/' owns everything, so it goes last.
+        "CONTENT_MOUNTS": "/docs:docs,/:tests-playwright/fixtures/site-root",
     }
     proc = subprocess.Popen(
         ["node", str(MOCK_SERVER)],

@@ -59,9 +59,9 @@ The docs are a set of guides by audience — build a frontend, deploy it, edit c
 
 ## Try the online demo
 
-The fastest way to feel what Inka does is to log into the hosted demo and edit a real page against a real frontend.
+The fastest way to feel what Inka does is to edit a real page against a real frontend in the hosted demo.
 
-Open [admin.inka.sh](https://admin.inka.sh) and log in as **admin** / **admin**. The demo resets overnight. Then:
+Press **Try editing now** on [inka.sh](https://inka.sh), or open [admin.inka.sh/login?demo](https://admin.inka.sh/login?demo\&return_url=/edit): you are signed in as a demo account, with nothing to register for, and nothing it changes is kept. Then:
 
 - Open user preferences (bottom-left).
 - Pick one of the preset frontends, or paste in your own frontend URL.
