@@ -24,15 +24,13 @@ import { compose } from 'redux';
 
 // import unionClassNames from 'union-class-names';
 // cx removed - using native input with inline styles
+// resolveRelativeUrl is Hydra's own, added by the Url shadow; the rest are upstream's.
 import {
-  addAppURL,
-  isInternalURL,
-  flattenToAppURL,
   URLUtils,
-} from '@plone/volto/helpers';
-// HYDRA: not re-exported from '@plone/volto/helpers'; lives in the Url shadow.
-import {
+  addAppURL,
+  flattenToAppURL,
   getBaseUrl,
+  isInternalURL,
   resolveRelativeUrl,
 } from '@plone/volto/helpers/Url/Url';
 
@@ -49,7 +47,7 @@ import externalLinkSVG from '@plone/volto/icons/external-link.svg';
 import withObjectBrowser from '@plone/volto/components/manage/Sidebar/ObjectBrowser';
 import { withRouter } from 'react-router';
 
-import { Icon } from '@plone/volto/components';
+import Icon from '@plone/volto/components/theme/Icon/Icon';
 import { linkItemSnapshot } from '../../../../../../../utils/linkItem';
 
 const messages = defineMessages({
@@ -436,7 +434,12 @@ class AddLinkForm extends Component {
           <Button
             type="button"
             icon
-            style={{ margin: 0, padding: '4px', border: 'none', background: 'transparent' }}
+            style={{
+              margin: 0,
+              padding: '4px',
+              border: 'none',
+              background: 'transparent',
+            }}
             aria-label={this.props.intl.formatMessage(messages.clear)}
             onClick={(e) => {
               e.preventDefault();
@@ -456,7 +459,12 @@ class AddLinkForm extends Component {
           <Button
             type="button"
             icon
-            style={{ margin: 0, padding: '4px', border: 'none', background: 'transparent' }}
+            style={{
+              margin: 0,
+              padding: '4px',
+              border: 'none',
+              background: 'transparent',
+            }}
             aria-label={this.props.intl.formatMessage(messages.openInNewTab)}
             title={this.props.intl.formatMessage(messages.openInNewTab)}
             onClick={(e) => {

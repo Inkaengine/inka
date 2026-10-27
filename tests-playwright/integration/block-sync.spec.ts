@@ -105,7 +105,7 @@ test.describe('Block Sync - Listing Block Item Type', () => {
 
     // Verify no image editing overlay appears (listing items are readonly)
     // The image-upload-widget-toolbar is the inline editing UI that shouldn't appear on readonly blocks
-    const imageOverlay = page.locator('.image-upload-widget-toolbar, .hydra-image-picker-inline');
+    const imageOverlay = page.locator('.image-upload-widget-toolbar, [data-testid="image-picker-inline"]');
     await expect(imageOverlay).toHaveCount(0);
 
     // Verify at least one image actually loaded (non-empty src and naturalWidth > 0)

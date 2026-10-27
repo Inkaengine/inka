@@ -63,6 +63,12 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Check Volto customizations for upstream drift
+        # Shadows are forks of upstream files, and forks go stale silently:
+        # upstream fixes its copy and ours keeps the old behaviour. Runs right
+        # after missdev, because core/ is what it reads, and before anything
+        # slow — a stale shadow is cheap to report and expensive to find later.
+        run: pnpm shadows:check
       - name: Run hydra-js unit tests
         run: cd packages/hydra-js && pnpm test
       - name: Build workspace deps (@plone/registry, @plone/components)

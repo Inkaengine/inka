@@ -74,6 +74,7 @@ import rowAfterSVG from '@plone/volto/icons/row-after.svg';
 import rowDeleteSVG from '@plone/volto/icons/row-delete.svg';
 import columnBeforeSVG from '@plone/volto/icons/column-before.svg';
 import './components/mobile-tablet.css';
+import './components/admin-chrome.css';
 import columnAfterSVG from '@plone/volto/icons/column-after.svg';
 import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
