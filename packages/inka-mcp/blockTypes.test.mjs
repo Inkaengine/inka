@@ -97,6 +97,35 @@ describe('describeBlockType', () => {
     expect(describeBlockType(withVariations, 'column').allowedIn).toEqual(["columns's columns"]);
   });
 
+  it("gives the front end's guidance and its examples, in the agent format", () => {
+    const callout = {
+      title: 'Callout',
+      guidance: 'For an aside. Pick the level by how much it matters.',
+      examples: [{
+        title: 'A tip',
+        block: {
+          '@type': 'callout', variation: 'tip',
+          blocks: { p: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Mind the gap' }] }], plaintext: 'Mind the gap' } },
+          blocks_layout: { items: ['p'] },
+        },
+      }],
+      blockSchema: { required: [], properties: {} },
+      regions: [],
+    };
+    const d = describeBlockType({ ...schemas, types: { ...schemas.types, callout } }, 'callout');
+    expect(d.guidance).toBe('For an aside. Pick the level by how much it matters.');
+    expect(d.examples).toEqual([{
+      title: 'A tip',
+      block: { '@type': 'callout', variation: 'tip', blocks: [{ '@uid': 'p', '@type': 'slate', value: { md: 'Mind the gap' } }] },
+    }]);
+  });
+
+  it('has no guidance or examples when the front end declares none', () => {
+    const d = describeBlockType(withVariations, 'slate');
+    expect(d).not.toHaveProperty('guidance');
+    expect(d).not.toHaveProperty('examples');
+  });
+
   it('refuses a type the page has no config for', () => {
     expect(() => describeBlockType(withVariations, 'ghost')).toThrow(/no block type "ghost"/);
   });

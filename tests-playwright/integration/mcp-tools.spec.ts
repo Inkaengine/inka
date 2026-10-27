@@ -226,13 +226,37 @@ test.describe('MCP tools', () => {
     expect(teaser.fields.href).toMatchObject({ widget: 'object_browser', required: true });
     expect(teaser.allowedIn).toContain("the page's blocks");
     // The example is a real teaser from a page on the site: the link's shape is there to copy.
-    expect(teaser.example.block['@type']).toBe('teaser');
-    expect(teaser.example.from).toMatch(/^\//);
-    expect(teaser.example.block.href[0]['@id']).toBeTruthy();
+    expect(teaser.siteExample.block['@type']).toBe('teaser');
+    expect(teaser.siteExample.from).toMatch(/^\//);
+    expect(teaser.siteExample.block.href[0]['@id']).toBeTruthy();
 
     // A block's display variants, as its variation field offers them.
     const callout = await describeBlock(agent, site, { type: 'callout' });
     expect(callout.variations).toContainEqual({ id: 'note', title: 'Note', isDefault: true });
     expect(callout.variations.map((v) => v.id)).toEqual(['note', 'tip', 'warning', 'important']);
+  });
+
+  test("describe_block: the front end's guidance and examples, each rendered on its own", async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await waitForAgent(page);
+    const [agent, site] = [agentOn(page), siteOn(page)];
+    const frontendUrl = await frontendUrlOf(page);
+
+    const callout = await describeBlock(agent, site, {
+      type: 'callout',
+      render: (draft, uid) => previewDraft(page.context(), { frontendUrl, path: '/_test_data/test-page', draft, focus: uid }),
+    });
+    expect(callout.guidance).toMatch(/aside/);
+    // Declared by the front end as stored blocks, given in the agent format.
+    const tip = callout.examples.find((e) => e.block.variation === 'tip');
+    expect(tip.block.blocks[0].value.md).toBeTruthy();
+    // Each rendered alone: the picture and text are the block's, not the page's.
+    for (const example of callout.examples) {
+      expect(Buffer.from(example.rendered.image, 'base64').subarray(1, 4).toString()).toBe('PNG');
+      expect(example.rendered.text).toContain(example.block.blocks[0].value.md.replace(/[*_`]/g, ''));
+      expect(example.rendered.text).not.toContain('Test Page');
+    }
   });
 });

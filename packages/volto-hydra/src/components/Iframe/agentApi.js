@@ -78,6 +78,13 @@ function fieldAt(schema, regionPath, region) {
   return def;
 }
 
+/** `v` as plain data; a front end's guidance or examples must be data to reach an agent. */
+function plainOrThrow(v, type, key) {
+  const out = plain(v);
+  if (out === undefined) throw new Error(`getBlockSchemas: ${type}'s ${key} is not plain data`);
+  return out;
+}
+
 const STATE_LIMIT_MS = 10000;
 const SAVE_LIMIT_MS = 15000;
 
@@ -185,6 +192,10 @@ export function registerAgentApi(live) {
             ...(plain(v.title) !== undefined && { title: plain(v.title) }),
             ...(v.isDefault && { isDefault: true }),
           })),
+          // What the front end says of the block, for an agent: how to use it,
+          // and examples of it filled in (stored blocks).
+          ...(blocksConfig[type].guidance !== undefined && { guidance: plainOrThrow(blocksConfig[type].guidance, type, 'guidance') }),
+          ...(blocksConfig[type].examples !== undefined && { examples: plainOrThrow(blocksConfig[type].examples, type, 'examples') }),
           blockSchema: schemaFacts(schema),
           regions: getContainerRegionDescriptors(type, blocksConfig, intl).map((d) => {
             const fieldDef = fieldAt(schema, d.regionPath ?? [], d.region);

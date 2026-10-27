@@ -108,17 +108,31 @@ function findBlock(node, type) {
 /**
  * One block type in full (see describeBlockType), with a real example: a block
  * of that type from a page on the site, in the agent format, and where it is.
- * A type no page uses yet has no example, and says so.
+ * A type no page uses yet has no site example, and says so.
+ *
+ * With `render(draft, uid)`, each example its front end declares is also
+ * rendered on its own — a page holding only that block — as `rendered`.
  */
-export async function describeBlock(agent, site, { type }) {
-  const described = describeBlockType(await agent.getBlockSchemas(), type);
+export async function describeBlock(agent, site, { type, render }) {
+  const schemas = await agent.getBlockSchemas();
+  const described = describeBlockType(schemas, type);
+  if (render) {
+    const declared = schemas.types[type].examples;
+    if (!declared?.length) throw new Error(`the front end declares no examples of ${type} to render`);
+    for (const [i, { block }] of declared.entries()) {
+      const draft = { blocks: { [EXAMPLE_UID]: block }, blocks_layout: { items: [EXAMPLE_UID] } };
+      described.examples[i].rendered = await render(draft, EXAMPLE_UID);
+    }
+  }
   const pages = await site.search({ blockTypes: [type], limit: 5 });
   for (const { path } of pages.items) {
     const found = findBlock(await site.get(path), type);
-    if (found) return { ...described, example: { from: path, block: toAgentBlock(...found) } };
+    if (found) return { ...described, siteExample: { from: path, block: toAgentBlock(...found) } };
   }
-  return { ...described, example: null, exampleNote: `no page on the site uses a ${type} block yet` };
+  return { ...described, siteExample: null, siteExampleNote: `no page on the site uses a ${type} block yet` };
 }
+
+const EXAMPLE_UID = 'example';
 
 /**
  * Apply `ops` (see editBlocks.mjs). With `dryRun`, return the resulting page

@@ -79,10 +79,11 @@ export function headlessAdmin({ adminUrl, token, frontendUrl }) {
         return await work(agentOn(page), {
           // The site-wide API is on every admin page, the editor's included.
           site: siteOn(page),
-          // Render a draft of this page as a visitor sees it, in its own page.
-          render: async (draft, viewport) => {
+          // Render a draft of this page as a visitor sees it, in its own page
+          // (with `focus`, just that block of it).
+          render: async (draft, viewport, focus) => {
             const renderedOn = await frontendUrlOf(page);
-            const rendered = await previewDraft(page.context(), { frontendUrl: renderedOn, path, draft, viewport });
+            const rendered = await previewDraft(page.context(), { frontendUrl: renderedOn, path, draft, viewport, focus });
             return { ...rendered, renderedOn: new URL(renderedOn).origin };
           },
         });
@@ -186,12 +187,30 @@ export function createServer(admin) {
 
   server.registerTool('describe_block', {
     title: 'Describe a block type',
-    description: 'One block type in full, as the page at "path" can use it: what it is, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, and a real example of it from a page on the site, showing the exact value each field takes (links, images, choices). Use it before adding a type you have not used, or to see how to fill a field.',
+    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also shown as a visitor sees it. Use it before adding a type you have not used, or to see how to fill a field.',
     inputSchema: {
       path: z.string().describe('The page you will add it to, e.g. /about'),
       type: z.string().describe('The block type, as list_block_types names it, e.g. teaser'),
+      preview: z.enum(['desktop', 'mobile']).optional().describe('Render each example at this width'),
     },
-  }, async ({ path, type }) => asResult(await admin.withEditor(path, (agent, { site }) => describeBlock(agent, site, { type }))));
+  }, async ({ path, type, preview }) => {
+    const described = await admin.withEditor(path, (agent, { site, render }) => describeBlock(agent, site, {
+      type, render: preview && ((draft, uid) => render(draft, preview, uid)),
+    }));
+    if (!preview) return asResult(described);
+    // Each example's picture follows the text, in the examples' order.
+    const images = described.examples.map(({ rendered }) => rendered.image);
+    for (const example of described.examples) {
+      const { image: _image, text, renderedOn } = example.rendered;
+      example.rendered = { renderedOn, text };
+    }
+    return {
+      content: [
+        { type: 'text', text: JSON.stringify(described, null, 2) },
+        ...images.map((data) => ({ type: 'image', data, mimeType: 'image/png' })),
+      ],
+    };
+  });
 
   server.registerTool('create_page', {
     title: 'Create a page',

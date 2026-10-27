@@ -34,9 +34,11 @@ function isContentFetch(url, path) {
 
 /**
  * Render `draft` (stored page data) in view mode at `frontendUrl`.
- * Returns `{ image, text }`: a PNG of the whole page (base64) and its visible text.
+ * Returns `{ image, text }`: a PNG of the whole page (base64) and its visible
+ * text — or, with `focus`, of just that block (the element the front end marks
+ * with its uid).
  */
-export async function previewDraft(context, { frontendUrl, path, draft, viewport = 'desktop' }) {
+export async function previewDraft(context, { frontendUrl, path, draft, viewport = 'desktop', focus }) {
   const size = VIEWPORTS[viewport];
   if (!size) throw new Error(`preview: no viewport "${viewport}" (${Object.keys(VIEWPORTS).join(', ')})`);
   const page = await context.newPage();
@@ -67,6 +69,12 @@ export async function previewDraft(context, { frontendUrl, path, draft, viewport
       await page.waitForTimeout(100);
     }
     await activity.settled();
+    if (focus) {
+      const block = page.locator(`[data-block-uid="${focus}"]`);
+      if (await block.count() === 0) throw new Error(`preview: the front end rendered no element for block ${focus}`);
+      const first = block.first();
+      return { image: (await first.screenshot()).toString('base64'), text: await first.innerText() };
+    }
     const image = (await page.screenshot({ fullPage: true })).toString('base64');
     return { image, text: await page.evaluate(() => document.body.innerText) };
   } finally {

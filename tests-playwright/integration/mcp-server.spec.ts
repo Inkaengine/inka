@@ -39,6 +39,19 @@ test.describe('MCP server', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'rename_page', 'search']);
   });
 
+  test('describe_block with preview: a picture of each example, after the text', async () => {
+    test.setTimeout(120000);
+    const result = await client.callTool({
+      name: 'describe_block', arguments: { path: PAGE, type: 'callout', preview: 'desktop' },
+    }, undefined, CALL);
+    const [text, ...images] = result.content as any[];
+    expect(result.isError, text.text).toBeFalsy();
+    const described = JSON.parse(text.text);
+    expect(images.map((i) => i.mimeType)).toEqual(described.examples.map(() => 'image/png'));
+    // The pictures are not repeated in the text.
+    expect(described.examples[0].rendered).toEqual({ renderedOn: expect.any(String), text: expect.any(String) });
+  });
+
   test('list_children runs without an editor', async () => {
     test.setTimeout(90000);
     const listed = (await call('list_children', { path: '/_test_data', limit: 3 })).json();

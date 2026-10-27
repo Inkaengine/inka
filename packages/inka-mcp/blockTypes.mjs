@@ -10,6 +10,8 @@
  * `<block>:<field>` types the admin registers for them.
  */
 
+import { toAgentBlock } from './pageFormat.mjs';
+
 const listName = (region) => (region === 'items' ? 'blocks' : region);
 
 function regionOut(r) {
@@ -54,8 +56,11 @@ export function describeBlockTypes({ page, types }) {
 
 /**
  * describe_block: one type in full — its fields and regions as list_block_types
- * gives them, its description and variations, and where on this page it can
- * go (the page's own regions and the containers' regions that allow it).
+ * gives them, its description and variations, where on this page it can go
+ * (the page's own regions and the containers' regions that allow it), and
+ * what its front end says of it: `guidance` on using it, and `examples` of it
+ * filled in, which the front end declares as stored blocks and the agent gets
+ * in its own format.
  */
 export function describeBlockType(schemas, type) {
   const t = schemas.types[type];
@@ -75,5 +80,13 @@ export function describeBlockType(schemas, type) {
     fields: fieldsOut(t.blockSchema, regionFields),
     regions: t.regions.map(regionOut),
     allowedIn,
+    ...(t.guidance !== undefined && { guidance: t.guidance }),
+    ...(t.examples !== undefined && { examples: t.examples.map(({ title, block }) => ({ title, block: agentExample(block) })) }),
   };
+}
+
+/** An example block in the agent format; its own uid means nothing to the agent. */
+function agentExample(block) {
+  const { '@uid': _uid, ...rest } = toAgentBlock('example', block);
+  return rest;
 }
