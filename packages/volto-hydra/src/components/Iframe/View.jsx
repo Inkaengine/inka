@@ -1798,6 +1798,19 @@ const Iframe = (props) => {
   // Sync effect will send INITIAL_DATA after templates are merged
   const pendingInitialDataRef = useRef(null);
 
+  // Pending INIT: the iframe's INIT is a one-shot postMessage, and the content
+  // type schema is an async prop. When INIT wins that race there is nothing to
+  // register the page's own fields from, so the payload is kept here and
+  // replayed by the effect below once `schema` arrives. It used to throw
+  // instead — the bridge's retry (_retryInitUntilAcknowledged) papered over it
+  // at the cost of an uncaught error per lost INIT and seconds of backoff, and
+  // a dead editor outright if the schema outlasted the retry budget.
+  const pendingInitRef = useRef(null);
+
+  // The live message handler, so the replay effect calls the current closure
+  // rather than one captured when the deferral happened.
+  const messageHandlerRef = useRef(null);
+
   // Handle Escape key in Admin UI — three-state machine (same as iframe):
   //   Text mode (sidebar field focused) → Block mode (blur field, stay on block)
   //   Block mode → Parent block (or deselect if at page level)
@@ -4038,12 +4051,15 @@ const Iframe = (props) => {
             history.location.pathname.endsWith('/edit') &&
             !schema?.properties
           ) {
-            throw new Error(
-              'INIT: the content type schema has not loaded, so the page fields ' +
-                '(title, description) cannot be registered and would silently ' +
-                'stop being editable. This is a load-order fault, not a content ' +
-                'fault — the message handler must re-run once `schema` arrives.',
+            log(
+              'INIT: content type schema not loaded yet, deferring INIT until it arrives',
             );
+            pendingInitRef.current = {
+              data: event.data,
+              source: event.source,
+              origin: event.origin,
+            };
+            break;
           }
           const contentTypeProperties = schema?.properties;
           const pageFieldOverrides = {};
@@ -4307,6 +4323,7 @@ const Iframe = (props) => {
     };
 
     // Listen for messages from the iframe
+    messageHandlerRef.current = messageHandler;
     window.addEventListener('message', messageHandler);
 
     // Clean up the event listener on unmount
@@ -4339,6 +4356,22 @@ const Iframe = (props) => {
     selectedBlock,
     token,
   ]);
+
+  // Replay a deferred INIT once the content type schema arrives.
+  //
+  // Declared AFTER the effect that registers the handler so that effect has
+  // already refreshed `messageHandlerRef` for this render: the replay must run
+  // against a closure that can see `schema`, which is the whole point.
+  useEffect(() => {
+    if (!schema?.properties) return;
+    const pending = pendingInitRef.current;
+    if (!pending) return;
+    // Clear first: the replayed handler may defer again for its own reasons
+    // (templates), and this must not re-fire on every later schema change.
+    pendingInitRef.current = null;
+    log('INIT: schema arrived, replaying deferred INIT');
+    messageHandlerRef.current?.(pending);
+  }, [schema]);
 
   // UNIFIED FORM SYNC: Syncs iframeSyncState AND sends FORM_DATA to iframe
   // Triggers when Form's properties change or toolbar completes a format operation
