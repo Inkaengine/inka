@@ -1,0 +1,1 @@
+The content check accepts a link to the site root (`/`), which every site has, even when the content carries no site-root item.

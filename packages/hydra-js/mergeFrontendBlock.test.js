@@ -96,6 +96,41 @@ describe('mergeFrontendBlock', () => {
     expect(previousEnhancer).toBe(fn);
   });
 
+  test('a schema the frontend sends is the whole schema: the admin\'s enhancer FUNCTION is not applied', () => {
+    // The admin's enhancer adds fields to ITS schema (a results region, its own
+    // facets); laid over the frontend's schema it offers fields the frontend
+    // never said it renders, and seeds regions it does not have.
+    const adminAddsFields = ({ schema }) => ({ ...schema, properties: { ...schema.properties, facets: {} } });
+    const { entry, previousEnhancer } = mergeFrontendBlock(
+      'search', { id: 'search', schemaEnhancer: adminAddsFields },
+      { blockSchema: { properties: { label: {} } } },
+    );
+    expect(entry.schemaEnhancer).toBeUndefined();
+    expect(previousEnhancer).toBeUndefined();
+  });
+
+  test('a schema the frontend sends: the admin\'s enhancer RECIPE is not applied, the frontend\'s own is', () => {
+    const admin = { fieldRules: { 'querystring.b_size': false } };
+    const frontend = { inheritSchemaFrom: { mappingField: 'fieldMapping' } };
+    const { entry, previousEnhancer } = mergeFrontendBlock(
+      'listing', { id: 'listing', schemaEnhancer: admin },
+      { blockSchema: { properties: { querystring: {} } }, schemaEnhancer: frontend },
+    );
+    expect(entry.schemaEnhancer).toBe(frontend);
+    expect(previousEnhancer).toBeUndefined();
+  });
+
+  test('a schema the frontend sends with an enhancer: the admin\'s FUNCTION is not handed back to chain', () => {
+    const fn = ({ schema }) => schema;
+    const recipe = { inheritSchemaFrom: {} };
+    const { entry, previousEnhancer } = mergeFrontendBlock(
+      'listing', { id: 'listing', schemaEnhancer: fn },
+      { schema: { properties: {} }, schemaEnhancer: recipe },
+    );
+    expect(entry.schemaEnhancer).toBe(recipe);
+    expect(previousEnhancer).toBeUndefined();
+  });
+
   test('no frontend enhancer keeps the admin\'s', () => {
     const fn = ({ schema }) => schema;
     const { entry, previousEnhancer } = mergeFrontendBlock(

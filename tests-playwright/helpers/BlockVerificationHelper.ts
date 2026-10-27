@@ -11,7 +11,12 @@ import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage';
+import {
+  usesAvailableSizes, resolveImageEntry, availableWidths, isProportionate,
+} from './imageSizes.mjs';
 import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
+import { settledCount } from './settled-count';
+import { wordsWithNowhereToGo } from './elementless';
 import { isEmptySlate } from '../../packages/helpers/index.js';
 
 export interface SubBlock {
@@ -555,7 +560,85 @@ export async function checkEditAnnotations(
         }
       }
 
-      return { linksWithout, trappedAnnotations, offSiteLinks, imagesWithout, brokenImages, brokenMedia, textViolations };
+      // What the renderer did with each schema image field that has a value.
+      // FACTS ONLY — whether that is acceptable is decided in Node, by
+      // imageSizes.mjs, which is unit-tested without a browser.
+      const imageFields: Array<{ field: string; rendered: boolean; srcset: string | null;
+        boxWidth?: number; actualWidth?: number; currentSrc?: string | null }> = [];
+      if (blockData && uid) {
+        const imgSchema = bridge?.getBlockSchema?.(uid) || null;
+        const imgProps = imgSchema?.properties as Record<string, any> | undefined;
+        // A field hidden by fieldRules is NOT expected to render, and the
+        // resolved schema already says so — getBlockSchema applies the
+        // schemaEnhancer, and hiding drops the field from FIELDSETS while
+        // leaving it in `properties`. Reading properties alone therefore
+        // demanded an image for a field the author cannot even see: a hero
+        // whose variation is `text-only` still carries its image data.
+        // Fieldsets are how Volto expresses visibility and how blockSync
+        // already reads it; a schema with none has not restricted anything.
+        const imgFieldsets = imgSchema?.fieldsets as Array<{ fields?: string[] }> | undefined;
+        const visibleFields = imgFieldsets?.length
+          ? new Set(imgFieldsets.flatMap((fs) => fs?.fields ?? []))
+          : null;
+        for (const [field, value] of Object.entries(blockData)) {
+          if (field.startsWith('@')) continue;
+          if (imgProps?.[field]?.widget !== 'image') continue;
+          if (visibleFields && !visibleFields.has(field)) continue;   // hidden by fieldRules
+          // A VALUE is all this needs. Resolving where the scales live is done
+          // in Node by resolveImageEntry, because they are not always inside
+          // the field: an image block holds a plain path string in `url` with
+          // `image_scales` beside it on the block. Requiring an object here
+          // skipped every image block in the suite.
+          if (value === null || value === undefined || value === '') continue;
+          const host = [...el.querySelectorAll(`[data-edit-media="${field}"]`)]
+            .find((n) => !n.closest('[data-block-readonly]'));
+          if (!host) {
+            imageFields.push({ field, rendered: false, srcset: null });
+            continue;
+          }
+          // Only an <img> can carry a srcset. A frontend may render a media
+          // field as a CSS background instead; that element still had to exist
+          // (checked above) but has no srcset to judge, so report null.
+          const img = host.tagName === 'IMG' ? host : host.querySelector('img');
+
+          // How big were the bytes, and how big was the box they went into?
+          //
+          // TRUE decoded width, via createImageBitmap on the fetched bytes —
+          // NOT naturalWidth. With srcset/sizes the browser divides
+          // naturalWidth by the chosen candidate's density, so a 480px file
+          // reports 316 and any arithmetic on it is confident nonsense.
+          //
+          // The fetch hits the browser cache (the image is already painted),
+          // so the cost here is the decode, not the network.
+          let boxWidth = 0;
+          let actualWidth = 0;
+          let currentSrc = null;
+          if (img) {
+            boxWidth = img.getBoundingClientRect().width * (window.devicePixelRatio || 1);
+            currentSrc = (img as HTMLImageElement).currentSrc || img.getAttribute('src') || null;
+            if (currentSrc && boxWidth > 0 && !currentSrc.startsWith('data:')) {
+              try {
+                const bmp = await createImageBitmap(await (await fetch(currentSrc)).blob());
+                actualWidth = bmp.width;
+                bmp.close?.();
+              } catch {
+                actualWidth = 0;   // undecodable (SVG, CORS, 404) — not judged
+              }
+            }
+          }
+
+          imageFields.push({
+            field,
+            rendered: true,
+            srcset: img ? (img.getAttribute('srcset') ?? '') : null,
+            boxWidth,
+            actualWidth,
+            currentSrc,
+          });
+        }
+      }
+
+      return { linksWithout, trappedAnnotations, offSiteLinks, imagesWithout, brokenImages, brokenMedia, textViolations, imageFields };
     },
     { blockData, uid: blockUid },
   );
@@ -578,6 +661,47 @@ export async function checkEditAnnotations(
     expect(r.brokenImages, 'All images should have valid src and load successfully').toEqual([]);
     expect(r.brokenMedia, 'All video/audio sources should exist').toEqual([]);
   }
+  // An image field with a value must render something, and must not throw away
+  // the sizes its data offers.
+  //
+  // The image rules above are element-shaped — "for each <img>, assert it
+  // loads" — and read `src` only. Two failures walk straight through them: an
+  // <img> whose every srcset candidate 404s (the browser falls back to `src`,
+  // which resolves, so naturalWidth > 0), and an <img> whose srcset lists the
+  // same URL at nine different width descriptors. Both are "the data offered
+  // sizes and the render ignored them", so that is what this asks — and it says
+  // nothing about HOW the frontend builds its URLs, which is its own business.
+  //
+  // Conditional on the data, deliberately: a single-scale image rendering one
+  // candidate is correct and must not be failed for it.
+  for (const { field, rendered, srcset, boxWidth, actualWidth, currentSrc } of r.imageFields) {
+    const entry = resolveImageEntry(blockData as Record<string, unknown>, field);
+    if (srcset === null && rendered) continue;   // CSS background: nothing to judge
+    const verdict = usesAvailableSizes({ field, entry, srcset: srcset ?? '', rendered });
+    expect(verdict.ok, verdict.reason).toBe(true);
+
+    // Offering sizes is not the same as USING one. The rule above passes a
+    // srcset of several distinct candidates even when the browser ignored them
+    // all and fell back to `src` — which is exactly what happened on a
+    // production site whose every candidate 404'd: it shipped the 1920px
+    // original to every viewport and no check noticed.
+    //
+    // So compare the bytes actually downloaded against the box they were
+    // painted into, measured against the SMALLEST OFFERED SCALE THAT WOULD
+    // HAVE COVERED IT. Plone caps scales at the source, so an image already at
+    // its smallest available size is optimal and must pass; the only defect
+    // expressible here is "a smaller scale existed and a bigger one was used".
+    const fit = isProportionate({
+      actualWidth: actualWidth ?? 0,
+      widths: availableWidths(entry, field),
+      boxWidth: boxWidth ?? 0,
+    });
+    // Name the URL. Without it "downloaded 2400px" cannot be told apart from
+    // "asked for a 400px scale and the server sent 2400px" — one is the
+    // renderer's bug and the other the server's, and they look identical.
+    expect(fit.ok, `field "${field}" ${fit.reason}\n    from: ${currentSrc}`).toBe(true);
+  }
+
   for (const { field, value } of r.textViolations) {
     expect(
       false,
@@ -1231,6 +1355,11 @@ export async function verifyBlockRendering(
   // consecutive same-value reads = stable.
   if (isListing) {
     const items = iframe.locator(`[data-block-uid="${blockId}"]`);
+    // A listing can sit in something that hides it — an inactive tab, a closed
+    // panel — like any block: reveal it the way the editor does on select
+    // before asking whether its items are visible.
+    await expect(items.first()).toBeAttached({ timeout: 15000 });
+    await revealBlock(iframe, blockId);
     await expect(items.first()).toBeVisible({ timeout: 15000 });
     // Three consecutive equal reads, not "at least 2 items": the old n >= 2
     // floor assumed every listing shows several results, so a listing whose
@@ -1274,6 +1403,32 @@ export async function verifyBlockRendering(
   if (isFieldlessBlock && (await block.count()) === 0) {
     return; // metadata-projection block legitimately rendered nothing
   }
+  // A container may draw no element of its own: the editor finds it through
+  // its children (the bridge's getAllBlockElements), as it always has a
+  // template instance. Accepted when its children are drawn and it has no
+  // words of its own to draw — those need an element carrying its uid.
+  if ((await block.count()) === 0) {
+    const body = iframe.locator('body');
+    const drawnBy = await body.evaluate(
+      (_b, uid) => (window as any).__hydraBridge?.getAllBlockElements?.(uid)?.length ?? 0,
+      blockId,
+    );
+    if (drawnBy > 0) {
+      const schema = await body.evaluate(
+        (_b, uid) => (window as any).__hydraBridge?.getBlockSchema?.(uid) || null,
+        blockId,
+      );
+      const words = wordsWithNowhereToGo(schema, (blockData ?? {}) as Record<string, unknown>);
+      if (words.length) {
+        throw new Error(
+          `Block ${blockId} draws no element of its own but holds words (${words.join(', ')}): ` +
+            `words need an element carrying the block's uid, or they are edited as the enclosing block's.`,
+        );
+      }
+      return;
+    }
+  }
+
   // A block can be rendered but off-stage — an inactive carousel slide, a
   // closed tab. That is not a render failure: the editor reaches it by
   // selecting it, and hydra's tryMakeBlockVisible steps the container until it
@@ -1295,7 +1450,7 @@ export async function verifyBlockRendering(
   // duplicate anyway. Verify the block renders + carries its edit annotations via
   // the first match, then return — the assertions below use the multi-match
   // `block` locator and would trip Playwright strict mode on >1 element.
-  if ((await block.count()) > 1) {
+  if ((await settledCount(block)) > 1) {
     await checkEditAnnotations(block.first(), blockData);
     return;
   }

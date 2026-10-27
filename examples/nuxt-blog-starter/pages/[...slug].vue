@@ -164,8 +164,8 @@ const footerExpandedItems = computed(() => {
 // Content-type-specific layout templates (enforced in edit mode via initBridge allowedLayouts).
 // Document is the default case — no entry needed.
 const CONTENT_TYPE_LAYOUTS = {
-    'Event': ['/templates/event-view'],
-    'News Item': ['/templates/newsitem-view'],
+    'Event': ['/inka-templates/event-view'],
+    'News Item': ['/inka-templates/newsitem-view'],
 };
 
 // Initialize Flowbite components based on data attribute selectors.
@@ -292,7 +292,7 @@ onMounted(() => {
                                 allowedBlocks: ['slate', 'image', 'socialLinks'],
                                 allowedLayouts: route.path.startsWith('/_test_data/another-page')
                                     ? ['/_test_data/templates/footer-layout']
-                                    : ['/templates/site-footer'],
+                                    : ['/inka-templates/site-footer'],
                             },
                         },
                     },
@@ -304,19 +304,11 @@ onMounted(() => {
                     if (!page) return;
                     // Mark that we have admin data with nodeIds
                     hasAdminData.value = true;
-                    // Clicking into a field produces a selection-only FORM_DATA
-                    // echo whose content is unchanged. Applying it re-renders
-                    // (and replaces) the focused contenteditable, which races
-                    // with an in-flight keystroke — the typed character lands on
-                    // the old node just before Vue swaps it, and is lost. Skip
-                    // echoes that don't actually change content; real edits
-                    // (different blocks/layout) still apply and re-render.
-                    const cur = data.value.page;
-                    if (cur
-                        && JSON.stringify(page.blocks) === JSON.stringify(cur.blocks)
-                        && JSON.stringify(page.blocks_layout) === JSON.stringify(cur.blocks_layout)) {
-                        return;
-                    }
+                    // Render every update the bridge hands us. The bridge already
+                    // drops echoes, comparing against its own copy, which holds
+                    // what has been typed here. Ours doesn't: typed text is never
+                    // sent back, so comparing against it called a reset of typed
+                    // text an echo and left the typed text on screen.
                     // Update page data - ListingBlock components will
                     // re-render and expand listings via their own Suspense
                     data.value.page = page;
@@ -337,7 +329,7 @@ const footerAllowedLayouts = computed(() => {
         return ['/_test_data/templates/footer-layout'];
     }
     // All other pages get the site footer
-    return ['/templates/site-footer'];
+    return ['/inka-templates/site-footer'];
 });
 
 // Force context-navigation-layout on depth-2+ public pages
@@ -348,7 +340,7 @@ const footerAllowedLayouts = computed(() => {
 const contextNavLayoutForced = computed(() =>
     !route.path.startsWith('/_test_data/')
     && route.path.split('/').filter(Boolean).length >= 2
-        ? ['/templates/context-navigation-layout']
+        ? ['/inka-templates/context-navigation-layout']
         : null,
 );
 
@@ -368,7 +360,7 @@ const mainBlocksAllowedLayouts = computed(() => {
 // They never appear in page data, so the backend can't discover them — these rules stay
 // here, in the frontend, and the backend only resolves what they name.
 const preloadTemplates = [
-    '/templates/site-footer',
+    '/inka-templates/site-footer',
     ...(footerAllowedLayouts.value || []).filter(Boolean),
     ...(contextNavLayoutForced.value || []).filter(Boolean),
     // Not CONTENT_TYPE_LAYOUTS: view mode never force-applies them (mainBlocksAllowedLayouts

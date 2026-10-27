@@ -21,6 +21,9 @@
 set -euo pipefail
 
 PLONE_URL="${PLONE_URL:-http://localhost:8080/Plone}"
+# The site's physical path (/Plone): redirects are exported under it, the form
+# Plone stores them in. PLONE_URL addresses the site directly, so it is its path.
+SITE_PATH="/${PLONE_URL#*://*/}"
 PLONE_USER="${PLONE_USER:-admin}"
 PLONE_PASSWORD="${PLONE_PASSWORD:-admin}"
 SEED_MOCK_PORT="${SEED_MOCK_PORT:-18899}"
@@ -48,8 +51,8 @@ TOKEN="$(curl -sf -X POST "$PLONE_URL/++api++/@login" \
 [ -n "$TOKEN" ] || { echo "Login to Plone as $PLONE_USER failed" >&2; exit 1; }
 
 if curl -sf -o /dev/null -H 'Accept: application/json' -H "Authorization: Bearer $TOKEN" \
-  "$PLONE_URL/++api++/templates/site-footer"; then
-  echo "Plone already has /templates/site-footer — it looks seeded already." >&2
+  "$PLONE_URL/++api++/inka-templates/site-footer"; then
+  echo "Plone already has /inka-templates/site-footer — it looks seeded already." >&2
   echo "For a fresh copy: make backend-clean && make backend-start && make backend-seed" >&2
   exit 1
 fi
@@ -64,7 +67,8 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 curl -sf -X POST "http://localhost:$SEED_MOCK_PORT/++api++/@export" \
-  -H 'Content-Type: application/json' -d '{"format":"json","allowMissingBlobs":true}' \
+  -H 'Content-Type: application/json' \
+  -d "{\"format\":\"json\",\"allowMissingBlobs\":true,\"sitePath\":\"$SITE_PATH\"}" \
   -o "$WORK/content.zip"
 
 echo "==> Importing into Plone"

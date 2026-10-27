@@ -1,0 +1,1 @@
+Clicking into a text field on the canvas of a block whose required link is empty no longer hands the keyboard to the starter UI's link picker: it takes focus only when the block was selected without a field, so every key typed lands in the field. @djay

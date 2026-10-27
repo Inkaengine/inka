@@ -553,6 +553,23 @@ test.describe('block formats declared as data', () => {
     await expect(page.locator('.format-dropdown-menu [data-format="h2"] svg path')).toHaveCount(1);
   });
 
+  test('a list style is offered in a list, and keeps it a list', async ({ page }) => {
+    // Declared `appliesTo: ['ul', 'ol']`. On a paragraph it is not offered (the
+    // menu above is exactly Paragraph, the headings and Lead); here it is, and
+    // choosing it styles the list instead of turning it into a paragraph.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/block-formats-page');
+    await helper.waitForIframeReady();
+
+    const titles = await formatOptions(page, helper, 'list-target');
+    expect(titles).toContain('Spaced list');
+    await page.locator('.format-dropdown-menu [data-style="list-spaced"]').click();
+    const list = helper.getIframe().locator('[data-block-uid="list-target"] ul, ul[data-block-uid="list-target"]').first();
+    await expect(list).toHaveClass(/\blist-spaced\b/);
+    await expect(list.locator('li')).toHaveText('A list item to style');
+  });
+
   test('a declared format applies', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();

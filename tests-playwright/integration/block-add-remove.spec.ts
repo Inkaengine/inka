@@ -792,6 +792,23 @@ test.describe('Enter Key to Add/Navigate', () => {
     await expect(subheadingField).toContainText('test-focus', { timeout: 5000 });
   });
 
+  test('Shift+Enter on hero heading (plain string) inserts no line break', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    // A plain string is one line. Left to the browser, Shift+Enter puts a <br>
+    // in the page that the stored value never has.
+    const editor = await helper.enterEditMode('block-4-hero', 'heading');
+    await editor.press('Shift+Enter');
+    await page.keyboard.type('still-one-line', { delay: 10 });
+
+    await expect(editor).toContainText('still-one-line', { timeout: 5000 });
+    await expect(editor.locator('br')).toHaveCount(0);
+    expect(await editor.innerText()).not.toContain('\n');
+  });
+
   test('Enter on hero last field (buttonText) adds new block after', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 

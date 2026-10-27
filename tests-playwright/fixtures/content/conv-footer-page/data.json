@@ -1,0 +1,210 @@
+{
+  "@id": "http://localhost:8888/conv-footer-page",
+  "@type": "Document",
+  "UID": "conv-footer-page-uid",
+  "id": "conv-footer-page",
+  "title": "Conv footer page",
+  "description": "Conv footer page",
+  "effective": "2024-11-01T00:00:00+00:00",
+  "review_state": "published",
+  "preview_image": true,
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "apl-template-header": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "value": [
+        {
+          "type": "h1",
+          "children": [
+            {
+              "text": "Stale Header - Should Be Replaced By Merge"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Stale Header - Should Be Replaced By Merge",
+      "templateId": "resolveuid/test-layout-template-uid",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "header"
+    },
+    "apl-template-slider": {
+      "@type": "slider",
+      "fixed": true,
+      "readOnly": true,
+      "templateId": "resolveuid/test-layout-template-uid",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "slider",
+      "slides": [
+        {
+          "@id": "tpl-slide-1",
+          "@type": "slide",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "resolveuid/test-layout-template-uid",
+          "templateInstanceId": "tpl-instance-1",
+          "title": "Template Slide 1",
+          "description": "First template slide"
+        },
+        {
+          "@id": "tpl-slide-2",
+          "@type": "slide",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "resolveuid/test-layout-template-uid",
+          "templateInstanceId": "tpl-instance-1",
+          "title": "Template Slide 2",
+          "description": "Second template slide"
+        }
+      ]
+    },
+    "apl-template-footer": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Stale Footer - Should Be Replaced By Merge"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Stale Footer - Should Be Replaced By Merge",
+      "templateId": "resolveuid/test-layout-template-uid",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "footer"
+    },
+    "moved-grp": {
+      "@type": "convGroupSrc",
+      "templateId": "resolveuid/test-layout-template-uid",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "primary",
+      "fixed": false,
+      "blocks": {
+        "moved-grp-child": {
+          "@type": "convTargetA",
+          "title": "Moved group child",
+          "templateId": "resolveuid/test-layout-template-uid",
+          "templateInstanceId": "tpl-instance-1",
+          "slotId": "primary"
+        },
+        "moved-snip-heading": {
+          "@type": "convTargetA",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "resolveuid/conv-snippet-uid",
+          "templateInstanceId": "conv-snip-inst",
+          "slotId": "conv-snippet-heading",
+          "title": "Conv snippet heading"
+        },
+        "moved-snip-body": {
+          "@type": "convTargetA",
+          "fixed": false,
+          "templateId": "resolveuid/conv-snippet-uid",
+          "templateInstanceId": "conv-snip-inst",
+          "slotId": "conv-snippet-body",
+          "title": "Snippet body on the page"
+        }
+      },
+      "blocks_layout": {
+        "items": [
+          "moved-grp-child",
+          "moved-snip-heading",
+          "moved-snip-body"
+        ]
+      }
+    },
+    "conv-footer-page-footer": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Conv footer page footer content"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Conv footer page footer content"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "apl-template-header",
+      "moved-grp",
+      "apl-template-slider",
+      "apl-template-footer"
+    ],
+    "footer": [
+      "conv-footer-page-footer"
+    ]
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": false,
+  "created": "2025-01-02T12:00:00+00:00",
+  "modified": "2025-01-02T12:00:00+00:00",
+  "lock": {
+    "locked": false,
+    "stealable": true
+  },
+  "@components": {
+    "actions": {
+      "@id": "http://localhost:8888/conv-footer-page/@actions",
+      "document_actions": [],
+      "object": [
+        {
+          "id": "view",
+          "title": "View"
+        },
+        {
+          "id": "edit",
+          "title": "Edit"
+        },
+        {
+          "id": "folderContents",
+          "title": "Contents"
+        }
+      ],
+      "object_buttons": [],
+      "portal_tabs": [],
+      "site_actions": [],
+      "user": []
+    },
+    "breadcrumbs": {
+      "@id": "http://localhost:8888/conv-footer-page/@breadcrumbs",
+      "items": [
+        {
+          "@id": "http://localhost:8888",
+          "title": "Home"
+        },
+        {
+          "@id": "http://localhost:8888/conv-footer-page",
+          "title": "Conv footer page"
+        }
+      ],
+      "root": "http://localhost:8888"
+    },
+    "navigation": {
+      "@id": "http://localhost:8888/conv-footer-page/@navigation",
+      "items": []
+    },
+    "workflow": {
+      "@id": "http://localhost:8888/conv-footer-page/@workflow"
+    }
+  },
+  "can_manage_portlets": true,
+  "can_view": true,
+  "can_edit": true,
+  "can_delete": true,
+  "can_add": true
+}

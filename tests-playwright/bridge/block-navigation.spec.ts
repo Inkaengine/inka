@@ -25,8 +25,12 @@ async function selectBlock(helper, page, blockId: string) {
   const blockEl = iframe.locator(`[data-block-uid="${blockId}"]`);
   await expect(blockEl).toBeAttached({ timeout: 5000 });
   await expect(
-    blockEl.locator('[contenteditable="true"]').first()
-      .or(iframe.locator(`[data-block-uid="${blockId}"][contenteditable="true"]`))
+    blockEl
+      .locator('[contenteditable="true"]')
+      .first()
+      .or(
+        iframe.locator(`[data-block-uid="${blockId}"][contenteditable="true"]`),
+      ),
   ).toBeAttached({ timeout: 5000 });
 }
 
@@ -36,17 +40,20 @@ async function selectBlock(helper, page, blockId: string) {
  */
 async function getSelectedBlockId(helper): Promise<string | null> {
   const iframe = helper.getIframe();
-  return await iframe.locator('[contenteditable="true"]').first().evaluate((el) => {
-    // Walk up to find the data-block-uid
-    let node = el as HTMLElement;
-    while (node) {
-      if (node.getAttribute?.('data-block-uid')) {
-        return node.getAttribute('data-block-uid');
+  return await iframe
+    .locator('[contenteditable="true"]')
+    .first()
+    .evaluate((el) => {
+      // Walk up to find the data-block-uid
+      let node = el as HTMLElement;
+      while (node) {
+        if (node.getAttribute?.('data-block-uid')) {
+          return node.getAttribute('data-block-uid');
+        }
+        node = node.parentElement as HTMLElement;
       }
-      node = node.parentElement as HTMLElement;
-    }
-    return null;
-  });
+      return null;
+    });
 }
 
 /**
@@ -60,47 +67,60 @@ async function getFocusedFieldInfo(helper): Promise<{
   text: string;
 }> {
   const iframe = helper.getIframe();
-  return await iframe.locator('[contenteditable="true"]').first().evaluate(() => {
-    const sel = window.getSelection();
-    const activeEl = document.activeElement as HTMLElement;
-    if (!activeEl) return { blockUid: null, fieldName: null, cursorAtStart: false, cursorAtEnd: false, text: '' };
+  return await iframe
+    .locator('[contenteditable="true"]')
+    .first()
+    .evaluate(() => {
+      const sel = window.getSelection();
+      const activeEl = document.activeElement as HTMLElement;
+      if (!activeEl)
+        return {
+          blockUid: null,
+          fieldName: null,
+          cursorAtStart: false,
+          cursorAtEnd: false,
+          text: '',
+        };
 
-    // Find the editable field
-    const editableField = activeEl.closest?.('[data-edit-text]') || activeEl;
-    const fieldName = editableField?.getAttribute('data-edit-text');
+      // Find the editable field
+      const editableField = activeEl.closest?.('[data-edit-text]') || activeEl;
+      const fieldName = editableField?.getAttribute('data-edit-text');
 
-    // Find the block
-    let blockEl = editableField;
-    while (blockEl && !blockEl.getAttribute?.('data-block-uid')) {
-      blockEl = blockEl.parentElement as HTMLElement;
-    }
-    const blockUid = blockEl?.getAttribute?.('data-block-uid') || null;
+      // Find the block
+      let blockEl = editableField;
+      while (blockEl && !blockEl.getAttribute?.('data-block-uid')) {
+        blockEl = blockEl.parentElement as HTMLElement;
+      }
+      const blockUid = blockEl?.getAttribute?.('data-block-uid') || null;
 
-    // Get text content
-    const text = editableField?.textContent || '';
+      // Get text content
+      const text = editableField?.textContent || '';
 
-    // Check cursor position
-    let cursorAtStart = false;
-    let cursorAtEnd = false;
-    if (sel && sel.isCollapsed && sel.rangeCount > 0) {
-      const range = sel.getRangeAt(0);
-      // Check start: create range from field start to cursor
-      const beforeRange = document.createRange();
-      beforeRange.setStart(editableField, 0);
-      beforeRange.setEnd(range.startContainer, range.startOffset);
-      cursorAtStart = beforeRange.toString().replace(/[\u200B\u200C\u200D\uFEFF]/g, '') === '';
-      // Check end: create range from cursor to field end
-      const afterRange = document.createRange();
-      afterRange.setStart(range.endContainer, range.endOffset);
-      afterRange.selectNodeContents(editableField);
-      afterRange.setStart(range.endContainer, range.endOffset);
-      cursorAtEnd = afterRange.toString().replace(/[\u200B\u200C\u200D\uFEFF]/g, '') === '';
-    }
+      // Check cursor position
+      let cursorAtStart = false;
+      let cursorAtEnd = false;
+      if (sel && sel.isCollapsed && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        // Check start: create range from field start to cursor
+        const beforeRange = document.createRange();
+        beforeRange.setStart(editableField, 0);
+        beforeRange.setEnd(range.startContainer, range.startOffset);
+        cursorAtStart =
+          beforeRange.toString().replace(/[\u200B\u200C\u200D\uFEFF]/g, '') ===
+          '';
+        // Check end: create range from cursor to field end
+        const afterRange = document.createRange();
+        afterRange.setStart(range.endContainer, range.endOffset);
+        afterRange.selectNodeContents(editableField);
+        afterRange.setStart(range.endContainer, range.endOffset);
+        cursorAtEnd =
+          afterRange.toString().replace(/[\u200B\u200C\u200D\uFEFF]/g, '') ===
+          '';
+      }
 
-    return { blockUid, fieldName, cursorAtStart, cursorAtEnd, text };
-  });
+      return { blockUid, fieldName, cursorAtStart, cursorAtEnd, text };
+    });
 }
-
 
 /**
  * Helper: select a non-editable block (e.g., image) via mock parent's selectBlock API.
@@ -120,9 +140,16 @@ async function selectNonEditableBlock(helper, page, blockId: string) {
   // historical fixed 200ms sleep that flaked on slow CI runners and on
   // Astro (where the renderEndpoint POST adds a network round-trip
   // before the bridge can fire BLOCK_SELECTED).
-  await expect.poll(async () => {
-    return await page.evaluate(() => window.mockParent.lastSelectedBlockUid || null);
-  }, { timeout: 5000, intervals: [50, 100, 200] }).toBe(blockId);
+  await expect
+    .poll(
+      async () => {
+        return await page.evaluate(
+          () => window.mockParent.lastSelectedBlockUid || null,
+        );
+      },
+      { timeout: 5000, intervals: [50, 100, 200] },
+    )
+    .toBe(blockId);
 }
 
 /**
@@ -130,16 +157,19 @@ async function selectNonEditableBlock(helper, page, blockId: string) {
  * Works for both editable and non-editable blocks.
  */
 async function getLastSelectedBlockUid(page): Promise<string | null> {
-  return await page.evaluate(() => window.mockParent.lastSelectedBlockUid || null);
+  return await page.evaluate(
+    () => window.mockParent.lastSelectedBlockUid || null,
+  );
 }
 
 test.describe('Arrow key block-to-block navigation', () => {
-
   // ── Vertical Layout Tests (addDirection: 'bottom') ────────────────────
 
   test.describe('Vertical layout', () => {
-
-    test('ArrowDown at end of field navigates to next block', async ({ helper, page }) => {
+    test('ArrowDown at end of field navigates to next block', async ({
+      helper,
+      page,
+    }) => {
       // Start in mock-block-1 (auto-selected by fixture), move cursor to end
       const editable = await helper.getEditorLocator('mock-block-1');
       await editable.click();
@@ -161,7 +191,10 @@ test.describe('Arrow key block-to-block navigation', () => {
       }).toPass({ timeout: 5000 });
     });
 
-    test('ArrowUp at start of field navigates to previous block', async ({ helper, page }) => {
+    test('ArrowUp at start of field navigates to previous block', async ({
+      helper,
+      page,
+    }) => {
       // Select mock-text-block (second block)
       await selectBlock(helper, page, 'mock-text-block');
       const editable = await helper.getEditorLocator('mock-text-block');
@@ -184,7 +217,10 @@ test.describe('Arrow key block-to-block navigation', () => {
       }).toPass({ timeout: 5000 });
     });
 
-    test('ArrowDown at end of last block stays in same block', async ({ helper, page }) => {
+    test('ArrowDown at end of last block stays in same block', async ({
+      helper,
+      page,
+    }) => {
       // Select mock-hero-block (last block)
       await selectBlock(helper, page, 'mock-hero-block');
       const iframe = helper.getIframe();
@@ -193,11 +229,13 @@ test.describe('Arrow key block-to-block navigation', () => {
       // Hero has: heading, subheading, description, buttonText
       // The last field in DOM order depends on renderer
       // Use combined selector for both mock (descendant) and nuxt (same-element) patterns
-      const editables = iframe.locator(
-        '[data-block-uid="mock-hero-block"] [contenteditable="true"]'
-      ).or(iframe.locator(
-        '[data-block-uid="mock-hero-block"][contenteditable="true"]'
-      ));
+      const editables = iframe
+        .locator('[data-block-uid="mock-hero-block"] [contenteditable="true"]')
+        .or(
+          iframe.locator(
+            '[data-block-uid="mock-hero-block"][contenteditable="true"]',
+          ),
+        );
       const count = await editables.count();
       const lastEditable = editables.nth(count - 1);
       await lastEditable.click();
@@ -213,7 +251,10 @@ test.describe('Arrow key block-to-block navigation', () => {
       expect(info.blockUid).toBe('mock-hero-block');
     });
 
-    test('ArrowUp at start of first block stays in same block', async ({ helper, page }) => {
+    test('ArrowUp at start of first block stays in same block', async ({
+      helper,
+      page,
+    }) => {
       // mock-block-1 is the first block (auto-selected by fixture)
       const editable = await helper.getEditorLocator('mock-block-1');
       await editable.click();
@@ -233,7 +274,10 @@ test.describe('Arrow key block-to-block navigation', () => {
       expect(info.blockUid).toBe('mock-block-1');
     });
 
-    test('ArrowDown in middle of text moves cursor but does not navigate', async ({ helper, page }) => {
+    test('ArrowDown in middle of text moves cursor but does not navigate', async ({
+      helper,
+      page,
+    }) => {
       const editable = await helper.getEditorLocator('mock-block-1');
       await editable.click();
       // Position cursor in the middle
@@ -254,7 +298,10 @@ test.describe('Arrow key block-to-block navigation', () => {
       expect(info.blockUid).toBe('mock-block-1');
     });
 
-    test('ArrowRight at end does not navigate (wrong direction for bottom layout)', async ({ helper, page }) => {
+    test('ArrowRight at end does not navigate (wrong direction for bottom layout)', async ({
+      helper,
+      page,
+    }) => {
       const editable = await helper.getEditorLocator('mock-block-1');
       await editable.click();
       await page.keyboard.press('End');
@@ -273,14 +320,18 @@ test.describe('Arrow key block-to-block navigation', () => {
   // ── Multi-field Block Tests ───────────────────────────────────────────
 
   test.describe('Multi-field blocks', () => {
-
-    test('ArrowDown at end of first field moves to next field in same block', async ({ helper, page }) => {
+    test('ArrowDown at end of first field moves to next field in same block', async ({
+      helper,
+      page,
+    }) => {
       // Select mock-multi-field-block (hero type: heading, subheading, description, buttonText)
       await selectBlock(helper, page, 'mock-multi-field-block');
       const iframe = helper.getIframe();
 
       // Focus the heading field (first field) and move to end
-      const headingField = iframe.locator('[data-block-uid="mock-multi-field-block"] [data-edit-text="heading"]');
+      const headingField = iframe.locator(
+        '[data-block-uid="mock-multi-field-block"] [data-edit-text="heading"]',
+      );
       await headingField.click();
       await page.keyboard.press('End');
 
@@ -298,12 +349,17 @@ test.describe('Arrow key block-to-block navigation', () => {
       }).toPass({ timeout: 5000 });
     });
 
-    test('ArrowDown at end of last field navigates to next block', async ({ helper, page }) => {
+    test('ArrowDown at end of last field navigates to next block', async ({
+      helper,
+      page,
+    }) => {
       // Select mock-multi-field-block and focus the buttonText field (last)
       await selectBlock(helper, page, 'mock-multi-field-block');
       const iframe = helper.getIframe();
 
-      const btnField = iframe.locator('[data-block-uid="mock-multi-field-block"] [data-edit-text="buttonText"]');
+      const btnField = iframe.locator(
+        '[data-block-uid="mock-multi-field-block"] [data-edit-text="buttonText"]',
+      );
       await btnField.click();
       // Press End twice to ensure cursor reaches end (handles any initial position)
       await page.keyboard.press('End');
@@ -320,12 +376,17 @@ test.describe('Arrow key block-to-block navigation', () => {
       }).toPass({ timeout: 5000 });
     });
 
-    test('ArrowUp at start of second field moves to previous field in same block', async ({ helper, page }) => {
+    test('ArrowUp at start of second field moves to previous field in same block', async ({
+      helper,
+      page,
+    }) => {
       await selectBlock(helper, page, 'mock-multi-field-block');
       const iframe = helper.getIframe();
 
       // Focus subheading field (second) and move to start
-      const subField = iframe.locator('[data-block-uid="mock-multi-field-block"] [data-edit-text="subheading"]');
+      const subField = iframe.locator(
+        '[data-block-uid="mock-multi-field-block"] [data-edit-text="subheading"]',
+      );
       await subField.click();
       await page.keyboard.press('Home');
       await page.keyboard.press('Home');
@@ -342,12 +403,17 @@ test.describe('Arrow key block-to-block navigation', () => {
       }).toPass({ timeout: 5000 });
     });
 
-    test('ArrowUp at start of first field navigates to previous block', async ({ helper, page }) => {
+    test('ArrowUp at start of first field navigates to previous block', async ({
+      helper,
+      page,
+    }) => {
       await selectBlock(helper, page, 'mock-multi-field-block');
       const iframe = helper.getIframe();
 
       // Focus heading field (first) and move to start
-      const headingField = iframe.locator('[data-block-uid="mock-multi-field-block"] [data-edit-text="heading"]');
+      const headingField = iframe.locator(
+        '[data-block-uid="mock-multi-field-block"] [data-edit-text="heading"]',
+      );
       await headingField.click();
       await page.keyboard.press('Home');
       await page.keyboard.press('Home');
@@ -370,8 +436,10 @@ test.describe('Arrow key block-to-block navigation', () => {
   // mock-row-2: [mock-cell-2a, mock-cell-2b]
 
   test.describe('Table mode (2D navigation)', () => {
-
-    test('ArrowRight at end of cell navigates to next cell in same row', async ({ helper, page }) => {
+    test('ArrowRight at end of cell navigates to next cell in same row', async ({
+      helper,
+      page,
+    }) => {
       await selectBlock(helper, page, 'mock-cell-1a');
       const editable = await helper.getEditorLocator('mock-cell-1a');
       await editable.click();
@@ -386,7 +454,10 @@ test.describe('Arrow key block-to-block navigation', () => {
       }).toPass({ timeout: 5000 });
     });
 
-    test('ArrowLeft at start of cell navigates to previous cell in same row', async ({ helper, page }) => {
+    test('ArrowLeft at start of cell navigates to previous cell in same row', async ({
+      helper,
+      page,
+    }) => {
       await selectBlock(helper, page, 'mock-cell-1b');
       const editable = await helper.getEditorLocator('mock-cell-1b');
       await editable.click();
@@ -401,7 +472,10 @@ test.describe('Arrow key block-to-block navigation', () => {
       }).toPass({ timeout: 5000 });
     });
 
-    test('ArrowDown at end of cell navigates to same-column cell in next row', async ({ helper, page }) => {
+    test('ArrowDown at end of cell navigates to same-column cell in next row', async ({
+      helper,
+      page,
+    }) => {
       await selectBlock(helper, page, 'mock-cell-1a');
       const editable = await helper.getEditorLocator('mock-cell-1a');
       await editable.click();
@@ -416,7 +490,10 @@ test.describe('Arrow key block-to-block navigation', () => {
       }).toPass({ timeout: 5000 });
     });
 
-    test('ArrowUp at start of cell navigates to same-column cell in previous row', async ({ helper, page }) => {
+    test('ArrowUp at start of cell navigates to same-column cell in previous row', async ({
+      helper,
+      page,
+    }) => {
       await selectBlock(helper, page, 'mock-cell-2a');
       const editable = await helper.getEditorLocator('mock-cell-2a');
       await editable.click();
@@ -437,8 +514,10 @@ test.describe('Arrow key block-to-block navigation', () => {
   // mock-image-block has no editable fields (type: image)
 
   test.describe('Non-editable block navigation', () => {
-
-    test('ArrowDown on selected non-editable block navigates to next block', async ({ helper, page }) => {
+    test('ArrowDown on selected non-editable block navigates to next block', async ({
+      helper,
+      page,
+    }) => {
       // Select image block (no editable fields)
       await selectNonEditableBlock(helper, page, 'mock-image-block');
 
@@ -451,7 +530,10 @@ test.describe('Arrow key block-to-block navigation', () => {
       }).toPass({ timeout: 5000 });
     });
 
-    test('ArrowUp on selected non-editable block navigates to previous block', async ({ helper, page }) => {
+    test('ArrowUp on selected non-editable block navigates to previous block', async ({
+      helper,
+      page,
+    }) => {
       // Select image block (no editable fields)
       await selectNonEditableBlock(helper, page, 'mock-image-block');
 
@@ -471,8 +553,10 @@ test.describe('Arrow key block-to-block navigation', () => {
   // Blocks inside columns have addDirection: 'bottom'
 
   test.describe('Container boundary navigation', () => {
-
-    test('ArrowUp at start of first block in container navigates to parent', async ({ helper, page }) => {
+    test('ArrowUp at start of first block in container navigates to parent', async ({
+      helper,
+      page,
+    }) => {
       // Select the only block inside col-1
       await selectBlock(helper, page, 'mock-col1-slate');
       const editable = await helper.getEditorLocator('mock-col1-slate');
@@ -493,7 +577,10 @@ test.describe('Arrow key block-to-block navigation', () => {
       }).toPass({ timeout: 5000 });
     });
 
-    test('ArrowDown at end of last block in container navigates to parent', async ({ helper, page }) => {
+    test('ArrowDown at end of last block in container navigates to parent', async ({
+      helper,
+      page,
+    }) => {
       // Select the only block inside col-1
       await selectBlock(helper, page, 'mock-col1-slate');
       const editable = await helper.getEditorLocator('mock-col1-slate');
@@ -520,20 +607,64 @@ test.describe('Arrow key block-to-block navigation', () => {
   // the block selection should update to match.
 
   test.describe('Focus change selects block', () => {
-
-    test('Tab that moves focus to another block updates selection', async ({ helper, page }) => {
+    test('Tab moves the selection to the next block in editing order', async ({
+      helper,
+      page,
+    }) => {
       // Start in mock-block-1 (auto-selected by fixture)
       const editable = await helper.getEditorLocator('mock-block-1');
       await editable.click();
 
-      // Tab — browser moves focus to next focusable element in tab order
+      // Wait for the click's BLOCK_SELECTED round-trip before pressing Tab.
+      // Without this the assertion below is vacuous: lastSelectedBlockUid is
+      // null until the first message lands, so any "is not mock-block-1" test
+      // passes while proving nothing.
+      await expect
+        .poll(() => getLastSelectedBlockUid(page), { timeout: 5000 })
+        .toBe('mock-block-1');
+
       await page.keyboard.press('Tab');
 
-      // Whatever block received focus should now be selected
-      await expect(async () => {
-        const selectedId = await getLastSelectedBlockUid(page);
-        expect(selectedId).not.toBe('mock-block-1');
-      }).toPass({ timeout: 5000 });
+      // The EDITING order, not the page's tab order: mock-block-1's only
+      // editable is its last, so the step moves to the next block. The page's
+      // own tab order would have gone to a link inside mock-multi-field-block.
+      await expect
+        .poll(() => getLastSelectedBlockUid(page), { timeout: 5000 })
+        .toBe('mock-text-block');
+    });
+
+    test("Tab between a block's own editables moves focus, not selection", async ({
+      helper,
+      page,
+    }) => {
+      await selectBlock(helper, page, 'mock-multi-field-block');
+      await expect
+        .poll(() => getLastSelectedBlockUid(page), { timeout: 5000 })
+        .toBe('mock-multi-field-block');
+
+      const fieldNow = () =>
+        helper
+          .getIframe()
+          .locator('body')
+          .evaluate(
+            () =>
+              document.activeElement?.getAttribute('data-edit-text') ?? null,
+          );
+
+      const before = await fieldNow();
+      expect(
+        before,
+        'started in one of the block\u2019s editables',
+      ).not.toBeNull();
+
+      await page.keyboard.press('Tab');
+
+      // Focus steps to the block's next editable...
+      await expect.poll(fieldNow, { timeout: 5000 }).not.toBe(before);
+      // ...and the author is still editing the same block, so selection stands.
+      expect(await getLastSelectedBlockUid(page)).toBe(
+        'mock-multi-field-block',
+      );
     });
   });
 });

@@ -60,6 +60,8 @@ if (window.name.startsWith('hydra')) {
 
 The `formData` passed to `onEditChange` has the same structure as the Plone REST API response, so the same rendering code works for both live editing and normal page display.
 
+**Render every `formData` you are given — don't run your own "has it changed?" check.** The bridge already drops echoes, and only it can tell one: text typed into your page is not sent back to you, so your own copy of the page falls behind what is on screen while someone types. The bridge compares against its own copy, which does include the typing. A frontend that compares against its own data mistakes a real change for an echo — "Reset changes" after typing then sends exactly the content you last rendered, and skipping it leaves the typed text on screen.
+
 Either hashbang (`/#!/path`) or normal (`/path`) style paths are supported.
 
 ## A Simple Page Renderer
