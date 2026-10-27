@@ -5,28 +5,12 @@
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { test, expect } from '../fixtures';
 import { TEST_AUTH_TOKEN } from '../helpers/AdminUIHelper';
+import { connect, CALL } from '../helpers/mcpClient';
 import { URLS } from '../ports';
 
-const SERVER = new URL('../../packages/inka-mcp/server.mjs', import.meta.url).pathname;
 const PAGE = '/_test_data/test-page';
-
-// A call loads an editor (and a preview loads the front end too); the SDK's
-// default 60s per request is less than that under a loaded test machine.
-const CALL = { timeout: 170000 };
-
-/** An MCP client on a fresh server, started over stdio as an agent's host does. */
-async function connect(env: Record<string, string>): Promise<Client> {
-  const client = new Client({ name: 'mcp-server-spec', version: '0.0.1' });
-  await client.connect(new StdioClientTransport({
-    command: process.execPath,
-    args: [SERVER],
-    env: { ...process.env, INKA_ADMIN_URL: URLS.voltoSsr, ...env } as Record<string, string>,
-  }));
-  return client;
-}
 
 test.describe('MCP server', () => {
   let client: Client;
@@ -100,27 +84,5 @@ test.describe('MCP server', () => {
     const stale = await call('edit_blocks', { path: PAGE, expectedVersion: read.version, ops });
     expect(stale.isError).toBe(true);
     expect(stale.text).toMatch(/changed since it was read/);
-  });
-});
-
-test.describe('MCP server on a chosen front end', () => {
-  test('INKA_FRONTEND_URL: the editor, and so the preview, use that front end', async () => {
-    test.setTimeout(180000);
-    const client = await connect({ INKA_TOKEN: `${TEST_AUTH_TOKEN}-${randomUUID()}`, INKA_FRONTEND_URL: URLS.nuxt });
-    try {
-      const read = JSON.parse((await client.callTool({ name: 'get_page', arguments: { path: PAGE } }, undefined, CALL)).content[0].text);
-      const ops = [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@type': 'slate', value: 'Previewed on *Nuxt*' }] }];
-      const result = await client.callTool({
-        name: 'edit_blocks', arguments: { path: PAGE, expectedVersion: read.version, ops, dryRun: true, preview: 'desktop' },
-      }, undefined, CALL);
-      expect(result.isError, (result.content as any[])[0].text).toBeFalsy();
-      const dry = JSON.parse((result.content as any[])[0].text);
-      expect(dry.renderedOn).toBe(URLS.nuxt);
-      // The edit is in the page, then in the render.
-      expect(JSON.stringify(dry.page)).toContain('Previewed on *Nuxt*');
-      expect(dry.renderedText).toContain('Previewed on Nuxt');
-    } finally {
-      await client.close();
-    }
   });
 });
