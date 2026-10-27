@@ -218,6 +218,7 @@ A block's template membership — `templateId`, `templateInstanceId`, `slotId`, 
 1. **It keeps its membership** when it is a template's own fixed block staying in its template, or when it moves *inside* the template being edited. In template edit mode the `slotId` is **explicit** — there's a `slotId` field, and the author renames slots rather than changing them by dragging — so a move that stays inside the template keeps its `slotId` (save/lock validation, not the drag, is what refuses an invalid arrangement). Fixed template blocks are only movable in template edit mode, and their slot and `fixed` *are* the template.
 2. **Otherwise where it came from is discarded.** A block from another template — the page's layout, another snippet — lands exactly as a block with no template at all would. A paste is a new block, so it never keeps a template block's identity.
 3. **The add rules for where it landed decide** (`getTemplateInfoFromNeighbors`, via `applyBlockDefaultsWithContext`). They inspect the immediate neighbours and ask whether a slot *faces the gap*, in this order:
+
    - a **non-fixed slot neighbour** on either side → join its `slotId`;
    - a **fixed anchor** whose slot region faces the gap — the block *before* the gap via its `nextSlotId` (a trailing slot), or the block *after* it via its `prevSlotId` (a leading slot). The merge stamps `nextSlotId`/`prevSlotId` on a fixed block when the template has a slot region beside it, so an *empty* slot can still be joined;
    - otherwise, if the **container itself is a template instance** (e.g. a `columns` block carrying a `templateId`), the block joins that instance with a **freshly generated `slotId`** — the only time a slot is invented. The author can rename it.
@@ -241,7 +242,7 @@ In normal mode the net effect matches the merge's own placement rules (a top/bot
 
 Volto's stock URL helpers (`flattenToAppURL`, `isInternalURL`, `toPublicURL`) assume there's one "public URL" — usually the same origin the admin runs on, configured via `RAZZLE_PUBLIC_URL`. In Inka the admin and the published frontend(s) live on different origins, and the editor switches between published frontends at will, so there is no single public URL.
 
-**Do not set \`RAZZLE\_PUBLIC\_URL\`** in an Inka deployment. Pinning `settings.publicURL` to one value would break flattening for every other frontend — pastes from them would be misrecognised as external and saved verbatim instead of as `/path` references.
+**Do not set \`RAZZLE_PUBLIC_URL\`** in an Inka deployment. Pinning `settings.publicURL` to one value would break flattening for every other frontend — pastes from them would be misrecognised as external and saved verbatim instead of as `/path` references.
 
 Inka makes `settings.publicURL` follow the currently active iframe frontend:
 

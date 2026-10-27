@@ -40,7 +40,7 @@ blocks-tagged: |
 
 # Slider Block
 
-A carousel/slider that cycles through slides. Slides are stored as an object\_list — each slide has a title, description, image, and optional button.
+A carousel/slider that cycles through slides. Slides are stored as an object_list — each slide has a title, description, image, and optional button.
 
 <block type="slider" autoplayEnabled=false autoplayDelay=5000>
 

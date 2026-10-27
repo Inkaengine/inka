@@ -35,7 +35,7 @@ blocks-tagged: |
 
 # Hero Block
 
-A full-width hero section with heading, subheading, image, rich text description, and a call-to-action button. Demonstrates multiple field types in a single block: string, textarea, slate, image, and object\_browser.
+A full-width hero section with heading, subheading, image, rich text description, and a call-to-action button. Demonstrates multiple field types in a single block: string, textarea, slate, image, and object_browser.
 
 <block type="hero">
 
