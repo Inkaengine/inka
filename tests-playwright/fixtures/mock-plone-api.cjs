@@ -132,10 +132,34 @@ const sessionBlobs = {};
 // only. Format: { sessionId: Set<'/path'> }
 const sessionDeletions = {};
 
-// Locks taken with @lock, as Plone keeps them: an editor locks the page it
-// opens and unlocks it when it leaves, and until then the page's `lock` says
-// so. Format: { sessionId: { '/path': lock } }
-const sessionLocks = {};
+// Locks taken with @lock, as Plone keeps them: one per page, seen by every
+// user, naming who holds it. An editor locks the page it opens and unlocks it
+// when it leaves; until then another user's save is refused. Content is kept
+// per session, but a lock is the page's, so it is not.
+// Format: { '/path': lock }
+const locks = {};
+
+/** The user a request is made as: its token's `sub`, as Plone's JWT names it. */
+function requestUser(req) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) return null;
+  const payload = auth.slice(7).split('.')[1];
+  if (!payload) return null;
+  return JSON.parse(Buffer.from(payload, 'base64url').toString()).sub ?? null;
+}
+
+/** The lock on `path`, if it has not lapsed (a lock lasts its `timeout` seconds). */
+function lockOn(path) {
+  const lock = locks[path];
+  if (lock && Date.parse(lock.time) + lock.timeout * 1000 <= Date.now()) delete locks[path];
+  return locks[path];
+}
+
+/** Is `path` locked by someone other than the user making `req`? */
+function lockedAgainst(req, path) {
+  const lock = lockOn(path);
+  return !!lock && lock.creator !== requestUser(req);
+}
 
 const UNLOCKED = { locked: false, stealable: true };
 
@@ -2102,7 +2126,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     'exclude_from_nav': transformed.exclude_from_nav || false,
     'created': transformed.created || '2025-01-01T12:00:00+00:00',
     'modified': transformed.modified || '2025-01-01T12:00:00+00:00',
-    'lock': sessionLocks[sessionId]?.[cleanPath] || transformed.lock || UNLOCKED,
+    'lock': lockOn(cleanPath) || transformed.lock || UNLOCKED,
     'parent': parent,
     // Plone serialises `language` as a vocabulary term, never the bare code a
     // fixture writes — and Volto reads `content.language.token` throughout its
@@ -5753,26 +5777,30 @@ app.delete('*/@form-data', (req, res) => {
  */
 app.post('*/@lock', (req, res) => {
   const contentPath = req.path.replace(/\/@lock$/, '') || '/';
-  const lock = {
-    locked: true,
-    stealable: true,
-    creator: 'admin',
-    time: new Date().toISOString(),
-    timeout: 600
-  };
-  const sessionId = getSessionId(req);
-  sessionLocks[sessionId] = { ...sessionLocks[sessionId], [contentPath]: lock };
-  res.json(lock);
+  const user = requestUser(req);
+  if (!user) return res.status(401).json({ error: { type: 'Unauthorized', message: 'Locking needs a logged-in user.' } });
+  // Plone's lock() leaves another user's lock as it is, and answers with it.
+  if (!lockedAgainst(req, contentPath)) {
+    locks[contentPath] = {
+      locked: true,
+      stealable: true,
+      creator: user,
+      time: new Date().toISOString(),
+      timeout: req.body?.timeout ?? 600
+    };
+  }
+  res.json(lockOn(contentPath));
 });
 
 /**
  * DELETE /:path/@lock
- * Unlock content after editing
+ * Unlock content after editing. Only the holder unlocks, unless `force`
+ * (Volto's "unlock" of a lock someone else left) says to.
  */
 app.delete('*/@lock', (req, res) => {
   const contentPath = req.path.replace(/\/@lock$/, '') || '/';
-  delete sessionLocks[getSessionId(req)]?.[contentPath];
-  res.json({ locked: false });
+  if (!lockedAgainst(req, contentPath) || req.body?.force) delete locks[contentPath];
+  res.json(lockOn(contentPath) || UNLOCKED);
 });
 
 /**
@@ -6137,6 +6165,11 @@ app.patch('*', (req, res) => {
   const logMsg = `[PATCH] ${cleanPath} sessionId: ${sessionId}\n`;
   fs.appendFileSync('/tmp/mock-api-patch.log', logMsg);
   console.log(logMsg);
+
+  // Plone refuses to change a page another user holds the lock on.
+  if (lockedAgainst(req, cleanPath.replace(/\/$/, '') || '/')) {
+    return res.status(403).json({ error: { type: 'Forbidden', message: 'Resource is locked.' } });
+  }
 
   // Reload content from disk to pick up changes during development
   const content = getContent(cleanPath, sessionId);
