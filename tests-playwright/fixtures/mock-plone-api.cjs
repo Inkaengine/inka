@@ -132,6 +132,13 @@ const sessionBlobs = {};
 // only. Format: { sessionId: Set<'/path'> }
 const sessionDeletions = {};
 
+// Locks taken with @lock, as Plone keeps them: an editor locks the page it
+// opens and unlocks it when it leaves, and until then the page's `lock` says
+// so. Format: { sessionId: { '/path': lock } }
+const sessionLocks = {};
+
+const UNLOCKED = { locked: false, stealable: true };
+
 // Explicit child ordering per container, set by @order. Absent means "use the
 // natural order", which is what every existing test relies on.
 const sessionOrder = {};
@@ -2095,7 +2102,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     'exclude_from_nav': transformed.exclude_from_nav || false,
     'created': transformed.created || '2025-01-01T12:00:00+00:00',
     'modified': transformed.modified || '2025-01-01T12:00:00+00:00',
-    'lock': transformed.lock || { 'locked': false, 'stealable': true },
+    'lock': sessionLocks[sessionId]?.[cleanPath] || transformed.lock || UNLOCKED,
     'parent': parent,
     // Plone serialises `language` as a vocabulary term, never the bare code a
     // fixture writes — and Volto reads `content.language.token` throughout its
@@ -5745,13 +5752,17 @@ app.delete('*/@form-data', (req, res) => {
  * Lock content for editing
  */
 app.post('*/@lock', (req, res) => {
-  res.json({
+  const contentPath = req.path.replace(/\/@lock$/, '') || '/';
+  const lock = {
     locked: true,
     stealable: true,
     creator: 'admin',
     time: new Date().toISOString(),
     timeout: 600
-  });
+  };
+  const sessionId = getSessionId(req);
+  sessionLocks[sessionId] = { ...sessionLocks[sessionId], [contentPath]: lock };
+  res.json(lock);
 });
 
 /**
@@ -5759,6 +5770,8 @@ app.post('*/@lock', (req, res) => {
  * Unlock content after editing
  */
 app.delete('*/@lock', (req, res) => {
+  const contentPath = req.path.replace(/\/@lock$/, '') || '/';
+  delete sessionLocks[getSessionId(req)]?.[contentPath];
   res.json({ locked: false });
 });
 
