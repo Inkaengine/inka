@@ -22,7 +22,7 @@ test.describe('MCP headless admin session', () => {
 
   test.beforeEach(() => {
     token = `${TEST_AUTH_TOKEN}-${randomUUID()}`;
-    admin = headlessAdmin({ adminUrl: URLS.voltoSsr, token });
+    admin = headlessAdmin({ adminUrl: URLS.voltoSsr, auth: { token: async () => token } });
   });
 
   test.afterEach(async () => {

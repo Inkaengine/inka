@@ -8,11 +8,14 @@
  *
  * Configuration (environment):
  *   INKA_ADMIN_URL  the admin, e.g. https://admin.example.org
- *   INKA_API_URL    the CMS API the admin talks to (for logging in)
- *   INKA_TOKEN      an auth token for the CMS, or
- *   INKA_USER + INKA_PASSWORD  to log in for one
  *   INKA_FRONTEND_URL  optional: the front end the editor (and so a preview)
  *                      uses; without it, the admin's own default
+ * Signing in (signIn.mjs): with neither of the below, the first call opens
+ * the person's browser at the admin, they sign in as they always do and
+ * allow the agent, and the token is kept (INKA_TOKEN_STORE, by default
+ * ~/.config/inka-mcp/tokens.json) and renewed from then on.
+ *   INKA_TOKEN      a token to use instead, or
+ *   INKA_USER + INKA_PASSWORD + INKA_API_URL  to log in to a plain account
  * The agent can do what that CMS user can do, nothing more.
  */
 import { realpathSync } from 'node:fs';
@@ -24,6 +27,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { openAdmin, openForEdit, createPage, park, agentOn, siteOn } from './adminDriver.mjs';
 import { frontendUrlOf, previewDraft } from './preview.mjs';
+import { signIn, renewDelay } from './signIn.mjs';
 import {
   getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
 } from './tools.mjs';
@@ -36,25 +40,6 @@ const OPS_HELP = `Operations, applied in order:
 - {"op":"delete","id":"<uid>"} — remove a block.
 New blocks are in the get_page format; give each a "@uid" of your own to refer to it in later operations — the result maps it to the real id. Rich text fields take markdown: {"md": "..."} or a plain string.`;
 
-function required(env, name) {
-  const value = env[name];
-  if (!value) throw new Error(`inka-mcp: ${name} is not set`);
-  return value;
-}
-
-/** The CMS token: given, or got by logging in. */
-export async function authToken(env) {
-  if (env.INKA_TOKEN) return env.INKA_TOKEN;
-  const apiUrl = required(env, 'INKA_API_URL');
-  const response = await fetch(`${apiUrl.replace(/\/$/, '')}/@login`, {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ login: required(env, 'INKA_USER'), password: required(env, 'INKA_PASSWORD') }),
-  });
-  if (!response.ok) throw new Error(`inka-mcp: login failed (${response.status})`);
-  return (await response.json()).token;
-}
-
 /**
  * A headless admin, logged in. It is loaded once and kept: each call moves it
  * to the page the call needs (the editor, the add form, the site's contents)
@@ -62,9 +47,26 @@ export async function authToken(env) {
  * a call holds nothing afterwards: a dry run's changes are dropped, the
  * editor's lock let go. Calls take turns on it, one at a time.
  */
-export function headlessAdmin({ adminUrl, token, frontendUrl }) {
+export function headlessAdmin({ adminUrl, auth, frontendUrl }) {
   let context;
   let page;
+  let token;
+  let renewal;
+  /** The browser's session cookie, for `token`; renewed while the server runs (if `auth` renews). */
+  const useToken = async (next) => {
+    token = next;
+    await context.addCookies([{ name: 'auth_token', value: token, url: adminUrl, sameSite: 'Lax' }]);
+    if (!auth.renew) return;
+    clearTimeout(renewal);
+    renewal = setTimeout(() => {
+      auth.renew(token).then(useToken, (error) => {
+        // Signed out: the next call signs in again.
+        process.stderr.write(`inka-mcp: renewing the sign-in failed, the next call signs in again: ${error.message}\n`);
+        token = null;
+      });
+    }, renewDelay(token));
+    renewal.unref();
+  };
   let turn = Promise.resolve();
   const session = {
     /** How many times the admin was loaded in full (once, unless it was lost). */
@@ -74,14 +76,18 @@ export function headlessAdmin({ adminUrl, token, frontendUrl }) {
     if (!context) {
       const browser = await chromium.launch();
       context = await browser.newContext();
-      await context.addCookies([
-        { name: 'auth_token', value: token, url: adminUrl, sameSite: 'Lax' },
-        // The admin's front-end choice, as its switcher stores it: a cookie
-        // named for the admin's port (utils/cookieNames.js).
-        ...(frontendUrl ? [{
+      // The admin's front-end choice, as its switcher stores it: a cookie
+      // named for the admin's port (utils/cookieNames.js).
+      if (frontendUrl) {
+        await context.addCookies([{
           name: `iframe_url_${new URL(adminUrl).port || '80'}`, value: frontendUrl, url: adminUrl, sameSite: 'Lax',
-        }] : []),
-      ]);
+        }]);
+      }
+    }
+    if (!token) {
+      await useToken(await auth.token());
+      // A page loaded under another sign-in is loaded afresh.
+      if (page && !page.isClosed()) await page.close();
     }
     if (!page || page.isClosed()) {
       page = await context.newPage();
@@ -133,6 +139,7 @@ export function headlessAdmin({ adminUrl, token, frontendUrl }) {
     },
     /** Let go of whatever the admin holds, then close it. */
     async close() {
+      clearTimeout(renewal);
       if (!context) return;
       await turn;
       await context.browser().close();
@@ -277,11 +284,11 @@ export function createServer(admin) {
 }
 
 async function main(env) {
-  const admin = headlessAdmin({
-    adminUrl: required(env, 'INKA_ADMIN_URL').replace(/\/$/, ''),
-    token: await authToken(env),
-    frontendUrl: env.INKA_FRONTEND_URL,
-  });
+  if (!env.INKA_ADMIN_URL) throw new Error('inka-mcp: INKA_ADMIN_URL is not set');
+  const adminUrl = env.INKA_ADMIN_URL.replace(/\/$/, '');
+  // Signing in waits for the first call, so the agent's host isn't kept
+  // waiting at startup while a person signs in.
+  const admin = headlessAdmin({ adminUrl, auth: signIn(env, { adminUrl }), frontendUrl: env.INKA_FRONTEND_URL });
   const server = createServer(admin);
   server.server.onclose = () => admin.close();
   await server.connect(new StdioServerTransport());
