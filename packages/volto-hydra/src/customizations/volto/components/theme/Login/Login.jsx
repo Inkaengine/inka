@@ -14,16 +14,22 @@ import {
 import { FormattedMessage, defineMessages, useIntl } from 'react-intl';
 import qs from 'query-string';
 
-import { Helmet } from '@plone/volto/helpers';
+import Helmet from '@plone/volto/helpers/Helmet/Helmet';
+import { useClient } from '@plone/volto/hooks/client/useClient';
 import config from '@plone/volto/registry';
-import { Icon } from '@plone/volto/components';
-import { login, resetLoginRequest } from '@plone/volto/actions';
+import Icon from '@plone/volto/components/theme/Icon/Icon';
+import {
+  login,
+  resetLoginRequest,
+} from '@plone/volto/actions/userSession/userSession';
 import { toast } from 'react-toastify';
-import { Toast } from '@plone/volto/components';
+import Toast from '@plone/volto/components/manage/Toast/Toast';
 import aheadSVG from '@plone/volto/icons/ahead.svg';
 import clearSVG from '@plone/volto/icons/clear.svg';
 import { getURlsFromEnv } from '../../../../../utils/getSavedURLs';
 import getDomainInitials from '../../../../../utils/getDomainInitials';
+import { demoAccount } from '../../../../../utils/demoAccount';
+import { runtimeConfig } from '@plone/volto/runtime_config';
 
 const messages = defineMessages({
   login: {
@@ -77,8 +83,16 @@ const Login = (props) => {
   const token = useSelector((state) => state.userSession.token, shallowEqual);
   const error = useSelector((state) => state.userSession.login.error);
   const loading = useSelector((state) => state.userSession.login.loading);
+  // Upstream 42883aba6: the submit button must not be clickable before
+  // hydration, or the form posts unhandled and the server 404s.
+  const isClient = useClient();
+  const query = qs.parse(props.location?.search ?? location.search);
+  // HYDRA: a demo site's "try editing" link (/login?demo&return_url=…) signs in
+  // with the site's demo account, so the visitor never sees this form.
+  const demoRequested = 'demo' in query;
+  const demo = demoRequested ? demoAccount(runtimeConfig) : null;
   const returnUrl =
-    qs.parse(props.location?.search ?? location.search).return_url ||
+    query.return_url ||
     location.pathname.replace(/\/login\/?$/, '').replace(/\/logout\/?$/, '') ||
     '/';
 
@@ -124,6 +138,14 @@ const Login = (props) => {
     location?.state?.isLogout,
   ]);
 
+  const demoLogin = demo?.login;
+  const demoPassword = demo?.password;
+  useEffect(() => {
+    if (demoLogin && !token && !loading && !error) {
+      dispatch(login(demoLogin, demoPassword));
+    }
+  }, [demoLogin, demoPassword, token, loading, error, dispatch]);
+
   const onLogin = (event) => {
     dispatch(
       login(
@@ -133,6 +155,18 @@ const Login = (props) => {
     );
     event.preventDefault();
   };
+  // Signing in with the demo account: say so instead of showing the form.
+  if (demo && !error) {
+    return (
+      <div id="page-login">
+        <Container>
+          <p style={{ margin: '3em 0', textAlign: 'center' }}>
+            Opening the editor…
+          </p>
+        </Container>
+      </div>
+    );
+  }
   /**
    * Updated the Login Component to show a message about the Hydra project
    */
@@ -144,11 +178,20 @@ const Login = (props) => {
           <Grid.Column>
             <Segment raised>
               <Header as="h2">
-                <a href="https://github.com/collective/volto-hydra" style={{ color: 'inherit' }}>
+                <a
+                  href="https://github.com/collective/volto-hydra"
+                  style={{ color: 'inherit' }}
+                >
                   Hydra
                 </a>
                 <Header.Subheader>Headless Visual Editor</Header.Subheader>
               </Header>
+              {demoRequested && !demo ? (
+                <p role="alert" style={{ margin: '1em 0', color: '#a00' }}>
+                  This editor has no demo account to sign in with
+                  (RAZZLE_DEMO_LOGIN and RAZZLE_DEMO_PASSWORD are not set).
+                </p>
+              ) : null}
               <p style={{ margin: '1em 0 0.5em' }}>Editor for</p>
               <div style={{ display: 'flex', gap: '0.75em', flexWrap: 'wrap' }}>
                 {getURlsFromEnv().map(({ url, name }) => {
@@ -172,18 +215,20 @@ const Login = (props) => {
                         fontSize: '0.9em',
                       }}
                     >
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '1.8em',
-                        height: '1.8em',
-                        borderRadius: '3px',
-                        background: '#007bb5',
-                        color: '#fff',
-                        fontWeight: 'bold',
-                        fontSize: '0.75em',
-                      }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '1.8em',
+                          height: '1.8em',
+                          borderRadius: '3px',
+                          background: '#007bb5',
+                          color: '#fff',
+                          fontWeight: 'bold',
+                          fontSize: '0.75em',
+                        }}
+                      >
                         {getDomainInitials(url)}
                       </span>
                       {name || new URL(displayUrl).hostname}
@@ -293,6 +338,7 @@ const Login = (props) => {
                     aria-label={intl.formatMessage(messages.login)}
                     title={intl.formatMessage(messages.login)}
                     loading={loading}
+                    disabled={!isClient}
                   >
                     <Icon className="circled" name={aheadSVG} size="30px" />
                   </Button>

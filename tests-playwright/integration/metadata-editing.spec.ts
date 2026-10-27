@@ -283,4 +283,111 @@ test.describe('Page Metadata Editing', () => {
     // Both should have moved approximately the same amount
     expect(Math.abs(outlineMovement - imageMovement)).toBeLessThan(10);
   });
+
+  // Regression for PRETAGOVSITE-K.
+  //
+  // The iframe's INIT is a one-shot postMessage; the content type schema is an
+  // async prop. When INIT wins that race the handler used to throw, and because
+  // INITIAL_DATA is only sent at the END of the same `case 'INIT'`, the throw
+  // took the whole bridge handshake with it: a dead editor, not just an
+  // uneditable title. `schema` being in the effect's dep array cannot help —
+  // that refreshes the closure for FUTURE messages, and INIT has already been
+  // discarded. The payload has to be kept and replayed.
+  test('page fields stay editable when the content type schema arrives after INIT', async ({ page }, testInfo) => {
+    // Holding the schema holds the editor's boot with it, and a cold webpack
+    // compile can already eat most of the default budget. The waits below are
+    // all condition-based; this only stops a slow compile being reported as a
+    // failure of the thing under test.
+    test.setTimeout(120000);
+
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+
+    // The defect is this exception, not a broken editor: the bridge re-posts
+    // INIT with backoff (_retryInitUntilAcknowledged), so a retry eventually
+    // lands after the schema and editing works. What is left behind is an
+    // uncaught error per lost INIT — PRETAGOVSITE-K — plus seconds of backoff,
+    // and a genuinely dead editor if the schema outlasts the retry budget.
+    const pageErrors: string[] = [];
+    page.on('pageerror', (e) => pageErrors.push(e.message));
+
+    const isNuxt = testInfo.project.name.includes('nuxt');
+    const testPath = isNuxt ? '/carousel-test-page' : '/test-page';
+    const titleSelector = isNuxt ? '[data-edit-text="/title"]' : '#page-title';
+
+    // Record, in the ADMIN, the moment INIT arrives from the iframe. Waiting on
+    // the title being visible is NOT the same thing, and a test that releases
+    // the schema before INIT has landed proves nothing. It has to be recorded
+    // here and not in the iframe: the frontend is a different origin, so it
+    // cannot patch postMessage on its parent.
+    await page.addInitScript(() => {
+      (window as any).__hydraInitSeen = false;
+      window.addEventListener('message', (e: MessageEvent) => {
+        if (e.data && e.data.type === 'INIT') (window as any).__hydraInitSeen = true;
+      });
+    });
+
+    // Hold the content type schema back so the iframe's INIT lands first.
+    const schemaRequests: string[] = [];
+    let releaseSchema!: () => void;
+    const schemaHeld = new Promise<void>((resolve) => {
+      releaseSchema = resolve;
+    });
+    await page.route('**/@types/*', async (route) => {
+      schemaRequests.push(route.request().url());
+      await schemaHeld;
+      await route.continue();
+    });
+
+    // A fresh load straight to /edit. Not navigateToView + enterEditInPlace:
+    // those reach edit mode with the schema already cached in Redux, so there
+    // is no race left to lose. Not navigateToEdit either — it waits for the
+    // bridge, which is precisely what this bug prevents.
+    await page.goto(`${helper.adminUrl}${helper.contentPrefix}${testPath}/edit`, {
+      timeout: 60000,
+    });
+
+    const iframe = helper.getIframe();
+
+    // Deliberately NOT waiting for the title to render here. With the schema
+    // held the admin never sends INITIAL_DATA, and the Nuxt frontend does not
+    // paint its title without it — the mock renders regardless, which is why
+    // this passed on admin-mock and failed on admin-nuxt. The real precondition
+    // is the INIT poll below, which is admin-side and frontend-independent.
+
+    // The race must actually have been constructed, or this test proves
+    // nothing: the admin has to have asked for the schema over the wire while
+    // we are still holding it. If it were fetched during SSR this is 0.
+    expect(schemaRequests.length).toBeGreaterThan(0);
+
+    // ... and INIT must already have been posted, while the schema is still
+    // held. This is the race itself; without it the rest is theatre.
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__hydraInitSeen === true), {
+        timeout: 15000,
+      })
+      .toBe(true);
+    const bridgeUpWhileHeld = await iframe
+      .locator('body')
+      .evaluate(() => (window as any).__hydraBridge?.initialized === true);
+    expect(bridgeUpWhileHeld).toBe(false);
+
+    releaseSchema();
+
+    // Now the schema is in. The deferred INIT must be replayed: the bridge
+    // completes its handshake and the page's own field is editable.
+    await helper.waitForBridgeConnected();
+    const pageTitle = iframe.locator(titleSelector);
+    await expect(pageTitle).toBeVisible({ timeout: 30000 });
+    await pageTitle.click();
+    await expect(pageTitle).toHaveAttribute('contenteditable', 'true', {
+      timeout: 5000,
+    });
+
+    // A slow schema is an ordinary load order, not a fault. Nothing should have
+    // been thrown: the INIT payload is to be kept and replayed, not discarded.
+    expect(
+      pageErrors.filter((m) => m.includes('the content type schema has not loaded')),
+    ).toEqual([]);
+  });
 });

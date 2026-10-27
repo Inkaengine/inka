@@ -94,29 +94,29 @@ class TestTemplatesExtra:
         """A forced layout is never referenced from page content. The frontend owns the
         rule and names the layout; the backend resolves it."""
         response = api_session.get(
-            "/plain?expand=templates&expand.templates.extra=/templates/site-footer"
+            "/plain?expand=templates&expand.templates.extra=/inka-templates/site-footer"
         )
         templates = response.json()["@components"]["templates"]["templates"]
-        assert "/templates/site-footer" in templates
+        assert "/inka-templates/site-footer" in templates
 
     def test_accepts_several_comma_separated(self, api_session, plain_page, templates):
         response = api_session.get(
             "/plain?expand=templates&expand.templates.extra="
-            "/templates/site-footer,/templates/event-view"
+            "/inka-templates/site-footer,/inka-templates/event-view"
         )
         resolved = response.json()["@components"]["templates"]["templates"]
-        assert "/templates/site-footer" in resolved
-        assert "/templates/event-view" in resolved
+        assert "/inka-templates/site-footer" in resolved
+        assert "/inka-templates/event-view" in resolved
 
     def test_extras_do_not_displace_page_references(
         self, api_session, page_using_template, site_footer, event_view
     ):
         response = api_session.get(
-            "/a-page?expand=templates&expand.templates.extra=/templates/event-view"
+            "/a-page?expand=templates&expand.templates.extra=/inka-templates/event-view"
         )
         resolved = response.json()["@components"]["templates"]["templates"]
         assert f"resolveuid/{site_footer.UID()}" in resolved
-        assert "/templates/event-view" in resolved
+        assert "/inka-templates/event-view" in resolved
 
     def test_one_template_reached_two_ways_is_keyed_under_both(
         self, api_session, page_using_template, site_footer
@@ -125,11 +125,11 @@ class TestTemplatesExtra:
         reached by uid AND by path must appear under both keys, or one of the two lookups
         misses and that content renders empty."""
         response = api_session.get(
-            "/a-page?expand=templates&expand.templates.extra=/templates/site-footer"
+            "/a-page?expand=templates&expand.templates.extra=/inka-templates/site-footer"
         )
         resolved = response.json()["@components"]["templates"]["templates"]
         uid_key = f"resolveuid/{site_footer.UID()}"
-        path_key = "/templates/site-footer"
+        path_key = "/inka-templates/site-footer"
         assert uid_key in resolved
         assert path_key in resolved
         assert resolved[uid_key] == resolved[path_key]
@@ -139,10 +139,10 @@ class TestTemplatesExtra:
     ):
         response = api_session.get(
             "/plain?expand=templates&expand.templates.extra="
-            "/templates/site-footer,/templates/nope"
+            "/inka-templates/site-footer,/templates/nope"
         )
         body = response.json()["@components"]["templates"]
-        assert "/templates/site-footer" in body["templates"]
+        assert "/inka-templates/site-footer" in body["templates"]
         assert [e["templateId"] for e in body["errors"]] == ["/templates/nope"]
 
 
@@ -177,12 +177,12 @@ class TestTemplatesPermissions:
         """`extra` takes an arbitrary path from the query string — it must not be a way
         to read content the requester cannot see."""
         response = anon_session.get(
-            "/a-page/@templates?expand.templates.extra=/templates/site-footer"
+            "/a-page/@templates?expand.templates.extra=/inka-templates/site-footer"
         )
         assert response.status_code == 200
         body = response.json()
-        assert "/templates/site-footer" not in body["templates"]
-        assert "/templates/site-footer" in [e["templateId"] for e in body["errors"]]
+        assert "/inka-templates/site-footer" not in body["templates"]
+        assert "/inka-templates/site-footer" in [e["templateId"] for e in body["errors"]]
 
     def test_the_manager_still_gets_the_private_template(
         self, api_session, published_page_with_private_template, site_footer
@@ -239,7 +239,7 @@ class TestTemplatesRoute:
 
     def test_route_matches_the_inline_expansion(self, api_session, page_using_template):
         """Two paths to one component drift when only one is maintained. Pin them."""
-        extra = "expand.templates.extra=/templates/event-view"
+        extra = "expand.templates.extra=/inka-templates/event-view"
         route = api_session.get(f"/a-page/@templates?{extra}").json()
         inline = api_session.get(f"/a-page?expand=templates&{extra}").json()
         inline = inline["@components"]["templates"]

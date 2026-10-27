@@ -1,0 +1,180 @@
+{
+  "@id": "/unlabelled-template-page",
+  "@type": "Document",
+  "id": "unlabelled-template-page",
+  "title": "Template Test Page (unlabelled template)",
+  "description": "A test page with pre-applied layout template",
+  "blocks": {
+    "standalone-block-1": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "This is a standalone block before the template"
+            }
+          ]
+        }
+      ],
+      "plaintext": "This is a standalone block before the template"
+    },
+    "template-header": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "value": [
+        {
+          "type": "h1",
+          "children": [
+            {
+              "text": "Stale Header - Should Be Replaced By Merge"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Stale Header - Should Be Replaced By Merge",
+      "templateId": "/_test_data/templates/unlabelled-layout",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "header"
+    },
+    "user-content-1": {
+      "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "User content - different from template default"
+            }
+          ]
+        }
+      ],
+      "plaintext": "User content - different from template default",
+      "templateId": "/_test_data/templates/unlabelled-layout",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "primary"
+    },
+    "user-content-2": {
+      "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Second user content block in placeholder"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Second user content block in placeholder",
+      "templateId": "/_test_data/templates/unlabelled-layout",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "primary"
+    },
+    "template-slider": {
+      "@type": "slider",
+      "fixed": true,
+      "readOnly": true,
+      "templateId": "/_test_data/templates/unlabelled-layout",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "slider",
+      "slides": [
+        {
+          "@id": "tpl-slide-1",
+          "@type": "slide",
+          "slotId": "slide",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "/_test_data/templates/unlabelled-layout",
+          "templateInstanceId": "tpl-instance-1",
+          "title": "Template Slide 1",
+          "description": "First template slide"
+        },
+        {
+          "@id": "tpl-slide-2",
+          "@type": "slide",
+          "slotId": "slide",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "/_test_data/templates/unlabelled-layout",
+          "templateInstanceId": "tpl-instance-1",
+          "title": "Template Slide 2",
+          "description": "Second template slide"
+        }
+      ]
+    },
+    "template-footer": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Stale Footer - Should Be Replaced By Merge"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Stale Footer - Should Be Replaced By Merge",
+      "templateId": "/_test_data/templates/unlabelled-layout",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "footer"
+    },
+    "standalone-block-2": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "This is a standalone block after the template"
+            }
+          ]
+        }
+      ],
+      "plaintext": "This is a standalone block after the template"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "standalone-block-1",
+      "template-header",
+      "user-content-1",
+      "user-content-2",
+      "template-slider",
+      "template-footer",
+      "standalone-block-2"
+    ]
+  },
+  "@components": {
+    "actions": {
+      "@id": "/template-test-page/@actions",
+      "object": [
+        {
+          "@id": "/template-test-page/edit",
+          "id": "edit",
+          "title": "Edit"
+        }
+      ],
+      "object_buttons": []
+    },
+    "breadcrumbs": {
+      "@id": "/template-test-page/@breadcrumbs",
+      "items": [
+        {
+          "@id": "/template-test-page",
+          "title": "Template Test Page"
+        }
+      ]
+    }
+  },
+  "UID": "unlabelled-template-page-1-uid",
+  "exclude_from_nav": true
+}

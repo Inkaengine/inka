@@ -636,7 +636,7 @@
     const templateCache = {};
     async function loadTemplate(templateId) {
       if (templateCache[templateId]) return templateCache[templateId];
-      // A templateId is a content path ('/templates/site-footer'), a resolveuid
+      // A templateId is a content path ('/inka-templates/site-footer'), a resolveuid
       // ref, or a full URL — normalise to a path on the API, as the test frontend
       // does for its own expansion.
       const url = templateId.startsWith('http')

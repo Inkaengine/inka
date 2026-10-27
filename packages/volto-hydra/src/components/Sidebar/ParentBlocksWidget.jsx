@@ -41,7 +41,7 @@ import { getConvertibleTypes, convertBlockType, findTypeField } from '../../util
 import { nestedStatus } from '@volto-hydra/helpers';
 import { buildIdFieldMap } from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
+import { isObjectListRegion, isRegionField } from '../../../../hydra-js/regionWidgets.js';
 import { isBlockReadonly } from '@volto-hydra/helpers';
 import { flattenToAppURL } from '@plone/volto/helpers';
 import { LinkedText } from '../../utils/linkedText';
@@ -171,17 +171,40 @@ const ruleWarningsOf = (schema) =>
     .filter(([, def]) => def?.hydraRuleWarning)
     .map(([field, def]) => ({ field, title: def.title || field, message: def.hydraRuleWarning }));
 
-/** Rule warnings, beside the fields they are about. */
-const RuleWarnings = ({ warnings }) =>
-  warnings.length > 0 ? (
-    <div className="hydra-field-warnings" role="status">
-      {warnings.map((w) => (
-        <p key={w.field} className="hydra-field-warning">
-          <strong>{w.title}:</strong> <LinkedText text={w.message} />
-        </p>
-      ))}
-    </div>
-  ) : null;
+/**
+ * The rule ERRORS on a block's regions: `[{ field, title, message }]`. A region
+ * is not drawn as a widget in the form, so Volto has nowhere to show its error;
+ * it is drawn here, with the warnings, as soon as the rule holds — the save is
+ * refused for it (validateBlocksAgainstSchemas), so the author sees why first.
+ */
+const regionRuleErrorsOf = (schema) =>
+  Object.entries(schema?.properties || {})
+    .filter(([, def]) => def?.hydraRuleError && isRegionField(def))
+    .map(([field, def]) => ({ field, title: def.title || field, message: def.hydraRuleError }));
+
+/** Rule warnings and region rule errors, beside the fields they are about. */
+const RuleWarnings = ({ warnings, errors = [] }) => (
+  <>
+    {errors.length > 0 && (
+      <div className="hydra-field-errors" role="alert">
+        {errors.map((e) => (
+          <p key={e.field} className="hydra-field-error">
+            <strong>{e.title}:</strong> <LinkedText text={e.message} />
+          </p>
+        ))}
+      </div>
+    )}
+    {warnings.length > 0 && (
+      <div className="hydra-field-warnings" role="status">
+        {warnings.map((w) => (
+          <p key={w.field} className="hydra-field-warning">
+            <strong>{w.title}:</strong> <LinkedText text={w.message} />
+          </p>
+        ))}
+      </div>
+    )}
+  </>
+);
 
 /** What a block is for: its `description`, which may link to its guidance. */
 const BlockAbout = ({ blockConfig }) =>
@@ -191,11 +214,11 @@ const BlockAbout = ({ blockConfig }) =>
     </p>
   ) : null;
 
-/** The advice at the top of a block's settings: what it is for, then any warnings. */
-const BlockAdvice = ({ blockConfig, warnings }) => (
+/** The advice at the top of a block's settings: what it is for, then any region errors and warnings. */
+const BlockAdvice = ({ blockConfig, warnings, errors }) => (
   <>
     <BlockAbout blockConfig={blockConfig} />
-    <RuleWarnings warnings={warnings} />
+    <RuleWarnings warnings={warnings} errors={errors} />
   </>
 );
 
@@ -328,7 +351,9 @@ const ParentBlockSection = ({
   // route through Volto's error machinery and is drawn by this widget, from the
   // resolved schema: for EVERY block, whether its sidebar is a form built from
   // that schema or its own Edit component (the text block's is).
-  const ruleWarnings = isReadonly ? [] : ruleWarningsOf(schema || getResolvedSchema(pathInfo, blockPathMap));
+  const resolvedSchema = isReadonly ? null : schema || getResolvedSchema(pathInfo, blockPathMap);
+  const ruleWarnings = isReadonly ? [] : ruleWarningsOf(resolvedSchema);
+  const regionRuleErrors = isReadonly ? [] : regionRuleErrorsOf(resolvedSchema);
 
   // Compute a key suffix that changes when parent's block sync state changes.
   // This forces BlockEdit to remount when parent's typeField changes, ensuring child gets fresh schema.
@@ -514,7 +539,7 @@ const ParentBlockSection = ({
       {BlockEdit && (() => {
         const targetElement = document.getElementById(targetId);
         return targetElement
-          ? createPortal(<BlockAdvice blockConfig={blockConfig} warnings={ruleWarnings} />, targetElement)
+          ? createPortal(<BlockAdvice blockConfig={blockConfig} warnings={ruleWarnings} errors={regionRuleErrors} />, targetElement)
           : null;
       })()}
       {BlockEdit && (
@@ -571,7 +596,7 @@ const ParentBlockSection = ({
         const formContent = (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
             <>
-            <BlockAdvice blockConfig={blockConfig} warnings={ruleWarnings} />
+            <BlockAdvice blockConfig={blockConfig} warnings={ruleWarnings} errors={regionRuleErrors} />
             <BlockDataForm
               errors={blocksErrors?.[blockId] ? { [blockId]: blocksErrors[blockId] } : {}}
               schema={formSchema}

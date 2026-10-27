@@ -22,25 +22,89 @@
 const fs = require('fs');
 const path = require('path');
 const { UNDECLARED_EXEMPT } = require('../helpers/discover-blocks.cjs');
+// hydra's container API. Node require()s sync ESM, so a sync validator can use
+// the same enumeration the editor does instead of reading blocks_layout itself.
+const { getChildFields, getChildBlockEntries } = require('../../packages/helpers/index.js');
+const { buildBlockPathMap, getResolvedSchema } = require('../../packages/hydra-js/buildBlockPathMap.js');
 
 /**
- * Content ids that break their PARENT, not themselves.
+ * Every child of a container, across every region it has, in order.
  *
- * `BTreeFolder2Base.__getattr__` resolves an attribute miss out of `self._tree`,
- * so a child whose id matches a name Plone reads off the container with
- * `getattr(aq_base(container), name)` is returned instead of that attribute.
- * Plone content is callable, so code like CMFDynamicViewFTI's
- * `if safe_callable(layout): layout = layout()` then invokes the child on an
- * acquisition-stripped object and dies in `aq_acquire(self, 'REQUEST')` —
- * surfacing as a 500 on the container, with nothing wrong in the child.
+ * The ONE place this file enumerates children. Each pass used to read
+ * `blocks_layout` itself, which is why they disagreed with each other and with
+ * the editor: 2c-bis saw only `items` and only inside fixed blocks, the slot
+ * pass saw only `items`, and an object_list region was invisible to both. The
+ * editor's validateTemplatePlaceholders walks via these same two helpers, so
+ * routing everything through them makes the gate and the save-time check agree
+ * by construction.
  *
- * Only names that Dexterity does NOT keep as instance attributes are listed:
- * an attribute that already exists never reaches `__getattr__`. `layout` is the
- * one confirmed against a live site (it 500'd /components and is covered by
- * tests/test_reserved_content_ids.py); the others are the same read pattern in
- * CMFPlone/CMFDynamicViewFTI and are reserved to prevent a repeat.
+ * The exception is pass 2d, which validates blocks_layout's own integrity and
+ * must read it raw: getChildBlockEntries drops entries whose block is missing,
+ * which is precisely the corruption 2d exists to report.
+ *
+ * `idFieldMap` is not optional in spirit. getChildFields recognises an
+ * object_list field when its items carry `templateId` OR when the map names
+ * the field for that block type — and an object_list is keyed by its own
+ * idField (a form's subblocks by `field_id`, a table's rows by `key`), so
+ * without the map those fields are skipped and any id taken from one is
+ * bogus. Built by buildIdFieldMap from the site's schemas; when the caller has
+ * no schemas, only templateId-marked lists are seen, which is a REDUCED check,
+ * not the intended one.
  */
-const RESERVED_CONTENT_IDS = new Set(['layout', 'default_page', 'index_html']);
+function childEntries(container, idFieldMap = null) {
+  if (!container || typeof container !== 'object') return [];
+  const out = [];
+  for (const descriptor of getChildFields(container, idFieldMap, { allObjectLists: true })) {
+    for (const entry of getChildBlockEntries(container, descriptor)) {
+      if (entry.block && typeof entry.block === 'object') out.push({ ...entry, region: descriptor.region });
+    }
+  }
+  return out;
+}
+
+/**
+ * Content ids Plone cannot serve safely, each with why. A distribution's import
+ * creates content without Plone's own id check, so this is the check.
+ *
+ * Breaks its PARENT. `BTreeFolder2Base.__getattr__` resolves an attribute miss
+ * out of `self._tree`, so a child whose id matches a name Plone reads off the
+ * container with `getattr(aq_base(container), name)` is returned instead of
+ * that attribute. Plone content is callable, so code like CMFDynamicViewFTI's
+ * `if safe_callable(layout): layout = layout()` then invokes the child on an
+ * acquisition-stripped object and dies in `aq_acquire(self, 'REQUEST')` — a 500
+ * on the container, with nothing wrong in the child. Only names Dexterity does
+ * NOT keep as instance attributes: one that exists never reaches `__getattr__`.
+ * `layout` is confirmed against a live site; the others are the same read.
+ *
+ * Breaks its SIBLINGS. A Volto page keeps no `text` of its own (its content is
+ * blocks), so `context.text` acquires a sibling page named `text`, and Plone's
+ * classic document view calls `output_relative_to` on it: every page in the
+ * folder 500s (confirmed live). And `/<page>/text` is plone.restapi's block
+ * indexer — a named adapter, which traversal treats as a view — so it is a 400,
+ * never a NotFound, and a redirect from a removed `text` page never fires.
+ *
+ * Reserved by Plone. plone.base.utils.check_id refuses these when content is
+ * created through the UI or the REST API.
+ */
+const BREAKS_PARENT =
+  'it shadows an attribute Plone reads off the container, which makes the ' +
+  'PARENT return 500 (AttributeError)';
+const RESERVED_BY_PLONE = "Plone's check_id refuses it; only an import gets it in";
+const RESERVED_CONTENT_IDS = new Map([
+  ['layout', BREAKS_PARENT],
+  ['default_page', BREAKS_PARENT],
+  ['index_html', BREAKS_PARENT],
+  [
+    'text',
+    'its sibling pages acquire it as their own `text`, and Plone\'s classic ' +
+      'document view then 500s on every page in the folder; a redirect from ' +
+      'it never fires (/<page>/text is plone.restapi\'s block indexer)',
+  ],
+  ['login', RESERVED_BY_PLONE],
+  ['plone', RESERVED_BY_PLONE],
+  ['zip', RESERVED_BY_PLONE],
+  ['properties', RESERVED_BY_PLONE],
+]);
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -140,6 +204,14 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
   // feed it the items-array shape. Catching this here keeps a bad
   // redirects.json from silently breaking site bootstrap on deploy.
   const redirectsPath = path.join(parentDir, 'redirects.json');
+  // The site's physical path is its root item's @id (/Plone in an export);
+  // a root at "/" (or none) gives nothing to check against.
+  const sitePath = (() => {
+    const rootFile = path.join(contentDir, 'plone_site_root', 'data.json');
+    if (!fs.existsSync(rootFile)) return '';
+    const rootId = readJson(rootFile)['@id'];
+    return rootId === '/' ? '' : rootId;
+  })();
   if (fs.existsSync(redirectsPath)) {
     let redirectsData;
     try { redirectsData = readJson(redirectsPath); }
@@ -148,12 +220,40 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
       if (Array.isArray(redirectsData) || typeof redirectsData !== 'object' || redirectsData === null) {
         errors.push(`  redirects.json: must be a plain {path: target} object, got ${Array.isArray(redirectsData) ? 'array' : typeof redirectsData}`);
       } else {
+        // Physical vs site-relative. The importer hands each pair to
+        // plone.app.redirector's storage as is, and that storage is keyed by
+        // PHYSICAL path — so a site-relative "/old" sitting among physical ones
+        // is stored where no request looks, never fires, and says nothing. That
+        // is the bug worth catching.
+        //
+        // A WHOLLY site-relative file is not that bug. A consumer may convert
+        // the raw export into a site-relative tree deliberately (pretagov's
+        // convert-export-to-local.py strips the site prefix from redirect keys
+        // and values), and re-adding the prefix there is undone by the next
+        // export — churn forever, against redirects that demonstrably work.
+        // So judge CONSISTENCY rather than conformance to one of the two.
+        const prefixed = [];
+        const bare = [];
         for (const [key, value] of Object.entries(redirectsData)) {
           if (typeof value !== 'string') {
             errors.push(`  redirects.json: value for "${key}" is ${Array.isArray(value) ? 'an array' : typeof value} — use {"/old": "/new"}, not the REST-API {items: [...]} shape`);
           } else if (!key.startsWith('/') || !value.startsWith('/')) {
             errors.push(`  redirects.json: paths must be absolute (start with /): ${JSON.stringify(key)} -> ${JSON.stringify(value)}`);
+          } else if (sitePath) {
+            for (const p of [key, value]) {
+              (p === sitePath || p.startsWith(sitePath + '/') ? prefixed : bare).push(p);
+            }
           }
+        }
+        if (prefixed.length && bare.length) {
+          const sample = bare.slice(0, 3).map((x) => JSON.stringify(x)).join(', ');
+          errors.push(
+            `  redirects.json: mixes physical and site-relative paths — ` +
+            `${prefixed.length} under ${JSON.stringify(sitePath)} and ${bare.length} not ` +
+            `(${sample}${bare.length > 3 ? ', …' : ''}). Plone keys its redirect storage ` +
+            `by PHYSICAL path, so the site-relative ones are stored where no request ` +
+            `looks and never fire. Use one form throughout.`,
+          );
         }
       }
     }
@@ -184,9 +284,8 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
       errors.push(`  ${entry} id "${data.id}" starts with underscore (Plone OFS rejects this at import)`);
     } else if (RESERVED_CONTENT_IDS.has(data.id)) {
       errors.push(
-        `  ${entry} id "${data.id}" is reserved — it shadows an attribute Plone ` +
-        `reads off the container, which makes the PARENT return 500 ` +
-        `(AttributeError). Rename it (e.g. "page-${data.id}").`,
+        `  ${entry} id "${data.id}" is reserved — ${RESERVED_CONTENT_IDS.get(data.id)}. ` +
+        `Rename it (e.g. "page-${data.id}").`,
       );
     }
     if (data.UID) allUids.add(data.UID);
@@ -280,7 +379,7 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
   }
   for (const entry of listedBlobs) {
     if (!fs.existsSync(path.join(contentDir, entry))) {
-      errors.push(`  ${entry} in _blob_files_ but missing from disk`);
+      missingBlob(`  ${entry} in _blob_files_ but missing from disk`);
     }
   }
 
@@ -296,7 +395,11 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
 /**
  * Graph integrity. Mirrors test-content.py.
  */
-function checkIntegrity(source, { schemaFor, allowMissingBlobs = false } = {}) {
+function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idFieldMap = null } = {}) {
+  // Block types the caller supplied schemas for but which have none. Their
+  // fields and references cannot be checked against anything, so the count is
+  // surfaced rather than silently meaning "nothing wrong".
+  const unschemad = new Set();
   const onDisk = typeof source === 'string';
   const contentDir = onDisk ? source : null;
   const errors = [];
@@ -467,17 +570,19 @@ function imageDimensions(file) {
   // `url: [{ "@id": "/images/test-image" }]` (object_browser ARRAY form) pointing
   // at a nonexistent object was never checked, and 5 such dead blocks shipped
   // while this gate reported "Links: N ok, 0 broken".
-  const LINK_FIELDS = ['url', 'href', 'image', 'preview_image', 'preview_image_link', 'backgroundImage'];
 
-  function* walkBlocks(blocks) {
-    for (const [bid, block] of Object.entries(blocks || {})) {
-      if (!block || typeof block !== 'object') continue;
-      yield [bid, block];
-      if (block.blocks && typeof block.blocks === 'object') {
-        yield* walkBlocks(block.blocks);
-      }
-    }
-  }
+  // Every block stored under a container, at any depth.
+  //
+  // Region children come from the container API, so an object_list child — a
+  // slider's slide, a form's subblock — is walked like a blocks_layout one.
+  // This used to recurse on `block.blocks` alone and saw neither, so a broken
+  // link inside a slide was never ref-checked.
+  //
+  // Blocks present in the dict but listed by no region are yielded too: they
+  // are stored, so a dangling reference or a repeated id in one still counts,
+  // and an orphan is exactly the state those checks exist to catch.
+  const walkBlocks = (blocks, container = null, where = null) =>
+    walkAllBlocks(blocks, container, idFieldMap, where);
 
   // Extract every reference string from a field value in any shape it takes:
   //   "…"                  plain string
@@ -517,6 +622,9 @@ function imageDimensions(file) {
       // smuggled past the gate by appending an anchor.
       base = base.split('#')[0].split('?')[0];
       base = base.split('/@@')[0].split('/++')[0].replace(/\/+$/, '') || '/';
+      // `/` is the site itself: every site has one, whether or not this content
+      // carries a site-root item (a frontend's fixtures mounted alone do not).
+      if (base === '/') return null;
       return pathMap.has(base) ? null : `path not in content: ${base}`;
     }
     // Plone action / browser-view URLs relative to the current context (they
@@ -569,7 +677,7 @@ function imageDimensions(file) {
     });
   }
 
-  function checkBlockRefs(rel, bid, block) {
+  function checkBlockRefs(rel, bid, block, schema = null) {
     // A table's rows and each row's cells are keyed by `key` — Volto's slateTable
     // shape, which every frontend reads. Not a schema object_list, so checked
     // here by type.
@@ -585,38 +693,72 @@ function imageDimensions(file) {
     // block.value, so a mismatched FIELD (a slate field stored as {value:[…]}
     // instead of a bare array, or a richtext HTML field stored as slate) slips
     // straight through. Schema-driven on purpose — "which field is slate" only
-    // exists in the schema, so this runs when a `schemaFor` is supplied.
-    // `schemaFor(type, rel)` — the item is passed so a caller serving content
-    // from several owners can answer with THAT content's schemas (or none).
-    const schema = schemaFor && block['@type'] ? schemaFor(block['@type'], rel) : null;
+    // exists in the schema, so this runs when `schemasFor` is supplied.
+    // `schemasFor(rel, data)` — the item is passed so a caller serving content
+    // from several owners can answer with THAT content's config (or none).
     if (schema && schema.properties) {
       const shape = (v) => Array.isArray(v) ? 'an array'
         : (v && typeof v === 'object' ? `an object {${Object.keys(v).join(',')}}` : typeof v);
       for (const [field, def] of Object.entries(schema.properties)) {
         const v = block[field];
         if (v == null) continue;
-        if (def.widget === 'slate' && !Array.isArray(v)) {
+        if (REFERENCE_WIDGETS.has(def.widget)) {
+          // Every reference the field holds, in whichever shape it stores it.
+          for (const ref of refStrings(v)) {
+            const reason = refFailure(ref);
+            if (reason) {
+              stats.linksBroken += 1;
+              errors.push(`  ${rel}: block ${bid} (${block['@type']}) ${field}: ${reason}`);
+            } else {
+              stats.linksOk += 1;
+            }
+          }
+        } else if (def.widget === 'slate' && !Array.isArray(v)) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:slate but its value is ${shape(v)} — a slate field must be a bare array of nodes (a {value:[…]} wrapper or richtext value has leaked in)`);
         } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
         } else if (def.widget === 'object_list' && Array.isArray(v)) {
-          // Every object_list item must carry its type in the field the schema
-          // names — `def.typeField`, defaulting to `@type` (the same key the
-          // decode stamps and the region declares). object_list items are block
-          // instances (they get a @uid, are selectable/editable), and a block
-          // without a @type can't be discovered/rendered. A decode or author
-          // that drops it (the bug that made `tab` read as "no editable example",
-          // and that left socialLinks' links untyped) is caught here in seconds
-          // instead of 17 minutes into the bridge suite.
-          const typeKey = def.typeField || '@type';
+          // An object_list must declare ONE of three things, and which one it
+          // declares is the whole answer:
+          //
+          //   schema          items are records of that one shape. Nothing
+          //                   varies, so there is no type to carry.
+          //   allowedBlocks /
+          //   typeField       items vary in kind, so each must say which.
+          //   subBlocks:false a plain list of objects, edited in the sidebar
+          //                   and stored as it is. No type either.
+          //
+          // Declaring none of them is the fault: a reader cannot tell what the
+          // items are, and nor can this gate.
+          const isTyped = !!(def.typeField || def.allowedBlocks);
+          if (!def.schema && !isTyped && def.subBlocks !== false) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares none of \`schema\`, \`allowedBlocks\`/\`typeField\` or \`subBlocks: false\` — a list is records of one shape, items that vary in kind, or a plain list, and the schema has to say which`);
+          }
+          // allowedBlocks means the items vary in kind, so the schema has to
+          // name the field that says which — the type does not live in a fixed
+          // place. form.subblocks keys by `field_type`, search.facets by
+          // `@type`; both state it. Defaulting to `@type` here guessed on the
+          // schema's behalf and would read the wrong field without a word.
+          if (def.allowedBlocks && !def.typeField) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares \`allowedBlocks\` but no \`typeField\` — its items vary in kind, so the schema has to name the field their type is read from`);
+          }
           checkItemIds(v, def.idField || '@id', `object_list field "${field}" item`, `  ${rel}: block ${bid} (${block['@type']})`);
-          v.forEach((item, i) => {
-            // Read the way hydra's getBlockType does: `@type` first, then the
-            // schema's typeField — an item carrying either is typed.
-            if (item && typeof item === 'object' && item['@type'] == null && item[typeKey] == null) {
-              errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — an object_list item is a block and must carry its type`);
-            }
-          });
+          if (isTyped) {
+            // The schema-named field first, `@type` as the alternative — the
+            // way hydra's own reader works: getBlockType is
+            // `blockData?.['@type'] ?? blockData?.[typeField]`, so an item
+            // carrying either IS typed and renders. Requiring the named field
+            // alone looked tidier and would have failed content that works.
+            // The field the schema names. No fallback: a list with
+            // allowedBlocks and no typeField is reported above, so by here the
+            // schema has said where the type lives.
+            const typeKey = def.typeField || '@type';
+            v.forEach((item, i) => {
+              if (item && typeof item === 'object' && item[typeKey] == null && item['@type'] == null) {
+                errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — this field declares \`allowedBlocks\`/\`typeField\`, so its items vary in kind and each must say which it is`);
+              }
+            });
+          }
         }
       }
     }
@@ -638,31 +780,79 @@ function imageDimensions(file) {
         stats.linksOk += 1;
       }
     }
-    for (const field of LINK_FIELDS) {
-      if (!(field in block)) continue;
-      for (const ref of refStrings(block[field])) {
-        const reason = refFailure(ref);
-        if (reason) {
-          stats.linksBroken += 1;
-          errors.push(`  ${rel}: block ${bid} (${block['@type']}) ${field}: ${reason}`);
-        } else {
-          stats.linksOk += 1;
+    // With a schema, the loop above has already scanned every reference field:
+    // the widget says which they are, exactly.
+    //
+    // Without one — a consumer mount that ships no schemas — the references
+    // are still there and still have to resolve, so they are found by SHAPE.
+    // A reference is uid-encoded, path-rooted or an absolute URL; an
+    // object_list item's own id is a bare token, which is how the two are told
+    // apart without asking the schema. This is strictly a fallback: it cannot
+    // know that a field was MEANT to hold a reference, so a field that should
+    // have one and is empty reads as fine.
+    if (!schema) {
+      for (const [field, v] of Object.entries(block)) {
+        if (field === '@id' || field === 'templateId') continue; // identity, not a link
+        for (const ref of refStrings(v)) {
+          if (!looksLikeReference(ref)) continue;
+          const reason = refFailure(ref);
+          if (reason) {
+            stats.linksBroken += 1;
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) ${field}: ${reason}`);
+          } else {
+            stats.linksOk += 1;
+          }
         }
       }
     }
-    // object_list / column sub-items carry the same link/media fields
-    for (const key of ['items', 'columns', 'column_items']) {
-      const arr = block[key];
-      if (!Array.isArray(arr)) continue;
-      arr.forEach((it, i) => {
-        if (it && typeof it === 'object') checkBlockRefs(rel, `${bid}.${key}[${i}]`, it);
-      });
-    }
+    // Children are not recursed into here: the walk that calls this yields
+    // every child the container API reports, in either storage, so a sub-item
+    // is visited as a block in its own right.
   }
 
   for (const { rel, data } of items) {
-    for (const [bid, block] of walkBlocks(data.blocks)) {
-      checkBlockRefs(rel, bid, block);
+    // buildBlockPathMap is the single source of truth for where every block
+    // lives, what type it is and which schema it is checked against — an
+    // object_list item included, whose kind comes from the parent's
+    // `typeField` and whose schema may be the field's own inline one, and
+    // whose id in the map is composite (`parent::item`). Enumerating it
+    // separately and joining on id silently misses exactly those.
+    //
+    // Blocks the map does not address are not content the editor can reach:
+    // a readOnly template INSTANCE copy, re-derived at render from a template
+    // that is itself walked as a document. Checking those again would report
+    // one broken template link once per page using the template.
+    const blocksConfig = schemasFor ? schemasFor(rel, data) : null;
+    const seen = new Set(); // by block IDENTITY: the two walks key blocks differently
+    if (blocksConfig) {
+      const pathMap = buildBlockPathMap(data, blocksConfig);
+      for (const [bid, info] of Object.entries(pathMap)) {
+        if (bid.startsWith('_') || !info || !info.blockType) continue;
+        if (!Array.isArray(info.path)) continue; // a virtual container, not storage
+        const block = info.path.reduce((node, key) => (node == null ? node : node[key]), data);
+        if (!block || typeof block !== 'object') continue;
+        seen.add(block);
+        // A type the config does not declare at all. A declared one whose
+        // schema has no properties (a `title` block renders page metadata and
+        // has no fields) is not that: there is simply nothing to check.
+        if (!info.isVirtualBlockType && !blocksConfig[info.blockType]) unschemad.add(info.blockType);
+        checkBlockRefs(rel, bid, block, getResolvedSchema(info, pathMap));
+      }
+    }
+    // Blocks the path map did not address. It maps what the EDITOR can reach,
+    // and integrity is about everything STORED, so the remainder still counts:
+    //   - an orphan, in the dict but in no region. It is dead weight, but a
+    //     broken reference in one is exactly what this pass exists to find.
+    //   - a readOnly template INSTANCE copy, re-derived at render from a
+    //     template that is itself walked as a document. Those are skipped:
+    //     checking them would report one broken template link once per page
+    //     that uses the template.
+    // Their schema can only come from their own `@type` — nothing addresses
+    // them, so no parent region declares their shape.
+    for (const [bid, block] of walkBlocks(data.blocks, data)) {
+      if (seen.has(block)) continue;
+      if (block.readOnly === true && block.templateId) continue;
+      checkBlockRefs(rel, bid, block, blocksConfig?.[block['@type']]?.blockSchema ?? null);
     }
   }
 
@@ -681,10 +871,8 @@ function imageDimensions(file) {
   // every other block on the page. Inferred from content, not from the path, so
   // a template stored outside /templates is still checked.
   for (const { rel, data } of items) {
-    const blocks = data.blocks || {};
-    const top = (data.blocks_layout || {}).items || [];
     const own = new Set([data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean));
-    const isTemplate = top.some((bid) => blocks[bid] && own.has(blocks[bid].templateId));
+    const isTemplate = childEntries(data, idFieldMap).some(({ block }) => own.has(block.templateId));
     if (!isTemplate) continue;
     // EVERY depth, not just the top. fillRegionEntries is the same function for
     // a nested container's regions as for the page's, and it opens with
@@ -694,21 +882,31 @@ function imageDimensions(file) {
     // removing `templateId` from one widget nested in a footer column removed
     // that widget AND its three slates from the merged footer.
     const walk = (container, prefix) => {
-      // Descend into FIXED containers only. A fixed block is template-owned
-      // structure: the merge re-derives its children from the template, so each
-      // one needs its own tags or it is dropped. A NON-fixed block is a SLOT —
-      // its children are the page's content, carried through as-is and needing
-      // no tags at all. Checked: /templates/contact-cta's `cta-section` is
-      // `fixed: false` and its untagged `cta-btn` survives the merge intact, so
-      // flagging it would be a false alarm on shipping content.
-      if (container.fixed !== true && prefix) return;
-      const kids = container.blocks || {};
-      const order = Object.values(container.blocks_layout || {}).flat();
-      for (const bid of order.length ? order : Object.keys(kids)) {
-        const block = kids[bid];
-        if (!block || typeof block !== 'object') continue;
-        yieldBlock(prefix ? `${prefix} > ${bid}` : bid, block);
-        walk(block, prefix ? `${prefix} > ${bid}` : bid);
+      // Descend into EVERY container, fixed or not.
+      //
+      // This used to stop at a non-fixed block, reasoning that a slot's
+      // children are the page's content and need no tags — checked against
+      // /templates/contact-cta, whose `cta-section` is `fixed: false` and whose
+      // untagged `cta-btn` does survive the merge.
+      //
+      // It survives only because of that one flag. A template is the authored
+      // source of truth, and an untagged block in one says nothing about who
+      // owns it: set the section `fixed: true` — the kind of change made
+      // routinely — and fillRegionEntries drops the button on its first rule,
+      // `if (!child || !child.templateId) continue`, silently, from every page
+      // using the template. The sibling /templates/contact-cta-info tags the
+      // same button, so the tagged shape is already the house style; the
+      // untagged one is the outlier, and the exemption existed to accommodate
+      // exactly one block rather than because the shape is sound.
+      // Regions via hydra's container API, so an object_list region is walked
+      // like a blocks_layout one. Reading blocks_layout here saw neither.
+      for (const descriptor of getChildFields(container, null, { allObjectLists: true })) {
+        for (const { id, block } of getChildBlockEntries(container, descriptor)) {
+          if (!block || typeof block !== 'object') continue;
+          const label = prefix ? `${prefix} > ${id}` : id;
+          yieldBlock(label, block);
+          walk(block, label);
+        }
       }
     };
     const yieldBlock = (label, block) => {
@@ -728,6 +926,19 @@ function imageDimensions(file) {
         missing.push(block.fixed === undefined
           ? 'fixed (true = template-controlled, false = a slot the page fills)'
           : `fixed as a boolean (got ${JSON.stringify(block.fixed)})`);
+      } else if (block.fixed === true && typeof block.readOnly !== 'boolean') {
+        // `fixed: true` alone is ambiguous, and the two readings differ in who
+        // owns the content: with readOnly the template owns it and the merge
+        // re-derives it on every page; without, the block is the PAGE's — fixed
+        // in place, still editable, its own text kept. A heading the author
+        // types into and a heading the template dictates look identical here.
+        //
+        // `fixed: false` needs no readOnly: the page's own block fills that
+        // slot and carries its own flags, so the placeholder has nothing to say.
+        missing.push(
+          'readOnly (true = the template owns the content, false = the page ' +
+          'owns it and the block is merely fixed in place)',
+        );
       }
       if (missing.length) {
         stats.templateBlocksBroken = (stats.templateBlocksBroken || 0) + 1;
@@ -740,12 +951,104 @@ function imageDimensions(file) {
         stats.templateBlocksOk = (stats.templateBlocksOk || 0) + 1;
       }
     };
-    for (const bid of top) {
-      const block = blocks[bid];
-      if (!block || typeof block !== 'object') continue;
-      yieldBlock(bid, block);
-      walk(block, bid);
+    for (const { id, block } of childEntries(data, idFieldMap)) {
+      yieldBlock(id, block);
+      walk(block, id);
     }
+  }
+
+  // Pass 2c-quater: a TEMPLATE's own slot ARRANGEMENT.
+  //
+  // `fixed` chrome is what separates one slot group from the next — it tells the
+  // merge where one slot's content ends. Two OPEN slots side by side leave an
+  // added block ambiguous, which is what hydra's validateTemplatePlaceholders
+  // reports as "Missing Fixed Block"; the same function also requires the blocks
+  // of one slotId to be contiguous.
+  //
+  // That check ran only in the EDITOR, at save time, against a merged page. So a
+  // template saved with two adjacent open slots passed every gate here, and the
+  // first anyone knew was an author refused on a page whose offending blocks sit
+  // inside a readOnly, template-owned container they cannot reach: an error
+  // about the template, raised against the page, with no route back to the
+  // cause.
+  //
+  // The comment on 2c-ter says the arrangement "needs a render". That is true of
+  // a PAGE, where the merge interleaves template and page blocks. It is not true
+  // of a TEMPLATE's own blocks: their order is right there in blocks_layout.
+  //
+  // These two rules are a second copy of the editor's, which is a cost — the
+  // editor's stays authoritative for merged pages. It is worth it because this
+  // runs on the commit that introduces the fault, where the message can still
+  // name the template.
+  for (const { rel, data } of items) {
+    // The same notion of "is a definition" the chrome pass uses: a doc whose
+    // top blocks name itself, OR one whose top blocks hold slots and name no
+    // other template. A definition need not name itself.
+    const topBlocks = childEntries(data, idFieldMap).map(({ block }) => block);
+    const ownRefs = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
+    const isDefinition =
+      topBlocks.some((block) => ownRefs.includes(block.templateId)) ||
+      (topBlocks.some((block) => block.slotId) && !topBlocks.some((block) => block.templateId));
+    if (!isDefinition) continue;
+
+    // Regions come from hydra's own container API, not from reading
+    // blocks_layout here. getChildFields enumerates a block's regions —
+    // blocks_layout regions AND object_list fields — and getChildBlockEntries
+    // returns a region's children in order, for either storage. They are what
+    // the editor's validateTemplatePlaceholders walks, so this gate and the
+    // save-time check see the same tree by construction rather than by two
+    // implementations agreeing.
+    //
+    // I hand-rolled this first, on the assumption that a sync checkIntegrity
+    // could not reach the ESM helpers. It can: Node require()s sync ESM.
+    const checkOrder = (entries, where) => {
+      const groups = new Map(); // slotId -> indexes
+      let lastSlotId = null;
+      entries.forEach(({ block }, i) => {
+        if (!block) return;
+        if (block.fixed === true) { lastSlotId = null; return; }
+        const slotId = block.slotId;
+        if (!slotId) return;
+        if (!groups.has(slotId)) groups.set(slotId, []);
+        groups.get(slotId).push(i);
+        if (lastSlotId !== null && lastSlotId !== slotId) {
+          errors.push(
+            `${rel}: slot groups "${lastSlotId}" and "${slotId}" sit next to each other in ${where} ` +
+            `with no fixed block between them — chrome is what marks where one slot ends, so a block ` +
+            `added here could belong to either. Mark the one that is chrome (a heading, usually) ` +
+            `fixed: true, or put a fixed block between them. Until then the EDITOR refuses to save ` +
+            `any page using this template, naming blocks the author cannot reach.`,
+          );
+        }
+        lastSlotId = slotId;
+      });
+      for (const [slotId, at] of groups) {
+        for (let i = 1; i < at.length; i++) {
+          if (at[i] !== at[i - 1] + 1) {
+            errors.push(
+              `${rel}: the blocks of slot "${slotId}" are not contiguous in ${where} — ` +
+              `a slot's blocks must sit together, or the merge cannot tell which slot a block joins`,
+            );
+            break;
+          }
+        }
+      }
+    };
+
+    const seen = new Set();
+    const checkRegion = (container, where) => {
+      if (!container || typeof container !== 'object' || seen.has(container)) return;
+      seen.add(container);
+      const fields = getChildFields(container, idFieldMap, { allObjectLists: true });
+      for (const descriptor of fields) {
+        const entries = getChildBlockEntries(container, descriptor);
+        if (!entries.length) continue;
+        const label = fields.length > 1 ? `${where} (${descriptor.region})` : where;
+        checkOrder(entries, label);
+        for (const { id, block } of entries) checkRegion(block, `${where} > ${id}`);
+      }
+    };
+    checkRegion(data, 'the page');
   }
 
   // Pass 2c-ter: an INSTANCE must agree with its template about what is chrome.
@@ -772,17 +1075,27 @@ function imageDimensions(file) {
   // would just be a second implementation to be wrong in a second way.
   {
     // slotId -> fixed, per template, from the template's own blocks at any depth.
-    const templateChrome = new Map(); // templateRef -> Map(slotId -> fixed)
-    for (const { data } of items) {
+    // A template is a document whose top-level blocks name it, or — a definition need
+    // not name itself — whose top-level blocks hold slots and name no template at all.
+    const isTemplateDoc = (data) => {
       const blocks = data.blocks || {};
-      const top = (data.blocks_layout || {}).items || [];
+      const top = childEntries(data, idFieldMap).map(({ block }) => block);
       const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
-      const isTemplate = top.some((bid) => blocks[bid] && own.includes(blocks[bid].templateId));
-      if (!isTemplate) continue;
+      if (top.some((block) => own.includes(block.templateId))) return true;
+      return top.some((block) => block.slotId) && !top.some((block) => block.templateId);
+    };
+    const templateChrome = new Map(); // templateRef -> Map(slotId -> fixed)
+    for (const { rel, data } of items) {
+      const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
+      if (!isTemplateDoc(data)) continue;
       const slots = new Map();
+      // A region is a region: a slot held in an object_list (a slider's
+      // slides) is a slot, so the container API enumerates both storages.
+      // This used to recurse on `.blocks` alone and saw only blocks_layout,
+      // so an object_list slot was never collected and its instances were
+      // never checked against it.
       const collect = (container) => {
-        for (const [, block] of Object.entries(container.blocks || {})) {
-          if (!block || typeof block !== 'object') continue;
+        for (const { block } of childEntries(container, idFieldMap)) {
           if (block.slotId) slots.set(block.slotId, block.fixed === true);
           collect(block);
         }
@@ -792,40 +1105,40 @@ function imageDimensions(file) {
     }
 
     for (const { rel, data } of items) {
-      const top = (data.blocks_layout || {}).items || [];
-      const blocks = data.blocks || {};
-      const own = [data.UID && `resolveuid/${data.UID}`, data['@id']].filter(Boolean);
-      if (top.some((bid) => blocks[bid] && own.includes(blocks[bid].templateId))) continue; // a template, not an instance
+      if (isTemplateDoc(data)) continue; // a template, not an instance
       const check = (container) => {
-        for (const [bid, block] of Object.entries(container.blocks || {})) {
-          if (!block || typeof block !== 'object') continue;
+        for (const { id: bid, block } of childEntries(container, idFieldMap)) {
           const chrome = block.templateId && templateChrome.get(block.templateId);
           if (chrome) {
-            // A block that fills THIS template must carry the coupled markers:
-            // slotId + fixed + readOnly. slotId is the render-critical one —
-            // forced-layout expansion (helpers/fillRegionEntries) matches a block
-            // to a slot by slotId and silently DROPS one that has none: the block
-            // is composed into the page (block-sanity discovers it) yet no frontend
-            // has a slot to render it, so its data-block-uid never appears and the
-            // only symptom is a reveal timeout. That is exactly how the slate page's
-            // `callout` slipped through — 2c-ter used to only look at blocks whose
-            // slotId already matched a slot. fixed and readOnly are the content-model
-            // half: a page slot-fill is editable page content (both false), stated
-            // so the coupling holds and the merge locks it right. Emit synthesises
-            // both for a slot-fill (markdown-mount normalizeInstanceTemplateFields),
-            // so a miss here means the emit path did not run — a real gap.
+            // On an INSTANCE only `slotId` is required, and it is the one that
+            // matters: forced-layout expansion (helpers/fillRegionEntries) matches
+            // a block to a slot by slotId and silently DROPS one that has none —
+            // the block is composed into the page (block-sanity discovers it) yet
+            // no frontend has a slot to render it, so its data-block-uid never
+            // appears and the only symptom is a reveal timeout. That is how the
+            // slate page's `callout` slipped through.
+            //
+            // `fixed` and `readOnly` are NOT required here. They are authored on
+            // the template (checked above), and on a page block absent and false
+            // are indistinguishable everywhere they are read — the merge branches
+            // on `if (block.fixed)`, isSlot is `!b.fixed && !b.readOnly`,
+            // isBlockPositionLocked and isBlockReadonly are both `!!`. Demanding
+            // them here asked a real site to write two inert fields onto every
+            // block that fills a template — 719 of them on the first tree this
+            // ever ran against, none of which changed any behaviour.
+            //
+            // Stating TRUE still matters, and is still checked below: a page
+            // block is classified as chrome by its OWN `fixed`, so a slot the
+            // template marks fixed must say so on the instance too.
             const missing = [];
             if (!block.slotId) missing.push('slotId');
-            if (typeof block.fixed !== 'boolean') missing.push('fixed');
-            if (typeof block.readOnly !== 'boolean') missing.push('readOnly');
             if (missing.length) {
               stats.instanceBlocksBroken = (stats.instanceBlocksBroken || 0) + 1;
               errors.push(
                 `  ${rel}: block ${bid} (${block['@type']}) fills template ` +
                 `${block.templateId} but is missing ${missing.join(', ')} — a block ` +
                 `with no slotId is dropped by forced-layout expansion and never ` +
-                `renders; fixed and readOnly must be stated (both false for an ` +
-                `editable slot-fill)`,
+                `renders`,
               );
             } else if (chrome.has(block.slotId)) {
               const shouldBeFixed = chrome.get(block.slotId);
@@ -890,24 +1203,27 @@ function imageDimensions(file) {
   // of two blocks sharing an id only one can be selected or edited. Each
   // container's own layout can resolve perfectly (every summary-list row's value
   // block was "v1"), so the layout checks above can't see it.
-  function checkUniqueIds(rel, blocks, parent, firstIn) {
-    for (const [bid, block] of Object.entries(blocks || {})) {
+  // Ids are checked over walkBlocks' tree, so an id repeated inside an
+  // object_list — a slider's slides, a form's subblocks — is caught like one
+  // in a blocks_layout container. Walking `blocks` dicts alone missed those.
+  function checkUniqueIds(rel, blocks, parent, firstIn, container = null) {
+    for (const [bid, block, parentId] of walkBlocks(blocks, container)) {
       if (!block || typeof block !== 'object') continue;
-      const where = parent ?? 'the page';
+      const where = parentId ?? parent ?? 'the page';
       if (firstIn.has(bid)) {
         errors.push(`  ${rel}: block id ${bid} is used twice (in ${firstIn.get(bid)} and ${where}) — a block id must be unique on its page, or the editor can select and edit only one of them`);
       } else {
         firstIn.set(bid, where);
       }
-      if (block.blocks && typeof block.blocks === 'object') checkUniqueIds(rel, block.blocks, bid, firstIn);
+
     }
   }
   for (const { rel, data } of items) {
     checkLayout(rel, null, data);  // page-level blocks_layout
-    for (const [bid, block] of walkBlocks(data.blocks)) {
+    for (const [bid, block] of walkBlocks(data.blocks, data)) {
       if (block.blocks && typeof block.blocks === 'object') checkLayout(rel, bid, block);
     }
-    checkUniqueIds(rel, data.blocks, null, new Map());
+    checkUniqueIds(rel, data.blocks, null, new Map(), data);
   }
 
   // Parent containers (metadata cross-check for completeness). Uses the `@id`
@@ -929,6 +1245,13 @@ function imageDimensions(file) {
     }
   }
 
+  stats.unschemadTypes = unschemad.size;
+  if (unschemad.size) {
+    warnings.push(
+      `  ${unschemad.size} block type(s) have no schema, so their fields and ` +
+        `references were NOT checked: ${[...unschemad].sort().join(', ')}`,
+    );
+  }
   return { errors, warnings, stats };
 }
 
@@ -954,7 +1277,7 @@ function imageDimensions(file) {
  * either a block the frontend cannot render or a map gone stale, and both are
  * worth hearing about.
  */
-function checkBlockSchemas(source, fieldMap) {
+function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
   // `{ blocks: { type: { fields, defaultsPrefix } }, identityFields: [...] }`.
   // A bare `{ type: [fields] }` map still works, for a caller that has one.
   const declaredFields = fieldMap && fieldMap.blocks ? fieldMap.blocks : fieldMap;
@@ -1018,16 +1341,18 @@ function checkBlockSchemas(source, fieldMap) {
         }
       }
     }
-    for (const value of Object.values(block)) {
-      if (Array.isArray(value)) value.forEach((v) => visit(v, rel));
-      else if (value && typeof value === 'object') visit(value, rel);
-    }
   };
 
   for (const entry of onDisk ? walkData(source) : source) {
     const { rel, data } = entry;
     stats.items += 1;
-    visit(data.blocks, rel);
+    // walkAllBlocks is the one enumeration point: it reports children of both
+    // storages and nothing else. This used to descend into EVERY value and
+    // call anything with an `@type` a block — so a link field, whose value is
+    // the restapi's summary of the TARGET, was read as a child block and the
+    // target's content type ("Document", "CaseStudy") reported as an
+    // unrenderable block type.
+    for (const [, block] of walkAllBlocks(data.blocks, data, idFieldMap)) visit(block, rel);
   }
 
   for (const [key, rel] of [...strays.entries()].sort()) {
@@ -1064,6 +1389,94 @@ function checkBlockSchemas(source, fieldMap) {
  * would not put them (documentation examples): their placement and maxLength
  * are not checked, every other rule is.
  */
+// The groups the block chooser orders: Volto's four, plus the `templates`
+// group hydra appends. A block whose `group` is none of these is offered
+// under a heading the chooser never renders.
+// A field holds a reference when its schema says so. These are the widgets
+// that store one: an object_browser/url entry, or an image field. Which FIELD
+// that is varies per block and is not knowable from its name — `link` and
+// `searchPath` hold references, `items` and `steps` do not.
+/** Whether a value is a REFERENCE rather than a local identifier or prose:
+ *  uid-encoded (`resolveuid/…`, possibly with `../` hops), rooted at the site
+ *  (`/about`), or an absolute URL. An object_list item's id (`slide-1`) is
+ *  none of those, and neither is a headline — whitespace rules out prose,
+ *  which a bare `scheme:` test does not ("Listing: Default" is not a mailto).
+ *  Used only where no schema says which fields are links. */
+function looksLikeReference(ref) {
+  if (typeof ref !== 'string' || ref === '' || /\s/.test(ref)) return false;
+  return (
+    /^(\.\.\/)*resolveuid\//.test(ref) ||
+    ref.startsWith('/') ||
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(ref) ||
+    /^(mailto|tel):/i.test(ref)
+  );
+}
+
+const REFERENCE_WIDGETS = new Set(['object_browser', 'url', 'image']);
+
+/**
+ * Every block stored under a container, at any depth — the ONE place the
+ * validator enumerates blocks.
+ *
+ * Region children come from the container API, so an object_list child — a
+ * slider's slide, a form's subblock — is walked like a blocks_layout one.
+ *
+ * Blocks present in the dict but listed by no region are yielded too: they are
+ * stored, so a dangling reference, a repeated id or an undeclared field in one
+ * still counts, and an orphan is exactly the state those checks exist to catch.
+ */
+function* walkAllBlocks(blocks, container = null, idFieldMap = null, where = null) {
+  const seenIds = new Set();
+  if (container) {
+    for (const { id, block } of childEntries(container, idFieldMap)) {
+      seenIds.add(id);
+      yield [id, block, where];
+      yield* walkAllBlocks(block.blocks, block, idFieldMap, id);
+    }
+  }
+  for (const [bid, block] of Object.entries(blocks || {})) {
+    if (!block || typeof block !== 'object' || seenIds.has(bid)) continue;
+    yield [bid, block, where];
+    yield* walkAllBlocks(block.blocks, block, idFieldMap, bid);
+  }
+}
+
+
+
+// The admin's own chooser order. A frontend that declares its own
+// (voltoConfig.blocks.groupBlocksOrder) replaces it — the INIT merge replaces
+// arrays — and its --schemas module passes that order as `_groupBlocksOrder`.
+const CHOOSER_GROUPS = new Set(['mostUsed', 'text', 'media', 'common', 'templates']);
+
+/**
+ * Every block an author can add must say where it lives in the chooser.
+ *
+ * A block with no `group` falls into an unnamed bucket; one naming a group
+ * the chooser does not order is worse, because it reads as deliberate. Neither
+ * shows up in content, so no content check can find it: this is a defect in
+ * the config, not in any page, which is why it is its own pass rather than
+ * part of the per-page rule check.
+ *
+ * `restricted` blocks are exempt: they are not in the picker at all, they are
+ * placed by a template or a parent block.
+ */
+function checkChooserGroups(schemas) {
+  const errors = [];
+  const declared = schemas?._groupBlocksOrder;
+  const groups = declared ? new Set(declared.map((g) => g.id)) : CHOOSER_GROUPS;
+  for (const [type, def] of Object.entries(schemas || {})) {
+    if (!def || typeof def !== 'object' || type.startsWith('_')) continue;
+    if (def.restricted) continue;
+    if (!def.blockSchema) continue; // not a block config
+    if (!def.group) {
+      errors.push(`  ${type}: no \`group\`, so the block chooser offers it under no heading — one of ${[...groups].join(', ')}`);
+    } else if (!groups.has(def.group)) {
+      errors.push(`  ${type}: group "${def.group}" is not one the chooser orders (${[...groups].join(', ')}), so the block is offered under a heading that never renders`);
+    }
+  }
+  return { errors, warnings: [], stats: { blocks: Object.keys(schemas || {}).length, ungrouped: errors.length } };
+}
+
 async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
   const exempt = new Set(exemptSlots);
   const hydraJs = (file) =>
@@ -1219,6 +1632,10 @@ function formatReport(title, result) {
         `${result.stats.emptyRequired} required empty, ${result.stats.restyled} disallowed styles, ` +
         `${result.stats.ruleErrors} rule errors, ${result.stats.ruleWarnings} rule warnings`,
     );
+  } else if (title === 'chooser') {
+    lines.push(
+      `Chooser: ${result.stats.blocks} block types, ${result.stats.ungrouped} not offered under any heading`,
+    );
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
   } else {
@@ -1250,8 +1667,8 @@ function formatReport(title, result) {
  * A site's block schemas -- `{ blockType: { blockSchema, schemaEnhancer? } }`,
  * the JSON its frontend config loads -- read for the two questions content is
  * checked against: which fields a block declares (checkBlockSchemas) and what
- * shape each field's value has (checkIntegrity's `schemaFor`). One source; no
- * map derived from it and stored.
+ * shape each field's value has (checkIntegrity, through buildBlockPathMap).
+ * One source; no map derived from it and stored.
  */
 /** Load a site's schemas: a JS module (`.mjs`/`.js`, its default export) --
  *  plain data the frontend config also imports, so shared pieces are written
@@ -1261,10 +1678,6 @@ async function loadSchemas(file) {
   if (abs.endsWith('.json')) return JSON.parse(require('fs').readFileSync(abs, 'utf8'));
   const mod = await import(require('url').pathToFileURL(abs).href);
   return mod.default ?? mod;
-}
-
-function schemaForFrom(schemas) {
-  return (type) => schemas[type]?.blockSchema ?? null;
 }
 
 /** The field map checkBlockSchemas reads, derived from the schemas: each
@@ -1298,4 +1711,4 @@ function fieldMapFromSchemas(schemas) {
   return { blocks, identityFields: [...identityFields] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, fieldMapFromSchemas, schemaForFrom, loadSchemas, formatReport };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, loadSchemas, formatReport };

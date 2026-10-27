@@ -17,8 +17,9 @@ const SCHEMAS = {
   _page: {
     blockSchema: { properties: { items: { widget: 'blocks_layout', allowedBlocks: ['teaser'] } } },
   },
-  banner: { blockSchema: { properties: {} } },
+  banner: { group: 'common', blockSchema: { properties: {} } },
   teaser: {
+    group: 'common',
     blockSchema: { properties: { title: { title: 'Title' }, image: { title: 'Image' } } },
     schemaEnhancer: {
       fieldRules: {
@@ -28,14 +29,16 @@ const SCHEMAS = {
   },
 };
 
-function run(blocks, items) {
+function run(blocks, items, mutateSchemas = null) {
+  const schemas = JSON.parse(JSON.stringify(SCHEMAS));
+  if (mutateSchemas) mutateSchemas(schemas);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plone-content-json-'));
   fs.mkdirSync(path.join(dir, 'content', 'x'), { recursive: true });
   fs.writeFileSync(
     path.join(dir, 'content', 'x', 'data.json'),
     JSON.stringify({ '@id': '/x', '@type': 'Document', UID: 'x1', blocks, blocks_layout: { items } }),
   );
-  fs.writeFileSync(path.join(dir, 'schemas.json'), JSON.stringify(SCHEMAS));
+  fs.writeFileSync(path.join(dir, 'schemas.json'), JSON.stringify(schemas));
   const out = path.join(dir, 'report.json');
   const proc = spawnSync(
     process.execPath,
@@ -52,7 +55,7 @@ describe('plone-content --json', () => {
       ['b', 't'],
     );
     assert.equal(status, 1);
-    assert.deepEqual(Object.keys(report).sort(), ['rules', 'schema']);
+    assert.deepEqual(Object.keys(report).sort(), ['chooser', 'rules', 'schema']);
     assert.equal(report.schema.errors.length, 1);
     assert.match(report.schema.errors[0], /banner\.bogus/);
     assert.equal(report.rules.errors.length, 1);
@@ -68,5 +71,17 @@ describe('plone-content --json', () => {
     assert.deepEqual(report.rules.errors, []);
     assert.deepEqual(report.rules.warnings, []);
     assert.deepEqual(report.schema.errors, []);
+    assert.deepEqual(report.chooser.errors, []);
+  });
+
+  it('fails on a block the chooser cannot offer, though every page is clean', () => {
+    const { status, report } = run({ t: { '@type': 'teaser', title: 'ok', image: 'i' } }, ['t'], (schemas) => {
+      delete schemas.teaser.group;
+    });
+    assert.equal(status, 1);
+    assert.deepEqual(report.rules.errors, []);
+    assert.deepEqual(report.schema.errors, []);
+    assert.equal(report.chooser.errors.length, 1);
+    assert.match(report.chooser.errors[0], /teaser: no `group`/);
   });
 });

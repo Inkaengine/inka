@@ -42,7 +42,7 @@ blocks-tagged: |
   <block type="introduction" value="${p,h*/slate}" />
 ---
 
-<fields templateId="/templates/event-view" templateInstanceId="tpl-ev-def">
+<fields templateId="/inka-templates/event-view" templateInstanceId="tpl-ev-def">
 
 <block type="title">
 

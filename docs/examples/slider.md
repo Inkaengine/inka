@@ -40,7 +40,7 @@ blocks-tagged: |
 
 # Slider Block
 
-A carousel/slider that cycles through slides. Slides are stored as an object\_list — each slide has a title, description, image, and optional button.
+A carousel/slider that cycles through slides. Slides are stored as an object_list — each slide has a title, description, image, and optional button.
 
 <block type="slider" autoplayEnabled=false autoplayDelay=5000>
 
@@ -68,7 +68,7 @@ Recognized for excellence in UX.
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-slider" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-slider" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

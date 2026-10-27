@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { Menu as SemanticMenu } from "semantic-ui-react";
-import { getTokenFromCookie } from "#utils/hydra";
+import { getAccessToken } from "#utils/hydra";
 import Link from "next/link";
 import RecursiveMenuItem from "@/components/RecursiveMenuItem";
 import { fetchContent } from '#utils/api';
@@ -23,10 +23,7 @@ const Menu = () => {
       }
     }
 
-    const url = new URL(window.location.href);
-    const tokenFromUrl =
-      url.searchParams.get("access_token") || getTokenFromCookie();
-    getData(tokenFromUrl);
+    getData(getAccessToken());
   }, []);
 
   if (loading) {

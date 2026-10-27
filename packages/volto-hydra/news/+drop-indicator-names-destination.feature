@@ -1,0 +1,1 @@
+The drop indicator names the container a dragged block will land in ("Into Tags", "Into Page"): the drop goes to the nearest droppable edge at any nesting level, so the pointer could be on a small block in one container while the drop landed in the one around it, and the line looked the same either way. The test helpers confirm that target before they release.

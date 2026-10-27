@@ -41,7 +41,7 @@ import { getInjectedBlocksConfig, getSlateStyleGlobals, getSlateVocabulary } fro
 import { normalizeSlateFields, undefinedSlateTypes } from '../../../hydra-js/slateStyles.js';
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
   deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
-import { addableSiblingTypes, buildBlockPathMap } from '../../../hydra-js/buildBlockPathMap.js';
+import { addableSiblingTypes, buildBlockPathMap, buildIdFieldMap } from '../../../hydra-js/buildBlockPathMap.js';
 import { isObjectListRegion } from '../../../hydra-js/regionWidgets.js';
 import {
   createFieldRulesEnhancer,
@@ -52,6 +52,7 @@ import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
   convertFieldValue,
   getChildBlockEntries,
+  getChildFields,
   setChildBlockEntries,
   isBlockReadonly,
   isBlockPositionLocked,
@@ -275,10 +276,17 @@ export function completeFrontendSchema(schema) {
     }
     if (!s.required) s.required = [];
   };
-  fill(schema);
-  for (const prop of Object.values(schema.properties || {})) {
-    if (prop?.widget === 'object_list' && prop.schema) fill(prop.schema);
-  }
+  // Every schema nested in it too, at any depth: a table is an object holding
+  // a list of rows, each holding a list of cells, and each of those is a form.
+  const walk = (s) => {
+    fill(s);
+    for (const prop of Object.values(s.properties || {})) {
+      if ((prop?.widget === 'object_list' || prop?.widget === 'object') && prop.schema && typeof prop.schema === 'object') {
+        walk(prop.schema);
+      }
+    }
+  };
+  walk(schema);
   return schema;
 }
 
@@ -2662,40 +2670,43 @@ export function syncChildBlockTypes(formData, blockPathMap, blockId, oldBlockDat
 }
 
 /**
- * Re-derive a moved block's template membership from where it LANDED.
+ * A block's template membership, from where it LANDED — the ONE rule for every
+ * author placement: add, paste and move (drag and drop, cut and paste). Read
+ * docs/architecture.md "Template membership" before changing it; the code and
+ * that section must say the same thing.
  *
- * One implementation, because there were two moves and only one of them did
- * this. MOVE_BLOCKS (drag and drop) recomputed membership from the block's new
- * neighbours; the chooser's ask-first drop (convert + move in one update) moved
- * the block and never recomputed, so a block dropped into a template region
- * through that path kept its source membership — or none — and the region it
- * landed in did not own it.
+ *  1. It keeps its membership when it is a template's own fixed block staying
+ *     in its template, or when it moves inside the template being edited (slots
+ *     are explicit there — the author renames them, a drag doesn't).
+ *  2. Otherwise where it came from is discarded — a block from another template
+ *     lands exactly as one with no template at all.
+ *  3. The add rules for this position decide (applyBlockDefaultsWithContext):
+ *     the slot facing the gap — a non-fixed neighbour's, or the one a fixed
+ *     anchor's nextSlotId/prevSlotId names — else, in a template container, a
+ *     fresh slot (the only time one is invented). Inside a template container
+ *     it is template content: fixed and readOnly like the block it lands beside,
+ *     else like the container.
+ *  4. Its contents go with it: every descendant takes its membership AND its
+ *     slot — except a nested template instance of its own (a snippet), which is
+ *     left as it is.
  *
- * Membership on a move is GATED ON EDIT MODE (architecture.md » "Template
- * membership"):
- *  - normal mode → the block takes on the membership of wherever it lands, so
- *    its source membership is stripped and re-derived from the destination (a
- *    slot, a template-instance container, or NOTHING → plain page content);
- *  - template edit mode → the author's slotId is EXPLICIT (you rename slots, you
- *    don't change them by dragging), so a move that stays INSIDE the template
- *    keeps its slotId. A move OUT still strips — drag out exits, even while
- *    editing.
- *
- * Fixed template blocks always keep their identity: their slot/fixed IS the
- * template. "Inside the template" means a same-instance block sits both before
- * AND after the landing gap.
+ * The caller passes `source`, the block's membership as it was before it was
+ * inserted: the insert stamps the landing template on it, so what the block
+ * says now is not where it came from.
  *
  * @param {Object} formData
  * @param {Object} blockPathMap - map for `formData`
- * @param {string} blockId - the block that just moved
+ * @param {string} blockId - the block that was placed
  * @param {Object} options
  * @param {Object} options.blocksConfig
  * @param {Object} options.intl
  * @param {Array|null} [options.templateEditMode] - unlocked instance ids
  * @param {boolean} [options.insertAfter]
+ * @param {{templateInstanceId?: string, fixed?: boolean}} [options.source] -
+ *   omitted: the block itself (nothing restamped it).
  * @returns {Object} formData (unchanged object identity when nothing changed)
  */
-export function applyMembershipAfterMove(formData, blockPathMap, blockId, options) {
+export function applyMembershipWhereLanded(formData, blockPathMap, blockId, options) {
   const {
     blocksConfig,
     intl,
@@ -2704,22 +2715,20 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
   } = options;
   const originalBlockData = getBlockById(formData, blockPathMap, blockId);
   if (!originalBlockData) return formData;
-  const targetContainerConfig = getContainerFieldConfig(
-    blockId,
-    blockPathMap,
-    formData,
-    blocksConfig,
-    intl,
-  );
-  if (!targetContainerConfig) return formData;
-
-  const { parentId: containerId, region: containerRegion } = targetContainerConfig;
-  const containerPath =
-    containerId === PAGE_BLOCK_UID ? [] : blockPathMap[containerId]?.path;
-  const container = containerPath
-    ? getBlockByPath(formData, containerPath)
-    : formData;
+  const source = options.source ?? originalBlockData;
+  // WHERE it landed is where the block IS — its stored path — not the path
+  // map's parent: the map groups template members under a virtual instance
+  // container keyed by their templateInstanceId, so a block still carrying the
+  // membership of where it came from is parented THERE, not where it now sits.
+  const landing = landingOf(formData, blockPathMap, blockId, blocksConfig, intl);
+  if (!landing) return formData;
+  const { containerId, region: containerRegion, container } = landing;
   const fullLayout = container?.blocks_layout?.[containerRegion || 'items'] || [];
+  // The landing level's own blocks, where its neighbours live: the page's for a
+  // top-level drop, the container's for a drop inside one. formData.blocks holds
+  // only the top level, so a drop into a nested container found no neighbours and
+  // no container there, and joined no template even while editing it.
+  const siblings = container?.blocks || {};
   // The block itself is EXCLUDED from the neighbours: it already sits in the
   // layout at this index, so a naive getNeighborData(position) returns the block
   // itself and it offers its own (stale, source) slot back to itself — keeping
@@ -2728,42 +2737,62 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
   const position = fullLayout.indexOf(blockId);
   const layoutItems = fullLayout.filter((id) => id !== blockId);
 
-  const instId = originalBlockData.templateInstanceId;
+  const instId = source.templateInstanceId;
   const editingThisTemplate =
     !!instId && (templateEditMode || []).includes(instId);
   const inSameInstance = (id) =>
-    id && formData.blocks?.[id]?.templateInstanceId === instId;
+    id && siblings[id]?.templateInstanceId === instId;
   const insideTemplate =
     editingThisTemplate &&
     layoutItems.slice(0, position).some(inSameInstance) &&
     layoutItems.slice(position).some(inSameInstance);
 
+  // Kept as it is: a template's own fixed block, or a move inside the template
+  // being edited. Anything else lands as a block ADDED here would: its membership,
+  // slot and fixed are the add rules' for this position (applyBlockDefaultsWithContext).
+  const keepsIdentity = (source.fixed && source.templateInstanceId === originalBlockData.templateInstanceId) || insideTemplate;
   let blockData = originalBlockData;
-  if (!originalBlockData.fixed && !insideTemplate) {
+  if (!keepsIdentity) {
     blockData = { ...blockData };
     delete blockData.templateId;
     delete blockData.templateInstanceId;
     delete blockData.slotId;
+    delete blockData.fixed;
     delete blockData.readOnly;
   }
-  const updatedBlockData = applyBlockDefaultsWithContext(blockData, {
+  const parentBlock = container === formData ? undefined : container;
+  let updatedBlockData = applyBlockDefaultsWithContext(blockData, {
     containerId,
     field: containerRegion,
     position,
     insertAfter,
     layoutItems,
-    allBlocks: formData.blocks,
+    allBlocks: siblings,
+    // The container itself, as the add path passes it: a block inside a template
+    // container joins that template even with no slot facing it.
+    parentBlock,
     blockPathMap,
     blocksConfig,
     intl,
   });
-  // The block's CONTENTS go where it went. A well-formed template carries
-  // templateId on every block, nested ones included (the merge drops a nested
-  // block without one as malformed), so a container that joined a template
-  // brings its children into it, and one that left takes them out.
+  if (!keepsIdentity && parentBlock?.templateInstanceId) {
+    // Then, inside a template CONTAINER, what the insert does for an ADDED block
+    // (insertBlockInContainer): it joins the instance of the block it lands
+    // beside, else of the container, fixed like it — the same order, and result,
+    // as adding a block at this position. At a page's own level the position
+    // rules above decide alone: a drop beside a template's outer anchor is out.
+    const besideId = insertAfter ? layoutItems[position - 1] : layoutItems[position];
+    updatedBlockData = inheritTemplateMembership(
+      updatedBlockData,
+      siblings[besideId] || parentBlock,
+      { inheritFixed: !!parentBlock?.templateInstanceId },
+    );
+  }
+  // Rule 4: the block's contents go where it went, in its slot.
   const withContents = withDescendantMembership(
     updatedBlockData,
-    originalBlockData.templateInstanceId ?? null,
+    source.templateInstanceId ?? null,
+    buildIdFieldMap(blocksConfig, intl),
   );
   // Compare against originalBlockData, not the (possibly membership-stripped)
   // copy — otherwise a stripped block whose recompute is a no-op is never
@@ -2773,43 +2802,72 @@ export function applyMembershipAfterMove(formData, blockPathMap, blockId, option
 }
 
 /**
- * Give a moved block's descendants the membership the block now has.
- *
- * Only descendants that went with the block — no membership, or the block's
- * previous instance (`fromInstanceId`). A descendant belonging to another
- * template instance (a template nested inside) keeps its own. Joining makes
- * them template content (fixed, like a block ADDED into a template —
- * inheritTemplateMembership inheritFixed); leaving makes them page content.
- * Returns `block` itself when nothing changed.
+ * The container and region a block sits in, from its stored path: a
+ * blocks_layout child's path ends `[..., 'blocks', id]`, its container is what
+ * the path leads to before that, and its region is the layout list that names
+ * it. An object_list item is found by its real parent (getContainerFieldConfig).
  */
-function withDescendantMembership(block, fromInstanceId) {
-  if (!block?.blocks || typeof block.blocks !== 'object') return block;
-  const joined = !!block.templateInstanceId;
-  let changed = false;
-  const blocks = {};
-  for (const [id, child] of Object.entries(block.blocks)) {
-    let next = child;
-    const own = child?.templateInstanceId ?? null;
-    if (child && (own === null || own === fromInstanceId)) {
-      if (joined) {
-        next = inheritTemplateMembership(child, block, { inheritFixed: true });
-      } else if (own !== null || child.templateId) {
-        const {
-          templateId: _t,
-          templateInstanceId: _i,
-          slotId: _s,
-          fixed: _f,
-          readOnly: _r,
-          ...rest
-        } = child;
-        next = rest;
-      }
-    }
-    next = withDescendantMembership(next, fromInstanceId);
-    if (next !== child) changed = true;
-    blocks[id] = next;
+function landingOf(formData, blockPathMap, blockId, blocksConfig, intl) {
+  const path = blockPathMap[blockId]?.path;
+  if (!path) return null;
+  if (path.length >= 2 && path[path.length - 2] === 'blocks' && path[path.length - 1] === blockId) {
+    const containerPath = path.slice(0, -2);
+    const container = containerPath.length ? getBlockByPath(formData, containerPath) : formData;
+    const region = Object.entries(container?.blocks_layout || {}).find(
+      ([, ids]) => Array.isArray(ids) && ids.includes(blockId),
+    )?.[0];
+    if (!region) return null;
+    const containerId = containerPath.length ? containerPath[containerPath.length - 1] : PAGE_BLOCK_UID;
+    return { containerId, region, container };
   }
-  return changed ? { ...block, blocks } : block;
+  const config = getContainerFieldConfig(blockId, blockPathMap, formData, blocksConfig, intl);
+  if (!config) return null;
+  const containerPath = config.parentId === PAGE_BLOCK_UID ? [] : blockPathMap[config.parentId]?.path;
+  const container = containerPath ? getBlockByPath(formData, containerPath) : formData;
+  return { containerId: config.parentId, region: config.region, container };
+}
+
+/**
+ * Give a placed block's descendants the membership the block now has — its
+ * template, instance, SLOT, fixed and readOnly (every block of a template has a
+ * slot, nested ones too: docs/frontend-guide/templates.md). Leaving a template
+ * takes them out with it.
+ *
+ * Only descendants that went with the block: no membership, or the block's
+ * previous instance (`fromInstanceId`). One belonging to another instance — a
+ * template nested inside, a snippet — is left as it is, contents and all.
+ * Walked through the container API, so blocks_layout and object_list regions
+ * alike. Returns `block` itself when nothing changed.
+ */
+const MEMBERSHIP_FIELDS = ['templateId', 'templateInstanceId', 'slotId', 'fixed', 'readOnly'];
+function withDescendantMembership(block, fromInstanceId, idFieldMap) {
+  const joined = !!block?.templateInstanceId;
+  let out = block;
+  for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+    const entries = getChildBlockEntries(out, field);
+    let changed = false;
+    const next = entries.map(({ id, block: child }) => {
+      const own = child?.templateInstanceId ?? null;
+      if (!child || (own !== null && own !== fromInstanceId)) return { id, block: child };
+      const rest = Object.fromEntries(
+        Object.entries(child).filter(([key]) => !MEMBERSHIP_FIELDS.includes(key)),
+      );
+      const member = joined
+        ? Object.fromEntries(
+            MEMBERSHIP_FIELDS.filter((key) => block[key] !== undefined).map((key) => [key, block[key]]),
+          )
+        : {};
+      const placed = withDescendantMembership({ ...rest, ...member }, fromInstanceId, idFieldMap);
+      if (JSON.stringify(placed) === JSON.stringify(child)) return { id, block: child };
+      changed = true;
+      return { id, block: placed };
+    });
+    if (changed) {
+      out = out === block ? structuredClone(block) : out;
+      setChildBlockEntries(out, field, next);
+    }
+  }
+  return out;
 }
 
 /**
@@ -2850,6 +2908,10 @@ export function settleBlockStructure(formData, blockPathMap, what, options) {
     templateEditMode = null,
     metadata,
     insertAfterById = {},
+    // Each landed block's membership before it moved ({templateInstanceId, fixed}).
+    // The insert stamps the landing template on the block, so without this a block
+    // from outside looks like the template's own (applyMembershipWhereLanded).
+    sourceById = {},
   } = options;
   let out = formData;
   let map = blockPathMap;
@@ -2858,11 +2920,12 @@ export function settleBlockStructure(formData, blockPathMap, what, options) {
   };
 
   for (const blockId of landed) {
-    const next = applyMembershipAfterMove(out, map, blockId, {
+    const next = applyMembershipWhereLanded(out, map, blockId, {
       blocksConfig,
       intl,
       templateEditMode,
       insertAfter: insertAfterById[blockId],
+      ...(sourceById[blockId] ? { source: sourceById[blockId] } : {}),
     });
     if (next !== out) {
       out = next;

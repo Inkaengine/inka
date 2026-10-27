@@ -31,13 +31,14 @@ const messages = defineMessages({
     defaultMessage: 'Add some HTML here',
   },
 });
-import Cookies from 'js-cookie';
 import frontendPreviewUrl, { viewportPreset } from './reducers';
 import FrontendSwitcherPlug from './components/Toolbar/FrontendSwitcherPlug';
+import ClearFormattingButton from './components/Toolbar/ClearFormattingButton';
+import formatClearIcon from '@plone/volto/icons/format-clear.svg';
 import SidebarToggleToolbarPlug from './components/Toolbar/SidebarToggleToolbarPlug';
 import FrontendSwitcherPanel from './components/Toolbar/FrontendSwitcherPanel';
 import MobileSubmenuClose from './components/Toolbar/MobileSubmenuClose';
-import { getIframeUrlCookieName } from './utils/cookieNames';
+import rememberedFrontendUrl from './utils/getRememberedFrontendUrl';
 import getSavedURLs, { getURlsFromEnv } from './utils/getSavedURLs';
 import getCurrentFrontendPublicUrl from './utils/getCurrentFrontendPublicUrl';
 import publicUrlSync from './middleware/publicUrlSync';
@@ -73,11 +74,14 @@ import rowAfterSVG from '@plone/volto/icons/row-after.svg';
 import rowDeleteSVG from '@plone/volto/icons/row-delete.svg';
 import columnBeforeSVG from '@plone/volto/icons/column-before.svg';
 import './components/mobile-tablet.css';
+import './components/admin-chrome.css';
 import columnAfterSVG from '@plone/volto/icons/column-after.svg';
 import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
 import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
+import { installLinkEditor } from './components/Toolbar/LinkEditor';
+import { noStore } from './express-middleware/noStore';
 
 // The field types a `hydraRuleError` can land on. Volto looks a validator up by
 // the field's declared type (`field.type || 'string'`), so the rule's error has
@@ -95,6 +99,14 @@ const RULE_ERROR_FIELD_TYPES = ['string', 'number', 'integer', 'boolean', 'array
 const hydraRuleErrorValidator = ({ field }) => field?.hydraRuleError || null;
 
 const applyConfig = (config) => {
+  // No shared cache keeps an editor's page (express-middleware/noStore.js).
+  if (__SERVER__) {
+    config.settings.expressMiddleware = [
+      ...(config.settings.expressMiddleware || []),
+      noStore,
+    ];
+  }
+
   for (const fieldType of RULE_ERROR_FIELD_TYPES) {
     config.registerUtility({
       name: `hydraRuleError-${fieldType}`,
@@ -103,6 +115,11 @@ const applyConfig = (config) => {
       method: hydraRuleErrorValidator,
     });
   }
+
+  // A text link picked from the object browser keeps the picked item beside
+  // its url (data.item), so a frontend can draw it from the item (a file's type
+  // and size) without fetching it again.
+  installLinkEditor(config);
 
   // Autosave the form to localStorage while editing, and offer it back if the
   // author returns to a page they left mid-edit. Volto ships the feature but
@@ -203,7 +220,7 @@ const applyConfig = (config) => {
     // session. Without this, settings.publicURL stays at Volto's stock
     // default until the first switch.
     const currentEditUrl =
-      Cookies.get(getIframeUrlCookieName()) || getURlsFromEnv()[0]?.url;
+      rememberedFrontendUrl() || getURlsFromEnv()[0]?.url;
     const initial = getCurrentFrontendPublicUrl(getSavedURLs(), currentEditUrl);
     if (initial) config.settings.publicURL = initial;
   }
@@ -529,6 +546,9 @@ config.settings.additionalToolbarComponents = {
             title: 'Field Mapping',
             widget: 'field_mapping',
             sourceFields: QUERY_RESULT_FIELDS,
+            // …and every metadata column the site's catalog holds, so its own
+            // fields can be mapped too.
+            vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
             description: 'Map query result fields to item block fields',
             fieldset: { id: 'mapping', title: 'Field Mapping' },
           },
@@ -928,6 +948,15 @@ config.settings.additionalToolbarComponents = {
     config.settings.slate.buttons = {
       ...config.settings.slate.buttons,
       styleMenu: (props) => <StyleDropdown {...props} />,
+      // Volto's Clear formatting is always enabled; Inka's is disabled when the
+      // selection has nothing to clear. See ClearFormattingButton.
+      clearformatting: (props) => (
+        <ClearFormattingButton
+          title="Clear formatting"
+          icon={formatClearIcon}
+          {...props}
+        />
+      ),
     };
 
     const { backspaceListItem } = require('./extensions/backspaceListItem');

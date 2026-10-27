@@ -39,12 +39,14 @@ import {
   stylesSeenInContent,
   type StyleRecord,
 } from './helpers/text-style-coverage';
+import { multiScaleSeen } from './helpers/imageSizes.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface CoveragePayload {
   fields: FieldRecord[];
   styles: StyleRecord[];
+  imageSizes?: Array<{ field: string; available: number; offered: number }>;
 }
 
 /**
@@ -88,6 +90,7 @@ function unexercisedOptions(): Array<{ blockType: string; field: string; fronten
 export default class CoverageReporter implements Reporter {
   private fields: FieldRecord[] = [];
   private styles: StyleRecord[] = [];
+  private imageSizes: Array<{ field: string; available: number; offered: number }> = [];
   private sawCoverage = false;
 
   onTestEnd(_test: TestCase, result: TestResult): void {
@@ -103,6 +106,7 @@ export default class CoverageReporter implements Reporter {
       this.sawCoverage = true;
       if (payload.fields?.length) this.fields.push(...payload.fields);
       if (payload.styles?.length) this.styles.push(...payload.styles);
+      if (payload.imageSizes?.length) this.imageSizes.push(...payload.imageSizes);
     }
   }
 
@@ -122,6 +126,24 @@ export default class CoverageReporter implements Reporter {
         'text-style coverage saw NO slate styles from any discovered block — ' +
           'the style checks would pass over an empty set. Discovery or rendering ' +
           'is broken.',
+      );
+    }
+
+    // Fail closed: image fields were judged, but not one of them offered a
+    // choice of sizes — so "an image must use the sizes its data offers" tested
+    // nothing. That is the rule's own blind spot turned on itself: it only
+    // bites when the data offers several scales, so fixtures that lose their
+    // multi-scale data would silence it while every run still printed a tick.
+    //
+    // Gated on having judged SOMETHING, deliberately. A run with no image
+    // blocks at all (a grep-filtered run, a project that renders none) has
+    // nothing to say here and must not be failed for it.
+    if (this.imageSizes.length > 0 && multiScaleSeen(this.imageSizes) === 0) {
+      problems.push(
+        `image-size coverage judged ${this.imageSizes.length} image field(s) but ` +
+          'NONE offered more than one distinct width, so the "uses the sizes its ' +
+          'data offers" rule tested nothing. Fixture content needs an image whose ' +
+          'image_scales advertise several widths (see fixtures/content/image-scales-test).',
       );
     }
 

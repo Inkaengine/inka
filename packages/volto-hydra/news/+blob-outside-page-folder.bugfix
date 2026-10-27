@@ -1,0 +1,1 @@
+A markdown page can list a blob kept outside its folder (generated media in a cache folder): `file:` is where the bytes are, relative to the page, and the item takes the file's own name. A path there used to become the filename, giving a broken blob path.
