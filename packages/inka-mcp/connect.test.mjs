@@ -1,3 +1,5 @@
+// @vitest-environment node
+// The listener is a Node server, and the browser posting to it is Node fetch.
 import { describe, it, expect } from 'vitest';
 import { mkdtempSync, statSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
