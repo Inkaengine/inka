@@ -2690,8 +2690,16 @@ const Iframe = (props) => {
   // The agent API (window.__inkaAgent): what an MCP server drives in a headless
   // admin. It calls these same handlers, so an agent edits exactly as a person
   // does. Refreshed every render so it always sees the current state.
+  // For the agent API: the page's lock as the editor took it, who is signed
+  // in, and how the last save went (a refusal from the CMS lands here).
+  const contentLock = useSelector((state) => state.content.data?.lock);
+  const sessionToken = useSelector((state) => state.userSession.token);
+  const contentUpdate = useSelector((state) => state.content.update);
   const agentLiveRef = useRef(null);
   agentLiveRef.current = {
+    contentLock,
+    sessionToken,
+    contentUpdate,
     properties,
     blockPathMap: iframeSyncState.blockPathMap,
     insertAndSelectBlock,

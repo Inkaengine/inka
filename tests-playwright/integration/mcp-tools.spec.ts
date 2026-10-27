@@ -6,6 +6,7 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { URLS } from '../ports';
+import { freshPage, tokenFor, whileEditing } from '../helpers/otherUser';
 import { agentOn, waitForAgent, discardEdits, createPage, siteOn, openAdmin } from '../../packages/inka-mcp/adminDriver.mjs';
 import {
   getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
@@ -191,7 +192,7 @@ test.describe('MCP tools', () => {
     const status = async (path: string) => (await fetch(`${URLS.mockApi}${path}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).status;
-    const versionOf = (path: string) => site.version(path);
+    const versionOf = async (path: string) => (await site.status(path)).version;
 
     // Move another-page into the accordion test page's section.
     const from = '/_test_data/another-page';
@@ -260,5 +261,26 @@ test.describe('MCP tools', () => {
       expect(example.rendered.text).toContain(example.block.blocks[0].value.md.replace(/[*_`]/g, ''));
       expect(example.rendered.text).not.toContain('Test Page');
     }
+  });
+
+  test("a save the CMS refuses says why: here, another user's lock", async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    // A page of its own: the lock is seen by every session, and other tests save the fixtures.
+    const own = await freshPage(helper.authToken);
+    await page.goto(`${helper.adminUrl}${own}/edit`);
+    await waitForAgent(page);
+    const agent = agentOn(page);
+    const { version } = await agent.getPage();
+    await agent.insert({ refId: 'para', block: { '@type': 'slate' } });
+    // jane takes the page over (Volto's "unlock" of the editor's lock, then her own).
+    await fetch(`${URLS.mockApi}${own}/@lock`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenFor('jane')}` },
+      body: JSON.stringify({ force: true }),
+    });
+    await whileEditing('jane', own, async () => {
+      await expect(agent.save({ expectedVersion: version })).rejects.toThrow(/Resource is locked/);
+    });
   });
 });

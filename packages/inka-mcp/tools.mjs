@@ -12,10 +12,17 @@ import { describeBlockTypes, describeBlockType } from './blockTypes.mjs';
 
 export class StaleVersion extends Error {}
 
+/** Someone else is editing the page (they hold its lock): an agent waits, it never takes over. */
+export class Locked extends Error {
+  constructor(path, { user, since }) {
+    super(`${path} is being edited by ${user} since ${since}. Try again once they have finished; don't take the page over.`);
+  }
+}
+
 /** The page in the agent format, with the version a later save is checked against. */
 export async function getPage(agent) {
-  const { path, version, formData } = await agent.getPage();
-  return { path, version, title: formData.title, blocks: toAgentBlocks(formData) };
+  const { path, version, formData, lockedBy } = await agent.getPage();
+  return { path, version, title: formData.title, ...(lockedBy && { lockedBy }), blocks: toAgentBlocks(formData) };
 }
 
 /**
@@ -47,10 +54,11 @@ export async function listChildren(site, { path, limit, start }) {
   return site.search({ path, depth: 1, limit, start });
 }
 
-/** Refuse to act on a page that has changed since the agent read it. */
+/** Refuse to act on a page someone else is editing, or one that has changed since the agent read it. */
 async function checkVersion(site, path, expectedVersion) {
   if (!expectedVersion) throw new Error('this needs the expectedVersion get_page returned');
-  const now = await site.version(path);
+  const { version: now, lockedBy } = await site.status(path);
+  if (lockedBy) throw new Locked(path, lockedBy);
   if (now !== expectedVersion) {
     throw new StaleVersion(
       `${path} has changed since it was read (read at ${expectedVersion}, now ${now}). Read it again first.`,
@@ -143,7 +151,8 @@ const EXAMPLE_UID = 'example';
 export async function editPage(agent, { ops, expectedVersion, dryRun = false, mintId, render }) {
   if (render && !dryRun) throw new Error('a preview is for a dry run: add dryRun');
   if (!expectedVersion) throw new Error('edit_blocks needs the expectedVersion get_page returned');
-  const loaded = (await agent.getPage()).version;
+  const { path, version: loaded, lockedBy } = await agent.getPage();
+  if (lockedBy && !dryRun) throw new Locked(path, lockedBy);
   if (loaded !== expectedVersion) {
     throw new StaleVersion(
       `the page has changed since it was read (read at ${expectedVersion}, now ${loaded}). Read it again and reapply.`,
@@ -152,7 +161,7 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, mi
   const blocksConfig = (await agent.getBlockSchemas()).types;
   const { results, ids } = await editBlocks(agent, ops, { blocksConfig, mintId });
   if (dryRun) {
-    const dry = { dryRun: true, results, ids, page: await getPage(agent) };
+    const dry = { dryRun: true, results, ids, ...(lockedBy && { lockedBy }), page: await getPage(agent) };
     if (render) dry.rendered = await render(await agent.getDraft());
     return dry;
   }

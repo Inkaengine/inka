@@ -28,6 +28,7 @@ import {
 import { stripFixedInsideSlots } from '@volto-hydra/helpers';
 import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
 import { getPageAllowedBlocksFromRestricted } from '../../../../hydra-js/buildBlockPathMap.js';
+import { lockedBy } from '../AgentSite/lockedBy';
 
 // The schema facts an agent needs, as plain data (see plain()).
 const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'choices', 'default', 'maxLength', 'allowedBlocks'];
@@ -137,9 +138,17 @@ export function registerAgentApi(live) {
 
   const api = {
     /** The page as the editor holds it, and the version a save is checked against. */
+    /**
+     * The page as the editor has it, and `lockedBy` when someone else holds
+     * its lock (the editor's "locked by" message): their save would win, and
+     * this editor's is refused.
+     */
     getPage() {
-      const { properties: formData, blockPathMap } = live.current;
-      return { path: contentPath(), version: formData.modified, formData, blockPathMap };
+      const { properties: formData, blockPathMap, contentLock, sessionToken } = live.current;
+      return {
+        path: contentPath(), version: formData.modified, formData, blockPathMap,
+        lockedBy: lockedBy(contentLock, sessionToken),
+      };
     },
 
     /**
@@ -273,11 +282,25 @@ export function registerAgentApi(live) {
           `save: the page has changed since it was read (read at ${expectedVersion}, now ${now}). Read it again and reapply.`,
         );
       }
-      // The editor's own save, as SAVE_REQUEST triggers it.
+      // The editor's own save, as SAVE_REQUEST triggers it. It leaves the
+      // editor when it saves; when the CMS refuses, the refusal is the
+      // update's error, and says why.
+      const before = live.current.contentUpdate;
       document.dispatchEvent(new KeyboardEvent('keydown', {
         key: 's', ctrlKey: true, bubbles: true, cancelable: true,
       }));
-      await until(() => !/\/edit\/?$/.test(window.location.pathname), SAVE_LIMIT_MS, 'save: the editor did not save');
+      const refusal = () => {
+        const update = live.current.contentUpdate;
+        return update !== before && update?.error ? update.error : null;
+      };
+      await until(
+        () => !/\/edit\/?$/.test(window.location.pathname) || refusal(),
+        SAVE_LIMIT_MS, 'save: the editor did not save',
+      );
+      const refused = refusal();
+      if (refused) {
+        throw new Error(`save: the CMS refused it: ${refused.response?.body?.error?.message ?? refused.message}`);
+      }
       return { version: await readVersion(path) };
     },
   };

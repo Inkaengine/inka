@@ -8,19 +8,20 @@
  * editor (Iframe/agentApi.js).
  */
 import { useEffect } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import { searchContent } from '@plone/volto/actions/search/search';
 import { moveContent } from '@plone/volto/actions/clipboard/clipboard';
 import { deleteContent, getContent, updateContent } from '@plone/volto/actions/content/content';
 import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
+import { lockedBy } from './lockedBy';
 
 /** A rejected action's error as an Error naming the call. */
 const failure = (what, error) => new Error(
   `${what}: ${error?.response?.body?.message || error?.message || error?.status || 'failed'}`,
 );
 
-export function siteApi(dispatch, history) {
+export function siteApi(dispatch, history, token) {
   const run = async (what, action) => {
     try {
       return await dispatch(action);
@@ -61,10 +62,13 @@ export function siteApi(dispatch, history) {
       return run(`get ${path}`, getContent(path, null, 'inka-agent-get'));
     },
 
-    /** A page's version (its modification date) as the CMS has it now. */
-    async version(path) {
-      const content = await run(`version of ${path}`, getContent(path, null, 'inka-agent-version'));
-      return content.modified;
+    /**
+     * A page as the CMS has it now: its version (its modification date), and
+     * who is editing it if that is someone else (they hold its lock).
+     */
+    async status(path) {
+      const content = await run(`status of ${path}`, getContent(path, null, 'inka-agent-status'));
+      return { version: content.modified, lockedBy: lockedBy(content.lock, token) };
     },
 
     /** Move `path` into the section `target`; resolves to its new path. */
@@ -100,13 +104,14 @@ export function siteApi(dispatch, history) {
 const AgentSite = () => {
   const dispatch = useDispatch();
   const history = useHistory();
+  const token = useSelector((state) => state.userSession.token);
   useEffect(() => {
-    const api = siteApi(dispatch, history);
+    const api = siteApi(dispatch, history, token);
     window.__inkaSite = api;
     return () => {
       if (window.__inkaSite === api) delete window.__inkaSite;
     };
-  }, [dispatch, history]);
+  }, [dispatch, history, token]);
   return null;
 };
 

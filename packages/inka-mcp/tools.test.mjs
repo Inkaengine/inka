@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeBlock } from './tools.mjs';
+import { describeBlock, getPage, editPage, movePage, renamePage, deletePage } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -54,5 +54,39 @@ describe('describeBlock', () => {
   it('refuses to render a type whose front end declares no examples', async () => {
     await expect(describeBlock(agent, noSite, { type: 'teaser', render: async () => ({}) }))
       .rejects.toThrow(/the front end declares no examples of teaser to render/);
+  });
+});
+
+describe('a page someone else is editing', () => {
+  const jane = { user: 'Jane Doe', since: '2026-10-27T10:42:00+00:00' };
+  const formData = { title: 'News', modified: 'v1', blocks: { p: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hi' }] }] } }, blocks_layout: { items: ['p'] } };
+  const lockedAgent = {
+    getPage: async () => ({ path: '/news', version: 'v1', formData, lockedBy: jane }),
+    getBlockSchemas: async () => { throw new Error('not reached'); },
+  };
+
+  it('get_page says who holds it', async () => {
+    expect((await getPage(lockedAgent)).lockedBy).toEqual(jane);
+  });
+
+  it('get_page says nothing of a lock when no one else holds one', async () => {
+    const agent = { getPage: async () => ({ path: '/news', version: 'v1', formData, lockedBy: null }) };
+    expect(await getPage(agent)).not.toHaveProperty('lockedBy');
+  });
+
+  it('edit_blocks refuses to save, naming who and since when', async () => {
+    await expect(editPage(lockedAgent, { ops: [], expectedVersion: 'v1' }))
+      .rejects.toThrow(/\/news is being edited by Jane Doe since 2026-10-27T10:42:00\+00:00/);
+  });
+
+  it('move, rename and delete refuse it too', async () => {
+    const site = { status: async () => ({ version: 'v1', lockedBy: jane }) };
+    for (const act of [
+      () => movePage(site, { path: '/news', target: '/archive', expectedVersion: 'v1' }),
+      () => renamePage(site, { path: '/news', title: 'Old news', expectedVersion: 'v1' }),
+      () => deletePage(site, { path: '/news', expectedVersion: 'v1' }),
+    ]) {
+      await expect(act()).rejects.toThrow(/being edited by Jane Doe/);
+    }
   });
 });
