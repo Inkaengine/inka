@@ -15,6 +15,7 @@ import { FormattedMessage, defineMessages, useIntl } from 'react-intl';
 import qs from 'query-string';
 
 import Helmet from '@plone/volto/helpers/Helmet/Helmet';
+import { useClient } from '@plone/volto/hooks/client/useClient';
 import config from '@plone/volto/registry';
 import Icon from '@plone/volto/components/theme/Icon/Icon';
 import {
@@ -82,6 +83,9 @@ const Login = (props) => {
   const token = useSelector((state) => state.userSession.token, shallowEqual);
   const error = useSelector((state) => state.userSession.login.error);
   const loading = useSelector((state) => state.userSession.login.loading);
+  // Upstream 42883aba6: the submit button must not be clickable before
+  // hydration, or the form posts unhandled and the server 404s.
+  const isClient = useClient();
   const query = qs.parse(props.location?.search ?? location.search);
   // HYDRA: a demo site's "try editing" link (/login?demo&return_url=…) signs in
   // with the site's demo account, so the visitor never sees this form.
@@ -334,6 +338,7 @@ const Login = (props) => {
                     aria-label={intl.formatMessage(messages.login)}
                     title={intl.formatMessage(messages.login)}
                     loading={loading}
+                    disabled={!isClient}
                   >
                     <Icon className="circled" name={aheadSVG} size="30px" />
                   </Button>
