@@ -151,7 +151,7 @@ function requestUser(req) {
 /** The lock on `path`, if it has not lapsed (a lock lasts its `timeout` seconds). */
 function lockOn(path) {
   const lock = locks[path];
-  if (lock && Date.parse(lock.time) + lock.timeout * 1000 <= Date.now()) delete locks[path];
+  if (lock && (lock.time + lock.timeout) * 1000 <= Date.now()) delete locks[path];
   return locks[path];
 }
 
@@ -5781,11 +5781,18 @@ app.post('*/@lock', (req, res) => {
   if (!user) return res.status(401).json({ error: { type: 'Unauthorized', message: 'Locking needs a logged-in user.' } });
   // Plone's lock() leaves another user's lock as it is, and answers with it.
   if (!lockedAgainst(req, contentPath)) {
+    // plone.restapi's lock_info: `time` in epoch seconds, `created` the same
+    // to the second as ISO (with its Z), and the holder's name (their id here).
+    const time = Date.now() / 1000;
     locks[contentPath] = {
       locked: true,
       stealable: true,
       creator: user,
-      time: new Date().toISOString(),
+      creator_name: user,
+      creator_url: `${req.protocol}://${req.get('host')}/author/${user}`,
+      time,
+      created: new Date(Math.floor(time) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      token: `mock-lock-${Math.random().toString(36).slice(2)}`,
       timeout: req.body?.timeout ?? 600
     };
   }
