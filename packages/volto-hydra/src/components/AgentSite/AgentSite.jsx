@@ -9,6 +9,7 @@
  */
 import { useEffect } from 'react';
 import { useDispatch } from 'react-redux';
+import { useHistory } from 'react-router-dom';
 import { searchContent } from '@plone/volto/actions/search/search';
 import { moveContent } from '@plone/volto/actions/clipboard/clipboard';
 import { deleteContent, getContent, updateContent } from '@plone/volto/actions/content/content';
@@ -19,7 +20,7 @@ const failure = (what, error) => new Error(
   `${what}: ${error?.response?.body?.message || error?.message || error?.status || 'failed'}`,
 );
 
-export function siteApi(dispatch) {
+export function siteApi(dispatch, history) {
   const run = async (what, action) => {
     try {
       return await dispatch(action);
@@ -82,19 +83,30 @@ export function siteApi(dispatch) {
     async remove(path) {
       await run(`delete ${path}`, deleteContent(path));
     },
+
+    /**
+     * Go to `path` in the admin as its own links do: the app stays loaded,
+     * so moving between pages costs a page's data, not a fresh admin. What
+     * the page left behind goes as when a person leaves it (an editor
+     * unlocks its page, its unsaved changes are dropped).
+     */
+    navigate(path) {
+      history.push(path);
+    },
   };
 }
 
 /** Registers window.__inkaSite while the admin is mounted. */
 const AgentSite = () => {
   const dispatch = useDispatch();
+  const history = useHistory();
   useEffect(() => {
-    const api = siteApi(dispatch);
+    const api = siteApi(dispatch, history);
     window.__inkaSite = api;
     return () => {
       if (window.__inkaSite === api) delete window.__inkaSite;
     };
-  }, [dispatch]);
+  }, [dispatch, history]);
   return null;
 };
 

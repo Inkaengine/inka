@@ -8,10 +8,75 @@
 const LOAD_MS = 60000;
 const READY_MS = 60000;
 
-/** Open a page's editor and wait until the agent API and the block map are there. */
-export async function openForEdit(page, { adminUrl, path }) {
-  await page.goto(`${adminUrl}${path.replace(/\/$/, '')}/edit`, { timeout: LOAD_MS });
+/**
+ * Load the admin, once for a session: its site page (/contents), which holds
+ * no editor. Every later move is within the admin (goTo), and it tracks the
+ * locks its editors take, so `park` can wait for them to be let go.
+ */
+export async function openAdmin(page, { adminUrl }) {
+  trackLocks(page);
+  await page.goto(`${adminUrl}${PARKED}`, { timeout: LOAD_MS });
+  await page.waitForFunction(() => !!window.__inkaSite, null, { timeout: READY_MS });
+}
+
+/** The admin page a session waits on between calls: the site's contents, no editor. */
+const PARKED = '/contents';
+
+/** Move the admin to `path` as its own links do, without loading it afresh. */
+async function goTo(page, path) {
+  const navigated = await page.evaluate((p) => {
+    if (!window.__inkaSite) return false;
+    window.__inkaSite.navigate(p);
+    return true;
+  }, path);
+  if (!navigated) throw new Error(`going to ${path}: this page is not a loaded admin (openAdmin first)`);
+}
+
+/** Open a page's editor in the loaded admin and wait until it can be edited. */
+export async function openForEdit(page, { path }) {
+  const target = path.replace(/\/$/, '') || '/';
+  await goTo(page, `${target === '/' ? '' : target}/edit`);
+  await page.waitForFunction((p) => window.__inkaAgent?.getPage().path === p, target, { timeout: READY_MS });
   await waitForAgent(page);
+}
+
+/**
+ * Leave whatever the admin is on for its parked page, as a person leaves it:
+ * an editor's unsaved changes are dropped and its lock let go. Resolves once
+ * every lock the session's editors took is released, so nothing a call did
+ * holds the page (a locked page can't be moved or deleted).
+ */
+export async function park(page) {
+  await goTo(page, PARKED);
+  await page.waitForFunction(() => !window.__inkaAgent && !!window.__inkaSite, null, { timeout: READY_MS });
+  const held = locksOf(page);
+  const deadline = Date.now() + READY_MS;
+  while (held.size) {
+    if (Date.now() > deadline) throw new Error(`the editor did not let go of ${[...held].join(', ')}`);
+    await page.waitForTimeout(50);
+  }
+}
+
+const heldLocks = new WeakMap();
+const lockedPath = (url) => new URL(url).pathname.replace(/^\/\+\+api\+\+/, '').replace(/\/@lock$/, '') || '/';
+
+/** Note each lock an editor in `page` takes (POST @lock) and lets go (DELETE @lock). */
+function trackLocks(page) {
+  if (heldLocks.has(page)) return;
+  const held = new Set();
+  heldLocks.set(page, held);
+  page.on('response', (response) => {
+    if (!/\/@lock$/.test(new URL(response.url()).pathname) || !response.ok()) return;
+    const method = response.request().method();
+    if (method === 'POST') held.add(lockedPath(response.url()));
+    if (method === 'DELETE') held.delete(lockedPath(response.url()));
+  });
+}
+
+function locksOf(page) {
+  const held = heldLocks.get(page);
+  if (!held) throw new Error('this admin page was not opened with openAdmin, so its locks are not tracked');
+  return held;
 }
 
 /**
@@ -21,11 +86,8 @@ export async function openForEdit(page, { adminUrl, path }) {
  * CMS or the admin refuses (a required field, a type not allowed there) throws
  * with what the form says.
  */
-export async function createPage(page, { adminUrl, parent, type, title }) {
-  await page.goto(
-    `${adminUrl}${parent.replace(/\/$/, '')}/add?type=${encodeURIComponent(type)}`,
-    { timeout: LOAD_MS },
-  );
+export async function createPage(page, { parent, type, title }) {
+  await goTo(page, `${parent.replace(/\/$/, '')}/add?type=${encodeURIComponent(type)}`);
   const created = page.waitForResponse(
     (r) => r.request().method() === 'POST' && r.status() === 201,
     { timeout: READY_MS },
@@ -107,11 +169,6 @@ export function agentOn(page) {
  * Open a page of the admin that holds no editor (the site's contents view):
  * the site-wide API is there, and no page is locked for editing.
  */
-export async function openSite(page, { adminUrl }) {
-  await page.goto(`${adminUrl}/contents`, { timeout: LOAD_MS });
-  await page.waitForFunction(() => !!window.__inkaSite, null, { timeout: READY_MS });
-}
-
 /** The site-wide API (window.__inkaSite), its methods run in the admin page. */
 export function siteOn(page) {
   const call = (method, arg) => page.evaluate(

@@ -6,7 +6,7 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { URLS } from '../ports';
-import { agentOn, waitForAgent, discardEdits, createPage, siteOn } from '../../packages/inka-mcp/adminDriver.mjs';
+import { agentOn, waitForAgent, discardEdits, createPage, siteOn, openAdmin } from '../../packages/inka-mcp/adminDriver.mjs';
 import {
   getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
 } from '../../packages/inka-mcp/tools.mjs';
@@ -152,8 +152,9 @@ test.describe('MCP tools', () => {
     test.setTimeout(90000);
     const helper = new AdminUIHelper(page);
     await helper.login();
+    await openAdmin(page, { adminUrl: helper.adminUrl });
 
-    const path = await createPage(page, { adminUrl: helper.adminUrl, parent: '/_test_data', type: 'Document', title: 'Made by the MCP' });
+    const path = await createPage(page, { parent: '/_test_data', type: 'Document', title: 'Made by the MCP' });
     expect(path).toMatch(/^\/_test_data\/made-by-the-mcp/);
 
     const blocks = [{ '@uid': 'intro', '@type': 'slate', value: 'Written *by an agent*' }];
@@ -174,7 +175,8 @@ test.describe('MCP tools', () => {
   test('create_page: a form the admin refuses says why', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
-    await expect(createPage(page, { adminUrl: helper.adminUrl, parent: '/_test_data', type: 'Document', title: '' }))
+    await openAdmin(page, { adminUrl: helper.adminUrl });
+    await expect(createPage(page, { parent: '/_test_data', type: 'Document', title: '' }))
       .rejects.toThrow(/add form refused it/);
   });
 

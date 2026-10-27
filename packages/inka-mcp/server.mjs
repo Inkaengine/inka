@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
  * The Inka MCP server (stdio). Agents read and edit pages through a headless
- * Inka admin: each tool call opens the page's editor, works through the
- * admin's agent API, and closes it. Nothing is held between calls — a dry run
- * is thrown away when its page closes.
+ * Inka admin, loaded once: each tool call moves it to the page's editor, works
+ * through the admin's agent API, and leaves the editor. Nothing is held
+ * between calls — a dry run is dropped and the page's lock let go when the
+ * editor is left.
  *
  * Configuration (environment):
  *   INKA_ADMIN_URL  the admin, e.g. https://admin.example.org
@@ -21,7 +22,7 @@ import { chromium } from 'playwright';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { openForEdit, createPage, agentOn, openSite, siteOn } from './adminDriver.mjs';
+import { openAdmin, openForEdit, createPage, park, agentOn, siteOn } from './adminDriver.mjs';
 import { frontendUrlOf, previewDraft } from './preview.mjs';
 import {
   getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
@@ -54,67 +55,89 @@ export async function authToken(env) {
   return (await response.json()).token;
 }
 
-/** A headless admin, logged in; `withEditor` opens a page's editor for one call. */
+/**
+ * A headless admin, logged in. It is loaded once and kept: each call moves it
+ * to the page the call needs (the editor, the add form, the site's contents)
+ * the way its own links do, and leaves it parked on a page with no editor, so
+ * a call holds nothing afterwards: a dry run's changes are dropped, the
+ * editor's lock let go. Calls take turns on it, one at a time.
+ */
 export function headlessAdmin({ adminUrl, token, frontendUrl }) {
   let context;
-  const ready = async () => {
-    if (context) return context;
-    const browser = await chromium.launch();
-    context = await browser.newContext();
-    await context.addCookies([
-      { name: 'auth_token', value: token, url: adminUrl, sameSite: 'Lax' },
-      // The admin's front-end choice, as its switcher stores it: a cookie
-      // named for the admin's port (utils/cookieNames.js).
-      ...(frontendUrl ? [{
-        name: `iframe_url_${new URL(adminUrl).port || '80'}`, value: frontendUrl, url: adminUrl, sameSite: 'Lax',
-      }] : []),
-    ]);
-    return context;
+  let page;
+  let turn = Promise.resolve();
+  const session = {
+    /** How many times the admin was loaded in full (once, unless it was lost). */
+    adminLoads: 0,
   };
-  return {
-    async withEditor(path, work) {
-      const page = await (await ready()).newPage();
+  const ready = async () => {
+    if (!context) {
+      const browser = await chromium.launch();
+      context = await browser.newContext();
+      await context.addCookies([
+        { name: 'auth_token', value: token, url: adminUrl, sameSite: 'Lax' },
+        // The admin's front-end choice, as its switcher stores it: a cookie
+        // named for the admin's port (utils/cookieNames.js).
+        ...(frontendUrl ? [{
+          name: `iframe_url_${new URL(adminUrl).port || '80'}`, value: frontendUrl, url: adminUrl, sameSite: 'Lax',
+        }] : []),
+      ]);
+    }
+    if (!page || page.isClosed()) {
+      page = await context.newPage();
+      page.on('load', () => { session.adminLoads++; });
+      await openAdmin(page, { adminUrl });
+    }
+    return page;
+  };
+  /** Run `call` on the admin when the calls before it are done; park it after. */
+  const inTurn = (call) => {
+    const mine = turn.then(async () => {
+      const admin = await ready();
       try {
-        await openForEdit(page, { adminUrl, path });
-        return await work(agentOn(page), {
+        return await call(admin);
+      } finally {
+        await park(admin);
+      }
+    });
+    turn = mine.catch(() => {});
+    return mine;
+  };
+  return Object.assign(session, {
+    withEditor(path, work) {
+      return inTurn(async (admin) => {
+        await openForEdit(admin, { path });
+        return work(agentOn(admin), {
           // The site-wide API is on every admin page, the editor's included.
-          site: siteOn(page),
+          site: siteOn(admin),
           // Render a draft of this page as a visitor sees it, in its own page
           // (with `focus`, just that block of it).
           render: async (draft, viewport, focus) => {
-            const renderedOn = await frontendUrlOf(page);
-            const rendered = await previewDraft(page.context(), { frontendUrl: renderedOn, path, draft, viewport, focus });
+            const renderedOn = await frontendUrlOf(admin);
+            const rendered = await previewDraft(admin.context(), { frontendUrl: renderedOn, path, draft, viewport, focus });
             return { ...rendered, renderedOn: new URL(renderedOn).origin };
           },
         });
-      } finally {
-        await page.close();
-      }
+      });
     },
-    /** Work site-wide, from an admin page that holds no editor (and so no lock). */
-    async withSite(work) {
-      const page = await (await ready()).newPage();
-      try {
-        await openSite(page, { adminUrl });
-        return await work(siteOn(page));
-      } finally {
-        await page.close();
-      }
+    /** Work site-wide, from the parked admin: no editor, and so no lock. */
+    withSite(work) {
+      return inTurn((admin) => work(siteOn(admin)));
     },
     /** Add a page through the admin's add form, then work in its editor. */
-    async withNewPage({ parent, type, title }, work) {
-      const page = await (await ready()).newPage();
-      try {
-        await createPage(page, { adminUrl, parent, type, title });
-        return await work(agentOn(page));
-      } finally {
-        await page.close();
-      }
+    withNewPage({ parent, type, title }, work) {
+      return inTurn(async (admin) => {
+        await createPage(admin, { parent, type, title });
+        return work(agentOn(admin));
+      });
     },
+    /** Let go of whatever the admin holds, then close it. */
     async close() {
-      if (context) await context.browser().close();
+      if (!context) return;
+      await turn;
+      await context.browser().close();
     },
-  };
+  });
 }
 
 const asResult = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] });
