@@ -1,4 +1,3 @@
-import { tabbable } from 'tabbable';
 
 // Pure data helpers live in @volto-hydra/helpers — imported here ONLY
 // for internal use by bridge methods (deepEqual, findChangedUnit,
@@ -2708,7 +2707,37 @@ export class Bridge {
     const nav = this.getArrowNavigationTarget(key, blockUid, blockElement);
     if (!nav) return;
     const { adjacentId, adjacentEl, direction, isTableVertical } = nav;
+    this.moveEditingPoint({
+      direction,
+      blockUid,
+      editableField,
+      blockElement,
+      isTableVertical,
+      adjacentId,
+      adjacentEl,
+    });
+  }
 
+  /**
+   * Move the editing point one step, the way both arrows and Tab mean it.
+   *
+   * Within a block with more than one editable, a step moves FOCUS to the next
+   * editable and leaves the selection alone — the author is still editing the
+   * same block, and the admin only needs to know which field. Stepping off the
+   * block's first/last editable is what moves the SELECTION, to the adjacent
+   * block's last/first field.
+   *
+   * @returns {boolean} true when the step was taken.
+   */
+  moveEditingPoint({
+    direction,
+    blockUid,
+    editableField,
+    blockElement,
+    isTableVertical = false,
+    adjacentId = null,
+    adjacentEl = null,
+  }) {
     // Check multi-field: navigate between fields within the block first
     const ownFields = this.getOwnEditableFields(blockElement);
     if (ownFields.length > 1 && !isTableVertical) {
@@ -2724,19 +2753,21 @@ export class Bridge {
           range.collapse(true); // Cursor at start
           sel.removeAllRanges();
           sel.addRange(range);
-          return;
+          return true;
         }
         if (direction === 'backward' && fieldIdx > 0) {
           // Move to previous field in same block
           const prevField = ownFields[fieldIdx - 1];
           prevField.focus();
           this._placeCursorAtEnd(prevField);
-          return;
+          return true;
         }
       }
     }
 
-    log('handleArrowAtEdge: navigating from', blockUid, 'to', adjacentId, 'direction:', direction);
+    if (!adjacentEl) return false;
+
+    log('moveEditingPoint: navigating from', blockUid, 'to', adjacentId, 'direction:', direction);
 
     // editMode stays 'text' — selectBlock will set up contenteditable
     this._navigatingToBlock = true;
@@ -2745,6 +2776,7 @@ export class Bridge {
       cursorAt: direction === 'backward' ? 'end' : 'start',
     });
     this._navigatingToBlock = false;
+    return true;
   }
 
   /**
@@ -3055,15 +3087,42 @@ export class Bridge {
           }
         }
       }
-      // Focus navigation via tabbable
+      // Tab walks the EDITING order, not the page's.
+      //
+      // The page's tab order belongs to the published site: it is made of the
+      // links, buttons and controls a visitor uses. An author is editing that
+      // content, not operating it, so stepping onto a teaser's link or a
+      // carousel's "next" button is an accident of the markup, not an
+      // affordance. It also differed per frontend, so the same keystroke did
+      // different things on Astro, Nuxt and Next.
+      //
+      // Walking our own order also removes an inference. Focusing an element
+      // and waiting for the focus listener to work out which block that was
+      // meant the bridge had to tell its OWN synthetic focus apart from one the
+      // frontend moved (a container re-rendering, a tab strip restoring focus)
+      // using a 300ms since-last-keypress heuristic. Here we know the target,
+      // so we select it outright and the listener no longer has to guess.
+      //
+      // Same step the arrows take, so multi-field blocks behave identically:
+      // focus moves between a block's own editables, and only stepping off the
+      // first/last one moves the selection.
       {
-        const ordered = tabbable(document.documentElement);
-        const currentIdx = ordered.indexOf(editableField || document.activeElement);
-        if (currentIdx !== -1 && ordered.length > 1) {
-          const nextIdx = shiftKey
-            ? (currentIdx - 1 + ordered.length) % ordered.length
-            : (currentIdx + 1) % ordered.length;
-          ordered[nextIdx].focus();
+        const direction = shiftKey ? 'backward' : 'forward';
+        const blockEl =
+          editableField?.closest('[data-block-uid]') ||
+          this.queryBlockElement(blockId);
+        const uid = blockEl?.getAttribute('data-block-uid') || blockId;
+        if (uid && blockEl) {
+          const adjacentId = this._resolveNavigationTarget(uid, direction, false);
+          const adjacentEl = adjacentId ? this.queryBlockElement(adjacentId) : null;
+          this.moveEditingPoint({
+            direction,
+            blockUid: uid,
+            editableField,
+            blockElement: blockEl,
+            adjacentId,
+            adjacentEl,
+          });
         }
       }
       return true;
@@ -13030,7 +13089,32 @@ export class Bridge {
     return found;
   }
 
+  /**
+   * Reveal a block, releasing `_navigatingToBlock` however the attempt ends.
+   *
+   * `_navigatingToBlock` tells the focus listener "a programmatic navigation
+   * is in flight, don't let a focus event hijack the selection". The reveal
+   * itself sets it and has ~nine synchronous `return false` paths for the
+   * cases it cannot handle — a block with no container, no paging control, no
+   * +1/-1 selector, already at the target. None of them cleared it, so the
+   * commonest case of all — an already-visible top-level block — left the
+   * latch set for the lifetime of the page and the focus listener never fired
+   * again. Tabbing from one block to another stopped moving the selection,
+   * which is what block-navigation.spec.ts pins.
+   *
+   * Only the async watcher may keep the latch past a synchronous return, and
+   * it says so by arming `_revealWatcherArmed`; it clears the latch itself on
+   * success or timeout.
+   */
   tryMakeBlockVisible(targetUid, depth = 0, fieldName = null) {
+    const enclosing = this._navigatingToBlock;
+    this._revealWatcherArmed = false;
+    const result = this._revealBlock(targetUid, depth, fieldName);
+    if (!this._revealWatcherArmed) this._navigatingToBlock = enclosing ?? null;
+    return result;
+  }
+
+  _revealBlock(targetUid, depth = 0, fieldName = null) {
     log(`tryMakeBlockVisible: ${targetUid}`);
     // Nested closed containers need one pass each. Bounded so a container that
     // never opens can't spin.
@@ -13408,6 +13492,9 @@ export class Bridge {
     };
 
     // Start checking on next frame (after click event has propagated)
+    // From here the watcher owns _navigatingToBlock and clears it when it
+    // reaches the target or times out; the wrapper must not clear it.
+    this._revealWatcherArmed = true;
     requestAnimationFrame(checkVisibility);
     return true;
   }
