@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Menu as SemanticMenu } from "semantic-ui-react";
 import Link from "next/link";
 import HoverableDropdown from "@/components/HoverableDropdown";
-import { getTokenFromCookie } from "#utils/hydra";
+import { getAccessToken } from "#utils/hydra";
 import { fetchContent } from '#utils/api';
 import extractEndpoints from '#utils/extractEndpoints';
 
@@ -31,10 +31,7 @@ const RecursiveMenuItem = ({ item }) => {
         setLoading(false);
       }
     }
-    const url = new URL(window.location.href);
-    const tokenFromUrl =
-      url.searchParams.get("access_token") || getTokenFromCookie();
-    getSubItems(tokenFromUrl);
+    getSubItems(getAccessToken());
   }, [item]);
 
   if (loading) {

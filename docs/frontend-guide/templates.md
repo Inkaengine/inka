@@ -90,9 +90,19 @@ The slot a block lives in is identified by its `slotId`. This is the field name 
 
 <block type="callout" variation="important">
 
-**Every block in a template must declare a `slotId`** — not just slot blocks, but **`fixed` and `fixed+readOnly` blocks too, and every block *nested* inside a container.** The recursive merge keeps a nested block only when it has a `slotId` (or a `templateId`): `if (nested.slotId || nested.templateId)`. A block without one is **silently dropped** — the container survives but renders empty, with no error. This is the most common reason a template "half renders".
+**Every block in a template must declare a `slotId`** — not just slot blocks, but **`fixed` and `fixed+readOnly` blocks too, and every block *nested* inside a container.** The recursive merge keeps a nested block only when it has a `slotId` (or a `templateId`): `if (nested.slotId || nested.templateId)`. A block without one is **silently dropped** — the container survives but renders empty, with no error. This is the most common reason a template "half renders". The editor keeps this true for blocks an author places: an added, pasted or moved block, and everything nested in it, takes its slot from where it lands — one rule, described in [Template membership](../architecture.md#template-membership-edit-side-slot-assignment).
 
 </block>
+
+## A template is the id it was referenced by
+
+A template's identity comes from where it was loaded from, never from data stored inside it. A definition **need not name itself**: its blocks can carry just `slotId`, `fixed` and `readOnly`, with no `templateId`, because where the document lives already says what it is. Pages that use a template still name it in their blocks' `templateId`.
+
+When a page's template is loaded under an id (a path, a URL or a `resolveuid`), Inka gives the template's own blocks that id (`adoptTemplate`). So a template keeps working when it is moved, renamed, or served under a different prefix, and a definition that does name itself is relabelled with the id the page used, whatever its label says. Blocks that name a *different* template are nested templates and keep their own id.
+
+A template either names itself or it doesn't. In one that does, an unlabelled nested block is still malformed and is dropped. In one that doesn't, every block with a `slotId` belongs to it.
+
+Opened for editing, a document whose top-level blocks hold slots but name no template is a definition: it comes up as itself, with the unlock toggle, like one that names itself. Saving it from the editor stores its path on those blocks, which stays valid if it moves.
 
 ## Editing a template (central control)
 
@@ -159,21 +169,21 @@ For a fully-fixed branded footer, leave the blocks **field empty** (`{items: []}
 
 So a branded footer is, end to end: a `columns` block (`slotId`, `fixed`, `readOnly`) → each `column` (`slotId`, `fixed`, `readOnly`) → each leaf block (`slotId`, `fixed`, `readOnly`).
 
-### object\_list containers (sliders, tables)
+### object_list containers (sliders, tables)
 
 A container lays out its children one of two ways, and the merge treats **both the same** — as an ordered region of child blocks:
 
-- **\`blocks\_layout\`** (columns, grid): children live in the block's shared `blocks` map,
+- **\`blocks_layout\`** (columns, grid): children live in the block's shared `blocks` map,
 
 ordered by a `blocks_layout` region (as above).
 
-- **\`object\_list\`** (a slider's slides, a table's rows): children are an **inline array**
+- **\`object_list\`** (a slider's slides, a table's rows): children are an **inline array**
 
 of block objects, each identified by an **id field** (`@id` by default).
 
-Everything else is identical: every object\_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
+Everything else is identical: every object_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
 
-The merge identifies object\_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas, so whenever you expand a template or layout that contains an object\_list container you MUST tell it each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Build it from the same blocks config you pass to `initBridge` with `buildIdFieldMap`, exactly as the admin does, rather than writing it by hand. Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
+The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas, so whenever you expand a template or layout that contains an object_list container you MUST tell it each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Build it from the same blocks config you pass to `initBridge` with `buildIdFieldMap`, exactly as the admin does, rather than writing it by hand. Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
 
 ### Javascript
 
@@ -188,7 +198,7 @@ const items = expandTemplatesSync(layout, {
 });
 ```
 
-(When you re-enter to expand a **single** object\_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
+(When you re-enter to expand a **single** object_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
 
 ## allowedTemplates vs allowedLayouts
 
@@ -232,6 +242,16 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 
 </block>
 
+## Expand every container
+
+**Pass the children of every container through the merge** — every `blocks_layout` region and every object_list field, in every container block you render, at every depth — with the same `templateState` the page-level call used.
+
+An editor can place a template anywhere a block can go: inside a grid, a column, an accordion panel, a slider. The merge has no block schema, so it cannot find your containers by itself. It fills the regions of a template it applies, but a template placed inside a plain container stays exactly as stored — stale fixed content, no instance — until that container hands its children to the merge. A container that renders its children directly is a place where templates silently don't work.
+
+The page-level call is no exception: each of the page's own blocks fields (`items`, a `footer` region, …) goes through the merge too.
+
+The Inka editor follows the same contract for the page it edits (see [Merging templates](../architecture.md#merging-templates-every-container-is-expanded-by-whoever-renders)).
+
 ## Pre-loading with loadTemplates
 
 **\`loadTemplates(data, loadTemplate)\`** scans page data for `templateId` references and loads them all in parallel. It follows nested references (templates referencing other templates) and has a 5s per-template timeout. It only loads templates actually in the page data — `allowedLayouts` options are loaded on demand when a forced layout is applied.
@@ -272,7 +292,7 @@ for (const item of items) {
 Options:
 
 - **\`blocks\`**: Map of blockId -> block data
-- **\`templateState\`**: Create a fresh `{}` **once per page render** and share it across **every** `expandTemplatesSync`/`expandTemplates` call — top-level and every nested container / object\_list re-entry. It records the template instances minted this render so a re-entry is recognized as already-expanded content and passed through. **Never reset or recreate it mid-render** (e.g. don't `templateState = {}` again before rendering, and don't pass a fresh `{}` per call): wiping it drops the minted instances, so re-entries re-apply the template instead of passing through — infinite recursion / blank page. Recognition is **data-derived** (by `templateInstanceId`), so it is safe to hand blocks back as a Vue reactive value, a clone, or a `postMessage` copy — no `toRaw` needed. (In Vue/React, provide it once at the page root via provide/inject or context; see `examples/nuxt-blog-starter` and `examples/hydra-nextjs`.)
+- **\`templateState\`**: Create a fresh `{}` **once per page render** and share it across **every** `expandTemplatesSync`/`expandTemplates` call — top-level and every nested container / object_list re-entry. It records the template instances minted this render so a re-entry is recognized as already-expanded content and passed through. **Never reset or recreate it mid-render** (e.g. don't `templateState = {}` again before rendering, and don't pass a fresh `{}` per call): wiping it drops the minted instances, so re-entries re-apply the template instead of passing through — infinite recursion / blank page. Recognition is **data-derived** (by `templateInstanceId`), so it is safe to hand blocks back as a Vue reactive value, a clone, or a `postMessage` copy — no `toRaw` needed. (In Vue/React, provide it once at the page root via provide/inject or context; see `examples/nuxt-blog-starter` and `examples/hydra-nextjs`.)
 - **\`templates\`**: (sync only) Pre-fetched map of templateId -> template data
 - **\`loadTemplate(id)\`**: (async only) Function to fetch template content
 - **\`allowedLayouts\`**: Force a layout when container has no template applied
@@ -284,7 +304,7 @@ With the `inkaengine.inka` backend addon installed (`backend/` in the Inka repos
 ### Javascript
 
 ```javascript
-const forcedLayouts = ['/templates/site-footer'];
+const forcedLayouts = ['/inka-templates/site-footer'];
 
 const response = await fetch(
     `${apiBase}/++api++${path}?expand=templates` +
@@ -319,6 +339,8 @@ When a layout is applied, the rules are the same but applied across a whole bloc
 - In the bottom slot outside the last fixed template block
 - In the top slot outside the first fixed template block
 - Otherwise it is dropped
+
+Content WITH a `slotId` goes in that slot. That holds for a fixed slot too: a page's editable fixed block (`fixed`, not `readOnly`) with the slot's `slotId` takes over the layout's fixed block there — its id and its edited fields — whether or not it carries the instance's id. So a page that has never been through a forced layout (its instance is minted when it renders) can still carry its own version of the layout's fixed heading, marked `templateId` + `slotId` + `fixed`.
 
 ### Diagram
 

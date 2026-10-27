@@ -332,13 +332,17 @@ test.describe('Template Placeholder Replacement', () => {
     await helper.clickAddBlockButton();
     await helper.selectBlockType('slate');
 
-    // Wait for the new block to appear (find by set difference)
-    await helper.getStableBlockCount();
-
-    // Find the new block by set difference
+    // The new block is the one id that wasn't there before. Poll for THAT, not for
+    // a stable count: the count could settle before the add rendered at all, and
+    // the set difference was then empty.
+    let newBlockUid: string | undefined;
+    await expect
+      .poll(async () => {
+        newBlockUid = (await helper.getBlockOrder()).find((id) => !blockIdsBefore.has(id));
+        return newBlockUid;
+      }, { message: 'the added block appears' })
+      .toBeTruthy();
     const blockIdsAfter = await helper.getBlockOrder();
-    const newBlockUid = blockIdsAfter.find(id => !blockIdsBefore.has(id));
-    expect(newBlockUid).toBeTruthy();
 
     // Verify the new block is in the right position: after the grid, before the footer.
     // Get block text content in DOM order to verify ordering.

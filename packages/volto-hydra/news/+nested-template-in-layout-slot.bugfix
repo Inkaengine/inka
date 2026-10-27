@@ -1,0 +1,1 @@
+A template the page inserted (a snippet, a template-owned form) in a layout's slot stays a nested template — its own marks kept — on first application and after a save, instead of losing its template content or being dropped.

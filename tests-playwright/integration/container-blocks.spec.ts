@@ -452,10 +452,18 @@ test.describe('Adding Blocks to Containers', () => {
     await expect(columnsLocator).toHaveCount(3);
 
     // Walk up from the auto-init slate to the new column block to verify
-    // its type. Escape #1 leaves text mode → block mode on the slate;
-    // Escape #2 bubbles up to its parent (the new column).
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
+    // its type. The two Escapes used to be pressed back to back without
+    // checking where selection was: when the new slate was not selected yet,
+    // the walk started from col-2 and ended somewhere else.
+    const newColumnId = await columnsLocator.nth(2).getAttribute('data-block-uid');
+    const newSlateId = await iframe
+      .locator(`[data-block-uid="${newColumnId}"] [data-block-uid]`)
+      .first()
+      .getAttribute('data-block-uid');
+    await helper.waitForBlockSelectedInAdmin(newSlateId!);
+    // Text mode → block mode → its parent, each step confirmed before the next.
+    await helper.escapeToParent();
+    await helper.waitForBlockSelectedInAdmin(newColumnId!);
     await helper.waitForSidebarCurrentBlock('Column', 5_000);
   });
 
@@ -2347,6 +2355,7 @@ test.describe('Container Block Drag and Drop', () => {
       col2,
       false, // insertAfter=false (left side, between col-1 and col-2)
       true,  // expectIndicator=true — a drop line is always shown, at the nearest valid edge
+      false, // confirmTarget=false — refused at col-2 by design; it snaps elsewhere
     );
 
     // A drop line IS shown (never hidden — it snaps to the nearest valid edge).
@@ -4804,19 +4813,25 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     const blockChooser = page.locator('.blocks-chooser');
     await expect(blockChooser).toBeVisible({ timeout: 5000 });
 
-    // Expand the Common section (facet types are grouped there, collapsed by default)
-    const commonSection = blockChooser.locator('text=Common');
-    if (await commonSection.isVisible()) {
-      await commonSection.click();
+    // Open the Common section (facet types are grouped there) unless the chooser
+    // already has: with a single group it opens it itself, and clicking its
+    // title then would close it.
+    const checkboxButton = blockChooser.locator('button.checkboxFacet');
+    if (!(await checkboxButton.isVisible())) {
+      await blockChooser.locator('.accordion > .title', { hasText: 'Common' }).click();
     }
+    await expect(checkboxButton).toBeVisible();
 
-    // Allowed types use display names from blocksConfig.title
+    // Allowed types use display names from blocksConfig.title — the facet
+    // types the frontend's search schema allows, and only those.
     expect(await helper.isBlockTypeVisible('Checkbox')).toBe(true);
     expect(await helper.isBlockTypeVisible('Select')).toBe(true);
-    expect(await helper.isBlockTypeVisible('slate')).toBe(true);
-    expect(await helper.isBlockTypeVisible('image')).toBe(true);
 
-    // NOT allowed: hero, columns, slider
+    // NOT allowed: text and image (the admin's own search allows them among its
+    // facets; this frontend's schema does not, and its schema is the whole
+    // schema), hero, columns, slider
+    await expect(blockChooser.locator('button.slate')).toHaveCount(0);
+    await expect(blockChooser.locator('button.image')).toHaveCount(0);
     expect(await helper.isBlockTypeVisible('hero')).toBe(false);
     expect(await helper.isBlockTypeVisible('columns')).toBe(false);
     expect(await helper.isBlockTypeVisible('slider')).toBe(false);
@@ -4902,13 +4917,10 @@ test.describe('Typed Object_List (search facets with allowedBlocks)', () => {
     const blockChooser = page.locator('.blocks-chooser');
     await expect(blockChooser).toBeVisible({ timeout: 5000 });
 
-    // Expand Common section and select Checkbox
-    const commonSection = blockChooser.locator('text=Common');
-    if (await commonSection.isVisible()) {
-      await commonSection.click();
-    }
-    await blockChooser.getByRole('button', { name: /Checkbox/i }).click();
-    await blockChooser.waitFor({ state: 'hidden', timeout: 5000 });
+    // Select Checkbox. The generic helper opens its section only if it is not
+    // already open: with one group of types the chooser opens it itself, and
+    // clicking its title then would close it.
+    await helper.selectBlockType('checkboxFacet');
 
     // Wait for the new facet to appear in iframe and be selected
     await helper.waitForBlockCountToBe(initialBlockCount + 1);

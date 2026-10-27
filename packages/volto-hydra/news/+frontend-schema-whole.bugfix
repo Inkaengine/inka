@@ -1,0 +1,1 @@
+A frontend's block schema is the whole schema: the admin's own enhancer for that block no longer adds its fields or regions, schemas read before INIT no longer outlive it, and a type's schema keeps every field it declares. A frontend that declares a listing schema declares its own field-mapping widget and source fields.

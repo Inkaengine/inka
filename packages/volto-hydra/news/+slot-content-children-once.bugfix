@@ -1,0 +1,1 @@
+A page block's nested children that carry its slot are no longer drawn twice when the page's layout is applied.

@@ -372,7 +372,7 @@ function validateRegionSlots(entries, blocksErrors) {
  * @param {Object} formData - Page data with blocks and blocks_layout
  * @returns {{ valid: boolean, blocksErrors: Object }} Validation result with Volto-compatible blocksErrors
  */
-export function validateTemplatePlaceholders(formData) {
+export function validateTemplatePlaceholders(formData, idFieldMap = null) {
   const blocksErrors = {};
   const visited = new Set();
 
@@ -381,7 +381,11 @@ export function validateTemplatePlaceholders(formData) {
       return;
     }
     visited.add(container);
-    for (const field of getChildFields(container)) {
+    // Schemas, not the merge's templateId shortcut: this is not a merge, and
+    // the map names each object_list AND the key its items are addressed by.
+    // Called without one, object_list regions are not walked — the slot rules
+    // then skip a slider's slides or a form's subblocks in silence.
+    for (const field of getChildFields(container, idFieldMap, { allObjectLists: true })) {
       const entries = getChildBlockEntries(container, field);
       validateRegionSlots(entries, blocksErrors);
       for (const { block } of entries) visit(block);

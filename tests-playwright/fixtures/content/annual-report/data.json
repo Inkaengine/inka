@@ -1,0 +1,20 @@
+{
+  "@id": "/annual-report",
+  "@type": "File",
+  "UID": "annual-report-uid",
+  "id": "annual-report",
+  "title": "Annual report",
+  "description": "A PDF, for links that carry the file's details",
+  "is_folderish": false,
+  "review_state": "published",
+  "creators": [
+    "jane.author"
+  ],
+  "file": {
+    "content-type": "application/pdf",
+    "filename": "annual-report.pdf",
+    "size": 19968,
+    "download": "@@download/file"
+  },
+  "exclude_from_nav": true
+}

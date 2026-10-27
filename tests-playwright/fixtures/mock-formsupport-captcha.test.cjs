@@ -51,7 +51,6 @@ for (const provider of [...PROVIDERS, 'honeypot', 'none', 'turnstile']) {
   );
 }
 process.env.CONTENT_MOUNTS = `/:${mount}`;
-process.env.SKIP_CONTENT_VALIDATION = 'true';
 const { app } = require('./mock-api-server.cjs');
 
 let server;
@@ -158,5 +157,23 @@ describe('formsupport captcha', () => {
       token: JSON.stringify({ id: 'question0', id_check: 'abc', value: 'ten' }),
     });
     assert.ok(good.ok, `${good.status} ${await good.text()}`);
+  });
+});
+
+describe('formsupport @form-data', () => {
+  // formsupport's @form-data returns the stored submissions themselves — not catalog
+  // brains — so metadata_fields has no say in them. A test reads back what a form
+  // sent: its answers, its captcha, which block took it.
+  it('reads back a submission whole', async () => {
+    const sent = await submit('recaptcha', { provider: 'recaptcha', token: 'a-token' });
+    assert.ok(sent.ok, `${sent.status} ${await sent.text()}`);
+
+    const res = await fetch(`${baseUrl}/recaptcha/@form-data?block_id=f`);
+    assert.equal(res.status, 200);
+    const [record] = (await res.json()).items;
+    assert.equal(record.block_id, 'f');
+    assert.equal(record.block_found, true);
+    assert.deepEqual(record.data, [{ field_id: 'q', label: 'Q', value: 'an answer' }]);
+    assert.deepEqual(record.captcha, { provider: 'recaptcha', token: 'a-token' });
   });
 });

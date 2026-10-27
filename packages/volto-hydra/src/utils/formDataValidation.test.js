@@ -65,7 +65,12 @@ describe('validateTemplatePlaceholders — every region, every container (region
       },
       blocks_layout: { items: ['sl'] },
     };
-    const { valid, blocksErrors } = validateTemplatePlaceholders(formData);
+    // An object_list is a region because the SCHEMA says so: the map names
+    // the field and the key its items are addressed by. Without it this walk
+    // skips object_lists — the templateId shortcut is the merge's alone now.
+    const { valid, blocksErrors } = validateTemplatePlaceholders(formData, {
+      slider: { slides: '@id' },
+    });
     expect(valid).toBe(false);
     expect(blocksErrors['sb']?._layout?.message).toMatch(
       twoAdjacentSlots.message,

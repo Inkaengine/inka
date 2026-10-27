@@ -35,7 +35,7 @@ blocks-tagged: |
 
 # Hero Block
 
-A full-width hero section with heading, subheading, image, rich text description, and a call-to-action button. Demonstrates multiple field types in a single block: string, textarea, slate, image, and object\_browser.
+A full-width hero section with heading, subheading, image, rich text description, and a call-to-action button. Demonstrates multiple field types in a single block: string, textarea, slate, image, and object_browser.
 
 <block type="hero">
 
@@ -52,7 +52,7 @@ We build tools that make content editing delightful.
 
 </block>
 
-<fields templateId="/templates/block-reference-layout" templateInstanceId="tpl-inst-hero" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-hero" fixed=false readOnly=false>
 
 <block type="codeExample" slotId="schema">
 

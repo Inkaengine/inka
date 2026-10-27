@@ -21,7 +21,7 @@
   class="highlight-block"
   style="{bgStyle};padding:40px 20px;color:white;border-radius:8px"
 >
-  <div class="highlight-overlay" style="background:rgba(0,0,0,0.4);padding:30px;border-radius:8px">
+  <div class="highlight-overlay" data-edit-media="image" style="background:rgba(0,0,0,0.4);padding:30px;border-radius:8px">
     <h2 data-edit-text="title">{block.title}</h2>
     <div class="highlight-body" data-edit-text="description">
       {#each block.description || [] as node, i (i)}
