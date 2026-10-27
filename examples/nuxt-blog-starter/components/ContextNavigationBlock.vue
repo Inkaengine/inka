@@ -57,8 +57,8 @@
 // async (fetches via the Plone REST API).
 // `ref` from vue; `useRoute` is a Nuxt auto-import composable so no explicit
 // import is needed for it (same pattern as ListingBlock.vue).
-import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
-import { expandListingBlocks, ploneFetchItems } from '@hydra-js/helpers';
+import { computed, ref, watch, onMounted, onBeforeUnmount, inject, unref } from 'vue';
+import { expandListingBlocks, ploneFetchItems, expandTemplatesSync } from '@hydra-js/helpers';
 
 const props = defineProps({
   blockId: { type: String, required: true },
@@ -100,11 +100,20 @@ const exposedUids = computed(() => {
   return [props.blockId, ...childIds].join(' ');
 });
 
+// Its children go through the merge first, like every container's (a template can be
+// placed anywhere: docs/frontend-guide/templates.md "Expand every container").
+const injectedTemplates = inject('templates', {});
+// No default — must be the one shared state provided at the page root (see block.vue).
+const templateState = inject('templateState');
+
 async function expandChildren() {
   const flat = [];
   const extras = [];
-  for (const childId of props.block.blocks_layout.items) {
-    const child = props.block.blocks[childId];
+  const children = expandTemplatesSync(props.block.blocks_layout?.items || [], {
+    blocks: props.block.blocks || {}, templateState, templates: unref(injectedTemplates),
+  });
+  for (const child of children) {
+    const childId = child['@uid'];
     if (child['@type'] === 'navItem') {
       flat.push({ block: child, blockId: childId });
     } else if (child['@type'] === 'listing') {

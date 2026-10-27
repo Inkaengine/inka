@@ -1,0 +1,116 @@
+{
+  "@id": "/nested-snippet-page",
+  "@type": "Document",
+  "id": "nested-snippet-page",
+  "title": "Nested Snippet Page",
+  "description": "The snippet template inserted INSIDE a container (a grid), not at the top level",
+  "blocks": {
+    "nsp-regular-1": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Regular block before the grid"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Regular block before the grid"
+    },
+    "nsp-grid": {
+      "@type": "gridBlock",
+      "blocks": {
+        "nsp-snippet-header": {
+          "@type": "slate",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "resolveuid/snippet-template-uid",
+          "templateInstanceId": "snippet-inst-1",
+          "slotId": "snippet-heading",
+          "value": [
+            {
+              "type": "h2",
+              "children": [
+                {
+                  "text": "Stale Snippet Header"
+                }
+              ]
+            }
+          ],
+          "plaintext": "Stale Snippet Header"
+        },
+        "nsp-snippet-content": {
+          "@type": "slate",
+          "fixed": false,
+          "readOnly": false,
+          "templateId": "resolveuid/snippet-template-uid",
+          "templateInstanceId": "snippet-inst-1",
+          "slotId": "snippet-body",
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "Nested snippet content"
+                }
+              ]
+            }
+          ],
+          "plaintext": "Nested snippet content"
+        }
+      },
+      "blocks_layout": {
+        "items": [
+          "nsp-snippet-header",
+          "nsp-snippet-content"
+        ]
+      }
+    },
+    "nsp-regular-2": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Regular block after the grid"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Regular block after the grid"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "nsp-regular-1",
+      "nsp-grid",
+      "nsp-regular-2"
+    ]
+  },
+  "@components": {
+    "actions": {
+      "@id": "/nested-snippet-page/@actions",
+      "object": [
+        {
+          "@id": "/nested-snippet-page/edit",
+          "id": "edit",
+          "title": "Edit"
+        }
+      ],
+      "object_buttons": []
+    },
+    "breadcrumbs": {
+      "@id": "/nested-snippet-page/@breadcrumbs",
+      "items": [
+        {
+          "@id": "/nested-snippet-page",
+          "title": "Inserted Template Test Page"
+        }
+      ]
+    }
+  },
+  "UID": "nested-snippet-page-uid"
+}

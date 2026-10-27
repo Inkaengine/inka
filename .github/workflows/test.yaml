@@ -63,6 +63,12 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Check Volto customizations for upstream drift
+        # Shadows are forks of upstream files, and forks go stale silently:
+        # upstream fixes its copy and ours keeps the old behaviour. Runs right
+        # after missdev, because core/ is what it reads, and before anything
+        # slow — a stale shadow is cheap to report and expensive to find later.
+        run: pnpm shadows:check
       - name: Run hydra-js unit tests
         run: cd packages/hydra-js && pnpm test
       - name: Build workspace deps (@plone/registry, @plone/components)
@@ -328,6 +334,7 @@ jobs:
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           sleep 3
       - name: Wait for servers
@@ -444,6 +451,7 @@ jobs:
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           (cd examples/hydra-nextjs && pnpm run start:test) &
           sleep 3
@@ -677,6 +685,7 @@ jobs:
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
           sleep 3

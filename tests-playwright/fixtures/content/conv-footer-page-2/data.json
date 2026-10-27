@@ -1,0 +1,113 @@
+{
+  "@id": "http://localhost:8888/conv-footer-page-2",
+  "@type": "Document",
+  "UID": "conv-footer-page-2-uid",
+  "id": "conv-footer-page-2",
+  "title": "Second conv footer page",
+  "description": "Second conv footer page",
+  "effective": "2024-11-01T00:00:00+00:00",
+  "review_state": "published",
+  "preview_image": true,
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "cf2-block": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "This is the second conv-footer page"
+            }
+          ]
+        }
+      ],
+      "plaintext": "This is the second conv-footer page"
+    },
+    "conv-footer-page-2-footer": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Second conv footer page footer content"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Second conv footer page footer content"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "cf2-block"
+    ],
+    "footer": [
+      "conv-footer-page-2-footer"
+    ]
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": false,
+  "created": "2025-01-02T12:00:00+00:00",
+  "modified": "2025-01-02T12:00:00+00:00",
+  "lock": {
+    "locked": false,
+    "stealable": true
+  },
+  "@components": {
+    "actions": {
+      "@id": "http://localhost:8888/conv-footer-page-2/@actions",
+      "document_actions": [],
+      "object": [
+        {
+          "id": "view",
+          "title": "View"
+        },
+        {
+          "id": "edit",
+          "title": "Edit"
+        },
+        {
+          "id": "folderContents",
+          "title": "Contents"
+        }
+      ],
+      "object_buttons": [],
+      "portal_tabs": [],
+      "site_actions": [],
+      "user": []
+    },
+    "breadcrumbs": {
+      "@id": "http://localhost:8888/conv-footer-page-2/@breadcrumbs",
+      "items": [
+        {
+          "@id": "http://localhost:8888",
+          "title": "Home"
+        },
+        {
+          "@id": "http://localhost:8888/conv-footer-page-2",
+          "title": "Second conv footer page"
+        }
+      ],
+      "root": "http://localhost:8888"
+    },
+    "navigation": {
+      "@id": "http://localhost:8888/conv-footer-page-2/@navigation",
+      "items": []
+    },
+    "workflow": {
+      "@id": "http://localhost:8888/conv-footer-page-2/@workflow"
+    }
+  },
+  "can_manage_portlets": true,
+  "can_view": true,
+  "can_edit": true,
+  "can_delete": true,
+  "can_add": true
+}

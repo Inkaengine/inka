@@ -1,0 +1,1 @@
+`plone-content validate|check|all --allow-missing-blobs`: a blob with no bytes on disk (generated media CI makes after the change that lists it is merged) is a warning, not an error. Never used on a deploy.

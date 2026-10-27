@@ -1,0 +1,1 @@
+A returning editor whose admin remembers a frontend's old address, now its publish URL because the frontend has an editing build of its own, gets that frontend's edit URL in the iframe instead of a site they cannot edit through.

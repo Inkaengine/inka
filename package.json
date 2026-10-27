@@ -25,6 +25,8 @@
     "build:deps": "pnpm --filter @plone/registry --filter @plone/components build",
     "i18n": "pnpm --filter volto-hydra i18n",
     "test": "vitest run",
+    "shadows:check": "node scripts/shadow-drift.mjs",
+    "shadows:record": "node scripts/shadow-drift.mjs --record",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",

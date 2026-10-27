@@ -8,6 +8,7 @@
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { URLS } from '../ports';
 
 test.describe('Block Sync - Listing Block Item Type', () => {
   test('listing block shows variation selector in sidebar', async ({ page }) => {
@@ -104,7 +105,7 @@ test.describe('Block Sync - Listing Block Item Type', () => {
 
     // Verify no image editing overlay appears (listing items are readonly)
     // The image-upload-widget-toolbar is the inline editing UI that shouldn't appear on readonly blocks
-    const imageOverlay = page.locator('.image-upload-widget-toolbar, .hydra-image-picker-inline');
+    const imageOverlay = page.locator('.image-upload-widget-toolbar, [data-testid="image-picker-inline"]');
     await expect(imageOverlay).toHaveCount(0);
 
     // Verify at least one image actually loaded (non-empty src and naturalWidth > 0)
@@ -217,14 +218,15 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     // The "Lead Image" row should now show a mapped value (smart defaults for image type)
     const imageRow = mappingTable.locator('tr').filter({ has: page.locator('td:first-child', { hasText: 'Lead Image' }) });
     const imageRowSelect = imageRow.locator('.react-select__single-value');
-    // Image block's url field should be mapped (it's an image type field)
-    await expect(imageRowSelect).toContainText('Image URL');
+    // Image block's url field should be mapped (it's an image type field), under
+    // the title the frontend's image schema gives it.
+    await expect(imageRowSelect).toHaveText('Image');
 
     // Scroll to show the fieldMapping table after variation change
     const sidebarWrapper = page.locator('.sidebar-content-wrapper');
     await sidebarWrapper.evaluate((el) => el.scrollTo(0, el.scrollHeight));
 
-    // Re-query the URL row dropdown (use first-child filter to avoid matching "Image URL" text)
+    // Re-query the URL row dropdown (first-child filter: match the row's label, not a target's)
     const urlRowAfterChange = mappingTable.locator('tr').filter({ has: page.locator('td:first-child', { hasText: 'URL' }) });
     const urlRowDropdownAfterChange = urlRowAfterChange.locator('.react-select__control');
     await urlRowDropdownAfterChange.scrollIntoViewIfNeeded();
@@ -235,12 +237,34 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     // Verify "Target" (teaser-specific) is NOT present
     await expect(menu.locator('.react-select__option:has-text("Target")')).not.toBeVisible();
 
-    // Verify image block has "Image URL" field (url with widget: 'image')
-    await expect(menu.locator('.react-select__option:has-text("Image URL")')).toBeVisible();
+    // Verify image block has its url field (widget: 'image'), titled "Image" by the frontend's schema
+    await expect(menu.locator('.react-select__option', { hasText: /^Image$/ })).toBeVisible();
 
     // Close dropdown by clicking elsewhere
     await mappingTable.locator('th', { hasText: 'Source' }).click();
     await menu.waitFor({ state: 'hidden', timeout: 1000 });
+  });
+
+  test("listing fieldMapping also offers the site's own catalog columns", async ({ page }) => {
+    // The listing's mapping names plone.app.vocabularies.MetadataFields, so
+    // beside its declared sources it offers every metadata column the site's
+    // catalog holds — a site's own fields, mappable without a frontend naming
+    // them. A declared source keeps its own title (effective is "Published").
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await helper.clickBlockInIframe('block-9-listing');
+    await helper.waitForSidebarOpen();
+    await helper.openSidebarTab('Block');
+
+    const mappingTable = page.locator('#sidebar-properties .field-wrapper-fieldMapping .field-mapping-table');
+    await expect(mappingTable).toBeVisible();
+    const sources = mappingTable.locator('tbody tr td:first-child');
+    await expect(sources.filter({ hasText: /^Effective date$/ })).toHaveCount(1);
+    await expect(sources.filter({ hasText: /^Exclude from navigation$/ })).toHaveCount(1);
+    await expect(sources.filter({ hasText: /^Published$/ })).toHaveCount(1);
+    await expect(sources.filter({ hasText: /^Effective$/ })).toHaveCount(0);
+    await expect(page.locator('#sidebar-properties .field-wrapper-fieldMapping .help.error')).toHaveCount(0);
   });
 
   test('fieldMapping shows smart defaults based on field types', async ({ page }) => {
@@ -972,12 +996,12 @@ test.describe('Frontend-Driven Schema Enhancers', () => {
     // Scroll down again to check fieldMapping
     await sidebarWrapper.evaluate((el) => el.scrollTo(0, el.scrollHeight));
 
-    // The fieldMapping should now show image's target fields (Image URL, Alt text)
+    // The fieldMapping should now show image's target fields (Image, Alt text)
     // Wait for the fieldMapping to update with image fields
     await expect(fieldMappingTable).toBeVisible({ timeout: 5000 });
-    // The Lead Image row should map to "Image URL" (image's url field for src)
+    // The Lead Image row should map to "Image" (image's url field for src)
     const imageRow = fieldMappingTable.locator('tr').filter({ has: page.locator('td:first-child', { hasText: 'Lead Image' }) });
-    await expect(imageRow.locator('.react-select__single-value')).toContainText('Image URL', { timeout: 5000 });
+    await expect(imageRow.locator('.react-select__single-value')).toHaveText('Image', { timeout: 5000 });
   });
 
   test('changing variation transforms child block types', async ({ page }) => {
@@ -1664,6 +1688,65 @@ test.describe('fieldRules - a rule that refuses a value', () => {
   test('a bad value inside a container does not save', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
+    // Broken on purpose, so it is made here, in this login's session — never a
+    // committed fixture the content check would have to excuse.
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+    const created = await page.request.post(`${URLS.mockApi}/_test_data`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+      data: {
+        "@type": "Document",
+        "id": "nested-bad-url-page",
+        "title": "A bad value inside a container",
+        "blocks": {
+          "intro-1": {
+            "@type": "slate",
+            "value": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "The feed inside the column below has a url that is not one. Core's validation walked the top level and would never have opened this container."
+                  }
+                ]
+              }
+            ]
+          },
+          "cols-1": {
+            "@type": "columns",
+            "blocks": {
+              "col-1": {
+                "@type": "column",
+                "blocks": {
+                  "rss-nested": {
+                    "@type": "rssFeed",
+                    "feedUrl": "not a url at all",
+                    "count": 6,
+                    "variation": "summary"
+                  }
+                },
+                "blocks_layout": {
+                  "items": [
+                    "rss-nested"
+                  ]
+                }
+              }
+            },
+            "blocks_layout": {
+              "items": [
+                "col-1"
+              ]
+            }
+          }
+        },
+        "blocks_layout": {
+          "items": [
+            "intro-1",
+            "cols-1"
+          ]
+        }
+      },
+    });
+    expect(created.status()).toBe(201);
     await helper.navigateToEdit('/nested-bad-url-page');
     await expect(
       helper.getIframe().locator('[data-block-uid="intro-1"]'),
