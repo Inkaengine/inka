@@ -1,4 +1,3 @@
-import mkcert from 'vite-plugin-mkcert'
 import { fileURLToPath } from 'url'
 import { dirname, resolve, join } from 'path'
 import { existsSync } from 'fs'
@@ -24,6 +23,22 @@ const ADMIN_ORIGIN = `http://localhost:${process.env.HYDRA_VOLTO_SSR_PORT || 300
 // image 404s, failing the prerender. Fallback is the historical default.
 const PUBLIC_BACKEND = process.env.NUXT_TEST_BACKEND || 'https://api.inka.sh';
 const PUBLIC_BACKEND_HOST = new URL(PUBLIC_BACKEND).host;
+
+// The admin the EDIT build talks to. A deploy names it (NUXT_ADMIN_URL); a
+// test build that names only a backend means the local admin. Ignoring
+// NUXT_ADMIN_URL here shipped inka.sh/edit/ waiting for localhost:3001.
+const EDIT_ADMIN = process.env.NUXT_ADMIN_URL
+  || (process.env.NUXT_TEST_BACKEND ? ADMIN_ORIGIN : 'https://admin.inka.sh');
+// What the edit build may fetch from: the API it is built against and its
+// admin (the public defaults and the local test servers too). A CSP naming
+// only api.inka.sh blocked a build against any other API: no content, and a
+// 500 ("Template … not found in pre-loaded templates").
+const EDIT_SOURCES = [...new Set([
+  "'self'", 'data:',
+  'https://admin.inka.sh', 'https://api.inka.sh',
+  new URL(PUBLIC_BACKEND).origin, new URL(EDIT_ADMIN).origin,
+  ADMIN_ORIGIN, MOCK_API_ORIGIN,
+])];
 
 export default defineNuxtConfig({
   nitro: {
@@ -100,8 +115,8 @@ export default defineNuxtConfig({
           security: {
             headers: { // Edit site can be put in an iframe
               contentSecurityPolicy: {
-                'img-src': ["'self'", "data:", 'https://admin.inka.sh', 'https://api.inka.sh', ADMIN_ORIGIN, MOCK_API_ORIGIN],
-                'connect-src': ["'self'", "data:", 'https://admin.inka.sh', 'https://api.inka.sh', ADMIN_ORIGIN, MOCK_API_ORIGIN],
+                'img-src': EDIT_SOURCES,
+                'connect-src': EDIT_SOURCES,
                 'frame-ancestors': ['*']
               },
               crossOriginResourcePolicy: "cross-origin",
@@ -115,11 +130,7 @@ export default defineNuxtConfig({
           image_alias: '',
           // Override API URL for test builds (NUXT_TEST_BACKEND env var)
           backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://api.inka.sh',
-          // The admin's port is overridable like every other (ports.ts), and a
-          // literal 3001 pointed test builds at whatever else was on it.
-          adminUrl: process.env.NUXT_TEST_BACKEND
-            ? `http://localhost:${process.env.HYDRA_VOLTO_SSR_PORT || 3001}`
-            : 'https://admin.inka.sh',
+          adminUrl: EDIT_ADMIN,
         }
       },
       image: {
@@ -185,6 +196,9 @@ export default defineNuxtConfig({
       // The api.inka.sh / admin.inka.sh fallbacks are only for a plain local build.
       backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://api.inka.sh',
       adminUrl: process.env.NUXT_ADMIN_URL || 'https://admin.inka.sh',
+      // The admin has a demo account (Inka's /login?demo): the header offers
+      // "Try editing now" instead of the plain login.
+      demoEditing: process.env.NUXT_DEMO_EDITING === 'true',
       // The public site, for social previews' absolute og:url / og:image.
       siteUrl: 'https://inka.sh',
       siteName: 'Inka',
@@ -247,7 +261,10 @@ export default defineNuxtConfig({
       }
     },
     plugins: [
-      // mkcert disabled - certs already generated manually
+      // mkcert disabled - certs already generated manually. Re-enabling it
+      // needs `import mkcert from 'vite-plugin-mkcert'` back at the top; the
+      // unused import made merely LOADING this config need the starter's own
+      // install, which the config tests (tests-playwright/fixtures) do not have.
       // mkcert({
       //   savePath: './certs',
       //   force: false,

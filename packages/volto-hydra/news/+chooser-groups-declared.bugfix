@@ -1,0 +1,1 @@
+The content check accepts a block group a frontend's own chooser order (`voltoConfig.blocks.groupBlocksOrder`, passed as `_groupBlocksOrder`) declares, instead of judging against the admin's default groups, which that order replaces.

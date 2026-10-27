@@ -1,0 +1,147 @@
+{
+  "@id": "/templates/unlabelled-layout",
+  "@type": "Document",
+  "UID": "unlabelled-layout-template-uid",
+  "id": "unlabelled-layout",
+  "title": "Unlabelled layout (a definition that does not name itself)",
+  "description": "A test template with header, grid, footer, and main placeholder",
+  "blocks": {
+    "header-block": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "templateInstanceId": "test-layout-def-instance",
+      "slotId": "header",
+      "value": [
+        {
+          "type": "h1",
+          "children": [
+            {
+              "text": "Template Header - From Template"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Template Header - From Template"
+    },
+    "grid-block": {
+      "@type": "gridBlock",
+      "fixed": true,
+      "readOnly": true,
+      "templateInstanceId": "test-layout-def-instance",
+      "slotId": "grid",
+      "blocks": {
+        "tpl-grid-cell-1": {
+          "@type": "slate",
+          "fixed": true,
+          "readOnly": true,
+          "templateInstanceId": "test-layout-def-instance",
+          "slotId": "grid-cell-1",
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "Template Grid Cell 1"
+                }
+              ]
+            }
+          ],
+          "plaintext": "Template Grid Cell 1"
+        },
+        "tpl-grid-cell-2": {
+          "@type": "slate",
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "Template Grid Cell 2"
+                }
+              ]
+            }
+          ],
+          "plaintext": "Template Grid Cell 2"
+        }
+      },
+      "blocks_layout": {
+        "items": [
+          "tpl-grid-cell-1",
+          "tpl-grid-cell-2"
+        ]
+      }
+    },
+    "main-placeholder": {
+      "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
+      "templateInstanceId": "test-layout-def-instance",
+      "slotId": "primary",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Default placeholder content"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Default placeholder content"
+    },
+    "slider-block": {
+      "@type": "slider",
+      "fixed": true,
+      "readOnly": true,
+      "templateInstanceId": "test-layout-def-instance",
+      "slotId": "slider",
+      "slides": [
+        {
+          "@id": "tpl-slide-1",
+          "@type": "slide",
+          "fixed": true,
+          "readOnly": true,
+          "templateInstanceId": "test-layout-def-instance",
+          "title": "Template Slide 1",
+          "description": "First template slide"
+        },
+        {
+          "@id": "tpl-slide-2",
+          "@type": "slide",
+          "fixed": true,
+          "readOnly": true,
+          "templateInstanceId": "test-layout-def-instance",
+          "title": "Template Slide 2",
+          "description": "Second template slide"
+        }
+      ]
+    },
+    "footer-block": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "templateInstanceId": "test-layout-def-instance",
+      "slotId": "footer",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Template Footer - From Template"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Template Footer - From Template"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "header-block",
+      "grid-block",
+      "main-placeholder",
+      "slider-block",
+      "footer-block"
+    ]
+  }
+}

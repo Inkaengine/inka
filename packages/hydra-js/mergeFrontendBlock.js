@@ -14,6 +14,12 @@
  *   enhancer that is a FUNCTION cannot be put in a recipe list, so it comes
  *   back as `previousEnhancer` for the caller to chain (the admin's
  *   createSchemaEnhancerFromRecipe takes it).
+ * - Except over a frontend's own schema: an entry with a `blockSchema` or
+ *   `schema` owns the WHOLE schema, so the admin's enhancer is not applied —
+ *   it changes the admin's schema (adds its fields, seeds its regions), and
+ *   laid over the frontend's it offered fields the frontend never said it
+ *   renders. Only the frontend's own enhancer stands. Variations follow the
+ *   same rule (View.jsx empties the admin's for a block with a frontend schema).
  *
  * A block the admin does NOT have takes the frontend entry as it is, and
  * needs a `title` and a `group` from it — compulsory, never made up from the
@@ -37,6 +43,11 @@ export function mergeFrontendBlock(blockType, adminEntry, frontendEntry) {
     return { entry: frontendEntry, previousEnhancer: undefined };
   }
   const entry = { ...adminEntry, ...frontendEntry };
+  if (frontendEntry.blockSchema || frontendEntry.schema) {
+    if (frontendEntry.schemaEnhancer) entry.schemaEnhancer = frontendEntry.schemaEnhancer;
+    else delete entry.schemaEnhancer;
+    return { entry, previousEnhancer: undefined };
+  }
   const before = adminEntry.schemaEnhancer;
   const added = frontendEntry.schemaEnhancer;
   if (!before || !added) return { entry, previousEnhancer: undefined };

@@ -1,0 +1,1 @@
+A demo site can link straight into editing a page: `/login?demo&return_url=<page>/edit` signs in with the account set in `RAZZLE_DEMO_LOGIN` and `RAZZLE_DEMO_PASSWORD` (read at runtime) and opens the editor, so the visitor never sees the login form. @djay

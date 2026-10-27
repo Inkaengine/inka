@@ -667,35 +667,52 @@ test.describe('Inline Editing - Basic', () => {
 
     // Clear and type a bullet list using markdown "- "
     await sidebarEditor.click();
-    await page.keyboard.press('ControlOrMeta+a');
+    await expect(sidebarEditor).toBeFocused();
+    // Backspace acts on the selection the editor holds, so the whole text must
+    // be selected before it is pressed.
+    await helper.selectAllTextInEditor(sidebarEditor);
     await page.keyboard.press('Backspace');
-    await page.waitForTimeout(200);
+    // Empty: the widget shows its placeholder, and nothing else.
+    await expect(sidebarEditor.locator('[data-slate-placeholder]')).toBeVisible();
+    await expect(sidebarEditor.locator('[data-slate-string]')).toHaveCount(0);
     await page.keyboard.type('- First item', { delay: 50 });
-    await page.waitForTimeout(500);
+    await expect(sidebarEditor.locator('li')).toHaveText(['First item']);
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(300);
+    await expect(sidebarEditor.locator('li')).toHaveCount(2);
     await page.keyboard.type('Second item', { delay: 10 });
 
-    // Wait for two list items in the sidebar widget
-    await expect(sidebarEditor.locator('li')).toHaveCount(2, { timeout: 5000 });
-
-    // Place cursor at start of second li
-    await sidebarEditor.evaluate((el: HTMLElement) => {
-      const allLi = el.querySelectorAll('li');
-      const secondLi = allLi[1];
-      if (!secondLi) return;
-      const sel = window.getSelection();
-      const range = document.createRange();
-      const textNode = secondLi.firstChild?.firstChild || secondLi.firstChild;
-      if (textNode) {
-        range.setStart(textNode, 0);
-        range.collapse(true);
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-      }
-    });
+    // Both items are in the sidebar widget AND have reached the iframe: the
+    // round trip re-renders the widget, which would reset a cursor placed
+    // before it arrived.
+    await expect(sidebarEditor.locator('li')).toHaveText(['First item', 'Second item']);
+    const iframe = helper.getIframe();
+    await expect(iframe.locator('[data-block-uid="block-1-uuid"] li')).toHaveText(['First item', 'Second item']);
 
     const blocksBeforeBackspace = await helper.getStableBlockCount();
+
+    // The cursor where Backspace needs it: collapsed at the start of the second
+    // item. It is placed through the DOM, which the editor only takes in on its
+    // next selection update — a re-render before then puts its old cursor
+    // back — so place it until it holds.
+    await expect(async () => {
+      const where = await sidebarEditor.evaluate((el: HTMLElement) => {
+        const secondLi = el.querySelectorAll('li')[1];
+        const sel = window.getSelection()!;
+        const firstText = document.createTreeWalker(secondLi, NodeFilter.SHOW_TEXT).nextNode();
+        const range = document.createRange();
+        range.setStart(firstText!, 0);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return new Promise<string | number>((resolve) =>
+          requestAnimationFrame(() => {
+            const now = window.getSelection()!;
+            resolve(now.isCollapsed && now.anchorNode && secondLi.contains(now.anchorNode) ? now.anchorOffset : 'moved');
+          }),
+        );
+      });
+      expect(where).toBe(0);
+    }).toPass();
 
     // Press Backspace — should demote second item and split the block
     await page.keyboard.press('Backspace');
@@ -704,7 +721,6 @@ test.describe('Inline Editing - Basic', () => {
     await helper.waitForBlockCountToBe(blocksBeforeBackspace + 1, 10000);
 
     // Original block should still have the first bullet
-    const iframe = helper.getIframe();
     await expect(iframe.locator('[data-block-uid="block-1-uuid"]')).toContainText('First item', { timeout: 5000 });
 
     // Second item should be in a NEW block as a plain paragraph

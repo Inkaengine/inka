@@ -5,7 +5,12 @@ import { isBlockActive, toggleBlock } from '@plone/volto-slate/utils';
 import { Icon } from '@plone/volto/components';
 import paragraphIcon from '@plone/volto/icons/paragraph.svg';
 import { isBlockStyleActive } from '@plone/volto-slate/editor/plugins/StyleMenu/utils';
-import { applyParagraphStyle, clearParagraphStyles } from '../../utils/blockFormats';
+import {
+  applyParagraphStyle,
+  blockTypeAtCursor,
+  clearParagraphStyles,
+  styleItemsFor,
+} from '../../utils/blockFormats';
 
 /**
  * FormatDropdown - Block-level format selector
@@ -41,8 +46,14 @@ const FormatDropdown = ({ blockButtons, onMouseDownCapture, onClickCapture }) =>
   // paragraph, chosen like a heading. Choosing a format or Paragraph clears
   // them; choosing one replaces another (utils/blockFormats.js).
   const formatButtons = blockButtons.filter((b) => !b.styleItem);
-  const styleItems = blockButtons.filter((b) => b.styleItem).map((b) => b.styleItem);
-  const styleClasses = styleItems.map((s) => s.cssClass);
+  const allStyleItems = blockButtons.filter((b) => b.styleItem).map((b) => b.styleItem);
+  // Every style's class, offered here or not: choosing one style replaces any
+  // other, and choosing a format clears them all.
+  const styleClasses = allStyleItems.map((s) => s.cssClass);
+  // A style for one kind of block (`appliesTo`) is offered only on that kind.
+  // With no selection yet there is no block type, and only the styles that
+  // make their own kind of block are offered.
+  const styleItems = styleItemsFor(allStyleItems, blockTypeAtCursor(editor));
   const activeStyle = styleItems.find((s) => {
     try {
       return isBlockStyleActive(editor, s.cssClass);

@@ -11,8 +11,10 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const { imageSize, scaledSize, pngOfSize } = require('./scaled-image.cjs');
 const os = require('os');
 const { execFileSync } = require('child_process');
+const principalsAndRules = require('./mock-principals-and-rules.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
@@ -62,25 +64,84 @@ function parseContentMounts() {
 const CONTENT_MOUNTS = parseContentMounts();
 
 /**
- * Resolve a moved-content redirect, mimicking plone.app.redirector.
- * Each mount may carry a redirects.json sibling ({ oldPath: newPath },
- * mount-relative) next to its content dir. Returns the new mount-prefixed
- * path or null. Read fresh each call (tiny file, only hit on a 404) so dev
- * edits to redirects.json take effect without a restart.
+ * A mount's redirects as site-relative [old, new] pairs, or [] when it has none.
+ *
+ * A markdown mount keeps them in its own folder (redirects.json beside
+ * index.md), site-relative: markdown has no physical path. @export makes them
+ * physical, with the site path the caller names.
+ *
+ * A JSON (exportimport) mount's redirects.json sits beside its content dir,
+ * as plone.exportimport lays it out, and holds PHYSICAL paths ({"/Plone/old": "/Plone/new"}): that is what
+ * plone.exportimport writes, and what its importer hands, as is, to
+ * plone.app.redirector's storage, which is keyed by physical path. The site's
+ * physical path is its root item's @id (plone_site_root/data.json). An entry
+ * outside it is one Plone would store where no request looks — a redirect
+ * that never fires — so it fails here rather than working only in the mock.
+ * A mount without a site root (or one whose @id is "/") has no prefix.
+ *
+ * Read fresh each call (tiny file, only hit on a 404 or @aliases) so dev edits
+ * take effect without a restart.
+ */
+function readRedirects(mount) {
+  const { dirPath } = mount;
+  if (isMarkdownMount(mount)) {
+    const ownFile = path.join(dirPath, 'redirects.json');
+    if (!fs.existsSync(ownFile)) return [];
+    return Object.entries(JSON.parse(fs.readFileSync(ownFile, 'utf8'))).map(([from, to]) => {
+      if (!from.startsWith('/') || !to.startsWith('/')) {
+        throw new Error(`${ownFile}: redirect paths start with / (site-relative): ${JSON.stringify(from)} -> ${JSON.stringify(to)}`);
+      }
+      return [from, to];
+    });
+  }
+  const redirectsFile = path.join(dirPath, '..', 'redirects.json');
+  if (!fs.existsSync(redirectsFile)) return [];
+  const map = JSON.parse(fs.readFileSync(redirectsFile, 'utf8'));
+  const rootFile = path.join(dirPath, 'plone_site_root', 'data.json');
+  const rootId = fs.existsSync(rootFile) ? JSON.parse(fs.readFileSync(rootFile, 'utf8'))['@id'] : '/';
+  const sitePath = rootId === '/' ? '' : rootId;
+  // A key may be stored EITHER way, and both resolve to the same served path:
+  //
+  //   /Plone/old   what plone.exportimport round-trips today, because it copies
+  //                IRedirectionStorage verbatim and that storage is keyed by
+  //                Zope-physical path.
+  //   /old         portal-relative, as every other @id in the archive is. A
+  //                converted tree strips the site prefix by design, and a
+  //                distribution applied by its own boot/deploy step (pretagov's
+  //                apply_redirects_file) prefixes on the way in.
+  //
+  // This used to THROW on the second form. That is wrong twice over: the
+  // validator in this repo already accepts a wholly site-relative file and
+  // reports only a MIX, and throwing here happens while parsing the mount, so
+  // one unexpected key 500s EVERY page rather than reporting one bad entry.
+  // Whether a file is in the right form for its importer is the validator's
+  // question; serving it is this function's.
+  const relative = (p) => {
+    if (p === sitePath) return '/';
+    if (p.startsWith(sitePath + '/')) return p.slice(sitePath.length);
+    if (p.startsWith('/')) return p;
+    throw new Error(
+      `${redirectsFile}: ${JSON.stringify(p)} is not a path — a redirect key is ` +
+      `either portal-relative (${JSON.stringify('/old')}) or physical ` +
+      `(${JSON.stringify(sitePath + '/old')})`,
+    );
+  };
+  return Object.entries(map).map(([from, to]) => [relative(from), relative(to)]);
+}
+
+/**
+ * Resolve a moved-content redirect, mimicking plone.app.redirector. Returns
+ * the new mount-prefixed path or null.
  */
 function getRedirectTarget(cleanPath) {
   for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const redirectsFile = path.join(dirPath, '..', 'redirects.json');
-    if (!fs.existsSync(redirectsFile)) continue;
-    let map;
-    try { map = JSON.parse(fs.readFileSync(redirectsFile, 'utf8')); }
-    catch { continue; }
     const rel = mountPath === '/'
       ? cleanPath
       : (cleanPath.startsWith(mountPath) ? cleanPath.slice(mountPath.length) || '/' : null);
     if (rel == null) continue;
-    if (map[rel]) {
-      return mountPath === '/' ? map[rel] : mountPath + map[rel];
+    const hit = readRedirects({ mountPath, dirPath }).find(([from]) => from === rel);
+    if (hit) {
+      return mountPath === '/' ? hit[1] : mountPath + hit[1];
     }
   }
   return null;
@@ -93,12 +154,7 @@ function getRedirectTarget(cleanPath) {
 function getAllRedirects() {
   const out = [];
   for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const redirectsFile = path.join(dirPath, '..', 'redirects.json');
-    if (!fs.existsSync(redirectsFile)) continue;
-    let map;
-    try { map = JSON.parse(fs.readFileSync(redirectsFile, 'utf8')); }
-    catch { continue; }
-    for (const [from, to] of Object.entries(map)) {
+    for (const [from, to] of readRedirects({ mountPath, dirPath })) {
       out.push({
         path: mountPath === '/' ? from : mountPath + from,
         'redirect-to': mountPath === '/' ? to : mountPath + to,
@@ -195,6 +251,8 @@ const uidPositionMap = {};
 /** Renewed token -> the session id its state lives under. */
 const sessionAliases = {};
 
+const ANONYMOUS_SESSION = '_default';
+
 function getSessionId(req) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -202,7 +260,7 @@ function getSessionId(req) {
     return sessionIdentity(`token:${token}`);
   }
   // Unauthenticated requests use default session (no persistence)
-  return '_default';
+  return ANONYMOUS_SESSION;
 }
 
 /**
@@ -665,11 +723,51 @@ function matchSearchableText(searchTerm, item) {
 }
 
 /**
- * Format a content item for search results
- * Includes image_field and image_scales matching real Plone API structure
- * Includes is_folderish for folder navigation in object browser
- * Includes hasPreviewImage for teaser blocks to show target's preview image
+ * Does this content have a preview image the mock can actually serve?
+ * Common for Documents, News Items, etc. For distribution-style content the
+ * preview_image is a blob_path reference; unless the bytes also exist on disk
+ * under the content dir, the mock can't serve the @@images URL — so don't claim
+ * a preview image we can't deliver.
  */
+function hasServablePreviewImage(content) {
+  const declaresPreview = !!(content.preview_image || content['@type'] === 'Image');
+  if (declaresPreview && content.preview_image?.blob_path) {
+    const urlPath = (content['@id'] || '').replace(/^https?:\/\/[^/]+/, '') || '/';
+    const dirInfo = contentDirMap[urlPath];
+    return !!(dirInfo && findFirstImageFile(dirInfo.dirPath, 3));
+  }
+  return declaresPreview;
+}
+
+/**
+ * The catalog's description of an item's image, as plone.restapi's summary
+ * serializer gives it — in search results AND in a folder's `items`. Always
+ * both keys, matching real Plone:
+ *   with an image:    image_field='image' (or 'preview_image'), image_scales={...}
+ *   without an image: image_field='',                           image_scales=null
+ */
+function catalogImageFields(content, baseUrl, hasPreviewImage = hasServablePreviewImage(content)) {
+  if (content['@type'] === 'Image') {
+    return {
+      image_field: 'image',
+      image_scales: getImageScales(content, baseUrl) || getPlaceholderImageScales(content.title),
+    };
+  }
+  if (content.image && (content.image.blob_path || content.image.width)) {
+    // Lead image field (CaseStudy/Document with ILeadImage). Real Plone
+    // exposes image_field='image' + image_scales for these in listings; the
+    // @@images endpoint resolves the blob_path (incl. cross-referenced blobs).
+    return { image_field: 'image', image_scales: getLeadImageScales(content, 'image') };
+  }
+  if (hasPreviewImage) {
+    return {
+      image_field: 'preview_image',
+      image_scales: getPlaceholderImageScales(content.title, 'preview_image'),
+    };
+  }
+  return { image_field: '', image_scales: null };
+}
+
 /**
  * Every block @type on a page, nested blocks included (plone.volto's
  * block_types indexer): the entries of a `blocks` dict at any depth — not any
@@ -691,18 +789,79 @@ function blockTypesOf(content) {
   return [...types];
 }
 
-function formatSearchItem(content, baseUrl) {
-  // Check if content has a preview image (common for Documents, News Items, etc.).
-  // For distribution-style content the preview_image is a blob_path reference;
-  // unless the bytes also exist on disk under the content dir, the mock can't
-  // serve the @@images URL — so don't claim a preview image we can't deliver.
-  const declaresPreview = !!(content.preview_image || content['@type'] === 'Image');
-  let hasPreviewImage = declaresPreview;
-  if (declaresPreview && content.preview_image?.blob_path) {
-    const urlPath = (content['@id'] || '').replace(/^https?:\/\/[^/]+/, '') || '/';
-    const dirInfo = contentDirMap[urlPath];
-    hasPreviewImage = !!(dirInfo && findFirstImageFile(dirInfo.dirPath, 3));
+/**
+ * What a summary may carry, as plone.restapi 10.0.4 decides it.
+ *
+ * Both sets were CAPTURED from a real Plone 6.2 + plone.volto backend rather
+ * than reasoned about, by asking it for one item with no metadata_fields and
+ * then with _all. Guessing them from restapi's source gives the wrong answer:
+ * its own default set is six fields, and plone.volto widens it — which is why
+ * a listing receives image_scales without asking for it.
+ *
+ * CATALOG_SCHEMA is that site's catalog columns, so it carries site-specific
+ * ones (block_types, sync_uid). A consumer whose catalog differs can pass
+ * MOCK_CATALOG_COLUMNS to add its own, the way
+ * RESTAPI_ADDITIONAL_NON_METADATA_ATTRIBUTES widens the real one.
+ *
+ * Note what is NOT a column: getObjPositionInParent. Before 10.0.4 a backend
+ * echoed any attribute named in metadata_fields, so asking for it appeared to
+ * work; 10.0.4 drops it and logs the rejection at DEBUG, which is to say
+ * silently. Serving it here unconditionally is exactly how a frontend comes to
+ * depend on a field production will not send.
+ */
+const DEFAULT_METADATA_FIELDS = new Set([
+  '@id', '@type', 'description', 'effective', 'end', 'getObjSize',
+  'getRemoteUrl', 'head_title', 'image_field', 'image_scales', 'mime_type',
+  'nav_title', 'review_state', 'start', 'title', 'type_title',
+]);
+
+const CATALOG_SCHEMA = new Set([
+  ...DEFAULT_METADATA_FIELDS,
+  'CreationDate', 'Creator', 'Date', 'Description', 'EffectiveDate',
+  'ExpirationDate', 'ModificationDate', 'Subject', 'Title', 'Type', 'UID',
+  'block_types', 'cmf_uid', 'created', 'exclude_from_nav', 'expires',
+  'getIcon', 'getId', 'getPath', 'getURL', 'hasPreviewImage', 'id',
+  'is_folderish', 'is_working_copy', 'listCreators', 'location', 'modified',
+  'portal_type', 'review_state', 'sync_uid',
+  ...String(process.env.MOCK_CATALOG_COLUMNS || '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean),
+]);
+
+/**
+ * Narrow a summary to what the query asked for: the default set, plus any
+ * requested field that is a catalog column, or the whole schema for `_all`.
+ * A requested field outside the schema is dropped, as the real one drops it.
+ */
+function applyMetadataFields(item, req) {
+  // A GET carries it in the query string; @querystring-search is a POST and
+  // carries it in the body, which is why the real one falls back to json_body
+  // when the form is empty. Reading only the query would leave every POST
+  // listing unfiltered — the exact blind spot this is here to remove.
+  const raw = req?.query?.metadata_fields ?? req?.body?.metadata_fields;
+  const asked = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
+  const allowed = asked.includes('_all')
+    ? CATALOG_SCHEMA
+    : new Set([
+        ...DEFAULT_METADATA_FIELDS,
+        ...asked.filter((f) => CATALOG_SCHEMA.has(f)),
+      ]);
+  const out = {};
+  for (const [key, value] of Object.entries(item)) {
+    if (allowed.has(key)) out[key] = value;
   }
+  return out;
+}
+
+/**
+ * Format a content item for search results
+ * Includes image_field and image_scales matching real Plone API structure
+ * Includes is_folderish for folder navigation in object browser
+ * Includes hasPreviewImage for teaser blocks to show target's preview image
+ */
+function formatSearchItem(content, baseUrl) {
+  const hasPreviewImage = hasServablePreviewImage(content);
 
   const item = {
     '@id': content['@id'],
@@ -730,29 +889,40 @@ function formatSearchItem(content, baseUrl) {
     // filter reads `item.Subject` for facet.Subject criteria. Populate from the
     // content's `subjects` field (the lowercase schema field).
     'Subject': content.subjects || [],
+    ...catalogImageFields(content, baseUrl, hasPreviewImage),
+    ...catalogFileFields(content),
   };
 
-  // Match real Plone: always include image_field and image_scales.
-  // With image: image_field='image', image_scales={...}
-  // Without image: image_field='', image_scales=null
-  if (content['@type'] === 'Image') {
-    item.image_field = 'image';
-    item.image_scales = getImageScales(content, baseUrl) || getPlaceholderImageScales(content.title);
-  } else if (content.image && (content.image.blob_path || content.image.width)) {
-    // Lead image field (CaseStudy/Document with ILeadImage). Real Plone
-    // exposes image_field='image' + image_scales for these in listings; the
-    // @@images endpoint resolves the blob_path (incl. cross-referenced blobs).
-    item.image_field = 'image';
-    item.image_scales = getLeadImageScales(content, 'image');
-  } else if (hasPreviewImage) {
-    item.image_field = 'preview_image';
-    item.image_scales = getPlaceholderImageScales(content.title, 'preview_image');
-  } else {
-    item.image_field = '';
-    item.image_scales = null;
-  }
-
   return item;
+}
+
+/**
+ * Plone's getObjSize: a blob's size the way the catalog formats it
+ * (Products.CMFPlone.utils.human_readable_size — "19.5 KB", "0 KB" when empty).
+ */
+function humanReadableSize(size) {
+  if (!size) return '0 KB';
+  for (const [unit, bytes] of [['GB', 1024 ** 3], ['MB', 1024 ** 2], ['KB', 1024]]) {
+    if (Math.floor(size / bytes)) return `${(size / bytes).toFixed(1)} ${unit}`;
+  }
+  return `${(size / 1024).toFixed(1)} KB`;
+}
+
+/**
+ * The catalog metadata Plone keeps for every item and a search with
+ * metadata_fields=_all returns: its type, the blob's mime type and size (a File's
+ * `file`, an Image's `image`), and who made it.
+ */
+function catalogFileFields(content) {
+  const blob = content.file || content.image;
+  const creators = content.creators || [];
+  return {
+    'portal_type': content['@type'],
+    'mime_type': blob ? blob['content-type'] : null,
+    'getObjSize': humanReadableSize(blob ? blob.size : 0),
+    'Creator': creators[0] || null,
+    'listCreators': creators,
+  };
 }
 
 /**
@@ -829,6 +999,18 @@ function loadRawContentFromDisk(urlPath) {
   // Miss: reload the mount that owns this path (format-agnostic -- markdown
   // re-reads its tree, JSON rescans) and retry once. Content added since startup
   // is picked up here rather than needing a restart.
+  //
+  // LOCAL-DEV ONLY, for the same reason the content watcher is (see
+  // setupContentWatchers): in CI the fixtures are a static checkout, so nothing
+  // is ever added to disk mid-run and a reload can only re-find what's already
+  // cached. But search/listing specs look up many synthetic paths (resolveuid,
+  // query results) that aren't content dirs -- every one misses, and an
+  // unconditional reload runs a full scanContentDir over the whole mount,
+  // re-logging ~260 lines PER MISS. That floods the CI log into the hundreds of
+  // thousands of lines and pins the CPU rescanning, which starves concurrent
+  // requests (truncated responses -> flaky search/listing failures). In CI a
+  // miss is just a miss.
+  if (process.env.CI) return null;
   const mount = mountFor(urlPath);
   if (mount) {
     reloadMount(mount);
@@ -1160,6 +1342,7 @@ function getNavigationItems(basePath = '/', depth = 1, baseUrlIn, sessionId) {
       const rawContent = rawContentForComponents(itemPath, sessionId);
       if (!rawContent) return null;
       if (rawContent.exclude_from_nav) return null;
+      if (!mayView(rawContent, sessionId)) return null;
       if (rawContent['@type'] === 'Image' || rawContent['@type'] === 'File') return null;
       return formatNavItem(rawContent, itemPath, baseUrl, depth - 1, sessionId);
     })
@@ -1249,40 +1432,62 @@ function buildBreadcrumbsComponent(cleanPath, baseUrl) {
 
 function buildActionsComponent(cleanPath, baseUrl, sessionId) {
   const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  const isRoot = cleanPath === '/';
+  // Folderish unless the content says otherwise — the rule the rest of this
+  // mock uses. The site root and any folder can hold content rules
+  // (plone.app.contentrules marks them IRuleAssignable).
+  const folderish = isRoot || loadRawContentFromDisk(cleanPath)?.is_folderish !== false;
+  const folderUrl = folderish ? fullUrl : fullUrl.replace(/\/[^/]+$/, '') || baseUrl;
+  const action = (id, title, url) => ({ icon: '', id, title, url });
+  // What a real Plone 6 site with plone.volto serves a Manager: the actions in
+  // Products.CMFPlone, plone.volto and plone.app.iterate's actions.xml whose
+  // `visible`, `available_expr` and permissions hold for a Manager, with the
+  // URL each `url_expr` gives. plone.restapi's recording (actions_get.resp)
+  // agrees on view/edit/folderContents/history/local_roles, the object_buttons
+  // and the user actions; it predates the serializer gaining `url`, which a
+  // live Plone 6 (demo.plone.org) emits and Volto reads — Footer.jsx renders
+  // `item.url ? flattenToAppURL(item.url) : addAppURL(item.id)`.
+  //
+  // Left out, as a Manager on a fresh site does not see them: Paste (only with
+  // something on the clipboard), RSS / Print / Syndication / Undo (not
+  // visible), Accessibility (hidden by plone.volto), the ical import actions
+  // (plone.app.event, only on a folder set up for it), Moderate comments
+  // (plone.app.discussion, not installed in Plone 6.1). portal_tabs and
+  // document_actions come back empty from a live Plone 6.
   return {
     '@id': `${fullUrl}/@actions`,
     document_actions: [],
-    // Two sources, and they disagree. plone.restapi's own recorded example
-    // (actions_get.resp) has keys [icon, id, title]; a live Plone 6
-    // (demo.plone.org) has [icon, id, title, url]. The recording predates the
-    // serializer gaining `url`, and Volto reads `url` — Footer.jsx renders
-    // `item.url ? flattenToAppURL(item.url) : addAppURL(item.id)` — so `url`
-    // is what a current Plone emits and what belongs here.
-    //
-    // WHICH entries appear, and in which category, is from actions_get.resp:
-    // delete belongs in object_buttons beside cut/copy/rename, not in object.
     object: [
-      { url: fullUrl, icon: '', id: 'view', title: 'View' },
-      { url: `${fullUrl}/edit`, icon: '', id: 'edit', title: 'Edit' },
-      { id: 'folderContents', icon: '', title: 'Contents' },
-      { id: 'history', icon: '', title: 'History' },
-      { id: 'local_roles', icon: '', title: 'Sharing' },
+      action('view', 'View', fullUrl),
+      action('edit', 'Edit', `${fullUrl}/edit`),
+      action('folderContents', 'Contents', `${folderUrl}/folder_contents`),
+      action('history', 'History', `${fullUrl}/@@historyview`),
+      action('local_roles', 'Sharing', `${fullUrl}/@@sharing`),
+      ...(folderish ? [action('contentrules', 'Rules', `${fullUrl}/@@manage-content-rules`)] : []),
     ],
     object_buttons: [
-      { id: 'cut', icon: '', title: 'Cut' },
-      { id: 'copy', icon: '', title: 'Copy' },
-      { id: 'delete', icon: '', title: 'Delete' },
-      { id: 'rename', icon: '', title: 'Rename' },
+      action('cut', 'Cut', `${fullUrl}/object_cut`),
+      action('copy', 'Copy', `${fullUrl}/object_copy`),
+      action('delete', 'Delete', `${fullUrl}/delete_confirmation`),
+      action('rename', 'Rename', `${fullUrl}/object_rename`),
+      ...(isRoot ? [] : [action('redirection', 'URL Management', `${fullUrl}/@@manage-aliases`)]),
       // plone.app.iterate's, and the ids Volto gates its working-copy buttons
-      // on. NOT in actions_get.resp, which records a site without it — so this
-      // is the one entry here that is inferred rather than recorded.
+      // on. NOT in actions_get.resp, which records a site without it.
       ...(workingCopyOf(cleanPath, sessionId)
-        ? [{ id: 'iterate_checkin', icon: '', title: 'Check in' }]
-        : [{ id: 'iterate_checkout', icon: '', title: 'Check out' }]),
+        ? [action('iterate_checkin', 'Check in', `${fullUrl}/@@content-checkin`)]
+        : [action('iterate_checkout', 'Check out', `${fullUrl}/@@content-checkout`)]),
     ],
     portal_tabs: [],
-    site_actions: [],
-    user: [],
+    site_actions: [
+      action('sitemap', 'Site Map', `${baseUrl}/sitemap`),
+      action('contact', 'Contact', `${baseUrl}/contact-form`),
+    ],
+    user: [
+      action('preferences', 'Preferences', `${baseUrl}/@@personal-preferences`),
+      action('dashboard', 'Dashboard', `${baseUrl}/dashboard`),
+      action('plone_setup', 'Site Setup', `${baseUrl}/@@overview-controlpanel`),
+      action('logout', 'Log out', `${baseUrl}/logout`),
+    ],
   };
 }
 
@@ -1395,6 +1600,30 @@ const SPW = {
   ],
   published: [{ id: 'retract', title: 'Retract', to: 'private' }],
 };
+
+/** SPW states an anonymous reader may not view (Plone answers them 401). */
+const ANONYMOUS_HIDDEN_STATES = new Set(['private', 'pending']);
+
+/**
+ * Whether the session's reader may view `item` (raw content or a summary).
+ *
+ * Plone filters EVERY catalog query by this (allowedRolesAndUsers), not just
+ * a fetch of the item itself: listings, searches and menus offer an anonymous
+ * reader published content only. Here only the GET of the item refused it, so
+ * a private page was listed to the public and its link 401'd when followed.
+ *
+ * A hidden state is viewable by the item's Owner and by roles such as Manager
+ * or Editor. @login here makes everyone who signs in a Manager, so being
+ * signed in is the whole test; ownership would decide only for a reader
+ * without such a role, and this mock has none.
+ */
+function mayView(item, sessionId) {
+  if (typeof sessionId !== 'string') {
+    throw new Error(`mayView needs the reader's session, got ${sessionId}`);
+  }
+  if (!ANONYMOUS_HIDDEN_STATES.has(item.review_state)) return true;
+  return sessionId !== ANONYMOUS_SESSION;
+}
 
 const STATE_TITLES = {
   private: 'Private',
@@ -1572,8 +1801,8 @@ function templateIdToPath(templateId) {
     let resolved = uidToPathMap[uidMatch[1]];
     if (!resolved) {
       // Same fallback resolveUidUrls uses: a template added after startup isn't in the
-      // index yet, so rescan before calling it missing.
-      initContentDirMap();
+      // index yet, so rescan before calling it missing (local dev only; see rescanOnMiss).
+      rescanOnMiss();
       resolved = uidToPathMap[uidMatch[1]];
     }
     return resolved ? resolved.replace(/\/+$/, '') || '/' : null;
@@ -1756,7 +1985,8 @@ function resolveUidUrls(obj, parentKey = null) {
       let resolvedPath = uidToPathMap[uid];
       if (!resolvedPath) {
         // UID not found — rescan content dirs in case new files were added
-        initContentDirMap();
+        // (local dev only; see rescanOnMiss).
+        rescanOnMiss();
         resolvedPath = uidToPathMap[uid];
       }
       if (!resolvedPath) return match;
@@ -1983,6 +2213,11 @@ function getFolderChildItems(folderPath, baseUrl) {
         'review_state': rawContent.review_state || 'published',
         'title': rawContent.title,
         'UID': rawContent.UID,
+        // A Volto site's summaries carry the item's image too (plone.volto adds
+        // image_field/image_scales to the default metadata) — in a folder's
+        // items exactly as in search results, so a folder view can show each
+        // child's preview without fetching it.
+        ...catalogImageFields({ ...rawContent, '@id': itemPath }, baseUrl),
       };
     })
     .filter(Boolean);
@@ -2044,6 +2279,17 @@ function expandComponents(stubs, expandList, urlPath, baseUrl, sessionId, params
  * folder-contents listing from here, so every child on every page would page
  * nothing.
  */
+/**
+ * A folder's `items` as its reader may see them (see mayView). Filtered here,
+ * where the reader is known, because the content itself is also built for
+ * internal reads that have no reader.
+ */
+function withViewableItems(content, sessionId) {
+  if (!Array.isArray(content.items)) return content;
+  const items = content.items.filter((item) => mayView(item, sessionId));
+  return { ...content, items, items_total: items.length };
+}
+
 function batchFolderItems(content, query = {}) {
   if (!Array.isArray(content.items)) return content;
   const start = Number(query.b_start ?? 0);
@@ -2305,10 +2551,20 @@ function loadMarkdownMount(mount) {
  */
 function validateServedContent() {
   const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+  // ALLOW_MISSING_BLOBS=true: a blob whose bytes are not on disk is a warning,
+  // not an error — what `plone-content --allow-missing-blobs` does. For a pull
+  // request whose content references a file CI makes only after the merge (a
+  // recorded clip, say). Every other problem is still fatal.
+  const allowMissingBlobs = process.env.ALLOW_MISSING_BLOBS === 'true';
   const errors = [];
+  const warnings = [];
+  const keep = (result) => {
+    errors.push(...result.errors);
+    warnings.push(...(result.warnings || []));
+  };
   for (const { dirPath } of CONTENT_MOUNTS) {
     if (!isMarkdownMount({ dirPath }) && fs.existsSync(path.join(dirPath, '__metadata__.json'))) {
-      errors.push(...validate(dirPath).errors);
+      keep(validate(dirPath, { allowMissingBlobs }));
     }
   }
   const paths = new Set([...markdownItems.keys(), ...Object.keys(contentDirMap)]);
@@ -2317,43 +2573,18 @@ function validateServedContent() {
     if (data == null) throw new Error(`content-check: ${urlPath} is registered but has no content`);
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
-  errors.push(...checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent }).errors);
+  keep(checkIntegrity(source, { schemasFor: hydraSchemasForOwnContent, allowMissingBlobs }));
+  for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   if (siteSchemas) {
     const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+    const { buildIdFieldMap } = require('../../packages/hydra-js/buildBlockPathMap.js');
+    // Without the idFieldMap the container API sees only object_lists whose
+    // items carry templateId, so a slider's slides go unchecked.
+    const idFieldMap = buildIdFieldMap(siteSchemas, { formatMessage: (m) => m?.defaultMessage || '' });
     const own = source.filter((item) => !isHydraOwned(item.rel));
-    errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas)).errors);
+    errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas), { idFieldMap }).errors);
   }
-  return withoutExpectedErrors(errors.map((m) => m.trim()));
-}
-
-/**
- * A fixture that is broken ON PURPOSE — it exists to show how a frontend copes
- * with that content — is declared in its mount's `expected-errors.json`:
- *
- *   { "/image-scales-test": ["url: path not in content: /image-scales-test/test-image.png"] }
- *
- * keyed by the item's path within the mount, each entry a substring of the one
- * problem it excuses. An entry excuses only the problems it matches on that
- * item, and an entry that matches nothing is an error in its own right, so a
- * declaration cannot outlive the breakage it describes.
- */
-function withoutExpectedErrors(errors) {
-  const remaining = [...errors];
-  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const file = path.join(dirPath, 'expected-errors.json');
-    if (!fs.existsSync(file)) continue;
-    for (const [rel, expected] of Object.entries(JSON.parse(fs.readFileSync(file, 'utf-8')))) {
-      const itemPath = mountPath === '/' ? rel : mountPath + (rel === '/' ? '' : rel);
-      for (const text of expected) {
-        const hits = remaining.filter((m) => m.startsWith(`${itemPath}: `) && m.includes(text));
-        if (!hits.length) {
-          remaining.push(`${itemPath}: expected-errors.json expects "${text}", which no longer occurs — remove it from ${file}`);
-        }
-        for (const m of hits) remaining.splice(remaining.indexOf(m), 1);
-      }
-    }
-  }
-  return remaining;
+  return errors.map((m) => m.trim());
 }
 
 /**
@@ -2363,9 +2594,8 @@ function withoutExpectedErrors(errors) {
  * this `hero` — so its blocks get the structural checks, not these shapes.
  */
 const HYDRA_ROOT = path.resolve(__dirname, '..', '..');
-function hydraSchemaForOwnContent(type, urlPath) {
-  if (isHydraOwned(urlPath)) return blockSchemaFor(type);
-  return siteSchemas ? siteSchemas[type]?.blockSchema ?? null : null;
+function hydraSchemasForOwnContent(urlPath) {
+  return isHydraOwned(urlPath) ? hydraBlocksConfig : siteSchemas;
 }
 
 /** Whether the content at `urlPath` is served from inside this hydra checkout
@@ -2399,21 +2629,19 @@ function reportContentErrors(errors) {
 }
 
 /** Startup: invalid content is fatal — tests must not run against a site that
- *  would not import, or that links to nothing. SKIP_CONTENT_VALIDATION=true is
- *  the explicit way out. */
+ *  would not import, or that links to nothing. There is no way out: content a
+ *  test needs broken is created at runtime (session content), never served. */
 function assertServedContentValid() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
   const errors = validateServedContent();
   if (errors.length) {
     reportContentErrors(errors);
-    throw new Error(`${errors.length} content problem(s) — fix the content (listed above) or set SKIP_CONTENT_VALIDATION=true`);
+    throw new Error(`${errors.length} content problem(s) — fix the content (listed above)`);
   }
 }
 
 /** A reload (watcher or cache miss) only reports: one bad edit mid-session
  *  should not take the dev server down. The next start is the gate. */
 function reportServedContentProblems() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
   const errors = validateServedContent();
   if (errors.length) reportContentErrors(errors);
 }
@@ -2453,7 +2681,13 @@ async function initMarkdownMounts() {
   if (!mounts.length) return;
   const { readTree } = await import('../../lib/markdown-mount.mjs');
   const { checkIntegrity } = require('./plone-content-validator.cjs');
-  mdRuntime = { readTree, checkIntegrity, schemaFor: blockSchemaFor };
+  // readTree takes a type -> blockSchema function; only checkIntegrity takes
+  // the whole config. Two different contracts, so both are supplied.
+  mdRuntime = {
+    readTree,
+    checkIntegrity,
+    schemaFor: (type) => hydraBlocksConfig?.[type]?.blockSchema ?? null,
+  };
   for (const mount of mounts) loadMarkdownMount(mount);
 }
 
@@ -2462,10 +2696,10 @@ async function initMarkdownMounts() {
  *  the complete registry the frontends register from, so neither can drift from
  *  what renders. A type it does not know is not schema-checked. Imported here,
  *  not via markdown-mount, so a JSON-only consumer needs no markdown toolchain. */
-let blockSchemaFor = null;
+let hydraBlocksConfig = null;
 async function loadBlockSchemas() {
   const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
-  blockSchemaFor = (type) => sharedBlocksConfig[type]?.blockSchema;
+  hydraBlocksConfig = sharedBlocksConfig;
 }
 
 // Scan content directories on startup (content loaded on-demand)
@@ -2489,6 +2723,20 @@ function initContentDirMap() {
     scanContentDir(dirPath, mountPath);
   });
   console.log(`Registered ${Object.keys(contentDirMap).length} content paths`);
+}
+
+// A cache MISS used to rescan the whole tree in case a fixture was added after
+// startup. That's a LOCAL-DEV convenience only -- the same reason the content
+// watcher is gated (see setupContentWatchers). In CI the fixtures are a static
+// checkout; nothing is added mid-run, so a rescan can only re-find what's
+// already registered. But resolveuid lookups, depth-less listings, and image
+// serving all rescan on EVERY miss, and the search/listing specs generate many
+// synthetic misses -- each one ran a full scanContentDir (~260 log lines) and
+// pinned the CPU, flooding the CI log and starving concurrent requests
+// (truncated responses -> flaky failures). So on a miss, only rescan locally.
+function rescanOnMiss() {
+  if (process.env.CI) return;
+  initContentDirMap();
 }
 
 // Initialize on startup
@@ -2848,9 +3096,10 @@ const SIBLING_DEFAULTS = {
  * @param {(uid:string)=>number|undefined} opts.positionOf  getObjPositionInParent, for ordering
  * @param {(urlPath,field,blobPath)=>string} opts.blobSourceOf  abs source file for a blob's bytes
  * @param {string[]} [opts.siblingsFrom]       dirs to copy the 6 siblings from (first that has each wins)
+ * @param {Object<string,string>} [opts.redirects]  redirects.json to write (physical paths) instead of copying one
  * @returns the written __metadata__
  */
-function writeDistribution(dest, items, { positionOf = () => undefined, blobSourceOf, siblingsFrom = [], allowMissingBlobs = false } = {}) {
+function writeDistribution(dest, items, { positionOf = () => undefined, blobSourceOf, siblingsFrom = [], allowMissingBlobs = false, redirects } = {}) {
   const destContent = path.join(dest, 'content');
   fs.rmSync(destContent, { recursive: true, force: true });
   fs.mkdirSync(destContent, { recursive: true });
@@ -2914,6 +3163,10 @@ function writeDistribution(dest, items, { positionOf = () => undefined, blobSour
   dataFiles.sort((a, b) => depthOf(a) - depthOf(b) || a.localeCompare(b));
 
   for (const sib of DISTRIBUTION_SIBLINGS) {
+    if (sib === 'redirects.json' && redirects) {
+      fs.writeFileSync(path.join(dest, sib), JSON.stringify(redirects, null, 2) + '\n');
+      continue;
+    }
     const from = siblingsFrom.map((d) => path.join(d, sib)).find((p) => fs.existsSync(p));
     if (from) fs.copyFileSync(from, path.join(dest, sib));
     else fs.writeFileSync(path.join(dest, sib), JSON.stringify(SIBLING_DEFAULTS[sib], null, 2) + '\n');
@@ -2940,7 +3193,34 @@ function writeDistribution(dest, items, { positionOf = () => undefined, blobSour
  * mount's dir (its blob_path is relative to that content root). Returns the
  * written __metadata__, or null when there is no content to export.
  */
-function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
+/**
+ * Every exportable mount's redirects, as plone.exportimport writes them:
+ * PHYSICAL paths under `sitePath` ("/Plone"), the site's path in the Zope root.
+ * The importer stores each pair as is, keyed by physical path, so a
+ * site-relative pair would be stored where no request looks. Throws an
+ * ExportRequestError when there are redirects and no usable `sitePath`.
+ */
+class ExportRequestError extends Error {}
+function exportRedirects(mounts, sitePath) {
+  const pairs = [];
+  for (const mount of mounts) {
+    for (const [from, to] of readRedirects(mount)) {
+      const prefixed = (p) => (mount.mountPath === '/' ? p : mount.mountPath + (p === '/' ? '' : p));
+      pairs.push([prefixed(from), prefixed(to)]);
+    }
+  }
+  if (!pairs.length) return {};
+  if (typeof sitePath !== 'string' || !/^\/[^/]+(\/[^/]+)*$/.test(sitePath)) {
+    throw new ExportRequestError(
+      `the content has ${pairs.length} redirect(s); pass sitePath (the site's physical path, e.g. "/Plone") ` +
+      `so redirects.json holds the physical paths Plone stores them by (got ${JSON.stringify(sitePath)})`,
+    );
+  }
+  const physical = (p) => (p === '/' ? sitePath : sitePath + p);
+  return Object.fromEntries(pairs.map(([from, to]) => [physical(from), physical(to)]));
+}
+
+function buildDistributionFromMemory(dest, { allowMissingBlobs = false, sitePath } = {}) {
   // Only genuine content-source mounts are exportable: a plone.exportimport tree
   // (has __metadata__.json) or a markdown tree (has index.md). A loose fixture
   // mount like /_test_data is neither — it holds intentionally-malformed test
@@ -2976,6 +3256,7 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
     blobSourceOf,
     siblingsFrom,
     allowMissingBlobs,
+    redirects: exportRedirects(CONTENT_MOUNTS.filter(exportable), sitePath),
   });
 }
 
@@ -2994,13 +3275,15 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false } = {}) {
  * markdown trees instead of exportimport JSON; the CALLER supplies the
  * prototypes in the body (`{ matched, tagged }` declaration text) so the mock
  * API needs no format config of its own.
- *   POST /@export  { format: 'json'|'markdown', prototypes?: { matched, tagged } }
+ *   POST /@export  { format: 'json'|'markdown', prototypes?: { matched, tagged }, sitePath? }
+ *     sitePath: the site's physical path ("/Plone"), required for json when
+ *     the content has redirects — redirects.json holds physical paths.
  *     json     -> application/zip  (export.zip: content/**, siblings)
  *     markdown -> application/zip  (export-markdown.zip: docs/**, site/** trees)
  */
 app.post('/@export', async (req, res) => {
   await ready;
-  const { format = 'json', prototypes = {}, allowMissingBlobs = false } = req.body || {};
+  const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = req.body || {};
 
   if (format === 'markdown') {
     const { emitPage, parsePrototypes } = await getEngine();
@@ -3293,7 +3576,13 @@ app.post('/@export', async (req, res) => {
   // distribution. Build it in a temp dir, validate, tar, stream, clean up.
   const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'plone-export-'));
   try {
-    const merged = buildDistributionFromMemory(staging, { allowMissingBlobs });
+    let merged;
+    try {
+      merged = buildDistributionFromMemory(staging, { allowMissingBlobs, sitePath });
+    } catch (e) {
+      if (e instanceof ExportRequestError) return res.status(400).json({ error: e.message });
+      throw e;
+    }
     if (!merged) {
       return res.status(409).json({ error: 'no content to export' });
     }
@@ -3301,7 +3590,7 @@ app.post('/@export', async (req, res) => {
     const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
     const contentDir = path.join(staging, 'content');
     const v = validate(contentDir, { allowMissingBlobs });
-    const c = checkIntegrity(contentDir, { schemaFor: blockSchemaFor, allowMissingBlobs });
+    const c = checkIntegrity(contentDir, { schemasFor: () => hydraBlocksConfig, allowMissingBlobs });
     const errors = [...v.errors, ...c.errors];
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
@@ -4332,20 +4621,11 @@ app.post(/.*\/@sharing$/, (req, res) => {
   res.status(204).end();
 });
 
-/**
- * GET /@users/:userid
- * Get user information
- */
-app.get('/@users/:userid', (req, res) => {
-  const { userid } = req.params;
-  res.json({
-    '@id': `${API_ORIGIN}/@users/${userid}`,
-    id: userid,
-    fullname: 'Admin User',
-    email: 'admin@example.com',
-    roles: ['Manager', 'Authenticated'],
-    username: userid,
-  });
+// Users, groups, roles, the user schema, control panels and content rules.
+principalsAndRules.register(app, {
+  getSessionId,
+  origin: API_ORIGIN,
+  titleOf: (urlPath) => loadRawContentFromDisk(urlPath)?.title || urlPath,
 });
 
 /**
@@ -4476,8 +4756,44 @@ const VOCAB_ITEMS = {
   ],
   // A second one, so a picker that lists vocabularies has something to choose
   // BETWEEN — with one entry, "offers the right list" and "offers any list at
-  // all" are the same assertion.
-  'plone.app.vocabularies.ReallyUserFriendlyTypes': ['Document', 'News Item'],
+  // all" are the same assertion. Its terms are titled as Plone titles them:
+  // the type "Document" reads "Page", so a token echoed as the title would
+  // show a type's id where a person expects its name.
+  // Every metadata column the catalog holds, as Plone's MetadataFields lists
+  // them: a listing result carries these (metadata_fields=_all), so a field
+  // mapping can offer a site's own columns without a frontend naming them.
+  'plone.app.vocabularies.MetadataFields': [
+    { token: 'CreationDate', title: 'Creation date' },
+    { token: 'Creator', title: 'Creator' },
+    { token: 'Description', title: 'Description' },
+    { token: 'EffectiveDate', title: 'Effective date' },
+    { token: 'ExpirationDate', title: 'Expiration date' },
+    { token: 'ModificationDate', title: 'Modification date' },
+    { token: 'Subject', title: 'Subject' },
+    { token: 'Title', title: 'Title' },
+    { token: 'Type', title: 'Type' },
+    { token: 'UID', title: 'UID' },
+    { token: 'created', title: 'Created' },
+    { token: 'effective', title: 'Effective' },
+    { token: 'end', title: 'End' },
+    { token: 'exclude_from_nav', title: 'Exclude from navigation' },
+    { token: 'expires', title: 'Expires' },
+    { token: 'getId', title: 'Short name' },
+    { token: 'getObjSize', title: 'Size' },
+    { token: 'id', title: 'ID' },
+    { token: 'is_folderish', title: 'Is folderish' },
+    { token: 'listCreators', title: 'Creators' },
+    { token: 'location', title: 'Location' },
+    { token: 'mime_type', title: 'MIME type' },
+    { token: 'modified', title: 'Modified' },
+    { token: 'portal_type', title: 'Portal type' },
+    { token: 'review_state', title: 'Review state' },
+    { token: 'start', title: 'Start' },
+  ],
+  'plone.app.vocabularies.ReallyUserFriendlyTypes': [
+    { token: 'Document', title: 'Page' },
+    { token: 'News Item', title: 'News Item' },
+  ],
   // collective.volto.formsupport lists only the captcha providers a site has
   // configured (captcha/vocabularies.py keeps those whose isEnabled() is
   // true): see CONFIGURED_CAPTCHAS.
@@ -4496,6 +4812,9 @@ const CONFIGURED_CAPTCHAS = [
     .filter(Boolean),
 ];
 VOCAB_ITEMS['collective.volto.formsupport.captcha.providers'] = CONFIGURED_CAPTCHAS;
+// The vocabularies the content-rule forms read (events, workflow states and
+// transitions, groups, roles).
+Object.assign(VOCAB_ITEMS, principalsAndRules.EXTRA_VOCABULARIES);
 
 // Optional generated vocabularies, declared by a seed file and switched on
 // with VOCAB_SPEC. Used by the adapter contract suite, which needs a
@@ -4566,17 +4885,21 @@ app.get('/@vocabularies/:vocab', (req, res) => {
     });
   }
 
-  const all = VOCAB_ITEMS[req.params.vocab] || [];
+  // A term is a bare string where the token is its own title (keywords), or
+  // `{ token, title }` where they differ.
+  const all = (VOCAB_ITEMS[req.params.vocab] || []).map((v) =>
+    typeof v === 'string' ? { token: v, title: v } : v,
+  );
   // `?title=` is a case-insensitive substring filter in plone.restapi's
   // serializer — what a type-ahead sends so the server does the narrowing.
   const title = String(req.query.title || '').toLowerCase();
-  const values = title
-    ? all.filter((v) => v.toLowerCase().includes(title))
+  const items = title
+    ? all.filter((v) => v.title.toLowerCase().includes(title))
     : all;
   res.json({
     '@id': `http://localhost:${PORT}/@vocabularies/${req.params.vocab}`,
-    items: values.map((v) => ({ token: v, title: v })),
-    items_total: values.length,
+    items,
+    items_total: items.length,
   });
 });
 
@@ -4830,7 +5153,8 @@ app.post('*/@querystring-search', (req, res) => {
         id: raw.id || itemPath.split('/').pop(),
       };
     })
-    .filter((content) => content !== null);
+    .filter((content) => content !== null)
+    .filter((content) => mayView(content, getSessionId(req)));
 
   // Apply query filters
   // plone.app.querystring `selection.*` operations apply by index TYPE,
@@ -4943,6 +5267,23 @@ app.post('*/@querystring-search', (req, res) => {
             .includes(String(value).toLowerCase()),
         );
       }
+    } else if (
+      operation === 'plone.app.querystring.operation.date.largerThan' ||
+      operation === 'plone.app.querystring.operation.date.lessThan'
+    ) {
+      // A date index (effective, created, modified…): after or before the
+      // value, as a date-range filter asks. Like Plone's DateIndex, an item
+      // with no date matches neither.
+      const bound = new Date(value).getTime();
+      if (Number.isNaN(bound)) {
+        throw new Error(`[MOCK-API] @querystring-search: '${value}' is not a date (${index})`);
+      }
+      const after = operation.endsWith('largerThan');
+      allItems = allItems.filter((item) => {
+        if (!item[index]) return false;
+        const t = new Date(item[index]).getTime();
+        return after ? t > bound : t < bound;
+      });
     } else if (index === 'exclude_from_nav' && operation.includes('boolean')) {
       // Nav listings filter out items marked exclude_from_nav: true.
       // Mirrors Plone's plone.app.querystring.operation.boolean.{isFalse,isTrue}.
@@ -4998,9 +5339,13 @@ app.post('*/@querystring-search', (req, res) => {
       return allPaths.indexOf(aPath) - allPaths.indexOf(bPath);
     };
   } else if (sort_on) {
+    // sortable_title is an index Plone makes from the title (case folded);
+    // no item carries a field of that name.
+    const sortValue = (item) =>
+      sort_on === 'sortable_title' ? String(item.title ?? '').toLowerCase() : item[sort_on] || '';
     comparator = (a, b) => {
-      const aVal = a[sort_on] || '';
-      const bVal = b[sort_on] || '';
+      const aVal = sortValue(a);
+      const bVal = sortValue(b);
       return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
     };
   }
@@ -5028,7 +5373,7 @@ app.post('*/@querystring-search', (req, res) => {
 
   res.json({
     '@id': searchUrl,
-    items,
+    items: items.map((item) => applyMetadataFields(item, req)),
     items_total: itemsTotal,
     batching: {
       '@id': searchUrl,
@@ -5055,9 +5400,10 @@ app.get('*/@search', (req, res) => {
   // disk, or a renamed document keeps reporting its old title.
   if (req.query.UID) {
     const uidPath = uidToPathMap[req.query.UID];
-    const found = uidPath
+    const content = uidPath
       ? getContent(uidPath, getSessionId(req))
       : null;
+    const found = content && mayView(content, getSessionId(req)) ? content : null;
     return res.json({
       '@id': `http://localhost:${PORT}${searchPath}/@search`,
       items: found
@@ -5225,8 +5571,9 @@ app.get('*/@search', (req, res) => {
   } else {
     // No depth filter - return all content items from disk.
     // Rescan so newly-added fixture directories surface without a server
-    // restart — same "rescan on miss" pattern as resolveUidUrls() above.
-    initContentDirMap();
+    // restart — same "rescan on miss" pattern as resolveUidUrls() above
+    // (local dev only; see rescanOnMiss).
+    rescanOnMiss();
     items = Object.keys(contentDirMap)
       .filter((itemPath) => itemPath !== '/')
       .map((itemPath) => loadContentFromDisk(itemPath))
@@ -5241,6 +5588,8 @@ app.get('*/@search', (req, res) => {
   // `Language=all` to opt out. A search that says nothing about language is
   // left alone: every single-language spec in this suite is one of those, and
   // filtering them by a default would answer a question they never asked.
+  items = items.filter((item) => mayView(item, getSessionId(req)));
+
   const languageQuery = req.query.Language;
   if (languageQuery && languageQuery !== 'all') {
     const wanted = Array.isArray(languageQuery) ? languageQuery : [languageQuery];
@@ -5262,12 +5611,18 @@ app.get('*/@search', (req, res) => {
   // which is indistinguishable from a sort the ADMIN failed to send, and hid
   // the question of whether the admin sends it at all.
   //
-  // getObjPositionInParent is the folder's own order, which is how the items
-  // already arrive; every other index sorts on the metadata field of that
-  // name, and sort_order: descending reverses the whole result, as in the
-  // querystring-search handler above.
+  // getObjPositionInParent is the folder's own order. JSON content arrives in
+  // it already (exportimport ordering), but markdown content does not: its
+  // order is the folder's `order:` frontmatter, kept as each item's position,
+  // so it is sorted on. An item the folder does not order goes last, as the
+  // catalog puts an unpositioned item. Every other index sorts on the
+  // metadata field of that name, and sort_order: descending reverses the
+  // whole result, as in the querystring-search handler above.
   const sortOn = req.query.sort_on;
-  if (sortOn && sortOn !== 'getObjPositionInParent') {
+  if (sortOn === 'getObjPositionInParent') {
+    const position = (item) => uidPositionMap[item.UID] ?? Number.MAX_SAFE_INTEGER;
+    items = [...items].sort((a, b) => position(a) - position(b));
+  } else if (sortOn) {
     items = [...items].sort((a, b) => {
       const x = a[sortOn] ?? '';
       const y = b[sortOn] ?? '';
@@ -5295,7 +5650,7 @@ app.get('*/@search', (req, res) => {
 
   res.json({
     '@id': searchUrl,
-    'items': items,
+    'items': items.map((item) => applyMetadataFields(item, req)),
     'items_total': total,
     'batching': {
       '@id': searchUrl,
@@ -5725,6 +6080,7 @@ app.get('*/@form-data', (req, res) => {
     if (blockId && block !== blockId) continue;
     items.push(...records);
   }
+  // Stored submissions, not catalog brains: metadata_fields does not apply.
   res.json({ items, items_total: items.length });
 });
 
@@ -5813,12 +6169,45 @@ app.get('*/@@images/*', (req, res) => {
   // e.g., /block/grid-block/@@images/preview_image/large
   // e.g., /concepts/custom-blocks/@@images/image-800-1c983515.svg (listing expansion scale URL)
   // Match field name which may include hash suffix: image-800-1c983515.svg
-  const pathMatch = req.path.match(/^(.+?)\/@@images\/([a-z_]+(?:-[\w.-]+)?)/i);
+  // Third group is the SCALE. The old pattern had only two groups and read
+  // pathMatch[3], so `scale` was always undefined and every request fell back
+  // to 'preview' — the scale name was never actually parsed.
+  const pathMatch = req.path.match(/^(.+?)\/@@images\/([a-z_]+(?:-[\w.-]+)?)(?:\/([a-z0-9]+))?/i);
   const contentPath = pathMatch ? pathMatch[1] : '';
   // Strip hash suffix from field name (e.g., 'image-800-1c983515.svg' → 'image')
   const rawField = pathMatch ? pathMatch[2] : 'image';
   const fieldName = rawField.replace(/-\d+.*$/, '');
-  const scale = pathMatch && pathMatch[3] ? pathMatch[3] : 'preview';
+  const scale = pathMatch && pathMatch[3] ? pathMatch[3] : null;
+
+  // A SCALE must come back at the scale's SIZE. This endpoint used to serve the
+  // same bytes at every scale, so a frontend correctly asking for
+  // `@@images/image/preview` got the 2400px original back and was
+  // indistinguishable from one that asked for the original — which made any
+  // check that measures image size meaningless against this mock.
+  //
+  // We synthesise a blank PNG at the right dimensions rather than resizing: the
+  // picture does not matter here, the size does. SVG is excluded because it has
+  // no raster size, which is also why real Plone serves it unscaled.
+  //
+  // Shared, because this handler has TWO serving paths and patching only the
+  // first left the other still lying.
+  const sendScaledIfAsked = (imageFile) => {
+    const ext = path.extname(imageFile).toLowerCase();
+    if (!scale || ext === '.svg') return false;
+    try {
+      const source = imageSize(fs.readFileSync(imageFile));
+      const target = scaledSize(source, scale);
+      if (!target || (target.width === source.width && target.height === source.height)) {
+        return false;
+      }
+      res.set('Content-Type', 'image/png');
+      res.send(pngOfSize(target.width, target.height));
+      return true;
+    } catch {
+      return false;   // unreadable header — serve the original bytes instead
+    }
+  };
+
 
   // Bytes uploaded in this session take precedence: they have no directory on
   // disk, so contentDirMap will never find them.
@@ -5831,6 +6220,10 @@ app.get('*/@@images/*', (req, res) => {
   // that references it, so there is nothing to resolve.
   if (markdownBlobs.has(contentPath)) {
     const file = markdownBlobs.get(contentPath);
+    // Scale here too. This handler has THREE serving paths and each one that
+    // ignores the scale makes the mock lie about image size on exactly the
+    // content it owns — these docs fixtures live beside their markdown.
+    if (sendScaledIfAsked(file)) return;
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
     res.sendFile(file);
@@ -5842,7 +6235,7 @@ app.get('*/@@images/*', (req, res) => {
   // If not found, rescan in case content was added after startup
   let dirInfo = contentDirMap[contentPath];
   if (!dirInfo) {
-    initContentDirMap();
+    rescanOnMiss(); // local dev only; see rescanOnMiss
     dirInfo = contentDirMap[contentPath];
   }
   const imageDir = dirInfo ? path.join(dirInfo.dirPath, fieldName) : null;
@@ -5857,9 +6250,10 @@ app.get('*/@@images/*', (req, res) => {
   };
   const isImageExt = (ext) => ext in mimeTypes;
   const serveFile = (imageFile) => {
+    if (sendScaledIfAsked(imageFile)) return undefined;
     const ext = path.extname(imageFile).toLowerCase();
     res.set('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-    res.sendFile(imageFile);
+    return res.sendFile(imageFile);
   };
 
   // Distribution lead/preview image may reference ANOTHER content item's blob
@@ -5921,6 +6315,7 @@ app.get('*/@@download/*', (req, res) => {
   // the distribution `<dir>/image/<file>` layout handled below.
   if (markdownBlobs.has(contentPath)) {
     const file = markdownBlobs.get(contentPath);
+    // The original, as uploaded: a download names no scale (that is @@images').
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
     res.sendFile(file);
@@ -6045,7 +6440,20 @@ app.get('*', (req, res, next) => {
   if (content) {
     // Filter actions based on authentication
     const authenticated = isAuthenticated(req);
-    const filteredContent = filterActionsForAuth(content, authenticated);
+    // Plone refuses an anonymous reader content the public may not view: under
+    // simple_publication_workflow, `private` (where a new page starts) and
+    // `pending`. Serving it anyway let a frontend that fetched WITHOUT the
+    // editor's token pass here and 401 on a real site.
+    if (!authenticated && ANONYMOUS_HIDDEN_STATES.has(content.review_state)) {
+      return res.status(401).json({
+        type: 'Unauthorized',
+        message: 'You are not authorized to access this resource.',
+      });
+    }
+    const filteredContent = withViewableItems(
+      filterActionsForAuth(content, authenticated),
+      sessionId,
+    );
 
     if (process.env.DEBUG) {
       console.log(`[DEBUG] Serving API content for ${cleanPath} (auth: ${authenticated})${sessionId ? ` (session: ${sessionId})` : ''}`);
@@ -6256,4 +6664,4 @@ if (require.main === module) {
 }
 
 // Export for use by test frontend server or test harnesses
-module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution };
+module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution, getRedirectTarget, getAllRedirects, mountInternalRefs };

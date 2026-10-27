@@ -1,0 +1,1 @@
+The bridge's block schemas apply a frontend's `fieldRules` (sent as a recipe), as the admin does, so a field the rules hide is hidden there too; block sanity no longer asks a hidden image to render, nor calls a hidden field undeclared.

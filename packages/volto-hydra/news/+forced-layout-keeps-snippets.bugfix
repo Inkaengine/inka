@@ -1,0 +1,1 @@
+A forced layout keeps a snippet the page inserted (blocks of a template other than the page's previous layout) as its content, instead of dropping it as a leftover of an old layout.

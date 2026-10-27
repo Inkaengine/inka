@@ -168,7 +168,7 @@ This is deliberate: before, the admin's fields were merged in and its edit compo
 An entry for a block the admin already has applies key by key:
 
 - **`blockSchema` / `schema`** — replaces the admin's schema, as above; your fields are not merged into its.
-- **`schemaEnhancer`** — **adds**: it runs after the admin's own enhancer, so you can add `fieldRules` to a built-in block without replacing it.
+- **`schemaEnhancer`** — **adds**: with no `blockSchema`, it runs after the admin's own enhancer, so you can add `fieldRules` to a built-in block without replacing it. **With** a `blockSchema` the admin's enhancer does not run at all — it changes the admin's schema (adds its fields, seeds its regions), and yours is the whole schema; only your own enhancer applies.
 - **Any other key** (`title`, `group`, `fieldMappings`, `allowedBlocks`…) — replaces that key. Send every `fieldMappings` source type you want, including the admin's own conversions.
 - **A key you don't send** — the admin's value stands: a built-in block keeps its name, group and schema.
 
@@ -423,7 +423,7 @@ One widget covers both shapes: `multiple: false` (the default) stores one index 
 
 | widget | for |
 | --- | --- |
-| [\`query\_sort\_on\`](https://github.com/plone/volto/blob/main/packages/volto/src/components/manage/Widgets/QuerySortOnWidget.jsx) | ONE index to sort by — a menu grouped by the registry's `group` |
+| [\`query_sort_on\`](https://github.com/plone/volto/blob/main/packages/volto/src/components/manage/Widgets/QuerySortOnWidget.jsx) | ONE index to sort by — a menu grouped by the registry's `group` |
 | `select_querystring_field` | ONE index to query on (what the facet examples use) |
 
 </block>
@@ -532,6 +532,8 @@ fieldRules: {
 ```
 
 The message lands on the field, and everything an author sees is Volto's own: the widget goes red, the form shows its error summary, and **the save is blocked** (`Form.onSubmit` validates every block against its enhanced schema and refuses to submit while any block has errors).
+
+This holds for a rule on a **region** too — one counting its children, say "at least two" (`items: { when: { items: { lt: 2 } }, error: '…' }`): the region's children live in `blocks_layout`, not on the field Volto validates, so hydra's own block validation adds the error there and the save is blocked the same way. A region has no widget to turn red, so its error is shown at the top of the block's settings, beside any warnings, as soon as the rule holds, and the refused save's toast names it.
 
 An `error` composes with a `set` in the same rule — the field can be re-titled *and* marked — and it is skipped entirely when the rule's `when` does not match, so a form that has not been filled in yet is not scolded for it.
 
@@ -850,7 +852,7 @@ cells: {
 },
 ```
 
-The rule is evaluated in the same pass that applies field defaults (run on every edit): each typed item's target `@type` is re-resolved, and when it differs from the stored `@type` the item is **converted in place** via the bridge above. So moving a row to/from row 0 flips its cells between `tableHeaderCell` (a slate `value`) and `tableCell` (a `blocks` container), losslessly — no imperative "re-type the cells" code. Only meaningful on a **typed** object\_list (a `typeField` item has an `@type` to rewrite); it settles in one pass (the target type re-resolves to itself once the item is in place).
+The rule is evaluated in the same pass that applies field defaults (run on every edit): each typed item's target `@type` is re-resolved, and when it differs from the stored `@type` the item is **converted in place** via the bridge above. So moving a row to/from row 0 flips its cells between `tableHeaderCell` (a slate `value`) and `tableCell` (a `blocks` container), losslessly — no imperative "re-type the cells" code. Only meaningful on a **typed** object_list (a `typeField` item has an `@type` to rewrite); it settles in one pass (the target type re-resolves to itself once the item is in place).
 
 Each field's value is converted to the shape its destination widget expects (derived from the widget): strings copy across, an image field is assembled from the target's `image_scales` / `image_field`, multi-value fields (e.g. `Subject` → tags) pass through as-is.
 

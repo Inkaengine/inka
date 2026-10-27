@@ -1,0 +1,1 @@
+The admin adopts every template it fetches under the id it was referenced by, so editing a template that does not name itself from a page and choosing "Change on all pages" saves into it.

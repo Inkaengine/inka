@@ -1,0 +1,195 @@
+{
+  "_comment": "Upstream hashes at the moment each shadow was last reviewed. Regenerate with `pnpm shadows:record` ONLY after reading the upstream diff. `why` says what the fork is for; `declined` lists upstream commits deliberately not ported, so the next reviewer does not re-derive it. See scripts/shadow-drift.mjs.",
+  "voltoTag": "19.5.1",
+  "shadows": {
+    "@plone/volto-slate/blocks/Text/DefaultTextBlockEditor.jsx": {
+      "upstream": "core/packages/volto-slate/src/blocks/Text/DefaultTextBlockEditor.jsx",
+      "hash": "93dc37c7f380f3e44815b97d7159ea18ac5add909069dbbbaf27d1faca576149",
+      "why": "Owns the slate sidebar UX: adds a sidebar 'Body' field reading blocksConfig.slate.schema so the slate body is editable from the side panel, with the shortcut listing and markdown help below it. Deliberately drops upstream's inline <SlateEditor>, slash menu, image dropzone and BlockChooserButton — slate editing happens in the iframe, and the admin only mounts this inside a display:none div, so all of that would be invisible work.",
+      "declined": {
+        "c1ee09f78": "img -> Image component: in the inline editor render we deleted.",
+        "afcb3cfaa": "intl passed to initialValue: part of the inline editor path we do not run.",
+        "dd35efb7a": "barrel imports: the imports it rewrote are ones this fork does not have."
+      }
+    },
+    "@plone/volto-slate/blocks/Text/MarkdownIntroduction.jsx": {
+      "upstream": "core/packages/volto-slate/src/blocks/Text/MarkdownIntroduction.jsx",
+      "hash": "7ee1b34bda1aa2f6640b9f3ea815a02585782f860cd6271275c28fecdca01dd3",
+      "why": "Makes the sidebar markdown help collapsible (collapsed by default) to cut sidebar clutter. Content is otherwise upstream's."
+    },
+    "@plone/volto-slate/blocks/Text/ShortcutListing.jsx": {
+      "upstream": "core/packages/volto-slate/src/blocks/Text/ShortcutListing.jsx",
+      "hash": "d0f6104afb52c223c1392fdc76e1b81ec7e0a0f65f1f6f947a2f6023f1737167",
+      "why": "Makes the sidebar's editor-shortcut listing collapsible, collapsed by default, to cut sidebar clutter. Content is otherwise upstream's. Same treatment as MarkdownIntroduction."
+    },
+    "@plone/volto-slate/editor/plugins/Markdown/extensions.js": {
+      "upstream": "core/packages/volto-slate/src/editor/plugins/Markdown/extensions.js",
+      "hash": "58d6878852a802c683791a02e75e4cd97253bd65cf002d24e2aa939a328b726c",
+      "why": "Fixes cursor placement after an autoformat wrap: upstream leaves the cursor INSIDE the new inline, so the trigger space lands inside <strong>/<em> instead of after it. Moves to the point after the inline, inserting an empty text node when the inline is the last child. Pure addition — upstream's logic above it is unchanged."
+    },
+    "@plone/volto-slate/elementEditor/utils.js": {
+      "upstream": "core/packages/volto-slate/src/elementEditor/utils.js",
+      "hash": "302874b0b1d1935ff47ddc19a18f6d3800237f61a784e3cd2734a4d6efe67c8e",
+      "why": "Adds prospective-inline support to _insertElement for a COLLAPSED selection: inserts the node with a zero-width space so what the author types next lands inside the new inline. Upstream only wraps an existing non-empty selection, so adding a link with nothing selected gave you an empty element and typing went outside it."
+    },
+    "@plone/volto-slate/hooks/useSelectionPosition.js": {
+      "upstream": "core/packages/volto-slate/src/hooks/useSelectionPosition.js",
+      "hash": "5ce15118d3abe3432bad154c791f3cd2b68bef0de066ea88df380beb05c97e8b",
+      "why": "Iframe-aware. The selection being positioned against may live in the preview iframe, not this document, so there are two paths: for the Quanta toolbar (editor.uid starts 'toolbar-') it returns coordinates aligned to the toolbar's top-left, reading window.voltoHydraData; for the sidebar it falls back to DOM-based positioning. Upstream assumes the selection is in the same document as the widget."
+    },
+    "@plone/volto-slate/utils/blocks.js": {
+      "upstream": "core/packages/volto-slate/src/utils/blocks.js",
+      "hash": "d00a841ef8c46e24c07b5ccbf2e3da12b45c0796038407d49d729c72ce42c258",
+      "why": "toggleInlineFormat tracks the selection through a rangeRef while wrapping. Slate normalises by inserting empty text nodes around a new inline, which invalidates the raw range upstream holds, so the selection jumped or was lost as the format applied."
+    },
+    "volto/components/manage/Add/Add.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Add/Add.jsx",
+      "hash": "1b98007d15bc13c37c9f6168d4fb0cb837489b1ee4b106b5308d992fbb62637c",
+      "why": "After creating content, drops the author straight into edit mode — but only for types that have block editing, detected by `blocks_layout` on the created object (Plone populates it iff the type has the volto.blocks behavior). For non-block types (Image, File, Link, Folder) /edit is Volto's flat metadata form, which the bridge cannot drive, so those go to the canonical view instead. Also carries cloneBlocksForTranslation, withFieldsReadOnly and sourceFingerprint for the translation flow."
+    },
+    "volto/components/manage/AnchorPlugin/components/LinkButton/AddLinkForm.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/AnchorPlugin/components/LinkButton/AddLinkForm.jsx",
+      "hash": "d20dff442e44fa71cafe62d29428b67ecd8985d1264568f744e8d2710e3f88c8",
+      "why": "Link popup fixes for the synced toolbar, where the Slate component can remount mid-interaction (onClear unwraps nodes, which re-renders the editor): clear and submit both apply and close immediately, null refs are guarded, the object-browser button also shows in 'image' mode (upstream shows it only for 'link'), and the picked item is handed to onChangeValue(url, item) while the url is still the picked one so a text link keeps it as data.item."
+    },
+    "volto/components/manage/BlockChooser/BlockChooser.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/BlockChooser/BlockChooser.jsx",
+      "hash": "2a4038b8654217a1d4de7946810d50b45ddb5d3df93f0e107b317a181cc28017",
+      "why": "Two fixes. `if (mostUsedBlocks)` was always true — filter() returns [] which is truthy — so an empty 'Most used' group got registered and rendered as an empty, first, default-open section; now registered only when non-empty, which also makes activeIndex=0 land on the first section that has a block. And the block's description is passed through unlinkedText(), because a description carrying markup is shown as a plain title attribute where the author picks between blocks."
+    },
+    "volto/components/manage/BlockChooser/BlockChooser.test.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/BlockChooser/BlockChooser.test.jsx",
+      "hash": "b601f049ba0a0b08ce08081dde2fbfa13b55aedf6718b8d874ff5cb9cbc1c70c",
+      "why": "Tests the shadow's grouping fixes (no empty 'Most used' section; activeIndex lands on the first non-empty group) against Hydra's own blocksConfig and a token-bearing store, rather than upstream's fixture of restricted/mostUsed blocks."
+    },
+    "volto/components/manage/Diff/Diff.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Diff/Diff.jsx",
+      "hash": "eda9e112ab126ddc6a6e1c50d8e2707599d7fc859a9520e091bfcd9f2eeb0444",
+      "why": "Volto's diff renders both versions with Volto's OWN block components, which a Hydra admin deliberately does not have — the frontend is the only renderer. So it compares the way everything else renders: two frontend iframes side by side in `hydra-view:` mode (view markup, no edit chrome), each fed its version as FORM_DATA on INIT, read-only, through the same push pipeline the editor uses. Keeps upstream's toolbar portal and Base/Compare dropdowns. A unified inline text diff is out of scope by design: there is no honest way to line-diff two arbitrary frontend renders.",
+      "declined": {
+        "39d100572": "word-by-word diff of a text block, inside Volto's own block renderer. This shadow is not a fork of that render: it compares two frontend iframes side by side, because the frontend is the only renderer here. There is no line-diff path to fix (volto-hydra#327)."
+      }
+    },
+    "volto/components/manage/Form/BlocksToolbar.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Form/BlocksToolbar.jsx",
+      "hash": "40e2bbd83ab4e0b2c86c2e3e5b29a565f6a9287d89a3b0e3fbd41d8cc10ef43d",
+      "why": "Upstream assumes every block lives at formData.blocks / blocks_layout, i.e. page level. This fork fires `hydra-paste-blocks` / `hydra-delete-blocks` document events instead, which View.jsx handles with the container-aware helpers it already owns, rather than rebuilding blockPathMap here.",
+      "declined": {
+        "dd35efb7a": "rewrites Blocks/uuid imports this fork dropped when it moved the work into View.jsx."
+      }
+    },
+    "volto/components/manage/Form/Form.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Form/Form.jsx",
+      "hash": "2f6f1bfd75842af8613ae6fd4a2d20e027037db09a128df1d7e97cd757314203",
+      "why": "The admin's form around a preview iframe. Mounts <Iframe> and holds saveTemplatesRef / flushEditsRef, so a save FLUSHES the iframe's pending inline edits first — text typed on the canvas is not in Redux yet — then runs the template-save pre-pass and validateTemplatePlaceholders over the post-flush data. Resets formData when navigating to a different page, which upstream leaves to a remount that Hydra avoids. Adds field-level `readOnly`, answered by rendering the VALUE rather than a disabled control: a disabled form is only as locked as its least careful widget (Volto's object browser renders a typeable input for an empty field whatever isDisabled says), and Volto's own answer for language-independent fields is CSS pointer-events/opacity, which leaves the input keyboard-focusable and posted on save. Decided before the widget lookup deliberately, or widgets.id would claim a field like `subjects` whatever the schema asked for."
+    },
+    "volto/components/manage/Sidebar/ObjectBrowserBody.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Sidebar/ObjectBrowserBody.jsx",
+      "hash": "0beebb12d006ea4085ae38c8796a67bad48f2fa28076e652d5747eb2867b0657",
+      "why": "Adds upload-in-place via a Dropzone, and a second listing mode: a level shows either its child items or that page's deep-link FRAGMENTS, toggled from the bar and reset to 'items' on navigation so one page's fragments never linger over another level's listing. Fragments are how a link targets a block inside a page, which upstream's object browser has no concept of."
+    },
+    "volto/components/manage/Sidebar/ObjectBrowserNav.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Sidebar/ObjectBrowserNav.jsx",
+      "hash": "221fe16535e72530ec56280be19b344d7f4a8fd44dd8252a5dd80f2509929773",
+      "why": "Explicit selection controls — radio for single, checkbox for multiple — instead of upstream's row/arrow-button scheme, so picking an item is distinct from navigating into it: a row click always navigates for folderish items, which get a chevron as the hint, and the right-arrow link-mode button and double-click handler are gone. Adds a spinner while currentSearchResults is loading."
+    },
+    "volto/components/manage/Sidebar/Sidebar.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Sidebar/Sidebar.jsx",
+      "hash": "ed95d62a7a05aec2f6900993a5cd6fc77a178254807cfa9717b327a8e08e5ebf",
+      "why": "Replaces upstream's tabbed sidebar with a unified hierarchical view — stacked block settings with sticky headers — per PLIP 6569 (plone/volto#6569). Hydra edits nested blocks, so a flat tab per block does not express where a block sits."
+    },
+    "volto/components/manage/Sidebar/SidebarPopup.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Sidebar/SidebarPopup.jsx",
+      "hash": "9ae7fb7bafb9d51bedc643ec6cbabbf811c71a242185ad3186f37fcf3cabb9dd",
+      "why": "Replaces semantic-ui's doesNodeContainClick with a bounding-rect hit test, and ignores untrusted events. doesNodeContainClick walks the parentNode chain, which fails when a React re-render detaches nodes between mousedown and the check — the popup then concluded the click was outside and closed the object browser unexpectedly.",
+      "declined": {
+        "dd35efb7a": "re-adds the doesNodeContainClick import — the very thing this fork removes on purpose."
+      }
+    },
+    "volto/components/manage/Sidebar/SidebarPortal.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Sidebar/SidebarPortal.tsx",
+      "hash": "87436fcacd0c1acc7cbbd03ac5f6a39b2ed79af728d4765b14ec7662f8d23c3e",
+      "why": "Returns null unless SidebarPortalTargetContext is set. Hydra drives all sidebar rendering through ParentBlocksWidget with an explicit target; upstream always portals into `tab` (default sidebar-properties), which would render block sidebars twice. Upstream is SidebarPortal.tsx now; this stays .jsx because the logic differs anyway and shadowing resolves by specifier, not extension.",
+      "declined": {
+        "e894c0654": "TypeScript refactor. Not adoptable wholesale: our render is conditional on the context and differs structurally. Nothing functional in it to port."
+      }
+    },
+    "volto/components/manage/Widgets/ImageWidget.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Widgets/ImageWidget.jsx",
+      "hash": "f027c50a37ac2ca503ff63aae1e91738e81d239bc7bed3cec9da6b60d44af682",
+      "why": "Exposes the widget for INLINE use from the slate toolbar's image popup, which upstream cannot do: showPreview={false} drops the preview/Message wrapper (SyncedSlateToolbar renders <ImageInput showPreview={false}>), onClose lets the popup dismiss itself, the accepted file types come from the FIELD's schema rather than a hard-coded image/*, and the picker is AddLinkForm so it matches the toolbar's link popup. Upload logic is shared between the sidebar and inline paths. Drag-and-drop is NOT a reason to fork: upstream 19.1.1 has its own <Dropzone>, so those calls are parity. The inline dropzone root carries data-testid=\"image-picker-inline\" — Volto's convention for an element that exists only for tests to find. It was a bare unstyled class, which read as styling and got deleted as dead CSS once already."
+    },
+    "volto/components/manage/Widgets/TextWidget.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Widgets/TextWidget.jsx",
+      "hash": "0c63c212df0693be2af82fb568d574285575b03c9ca668a9beebab545308f0cd",
+      "why": "Adds a `wrap` option ({ type: 'string', wrap: true }): the value stays ONE line, but the widget shows all of it wrapped instead of clipping it in a one-line <input> — for text that is single-line by definition yet too long to read in a sidebar, like a hero lead. Enter and Shift+Enter do nothing, and a pasted newline is stripped, so it cannot become multiline."
+    },
+    "volto/components/manage/Widgets/TextWidget.test.jsx": {
+      "upstream": "core/packages/volto/src/components/manage/Widgets/TextWidget.test.jsx",
+      "hash": "eab69c593fa1784059790385f4207e8eb138e18927f9223f4315d5251f16434e",
+      "why": "Tests the shadow's `wrap` option (input vs textarea, Enter/Shift+Enter ignored). Ported from upstream's react-test-renderer snapshot to vitest + @testing-library, because a snapshot of upstream's widget says nothing about wrap.",
+      "declined": {
+        "a6cda4153": "aria props for a11y. The change itself is in FormFieldWrapper.jsx, which we do NOT shadow, so we inherit it; upstream's TextWidget.jsx did not change. Only their test file grew, and ours is hydra-specific (the `wrap` prop), not a fork of their cases."
+      }
+    },
+    "volto/components/theme/Breadcrumbs/Breadcrumbs.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/Breadcrumbs/Breadcrumbs.jsx",
+      "hash": "35f104e107c89bfd1024fb435bb68c8ae6f488138a2a615784304849255577c4",
+      "why": "Renders null. The admin frames a preview iframe and supplies its own chrome; the page's own breadcrumbs is rendered by the frontend INSIDE the iframe. App.jsx is upstream's only consumer of this component, so suppressing it here is the same effect the App.jsx shadow achieved by commenting the tag out — and replaces forking a volatile 329-line App.jsx, which had already cost us e8fac8543's undefined-blockType guard and 61eb4d2f8's staticContext. A shadow that renders nothing cannot drift.",
+      "declined": {
+        "d8cca3b24": "home icon 18px -> 24px for WCAG 2.2. This shadow renders null — the frontend draws breadcrumbs inside the iframe — so there is no icon to size."
+      }
+    },
+    "volto/components/theme/Footer/Footer.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/Footer/Footer.jsx",
+      "hash": "ccb58313ed4acadf4e0b62be03a9ba729b4fcc9ea497c1dbc60ab07774521e46",
+      "why": "Renders null. The admin frames a preview iframe and supplies its own chrome; the page's own footer is rendered by the frontend INSIDE the iframe. App.jsx is upstream's only consumer of this component, so suppressing it here is the same effect the App.jsx shadow achieved by commenting the tag out — and replaces forking a volatile 329-line App.jsx, which had already cost us e8fac8543's undefined-blockType guard and 61eb4d2f8's staticContext. A shadow that renders nothing cannot drift."
+    },
+    "volto/components/theme/Header/Header.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/Header/Header.jsx",
+      "hash": "630dbec210c8205d4482257ae0a50c07425b2f908043cfd737c65f111fc2c5bc",
+      "why": "Renders null. The admin frames a preview iframe and supplies its own chrome; the page's own header is rendered by the frontend INSIDE the iframe. App.jsx is upstream's only consumer of this component, so suppressing it here is the same effect the App.jsx shadow achieved by commenting the tag out — and replaces forking a volatile 329-line App.jsx, which had already cost us e8fac8543's undefined-blockType guard and 61eb4d2f8's staticContext. A shadow that renders nothing cannot drift."
+    },
+    "volto/components/theme/Login/Login.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/Login/Login.jsx",
+      "hash": "d83d0701ce41152027927d1f51e19894f44715ad3fde57fc010f5a90f4dd8e46",
+      "why": "Adds demo sign-in: a demo site's 'try editing' link (/login?demo&return_url=…) signs in with the site's demo account from runtimeConfig, so the visitor never sees the form. Also lists the registered iframe frontends (getURlsFromEnv + getDomainInitials) so it is clear which site is being signed into."
+    },
+    "volto/components/theme/View/View.jsx": {
+      "upstream": "core/packages/volto/src/components/theme/View/View.jsx",
+      "hash": "e1d14b40a52ba19e4ad5e136216038b50a5aed45b8f7a2bb30eae163b39ac6ed",
+      "why": "Hydra renders the page in the preview iframe, so the admin must NOT render RenderedView at all; this fork replaces it with <Iframe>, mounted as the FIRST child so it keeps its position in the React tree whether content is null (loading) or loaded, and so is never remounted. A slot can add to the view, not remove its content render, so this cannot become a slot registration. Also redirects to /login without a token, where upstream renders <span/>.",
+      "declined": {
+        "29a1bbb6e": "key={flattenToAppURL(content['@id'])} on RenderedView — we never render RenderedView, so there is nothing to key.",
+        "6a8f3bdec": "AlternateHrefLangs — public-site SEO markup. The admin is not the public site; www is served by Nuxt/SSG, which emits its own hreflang."
+      }
+    },
+    "volto/helpers/Url/Url.js": {
+      "upstream": "core/packages/volto/src/helpers/Url/Url.js",
+      "hash": "131109be00bbb99ea2638810404e0fe3bf3964805614ae72ecad2c511b1aa240",
+      "why": "Identical to stock EXCEPT flattenToAppURL and isInternalURL, which gain awareness of iframe-frontend URLs registered via FrontendSettingsModal / RAZZLE_DEFAULT_IFRAME_URL. Stock only strips settings.apiPath / internalApiPath / publicURL, none of which match a Hydra iframe's published origin, so a link pasted from the published site survived the save round-trip as an absolute URL and broke resolveuid. Also adds resolveRelativeUrl, which is Hydra's own."
+    },
+    "volto/helpers/Url/Url.test.js": {
+      "upstream": "core/packages/volto/src/helpers/Url/Url.test.js",
+      "hash": "8b8f8e6df3ec41b71d764a070083174e9206eea83f338c8d84be092db3076344",
+      "why": "Tests the Url shadow's additions: that flattenToAppURL and isInternalURL recognise iframe-frontend origins from the saved-URLs cookie / RAZZLE_DEFAULT_IFRAME_URL, so a link pasted from a published frontend is stored as a path rather than an absolute URL. Stock knows only apiPath / internalApiPath / publicURL.",
+      "declined": {
+        "2371d419c": "the two apiSuffix cases. Not copied here: upstream's own Url.test.js is in vitest's `include` and now resolves `./Url` to our shadow, so those cases already run against our fork. This file holds only the hydra-specific cases."
+      }
+    },
+    "volto/helpers/Utils/withSaveAsDraft.jsx": {
+      "upstream": "core/packages/volto/src/helpers/Utils/withSaveAsDraft.jsx",
+      "hash": "7b3af5b3344e571afa761f1834f5ba1ac2dd2e1357ccb35a3c27010ecd6eeefc",
+      "why": "Same feature as core's — debounced localStorage autosave stamped with autoSaveDate, offered back if the author returns mid-edit, no API or server storage. The single change is WHICH fields get drafted, in mapSchemaToData."
+    },
+    "volto/routes.js": {
+      "upstream": "core/packages/volto/src/routes.js",
+      "hash": "6a2e6c5e259137d8f5b8a7bbdf0f681b1bf5ee02a0de39233e5b690f5050611f",
+      "why": "Merges Volto's separate '/' and '/**' View routes into one entry. As two routes, navigating between them remounts View — and with it the preview iframe, which must keep its React tree position or the whole frontend reloads on every navigation."
+    }
+  },
+  "additive": [
+    "volto/components/manage/Form/styles.css",
+    "volto/components/manage/Sidebar/Sidebar.css"
+  ]
+}
