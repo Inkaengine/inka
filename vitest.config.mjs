@@ -54,7 +54,46 @@ const ploneAliases = {
   '@plone/registry': path.resolve(__dirname, 'core/packages/registry/src'),
 };
 
+// Upstream's own test files import their subject RELATIVELY (`from './Url'`),
+// and a Vite alias matches the specifier string, so `shadowAliases` — keyed on
+// `@plone/volto/helpers/Url/Url` — never fires for them. Without this plugin
+// those suites silently test core/'s copy instead of ours: they stayed green
+// with the 19.5.1 `getApiSuffix` port reverted, which is coverage that measures
+// nothing. Redirect the relative specifier to the shadow, but only from the
+// exact upstream test file, so no other './Url' import is affected.
+const UPSTREAM_SUITES = [
+  {
+    test: 'core/packages/volto/src/helpers/Url/Url.test.js',
+    source: './Url',
+    shadow:
+      'packages/volto-hydra/src/customizations/volto/helpers/Url/Url.js',
+  },
+  {
+    test: 'core/packages/volto-slate/src/utils/blocks.test.js',
+    source: './blocks',
+    shadow:
+      'packages/volto-hydra/src/customizations/@plone/volto-slate/utils/blocks.js',
+  },
+];
+
+function redirectUpstreamSuitesToShadows() {
+  return {
+    name: 'hydra-redirect-upstream-suites-to-shadows',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (!importer) return null;
+      const hit = UPSTREAM_SUITES.find(
+        (s) =>
+          s.source === source &&
+          path.resolve(__dirname, s.test) === path.resolve(importer),
+      );
+      return hit ? path.resolve(__dirname, hit.shadow) : null;
+    },
+  };
+}
+
 export default defineConfig({
+  plugins: [redirectUpstreamSuitesToShadows()],
   resolve: {
     alias: ploneAliases,
   },

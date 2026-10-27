@@ -156,9 +156,20 @@ export function addAppURL(url) {
     : `${settings.apiPath}${url}`;
 }
 
+/**
+ * Get the API traversal suffix.
+ *
+ * An explicitly configured apiSuffix takes precedence over legacyTraverse.
+ * @returns {string} API traversal suffix.
+ */
+export function getApiSuffix() {
+  const { settings } = config;
+  return settings.apiSuffix ?? (settings.legacyTraverse ? '' : '/++api++');
+}
+
 export function expandToBackendURL(path) {
   const { settings } = config;
-  const apiSuffix = settings.legacyTraverse ? '' : '/++api++';
+  const apiSuffix = getApiSuffix();
   let adjustedPath;
   if (path.startsWith('http://') || path.startsWith('https://')) {
     adjustedPath = flattenToAppURL(path);

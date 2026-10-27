@@ -1,6 +1,6 @@
 {
   "_comment": "Upstream hashes at the moment each shadow was last reviewed. Regenerate with `pnpm shadows:record` ONLY after reading the upstream diff. `why` says what the fork is for; `declined` lists upstream commits deliberately not ported, so the next reviewer does not re-derive it. See scripts/shadow-drift.mjs.",
-  "voltoTag": "19.1.1",
+  "voltoTag": "19.5.1",
   "shadows": {
     "@plone/volto-slate/blocks/Text/DefaultTextBlockEditor.jsx": {
       "upstream": "core/packages/volto-slate/src/blocks/Text/DefaultTextBlockEditor.jsx",
@@ -64,8 +64,11 @@
     },
     "volto/components/manage/Diff/Diff.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Diff/Diff.jsx",
-      "hash": "915dde2b3845318f1cac345864292733b5737d8b1a29a7049c26bb4c65fc1c74",
-      "why": "Volto's diff renders both versions with Volto's OWN block components, which a Hydra admin deliberately does not have — the frontend is the only renderer. So it compares the way everything else renders: two frontend iframes side by side in `hydra-view:` mode (view markup, no edit chrome), each fed its version as FORM_DATA on INIT, read-only, through the same push pipeline the editor uses. Keeps upstream's toolbar portal and Base/Compare dropdowns. A unified inline text diff is out of scope by design: there is no honest way to line-diff two arbitrary frontend renders."
+      "hash": "eda9e112ab126ddc6a6e1c50d8e2707599d7fc859a9520e091bfcd9f2eeb0444",
+      "why": "Volto's diff renders both versions with Volto's OWN block components, which a Hydra admin deliberately does not have — the frontend is the only renderer. So it compares the way everything else renders: two frontend iframes side by side in `hydra-view:` mode (view markup, no edit chrome), each fed its version as FORM_DATA on INIT, read-only, through the same push pipeline the editor uses. Keeps upstream's toolbar portal and Base/Compare dropdowns. A unified inline text diff is out of scope by design: there is no honest way to line-diff two arbitrary frontend renders.",
+      "declined": {
+        "39d100572": "word-by-word diff of a text block, inside Volto's own block renderer. This shadow is not a fork of that render: it compares two frontend iframes side by side, because the frontend is the only renderer here. There is no line-diff path to fix (volto-hydra#327)."
+      }
     },
     "volto/components/manage/Form/BlocksToolbar.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Form/BlocksToolbar.jsx",
@@ -82,7 +85,7 @@
     },
     "volto/components/manage/Sidebar/ObjectBrowserBody.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Sidebar/ObjectBrowserBody.jsx",
-      "hash": "a62a8debc467a6b036f676bda9bfd6a75a06e5f0ad35760001279a10fdb9a120",
+      "hash": "0beebb12d006ea4085ae38c8796a67bad48f2fa28076e652d5747eb2867b0657",
       "why": "Adds upload-in-place via a Dropzone, and a second listing mode: a level shows either its child items or that page's deep-link FRAGMENTS, toggled from the bar and reset to 'items' on navigation so one page's fragments never linger over another level's listing. Fragments are how a link targets a block inside a page, which upstream's object browser has no concept of."
     },
     "volto/components/manage/Sidebar/ObjectBrowserNav.jsx": {
@@ -123,13 +126,19 @@
     },
     "volto/components/manage/Widgets/TextWidget.test.jsx": {
       "upstream": "core/packages/volto/src/components/manage/Widgets/TextWidget.test.jsx",
-      "hash": "2cc60f00233a3db01606e7c91121554191b5923520a06b1bd75f1ae045f1c219",
-      "why": "Tests the shadow's `wrap` option (input vs textarea, Enter/Shift+Enter ignored). Ported from upstream's react-test-renderer snapshot to vitest + @testing-library, because a snapshot of upstream's widget says nothing about wrap."
+      "hash": "eab69c593fa1784059790385f4207e8eb138e18927f9223f4315d5251f16434e",
+      "why": "Tests the shadow's `wrap` option (input vs textarea, Enter/Shift+Enter ignored). Ported from upstream's react-test-renderer snapshot to vitest + @testing-library, because a snapshot of upstream's widget says nothing about wrap.",
+      "declined": {
+        "a6cda4153": "aria props for a11y. The change itself is in FormFieldWrapper.jsx, which we do NOT shadow, so we inherit it; upstream's TextWidget.jsx did not change. Only their test file grew, and ours is hydra-specific (the `wrap` prop), not a fork of their cases."
+      }
     },
     "volto/components/theme/Breadcrumbs/Breadcrumbs.jsx": {
       "upstream": "core/packages/volto/src/components/theme/Breadcrumbs/Breadcrumbs.jsx",
-      "hash": "47a54a755e666d86c5ceeed9aa58564372d6dd276f3564d08ee2f9588af68cbc",
-      "why": "Renders null. The admin frames a preview iframe and supplies its own chrome; the page's own breadcrumbs is rendered by the frontend INSIDE the iframe. App.jsx is upstream's only consumer of this component, so suppressing it here is the same effect the App.jsx shadow achieved by commenting the tag out — and replaces forking a volatile 329-line App.jsx, which had already cost us e8fac8543's undefined-blockType guard and 61eb4d2f8's staticContext. A shadow that renders nothing cannot drift."
+      "hash": "35f104e107c89bfd1024fb435bb68c8ae6f488138a2a615784304849255577c4",
+      "why": "Renders null. The admin frames a preview iframe and supplies its own chrome; the page's own breadcrumbs is rendered by the frontend INSIDE the iframe. App.jsx is upstream's only consumer of this component, so suppressing it here is the same effect the App.jsx shadow achieved by commenting the tag out — and replaces forking a volatile 329-line App.jsx, which had already cost us e8fac8543's undefined-blockType guard and 61eb4d2f8's staticContext. A shadow that renders nothing cannot drift.",
+      "declined": {
+        "d8cca3b24": "home icon 18px -> 24px for WCAG 2.2. This shadow renders null — the frontend draws breadcrumbs inside the iframe — so there is no icon to size."
+      }
     },
     "volto/components/theme/Footer/Footer.jsx": {
       "upstream": "core/packages/volto/src/components/theme/Footer/Footer.jsx",
@@ -143,7 +152,7 @@
     },
     "volto/components/theme/Login/Login.jsx": {
       "upstream": "core/packages/volto/src/components/theme/Login/Login.jsx",
-      "hash": "56c5c74736605a7aba34497f2b3728e9b5cd853508520effca9495a465ec2486",
+      "hash": "d83d0701ce41152027927d1f51e19894f44715ad3fde57fc010f5a90f4dd8e46",
       "why": "Adds demo sign-in: a demo site's 'try editing' link (/login?demo&return_url=…) signs in with the site's demo account from runtimeConfig, so the visitor never sees the form. Also lists the registered iframe frontends (getURlsFromEnv + getDomainInitials) so it is clear which site is being signed into."
     },
     "volto/components/theme/View/View.jsx": {
@@ -157,13 +166,16 @@
     },
     "volto/helpers/Url/Url.js": {
       "upstream": "core/packages/volto/src/helpers/Url/Url.js",
-      "hash": "1bc67b7febce10a0db706c56fd398b715b2bd9364b41e79217a59033635e09bf",
+      "hash": "131109be00bbb99ea2638810404e0fe3bf3964805614ae72ecad2c511b1aa240",
       "why": "Identical to stock EXCEPT flattenToAppURL and isInternalURL, which gain awareness of iframe-frontend URLs registered via FrontendSettingsModal / RAZZLE_DEFAULT_IFRAME_URL. Stock only strips settings.apiPath / internalApiPath / publicURL, none of which match a Hydra iframe's published origin, so a link pasted from the published site survived the save round-trip as an absolute URL and broke resolveuid. Also adds resolveRelativeUrl, which is Hydra's own."
     },
     "volto/helpers/Url/Url.test.js": {
       "upstream": "core/packages/volto/src/helpers/Url/Url.test.js",
-      "hash": "c080a9c7b1907654903f59a57f52d6f59437c25f870d4e08ee339ef987a58585",
-      "why": "Tests the Url shadow's additions: that flattenToAppURL and isInternalURL recognise iframe-frontend origins from the saved-URLs cookie / RAZZLE_DEFAULT_IFRAME_URL, so a link pasted from a published frontend is stored as a path rather than an absolute URL. Stock knows only apiPath / internalApiPath / publicURL."
+      "hash": "8b8f8e6df3ec41b71d764a070083174e9206eea83f338c8d84be092db3076344",
+      "why": "Tests the Url shadow's additions: that flattenToAppURL and isInternalURL recognise iframe-frontend origins from the saved-URLs cookie / RAZZLE_DEFAULT_IFRAME_URL, so a link pasted from a published frontend is stored as a path rather than an absolute URL. Stock knows only apiPath / internalApiPath / publicURL.",
+      "declined": {
+        "2371d419c": "the two apiSuffix cases. Not copied here: upstream's own Url.test.js is in vitest's `include` and now resolves `./Url` to our shadow, so those cases already run against our fork. This file holds only the hydra-specific cases."
+      }
     },
     "volto/helpers/Utils/withSaveAsDraft.jsx": {
       "upstream": "core/packages/volto/src/helpers/Utils/withSaveAsDraft.jsx",
