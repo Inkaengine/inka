@@ -9,6 +9,7 @@
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { URLS } from '../ports';
 
 test.describe('Templates', () => {
   test('template content is merged on page load', async ({ page }) => {
@@ -64,28 +65,179 @@ test.describe('Templates', () => {
     expect(userContentBox!.y).toBeGreaterThan(gridBox!.y);
   });
 
+  // A nested block without template fields is malformed and the merge drops it.
+  // That content is broken on purpose, so the test makes it — in this login's
+  // session, never as a committed fixture the content check would have to
+  // excuse: a template whose grid holds one marked and one unmarked cell, and a
+  // page that uses it.
   test('nested blocks without template fields are NOT synced from template', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 
     await helper.login();
-    await helper.navigateToEdit('/template-test-page');
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+    const create = (parent: string, data: object) =>
+      page.request.post(`${URLS.mockApi}${parent}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+        data,
+      });
+    expect((await create('/_test_data/templates', {
+        "@type": "Document",
+        "id": "orphan-cell-layout",
+        "title": "Orphan cell layout",
+        "blocks": {
+          "oc-header": {
+            "@type": "slate",
+            "value": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Orphan Cell Header"
+                  }
+                ]
+              }
+            ],
+            "plaintext": "Orphan Cell Header",
+            "templateId": "/_test_data/templates/orphan-cell-layout",
+            "templateInstanceId": "orphan-cell-def-instance",
+            "slotId": "header",
+            "fixed": true,
+            "readOnly": true
+          },
+          "oc-grid": {
+            "@type": "gridBlock",
+            "templateId": "/_test_data/templates/orphan-cell-layout",
+            "templateInstanceId": "orphan-cell-def-instance",
+            "slotId": "grid",
+            "fixed": true,
+            "readOnly": true,
+            "blocks": {
+              "oc-cell-1": {
+                "@type": "slate",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "Marked Grid Cell"
+                      }
+                    ]
+                  }
+                ],
+                "plaintext": "Marked Grid Cell",
+                "templateId": "/_test_data/templates/orphan-cell-layout",
+                "templateInstanceId": "orphan-cell-def-instance",
+                "slotId": "oc-cell-1",
+                "fixed": true,
+                "readOnly": true
+              },
+              "oc-cell-2": {
+                "@type": "slate",
+                "value": [
+                  {
+                    "type": "p",
+                    "children": [
+                      {
+                        "text": "Unmarked Grid Cell"
+                      }
+                    ]
+                  }
+                ],
+                "plaintext": "Unmarked Grid Cell"
+              }
+            },
+            "blocks_layout": {
+              "items": [
+                "oc-cell-1",
+                "oc-cell-2"
+              ]
+            }
+          },
+          "oc-main": {
+            "@type": "slate",
+            "value": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": ""
+                  }
+                ]
+              }
+            ],
+            "plaintext": "",
+            "templateId": "/_test_data/templates/orphan-cell-layout",
+            "templateInstanceId": "orphan-cell-def-instance",
+            "slotId": "primary",
+            "fixed": false
+          }
+        },
+        "blocks_layout": {
+          "items": [
+            "oc-header",
+            "oc-grid",
+            "oc-main"
+          ]
+        }
+      })).status()).toBe(201);
+    expect((await create('/_test_data', {
+        "@type": "Document",
+        "id": "orphan-cell-page",
+        "title": "Orphan cell page",
+        "blocks": {
+          "oc-page-header": {
+            "@type": "slate",
+            "value": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Orphan Cell Header"
+                  }
+                ]
+              }
+            ],
+            "plaintext": "Orphan Cell Header",
+            "templateId": "/_test_data/templates/orphan-cell-layout",
+            "templateInstanceId": "oc-inst",
+            "slotId": "header",
+            "fixed": true,
+            "readOnly": true
+          },
+          "oc-page-content": {
+            "@type": "slate",
+            "value": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "The page content"
+                  }
+                ]
+              }
+            ],
+            "plaintext": "The page content",
+            "templateId": "/_test_data/templates/orphan-cell-layout",
+            "templateInstanceId": "oc-inst",
+            "slotId": "primary"
+          }
+        },
+        "blocks_layout": {
+          "items": [
+            "oc-page-header",
+            "oc-page-content"
+          ]
+        }
+      })).status()).toBe(201);
 
+    await helper.navigateToEdit('/orphan-cell-page');
     const iframe = helper.getIframe();
+    const gridBlock = iframe.locator('[data-block-uid]:has(.grid-row)').filter({ hasText: 'Marked Grid Cell' });
+    await expect(gridBlock).toBeVisible({ timeout: 15000 });
 
-    // Wait for merge to complete - find by content
-    const headerBlock = iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'Template Header' }).first();
-    await expect(headerBlock).toContainText('Template Header - From Template', { timeout: 15000 });
-
-    // The grid block should be visible - find by .grid-row parent (grid block contains grid-row)
-    const gridBlock = iframe.locator('[data-block-uid]:has(.grid-row)').filter({ hasText: 'Template Grid Cell 1' });
-    await expect(gridBlock).toBeVisible();
-
-    // Grid cell 1 HAS template fields marker - should be synced
-    await expect(gridBlock).toContainText('Template Grid Cell 1');
-
-    // Grid cell 2 does NOT have template fields marker - should NOT be synced
-    // The merge logic ignores blocks without placeholder
-    await expect(gridBlock).not.toContainText('Template Grid Cell 2');
+    // The marked cell is synced; the unmarked one is not.
+    await expect(gridBlock).toContainText('Marked Grid Cell');
+    await expect(gridBlock).not.toContainText('Unmarked Grid Cell');
   });
 
   test('placeholder content is preserved during merge', async ({ page }) => {

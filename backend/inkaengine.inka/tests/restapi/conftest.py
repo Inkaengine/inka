@@ -76,13 +76,13 @@ def portal(functional_portal):
 def templates(portal, distribution):
     """The shared template fixtures, imported into the portal.
 
-    Returns the `/templates` folder. Individual templates are reached by id, e.g.
+    Returns the `/inka-templates` folder. Individual templates are reached by id, e.g.
     `templates["site-footer"]`.
     """
     importer = get_importer(portal)
     importer.import_site(distribution)
     transaction.commit()
-    return portal["templates"]
+    return portal["inka-templates"]
 
 
 @pytest.fixture
@@ -147,7 +147,7 @@ def anon_session(request_factory):
 def published_page_with_private_template(page_using_template, site_footer):
     """A published page that references a template anonymous users cannot view.
 
-    A realistic setup, not an edge case: editors keep templates in a /templates folder
+    A realistic setup, not an edge case: editors keep templates in a /inka-templates folder
     that is never published, while the pages using them are.
     """
     if api.content.get_state(site_footer) != "private":

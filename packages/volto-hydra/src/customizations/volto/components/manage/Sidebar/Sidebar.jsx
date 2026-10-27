@@ -4,7 +4,13 @@
  * Based on PLIP 6569: https://github.com/plone/volto/issues/6569
  */
 
-import React, { useState, Fragment, useCallback, useEffect, useRef } from 'react';
+import React, {
+  useState,
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+} from 'react';
 import PropTypes from 'prop-types';
 import { Button } from 'semantic-ui-react';
 import { useDispatch, useSelector } from 'react-redux';
@@ -12,8 +18,9 @@ import { compose } from 'redux';
 import { withCookies } from 'react-cookie';
 import { defineMessages, useIntl } from 'react-intl';
 import cx from 'classnames';
-import { BodyClass, getCookieOptions } from '@plone/volto/helpers';
-import { Icon } from '@plone/volto/components';
+import BodyClass from '@plone/volto/helpers/BodyClass/BodyClass';
+import { getCookieOptions } from '@plone/volto/helpers/Cookies/cookies';
+import Icon from '@plone/volto/components/theme/Icon/Icon';
 import expandSVG from '@plone/volto/icons/left-key.svg';
 import collapseSVG from '@plone/volto/icons/right-key.svg';
 import clearSVG from '@plone/volto/icons/clear.svg';
@@ -151,7 +158,9 @@ const Sidebar = (props) => {
         className={expanded ? 'has-sidebar' : 'has-sidebar-collapsed'}
       />
       <div
-        className={cx('sidebar-container', 'hydra-sidebar', { collapsed: !expanded })}
+        className={cx('sidebar-container', 'hydra-sidebar', {
+          collapsed: !expanded,
+        })}
         style={size > 0 ? { width: size } : null}
       >
         <Button
@@ -187,7 +196,9 @@ const Sidebar = (props) => {
           >
             <button
               className="section-title"
-              onClick={() => document.dispatchEvent(new CustomEvent('hydra-select-page'))}
+              onClick={() =>
+                document.dispatchEvent(new CustomEvent('hydra-select-page'))
+              }
             >
               {type || intl.formatMessage(messages.page)}
             </button>
@@ -213,18 +224,27 @@ const Sidebar = (props) => {
           </div>
 
           {/* Current block sidebar content - static element for SidebarPortal to find */}
-          <div id="sidebar-properties" className="sidebar-section-content parent-block-settings">
+          <div
+            id="sidebar-properties"
+            className="sidebar-section-content parent-block-settings"
+          >
             {/* Current block's sidebar content rendered here via SidebarPortal */}
           </div>
 
           {/* Template block settings - shown when editing blocks inside a template */}
-          <div id="sidebar-template-settings" className="sidebar-section-content parent-block-settings">
+          <div
+            id="sidebar-template-settings"
+            className="sidebar-section-content parent-block-settings"
+          >
             {/* Template block settings form portaled here */}
           </div>
 
           {/* Child blocks widget - portal target for nested blocks list */}
           {/* Note: id="sidebar-order" for backwards compatibility with tests */}
-          <div className="sidebar-section child-blocks-section" id="sidebar-order">
+          <div
+            className="sidebar-section child-blocks-section"
+            id="sidebar-order"
+          >
             {/* Child blocks widget rendered here */}
           </div>
         </div>

@@ -1,0 +1,1 @@
+A page built on a multi-block template, inside a forced layout's slot, is expanded as one template again: its fixed blocks stay between its slots instead of the slots running together.

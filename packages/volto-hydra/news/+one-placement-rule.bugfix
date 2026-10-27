@@ -1,0 +1,1 @@
+A block added, pasted or moved into a template lands as one rule says, whichever way it got there: it takes the slot where it landed (a slot is invented only when none faces the gap), and everything nested in it joins that slot too, except a nested snippet, which keeps its own.

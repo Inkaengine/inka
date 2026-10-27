@@ -2,6 +2,28 @@
 
 Read `docs/architecture.md` for the iframe ↔ admin bridge: Slate transforms, selection sync, and the chrome pattern. The chrome pattern is non-negotiable — selection outlines, toolbars, drag handles, edge handles, etc. are rendered in the admin (React) so frontend CSS/JS can't interfere; the iframe only measures rects and captures pointer events through invisible elements layered under the admin's visuals.
 
+## Template merging - every container is expanded, frontend AND admin
+
+Read `docs/architecture.md` ("Merging templates: every container is expanded, by whoever renders") and `docs/frontend-guide/templates.md` ("Expand every container") BEFORE changing anything that merges templates, renders containers, or walks a page's blocks.
+
+- The merge (`expandTemplates`/`expandTemplatesSync`) has no schema: it fills the regions of a template it APPLIES, never a template placed inside a plain container.
+- Every renderer re-enters every container's children with the shared `templateState`: each frontend (the contract), AND the admin (`mergeTemplatesIntoPage` → `expandContainers`), because the admin merges the templates it edits itself.
+- Never remove the admin's re-entry as "redundant", and never render a container's children without passing them through the merge. A template can be anywhere a block can.
+- Test new template behaviour with the template placed at the top level AND inside a container.
+
+## Template membership - one rule for add, paste and move
+
+Read `docs/architecture.md` ("Template membership") BEFORE changing how a placed block gets its `templateId` / `templateInstanceId` / `slotId` / `fixed` / `readOnly`.
+
+- Every author placement — add, paste, move (drag and drop, cut and paste) — goes through ONE function, `applyMembershipWhereLanded` (blockSync.js), via `settleBlockStructure` after the insert. `insertBlockInContainer` only inserts; never stamp membership in a second place.
+- A block from another template lands as one with no template; the add rules for where it landed decide. A slot is invented only when no slot faces the gap.
+- Its descendants take its membership AND its `slotId`, except a nested template instance (a snippet), which keeps its own.
+- When the docs and the code disagree, stop and ask which is current. Never pick one silently.
+
+## Frontends render every onEditChange - no echo checks of their own
+
+The bridge drops echoes, comparing against its own copy of the page, which includes text typed into the frontend. A frontend's copy never gets that typing back, so a frontend comparing against its own data mistakes real changes (e.g. "Reset changes" after typing) for echoes and leaves stale text on screen. See `docs/frontend-guide/live-preview.md` ("Setting Up the Bridge").
+
 ## Block Access - NEVER use formData.blocks[blockId] directly
 
 Blocks can be nested inside container blocks (columns, accordions, etc.), so they may NOT be at `formData.blocks[blockId]`. A block inside a column might be at `formData.blocks.columns-1.column_items.col-1.blocks.text-1`.

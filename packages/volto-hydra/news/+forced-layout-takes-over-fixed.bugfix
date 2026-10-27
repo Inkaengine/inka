@@ -1,0 +1,1 @@
+A forced layout's first application takes over the page's editable fixed block for a slot (its id and edits) instead of dropping it and drawing the layout's default in its place.
