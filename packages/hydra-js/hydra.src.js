@@ -4781,17 +4781,10 @@ export class Bridge {
         // This avoids adding duplicate listeners and works for all blocks
         if (!this.fieldFocusListenerAdded) {
           this.fieldFocusListenerAdded = true;
-          // Track mouse button state so fieldFocusListener can distinguish
-          // keyboard navigation (Tab) from mouse click side-effects.
-          // During mouse clicks, the click handler handles block selection —
-          // the focus event between mousedown and click must not call selectBlock
-          // because restoreContentEditableOnFields would change the DOM and
-          // shift event.target before the click event fires.
-          // When the author last pressed a key, so a focus change can be told
-          // apart from one the frontend made on its own (see the focus listener).
-          document.addEventListener('keydown', () => { this._lastKeyDownAt = Date.now(); }, true);
-          document.addEventListener('mousedown', () => { this._mouseButtonDown = true; }, true);
-          document.addEventListener('mouseup', () => { this._mouseButtonDown = false; }, true);
+          // `_lastKeyDownAt` and `_mouseButtonDown` used to live here, so the
+          // focus listener could guess whether a focus change was the author's
+          // or the frontend's. It no longer decides anything from focus, so
+          // there is nothing to tell apart and nothing to track.
           document.addEventListener('focus', (e) => {
             // Firefox may fire focus on text nodes; get the nearest Element
             const target = e.target instanceof Element ? e.target : e.target?.parentElement;
@@ -4815,41 +4808,23 @@ export class Bridge {
             if (this.editMode === 'block') return;
 
             if (blockUid !== this.selectedBlockUid) {
-              // Skip if block-selector or arrow-key navigation is in progress —
-              // those flows manage their own block selection
-              if (this._blockSelectorNavigating || this._navigatingToBlock) {
-                return;
-              }
-              // During mouse clicks, defer to the click handler for block selection.
-              // The focus event fires between mousedown and click — calling selectBlock
-              // here would run restoreContentEditableOnFields before click, which can
-              // change event.target and break linkable/media field detection.
-              if (this._mouseButtonDown) {
-                return;
-              }
-              // Only a focus the AUTHOR moved may move the selection. Tab is
-              // theirs; a focus the frontend moves is not — a container
-              // refocusing itself after re-rendering, a tab strip restoring
-              // focus to its active tab, a carousel after a slide change.
+              // A focus landing in ANOTHER block never moves the selection.
               //
-              // Acting on those steals the selection: adding a block into a doc
-              // page's Example tab left the TAB selected, so the sidebar offered
-              // the container's settings instead of the block just added, and
-              // there was no way to configure it. Same argument the block-mode
-              // branch above already makes; just as true here.
+              // The author's own step selects its target outright —
+              // moveEditingPoint, shared by Tab and the arrows — so by the time
+              // a focus event reaches here, whatever the author did has already
+              // been accounted for. What is left is focus the FRONTEND moved: a
+              // container refocusing itself after re-rendering, a tab strip
+              // restoring focus to its active tab, a carousel after a slide
+              // change. Acting on those steals the selection — adding a PDF
+              // block into a doc page's Example tab left the TAB selected, so
+              // the sidebar offered the container's settings instead of the
+              // block just added, with no way to configure it.
               //
-              // Not "is the target editable": Tab legitimately lands on a
-              // button or a link in another block, and selection should follow
-              // there too (block-navigation.spec.ts pins exactly that).
-              if (Date.now() - (this._lastKeyDownAt || 0) > 300) return;
-              // Focus moved to a different block (e.g., via Tab) — select it
-              log('Focus moved to different block:', blockUid, 'from:', this.selectedBlockUid);
-              // Cancel any pending initial-selection — user navigated away
-              if (this._pendingInitialSelectTimer) {
-                clearTimeout(this._pendingInitialSelectTimer);
-                this._pendingInitialSelectTimer = null;
-              }
-              this.selectBlock(blockElement);
+              // This used to guess, with a 300ms since-last-keypress heuristic
+              // and a `_navigatingToBlock` latch, because selection depended on
+              // reading back the bridge's own synthetic focus. It does not any
+              // more, so there is nothing left to guess at.
               return;
             }
 
@@ -13092,8 +13067,9 @@ export class Bridge {
   /**
    * Reveal a block, releasing `_navigatingToBlock` however the attempt ends.
    *
-   * `_navigatingToBlock` tells the focus listener "a programmatic navigation
-   * is in flight, don't let a focus event hijack the selection". The reveal
+   * `_navigatingToBlock` tells the click handler "a programmatic navigation
+   * is in flight", so a synthetic click it generates is not mistaken for the
+   * author's (blockClickHandler). The reveal
    * itself sets it and has ~nine synchronous `return false` paths for the
    * cases it cannot handle — a block with no container, no paging control, no
    * +1/-1 selector, already at the target. None of them cleared it, so the
