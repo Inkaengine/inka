@@ -169,21 +169,21 @@ For a fully-fixed branded footer, leave the blocks **field empty** (`{items: []}
 
 So a branded footer is, end to end: a `columns` block (`slotId`, `fixed`, `readOnly`) → each `column` (`slotId`, `fixed`, `readOnly`) → each leaf block (`slotId`, `fixed`, `readOnly`).
 
-### object\_list containers (sliders, tables)
+### object_list containers (sliders, tables)
 
 A container lays out its children one of two ways, and the merge treats **both the same** — as an ordered region of child blocks:
 
-- **\`blocks\_layout\`** (columns, grid): children live in the block's shared `blocks` map,
+- **\`blocks_layout\`** (columns, grid): children live in the block's shared `blocks` map,
 
 ordered by a `blocks_layout` region (as above).
 
-- **\`object\_list\`** (a slider's slides, a table's rows): children are an **inline array**
+- **\`object_list\`** (a slider's slides, a table's rows): children are an **inline array**
 
 of block objects, each identified by an **id field** (`@id` by default).
 
-Everything else is identical: every object\_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
+Everything else is identical: every object_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
 
-The merge identifies object\_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas, so whenever you expand a template or layout that contains an object\_list container you MUST tell it each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Build it from the same blocks config you pass to `initBridge` with `buildIdFieldMap`, exactly as the admin does, rather than writing it by hand. Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
+The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas, so whenever you expand a template or layout that contains an object_list container you MUST tell it each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Build it from the same blocks config you pass to `initBridge` with `buildIdFieldMap`, exactly as the admin does, rather than writing it by hand. Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
 
 ### Javascript
 
@@ -198,7 +198,7 @@ const items = expandTemplatesSync(layout, {
 });
 ```
 
-(When you re-enter to expand a **single** object\_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
+(When you re-enter to expand a **single** object_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
 
 ## allowedTemplates vs allowedLayouts
 
@@ -292,7 +292,7 @@ for (const item of items) {
 Options:
 
 - **\`blocks\`**: Map of blockId -> block data
-- **\`templateState\`**: Create a fresh `{}` **once per page render** and share it across **every** `expandTemplatesSync`/`expandTemplates` call — top-level and every nested container / object\_list re-entry. It records the template instances minted this render so a re-entry is recognized as already-expanded content and passed through. **Never reset or recreate it mid-render** (e.g. don't `templateState = {}` again before rendering, and don't pass a fresh `{}` per call): wiping it drops the minted instances, so re-entries re-apply the template instead of passing through — infinite recursion / blank page. Recognition is **data-derived** (by `templateInstanceId`), so it is safe to hand blocks back as a Vue reactive value, a clone, or a `postMessage` copy — no `toRaw` needed. (In Vue/React, provide it once at the page root via provide/inject or context; see `examples/nuxt-blog-starter` and `examples/hydra-nextjs`.)
+- **\`templateState\`**: Create a fresh `{}` **once per page render** and share it across **every** `expandTemplatesSync`/`expandTemplates` call — top-level and every nested container / object_list re-entry. It records the template instances minted this render so a re-entry is recognized as already-expanded content and passed through. **Never reset or recreate it mid-render** (e.g. don't `templateState = {}` again before rendering, and don't pass a fresh `{}` per call): wiping it drops the minted instances, so re-entries re-apply the template instead of passing through — infinite recursion / blank page. Recognition is **data-derived** (by `templateInstanceId`), so it is safe to hand blocks back as a Vue reactive value, a clone, or a `postMessage` copy — no `toRaw` needed. (In Vue/React, provide it once at the page root via provide/inject or context; see `examples/nuxt-blog-starter` and `examples/hydra-nextjs`.)
 - **\`templates\`**: (sync only) Pre-fetched map of templateId -> template data
 - **\`loadTemplate(id)\`**: (async only) Function to fetch template content
 - **\`allowedLayouts\`**: Force a layout when container has no template applied

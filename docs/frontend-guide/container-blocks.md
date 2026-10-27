@@ -52,8 +52,8 @@ A block — or the page itself — is divided into **regions**, and each region 
 
 You declare regions in your `blockSchema` (or the page schema), and **you choose how each region is stored in the JSON**:
 
-- **\`blocks\_layout\`** — the region's *ordering* is a named list inside the parent's shared `blocks_layout` dict, and the blocks themselves live in the parent's shared `blocks` dict. This is the default, and it's what persists through the backend (see [Why these persist](#why-these-persist-and-separate-top-level-fields-dont)).
-- **\`object\_list\`** — the region is stored inline, as an array of objects on the field itself.
+- **\`blocks_layout\`** — the region's *ordering* is a named list inside the parent's shared `blocks_layout` dict, and the blocks themselves live in the parent's shared `blocks` dict. This is the default, and it's what persists through the backend (see [Why these persist](#why-these-persist-and-separate-top-level-fields-dont)).
+- **\`object_list\`** — the region is stored inline, as an array of objects on the field itself.
 
 Both look and behave the same in the editor — selecting, dragging, nesting — and blocks can be dragged from one to the other; only the JSON storage differs.
 
@@ -61,7 +61,7 @@ Both look and behave the same in the editor — selecting, dragging, nesting —
 
 A container's own element needn't wrap its children, or exist at all: a heading of its own can sit beside them, and an accordion of one panel can be drawn as just that panel. See [A container's parts and its children needn't be nested](./visual-editing.md#a-containers-parts-and-its-children-neednt-be-nested).
 
-## blocks\_layout: a region in the shared dict
+## blocks_layout: a region in the shared dict
 
 Each child has its own `@type` and schema (from `blocks`). The blocks live in the parent's shared `blocks` dict; the region's name is a key in the parent's shared `blocks_layout` dict that holds the ordering:
 
@@ -90,7 +90,7 @@ slides: {
 
 A block can declare several `blocks_layout` regions; they all share the one `blocks` dict, and each region gets its own list under `blocks_layout`.
 
-\> **The region name is a key inside \`blocks\_layout\` — not a top-level field.** The > ordering list lives at `blocks_layout.<region>` (a plain array of ids). A tempting > mistake is to store it as a top-level field named after the region: > > \<!-- codeExample: json --> > \`\``json > // ✅ CORRECT — ordering keyed inside the shared blocks_layout dict > { "@type": "slider", "blocks": { … }, "blocks_layout": { "slides": ["slide-1", "slide-2"] } } > > // ❌ WRONG — an ad-hoc top-level `slides`  field holding { items: [...] } > { "@type": "slider", "blocks": { … }, "slides": { "items": ["slide-1", "slide-2"] } } >  `\``  > > The wrong form may *look* fine in a frontend that reads it back the same way, but >  `slides`  is **not a registered field**, so the backend **silently drops it on save** > (see [Why these persist](#why-these-persist-and-separate-top-level-fields-dont)) — > and tools that walk the shared dict (the block path map, the sanity checks, the > editor's reorder/drag) never see the region, because they look under >  `blocks\_layout`, never at a field named for the region. Renderers must read the > ordering from `blocks\_layout\[\<region>]`, not from `\<region>.items\`.
+\> **The region name is a key inside \`blocks_layout\` — not a top-level field.** The > ordering list lives at `blocks_layout.<region>` (a plain array of ids). A tempting > mistake is to store it as a top-level field named after the region: > > \<!-- codeExample: json --> > \`\``json > // ✅ CORRECT — ordering keyed inside the shared blocks_layout dict > { "@type": "slider", "blocks": { … }, "blocks_layout": { "slides": ["slide-1", "slide-2"] } } > > // ❌ WRONG — an ad-hoc top-level `slides`  field holding { items: [...] } > { "@type": "slider", "blocks": { … }, "slides": { "items": ["slide-1", "slide-2"] } } >  `\``  > > The wrong form may *look* fine in a frontend that reads it back the same way, but >  `slides`  is **not a registered field**, so the backend **silently drops it on save** > (see [Why these persist](#why-these-persist-and-separate-top-level-fields-dont)) — > and tools that walk the shared dict (the block path map, the sanity checks, the > editor's reorder/drag) never see the region, because they look under >  `blocks_layout`, never at a field named for the region. Renderers must read the > ordering from `blocks_layout\[\<region>]`, not from `\<region>.items\`.
 
 **Worked examples:** [Grid Block](../examples/grid/index.md) — one region of free children, narrowed by `allowedBlocks`; [Columns Block](../examples/columns.md) — a `columns` region whose children are themselves regions.
 
@@ -98,7 +98,7 @@ A block can declare several `blocks_layout` regions; they all share the one `blo
 
 A container (or the page) can declare more than one **region** — each a schema property with its own `allowedBlocks`. The default region is `items`.
 
-Storage is a property of **each region, not the container**: every region independently chooses `widget: 'blocks_layout'` or `widget: 'object_list'`, and a single container may **mix** them — e.g. a `blocks_layout` region for body content alongside an `object_list` region for a set of inline cards. A blocks\_layout region keys its ordering inside the shared `blocks_layout` dict (its children in the shared `blocks` dict); an object\_list region stores its items inline on its own field. So "is this container object\_list or blocks\_layout?" is never a meaningful question — you look at the region. Every blocks\_layout region's children still share the one `blocks` dict; the regions only partition *ordering*.
+Storage is a property of **each region, not the container**: every region independently chooses `widget: 'blocks_layout'` or `widget: 'object_list'`, and a single container may **mix** them — e.g. a `blocks_layout` region for body content alongside an `object_list` region for a set of inline cards. A blocks_layout region keys its ordering inside the shared `blocks_layout` dict (its children in the shared `blocks` dict); an object_list region stores its items inline on its own field. So "is this container object_list or blocks_layout?" is never a meaningful question — you look at the region. Every blocks_layout region's children still share the one `blocks` dict; the regions only partition *ordering*.
 
 ### Javascript
 
@@ -131,7 +131,7 @@ Each blocks field has its own `allowedBlocks` / `maxLength`. A declared field ap
 
 ### Why these persist (and separate top-level fields don't)
 
-`blocks_layout` regions live as **keys inside the registered \`blocks\_layout\` dict** rather than as separate top-level fields (the older `header_blocks` / `footer_blocks` style) for one concrete reason: **persistence**.
+`blocks_layout` regions live as **keys inside the registered \`blocks_layout\` dict** rather than as separate top-level fields (the older `header_blocks` / `footer_blocks` style) for one concrete reason: **persistence**.
 
 The backend deserializer only saves values for **registered fields**. `blocks` and `blocks_layout` are registered behavior fields, so the entire `blocks_layout` dict — every list inside it — is stored verbatim. An ad-hoc top-level field like `footer_blocks` is **not** a registered field, so the backend **silently drops it on save**. (A footer might still appear on the live site if a layout template re-injects it on every load — but that footer is never actually persisted.) Keeping every region inside the registered `blocks_layout` dict makes them all persist for real.
 
@@ -261,7 +261,7 @@ With no alias, a top-level node becomes `config.settings.slate.defaultBlockType`
 
 A downgrade never changes how many top-level nodes a slate field holds, because [a field always holds exactly one](./visual-editing.md#one-top-level-node-per-slate-field) and renderers are told they may assume it. So a denied *wrapper* collapses rather than splitting: denying `ul` turns `ul > li, li` into a single paragraph holding both items' content, not two paragraphs. Inline children survive the collapse — a `strong` inside a denied `blockquote` is still bold afterwards.
 
-## object\_list: a region stored inline
+## object_list: a region stored inline
 
 The other storage choice for a region. Instead of ordering in the shared `blocks_layout` dict, all items share one inline schema and are stored as an array with an ID field, at the field itself. (To place the array deeper — e.g. `block.table.rows` — nest the field inside a `widget: 'object'`; see below.)
 
@@ -294,7 +294,7 @@ slides: {
 
 **Worked examples:** [Accordion Block](../examples/accordion.md) — each panel an inline item holding its own region of child blocks; [Slider Block](../examples/slider.md) — slides as inline items with fields of their own.
 
-## object\_list with allowedBlocks: Typed Items
+## object_list with allowedBlocks: Typed Items
 
 When `allowedBlocks` is set on an `object_list`, items can have different types (like `blocks_layout`) but are still stored as an array. Each item's type is stored in the field specified by `typeField` (defaults to `'@type'`) and its schema is looked up from `blocks`:
 
@@ -329,7 +329,7 @@ Both `blocks_layout` and `object_list` look the same in the editing UI and block
 
 A `widget: 'object'` field groups sub-fields under one key. Its `schema.properties` are first-class — plain fields OR nested containers — and everything nests **inside** the object, exactly where the schema puts it. No `dataPath` indirection.
 
-An **\`object\_list\`** inside an object stores its array at `object.<field>`:
+An **\`object_list\`** inside an object stores its array at `object.<field>`:
 
 ### Javascript
 
@@ -346,7 +346,7 @@ table: {
 { "@type": "slateTable", "table": { "rows": [ { "key": "r1", "cells": [ /* … */ ] } ] } }
 ```
 
-A **\`blocks\_layout\`** inside an object makes the object its own mini-container: it holds its own `blocks` dict + `blocks_layout`, just like a columns/grid container block, one level deeper:
+A **\`blocks_layout\`** inside an object makes the object its own mini-container: it holds its own `blocks` dict + `blocks_layout`, just like a columns/grid container block, one level deeper:
 
 ### Javascript
 
