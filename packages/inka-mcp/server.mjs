@@ -21,12 +21,11 @@
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { chromium } from 'playwright';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { openAdmin, openForEdit, createPage, park, agentOn, siteOn } from './adminDriver.mjs';
-import { frontendUrlOf, previewDraft } from './preview.mjs';
+import { adminPool } from './adminPool.mjs';
+import { subjectOf } from './tokenStore.mjs';
 import { signIn, renewDelay } from './signIn.mjs';
 import {
   getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
@@ -41,25 +40,23 @@ const OPS_HELP = `Operations, applied in order:
 New blocks are in the get_page format; give each a "@uid" of your own to refer to it in later operations — the result maps it to the real id. Rich text fields take markdown: {"md": "..."} or a plain string.`;
 
 /**
- * A headless admin, logged in. It is loaded once and kept: each call moves it
- * to the page the call needs (the editor, the add form, the site's contents)
- * the way its own links do, and leaves it parked on a page with no editor, so
- * a call holds nothing afterwards: a dry run's changes are dropped, the
- * editor's lock let go. Calls take turns on it, one at a time.
+ * The admin for one user, as the local (stdio) server has it: a pool of one
+ * page (adminPool.mjs), signed in through `auth` and kept signed in. The page
+ * is loaded once and kept: each call moves it to the page the call needs and
+ * leaves it parked with no editor, so a call holds nothing afterwards (a dry
+ * run's changes dropped, the editor's lock let go). Calls take turns on it.
  */
 export function headlessAdmin({ adminUrl, auth, frontendUrl }) {
-  let context;
-  let page;
+  const pool = adminPool({ adminUrl, frontendUrl, size: 1 });
   let token;
   let renewal;
-  /** The browser's session cookie, for `token`; renewed while the server runs (if `auth` renews). */
-  const useToken = async (next) => {
+  /** Use `next`, and renew it halfway through its life (if `auth` renews). */
+  const keep = (next) => {
     token = next;
-    await context.addCookies([{ name: 'auth_token', value: token, url: adminUrl, sameSite: 'Lax' }]);
     if (!auth.renew) return;
     clearTimeout(renewal);
     renewal = setTimeout(() => {
-      auth.renew(token).then(useToken, (error) => {
+      auth.renew(token).then(keep, (error) => {
         // Signed out: the next call signs in again.
         process.stderr.write(`inka-mcp: renewing the sign-in failed, the next call signs in again: ${error.message}\n`);
         token = null;
@@ -67,84 +64,21 @@ export function headlessAdmin({ adminUrl, auth, frontendUrl }) {
     }, renewDelay(token));
     renewal.unref();
   };
-  let turn = Promise.resolve();
-  const session = {
+  const currentUser = async () => {
+    if (!token) keep(await auth.token());
+    return { id: subjectOf(token), token };
+  };
+  return {
+    ...pool.forUser(currentUser),
     /** How many times the admin was loaded in full (once, unless it was lost). */
-    adminLoads: 0,
-  };
-  const ready = async () => {
-    if (!context) {
-      const browser = await chromium.launch();
-      context = await browser.newContext();
-      // The admin's front-end choice, as its switcher stores it: a cookie
-      // named for the admin's port (utils/cookieNames.js).
-      if (frontendUrl) {
-        await context.addCookies([{
-          name: `iframe_url_${new URL(adminUrl).port || '80'}`, value: frontendUrl, url: adminUrl, sameSite: 'Lax',
-        }]);
-      }
-    }
-    if (!token) {
-      await useToken(await auth.token());
-      // A page loaded under another sign-in is loaded afresh.
-      if (page && !page.isClosed()) await page.close();
-    }
-    if (!page || page.isClosed()) {
-      page = await context.newPage();
-      page.on('load', () => { session.adminLoads++; });
-      await openAdmin(page, { adminUrl });
-    }
-    return page;
-  };
-  /** Run `call` on the admin when the calls before it are done; park it after. */
-  const inTurn = (call) => {
-    const mine = turn.then(async () => {
-      const admin = await ready();
-      try {
-        return await call(admin);
-      } finally {
-        await park(admin);
-      }
-    });
-    turn = mine.catch(() => {});
-    return mine;
-  };
-  return Object.assign(session, {
-    withEditor(path, work) {
-      return inTurn(async (admin) => {
-        await openForEdit(admin, { path });
-        return work(agentOn(admin), {
-          // The site-wide API is on every admin page, the editor's included.
-          site: siteOn(admin),
-          // Render a draft of this page as a visitor sees it, in its own page
-          // (with `focus`, just that block of it).
-          render: async (draft, viewport, focus) => {
-            const renderedOn = await frontendUrlOf(admin);
-            const rendered = await previewDraft(admin.context(), { frontendUrl: renderedOn, path, draft, viewport, focus });
-            return { ...rendered, renderedOn: new URL(renderedOn).origin };
-          },
-        });
-      });
+    get adminLoads() {
+      return pool.stats.adminLoads;
     },
-    /** Work site-wide, from the parked admin: no editor, and so no lock. */
-    withSite(work) {
-      return inTurn((admin) => work(siteOn(admin)));
-    },
-    /** Add a page through the admin's add form, then work in its editor. */
-    withNewPage({ parent, type, title }, work) {
-      return inTurn(async (admin) => {
-        await createPage(admin, { parent, type, title });
-        return work(agentOn(admin));
-      });
-    },
-    /** Let go of whatever the admin holds, then close it. */
     async close() {
       clearTimeout(renewal);
-      if (!context) return;
-      await turn;
-      await context.browser().close();
+      await pool.close();
     },
-  });
+  };
 }
 
 const asResult = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] });

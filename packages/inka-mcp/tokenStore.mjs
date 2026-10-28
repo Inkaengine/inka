@@ -26,11 +26,22 @@ export function saveToken(file, adminUrl, token) {
   chmodSync(file, 0o600);
 }
 
-/** When a token (a JWT) expires. */
-export function expiresAt(token) {
+function claims(token) {
   const payload = token.split('.')[1];
   if (!payload) throw new Error('the token is not a JWT');
-  const { exp } = JSON.parse(Buffer.from(payload, 'base64url').toString());
+  return JSON.parse(Buffer.from(payload, 'base64url').toString());
+}
+
+/** When a token (a JWT) expires. */
+export function expiresAt(token) {
+  const { exp } = claims(token);
   if (!exp) throw new Error('the token has no expiry');
   return new Date(exp * 1000);
+}
+
+/** The user a token (a JWT) is for: its `sub`. */
+export function subjectOf(token) {
+  const { sub } = claims(token);
+  if (!sub) throw new Error('the token names no user');
+  return sub;
 }
