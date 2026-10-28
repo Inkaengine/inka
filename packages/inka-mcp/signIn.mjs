@@ -25,7 +25,7 @@ export function renewDelay(token, now = Date.now()) {
 }
 
 /** Renew `token` through the admin; SignedOut if the CMS no longer takes it. */
-async function renewThrough(adminUrl, token) {
+export async function renewThrough(adminUrl, token) {
   const response = await fetch(`${adminUrl}/++api++/@login-renew`, {
     method: 'POST',
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },

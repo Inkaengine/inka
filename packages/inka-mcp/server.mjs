@@ -83,14 +83,19 @@ export function headlessAdmin({ adminUrl, auth, frontendUrl }) {
 
 const asResult = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] });
 
-export function createServer(admin) {
+/**
+ * The MCP server's tools. `adminFor(extra)` is the admin to work in for a
+ * request: the one signed-in user's (stdio), or the requesting user's, from
+ * their access token (http.mjs).
+ */
+export function createServer(adminFor) {
   const server = new McpServer({ name: 'inka', version: '0.0.1' });
 
   server.registerTool('get_page', {
     title: 'Read a page',
     description: 'Read a page as an ordered list of blocks. Each block has "@uid" and "@type"; containers hold their child blocks in lists named for the region; rich text is {"md": "..."}. Keep "version" — edit_blocks needs it.',
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
-  }, async ({ path }) => asResult(await admin.withEditor(path, getPage)));
+  }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, getPage)));
 
   const paging = {
     limit: z.number().int().positive().max(100).optional().describe('At most this many (default 25)'),
@@ -106,13 +111,13 @@ export function createServer(admin) {
       path: z.string().optional().describe('Only inside this section, e.g. /news'),
       ...paging,
     },
-  }, async (args) => asResult(await admin.withSite((site) => search(site, args))));
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => search(site, args))));
 
   server.registerTool('list_children', {
     title: 'List a section',
     description: 'The pages directly inside a section, in their order: path, title, type, description and workflow state. "/" lists the top of the site.',
     inputSchema: { path: z.string().describe('The section, e.g. / or /docs'), ...paging },
-  }, async (args) => asResult(await admin.withSite((site) => listChildren(site, args))));
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => listChildren(site, args))));
 
   const version = z.string().describe('The version get_page returned; refused if the page has changed since');
 
@@ -124,7 +129,7 @@ export function createServer(admin) {
       target: z.string().describe('The section to move it into, e.g. /archive'),
       expectedVersion: version,
     },
-  }, async (args) => asResult(await admin.withSite((site) => movePage(site, args))));
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => movePage(site, args))));
 
   server.registerTool('rename_page', {
     title: 'Rename a page',
@@ -135,19 +140,19 @@ export function createServer(admin) {
       title: z.string().optional().describe('The new title'),
       expectedVersion: version,
     },
-  }, async (args) => asResult(await admin.withSite((site) => renamePage(site, args))));
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => renamePage(site, args))));
 
   server.registerTool('delete_page', {
     title: 'Delete a page',
     description: 'Delete a page and everything inside it. This cannot be undone here.',
     inputSchema: { path: z.string().describe('The page to delete'), expectedVersion: version },
-  }, async (args) => asResult(await admin.withSite((site) => deletePage(site, args))));
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => deletePage(site, args))));
 
   server.registerTool('list_block_types', {
     title: 'List block types',
     description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes. Read this before adding a block type you have not seen on the page.',
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
-  }, async ({ path }) => asResult(await admin.withEditor(path, listBlockTypes)));
+  }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, listBlockTypes)));
 
   server.registerTool('describe_block', {
     title: 'Describe a block type',
@@ -157,8 +162,8 @@ export function createServer(admin) {
       type: z.string().describe('The block type, as list_block_types names it, e.g. teaser'),
       preview: z.enum(['desktop', 'mobile']).optional().describe('Render each example at this width'),
     },
-  }, async ({ path, type, preview }) => {
-    const described = await admin.withEditor(path, (agent, { site, render }) => describeBlock(agent, site, {
+  }, async ({ path, type, preview }, extra) => {
+    const described = await adminFor(extra).withEditor(path, (agent, { site, render }) => describeBlock(agent, site, {
       type, render: preview && ((draft, uid) => render(draft, preview, uid)),
     }));
     if (!preview) return asResult(described);
@@ -185,8 +190,8 @@ export function createServer(admin) {
       type: z.string().optional().describe('The content type (default "Document")'),
       blocks: z.array(z.object({ '@type': z.string() }).passthrough()).optional().describe('Blocks to start with'),
     },
-  }, async ({ parent, title, type = 'Document', blocks }) => asResult(
-    await admin.withNewPage({ parent, type, title }, (agent) => fillNewPage(agent, { blocks, mintId: randomUUID })),
+  }, async ({ parent, title, type = 'Document', blocks }, extra) => asResult(
+    await adminFor(extra).withNewPage({ parent, type, title }, (agent) => fillNewPage(agent, { blocks, mintId: randomUUID })),
   ));
 
   server.registerTool('edit_blocks', {
@@ -199,8 +204,8 @@ export function createServer(admin) {
       dryRun: z.boolean().optional().describe('Show the result without saving'),
       preview: z.enum(['desktop', 'mobile']).optional().describe('With dryRun: render the result at this width'),
     },
-  }, async ({ path, expectedVersion, ops, dryRun, preview }) => {
-    const result = await admin.withEditor(path, (agent, { render }) => editPage(agent, {
+  }, async ({ path, expectedVersion, ops, dryRun, preview }, extra) => {
+    const result = await adminFor(extra).withEditor(path, (agent, { render }) => editPage(agent, {
       ops, expectedVersion, dryRun, mintId: randomUUID,
       render: preview && ((draft) => render(draft, preview)),
     }));
@@ -223,7 +228,7 @@ async function main(env) {
   // Signing in waits for the first call, so the agent's host isn't kept
   // waiting at startup while a person signs in.
   const admin = headlessAdmin({ adminUrl, auth: signIn(env, { adminUrl }), frontendUrl: env.INKA_FRONTEND_URL });
-  const server = createServer(admin);
+  const server = createServer(() => admin);
   server.server.onclose = () => admin.close();
   await server.connect(new StdioServerTransport());
 }

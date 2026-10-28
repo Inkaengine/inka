@@ -1,0 +1,125 @@
+import { describe, it, expect } from 'vitest';
+import { randomBytes } from 'node:crypto';
+import { sealer } from './sealed.mjs';
+import { oauthProvider } from './oauth.mjs';
+import { SignedOut } from './signIn.mjs';
+
+const ADMIN = 'https://admin.example.org';
+const CALLBACK = 'https://mcp.example.org/oauth/callback';
+const CLIENT_CB = 'https://client.example/cb';
+
+/** A Plone token (a JWT) for `user`, expiring in `hours`. */
+const plone = (user, hours = 12) => {
+  const part = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  return `${part({ alg: 'HS256' })}.${part({ sub: user, exp: Math.floor(Date.now() / 1000) + hours * 3600 })}.sig`;
+};
+
+function setup({ renew = async (token) => plone('jane') + token.length } = {}) {
+  const renewed = [];
+  const provider = oauthProvider({
+    box: sealer(randomBytes(32).toString('base64')),
+    adminUrl: ADMIN,
+    callbackUrl: CALLBACK,
+    renew: async (token) => { renewed.push(token); return renew(token); },
+  });
+  return { provider, renewed };
+}
+
+/** Register a client and sign `user` in through it, as the OAuth flow does; the client's tokens. */
+async function signedIn(provider, user = 'jane') {
+  const client = await provider.clientsStore.registerClient({ redirect_uris: [CLIENT_CB], client_name: 'Some agent', token_endpoint_auth_method: 'none' });
+  let to;
+  await provider.authorize(client, { redirectUri: CLIENT_CB, codeChallenge: 'challenge', state: 'client-state' }, { redirect: (url) => { to = new URL(url); } });
+  const back = new URL(await provider.callback({ token: plone(user), state: to.searchParams.get('state') }));
+  const code = back.searchParams.get('code');
+  return { client, code, tokens: await provider.exchangeAuthorizationCode(client, code, 'verifier', CLIENT_CB) };
+}
+
+describe('oauthProvider', () => {
+  it('keeps a client registration in the client id itself', async () => {
+    const { provider } = setup();
+    const client = await provider.clientsStore.registerClient({ redirect_uris: [CLIENT_CB], client_name: 'Some agent' });
+    expect(await provider.clientsStore.getClient(client.client_id)).toMatchObject({ redirect_uris: [CLIENT_CB], client_name: 'Some agent' });
+    expect(await provider.clientsStore.getClient('made-up')).toBeUndefined();
+  });
+
+  it("sends the person to the admin's connect page, naming the client", async () => {
+    const { provider } = setup();
+    const client = await provider.clientsStore.registerClient({ redirect_uris: [CLIENT_CB], client_name: 'Some agent' });
+    let to;
+    await provider.authorize(client, { redirectUri: CLIENT_CB, codeChallenge: 'challenge', state: 's' }, { redirect: (url) => { to = new URL(url); } });
+    expect(to.origin + to.pathname).toBe(`${ADMIN}/connect-agent`);
+    expect(to.searchParams.get('redirect_uri')).toBe(CALLBACK);
+    expect(to.searchParams.get('client')).toBe('Some agent');
+    expect(to.searchParams.get('state')).toBeTruthy();
+  });
+
+  it('on Allow, sends the client a code, with its own state; the code gives tokens holding the Plone token', async () => {
+    const { provider } = setup();
+    const { client, code, tokens } = await signedIn(provider);
+    expect(await provider.challengeForAuthorizationCode(client, code)).toBe('challenge');
+    expect(tokens).toMatchObject({ token_type: 'Bearer' });
+    expect(tokens.expires_in).toBeGreaterThan(0);
+    expect(tokens.expires_in).toBeLessThanOrEqual(3600);
+    const auth = await provider.verifyAccessToken(tokens.access_token);
+    expect(auth.clientId).toBe(client.client_id);
+    expect(auth.extra.user).toBe('jane');
+    expect(auth.extra.plone.split('.').length).toBe(3);
+  });
+
+  it('on Cancel, tells the client the person declined', async () => {
+    const { provider } = setup();
+    const client = await provider.clientsStore.registerClient({ redirect_uris: [CLIENT_CB] });
+    let to;
+    await provider.authorize(client, { redirectUri: CLIENT_CB, codeChallenge: 'c', state: 'client-state' }, { redirect: (url) => { to = new URL(url); } });
+    const back = new URL(await provider.callback({ error: 'access_denied', state: to.searchParams.get('state') }));
+    expect(back.origin + back.pathname).toBe(CLIENT_CB);
+    expect(back.searchParams.get('error')).toBe('access_denied');
+    expect(back.searchParams.get('state')).toBe('client-state');
+  });
+
+  it('refuses a callback whose state it did not make', async () => {
+    const { provider } = setup();
+    await expect(provider.callback({ token: plone('jane'), state: 'forged' })).rejects.toThrow(/not a token from this server/);
+  });
+
+  it("refuses another client's code", async () => {
+    const { provider } = setup();
+    const { code } = await signedIn(provider);
+    const other = await provider.clientsStore.registerClient({ redirect_uris: [CLIENT_CB] });
+    await expect(provider.exchangeAuthorizationCode(other, code, 'v', CLIENT_CB)).rejects.toThrow(/another client/);
+  });
+
+  it('a refresh renews the Plone token', async () => {
+    const { provider, renewed } = setup();
+    const { client, tokens } = await signedIn(provider);
+    const fresh = await provider.exchangeRefreshToken(client, tokens.refresh_token);
+    expect(renewed).toHaveLength(1);
+    const before = (await provider.verifyAccessToken(tokens.access_token)).extra.plone;
+    expect((await provider.verifyAccessToken(fresh.access_token)).extra.plone).not.toBe(before);
+  });
+
+  it('a refresh Plone refuses means signing in again', async () => {
+    const { provider } = setup({ renew: async () => { throw new SignedOut('the CMS no longer accepts the token'); } });
+    const { client, tokens } = await signedIn(provider);
+    await expect(provider.exchangeRefreshToken(client, tokens.refresh_token)).rejects.toThrow(/sign in again/);
+  });
+
+  it('refuses an access token it did not make, or a refresh token as an access token', async () => {
+    const { provider } = setup();
+    const { tokens } = await signedIn(provider);
+    await expect(provider.verifyAccessToken('made-up')).rejects.toThrow(/not a token from this server/);
+    await expect(provider.verifyAccessToken(tokens.refresh_token)).rejects.toThrow(/not a access token|refresh token/);
+  });
+
+  it("ends an access token before the Plone token in it does", async () => {
+    const { provider } = setup();
+    const client = await provider.clientsStore.registerClient({ redirect_uris: [CLIENT_CB] });
+    let to;
+    await provider.authorize(client, { redirectUri: CLIENT_CB, codeChallenge: 'c', state: 's' }, { redirect: (url) => { to = new URL(url); } });
+    const short = plone('jane', 0.25); // 15 minutes left
+    const code = new URL(await provider.callback({ token: short, state: to.searchParams.get('state') })).searchParams.get('code');
+    const tokens = await provider.exchangeAuthorizationCode(client, code, 'v', CLIENT_CB);
+    expect(tokens.expires_in).toBeLessThan(15 * 60);
+  });
+});

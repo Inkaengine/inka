@@ -85,7 +85,7 @@ test.describe('connect-agent', () => {
       const helper = new AdminUIHelper(page);
       await helper.login();
       await page.goto(connectPage(helper.adminUrl, redirectUri));
-      await expect(page.getByText(/only to an agent on this computer/)).toBeVisible();
+      await expect(page.getByText(/only to an agent on this computer or to this site.s MCP server/)).toBeVisible();
       await expect(page.getByRole('button', { name: 'Allow' })).toHaveCount(0);
     });
   }
