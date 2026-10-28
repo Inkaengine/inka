@@ -80,8 +80,9 @@ rm -f /tmp/badpages
 
 mv .output .output-prod
 
-# Clean Nuxt build cache to avoid SSG state leaking into SPA build
-rm -rf .nuxt
+# Clean Nuxt build cache to avoid SSG state leaking into SPA build, and any
+# earlier canvas build's own folders
+rm -rf .nuxt .nuxt-canvas .output-canvas
 
 # The canvas: the editing build the admin frames. One static file, with the
 # page in the hash (/canvas/#/<page>), so the host serves every page with no
@@ -89,8 +90,8 @@ rm -rf .nuxt
 echo "=== Building the canvas (editing SPA) ==="
 pnpm run canvas
 
-# Move the canvas into prod's /canvas/ subdirectory
-mv .output/public .output-prod/public/canvas
+# Move the canvas (built into .output-canvas) into prod's /canvas/ subdirectory
+mv .output-canvas/public .output-prod/public/canvas
 
 # Use combined output
 rm -rf .output

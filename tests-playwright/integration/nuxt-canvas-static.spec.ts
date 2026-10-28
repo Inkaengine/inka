@@ -8,7 +8,6 @@
  * The dev-server specs can't see this: a dev server routes any path itself.
  * inka.sh's canvas 404'd for every page but the homepage while they passed.
  */
-import { execFileSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
@@ -43,18 +42,16 @@ test.describe('the deployed canvas (static, hash-routed)', () => {
   let canvas: string;
 
   test.beforeAll(async () => {
-    test.setTimeout(600000);
-    // Built as the deploy builds it: netlify-build.sh's canvas step.
-    execFileSync('pnpm', ['run', 'canvas'], {
-      cwd: STARTER,
-      stdio: 'pipe',
-      // A production build, as the deploy's: the test runner's own NODE_ENV
-      // otherwise makes `nuxt generate` emit a dev build (Vite's client and
-      // absolute module paths), which no static host can serve.
-      env: { ...process.env, NODE_ENV: 'production', NUXT_TEST_BACKEND: URLS.mockApi, NUXT_ADMIN_URL: URLS.voltoSsr },
-    });
+    // Built as the deploy builds it (`pnpm run canvas`, as netlify-build.sh
+    // does), BEFORE the test build: building it empties .output, which the
+    // other Nuxt specs are served from. CI's Nuxt job runs it before build:test.
+    const built = join(STARTER, '.output-canvas/public');
+    if (!existsSync(join(built, 'index.html'))) {
+      throw new Error(`no canvas build at ${built}: run \`pnpm run canvas\` in examples/nuxt-blog-starter `
+        + '(with NUXT_TEST_BACKEND set to the mock API), before build:test');
+    }
     site = mkdtempSync(join(tmpdir(), 'inka-canvas-'));
-    cpSync(join(STARTER, '.output/public'), join(site, 'canvas'), { recursive: true });
+    cpSync(built, join(site, 'canvas'), { recursive: true });
     server = staticFiles(site);
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     canvas = `http://127.0.0.1:${(server.address() as AddressInfo).port}/canvas/#/`;

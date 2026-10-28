@@ -4,6 +4,8 @@ node_modules/
 # Build output
 .nuxt/
 .output/
+.nuxt-canvas/
+.output-canvas/
 dist/
 
 # Synced from monorepo - don't commit stale copies

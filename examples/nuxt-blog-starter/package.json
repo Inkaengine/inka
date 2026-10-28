@@ -17,7 +17,7 @@
     "generate": "nuxt generate",
     "preedit": "pnpm run sync-hydra",
     "edit": "nuxt generate --envName edit",
-    "canvas": "NUXT_EDIT_BASE_URL=/canvas/ NUXT_EDIT_HASH_ROUTING=true nuxt generate --envName edit",
+    "canvas": "NODE_ENV=production NUXT_EDIT_BASE_URL=/canvas/ NUXT_EDIT_HASH_ROUTING=true NUXT_EDIT_BUILD_DIR=.nuxt-canvas NUXT_EDIT_OUTPUT_DIR=.output-canvas nuxt generate --envName edit",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
   },
