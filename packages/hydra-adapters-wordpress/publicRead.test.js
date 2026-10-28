@@ -250,38 +250,31 @@ describe('wpFetchItems', () => {
 });
 
 /**
- * Which NESTING is `navigation()`.
+ * `navigation()` is the main hierarchy; a curated menu is a separate VIEW.
  *
- * A CMS offers several nestings over the same content, and a header renders one
- * of them. WordPress has two: the structural page tree (every page carries a
- * parent) and a curated menu someone arranged by hand. Both are legitimate; the
- * SITE says which one is its navigation and the adapter maps it, so a frontend
- * keeps asking `navigation()` and never branches on the CMS.
+ * That split is the design (see the note on `navigation.get` in ../index.js):
+ * WordPress pages form a tree and that tree is what its navigation is built
+ * from, while a menu someone arranged by hand is another view over the same
+ * content, read with `menu()`. What was missing was the LOCATION — a menu is
+ * public only where it is located, so a read that ignores locations returns
+ * items from menus the site never published.
  */
-describe('navigation: which nesting', () => {
+describe('navigation is the tree; a menu is a located view', () => {
   const graphqlFetch = (nodes, { asked = [] } = {}) => async (url, init) => {
     asked.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : null });
-    if (String(url).includes('graphql')) {
-      const body = { data: { menuItems: { nodes } } };
-      return {
-        ok: true,
-        status: 200,
-        headers: new Headers({ 'content-type': 'application/json' }),
-        // The reader reads the BODY as text and parses it itself, so that a 200
-        // of HTML (WPGraphQL absent) can be reported as such.
-        text: async () => JSON.stringify(body),
-        json: async () => body,
-      };
-    }
+    const body = { data: { menuItems: { nodes } } };
     return {
       ok: true,
       status: 200,
       headers: new Headers({ 'content-type': 'application/json' }),
-      json: async () => [],
+      // The reader reads the body as TEXT and parses it itself, so that a 200
+      // of HTML (WPGraphQL absent) can be reported as such.
+      text: async () => JSON.stringify(body),
+      json: async () => (String(url).includes('graphql') ? body : []),
     };
   };
 
-  it('is the page tree when nothing says otherwise', async () => {
+  it('navigation() is the page tree, and never reads a menu', async () => {
     const asked = [];
     const reader = createPublicReader({
       cmsBaseUrl: 'http://wp.example',
@@ -290,58 +283,61 @@ describe('navigation: which nesting', () => {
 
     await reader.navigation();
 
-    // WordPress's hierarchy question, and no menu read at all.
     expect(asked.some((a) => a.url.includes('parent=0'))).toBe(true);
     expect(asked.some((a) => a.url.includes('graphql'))).toBe(false);
   });
 
-  it('is a curated menu when the site names its location', async () => {
+  it('menu() asks for the menu at a theme location', async () => {
     const asked = [];
     const reader = createPublicReader({
       cmsBaseUrl: 'http://wp.example',
-      navigation: { from: 'menu', location: 'primary' },
       fetch: graphqlFetch(
         [
-          { id: 'a', label: 'Start here', uri: '/home', parentId: null },
-          { id: 'b', label: 'Latest', uri: '/news', parentId: null },
-          { id: 'c', label: 'First', uri: '/news/first-post', parentId: 'b' },
+          { id: 'b', label: 'Latest updates', uri: '/news', parentId: null },
+          { id: 'c', label: 'The first one', uri: '/news/first-post', parentId: 'b' },
         ],
         { asked },
       ),
     });
 
-    const nav = await reader.navigation();
+    const items = await reader.menu({ location: 'primary' });
 
-    // The menu's own labels and order — not the page titles, which is the whole
-    // point of a curated menu.
-    expect(nav.map((n) => n.title)).toEqual(['Start here', 'Latest']);
-    expect(nav.map((n) => n.path)).toEqual(['/home', '/news']);
-    // Its nesting travels with it: a menu is a tree.
-    expect(nav[1].items).toEqual([{ title: 'First', path: '/news/first-post' }]);
-    // Asked by LOCATION, because that is what makes a menu public, and the page
-    // tree is never read.
+    // The menu's OWN labels, and its nesting by label — `parentId` is an opaque
+    // global id, so the parent is named by what it is called.
+    expect(items).toEqual([
+      { label: 'Latest updates', path: '/news', parentLabel: null },
+      {
+        label: 'The first one',
+        path: '/news/first-post',
+        parentLabel: 'Latest updates',
+      },
+    ]);
+    // Asked BY LOCATION: WPGraphQL decides a menu is public by intersecting the
+    // locations it is assigned to with the ones the theme registers, so an
+    // unlocated menu is private — the site saying it is not part of its design.
+    // An enum in the schema, so unquoted and upper case.
     const query = asked.find((a) => a.url.includes('graphql'))?.body?.query;
-    expect(query).toMatch(/primary/i);
-    expect(asked.some((a) => a.url.includes('parent=0'))).toBe(false);
+    expect(query).toContain('location: PRIMARY');
   });
 
-  it('refuses a menu with no location, which WordPress would keep private', async () => {
+  it('menu() with no location still reads every menu, as before', async () => {
+    const asked = [];
     const reader = createPublicReader({
       cmsBaseUrl: 'http://wp.example',
-      navigation: { from: 'menu' },
-      fetch: graphqlFetch([]),
+      fetch: graphqlFetch([], { asked }),
     });
 
-    await expect(reader.navigation()).rejects.toThrow(/location/i);
+    await reader.menu();
+
+    const query = asked.find((a) => a.url.includes('graphql'))?.body?.query;
+    expect(query).not.toContain('location');
   });
 
-  it('fails loudly when the configured menu cannot be read', async () => {
-    // WPGraphQL absent: WordPress serves its ordinary HTML for a query string
-    // it does not know. Falling back to the page tree here would make a
-    // misconfigured deployment look like a working one.
+  it('says WPGraphQL is missing rather than guessing', async () => {
+    // WordPress serves its ordinary HTML for a query string it does not know,
+    // so the request succeeds and only the parse gives it away.
     const reader = createPublicReader({
       cmsBaseUrl: 'http://wp.example',
-      navigation: { from: 'menu', location: 'primary' },
       fetch: async () => ({
         ok: true,
         status: 200,
@@ -350,6 +346,6 @@ describe('navigation: which nesting', () => {
       }),
     });
 
-    await expect(reader.navigation()).rejects.toThrow(/WPGraphQL/);
+    await expect(reader.menu({ location: 'primary' })).rejects.toThrow(/WPGraphQL/);
   });
 });

@@ -32,24 +32,7 @@ import { parseBlocks } from './index.js';
  *   Playground, for instance, sets its own cookie and 302s to the same url to
  *   collect it, so a client with no cookie jar follows that redirect forever.
  */
-export function createPublicReader({
-  cmsBaseUrl,
-  fetch: fetchImpl = globalThis.fetch,
-  /**
-   * WHICH NESTING is this site's navigation.
-   *
-   * WordPress has two over the same content: the structural page tree (every
-   * page carries a parent) and a curated menu someone arranged by hand. Both
-   * are real, and which one a header renders is the SITE's design rather than
-   * a property of WordPress — so it is configured here and mapped by the
-   * adapter, which leaves a frontend asking `navigation()` and never branching
-   * on the CMS.
-   *
-   *   { from: 'tree' }                        the default; needs no plugin
-   *   { from: 'menu', location: 'primary' }   a curated menu
-   */
-  navigation: navigationFrom = { from: 'tree' },
-}) {
+export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.fetch }) {
   const base = cmsBaseUrl.replace(/\/+$/, '');
   /**
    * The PRETTY route, which is how a headless WordPress frontend addresses the
@@ -272,35 +255,10 @@ export function createPublicReader({
      * `menu()` below returns it.
      */
     async navigation() {
-      if (navigationFrom.from === 'menu') {
-        const { location } = navigationFrom;
-        if (!location) {
-          throw new Error(
-            `wordpress: navigation { from: 'menu' } needs a \`location\` — the ` +
-              `theme location the menu is assigned to, e.g. 'primary'. A menu ` +
-              `is public only where it is LOCATED, so there is no menu to read ` +
-              `without one, and naming one by title would point at a menu ` +
-              `WordPress will never serve a visitor.`,
-          );
-        }
-        const nodes = await menuNodes({ location });
-        if (!nodes) return null;
-        // A menu is a TREE and it travels as one: `parentId` says which item
-        // holds which. The labels and the order are the menu's own, which is
-        // the point of curating one — they need not match the page titles.
-        const itemOf = (node) => {
-          const children = nodes.filter((n) => n.parentId === node.id);
-          return {
-            title: node.label,
-            path: pathOfUri(node.uri),
-            ...(children.length ? { items: children.map(itemOf) } : {}),
-          };
-        };
-        return nodes.filter((n) => !n.parentId).map(itemOf);
-      }
-
-      // The structural nesting: WordPress's own hierarchy. `?parent=0` is the
-      // top level, and it needs no plugin, which is why it is the default.
+      // THE PAGE TREE — the main hierarchy, and what `navigation.get` answers
+      // for this CMS. A curated nav MENU is a separate view over the same
+      // content, read with `menu()`; see the note on navigation.get in
+      // ../index.js. `?parent=0` is the top level.
       const res = await fetchImpl(
         api('/wp/v2/pages', { parent: '0', status: 'publish', per_page: '100' }),
       );
@@ -328,8 +286,8 @@ export function createPublicReader({
      * @param {object} [options]
      * @param {string} [options.language] A Polylang language code, e.g. 'EN'.
      */
-    async menu({ language } = {}) {
-      const nodes = await menuNodes({ language });
+    async menu({ language, location } = {}) {
+      const nodes = await menuNodes({ language, location });
       if (!nodes) return null;
       // parentId is an opaque global id, so a parent is named by its label.
       const labelById = new Map(nodes.map((n) => [n.id, n.label]));
