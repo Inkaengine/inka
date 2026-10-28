@@ -10,14 +10,17 @@
  *   slots' `assign`, which must leave nothing of the user before);
  * - else the call waits for one, up to `waitMs`.
  * A page is never given to two calls at once. One that can't be left cleanly
- * after a call (`park` failed) is closed, not handed on.
+ * after a call (`park` failed) is closed, not handed on. One left idle longer
+ * than `maxIdleMs` is signed in afresh before it is used again: the admin may
+ * have been redeployed since, and a machine that suspends resumes its pages as
+ * they were, still running the admin code they loaded.
  *
  * `slots` does the browser work: assign(slot, user) signs a page in as
  * `user` (a new page, or one wiped of whoever had it), retoken(slot, user)
  * gives it the user's renewed token, park(slot) leaves it between calls,
  * close(slot) closes it. A user is { id, token }.
  */
-export function pagePool({ size, slots, waitMs = 120000 }) {
+export function pagePool({ size, slots, waitMs = 120000, maxIdleMs = Infinity, now = Date.now }) {
   if (!(size >= 1)) throw new Error(`pagePool: size must be at least 1 (got ${size})`);
   const pages = [];
   const waiting = [];
@@ -27,7 +30,10 @@ export function pagePool({ size, slots, waitMs = 120000 }) {
   function take(user) {
     const free = pages.filter((p) => !p.busy);
     const own = free.find((p) => p.user?.id === user.id);
-    if (own) return { slot: own, prepare: own.user.token === user.token ? null : 'retoken' };
+    if (own) {
+      if (now() - own.freedAt > maxIdleMs) return { slot: own, prepare: 'assign' };
+      return { slot: own, prepare: own.user.token === user.token ? null : 'retoken' };
+    }
     if (pages.length < size) {
       const slot = {};
       pages.push(slot);
@@ -73,6 +79,7 @@ export function pagePool({ size, slots, waitMs = 120000 }) {
   function release(slot) {
     slot.busy = false;
     slot.lastUsed = ++used;
+    slot.freedAt = now();
     waiting.shift()?.();
   }
 

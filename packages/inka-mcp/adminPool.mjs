@@ -56,10 +56,10 @@ export function browserSlots({ adminUrl, frontendUrl, onAdminLoad = () => {} }) 
  * `forUser(currentUser)` gives the tools' view of it for one user, where
  * `currentUser()` resolves to { id, token } (the token as renewed now).
  */
-export function adminPool({ adminUrl, frontendUrl, size, waitMs }) {
+export function adminPool({ adminUrl, frontendUrl, size, waitMs, maxIdleMs }) {
   let adminLoads = 0;
   const slots = browserSlots({ adminUrl, frontendUrl, onAdminLoad: () => { adminLoads++; } });
-  const pool = pagePool({ size, slots, waitMs });
+  const pool = pagePool({ size, slots, waitMs, maxIdleMs });
   const as = async (currentUser, work) => pool.use(await currentUser(), (slot) => work(slot.page));
   return {
     forUser(currentUser) {

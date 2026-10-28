@@ -110,4 +110,19 @@ describe('pagePool', () => {
     await pool.close();
     expect(log.filter((l) => l.startsWith('close')).sort()).toEqual(['close slot1', 'close slot2']);
   });
+
+  it('loads afresh a page left idle too long: the admin may have been redeployed since', async () => {
+    // A machine that suspends resumes its pages as they were, hours later,
+    // still running the admin code they loaded.
+    const { log, slots } = fakeSlots();
+    let clock = 0;
+    const pool = pagePool({ size: 1, slots, maxIdleMs: 1000, now: () => clock });
+    await pool.use(jane, async () => {});
+    clock = 500;
+    await pool.use(jane, async () => {});
+    expect(log).toEqual(['assign slot1 jane']);
+    clock = 2000;
+    await pool.use(jane, async () => {});
+    expect(log).toEqual(['assign slot1 jane', 'assign slot1 jane']);
+  });
 });

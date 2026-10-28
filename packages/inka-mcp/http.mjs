@@ -13,6 +13,8 @@
  *                        its connect page will send sign-ins here
  *   INKA_MCP_SECRET      the sealing key: 32 random bytes, base64
  *   INKA_MCP_POOL_SIZE   how many admin pages to share (how many calls at once)
+ *   INKA_MCP_PAGE_IDLE_SECONDS  how long a page may sit unused before it is
+ *                        loaded afresh (the admin may have been redeployed)
  *   PORT                 the port to listen on
  *   INKA_FRONTEND_URL    optional: the front end the editor uses
  */
@@ -39,7 +41,7 @@ async function formFields(req) {
  * The server as an Express app (from the MCP SDK), and `close()` for its
  * browser. `publicUrl` is where clients reach it.
  */
-export function hostedServer({ adminUrl, publicUrl, secret, poolSize, frontendUrl }) {
+export function hostedServer({ adminUrl, publicUrl, secret, poolSize, pageIdleMs, frontendUrl }) {
   const base = new URL(publicUrl);
   const mcpUrl = new URL('/mcp', base);
   const admin = adminUrl.replace(/\/$/, '');
@@ -49,7 +51,7 @@ export function hostedServer({ adminUrl, publicUrl, secret, poolSize, frontendUr
     callbackUrl: new URL('/oauth/callback', base).href,
     renew: (token) => renewThrough(admin, token),
   });
-  const pool = adminPool({ adminUrl: admin, frontendUrl, size: poolSize });
+  const pool = adminPool({ adminUrl: admin, frontendUrl, size: poolSize, maxIdleMs: pageIdleMs });
 
   // Requests must name this server's host (DNS rebinding protection).
   const app = createMcpExpressApp({ allowedHosts: [base.hostname] });
@@ -114,6 +116,7 @@ async function main(env) {
     publicUrl: required(env, 'INKA_MCP_PUBLIC_URL'),
     secret: required(env, 'INKA_MCP_SECRET'),
     poolSize,
+    pageIdleMs: Number(required(env, 'INKA_MCP_PAGE_IDLE_SECONDS')) * 1000,
     frontendUrl: env.INKA_FRONTEND_URL,
   });
   const listening = app.listen(Number(required(env, 'PORT')));
