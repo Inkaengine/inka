@@ -2,7 +2,8 @@ import http from 'node:http';
 import zlib from 'node:zlib';
 import express from 'express';
 import config from '@plone/volto/registry';
-import devProxyMiddleware from './devproxy';
+import devProxyMiddleware from '@plone/volto/express-middleware/devproxy';
+import { apiAcceptEncoding } from './apiAcceptEncoding';
 
 /**
  * The API, as a CDN or Fly's edge serves it: compressed with the best
@@ -49,40 +50,59 @@ function decodedAsLabelled({ headers, body }) {
   }
 }
 
-describe('devProxy', () => {
+describe("the admin's API proxy (Volto's devproxy)", () => {
   let api;
-  let admin;
-  let adminUrl;
-  const settings = {};
+  let apiUrl;
+  const saved = {};
 
   beforeAll(async () => {
     api = compressingApi({ title: 'A page' });
-    const apiUrl = await listen(api);
-    Object.assign(settings, config.settings);
+    apiUrl = await listen(api);
+    const { apiPath, devProxyToApiPath, subpathPrefix } = config.settings;
+    Object.assign(saved, { apiPath, devProxyToApiPath, subpathPrefix });
     config.settings.apiPath = apiUrl;
     config.settings.devProxyToApiPath = apiUrl;
-    const app = express();
-    app.use(devProxyMiddleware());
-    admin = http.createServer(app);
-    adminUrl = await listen(admin);
+    // As Volto's defaults have it: the proxy answers `${subpathPrefix}/++api++`.
+    config.settings.subpathPrefix = '';
   });
 
   afterAll(() => {
-    admin.close();
     api.close();
-    config.settings = settings;
+    Object.assign(config.settings, saved);
   });
 
+  /** The admin's server: these middleware in this order, as Volto mounts expressMiddleware. */
+  async function adminWith(middleware) {
+    const app = express();
+    for (const m of middleware) app.use(m);
+    const server = http.createServer(app);
+    return { server, url: await listen(server) };
+  }
+
+  const asABrowser = { Accept: 'application/json', 'Accept-Encoding': 'gzip, deflate, br, zstd' };
+
   it('answers a browser that accepts zstd with a body its header describes', async () => {
-    // The API compresses with zstd for a request that accepts it. Passed on
-    // with its content-encoding dropped, the bytes went out labelled as plain
-    // JSON, and the host's edge compressed them again: a browser undid one
-    // layer and got zstd where it expected JSON.
-    const res = await get(`${adminUrl}/++api++/a-page`, {
-      Accept: 'application/json',
-      'Accept-Encoding': 'gzip, deflate, br, zstd',
-    });
-    expect(res.status).toBe(200);
-    expect(JSON.parse(decodedAsLabelled(res).toString())).toEqual({ title: 'A page' });
+    const admin = await adminWith([apiAcceptEncoding, devProxyMiddleware()]);
+    try {
+      const res = await get(`${admin.url}/++api++/a-page`, asABrowser);
+      expect(res.status).toBe(200);
+      expect(JSON.parse(decodedAsLabelled(res).toString())).toEqual({ title: 'A page' });
+    } finally {
+      admin.server.close();
+    }
+  });
+
+  it('without it, Volto’s proxy sends zstd labelled as plain JSON', async () => {
+    // What this middleware is for: the proxy alone drops the content-encoding
+    // of a body it could not decode.
+    const admin = await adminWith([devProxyMiddleware()]);
+    try {
+      const res = await get(`${admin.url}/++api++/a-page`, asABrowser);
+      expect(res.status).toBe(200);
+      expect(res.headers['content-encoding']).toBeUndefined();
+      expect(() => JSON.parse(res.body.toString())).toThrow();
+    } finally {
+      admin.server.close();
+    }
   });
 });
