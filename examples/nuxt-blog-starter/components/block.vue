@@ -140,15 +140,17 @@
     <!-- Columns row - one column per row on mobile, side by side as the
          viewport grows (responsiveColsClass), so a 3/4-column layout stacks
          instead of overflowing the screen on a phone. -->
+    <!-- Every region goes through the merge, the columns list included: a template
+         can be placed anywhere (docs/frontend-guide/templates.md "Expand every container"). -->
     <div :class="['columns-row grid gap-4 grid-cols-1', ...responsiveColsClass((block.blocks_layout?.columns || []).length)]">
-      <div v-for="columnId in (block.blocks_layout?.columns || [])" :key="columnId"
-           :data-block-uid="columnId" data-block-add="right"
+      <div v-for="column in expand(block.blocks_layout?.columns || [], block.blocks || {})" :key="column['@uid']"
+           :data-block-uid="column['@uid']" data-block-add="right"
            class="column p-3 border border-dashed border-gray-300 rounded">
         <!-- Column title -->
-        <h4 v-if="block.blocks?.[columnId]?.title" data-edit-text="title"
-            class="column-title mb-2 text-sm font-medium">{{ block.blocks[columnId].title }}</h4>
+        <h4 v-if="column.title" data-edit-text="title"
+            class="column-title mb-2 text-sm font-medium">{{ column.title }}</h4>
         <!-- Column content blocks -->
-        <Block v-for="item in expand(block.blocks?.[columnId]?.blocks_layout?.items || [], block.blocks?.[columnId]?.blocks || {})"
+        <Block v-for="item in expand(column.blocks_layout?.items || [], column.blocks || {})"
                :key="item['@uid']" :block_uid="item['@uid']" :block="item" :data="data" :contained="true" />
       </div>
     </div>
@@ -166,10 +168,10 @@
     <div class="callout__label" style="font-weight: 700; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.05em; margin-bottom: 4px;">
       {{ block.variation || 'note' }}
     </div>
-    <Block v-for="childId in (block.blocks_layout?.items || [])"
-           :key="childId"
-           :block_uid="childId"
-           :block="block.blocks?.[childId]"
+    <Block v-for="item in expand(block.blocks_layout?.items || [], block.blocks || {})"
+           :key="item['@uid']"
+           :block_uid="item['@uid']"
+           :block="item"
            :data="data"
            :contained="true"
            class="my-1" />
@@ -177,10 +179,10 @@
 
   <div v-else-if="block['@type'] == 'section'" :data-block-uid="block_uid">
     <div class="section-body p-3 border border-dashed border-gray-500 rounded">
-      <Block v-for="childId in (block.blocks_layout?.items || [])"
-             :key="childId"
-             :block_uid="childId"
-             :block="block.blocks?.[childId]"
+      <Block v-for="item in expand(block.blocks_layout?.items || [], block.blocks || {})"
+             :key="item['@uid']"
+             :block_uid="item['@uid']"
+             :block="item"
              :data="data"
              :contained="true"
              class="my-2" />
@@ -1145,8 +1147,11 @@ const LISTING_TYPES = ['listing', 'relatedItemsListing', 'searchShortcuts', 'rss
 // { items, paging }; chain paging.seen for position tracking and surface the
 // final static paging for the manual-grid case below.
 const gridData = computed(() => {
-  const layout = block.value.blocks_layout?.items || [];
-  const blocks = block.value.blocks || {};
+  // Its children go through the merge first, like every container's (a template can
+  // be placed anywhere: docs/frontend-guide/templates.md "Expand every container").
+  const expanded = expand(block.value.blocks_layout?.items || [], block.value.blocks || {});
+  const layout = expanded.map((item) => item['@uid']);
+  const blocks = Object.fromEntries(expanded.map((item) => [item['@uid'], item]));
   const start = gridPageFromUrl.value * GRID_PAGE_SIZE;
   let seen = 0;
   let staticPaging = null;

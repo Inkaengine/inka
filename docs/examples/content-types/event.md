@@ -44,7 +44,7 @@ blocks-matched: |
   <block type="title" _="${h1}" />
 ---
 
-<fields templateId="/templates/event-view" templateInstanceId="tpl-ev-def">
+<fields templateId="/inka-templates/event-view" templateInstanceId="tpl-ev-def">
 
 <fields fixed=true>
 

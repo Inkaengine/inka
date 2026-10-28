@@ -3,10 +3,18 @@
  *
  * VOLTO-HYDRA SHADOW:
  * This file shadows @plone/volto's ImageWidget to:
- * - Use AddLinkForm for consistent UI with the toolbar image popup
- * - Add showPreview option for inline use (without image preview/Message wrapper)
- * - Support drag-and-drop via Dropzone wrapper
- * - Reuse upload logic for both sidebar and inline contexts
+ * - Add a showPreview option for INLINE use, without the preview/Message
+ *   wrapper, plus an onClose so the caller can dismiss itself. The slate
+ *   toolbar's image popup renders <ImageInput showPreview={false}> this way.
+ * - Take the accepted file types from the FIELD's schema (`accept={accept}`)
+ *   rather than hard-coding "image/*".
+ * - Use AddLinkForm for the picker, so it matches the toolbar's link popup.
+ * - Share the upload logic between the sidebar and inline paths.
+ *
+ * NOT a reason any more: drag-and-drop. The original header claimed it, but
+ * upstream 19.1.1 loads react-dropzone and renders its own <Dropzone onDrop>,
+ * so that is parity now, not a differentiator. The Dropzone calls below stay
+ * because this is a fork of the whole widget, not because upstream lacks them.
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
@@ -459,9 +467,15 @@ const UnconnectedImageInput = (props) => {
         onDragLeave={onDragLeave}
       >
         {({ getRootProps, getInputProps }) => (
+          /* A test hook, so it says so. This used to be a bare
+             `hydra-image-picker-inline` class, which reads as styling, is
+             styled by nothing, and duly got deleted as dead CSS. data-testid
+             is how Volto marks an element that exists only for tests to find
+             (e.g. DiffField). The drag-and-drop specs grab this element:
+             inline-media-link-editing.spec.ts, block-sync.spec.ts. */
           <div
             {...getRootProps()}
-            className="hydra-image-picker-inline"
+            data-testid="image-picker-inline"
             style={{
               // Don't use position:absolute - parent overlay already positions via flexbox
               // This allows clicks to pass through empty areas of the overlay

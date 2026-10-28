@@ -350,6 +350,20 @@
         // (non-listing) container children with combined paging, hand-in-hand with
         // expandListingBlocks — the two abstract object_list/blocks_layout and paging.
         window._staticBlocks = staticBlocks;
+        // Expose the merge for the renderer's containers: every container passes
+        // its children through it (docs/frontend-guide/templates.md "Expand every
+        // container"), sharing the render's window._templateState.
+        window._expandTemplates = expandTemplates;
+        window._loadTemplate = async (templateId) => {
+            const headers = { 'Accept': 'application/json' };
+            const token = getAccessToken();
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const tplPath = templateId.startsWith('http')
+                ? new URL(templateId).pathname
+                : `/${templateId.replace(/^\//, '')}`;
+            const res = await fetch(`${window._apiOrigin}/++api++${tplPath}`, { headers });
+            return res.json();
+        };
         import { sharedBlocksConfig } from '/shared-block-schemas.js';
 
         // Parse page numbers from URL query params (format: ?pg_{blockId}={pageNumber})
@@ -520,8 +534,14 @@
             // Render footer_blocks if present (or if forced layout will inject content)
             // Determine if we should force footer layout based on page path (same logic as bridge init)
             const pagePath = contextPath.replace(/\/edit$/, '');
-            const forceFooterLayout = pagePath.startsWith('/_test_data/another-page');
-            const footerAllowedLayouts = forceFooterLayout ? ['/_test_data/templates/footer-layout'] : null;
+            // Which footer template a page forces (null: none). conv-footer-page's
+            // holds a container a dropped container converts into.
+            const forcedFooter = pagePath.startsWith('/_test_data/another-page')
+                ? '/_test_data/templates/footer-layout'
+                : pagePath.startsWith('/_test_data/conv-footer-page')
+                    ? '/_test_data/templates/conv-footer-layout'
+                    : null;
+            const footerAllowedLayouts = forcedFooter ? [forcedFooter] : null;
 
             if (myGeneration !== window._renderGeneration) return; // stale render
 
@@ -639,7 +659,7 @@
                     !contentPath.startsWith('/_test_data/')
                     && !contentPath.startsWith('/news/')
                     && contentPath.split('/').filter(Boolean).length >= 2
-                        ? ['/templates/context-navigation-layout']
+                        ? ['/inka-templates/context-navigation-layout']
                         : null;
 
                 // Check if hydra bridge should be loaded
@@ -850,7 +870,11 @@
 
                     // Determine if we should force footer layout based on page path
                     const pagePath = window.location.pathname.replace(/\/edit$/, '');
-                    const forceFooterLayout = pagePath.startsWith('/_test_data/another-page');
+                    const forcedFooter = pagePath.startsWith('/_test_data/another-page')
+                        ? '/_test_data/templates/footer-layout'
+                        : pagePath.startsWith('/_test_data/conv-footer-page')
+                            ? '/_test_data/templates/conv-footer-layout'
+                            : null;
 
                     // #295: one fixture page declares a slate style allow-list on
                     // its items region, so the restriction tests have somewhere to
@@ -915,7 +939,7 @@
                                         title: 'Footer',
                                         widget: 'blocks_layout',
                                         allowedBlocks: ['slate', 'image'],
-                                        ...(forceFooterLayout ? { allowedLayouts: ['/_test_data/templates/footer-layout'] } : {}),
+                                        ...(forcedFooter ? { allowedLayouts: [forcedFooter] } : {}),
                                     },
                                     // The page's OWN fields, not regions: this
                                     // frontend renders the title and description

@@ -6,6 +6,8 @@ import {
   translationStatus,
   sourceFingerprint,
   withAllBlocksReadOnly,
+  getChildFields,
+  setChildBlockEntries,
 } from '@volto-hydra/helpers';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { isEqual } from 'lodash';
@@ -39,6 +41,104 @@ import {
   setFieldValue,
 } from '@volto-hydra/helpers';
 import Api from '@plone/volto/helpers/Api/Api';
+
+/**
+ * Every block of one template instance, wherever it sits — the page's top level, a
+ * footer region, or inside a container at any depth — and the order each region
+ * holds them in, keyed by the region's path. Read through the helpers' container
+ * accessors (blocks_layout regions and object_list fields alike), never from
+ * formData.blocks alone: an instance inside a container is not there (CLAUDE.md,
+ * "Block Access"; docs/architecture.md, "Merging templates").
+ *
+ * @param {Object} formData - the page
+ * @param {string} instanceId
+ * @param {Object} idFieldMap - { blockType: { field: idField } }
+ * @returns {{ blocks: Object, regions: Object, layouts: Object }} the instance's
+ *   blocks, the order of its blocks in each region, and each region's full order
+ */
+function instanceContent(formData, instanceId, idFieldMap) {
+  const blocks = {};
+  const regions = {};
+  const layouts = {};
+  const visit = (container, path) => {
+    for (const field of getChildFields(container, idFieldMap, { allObjectLists: true })) {
+      const entries = getChildBlockEntries(container, field);
+      layouts[`${path}/${field.region}`] = entries.map((entry) => entry.id);
+      const own = entries
+        .filter((entry) => entry.block?.templateInstanceId === instanceId)
+        .map((entry) => entry.id);
+      if (own.length) regions[`${path}/${field.region}`] = own;
+      for (const { id, block } of entries) {
+        if (block?.templateInstanceId === instanceId) blocks[id] = block;
+        else if (block) visit(block, `${path}/${id}`);
+      }
+    }
+  };
+  visit(formData, '');
+  return { blocks, regions, layouts };
+}
+
+/**
+ * The page with one template instance put back as it was in `snapshot` (Reset
+ * changes), wherever the instance sits; everything else stays as currently edited.
+ * In each region the instance's current blocks are replaced, at its first position,
+ * by its blocks from the snapshot. A region where every one of its blocks was
+ * deleted gets them back after their nearest preceding neighbour in the snapshot.
+ *
+ * @param {Object} current - the page now
+ * @param {Object} snapshot - the page when the instance was unlocked
+ * @param {string} instanceId
+ * @param {Object} idFieldMap - { blockType: { field: idField } }
+ * @returns {Object} the restored page
+ */
+function restoreInstance(current, snapshot, instanceId, idFieldMap) {
+  const saved = instanceContent(snapshot, instanceId, idFieldMap);
+  const isInstance = (block) => block?.templateInstanceId === instanceId;
+  const rebuild = (container, path) => {
+    const fields = getChildFields(container, idFieldMap, { allObjectLists: true });
+    if (fields.length === 0) return container;
+    // setChildBlockEntries writes into its argument. Drop the instance's current
+    // blocks from the shared dict; the snapshot's are written back below.
+    const out = { ...container };
+    if (container.blocks) {
+      out.blocks = Object.fromEntries(
+        Object.entries(container.blocks).filter(([, block]) => !isInstance(block)),
+      );
+    }
+    for (const field of fields) {
+      const key = `${path}/${field.region}`;
+      const restored = (saved.regions[key] || []).map((id) => ({ id, block: saved.blocks[id] }));
+      const next = [];
+      let spliced = false;
+      for (const { id, block } of getChildBlockEntries(container, field)) {
+        if (isInstance(block)) {
+          if (!spliced) {
+            next.push(...restored);
+            spliced = true;
+          }
+        } else {
+          next.push({ id, block: rebuild(block, `${path}/${id}`) });
+        }
+      }
+      if (!spliced && restored.length) {
+        const order = saved.layouts[key] || [];
+        const first = order.indexOf(restored[0].id);
+        let at = next.length;
+        for (let i = first - 1; i >= 0; i--) {
+          const pos = next.findIndex((entry) => entry.id === order[i]);
+          if (pos !== -1) {
+            at = pos + 1;
+            break;
+          }
+        }
+        next.splice(at, 0, ...restored);
+      }
+      setChildBlockEntries(out, field, next);
+    }
+    return out;
+  };
+  return rebuild(current, '');
+}
 
 import { setBlocksClipboard, resetBlocksClipboard } from '@plone/volto/actions/blocksClipboard/blocksClipboard';
 import { cloneBlocks } from '@plone/volto/helpers/Blocks/cloneBlocks';
@@ -199,6 +299,7 @@ function splitMultiNodeSlateBlocks(formData, blockPathMap, blocksConfig, uuidGen
         setFieldValue(block, fieldName, [value[0]]),
       );
       let afterBlockId = blockId;
+      const added = [];
       for (let i = 0; i < restNodes.length; i++) {
         const newBlockId = uuidGenerator();
         const newBlockData = { '@type': 'slate', [fieldName]: [restNodes[i]] };
@@ -206,6 +307,7 @@ function splitMultiNodeSlateBlocks(formData, blockPathMap, blocksConfig, uuidGen
           result, blockPathMap, afterBlockId, newBlockId, newBlockData, containerConfig, 'after',
         );
         afterBlockId = newBlockId;
+        added.push(newBlockId);
         if (i === 0) selectBlockId = newBlockId;
       }
 
@@ -222,12 +324,12 @@ function splitMultiNodeSlateBlocks(formData, blockPathMap, blocksConfig, uuidGen
 
       // Only process one split per render cycle to avoid stale blockPathMap.
       // Flattens done so far this pass ride along in `result`.
-      return { formData: result, selectBlockId, selection: newSelection };
+      return { formData: result, selectBlockId, selection: newSelection, added };
     }
   }
 
   if (flattenedAny) {
-    return { formData: result, selectBlockId: null, selection: null };
+    return { formData: result, selectBlockId: null, selection: null, added: [] };
   }
   return null;
 }
@@ -286,7 +388,7 @@ import {
   previewSchemaDefaultConversions,
   filterAddableTypesByRule,
   applyBlockDefaultsWithContext,
-  applyMembershipAfterMove,
+  applyMembershipWhereLanded,
   settleBlockStructure,
   deleteBlocks,
   canInsertBesideBlock,
@@ -763,6 +865,9 @@ const Iframe = (props) => {
   const [convertConfirm, setConvertConfirm] = useState(null);
   const multiSelectedRef = useRef(multiSelected);
   multiSelectedRef.current = multiSelected;
+  // The multi-selection hydra.js last reported or was sent, so the sync below
+  // doesn't echo hydra.js's own report back to it.
+  const syncedMultiSelectedRef = useRef('[]');
 
   // History for routing - needed early for edit mode detection
   const history = useHistory();
@@ -824,6 +929,11 @@ const Iframe = (props) => {
     setBlockUI(null);
   }, [u]);
 
+  // Leaving edit mode (a save or cancel) leaves nothing selected to draw.
+  useEffect(() => {
+    if (!isEditMode) setBlockUI(null);
+  }, [isEditMode]);
+
   // Listen for sidebar "Page" click to deselect current block
   useEffect(() => {
     const handler = () => {
@@ -863,6 +973,21 @@ const Iframe = (props) => {
       }
     }
   }, [selectedBlock]);
+
+  // The admin's multi-selection reaches hydra.js, so a move — drag-and-drop or
+  // the chevrons — takes the blocks the editor sees selected, including ones
+  // ticked in touch selection mode, which hydra.js never sees itself.
+  useEffect(() => {
+    if (!iframeOriginRef.current) return;
+    const uids = multiSelected || [];
+    const key = JSON.stringify(uids);
+    if (key === syncedMultiSelectedRef.current) return;
+    syncedMultiSelectedRef.current = key;
+    document.getElementById('previewIframe')?.contentWindow?.postMessage(
+      { type: 'SELECT_BLOCKS', uids },
+      iframeOriginRef.current,
+    );
+  }, [multiSelected]);
 
   // Clear blockUI when no block is selected
   // BUT keep it for page-level fields (blockUI exists with rect and blockUid is PAGE_BLOCK_UID)
@@ -1080,10 +1205,38 @@ const Iframe = (props) => {
   // Keep the latest-ref current as of this render (see templateEditModeRef).
   templateEditModeRef.current = iframeSyncState.templateEditMode || [];
 
+  // New blocks an edit just created (a split, a list break, extra blocks, a
+  // paste) take their template membership from where they landed — the one rule
+  // for add, paste and move (applyMembershipWhereLanded; docs/architecture.md
+  // "Template membership"). A new block brings none of its own; a pasted one
+  // names the instance it was copied from (`sourceById`) so its children are
+  // recognised as coming along with it.
+  const placeAddedBlocks = (fd, ids, sourceById = Object.fromEntries(ids.map((id) => [id, {}]))) =>
+    ids.length === 0
+      ? fd
+      : settleBlockStructure(
+          fd,
+          buildBlockPathMap(fd, config.blocks.blocksConfig, intl),
+          { landed: ids },
+          {
+            blocksConfig: config.blocks.blocksConfig,
+            intl,
+            uuidGenerator: uuid,
+            templateEditMode: templateEditModeRef.current,
+            metadata,
+            insertAfterById: Object.fromEntries(ids.map((id) => [id, true])),
+            sourceById,
+          },
+        ).formData;
+
   // v2 template edit: the decision modal shown on unlock/lock/save-gate, and a
   // per-instance snapshot of formData taken at unlock time (so "Reset changes"
   // can revert only that template's blocks, keeping page edits).
   const [templateModal, setTemplateModal] = useState(null); // { kind, instanceId } | null
+  // The latest page from the store, for code that awaits something first (the lock
+  // button awaits a flush) and must then read the page as it is now.
+  const propertiesRef = useRef(properties);
+  propertiesRef.current = properties;
   // True while a template lock-commit is persisting (flush → reverse-merge → PATCH →
   // unlock). That round-trip can be slow and, unlike a page save, has no Volto request
   // spinner — so show a Dimmer+Loader over the editor and block interaction until it
@@ -1242,6 +1395,15 @@ const Iframe = (props) => {
         currentBpm = buildBlockPathMap(newFormData, blocksConfig, intl);
         lastId = newId;
       }
+      // Where they landed decides their membership (placeAddedBlocks); each names
+      // the instance it was copied from, never `fixed` — a copy is a new block.
+      newFormData = placeAddedBlocks(
+        newFormData,
+        pasteBlocks.map(([newId]) => newId),
+        Object.fromEntries(
+          pasteBlocks.map(([newId, b]) => [newId, { templateInstanceId: b.templateInstanceId }]),
+        ),
+      );
 
       const commitPaste = (fd) => {
         if (!keepClipboard) dispatch(resetBlocksClipboard());
@@ -1285,20 +1447,21 @@ const Iframe = (props) => {
     };
 
     // Mobile #145 — chevron buttons in the Quanta toolbar dispatch this
-    // CustomEvent to reorder the selected block within its parent. The
+    // CustomEvent to move the selected block, or the multi-selection as one
+    // group, by the target hydra.js computed (blockIds included). The
     // existing MOVE_BLOCKS postMessage path is iframe-origin-gated, so
     // admin-React → admin-React reuse goes through the CustomEvent bus
     // (same pattern as hydra-paste-blocks, hydra-copy-blocks, etc.).
     const handleMoveBlock = (e) => {
-      const { blockId, targetBlockId, insertAfter, targetParentId } = e.detail || {};
-      if (!blockId || !targetBlockId) return;
+      const { blockIds, targetBlockId, insertAfter, targetParentId } = e.detail || {};
+      if (!blockIds?.length || !targetBlockId) return;
       // Drop a synthetic MOVE_BLOCKS message in — the same handler in the
       // window 'message' listener does the path-map rebuild, allowed-types
       // check, and onChangeFormData call. Origin filter is bypassed by
       // dispatching directly through MessageEvent on window.
       window.dispatchEvent(
         new MessageEvent('message', {
-          data: { type: 'MOVE_BLOCKS', blockIds: [blockId], targetBlockId, insertAfter, targetParentId },
+          data: { type: 'MOVE_BLOCKS', blockIds, targetBlockId, insertAfter, targetParentId },
           origin: iframeOriginRef.current || (iframeSrc ? new URL(iframeSrc).origin : ''),
         }),
       );
@@ -1332,25 +1495,22 @@ const Iframe = (props) => {
   const pendingTemplateEditExitRef = useRef(null);
 
   // True when the instance's blocks are identical to the snapshot taken at unlock
-  // (i.e. the template wasn't edited). Compares the instance's blocks + their
-  // top-level order; nested container/object_list changes live inside the block
-  // objects, so the deep compare of the blocks dict catches them too. Both sides
+  // (i.e. the template wasn't edited). Compares the instance's blocks and the order
+  // of every region holding them, wherever the instance sits (instanceContent): at
+  // the top level, in a footer region, or inside a container. Changes nested inside
+  // the instance's own blocks are caught by the deep compare of those blocks. Both sides
   // are the Redux `properties` representation, so the compare is apples-to-apples;
   // structural edits and (debounced) inline text edits are already reflected there.
   const isInstanceUnchanged = useCallback((instanceId, formData) => {
     const snap = templateSnapshotsRef.current[instanceId];
     if (!snap) return true;
-    const pick = (fd) => {
-      const blocks = {};
-      for (const [id, b] of Object.entries(fd?.blocks || {})) {
-        if (b?.templateInstanceId === instanceId) blocks[id] = b;
-      }
-      const items = (fd?.blocks_layout?.items || []).filter(
-        (id) => fd?.blocks?.[id]?.templateInstanceId === instanceId,
-      );
-      return { blocks, items };
+    // idFieldMap is read when this runs, not when it is created (it is declared
+    // further down the component); it is memoised on intl, so it never goes stale.
+    const own = (fd) => {
+      const { blocks, regions } = instanceContent(fd, instanceId, idFieldMap);
+      return { blocks, regions };
     };
-    return isEqual(pick(snap), pick(formData));
+    return isEqual(own(snap), own(formData));
   }, []);
 
   // v2: broadcast the current set of unlocked template instance ids to the iframe
@@ -1602,10 +1762,13 @@ const Iframe = (props) => {
     };
   }, [saveTemplatesRef, flushIframeEdits, persistTemplateDoc, iframeSyncState.templateEditMode]);
 
-  // v2 lock-commit ("Change on all pages"): after the iframe flushes pending
-  // inline edits, reverse-merge the instance's blocks back into the template
-  // cache AND save that template document now (at lock time). Then drop just this
-  // instance from the unlocked set — other unlocked templates stay unlocked.
+  // v2 lock ("Change on all pages" or "Reset changes"): both act only after the
+  // iframe flushes pending inline edits, so neither works on stale data and no
+  // buffered keystroke lands afterwards. Commit reverse-merges the instance's
+  // blocks back into the template cache AND saves that template document now (at
+  // lock time); reset restores the instance from its unlock-time snapshot. Then
+  // drop just this instance from the unlocked set — other unlocked templates stay
+  // unlocked.
   useEffect(() => {
     const pending = pendingTemplateEditExitRef.current;
     if (!pending) return;
@@ -1627,10 +1790,24 @@ const Iframe = (props) => {
       setCommittingTemplate(false); // commit round-trip done — drop the saving overlay
     };
 
-    // Find the templateId for this instance.
+    if (pending.mode === 'reset') {
+      // Restore against the FLUSHED page: the typed text is in it now, so the
+      // restore really changes the page and the frontend redraws the instance.
+      const snap = templateSnapshotsRef.current[prevInstanceId];
+      if (snap) {
+        // Wherever the instance sits — top level, a footer region, a container.
+        onChangeFormData(restoreInstance(formData, snap, prevInstanceId, idFieldMap));
+      }
+      finish();
+      return;
+    }
+
+    // The instance's own blocks, wherever it sits — top level, a footer region,
+    // or inside a container (instanceContent) — and its template.
+    const instance = instanceContent(formData, prevInstanceId, idFieldMap);
     let templateId = null;
-    for (const block of Object.values(formData.blocks || {})) {
-      if (block.templateInstanceId === prevInstanceId && block.templateId) {
+    for (const block of Object.values(instance.blocks)) {
+      if (block.templateId) {
         templateId = block.templateId;
         break;
       }
@@ -1638,9 +1815,16 @@ const Iframe = (props) => {
 
     if (templateId && templateCacheRef.current[templateId]) {
       const template = templateCacheRef.current[templateId];
-      // Capture edits to the instance's fixed+readOnly blocks into the template.
+      // Capture edits to the instance's fixed+readOnly blocks into the template,
+      // merged against the instance alone, in its own order: the merge reads a
+      // page's top-level regions, and a nested instance is not in them.
+      const instancePage = {
+        ...formData,
+        blocks: instance.blocks,
+        blocks_layout: { items: Object.values(instance.regions).flat() },
+      };
       mergeTemplatesIntoPage(template, {
-        loadTemplate: async () => formData,
+        loadTemplate: async () => instancePage,
         filterInstanceId: prevInstanceId,
         uuidGenerator: uuid,
         idFieldMap,
@@ -1663,7 +1847,7 @@ const Iframe = (props) => {
     } else {
       finish();
     }
-  }, [iframeSyncState.completedFlushRequestId, iframeSyncState.formData, postTemplateEditMode, persistTemplateDoc, idFieldMap]);
+  }, [iframeSyncState.completedFlushRequestId, iframeSyncState.formData, postTemplateEditMode, persistTemplateDoc, idFieldMap, onChangeFormData]);
 
   // Pending INITIAL_DATA: when templates are loading during INIT, store data here
   // Sync effect will send INITIAL_DATA after templates are merged
@@ -1977,6 +2161,13 @@ const Iframe = (props) => {
     if (rejectMove) return 'rejected';
     if (deferredToChooser) return 'needs-choice';
 
+    // Each block's membership before the move restamps it: where it came FROM
+    // decides how it lands (applyMembershipWhereLanded).
+    const membershipOf = (b) => ({ templateInstanceId: b?.templateInstanceId, fixed: b?.fixed });
+    const sourceById = Object.fromEntries(
+      blocksToMove.map((bid) => [bid, membershipOf(getBlockById(currentFormData, currentBlockPathMap, bid))]),
+    );
+
     // Move all blocks in sequence, each one after the previous
     // Track insertAfter for each block (needed for template inheritance)
     let newFormData = currentFormData;
@@ -2042,6 +2233,7 @@ const Iframe = (props) => {
           templateEditMode: templateEditModeRef.current,
           metadata,
           insertAfterById: blockInsertAfterMap,
+          sourceById,
         },
       );
       newFormData = settledMove.formData;
@@ -2245,50 +2437,6 @@ const Iframe = (props) => {
     // Create block data (use custom data if provided)
     let blockData;
 
-    // Inherit template membership (templateId/slotId) for a block inserted into a
-    // container region — uniform across blocks_layout and object_list. Both are just an
-    // ordered region of child blocks; getChildBlockEntries (public helper) normalises the
-    // storage so this never branches on it. The neighbour is the LAST existing child for
-    // 'inside' (append at end), else the sibling blockId we insert relative to.
-    const inheritTemplateMembership = (bd) => {
-      // A pasted/added block takes on the membership of where it LANDS — strip any source
-      // template/slot it arrived carrying (e.g. copied from a template slot) so the
-      // recompute below derives membership purely from the destination. Fixed template
-      // blocks keep theirs. (Fresh adds have no membership, so this is a no-op for them.)
-      if (bd && !bd.fixed && (bd.templateId || bd.slotId)) {
-        bd = { ...bd };
-        delete bd.templateId;
-        delete bd.templateInstanceId;
-        delete bd.slotId;
-        delete bd.readOnly;
-      }
-      const region = containerConfig?.region || 'items';
-      // The REAL container the new block lands in: containerConfig.parentId (the page,
-      // or the container for a nested/inside add). NOT blockPathMap[blockId].parentId —
-      // for a template-member block that is the VIRTUAL templateInstanceId, not a real
-      // block, so getChildBlockEntries finds no siblings and nothing is inherited.
-      const containerId = action === 'inside' ? blockId : (containerConfig?.parentId || PAGE_BLOCK_UID);
-      const container = (containerId === PAGE_BLOCK_UID || containerId === 'page')
-        ? formData
-        : getBlockById(formData, blockPathMap, containerId);
-      const entries = getChildBlockEntries(container, containerConfig);
-      const refIndex = entries.findIndex((entry) => entry.id === blockId);
-      const position = action === 'inside' ? entries.length
-        : action === 'after' ? refIndex + 1
-        : refIndex;
-      const insertAfter = action === 'after' || action === 'inside';
-      return applyBlockDefaultsWithContext(bd, {
-        items: entries.map((entry) => entry.block),
-        position,
-        insertAfter,
-        parentBlock: container,
-        containerId,
-        field: region,
-        blocksConfig: mergedBlocksConfig,
-        intl,
-      });
-    };
-
     if (customBlockData) {
       blockData = customBlockData;
     } else if (isObjectList) {
@@ -2339,9 +2487,6 @@ const Iframe = (props) => {
       // Initialize nested containers (e.g., cells in a row)
       blockData = initializeContainerBlock(blockData, mergedBlocksConfig, uuid, { intl, metadata, properties, siblingData, blockType: effectiveType });
 
-      // Inherit template membership from the neighbour (uniform read; see helper above).
-      blockData = inheritTemplateMembership(blockData);
-
       // Store the type in the typeField (dropping the @type used only for schema
       // resolution) — the shared setBlockType.
       blockData = setBlockType(blockData, effectiveType, typeFieldName);
@@ -2351,9 +2496,6 @@ const Iframe = (props) => {
       if (blockType === 'slate') {
         blockData.value = [{ type: 'p', children: [{ text: '' }] }];
       }
-
-      // Inherit template membership from the neighbour (uniform read; see helper above).
-      blockData = inheritTemplateMembership(blockData);
 
       // Also apply regular applyBlockDefaults for non-context-aware schemas
       blockData = applyBlockDefaults({ data: blockData, formData: blockData, intl, metadata, properties });
@@ -2375,6 +2517,24 @@ const Iframe = (props) => {
       console.error('[VIEW] insertAndSelectBlock failed');
       return null;
     }
+
+    // Where it landed decides its template membership — the one rule for add,
+    // paste and move (applyMembershipWhereLanded; docs/architecture.md
+    // "Template membership"). An added block brings none of its own.
+    newFormData = settleBlockStructure(
+      newFormData,
+      buildBlockPathMap(newFormData, mergedBlocksConfig, intl),
+      { landed: [newBlockId] },
+      {
+        blocksConfig: mergedBlocksConfig,
+        intl,
+        uuidGenerator: uuid,
+        templateEditMode: templateEditModeRef.current,
+        metadata,
+        insertAfterById: { [newBlockId]: action === 'after' || action === 'inside' },
+        sourceById: { [newBlockId]: {} },
+      },
+    ).formData;
 
     // Ensure new container blocks have at least one child (for gridBlock etc.).
     // NOT settleBlockStructure's job: nothing was taken out of anything here — a
@@ -3214,12 +3374,14 @@ const Iframe = (props) => {
               let fd = mutateBlockInContainer(odForm, odBpm, odBlockId, updatedBlock, containerConfig);
               let bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
               let selectBlockId = odBlockId;
+              const added = [];
 
               // Insert paragraph block after current (only if current kept the before-list)
               if (split.before) {
                 const paraId = uuid();
                 fd = insertBlockInContainer(fd, bpm, odBlockId, paraId,
                   { '@type': blockType, [odFieldName]: split.paragraph }, containerConfig, 'after');
+                added.push(paraId);
                 bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
                 selectBlockId = paraId;
 
@@ -3228,6 +3390,7 @@ const Iframe = (props) => {
                   const afterId = uuid();
                   fd = insertBlockInContainer(fd, bpm, paraId, afterId,
                     { '@type': blockType, [odFieldName]: split.after }, containerConfig, 'after');
+                added.push(afterId);
                   bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
                 }
               } else if (split.after) {
@@ -3235,8 +3398,12 @@ const Iframe = (props) => {
                 const afterId = uuid();
                 fd = insertBlockInContainer(fd, bpm, odBlockId, afterId,
                   { '@type': blockType, [odFieldName]: split.after }, containerConfig, 'after');
+                added.push(afterId);
                 bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
               }
+
+              fd = placeAddedBlocks(fd, added);
+              bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
 
               // Set pending selection and blockPathMap, but NOT formData
               // formData will be updated by the useEffect after it sends FORM_DATA to iframe
@@ -3533,6 +3700,13 @@ const Iframe = (props) => {
           break;
 
         case 'BLOCK_SELECTED': {
+          // Only an edited page has a selection. After a save the canvas can
+          // still announce one (it re-announces on scroll and resize), and a
+          // selection on the view page draws the editing toolbar with no form.
+          if (!isEditMode) {
+            log('BLOCK_SELECTED ignored: not in edit mode', event.data.blockUid, 'src:', event.data.src);
+            break;
+          }
           // Back to the page being edited when the editor is WORKING IN it —
           // and only then. This page also RE-ANNOUNCES its existing selection
           // on a re-render, on scroll and on resize, and those must not snatch
@@ -3609,8 +3783,11 @@ const Iframe = (props) => {
           if (event.data.isMultipleSelection) {
             const blockUids = event.data.blockUids || [];
             log('BLOCK_SELECTED multi-select:', blockUids.length, 'blocks');
+            syncedMultiSelectedRef.current = JSON.stringify(blockUids);
             if (onSetMultiSelected) onSetMultiSelected(blockUids);
-            setBlockUI({
+            setBlockUI((prev) => ({
+              // Touch selection mode's checkbox positions outlive a selection change.
+              selectionModeRects: prev?.selectionModeRects,
               blockUid: blockUids[0],
               rect: event.data.rect,
               // Where a stand-in for this block sits (a tab's label on its trigger), so
@@ -3621,7 +3798,10 @@ const Iframe = (props) => {
               editableFields: {},
               multiSelectedUids: blockUids,
               multiSelectRects: event.data.rects || {},
-            });
+              // The chevrons move the group as one, as drag-and-drop does.
+              moveUpTarget: event.data.moveUpTarget || null,
+              moveDownTarget: event.data.moveDownTarget || null,
+            }));
             break;
           }
 
@@ -3932,7 +4112,6 @@ const Iframe = (props) => {
             }
           }
 
-            for (const t of ['teaser', 'image', 'hero', 'gridBlock']) { const c = config.blocks.blocksConfig[t] || {}; console.log('[DBGMERGE]', t, JSON.stringify({ keys: Object.keys(c).sort(), title: c.title, group: c.group, fm: c.fieldMappings, se: typeof c.schemaEnhancer, bs: typeof c.blockSchema, s: typeof c.schema, bcKeys: c.blocksConfig ? Object.keys(c.blocksConfig).length : null, allowed: c.allowedBlocks })); }
           // 1c. Merge any additional voltoConfig (non-block settings)
           if (event.data.voltoConfig) {
             recurseUpdateVoltoConfig(event.data.voltoConfig);
@@ -4024,19 +4203,6 @@ const Iframe = (props) => {
               data: event.data,
             };
             break;
-          }
-
-          // Editing needs the content type. If it is not here, say so.
-          if (
-            history.location.pathname.endsWith('/edit') &&
-            !schema?.properties
-          ) {
-            throw new Error(
-              'INIT: the content type schema has not loaded, so the page fields ' +
-                '(title, description) cannot be registered and would silently ' +
-                'stop being editable. This is a load-order fault, not a content ' +
-                'fault — the message handler must re-run once `schema` arrives.',
-            );
           }
           const contentTypeProperties = schema?.properties;
           const pageFieldOverrides = {};
@@ -4337,6 +4503,7 @@ const Iframe = (props) => {
     history,
     history.location.pathname,
     iframeSrc,
+    isEditMode,
     onChangeFormData,
     onSelectBlock,
     openObjectBrowser,
@@ -4380,7 +4547,7 @@ const Iframe = (props) => {
       // Split any multi-node slate blocks before sending to iframe
       const toolbarSplit = splitMultiNodeSlateBlocks(toolbarFormData, toolbarBlockPathMap, config.blocks.blocksConfig, uuid, iframeSyncState.selection);
       if (toolbarSplit) {
-        toolbarFormData = toolbarSplit.formData;
+        toolbarFormData = placeAddedBlocks(toolbarSplit.formData, toolbarSplit.added);
         toolbarBlockPathMap = buildBlockPathMap(toolbarFormData, config.blocks.blocksConfig, intl);
         if (toolbarSplit.selectBlockId) {
           flushSync(() => {
@@ -4613,6 +4780,9 @@ const Iframe = (props) => {
           blocksConfig: config.blocks.blocksConfig,
           intl,
           idFieldMap,
+          // The same document opened to edit as on the load path above: never merged
+          // against its own template, and a definition's own blocks are unlockable.
+          skipOwnTemplate: true,
         });
         if (moreTemplateIds.length > 0) {
           log('[INITIAL_DATA] Discovered nested templates:', moreTemplateIds);
@@ -4680,7 +4850,7 @@ const Iframe = (props) => {
     // Each top-level node becomes its own block.
     const splitResult = splitMultiNodeSlateBlocks(formToUse, newBlockPathMap, config.blocks.blocksConfig, uuid, iframeSyncState.selection);
     if (splitResult) {
-      formToUse = splitResult.formData;
+      formToUse = placeAddedBlocks(splitResult.formData, splitResult.added);
       newBlockPathMap = buildBlockPathMap(formToUse, config.blocks.blocksConfig, intl);
       // Select the new block that received the split content
       if (splitResult.selectBlockId) {
@@ -5184,6 +5354,9 @@ const Iframe = (props) => {
         let updatedProperties = insertBlockInContainer(
           properties, bpm, pp.afterBlockId, pp.newId, converted, cfg, 'after',
         );
+        updatedProperties = placeAddedBlocks(updatedProperties, [pp.newId], {
+          [pp.newId]: { templateInstanceId: pp.blockData.templateInstanceId },
+        });
         // The pick placed the block; run `@type` rules in case the position re-types
         // it or a sibling. No second confirm — the pick itself was the ask.
         updatedProperties = applySchemaDefaultsToFormData(
@@ -5228,6 +5401,9 @@ const Iframe = (props) => {
                 templateEditMode: templateEditModeRef.current,
                 metadata,
                 insertAfterById: { [chooser.blockId]: pm.insertAfter },
+                sourceById: {
+                  [chooser.blockId]: { templateInstanceId: blockData.templateInstanceId, fixed: blockData.fixed },
+                },
               },
             );
             updatedProperties = settledDrop.formData;
@@ -5320,7 +5496,7 @@ const Iframe = (props) => {
       return false; // keep it unlocked so the user can fix it
     }
     const requestId = `tpl-commit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    pendingTemplateEditExitRef.current = { requestId, prevInstanceId: instanceId };
+    pendingTemplateEditExitRef.current = { requestId, prevInstanceId: instanceId, mode: 'commit' };
     setCommittingTemplate(true); // show the saving overlay until finish() clears it
     if (referenceElement?.contentWindow) {
       referenceElement.contentWindow.postMessage({ type: 'FLUSH_BUFFER', requestId }, '*');
@@ -5332,77 +5508,32 @@ const Iframe = (props) => {
   // blocks from the unlock-time snapshot, while KEEPING page-content edits made in
   // the meantime. The template cache is untouched (nothing is saved).
   const resetTemplateEdit = (instanceId) => {
-    const snap = templateSnapshotsRef.current[instanceId];
-    if (snap) {
-      const isInst = (id, blocks) => blocks?.[id]?.templateInstanceId === instanceId;
-      // Blocks: drop the instance's current blocks, restore the snapshot's.
-      const blocks = {};
-      for (const [id, b] of Object.entries(properties.blocks || {})) {
-        if (b?.templateInstanceId !== instanceId) blocks[id] = b;
-      }
-      for (const [id, b] of Object.entries(snap.blocks || {})) {
-        if (b?.templateInstanceId === instanceId) blocks[id] = b;
-      }
-      // Layout: keep the current (page-edited) order of non-instance blocks; splice
-      // the snapshot's instance block ids back in at the instance's first position.
-      const snapInstanceItems = (snap.blocks_layout?.items || []).filter((id) =>
-        isInst(id, snap.blocks),
-      );
-      const items = [];
-      let spliced = false;
-      for (const id of properties.blocks_layout?.items || []) {
-        if (isInst(id, properties.blocks)) {
-          if (!spliced) {
-            items.push(...snapInstanceItems);
-            spliced = true;
-          }
-        } else {
-          items.push(id);
-        }
-      }
-      if (!spliced) {
-        // No surviving instance anchor (all instance blocks were deleted): place the
-        // group after the nearest preceding non-instance neighbour from the snapshot.
-        const snapItems = snap.blocks_layout?.items || [];
-        const firstIdx = snapItems.findIndex((id) => isInst(id, snap.blocks));
-        let anchorAt = items.length;
-        for (let i = firstIdx - 1; i >= 0; i--) {
-          const pos = items.indexOf(snapItems[i]);
-          if (pos !== -1) {
-            anchorAt = pos + 1;
-            break;
-          }
-        }
-        items.splice(anchorAt, 0, ...snapInstanceItems);
-      }
-      onChangeFormData({
-        ...properties,
-        blocks,
-        blocks_layout: { ...properties.blocks_layout, items },
-      });
+    // Flush the iframe's pending inline edits first, as the commit does; the
+    // flush-completion handler then restores the instance (mode 'reset').
+    const requestId = `tpl-reset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    pendingTemplateEditExitRef.current = { requestId, prevInstanceId: instanceId, mode: 'reset' };
+    if (referenceElement?.contentWindow) {
+      referenceElement.contentWindow.postMessage({ type: 'FLUSH_BUFFER', requestId }, '*');
     }
-    const next = (iframeSyncState.templateEditMode || []).filter((id) => id !== instanceId);
-    setIframeSyncState((prev) => ({
-      ...prev,
-      templateEditMode: (prev.templateEditMode || []).filter((id) => id !== instanceId),
-    }));
-    postTemplateEditMode(next);
-    delete templateSnapshotsRef.current[instanceId];
   };
 
   // Entry point for the sidebar "Edit template" toggle AND the Quanta toolbar lock
   // icon. Unlocking warns first; locking asks what to do with the edits. The actual
   // enter/commit/reset run from the modal's buttons.
-  const handleToggleTemplateEditMode = (instanceId) => {
+  const handleToggleTemplateEditMode = async (instanceId) => {
     const unlocked = iframeSyncState.templateEditMode || [];
     if (!unlocked.includes(instanceId)) {
       // Unlocking → warn first.
       setTemplateModal({ kind: 'unlock', instanceId });
       return;
     }
-    // Locking → if the template wasn't changed during the unlock session, lock
-    // silently (no prompt, no save); otherwise show the Change/Reset/Cancel modal.
-    if (isInstanceUnchanged(instanceId, properties)) {
+    // Locking → flush the page's pending typing first: the page holds it for a
+    // moment before sending it, and an edit typed just before pressing the lock
+    // must count. Then, from the page as it is now: if the template wasn't changed
+    // during the unlock session, lock silently (no prompt, no save); otherwise show
+    // the Change/Reset/Cancel modal.
+    await flushIframeEdits();
+    if (isInstanceUnchanged(instanceId, propertiesRef.current)) {
       exitTemplateEditNoSave(instanceId);
     } else {
       setTemplateModal({ kind: 'lock', instanceId });
@@ -5837,8 +5968,9 @@ const Iframe = (props) => {
         </div>
       )}
 
-      {/* Multi-block selection outlines — individual outline per selected block */}
-      {blockUI?.multiSelectedUids?.length > 1 && referenceElement && (() => {
+      {/* Multi-block selection outlines — individual outline per selected block.
+          Not in touch selection mode, where the checkboxes show the selection. */}
+      {blockUI?.multiSelectedUids?.length > 1 && referenceElement && !selectionMode && (() => {
         const rects = blockUI.multiSelectRects || {};
         if (Object.keys(rects).length === 0) return null;
         const iframeRect = referenceElement.getBoundingClientRect();
@@ -6060,6 +6192,8 @@ const Iframe = (props) => {
                     bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
                     lastId = newId;
                   }
+                  fd = placeAddedBlocks(fd, extraBlocks.map(([newId]) => newId));
+                  bpm = buildBlockPathMap(fd, config.blocks.blocksConfig, intl);
                   pendingSelectBlockUid = lastId;
                   dataChanged = true;
                 }

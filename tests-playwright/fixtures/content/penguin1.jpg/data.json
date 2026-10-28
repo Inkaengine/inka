@@ -1,0 +1,35 @@
+{
+  "@id": "/images/penguin1.jpg",
+  "@type": "Image",
+  "UID": "test-penguin1-jpg-uid",
+  "id": "penguin1.jpg",
+  "title": "penguin1.jpg",
+  "description": "A Plone Image whose id ends in a file extension, so the slider fixture that references one resolves inside its own mount",
+  "is_folderish": false,
+  "review_state": "published",
+  "image": {
+    "content-type": "image/jpeg",
+    "filename": "penguin1.jpg",
+    "width": 1,
+    "height": 1,
+    "size": 344,
+    "download": "@@images/image",
+    "scales": {
+      "preview": {
+        "download": "@@images/image/preview",
+        "width": 1,
+        "height": 1
+      },
+      "thumb": {
+        "download": "@@images/image/thumb",
+        "width": 1,
+        "height": 1
+      }
+    }
+  },
+  "parent": {
+    "@id": "/images",
+    "@type": "Document",
+    "title": "Images"
+  }
+}

@@ -1,0 +1,15 @@
+/* Admin chrome.
+ *
+ * Volto's App renders the content area as <Segment basic className=
+ * "content-area">. The Hydra admin wants it flush, because the preview iframe
+ * fills it; upstream has no padding prop for that, and the App.jsx shadow used
+ * to set it inline. One rule here instead, so App needs no shadow at all.
+ *
+ * Specificity matters: Semantic UI ships `.ui.basic.segment { padding: 14px 0 }`.
+ * An inline style beat that for free; a bare `.content-area` does not, and the
+ * content area silently regained 14px of vertical padding. Match Semantic's own
+ * selector so this rule actually wins.
+ */
+.ui.basic.segment.content-area {
+  padding: 0;
+}

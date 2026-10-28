@@ -100,12 +100,30 @@ function readRedirects(mount) {
   const rootFile = path.join(dirPath, 'plone_site_root', 'data.json');
   const rootId = fs.existsSync(rootFile) ? JSON.parse(fs.readFileSync(rootFile, 'utf8'))['@id'] : '/';
   const sitePath = rootId === '/' ? '' : rootId;
+  // A key may be stored EITHER way, and both resolve to the same served path:
+  //
+  //   /Plone/old   what plone.exportimport round-trips today, because it copies
+  //                IRedirectionStorage verbatim and that storage is keyed by
+  //                Zope-physical path.
+  //   /old         portal-relative, as every other @id in the archive is. A
+  //                converted tree strips the site prefix by design, and a
+  //                distribution applied by its own boot/deploy step (pretagov's
+  //                apply_redirects_file) prefixes on the way in.
+  //
+  // This used to THROW on the second form. That is wrong twice over: the
+  // validator in this repo already accepts a wholly site-relative file and
+  // reports only a MIX, and throwing here happens while parsing the mount, so
+  // one unexpected key 500s EVERY page rather than reporting one bad entry.
+  // Whether a file is in the right form for its importer is the validator's
+  // question; serving it is this function's.
   const relative = (p) => {
     if (p === sitePath) return '/';
     if (p.startsWith(sitePath + '/')) return p.slice(sitePath.length);
+    if (p.startsWith('/')) return p;
     throw new Error(
-      `${redirectsFile}: ${JSON.stringify(p)} is not under the site's physical path ${JSON.stringify(sitePath)} ` +
-      `— Plone stores redirects by physical path, so write ${JSON.stringify(sitePath + p)}`,
+      `${redirectsFile}: ${JSON.stringify(p)} is not a path — a redirect key is ` +
+      `either portal-relative (${JSON.stringify('/old')}) or physical ` +
+      `(${JSON.stringify(sitePath + '/old')})`,
     );
   };
   return Object.entries(map).map(([from, to]) => [relative(from), relative(to)]);
@@ -2703,44 +2721,18 @@ function validateServedContent() {
     if (data == null) throw new Error(`content-check: ${urlPath} is registered but has no content`);
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
-  keep(checkIntegrity(source, { schemaFor: hydraSchemaForOwnContent, allowMissingBlobs }));
+  keep(checkIntegrity(source, { schemasFor: hydraSchemasForOwnContent, allowMissingBlobs }));
   for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   if (siteSchemas) {
     const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+    const { buildIdFieldMap } = require('../../packages/hydra-js/buildBlockPathMap.js');
+    // Without the idFieldMap the container API sees only object_lists whose
+    // items carry templateId, so a slider's slides go unchecked.
+    const idFieldMap = buildIdFieldMap(siteSchemas, { formatMessage: (m) => m?.defaultMessage || '' });
     const own = source.filter((item) => !isHydraOwned(item.rel));
-    errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas)).errors);
+    errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas), { idFieldMap }).errors);
   }
-  return withoutExpectedErrors(errors.map((m) => m.trim()));
-}
-
-/**
- * A fixture that is broken ON PURPOSE — it exists to show how a frontend copes
- * with that content — is declared in its mount's `expected-errors.json`:
- *
- *   { "/image-scales-test": ["url: path not in content: /image-scales-test/test-image.png"] }
- *
- * keyed by the item's path within the mount, each entry a substring of the one
- * problem it excuses. An entry excuses only the problems it matches on that
- * item, and an entry that matches nothing is an error in its own right, so a
- * declaration cannot outlive the breakage it describes.
- */
-function withoutExpectedErrors(errors) {
-  const remaining = [...errors];
-  for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
-    const file = path.join(dirPath, 'expected-errors.json');
-    if (!fs.existsSync(file)) continue;
-    for (const [rel, expected] of Object.entries(JSON.parse(fs.readFileSync(file, 'utf-8')))) {
-      const itemPath = mountPath === '/' ? rel : mountPath + (rel === '/' ? '' : rel);
-      for (const text of expected) {
-        const hits = remaining.filter((m) => m.startsWith(`${itemPath}: `) && m.includes(text));
-        if (!hits.length) {
-          remaining.push(`${itemPath}: expected-errors.json expects "${text}", which no longer occurs — remove it from ${file}`);
-        }
-        for (const m of hits) remaining.splice(remaining.indexOf(m), 1);
-      }
-    }
-  }
-  return remaining;
+  return errors.map((m) => m.trim());
 }
 
 /**
@@ -2750,9 +2742,8 @@ function withoutExpectedErrors(errors) {
  * this `hero` — so its blocks get the structural checks, not these shapes.
  */
 const HYDRA_ROOT = path.resolve(__dirname, '..', '..');
-function hydraSchemaForOwnContent(type, urlPath) {
-  if (isHydraOwned(urlPath)) return blockSchemaFor(type);
-  return siteSchemas ? siteSchemas[type]?.blockSchema ?? null : null;
+function hydraSchemasForOwnContent(urlPath) {
+  return isHydraOwned(urlPath) ? hydraBlocksConfig : siteSchemas;
 }
 
 /** Whether the content at `urlPath` is served from inside this hydra checkout
@@ -2786,21 +2777,19 @@ function reportContentErrors(errors) {
 }
 
 /** Startup: invalid content is fatal — tests must not run against a site that
- *  would not import, or that links to nothing. SKIP_CONTENT_VALIDATION=true is
- *  the explicit way out. */
+ *  would not import, or that links to nothing. There is no way out: content a
+ *  test needs broken is created at runtime (session content), never served. */
 function assertServedContentValid() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
   const errors = validateServedContent();
   if (errors.length) {
     reportContentErrors(errors);
-    throw new Error(`${errors.length} content problem(s) — fix the content (listed above) or set SKIP_CONTENT_VALIDATION=true`);
+    throw new Error(`${errors.length} content problem(s) — fix the content (listed above)`);
   }
 }
 
 /** A reload (watcher or cache miss) only reports: one bad edit mid-session
  *  should not take the dev server down. The next start is the gate. */
 function reportServedContentProblems() {
-  if (process.env.SKIP_CONTENT_VALIDATION === 'true') return;
   const errors = validateServedContent();
   if (errors.length) reportContentErrors(errors);
 }
@@ -2840,7 +2829,13 @@ async function initMarkdownMounts() {
   if (!mounts.length) return;
   const { readTree } = await import('../../lib/markdown-mount.mjs');
   const { checkIntegrity } = require('./plone-content-validator.cjs');
-  mdRuntime = { readTree, checkIntegrity, schemaFor: blockSchemaFor };
+  // readTree takes a type -> blockSchema function; only checkIntegrity takes
+  // the whole config. Two different contracts, so both are supplied.
+  mdRuntime = {
+    readTree,
+    checkIntegrity,
+    schemaFor: (type) => hydraBlocksConfig?.[type]?.blockSchema ?? null,
+  };
   for (const mount of mounts) loadMarkdownMount(mount);
 }
 
@@ -2849,10 +2844,10 @@ async function initMarkdownMounts() {
  *  the complete registry the frontends register from, so neither can drift from
  *  what renders. A type it does not know is not schema-checked. Imported here,
  *  not via markdown-mount, so a JSON-only consumer needs no markdown toolchain. */
-let blockSchemaFor = null;
+let hydraBlocksConfig = null;
 async function loadBlockSchemas() {
   const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
-  blockSchemaFor = (type) => sharedBlocksConfig[type]?.blockSchema;
+  hydraBlocksConfig = sharedBlocksConfig;
 }
 
 // Scan content directories on startup (content loaded on-demand)
@@ -3774,7 +3769,7 @@ app.post('/@export', async (req, res) => {
     const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
     const contentDir = path.join(staging, 'content');
     const v = validate(contentDir, { allowMissingBlobs });
-    const c = checkIntegrity(contentDir, { schemaFor: blockSchemaFor, allowMissingBlobs });
+    const c = checkIntegrity(contentDir, { schemasFor: () => hydraBlocksConfig, allowMissingBlobs });
     const errors = [...v.errors, ...c.errors];
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
@@ -6464,7 +6459,8 @@ app.get('*/@form-data', (req, res) => {
     if (blockId && block !== blockId) continue;
     items.push(...records);
   }
-  res.json({ items: items.map((item) => applyMetadataFields(item, req)), items_total: items.length });
+  // Stored submissions, not catalog brains: metadata_fields does not apply.
+  res.json({ items, items_total: items.length });
 });
 
 /**
@@ -7199,4 +7195,4 @@ if (require.main === module) {
 }
 
 // Export for use by test frontend server or test harnesses
-module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution, getRedirectTarget, getAllRedirects };
+module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution, getRedirectTarget, getAllRedirects, mountInternalRefs };

@@ -452,10 +452,18 @@ test.describe('Adding Blocks to Containers', () => {
     await expect(columnsLocator).toHaveCount(3);
 
     // Walk up from the auto-init slate to the new column block to verify
-    // its type. Escape #1 leaves text mode → block mode on the slate;
-    // Escape #2 bubbles up to its parent (the new column).
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
+    // its type. The two Escapes used to be pressed back to back without
+    // checking where selection was: when the new slate was not selected yet,
+    // the walk started from col-2 and ended somewhere else.
+    const newColumnId = await columnsLocator.nth(2).getAttribute('data-block-uid');
+    const newSlateId = await iframe
+      .locator(`[data-block-uid="${newColumnId}"] [data-block-uid]`)
+      .first()
+      .getAttribute('data-block-uid');
+    await helper.waitForBlockSelectedInAdmin(newSlateId!);
+    // Text mode → block mode → its parent, each step confirmed before the next.
+    await helper.escapeToParent();
+    await helper.waitForBlockSelectedInAdmin(newColumnId!);
     await helper.waitForSidebarCurrentBlock('Column', 5_000);
   });
 

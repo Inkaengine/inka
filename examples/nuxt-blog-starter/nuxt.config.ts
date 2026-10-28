@@ -106,8 +106,23 @@ export default defineNuxtConfig({
       app: {
         baseURL: process.env.NUXT_EDIT_BASE_URL || '/',
       },
+      // The canvas as deployed (`pnpm run canvas`): one static file, with the
+      // page in the hash (`/canvas/#/<page>`), so any static host serves every
+      // page with no routing rules. The admin puts the page there when the
+      // front end's address has a hash. The dev server (dev:test) routes paths
+      // itself, so it keeps path routing.
+      router: {
+        options: { hashMode: process.env.NUXT_EDIT_HASH_ROUTING === 'true' },
+      },
+      // The canvas builds into folders of its own (.nuxt-canvas,
+      // .output-canvas), so a later build (the tests' build:test) leaves it in
+      // place. Building it still empties .output (Nitro's prerender prepares
+      // the default output folder), so build it before, never beside, a build
+      // that is being served from there.
+      buildDir: process.env.NUXT_EDIT_BUILD_DIR || '.nuxt',
       nitro: {
-        preset: 'static'
+        preset: 'static',
+        output: { dir: process.env.NUXT_EDIT_OUTPUT_DIR || '.output' },
       },
       routeRules: {
         "/**": {

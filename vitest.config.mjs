@@ -22,14 +22,78 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // vite needs explicit aliases for subpath imports like
 // `@plone/volto-slate/utils` because the workspace packages don't declare
 // an `exports` map.
+// Shadows that EXTEND an upstream module rather than replace it, mapped so the
+// upstream specifier resolves to OUR copy — the way razzle's customization
+// machinery resolves it in the real app. That lets upstream's own test file run
+// against our fork (see `include` below), which is the only coverage the
+// untouched majority of a fork has: ours tests the additions, upstream's tests
+// everything we did not mean to change. The Url shadow is 385 lines, covered by
+// 14 cases of ours against upstream's 77.
+//
+// Only for EXTENDING shadows. Where a shadow replaces a component outright —
+// Header renders null, Sidebar is a different layout, Diff renders two iframes —
+// upstream's tests must fail by design, and aliasing them would be noise.
+//
+// Order matters: these specific paths must precede the '@plone/volto' prefix.
+const shadowAliases = {
+  '@plone/volto/helpers/Url/Url': path.resolve(
+    __dirname,
+    'packages/volto-hydra/src/customizations/volto/helpers/Url/Url.js',
+  ),
+  '@plone/volto-slate/utils/blocks': path.resolve(
+    __dirname,
+    'packages/volto-hydra/src/customizations/@plone/volto-slate/utils/blocks.js',
+  ),
+};
+
 const ploneAliases = {
+  ...shadowAliases,
   '@plone/volto-slate': path.resolve(__dirname, 'core/packages/volto-slate/src'),
   '@plone/volto': path.resolve(__dirname, 'core/packages/volto/src'),
   '@plone/components': path.resolve(__dirname, 'core/packages/components/src'),
   '@plone/registry': path.resolve(__dirname, 'core/packages/registry/src'),
 };
 
+// Upstream's own test files import their subject RELATIVELY (`from './Url'`),
+// and a Vite alias matches the specifier string, so `shadowAliases` — keyed on
+// `@plone/volto/helpers/Url/Url` — never fires for them. Without this plugin
+// those suites silently test core/'s copy instead of ours: they stayed green
+// with the 19.5.1 `getApiSuffix` port reverted, which is coverage that measures
+// nothing. Redirect the relative specifier to the shadow, but only from the
+// exact upstream test file, so no other './Url' import is affected.
+const UPSTREAM_SUITES = [
+  {
+    test: 'core/packages/volto/src/helpers/Url/Url.test.js',
+    source: './Url',
+    shadow:
+      'packages/volto-hydra/src/customizations/volto/helpers/Url/Url.js',
+  },
+  {
+    test: 'core/packages/volto-slate/src/utils/blocks.test.js',
+    source: './blocks',
+    shadow:
+      'packages/volto-hydra/src/customizations/@plone/volto-slate/utils/blocks.js',
+  },
+];
+
+function redirectUpstreamSuitesToShadows() {
+  return {
+    name: 'hydra-redirect-upstream-suites-to-shadows',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (!importer) return null;
+      const hit = UPSTREAM_SUITES.find(
+        (s) =>
+          s.source === source &&
+          path.resolve(__dirname, s.test) === path.resolve(importer),
+      );
+      return hit ? path.resolve(__dirname, hit.shadow) : null;
+    },
+  };
+}
+
 export default defineConfig({
+  plugins: [redirectUpstreamSuitesToShadows()],
   resolve: {
     alias: ploneAliases,
   },
@@ -55,6 +119,10 @@ export default defineConfig({
           root: __dirname,
           include: [
             'packages/volto-hydra/**/*.{test,spec}.{js,jsx,ts,tsx}',
+            // Upstream's own suites, run against our shadows via shadowAliases.
+            // jsdom, like the addon's: these are Volto's helpers.
+            'core/packages/volto/src/helpers/Url/Url.test.js',
+            'core/packages/volto-slate/src/utils/blocks.test.js',
             // The playwright suites' own helpers, tested directly rather than
             // inferred from a green e2e run. They build real DOM fixtures —
             // selectablePoint picks a click target, measureStylesInPage reads

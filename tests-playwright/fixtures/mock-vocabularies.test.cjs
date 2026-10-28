@@ -14,7 +14,6 @@ const path = require('node:path');
 
 const mount = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-vocabularies-'));
 process.env.CONTENT_MOUNTS = `/:${mount}`;
-process.env.SKIP_CONTENT_VALIDATION = 'true';
 const { app } = require('./mock-api-server.cjs');
 
 let server;

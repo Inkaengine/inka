@@ -1,0 +1,239 @@
+{
+  "@id": "http://localhost:8888/another-page-with-layout",
+  "@type": "Document",
+  "UID": "another-page-with-layout-uid-67892",
+  "id": "another-page-with-layout",
+  "title": "Another Page With Layout",
+  "description": "Forces the footer layout AND carries a layout template in its main region, so committing the footer has another template instance on the page beside it",
+  "effective": "2024-11-01T00:00:00+00:00",
+  "review_state": "published",
+  "preview_image": false,
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "apl-standalone-block-1": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "This is a standalone block before the template"
+            }
+          ]
+        }
+      ],
+      "plaintext": "This is a standalone block before the template"
+    },
+    "apl-template-header": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "value": [
+        {
+          "type": "h1",
+          "children": [
+            {
+              "text": "Stale Header - Should Be Replaced By Merge"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Stale Header - Should Be Replaced By Merge",
+      "templateId": "resolveuid/test-layout-template-uid",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "header"
+    },
+    "apl-user-content-1": {
+      "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "User content - different from template default"
+            }
+          ]
+        }
+      ],
+      "plaintext": "User content - different from template default",
+      "templateId": "resolveuid/test-layout-template-uid",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "primary"
+    },
+    "apl-user-content-2": {
+      "@type": "slate",
+      "fixed": false,
+      "readOnly": false,
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Second user content block in placeholder"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Second user content block in placeholder",
+      "templateId": "resolveuid/test-layout-template-uid",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "primary"
+    },
+    "apl-template-slider": {
+      "@type": "slider",
+      "fixed": true,
+      "readOnly": true,
+      "templateId": "resolveuid/test-layout-template-uid",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "slider",
+      "slides": [
+        {
+          "@id": "tpl-slide-1",
+          "@type": "slide",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "resolveuid/test-layout-template-uid",
+          "templateInstanceId": "tpl-instance-1",
+          "title": "Template Slide 1",
+          "description": "First template slide"
+        },
+        {
+          "@id": "tpl-slide-2",
+          "@type": "slide",
+          "fixed": true,
+          "readOnly": true,
+          "templateId": "resolveuid/test-layout-template-uid",
+          "templateInstanceId": "tpl-instance-1",
+          "title": "Template Slide 2",
+          "description": "Second template slide"
+        }
+      ]
+    },
+    "apl-template-footer": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Stale Footer - Should Be Replaced By Merge"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Stale Footer - Should Be Replaced By Merge",
+      "templateId": "resolveuid/test-layout-template-uid",
+      "templateInstanceId": "tpl-instance-1",
+      "slotId": "footer"
+    },
+    "apl-standalone-block-2": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "This is a standalone block after the template"
+            }
+          ]
+        }
+      ],
+      "plaintext": "This is a standalone block after the template"
+    },
+    "apl-footer-user-content": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Footer user content on the page with a layout"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Footer user content on the page with a layout"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "apl-standalone-block-1",
+      "apl-template-header",
+      "apl-user-content-1",
+      "apl-user-content-2",
+      "apl-template-slider",
+      "apl-template-footer",
+      "apl-standalone-block-2"
+    ],
+    "footer": [
+      "apl-footer-user-content"
+    ]
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": true,
+  "created": "2025-01-02T12:00:00+00:00",
+  "modified": "2025-01-02T12:00:00+00:00",
+  "lock": {
+    "locked": false,
+    "stealable": true
+  },
+  "@components": {
+    "actions": {
+      "@id": "http://localhost:8888/another-page-with-layout/@actions",
+      "document_actions": [],
+      "object": [
+        {
+          "id": "view",
+          "title": "View"
+        },
+        {
+          "id": "edit",
+          "title": "Edit"
+        },
+        {
+          "id": "folderContents",
+          "title": "Contents"
+        }
+      ],
+      "object_buttons": [],
+      "portal_tabs": [],
+      "site_actions": [],
+      "user": []
+    },
+    "breadcrumbs": {
+      "@id": "http://localhost:8888/another-page-with-layout/@breadcrumbs",
+      "items": [
+        {
+          "@id": "http://localhost:8888",
+          "title": "Home"
+        },
+        {
+          "@id": "http://localhost:8888/another-page-with-layout",
+          "title": "Another Page 2"
+        }
+      ],
+      "root": "http://localhost:8888"
+    },
+    "navigation": {
+      "@id": "http://localhost:8888/another-page-with-layout/@navigation",
+      "items": []
+    },
+    "workflow": {
+      "@id": "http://localhost:8888/another-page-with-layout/@workflow"
+    }
+  },
+  "can_manage_portlets": true,
+  "can_view": true,
+  "can_edit": true,
+  "can_delete": true,
+  "can_add": true
+}

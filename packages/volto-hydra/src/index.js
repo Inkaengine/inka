@@ -79,6 +79,7 @@ import rowAfterSVG from '@plone/volto/icons/row-after.svg';
 import rowDeleteSVG from '@plone/volto/icons/row-delete.svg';
 import columnBeforeSVG from '@plone/volto/icons/column-before.svg';
 import './components/mobile-tablet.css';
+import './components/admin-chrome.css';
 import columnAfterSVG from '@plone/volto/icons/column-after.svg';
 import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
@@ -88,6 +89,7 @@ import { BRIDGE_EXPANDERS } from './bridge/expanders';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
 import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
+import { apiAcceptEncoding } from './express-middleware/apiAcceptEncoding';
 
 // The field types a `hydraRuleError` can land on. Volto looks a validator up by
 // the field's declared type (`field.type || 'string'`), so the rule's error has
@@ -174,6 +176,9 @@ const applyConfig = (config) => {
   // dropped for every direct-fetch deployment.
   if (__SERVER__) {
     config.settings.expressMiddleware = [
+      // First: it sets what the API proxy (Volto's devproxy) asks the API
+      // for, so it must run before it (express-middleware/apiAcceptEncoding.js).
+      apiAcceptEncoding,
       ...(config.settings.expressMiddleware || []),
       noStore,
     ];

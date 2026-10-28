@@ -294,7 +294,7 @@ Get the speed of static generation while keeping visual editing. Deploy two vers
 The default Inka demo uses exactly the SSG / SSR pattern above:
 
 - **Production** — [inka.sh](https://inka.sh/) itself. This site IS this example: `nuxt generate` runs against the live API and the static output is served from a CDN. All pages statically generated, images optimized, fast globally.
-- **Editing** — the same Nuxt codebase, built as an SPA into [`/edit/`](https://inka.sh/edit/) of that same output. Only loaded inside Inka's iframe.
+- **Canvas** — the same Nuxt codebase, built as a hash-routed SPA into `/canvas/` of that same output (`pnpm run canvas`). Only loaded inside Inka's iframe: point Inka at `https://<site>/canvas/#/`, and it frames `/canvas/#/<page>`, so the one file serves every page with no routing rules on the host.
 - **Inka + Plone** — deployed to [fly.io](https://admin.inka.sh) with scale-to-zero. Cost is free or minimal since it only runs during editing.
 
 For most frameworks, switching between SSG / SSR and SPA is just a config toggle, so you get the best of both worlds with minimal effort.

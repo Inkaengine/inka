@@ -5,12 +5,20 @@
  * @plone/volto) so that unit tests in hydra-js can import it directly.
  */
 
-import { expandTemplates, adoptTemplate } from '@volto-hydra/helpers';
+import {
+  expandTemplates,
+  adoptTemplate,
+  getChildFields,
+  getChildBlockEntries,
+  setChildBlockEntries,
+} from '@volto-hydra/helpers';
 
 /**
  * Merge templates into page data. Expands template references in every blocks field via
- * the public merge (expandTemplates), which fully expands all nested regions
- * (blocks_layout + object_list) at apply time. No admin-side re-entry or schema walk.
+ * the public merge (expandTemplates), then re-enters every container the result holds,
+ * as a frontend does: the merge fills the regions of a template it APPLIES, but a
+ * template placed inside a plain container is only expanded when that container is
+ * re-entered.
  *
  * @param {Object} page - Page formData
  * @param {Object} options
@@ -122,22 +130,62 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
   let result = skipOwnTemplate ? adoptUnlabelledDefinition(page) : { ...page };
   const allNewTemplateIds = new Set();
 
-  // Expand one page-level blocks field via the PUBLIC merge. That merge fully expands
-  // every nested region (blocks_layout regions AND object_list arrays) at apply time,
-  // so there is NO admin-side re-entry or schema walk — we run expandTemplates once and
-  // reshape its items back into a blocks dict + layout, using each emitted block (with
-  // its nested content already filled) as-is.
+  // Options every expand call shares, top level and every re-entry.
+  const expandOptions = (templateState) => ({
+    templateState,
+    loadTemplate,
+    preloadedTemplates,
+    uuidGenerator,
+    filterInstanceId,
+    firstInsert,
+    idFieldMap, // { blockType: { field: idField } } — admin-resolved from the schema
+  });
+
+  // READ docs/architecture.md "Merging templates: every container is expanded, by
+  // whoever renders" before changing this. Do not remove it as redundant.
+  //
+  // Re-enter every container of a block, at every depth — the frontend contract,
+  // which the admin keeps too. The merge has no schema, so it fills only the regions
+  // of a template it applies; a template placed inside a PLAIN container (a snippet
+  // in a grid, a column, a panel) is expanded only when that container is re-entered.
+  // Nobody knows in advance where a snippet will be placed, so every container is.
+  // The SAME templateState throughout: content this pass already expanded is
+  // recognised by its instance id and passed through, so a template's own regions
+  // are not applied twice. Regions are read and written through the helpers'
+  // storage-agnostic accessors (blocks_layout regions and object_list arrays alike).
+  async function expandContainers(block, templateState) {
+    const fields = getChildFields(block, idFieldMap, { allObjectLists: true });
+    if (fields.length === 0) return block;
+    // setChildBlockEntries writes into its argument; INITIAL_DATA arrives frozen.
+    const out = { ...block, ...(block.blocks ? { blocks: { ...block.blocks } } : {}) };
+    for (const field of fields) {
+      const entries = getChildBlockEntries(out, field);
+      if (entries.length === 0) continue;
+      const items = field.isObjectList
+        ? await expandTemplates(entries.map((entry) => entry.block), {
+            ...expandOptions(templateState),
+            idField: field.idField,
+          })
+        : await expandTemplates(entries.map((entry) => entry.id), {
+            ...expandOptions(templateState),
+            blocks: Object.fromEntries(entries.map((entry) => [entry.id, entry.block])),
+          });
+      const expanded = [];
+      for (const { '@uid': id, ...child } of items) {
+        expanded.push({ id, block: await expandContainers(child, templateState) });
+      }
+      setChildBlockEntries(out, field, expanded);
+    }
+    return out;
+  }
+
+  // Expand one page-level blocks field via the PUBLIC merge, then re-enter each
+  // emitted block's containers, and reshape the items back into a blocks dict + layout.
   async function expandBlocksField(blocks, layout, allowedLayouts, templateState) {
     const items = await expandTemplates(layout, {
+      ...expandOptions(templateState),
       blocks,
-      templateState,
-      loadTemplate,
-      preloadedTemplates,
       allowedLayouts,
-      uuidGenerator,
-      filterInstanceId,
-      firstInsert,
-      idFieldMap, // { blockType: { field: idField } } — admin-resolved from the schema
     });
 
     const newBlocks = {};
@@ -145,7 +193,7 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
     for (const item of items) {
       const { '@uid': blockId, ...block } = item;
       newLayout.push(blockId);
-      newBlocks[blockId] = block;
+      newBlocks[blockId] = await expandContainers(block, templateState);
     }
 
     for (const tid of templateState.newTemplateIds || []) {

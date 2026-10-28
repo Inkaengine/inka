@@ -678,11 +678,78 @@ describe('internal references under a prefix mount', () => {
     assert.equal(page['@id'].replace(/^http:\/\/[^/]+/, ''), '/_test_data/container-test-page');
   });
 
-  it('a reference that names nothing under the mount either is left alone', async () => {
-    // image-scales-test points at a test-image.png that exists nowhere: there
-    // is no right answer to give it, so it stays as authored.
-    const text = await get('/_test_data/image-scales-test');
-    assert.ok(text.includes('"/image-scales-test/test-image.png"'));
+  it('a reference that names nothing under the mount either is left alone', () => {
+    // Content that names nothing anywhere can't be committed — the mock refuses
+    // to serve it — so it is made here, and handed to the rewrite directly:
+    // there is no right answer to give it, so it stays as authored.
+    const { mountInternalRefs } = require('./mock-plone-api.cjs');
+    const content = {
+      '@id': '/_test_data/showcase-page',
+      blocks: { a: { '@type': 'teaser', href: [{ '@id': '/no-such-page-anywhere' }] } },
+    };
+    const out = mountInternalRefs(content, '/_test_data/showcase-page');
+    assert.equal(out.blocks.a.href[0]['@id'], '/no-such-page-anywhere');
+  });
+});
+
+// An exportimport mount's redirects.json, beside its content dir. A key may be
+// physical ("/Plone/old"), as plone.exportimport round-trips it, or site-relative
+// ("/old"), as a converted tree stores it (pretagov-site does, and prefixes on
+// import). Both must serve. The site-relative form used to THROW while the mount
+// was parsed, so every 404 on that mount went through the lookup and became a 500.
+describe('redirects.json of an exportimport mount', () => {
+  const mock = require('./mock-plone-api.cjs');
+  const MOUNT = '/_redirects_test';
+  let root;
+  let mount;
+
+  const writeRedirects = (map) =>
+    fs.writeFileSync(path.join(root, 'redirects.json'), JSON.stringify(map));
+  const get = (p) =>
+    fetch(`${baseUrl}/++api++${MOUNT}${p}`, {
+      headers: { Accept: 'application/json' },
+      redirect: 'manual',
+    });
+  const assertRedirectsTo = async (from, to) => {
+    const res = await get(from);
+    assert.equal(res.status, 302);
+    const location = res.headers.get('location');
+    assert.ok(location.endsWith(`/++api++${MOUNT}${to}`), location);
+  };
+
+  before(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-redirects-'));
+    const site = path.join(root, 'content', 'plone_site_root');
+    fs.mkdirSync(site, { recursive: true });
+    fs.writeFileSync(path.join(site, 'data.json'), JSON.stringify({ '@id': '/Plone', '@type': 'Plone Site' }));
+    mount = { mountPath: MOUNT, dirPath: path.join(root, 'content') };
+    mock.CONTENT_MOUNTS.unshift(mount);
+  });
+  after(() => {
+    mock.CONTENT_MOUNTS.splice(mock.CONTENT_MOUNTS.indexOf(mount), 1);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('physical keys, as plone.exportimport writes them, redirect', async () => {
+    writeRedirects({ '/Plone/old': '/Plone/new' });
+    await assertRedirectsTo('/old', '/new');
+  });
+
+  it('site-relative keys, as a converted tree stores them, redirect', async () => {
+    writeRedirects({ '/old': '/new' });
+    await assertRedirectsTo('/old', '/new');
+  });
+
+  it('a path with no redirect is a 404, not a 500, whichever form the file uses', async () => {
+    writeRedirects({ '/old': '/new' });
+    assert.equal((await get('/no-such-page')).status, 404);
+    writeRedirects({ '/Plone/old': '/Plone/new' });
+    assert.equal((await get('/no-such-page')).status, 404);
+  });
+
+  it('a key that is not a path is refused, naming both accepted forms', () => {
+    writeRedirects({ 'old': '/new' });
+    assert.throws(() => mock.getRedirectTarget(`${MOUNT}/old`), /is not a path/);
   });
 });
 
@@ -1218,5 +1285,19 @@ describe('@search: metadata_fields decides what is serialized', () => {
     const [item] = (await res.json()).items;
     assert.ok(item.UID, '_all reaches beyond the default set');
     assert.equal(item.portal_type, 'File');
+  });
+});
+
+describe('@@download', () => {
+  // @@download serves the field's file as it was uploaded: a download URL names
+  // no scale (that is @@images'), so there is nothing to scale it to.
+  it("serves an image's original bytes", async () => {
+    const original = fs.readFileSync(
+      path.join(__dirname, 'content', 'penguin1.jpg', 'image', 'penguin1.jpg'),
+    );
+    const res = await fetch(`${baseUrl}/_test_data/images/penguin1.jpg/@@download/image`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/jpeg');
+    assert.deepEqual(Buffer.from(await res.arrayBuffer()), original);
   });
 });

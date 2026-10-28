@@ -29,7 +29,7 @@ import {
   moveBlockBetweenContainers,
   removeReplacedPlaceholder,
 } from './blockPath.js';
-import { applyMembershipAfterMove } from './blockSync.js';
+import { applyMembershipWhereLanded } from './blockSync.js';
 
 const intl = { formatMessage: (m) => m?.defaultMessage || m?.id || '' };
 const cfg = {
@@ -90,7 +90,7 @@ function drop({ removeFirst = false } = {}) {
     intl,
   );
   const derive = (data) =>
-    applyMembershipAfterMove(data, buildBlockPathMap(data, cfg, intl), 'dragged', {
+    applyMembershipWhereLanded(data, buildBlockPathMap(data, cfg, intl), 'dragged', {
       blocksConfig: cfg,
       intl,
     });

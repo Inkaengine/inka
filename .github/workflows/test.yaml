@@ -70,6 +70,12 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Check Volto customizations for upstream drift
+        # Shadows are forks of upstream files, and forks go stale silently:
+        # upstream fixes its copy and ours keeps the old behaviour. Runs right
+        # after missdev, because core/ is what it reads, and before anything
+        # slow — a stale shadow is cheap to report and expensive to find later.
+        run: pnpm shadows:check
       - name: Run hydra-js unit tests
         run: cd packages/hydra-js && pnpm test
       - name: Build workspace deps (@plone/registry, @plone/components)
@@ -882,7 +888,12 @@ jobs:
           name: volto-build
           path: build/
       - name: Install and build Nuxt
-        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
+        run: |
+          # The canvas first: building it empties .output, which build:test then
+          # fills and the specs are served from (nuxt-canvas-static.spec.ts).
+          cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile
+          NUXT_TEST_BACKEND=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} NUXT_ADMIN_URL=http://localhost:${{ env.HYDRA_VOLTO_SSR_PORT }} pnpm run canvas
+          pnpm run build:test
       - name: Start servers
         run: |
           # The servers outlive this step, but its stdout does not: in a container

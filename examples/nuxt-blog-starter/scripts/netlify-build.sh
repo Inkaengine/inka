@@ -80,14 +80,18 @@ rm -f /tmp/badpages
 
 mv .output .output-prod
 
-# Clean Nuxt build cache to avoid SSG state leaking into SPA build
-rm -rf .nuxt
+# Clean Nuxt build cache to avoid SSG state leaking into SPA build, and any
+# earlier canvas build's own folders
+rm -rf .nuxt .nuxt-canvas .output-canvas
 
-echo "=== Building edit (SPA) ==="
-NUXT_EDIT_BASE_URL=/edit/ pnpm run edit
+# The canvas: the editing build the admin frames. One static file, with the
+# page in the hash (/canvas/#/<page>), so the host serves every page with no
+# routing rules (`pnpm run canvas`). Point the admin at <site>/canvas/#/.
+echo "=== Building the canvas (editing SPA) ==="
+pnpm run canvas
 
-# Move entire edit output into prod's /edit/ subdirectory
-mv .output/public .output-prod/public/edit
+# Move the canvas (built into .output-canvas) into prod's /canvas/ subdirectory
+mv .output-canvas/public .output-prod/public/canvas
 
 # Use combined output
 rm -rf .output
@@ -95,4 +99,4 @@ mv .output-prod .output
 
 echo "=== Build complete ==="
 echo "  /        → prod (SSG)"
-echo "  /edit/   → edit (SPA)"
+echo "  /canvas/ → canvas (editing SPA, hash-routed: the admin's front end is <site>/canvas/#/)"

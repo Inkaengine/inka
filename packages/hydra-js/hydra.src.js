@@ -1,4 +1,3 @@
-import { tabbable } from 'tabbable';
 
 // Pure data helpers live in @volto-hydra/helpers — imported here ONLY
 // for internal use by bridge methods (deepEqual, findChangedUnit,
@@ -2374,25 +2373,25 @@ export class Bridge {
    * Deepest render-order insertion target when a block ENTERS `containerUid`
    * from `enterEdge` ('top' → before the first child, 'bottom' → after the
    * last child). Follows the near-edge child chain down and returns the
-   * DEEPEST sub-container whose region accepts `type` (so a slate entering
-   * `columns` lands in the nearest column, not beside the columns). Returns
-   * null when no reachable level accepts `type` — the caller then swaps/skips
-   * past the container. Acceptance is the schema's region rule
-   * (allowedSiblingTypes); which child to follow is DOM order (render).
+   * DEEPEST sub-container whose region accepts every one of `types` (so a
+   * slate entering `columns` lands in the nearest column, not beside the
+   * columns). Returns null when no reachable level accepts them — the caller
+   * then swaps/skips past the container. Acceptance is the schema's region
+   * rule (allowedSiblingTypes); which child to follow is DOM order (render).
    */
-  _descendAbsorbTarget(containerUid, enterEdge, type) {
+  _descendAbsorbTarget(containerUid, enterEdge, types) {
     const children = this._getSiblingsByDomOrder(null, containerUid);
     if (children.length === 0) return null; // leaf / empty container: not enterable here
     const insertAfter = enterEdge === 'bottom';
     const nearChild = insertAfter ? children[children.length - 1] : children[0];
     // Deepest-acceptable wins: try to descend into the near child first.
     if (this._getSiblingsByDomOrder(null, nearChild).length > 0) {
-      const deeper = this._descendAbsorbTarget(nearChild, enterEdge, type);
+      const deeper = this._descendAbsorbTarget(nearChild, enterEdge, types);
       if (deeper) return deeper;
     }
-    // Accept at THIS level if the container's region allows `type`.
+    // Accept at THIS level if the container's region allows every type.
     const childAllowed = this.blockPathMap?.[children[0]]?.allowedSiblingTypes || null;
-    if (!childAllowed || (type && childAllowed.includes(type))) {
+    if (this._regionAcceptsAll(childAllowed, types)) {
       return { targetBlockId: nearChild, insertAfter, targetParentId: containerUid };
     }
     return null;
@@ -2401,13 +2400,12 @@ export class Bridge {
   /**
    * When a block is at its container's edge (no sibling in the move
    * direction), walk UP through ancestor containers until one whose region
-   * accepts `type` is found, and place the block as a sibling of the highest
-   * rejecting container in that region. e.g. a slate at the top of a column
-   * escapes col → columns (rejects slate) → page (accepts). Null when nothing
-   * up to the page accepts `type` (chevron stays disabled).
+   * accepts every one of `types` is found, and place the block as a sibling
+   * of the highest rejecting container in that region. e.g. a slate at the
+   * top of a column escapes col → columns (rejects slate) → page (accepts).
+   * Null when nothing up to the page accepts them (chevron stays disabled).
    */
-  _ascendExpelTarget(blockUid, down) {
-    const type = this.getBlockData(blockUid)?.['@type'];
+  _ascendExpelTarget(blockUid, down, types) {
     let container = this.blockPathMap?.[blockUid]?.parentId;
     while (container && container !== PAGE_BLOCK_UID) {
       const cInfo = this.blockPathMap[container];
@@ -2415,7 +2413,7 @@ export class Bridge {
       // Types allowed as siblings of `container` = the region the block would
       // land in if it escapes to this level.
       const regionAllowed = cInfo?.allowedSiblingTypes || null;
-      if (!regionAllowed || (type && regionAllowed.includes(type))) {
+      if (this._regionAcceptsAll(regionAllowed, types)) {
         return {
           targetBlockId: container,
           insertAfter: down,
@@ -2429,62 +2427,106 @@ export class Bridge {
   }
 
   /**
+   * Can the blocks of `types` land in a region whose accepted types are
+   * `allowed`? The same test a drop uses (conversionMap's acceptableAt):
+   * natively, or by converting to an allowed type — any option for one block,
+   * exactly one each for a group. The move then converts as a drop does.
+   */
+  _regionAcceptsAll(allowed, types) {
+    const isMulti = types.length > 1;
+    return types.every((type) => acceptableAt(type, allowed, isMulti, this.conversionMap));
+  }
+
+  /**
    * Chevron (mobile up/down) move target. ONE rule for every case, computed
    * from render order (_getSiblingsByDomOrder) + the schema's region
    * acceptance, routed through the MOVE_BLOCKS → moveBlockBetweenContainers
-   * container API. Moving `blockUid` one visual step in `direction`
-   * ('up'|'down'):
-   *   - neighbour in that direction is a container that accepts us at some
-   *     reachable level → ABSORB into it (deepest near-edge position);
-   *   - neighbour is a plain sibling (or a container that rejects us at every
-   *     level) → SWAP past it within this region;
+   * container API. Moves `blockUids` — one block, or a multi-selection as ONE
+   * group, as drag-and-drop moves it — one visual step in `direction`
+   * ('up'|'down'). The step is taken from the group's edge in that direction
+   * (its top-most block going up, its bottom-most going down):
+   *   - neighbour in that direction is a container that accepts the group at
+   *     some reachable level → ABSORB into it (deepest near-edge position);
+   *   - neighbour is a plain sibling (or a container that rejects the group at
+   *     every level) → SWAP past it within this region;
    *   - no neighbour (at the container edge) → EXPEL to the nearest ancestor
-   *     region that accepts us.
-   * Returns { targetBlockId, insertAfter, targetParentId } or null (disabled).
+   *     region that accepts the group.
+   * The group lands together in render order, so a gap in the selection
+   * closes, as it does when a group is dropped. Locked blocks stay put.
+   * Returns { blockIds, targetBlockId, insertAfter, targetParentId } or null
+   * (disabled).
    */
-  _computeChevronMove(blockUid, direction) {
-    if (!blockUid || blockUid === PAGE_BLOCK_UID) return null;
-    const info = this.blockPathMap?.[blockUid];
-    if (!info) return null;
-    if (this._filterMutableBlockUids([blockUid], 'move').length === 0) return null;
-
-    const parentId = info.parentId;
+  _computeChevronMove(blockUids, direction) {
+    const group = this._filterMutableBlockUids(
+      blockUids.filter((uid) => uid !== PAGE_BLOCK_UID && this.blockPathMap?.[uid]),
+      'move',
+    );
+    if (group.length === 0) return null;
+    const ordered = this._inDocumentOrder(group);
     const down = direction === 'down';
-    const type = this.getBlockData(blockUid)?.['@type'];
+    const edgeUid = down ? ordered[ordered.length - 1] : ordered[0];
+    const info = this.blockPathMap[edgeUid];
+    const parentId = info.parentId;
+    const types = ordered.map((uid) => this.getBlockData(uid)?.['@type']);
 
-    // Render-order siblings sharing this block's region.
+    // Render-order siblings sharing the edge block's region.
     const siblings = this._getSiblingsByDomOrder(null, parentId).filter(
       (id) => this.blockPathMap?.[id]?.region === info.region,
     );
-    const idx = siblings.indexOf(blockUid);
+    const idx = siblings.indexOf(edgeUid);
     if (idx < 0) return null;
     const neighborId = siblings[down ? idx + 1 : idx - 1];
+    const move = (target) => (target ? { blockIds: ordered, ...target } : null);
 
     if (neighborId) {
-      // ABSORB into the neighbour if it's a container that accepts us at some
-      // reachable level; otherwise SWAP past it within this region.
+      // ABSORB into the neighbour if it's a container that accepts the group
+      // at some reachable level; otherwise SWAP past it within this region.
       const neighborIsContainer =
         this._getSiblingsByDomOrder(null, neighborId).length > 0;
       if (neighborIsContainer) {
         const target = this._descendAbsorbTarget(
           neighborId,
           down ? 'top' : 'bottom',
-          type,
+          types,
         );
-        if (target) return target;
+        if (target) return move(target);
       }
-      return {
+      return move({
         targetBlockId: neighborId,
         insertAfter: down,
         targetParentId: parentId === PAGE_BLOCK_UID ? null : parentId,
-      };
+      });
     }
 
-    // At the container edge → EXPEL to the nearest ancestor region that accepts us.
+    // At the container edge → EXPEL to the nearest ancestor region that accepts the group.
     if (parentId && parentId !== PAGE_BLOCK_UID) {
-      return this._ascendExpelTarget(blockUid, down);
+      return move(this._ascendExpelTarget(edgeUid, down, types));
     }
     return null;
+  }
+
+  /** `uids` sorted by where their blocks render (document order). */
+  _inDocumentOrder(uids) {
+    return [...uids].sort((a, b) => {
+      const elA = this.queryBlockElement(a);
+      const elB = this.queryBlockElement(b);
+      if (!elA || !elB) return 0;
+      return elA.compareDocumentPosition(elB) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
+  }
+
+  /**
+   * The blocks a move gesture moves: the multi-selection when there is one,
+   * else the selected block, minus blocks locked in place. Drag-and-drop and
+   * the chevrons both move exactly this list, so a group moves as one either
+   * way (docs/editor-guide/adding-and-moving-blocks.md, "Working with
+   * multiple blocks at once").
+   */
+  _movableBlockUids() {
+    const uids = this.multiSelectedBlockUids.length > 0
+      ? this.multiSelectedBlockUids
+      : [this.selectedBlockUid];
+    return this._filterMutableBlockUids(uids, 'move');
   }
 
   /**
@@ -2789,7 +2831,37 @@ export class Bridge {
     const nav = this.getArrowNavigationTarget(key, blockUid, blockElement);
     if (!nav) return;
     const { adjacentId, adjacentEl, direction, isTableVertical } = nav;
+    this.moveEditingPoint({
+      direction,
+      blockUid,
+      editableField,
+      blockElement,
+      isTableVertical,
+      adjacentId,
+      adjacentEl,
+    });
+  }
 
+  /**
+   * Move the editing point one step, the way both arrows and Tab mean it.
+   *
+   * Within a block with more than one editable, a step moves FOCUS to the next
+   * editable and leaves the selection alone — the author is still editing the
+   * same block, and the admin only needs to know which field. Stepping off the
+   * block's first/last editable is what moves the SELECTION, to the adjacent
+   * block's last/first field.
+   *
+   * @returns {boolean} true when the step was taken.
+   */
+  moveEditingPoint({
+    direction,
+    blockUid,
+    editableField,
+    blockElement,
+    isTableVertical = false,
+    adjacentId = null,
+    adjacentEl = null,
+  }) {
     // Check multi-field: navigate between fields within the block first
     const ownFields = this.getOwnEditableFields(blockElement);
     if (ownFields.length > 1 && !isTableVertical) {
@@ -2805,19 +2877,21 @@ export class Bridge {
           range.collapse(true); // Cursor at start
           sel.removeAllRanges();
           sel.addRange(range);
-          return;
+          return true;
         }
         if (direction === 'backward' && fieldIdx > 0) {
           // Move to previous field in same block
           const prevField = ownFields[fieldIdx - 1];
           prevField.focus();
           this._placeCursorAtEnd(prevField);
-          return;
+          return true;
         }
       }
     }
 
-    log('handleArrowAtEdge: navigating from', blockUid, 'to', adjacentId, 'direction:', direction);
+    if (!adjacentEl) return false;
+
+    log('moveEditingPoint: navigating from', blockUid, 'to', adjacentId, 'direction:', direction);
 
     // editMode stays 'text' — selectBlock will set up contenteditable
     this._navigatingToBlock = true;
@@ -2826,6 +2900,7 @@ export class Bridge {
       cursorAt: direction === 'backward' ? 'end' : 'start',
     });
     this._navigatingToBlock = false;
+    return true;
   }
 
   /**
@@ -3136,15 +3211,42 @@ export class Bridge {
           }
         }
       }
-      // Focus navigation via tabbable
+      // Tab walks the EDITING order, not the page's.
+      //
+      // The page's tab order belongs to the published site: it is made of the
+      // links, buttons and controls a visitor uses. An author is editing that
+      // content, not operating it, so stepping onto a teaser's link or a
+      // carousel's "next" button is an accident of the markup, not an
+      // affordance. It also differed per frontend, so the same keystroke did
+      // different things on Astro, Nuxt and Next.
+      //
+      // Walking our own order also removes an inference. Focusing an element
+      // and waiting for the focus listener to work out which block that was
+      // meant the bridge had to tell its OWN synthetic focus apart from one the
+      // frontend moved (a container re-rendering, a tab strip restoring focus)
+      // using a 300ms since-last-keypress heuristic. Here we know the target,
+      // so we select it outright and the listener no longer has to guess.
+      //
+      // Same step the arrows take, so multi-field blocks behave identically:
+      // focus moves between a block's own editables, and only stepping off the
+      // first/last one moves the selection.
       {
-        const ordered = tabbable(document.documentElement);
-        const currentIdx = ordered.indexOf(editableField || document.activeElement);
-        if (currentIdx !== -1 && ordered.length > 1) {
-          const nextIdx = shiftKey
-            ? (currentIdx - 1 + ordered.length) % ordered.length
-            : (currentIdx + 1) % ordered.length;
-          ordered[nextIdx].focus();
+        const direction = shiftKey ? 'backward' : 'forward';
+        const blockEl =
+          editableField?.closest('[data-block-uid]') ||
+          this.queryBlockElement(blockId);
+        const uid = blockEl?.getAttribute('data-block-uid') || blockId;
+        if (uid && blockEl) {
+          const adjacentId = this._resolveNavigationTarget(uid, direction, false);
+          const adjacentEl = adjacentId ? this.queryBlockElement(adjacentId) : null;
+          this.moveEditingPoint({
+            direction,
+            blockUid: uid,
+            editableField,
+            blockElement: blockEl,
+            adjacentId,
+            adjacentEl,
+          });
         }
       }
       return true;
@@ -4174,8 +4276,13 @@ export class Bridge {
       // (reusing _computeEdgePlan) rather than by a data-order walk in the admin.
       // The admin uses them for the chevrons' enabled state and, on press,
       // dispatches the target straight through the existing MOVE_BLOCKS path.
-      moveUpTarget: blockUid && blockUid !== PAGE_BLOCK_UID ? this._computeChevronMove(blockUid, 'up') : null,
-      moveDownTarget: blockUid && blockUid !== PAGE_BLOCK_UID ? this._computeChevronMove(blockUid, 'down') : null,
+      // A multi-selection gets the group's targets, as drag-and-drop moves it.
+      moveUpTarget: blockUid && blockUid !== PAGE_BLOCK_UID
+        ? this._computeChevronMove(options.isMultipleSelection ? options.blockUids : [blockUid], 'up')
+        : null,
+      moveDownTarget: blockUid && blockUid !== PAGE_BLOCK_UID
+        ? this._computeChevronMove(options.isMultipleSelection ? options.blockUids : [blockUid], 'down')
+        : null,
       isMultiElement: blockUid && blockUid !== PAGE_BLOCK_UID ? this.getAllBlockElements(blockUid).length > 1 : false,
     };
 
@@ -4813,17 +4920,10 @@ export class Bridge {
         // This avoids adding duplicate listeners and works for all blocks
         if (!this.fieldFocusListenerAdded) {
           this.fieldFocusListenerAdded = true;
-          // Track mouse button state so fieldFocusListener can distinguish
-          // keyboard navigation (Tab) from mouse click side-effects.
-          // During mouse clicks, the click handler handles block selection —
-          // the focus event between mousedown and click must not call selectBlock
-          // because restoreContentEditableOnFields would change the DOM and
-          // shift event.target before the click event fires.
-          // When the author last pressed a key, so a focus change can be told
-          // apart from one the frontend made on its own (see the focus listener).
-          document.addEventListener('keydown', () => { this._lastKeyDownAt = Date.now(); }, true);
-          document.addEventListener('mousedown', () => { this._mouseButtonDown = true; }, true);
-          document.addEventListener('mouseup', () => { this._mouseButtonDown = false; }, true);
+          // `_lastKeyDownAt` and `_mouseButtonDown` used to live here, so the
+          // focus listener could guess whether a focus change was the author's
+          // or the frontend's. It no longer decides anything from focus, so
+          // there is nothing to tell apart and nothing to track.
           document.addEventListener('focus', (e) => {
             // Firefox may fire focus on text nodes; get the nearest Element
             const target = e.target instanceof Element ? e.target : e.target?.parentElement;
@@ -4847,41 +4947,23 @@ export class Bridge {
             if (this.editMode === 'block') return;
 
             if (blockUid !== this.selectedBlockUid) {
-              // Skip if block-selector or arrow-key navigation is in progress —
-              // those flows manage their own block selection
-              if (this._blockSelectorNavigating || this._navigatingToBlock) {
-                return;
-              }
-              // During mouse clicks, defer to the click handler for block selection.
-              // The focus event fires between mousedown and click — calling selectBlock
-              // here would run restoreContentEditableOnFields before click, which can
-              // change event.target and break linkable/media field detection.
-              if (this._mouseButtonDown) {
-                return;
-              }
-              // Only a focus the AUTHOR moved may move the selection. Tab is
-              // theirs; a focus the frontend moves is not — a container
-              // refocusing itself after re-rendering, a tab strip restoring
-              // focus to its active tab, a carousel after a slide change.
+              // A focus landing in ANOTHER block never moves the selection.
               //
-              // Acting on those steals the selection: adding a block into a doc
-              // page's Example tab left the TAB selected, so the sidebar offered
-              // the container's settings instead of the block just added, and
-              // there was no way to configure it. Same argument the block-mode
-              // branch above already makes; just as true here.
+              // The author's own step selects its target outright —
+              // moveEditingPoint, shared by Tab and the arrows — so by the time
+              // a focus event reaches here, whatever the author did has already
+              // been accounted for. What is left is focus the FRONTEND moved: a
+              // container refocusing itself after re-rendering, a tab strip
+              // restoring focus to its active tab, a carousel after a slide
+              // change. Acting on those steals the selection — adding a PDF
+              // block into a doc page's Example tab left the TAB selected, so
+              // the sidebar offered the container's settings instead of the
+              // block just added, with no way to configure it.
               //
-              // Not "is the target editable": Tab legitimately lands on a
-              // button or a link in another block, and selection should follow
-              // there too (block-navigation.spec.ts pins exactly that).
-              if (Date.now() - (this._lastKeyDownAt || 0) > 300) return;
-              // Focus moved to a different block (e.g., via Tab) — select it
-              log('Focus moved to different block:', blockUid, 'from:', this.selectedBlockUid);
-              // Cancel any pending initial-selection — user navigated away
-              if (this._pendingInitialSelectTimer) {
-                clearTimeout(this._pendingInitialSelectTimer);
-                this._pendingInitialSelectTimer = null;
-              }
-              this.selectBlock(blockElement);
+              // This used to guess, with a 300ms since-last-keypress heuristic
+              // and a `_navigatingToBlock` latch, because selection depended on
+              // reading back the bridge's own synthetic focus. It does not any
+              // more, so there is nothing left to guess at.
               return;
             }
 
@@ -5149,6 +5231,15 @@ export class Bridge {
           // Admin (sidebar Ctrl+Click) asked us to enter selection mode.
           // Enter without toggling any block — admin already set multiSelected.
           this._enterSelectionModeActivateOnly();
+        } else if (event.data.type === 'SELECT_BLOCKS') {
+          // The admin's multi-selection — e.g. blocks ticked in touch
+          // selection mode, which only the admin sees. Mirror it so a move
+          // (drag-and-drop or chevrons) takes the same blocks the admin's
+          // Delete/Copy/Cut do, and report it back with its move targets.
+          const uids = (event.data.uids || []).filter((uid) => this.blockPathMap?.[uid]);
+          log('Received SELECT_BLOCKS:', uids);
+          this.multiSelectedBlockUids = uids;
+          if (uids.length > 0) this._sendMultiBlockSelected();
         } else if (event.data.type === 'EXIT_SELECTION_MODE') {
           log('Received EXIT_SELECTION_MODE');
           this._selectionModeBlockUids = null;
@@ -11037,13 +11128,9 @@ export class Bridge {
       // Set flag to suppress scrollHandler during drag
       this._isDragging = true;
 
-      // Get all elements for dragged blocks — supports multi-selection.
-      // Drop locked blocks from the dragged set: they can't be moved.
-      // For single-block drag: if the sole block is locked, abort.
-      const rawDraggedUids = this.multiSelectedBlockUids.length > 0
-        ? [...this.multiSelectedBlockUids]
-        : [this.selectedBlockUid];
-      const draggedUids = this._filterMutableBlockUids(rawDraggedUids, 'move');
+      // The dragged blocks: the multi-selection or the selected block, minus
+      // locked ones. If none can move, abort.
+      const draggedUids = this._movableBlockUids();
       if (draggedUids.length === 0) {
         this._isDragging = false;
         return;
@@ -13121,7 +13208,33 @@ export class Bridge {
     return found;
   }
 
+  /**
+   * Reveal a block, releasing `_navigatingToBlock` however the attempt ends.
+   *
+   * `_navigatingToBlock` tells the click handler "a programmatic navigation
+   * is in flight", so a synthetic click it generates is not mistaken for the
+   * author's (blockClickHandler). The reveal
+   * itself sets it and has ~nine synchronous `return false` paths for the
+   * cases it cannot handle — a block with no container, no paging control, no
+   * +1/-1 selector, already at the target. None of them cleared it, so the
+   * commonest case of all — an already-visible top-level block — left the
+   * latch set for the lifetime of the page and the focus listener never fired
+   * again. Tabbing from one block to another stopped moving the selection,
+   * which is what block-navigation.spec.ts pins.
+   *
+   * Only the async watcher may keep the latch past a synchronous return, and
+   * it says so by arming `_revealWatcherArmed`; it clears the latch itself on
+   * success or timeout.
+   */
   tryMakeBlockVisible(targetUid, depth = 0, fieldName = null) {
+    const enclosing = this._navigatingToBlock;
+    this._revealWatcherArmed = false;
+    const result = this._revealBlock(targetUid, depth, fieldName);
+    if (!this._revealWatcherArmed) this._navigatingToBlock = enclosing ?? null;
+    return result;
+  }
+
+  _revealBlock(targetUid, depth = 0, fieldName = null) {
     log(`tryMakeBlockVisible: ${targetUid}`);
     // Nested closed containers need one pass each. Bounded so a container that
     // never opens can't spin.
@@ -13499,6 +13612,9 @@ export class Bridge {
     };
 
     // Start checking on next frame (after click event has propagated)
+    // From here the watcher owns _navigatingToBlock and clears it when it
+    // reaches the target or times out; the wrapper must not clear it.
+    this._revealWatcherArmed = true;
     requestAnimationFrame(checkVisibility);
     return true;
   }
