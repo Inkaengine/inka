@@ -105,6 +105,8 @@ test.describe('hosted MCP server', () => {
       expect(res.headers.get('www-authenticate')).toContain(`${mcp.url}/.well-known/oauth-protected-resource/mcp`);
       const meta = await (await fetch(`${mcp.url}/.well-known/oauth-protected-resource/mcp`)).json();
       expect(meta.authorization_servers).toEqual([`${mcp.url}/`]);
+      // Also at the root path, for a client that looks there.
+      expect(await (await fetch(`${mcp.url}/.well-known/oauth-protected-resource`)).json()).toEqual(meta);
       const as = await (await fetch(`${mcp.url}/.well-known/oauth-authorization-server`)).json();
       expect(as).toMatchObject({ registration_endpoint: `${mcp.url}/register`, code_challenge_methods_supported: ['S256'] });
     } finally {

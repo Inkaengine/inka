@@ -80,6 +80,13 @@ export function hostedServer({ adminUrl, publicUrl, secret, poolSize, pageIdleMs
     clientRegistrationOptions: { clientIdGeneration: false },
   }));
 
+  // The resource's metadata at the root path too (RFC 9728 puts it at
+  // /.well-known/oauth-protected-resource/mcp, which the SDK serves): a
+  // client that looks for it at the root found a 404.
+  app.get('/.well-known/oauth-protected-resource', (req, res) => {
+    res.json({ resource: mcpUrl.href, authorization_servers: [base.href], resource_name: 'Inka' });
+  });
+
   // The admin's connect page posts here: Allow (the Plone token) or Cancel.
   app.post('/oauth/callback', async (req, res) => {
     let next;
