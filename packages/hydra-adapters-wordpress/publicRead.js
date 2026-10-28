@@ -32,7 +32,24 @@ import { parseBlocks } from './index.js';
  *   Playground, for instance, sets its own cookie and 302s to the same url to
  *   collect it, so a client with no cookie jar follows that redirect forever.
  */
-export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.fetch }) {
+export function createPublicReader({
+  cmsBaseUrl,
+  fetch: fetchImpl = globalThis.fetch,
+  /**
+   * WHICH NESTING is this site's navigation.
+   *
+   * WordPress has two over the same content: the structural page tree (every
+   * page carries a parent) and a curated menu someone arranged by hand. Both
+   * are real, and which one a header renders is the SITE's design rather than
+   * a property of WordPress — so it is configured here and mapped by the
+   * adapter, which leaves a frontend asking `navigation()` and never branching
+   * on the CMS.
+   *
+   *   { from: 'tree' }                        the default; needs no plugin
+   *   { from: 'menu', location: 'primary' }   a curated menu
+   */
+  navigation: navigationFrom = { from: 'tree' },
+}) {
   const base = cmsBaseUrl.replace(/\/+$/, '');
   /**
    * The PRETTY route, which is how a headless WordPress frontend addresses the
@@ -92,6 +109,64 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
     const [post] = await res.json();
     return post ?? null;
   };
+
+  /**
+   * A curated menu's raw nodes, over GraphQL. Shared by `menu()` and by
+   * `navigation()` when the site's navigation IS a menu.
+   *
+   * A menu is selected by its theme LOCATION, never by its title: WPGraphQL
+   * decides a menu is public by intersecting the locations it is assigned to
+   * with the ones the theme registers, so an unlocated menu stays private —
+   * which is the site saying it is not part of its design. A title would let a
+   * site name a menu WordPress will never serve a visitor.
+   */
+  const menuNodes = async ({ language, location } = {}) => {
+    const clauses = [
+      ...(language ? [`language: ${language}`] : []),
+      // An enum in the schema (MenuLocationEnum), so unquoted and upper case.
+      ...(location ? [`location: ${String(location).toUpperCase()}`] : []),
+    ];
+    const where = clauses.length ? `(where: { ${clauses.join(', ')} })` : '';
+    const res = await fetchImpl(`${base}/index.php?graphql`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `{ menuItems${where} { nodes { id label uri parentId } } }`,
+      }),
+    });
+    if (!res.ok) return null;
+
+    // A 200 that is NOT JSON means WPGraphQL is not answering. WordPress
+    // serves its ordinary HTML page for a query string it does not
+    // recognise, so the request succeeds and only the parse gives it away —
+    // as `Unexpected token '<'` from deep inside whatever was rendering,
+    // naming neither WordPress nor the plugin. Caught here, with the reason.
+    const text = await res.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      throw new Error(
+        `wordpress: index.php?graphql answered ${res.status} with ` +
+          `${res.headers.get('content-type') ?? 'no content-type'} rather ` +
+          `than JSON, which means WPGraphQL is not installed. Core ` +
+          `WordPress has no public menu endpoint — a visitor's read of ` +
+          `core menus is 401 — so without the plugin there is no curated ` +
+          `menu to serve. The page TREE is readable: use navigation().`,
+      );
+    }
+    if (body.errors) {
+      throw new Error(
+        `wordpress: the public menu query failed, which usually means ` +
+          `WPGraphQL is not installed: ${JSON.stringify(body.errors)}`,
+      );
+    }
+    return body.data?.menuItems?.nodes ?? null;
+  };
+
+  const pathOfUri = (uri) =>
+    new URL(uri, base).pathname.replace(/\/+$/, '') || '/';
+
 
   return {
     /**
@@ -197,13 +272,42 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
      * `menu()` below returns it.
      */
     async navigation() {
+      if (navigationFrom.from === 'menu') {
+        const { location } = navigationFrom;
+        if (!location) {
+          throw new Error(
+            `wordpress: navigation { from: 'menu' } needs a \`location\` — the ` +
+              `theme location the menu is assigned to, e.g. 'primary'. A menu ` +
+              `is public only where it is LOCATED, so there is no menu to read ` +
+              `without one, and naming one by title would point at a menu ` +
+              `WordPress will never serve a visitor.`,
+          );
+        }
+        const nodes = await menuNodes({ location });
+        if (!nodes) return null;
+        // A menu is a TREE and it travels as one: `parentId` says which item
+        // holds which. The labels and the order are the menu's own, which is
+        // the point of curating one — they need not match the page titles.
+        const itemOf = (node) => {
+          const children = nodes.filter((n) => n.parentId === node.id);
+          return {
+            title: node.label,
+            path: pathOfUri(node.uri),
+            ...(children.length ? { items: children.map(itemOf) } : {}),
+          };
+        };
+        return nodes.filter((n) => !n.parentId).map(itemOf);
+      }
+
+      // The structural nesting: WordPress's own hierarchy. `?parent=0` is the
+      // top level, and it needs no plugin, which is why it is the default.
       const res = await fetchImpl(
         api('/wp/v2/pages', { parent: '0', status: 'publish', per_page: '100' }),
       );
       if (!res.ok) return null;
       const posts = await res.json();
       return posts.map((post) => ({
-        path: new URL(post.link, base).pathname.replace(/\/+$/, '') || '/',
+        path: pathOfUri(post.link),
         title: post.title?.rendered ?? '',
       }));
     },
@@ -225,48 +329,13 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
      * @param {string} [options.language] A Polylang language code, e.g. 'EN'.
      */
     async menu({ language } = {}) {
-      const where = language ? `(where: { language: ${language} })` : '';
-      const res = await fetchImpl(`${base}/index.php?graphql`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: `{ menuItems${where} { nodes { id label uri parentId } } }`,
-        }),
-      });
-      if (!res.ok) return null;
-
-      // A 200 that is NOT JSON means WPGraphQL is not answering. WordPress
-      // serves its ordinary HTML page for a query string it does not
-      // recognise, so the request succeeds and only the parse gives it away —
-      // as `Unexpected token '<'` from deep inside whatever was rendering,
-      // naming neither WordPress nor the plugin. Caught here, with the reason.
-      const text = await res.text();
-      let body;
-      try {
-        body = JSON.parse(text);
-      } catch {
-        throw new Error(
-          `wordpress: index.php?graphql answered ${res.status} with ` +
-            `${res.headers.get('content-type') ?? 'no content-type'} rather ` +
-            `than JSON, which means WPGraphQL is not installed. Core ` +
-            `WordPress has no public menu endpoint — a visitor's read of ` +
-            `core menus is 401 — so without the plugin there is no curated ` +
-            `menu to serve. The page TREE is readable: use navigation().`,
-        );
-      }
-      if (body.errors) {
-        throw new Error(
-          `wordpress: the public menu query failed, which usually means ` +
-            `WPGraphQL is not installed: ${JSON.stringify(body.errors)}`,
-        );
-      }
-      const nodes = body.data?.menuItems?.nodes;
+      const nodes = await menuNodes({ language });
       if (!nodes) return null;
       // parentId is an opaque global id, so a parent is named by its label.
       const labelById = new Map(nodes.map((n) => [n.id, n.label]));
       return nodes.map((n) => ({
         label: n.label,
-        path: new URL(n.uri, base).pathname.replace(/\/+$/, '') || '/',
+        path: pathOfUri(n.uri),
         parentLabel: n.parentId ? (labelById.get(n.parentId) ?? null) : null,
       }));
     },

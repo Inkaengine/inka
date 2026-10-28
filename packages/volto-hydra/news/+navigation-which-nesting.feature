@@ -1,0 +1,1 @@
+A WordPress site chooses which of its nestings is its navigation: the page tree (the default, needing no plugin) or a curated menu, named by the theme location that makes it public. `createPublicReader({ navigation: { from: 'menu', location: 'primary' } })`. A frontend keeps asking `navigation()`.

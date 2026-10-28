@@ -248,3 +248,108 @@ describe('wpFetchItems', () => {
     expect(fake.collection()).toContain('order=desc');
   });
 });
+
+/**
+ * Which NESTING is `navigation()`.
+ *
+ * A CMS offers several nestings over the same content, and a header renders one
+ * of them. WordPress has two: the structural page tree (every page carries a
+ * parent) and a curated menu someone arranged by hand. Both are legitimate; the
+ * SITE says which one is its navigation and the adapter maps it, so a frontend
+ * keeps asking `navigation()` and never branches on the CMS.
+ */
+describe('navigation: which nesting', () => {
+  const graphqlFetch = (nodes, { asked = [] } = {}) => async (url, init) => {
+    asked.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : null });
+    if (String(url).includes('graphql')) {
+      const body = { data: { menuItems: { nodes } } };
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        // The reader reads the BODY as text and parses it itself, so that a 200
+        // of HTML (WPGraphQL absent) can be reported as such.
+        text: async () => JSON.stringify(body),
+        json: async () => body,
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => [],
+    };
+  };
+
+  it('is the page tree when nothing says otherwise', async () => {
+    const asked = [];
+    const reader = createPublicReader({
+      cmsBaseUrl: 'http://wp.example',
+      fetch: graphqlFetch([], { asked }),
+    });
+
+    await reader.navigation();
+
+    // WordPress's hierarchy question, and no menu read at all.
+    expect(asked.some((a) => a.url.includes('parent=0'))).toBe(true);
+    expect(asked.some((a) => a.url.includes('graphql'))).toBe(false);
+  });
+
+  it('is a curated menu when the site names its location', async () => {
+    const asked = [];
+    const reader = createPublicReader({
+      cmsBaseUrl: 'http://wp.example',
+      navigation: { from: 'menu', location: 'primary' },
+      fetch: graphqlFetch(
+        [
+          { id: 'a', label: 'Start here', uri: '/home', parentId: null },
+          { id: 'b', label: 'Latest', uri: '/news', parentId: null },
+          { id: 'c', label: 'First', uri: '/news/first-post', parentId: 'b' },
+        ],
+        { asked },
+      ),
+    });
+
+    const nav = await reader.navigation();
+
+    // The menu's own labels and order — not the page titles, which is the whole
+    // point of a curated menu.
+    expect(nav.map((n) => n.title)).toEqual(['Start here', 'Latest']);
+    expect(nav.map((n) => n.path)).toEqual(['/home', '/news']);
+    // Its nesting travels with it: a menu is a tree.
+    expect(nav[1].items).toEqual([{ title: 'First', path: '/news/first-post' }]);
+    // Asked by LOCATION, because that is what makes a menu public, and the page
+    // tree is never read.
+    const query = asked.find((a) => a.url.includes('graphql'))?.body?.query;
+    expect(query).toMatch(/primary/i);
+    expect(asked.some((a) => a.url.includes('parent=0'))).toBe(false);
+  });
+
+  it('refuses a menu with no location, which WordPress would keep private', async () => {
+    const reader = createPublicReader({
+      cmsBaseUrl: 'http://wp.example',
+      navigation: { from: 'menu' },
+      fetch: graphqlFetch([]),
+    });
+
+    await expect(reader.navigation()).rejects.toThrow(/location/i);
+  });
+
+  it('fails loudly when the configured menu cannot be read', async () => {
+    // WPGraphQL absent: WordPress serves its ordinary HTML for a query string
+    // it does not know. Falling back to the page tree here would make a
+    // misconfigured deployment look like a working one.
+    const reader = createPublicReader({
+      cmsBaseUrl: 'http://wp.example',
+      navigation: { from: 'menu', location: 'primary' },
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'text/html' }),
+        text: async () => '<!doctype html><html><body>Home</body></html>',
+      }),
+    });
+
+    await expect(reader.navigation()).rejects.toThrow(/WPGraphQL/);
+  });
+});
