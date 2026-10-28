@@ -681,3 +681,80 @@ test.describe('touch-mode block move via chevron', () => {
     }, { timeout: 5000 }).not.toBe('col-1');
   });
 });
+
+/**
+ * A multi-selection moves as ONE group under the chevrons, exactly as it does
+ * under drag-and-drop (docs/editor-guide/adding-and-moving-blocks.md, "Working
+ * with multiple blocks at once": drag and drop "works on the whole group").
+ * ▲ puts the group, in its order, before the block above its top-most member;
+ * ▼ after the block below its bottom-most. A gap in the selection closes, as
+ * it does when a group is dropped. On a phone the selection is made with a
+ * long press and the selection-mode checkboxes.
+ */
+test.describe('touch-mode chevron moves a multi-selection as one group', () => {
+  // Long-press a block into selection mode, then tick the others. (No tap
+  // first: the long press starts selection mode on its own, and a tap on the
+  // block the editor restored as selected would put it in text mode.)
+  const selectGroup = async (helper: AdminUIHelper, uids: string[]) => {
+    const page = helper.page;
+    await helper.longPressBlock(uids[0]);
+    await expect(
+      page.locator(`.volto-hydra-selection-checkbox[data-block-uid="${uids[0]}"]`),
+    ).toHaveAttribute('data-checked', 'true', { timeout: 5000 });
+    for (const uid of uids.slice(1)) {
+      const box = page.locator(`.volto-hydra-selection-checkbox[data-block-uid="${uid}"]`);
+      await box.click();
+      await expect(box).toHaveAttribute('data-checked', 'true', { timeout: 5000 });
+    }
+    await expect(page.locator('.multi-select-bar')).toContainText(`${uids.length} selected`, { timeout: 5000 });
+  };
+
+  const tapChevron = async (helper: AdminUIHelper, dir: 'up' | 'down') => {
+    const chev = helper.page.locator(`.quanta-toolbar .chevron-${dir}`);
+    await expect(chev, `chevron ${dir} is shown for the group`).toBeVisible({ timeout: 5000 });
+    await expect(chev, `chevron ${dir} is enabled for the group`).toBeEnabled();
+    await chev.click();
+  };
+
+  const topOfPage = async (helper: AdminUIHelper, n: number) =>
+    (await helper.getBlockOrder()).slice(0, n);
+
+  test('▼ moves two adjacent selected blocks together, below the next block', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    expect(await topOfPage(helper, 4)).toEqual(['block-1-uuid', 'block-2-uuid', 'block-3-uuid', 'block-4-hero']);
+
+    await selectGroup(helper, ['block-1-uuid', 'block-2-uuid']);
+    await tapChevron(helper, 'down');
+
+    await expect.poll(() => topOfPage(helper, 4), { timeout: 5000 })
+      .toEqual(['block-3-uuid', 'block-1-uuid', 'block-2-uuid', 'block-4-hero']);
+  });
+
+  test('▼ on a selection with a gap lands the group together after the block below it', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    expect(await topOfPage(helper, 5)).toEqual(['block-1-uuid', 'block-2-uuid', 'block-3-uuid', 'block-4-hero', 'block-5-linked-image']);
+
+    await selectGroup(helper, ['block-1-uuid', 'block-3-uuid']);
+    await tapChevron(helper, 'down');
+
+    await expect.poll(() => topOfPage(helper, 5), { timeout: 5000 })
+      .toEqual(['block-2-uuid', 'block-4-hero', 'block-1-uuid', 'block-3-uuid', 'block-5-linked-image']);
+  });
+
+  test('▲ moves two adjacent selected blocks together, above the block before them', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    expect(await topOfPage(helper, 4)).toEqual(['block-1-uuid', 'block-2-uuid', 'block-3-uuid', 'block-4-hero']);
+
+    await selectGroup(helper, ['block-2-uuid', 'block-3-uuid']);
+    await tapChevron(helper, 'up');
+
+    await expect.poll(() => topOfPage(helper, 4), { timeout: 5000 })
+      .toEqual(['block-2-uuid', 'block-3-uuid', 'block-1-uuid', 'block-4-hero']);
+  });
+});

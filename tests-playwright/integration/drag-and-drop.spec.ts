@@ -686,4 +686,34 @@ test.describe('Block Drag and Drop', () => {
     expect(firstIdx).toBe(thirdIdx + 1);
     expect(secondIdx).toBe(thirdIdx + 2);
   });
+
+  test('blocks ticked in selection mode are dragged together', async ({ page }) => {
+    // The selection-mode checkboxes (long press) are the admin's selection;
+    // the drag runs in the frontend. Both must move the same group, as the
+    // chevrons do.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    expect((await helper.getBlockOrder()).slice(0, 4))
+      .toEqual(['block-1-uuid', 'block-2-uuid', 'block-3-uuid', 'block-4-hero']);
+
+    // As block-selection.spec's "Long press enters selection mode" does.
+    await helper.clickBlockInIframe('block-1-uuid');
+    await helper.waitForIframeBlockHandle('block-1-uuid');
+    await helper.longPressBlock('block-1-uuid');
+    await expect(page.locator('.volto-hydra-selection-checkbox[data-block-uid="block-1-uuid"]'))
+      .toHaveAttribute('data-checked', 'true', { timeout: 5000 });
+    const box2 = page.locator('.volto-hydra-selection-checkbox[data-block-uid="block-2-uuid"]');
+    await box2.click();
+    await expect(box2).toHaveAttribute('data-checked', 'true', { timeout: 5000 });
+    await expect(page.locator('.multi-select-bar')).toContainText('2 selected', { timeout: 5000 });
+
+    const dragHandle = page.locator('.quanta-toolbar .drag-handle');
+    await expect(dragHandle).toBeVisible({ timeout: 5000 });
+    const thirdBlock = helper.getIframe().locator('[data-block-uid="block-3-uuid"]');
+    await helper.dragBlockWithMouse(dragHandle, thirdBlock, true);
+
+    await expect.poll(async () => (await helper.getBlockOrder()).slice(0, 4), { timeout: 5000 })
+      .toEqual(['block-3-uuid', 'block-1-uuid', 'block-2-uuid', 'block-4-hero']);
+  });
 });

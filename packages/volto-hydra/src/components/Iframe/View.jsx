@@ -856,6 +856,9 @@ const Iframe = (props) => {
   const [convertConfirm, setConvertConfirm] = useState(null);
   const multiSelectedRef = useRef(multiSelected);
   multiSelectedRef.current = multiSelected;
+  // The multi-selection hydra.js last reported or was sent, so the sync below
+  // doesn't echo hydra.js's own report back to it.
+  const syncedMultiSelectedRef = useRef('[]');
 
   // History for routing - needed early for edit mode detection
   const history = useHistory();
@@ -961,6 +964,21 @@ const Iframe = (props) => {
       }
     }
   }, [selectedBlock]);
+
+  // The admin's multi-selection reaches hydra.js, so a move — drag-and-drop or
+  // the chevrons — takes the blocks the editor sees selected, including ones
+  // ticked in touch selection mode, which hydra.js never sees itself.
+  useEffect(() => {
+    if (!iframeOriginRef.current) return;
+    const uids = multiSelected || [];
+    const key = JSON.stringify(uids);
+    if (key === syncedMultiSelectedRef.current) return;
+    syncedMultiSelectedRef.current = key;
+    document.getElementById('previewIframe')?.contentWindow?.postMessage(
+      { type: 'SELECT_BLOCKS', uids },
+      iframeOriginRef.current,
+    );
+  }, [multiSelected]);
 
   // Clear blockUI when no block is selected
   // BUT keep it for page-level fields (blockUI exists with rect and blockUid is PAGE_BLOCK_UID)
@@ -1393,20 +1411,21 @@ const Iframe = (props) => {
     };
 
     // Mobile #145 — chevron buttons in the Quanta toolbar dispatch this
-    // CustomEvent to reorder the selected block within its parent. The
+    // CustomEvent to move the selected block, or the multi-selection as one
+    // group, by the target hydra.js computed (blockIds included). The
     // existing MOVE_BLOCKS postMessage path is iframe-origin-gated, so
     // admin-React → admin-React reuse goes through the CustomEvent bus
     // (same pattern as hydra-paste-blocks, hydra-copy-blocks, etc.).
     const handleMoveBlock = (e) => {
-      const { blockId, targetBlockId, insertAfter, targetParentId } = e.detail || {};
-      if (!blockId || !targetBlockId) return;
+      const { blockIds, targetBlockId, insertAfter, targetParentId } = e.detail || {};
+      if (!blockIds?.length || !targetBlockId) return;
       // Drop a synthetic MOVE_BLOCKS message in — the same handler in the
       // window 'message' listener does the path-map rebuild, allowed-types
       // check, and onChangeFormData call. Origin filter is bypassed by
       // dispatching directly through MessageEvent on window.
       window.dispatchEvent(
         new MessageEvent('message', {
-          data: { type: 'MOVE_BLOCKS', blockIds: [blockId], targetBlockId, insertAfter, targetParentId },
+          data: { type: 'MOVE_BLOCKS', blockIds, targetBlockId, insertAfter, targetParentId },
           origin: iframeOriginRef.current || (iframeSrc ? new URL(iframeSrc).origin : ''),
         }),
       );
@@ -3661,8 +3680,11 @@ const Iframe = (props) => {
           if (event.data.isMultipleSelection) {
             const blockUids = event.data.blockUids || [];
             log('BLOCK_SELECTED multi-select:', blockUids.length, 'blocks');
+            syncedMultiSelectedRef.current = JSON.stringify(blockUids);
             if (onSetMultiSelected) onSetMultiSelected(blockUids);
-            setBlockUI({
+            setBlockUI((prev) => ({
+              // Touch selection mode's checkbox positions outlive a selection change.
+              selectionModeRects: prev?.selectionModeRects,
               blockUid: blockUids[0],
               rect: event.data.rect,
               // Where a stand-in for this block sits (a tab's label on its trigger), so
@@ -3673,7 +3695,10 @@ const Iframe = (props) => {
               editableFields: {},
               multiSelectedUids: blockUids,
               multiSelectRects: event.data.rects || {},
-            });
+              // The chevrons move the group as one, as drag-and-drop does.
+              moveUpTarget: event.data.moveUpTarget || null,
+              moveDownTarget: event.data.moveDownTarget || null,
+            }));
             break;
           }
 
@@ -5819,8 +5844,9 @@ const Iframe = (props) => {
         </div>
       )}
 
-      {/* Multi-block selection outlines — individual outline per selected block */}
-      {blockUI?.multiSelectedUids?.length > 1 && referenceElement && (() => {
+      {/* Multi-block selection outlines — individual outline per selected block.
+          Not in touch selection mode, where the checkboxes show the selection. */}
+      {blockUI?.multiSelectedUids?.length > 1 && referenceElement && !selectionMode && (() => {
         const rects = blockUI.multiSelectRects || {};
         if (Object.keys(rects).length === 0) return null;
         const iframeRect = referenceElement.getBoundingClientRect();
