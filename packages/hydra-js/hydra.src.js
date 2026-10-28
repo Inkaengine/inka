@@ -2345,9 +2345,15 @@ export class Bridge {
     return null;
   }
 
-  /** A region accepts a group when it allows every block type in it (no list = any). */
+  /**
+   * Can the blocks of `types` land in a region whose accepted types are
+   * `allowed`? The same test a drop uses (conversionMap's acceptableAt):
+   * natively, or by converting to an allowed type — any option for one block,
+   * exactly one each for a group. The move then converts as a drop does.
+   */
   _regionAcceptsAll(allowed, types) {
-    return !allowed || types.every((type) => type && allowed.includes(type));
+    const isMulti = types.length > 1;
+    return types.every((type) => acceptableAt(type, allowed, isMulti, this.conversionMap));
   }
 
   /**

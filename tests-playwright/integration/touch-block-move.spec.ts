@@ -758,3 +758,55 @@ test.describe('touch-mode chevron moves a multi-selection as one group', () => {
       .toEqual(['block-2-uuid', 'block-3-uuid', 'block-1-uuid', 'block-4-hero']);
   });
 });
+
+/**
+ * A chevron step accepts the same regions a drop does: a region that takes a
+ * type the block CONVERTS to is a landing spot (docs/editor-guide/
+ * adding-and-moving-blocks.md: drop targets include "regions that don't
+ * accept the block directly but accept a type it can convert to"). Both ask
+ * conversionMap's acceptableAt, and the move converts through the same
+ * "Convert blocks?" confirm. Fixtures (dnd-convert-page, mock only):
+ * convSource converts to convTargetA; convBox (box-1) accepts only convTargetA.
+ */
+test.describe('touch-mode chevron moves into a region by conversion, as a drop does', () => {
+  test.beforeEach(({}, testInfo) => {
+    test.skip(testInfo.project.name !== 'admin-mock', 'mock-only synthetic conversion blocks');
+  });
+
+  test('▼ takes a block into the next container that accepts it only by converting', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/dnd-convert-page');
+    const iframe = helper.getIframe();
+    expect((await helper.getBlockOrder()).slice(0, 5))
+      .toEqual(['title-block', 'src-1', 'src-2', 'alien-1', 'box-1']);
+    await expect(iframe.locator('[data-block-uid="box-1"] [data-conv-type="convTargetA"]')).toHaveCount(2);
+
+    // Tap src-2 into block mode, as the other chevron tests do.
+    await iframe.locator('[data-block-uid="src-2"]').first().evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const x = r.x + r.width / 2;
+      const y = r.y + r.height / 2;
+      const t = new Touch({ identifier: 1, target: el, clientX: x, clientY: y });
+      el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
+      el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }));
+    });
+    await expect(iframe.locator('body')).toHaveAttribute('data-hydra-edit-mode', 'block', { timeout: 5000 });
+    const down = page.locator('.quanta-toolbar .chevron-down');
+
+    // ▼ past alien-1, a plain sibling.
+    await expect(down).toBeEnabled({ timeout: 5000 });
+    await down.click();
+    await expect.poll(async () => (await helper.getBlockOrder()).slice(0, 5), { timeout: 5000 })
+      .toEqual(['title-block', 'src-1', 'alien-1', 'src-2', 'box-1']);
+
+    // ▼ again: box-1 takes src-2 only as a convTargetA — into it, converted.
+    await expect(down).toBeEnabled({ timeout: 5000 });
+    await down.click();
+    await helper.confirmConvert();
+    await expect(iframe.locator('[data-block-uid="box-1"] [data-conv-type="convTargetA"]')).toHaveCount(3);
+    await expect(iframe.locator('[data-block-uid="box-1"] [data-block-uid="src-2"] [data-conv-type="convTargetA"]'))
+      .toHaveCount(1);
+  });
+});
