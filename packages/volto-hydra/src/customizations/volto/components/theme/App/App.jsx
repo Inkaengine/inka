@@ -1,16 +1,36 @@
 /**
  * App container.
  * @module components/theme/App/App
+ *
+ * HYDRA: forked for TWO things, both of which upstream has no hook for.
+ *
+ * 1. `<AdapterHost />` on every route. The frontend's adapter has to be mounted
+ *    even where there is no preview iframe — the contents view above all — or
+ *    those routes have no way to reach the CMS at all.
+ *
+ * 2. The route's initial data fetched CLIENT-side in a bridge session. Volto
+ *    loads content, breadcrumbs, navigation and the site on the server only,
+ *    and the client inherits them through the serialised store. A
+ *    bridge-backed admin has no server-side CMS to load them from: the adapter
+ *    lives in an iframe that does not exist until the browser renders one. So
+ *    `__SERVER__` becomes `loadsInThisEnvironment()` on the three the admin
+ *    needs, and `site` is asked for here because Volto's own asyncProps
+ *    extender for it is built for `loadOnServer` and never runs on the client.
+ *
+ * It does NOT fork to hide Volto's chrome. That is done in the Header,
+ * Breadcrumbs and Footer shadows, which render null, and in admin-chrome.css
+ * for the content area's padding — a shadow that renders nothing cannot drift.
  */
 
-import AdapterHost from '../../../../../bridge/AdapterHost';
-import { ensureSiteLoaded } from '../../../../../bridge/site';
 import React, { Component } from 'react';
 import jwtDecode from 'jwt-decode';
 import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 import { compose } from 'redux';
-import { asyncConnect, Helmet } from '@plone/volto/helpers';
+import AdapterHost from '../../../../../bridge/AdapterHost';
+import { ensureSiteLoaded } from '../../../../../bridge/site';
+import { asyncConnect } from '@plone/volto/helpers/AsyncConnect';
+import Helmet from '@plone/volto/helpers/Helmet/Helmet';
 import { Segment } from 'semantic-ui-react';
 import { renderRoutes } from 'react-router-config';
 import { Slide, ToastContainer, toast } from 'react-toastify';
@@ -25,34 +45,28 @@ import { injectIntl } from 'react-intl';
 
 import Error from '@plone/volto/error';
 
-import {
-  Breadcrumbs,
-  Footer,
-  Header,
-  Icon,
-  OutdatedBrowser,
-  AppExtras,
-  SkipLinks,
-} from '@plone/volto/components';
-import {
-  BodyClass,
-  getBaseUrl,
-  getView,
-  hasApiExpander,
-  isCmsUi,
-} from '@plone/volto/helpers';
-import {
-  getBreadcrumbs,
-  getContent,
-  getNavigation,
-  getTypes,
-  getWorkflow,
-} from '@plone/volto/actions';
+import Breadcrumbs from '@plone/volto/components/theme/Breadcrumbs/Breadcrumbs';
+import Footer from '@plone/volto/components/theme/Footer/Footer';
+import Header from '@plone/volto/components/theme/Header/Header';
+import Icon from '@plone/volto/components/theme/Icon/Icon';
+import OutdatedBrowser from '@plone/volto/components/theme/OutdatedBrowser/OutdatedBrowser';
+import AppExtras from '@plone/volto/components/theme/AppExtras/AppExtras';
+import SkipLinks from '@plone/volto/components/theme/SkipLinks/SkipLinks';
+import BodyClass from '@plone/volto/helpers/BodyClass/BodyClass';
+import { getBaseUrl, getView, isCmsUi } from '@plone/volto/helpers/Url/Url';
+import { hasApiExpander } from '@plone/volto/helpers/Utils/Utils';
+import { getBreadcrumbs } from '@plone/volto/actions/breadcrumbs/breadcrumbs';
+import { getContent } from '@plone/volto/actions/content/content';
+import { getNavigation } from '@plone/volto/actions/navigation/navigation';
+import { getTypes } from '@plone/volto/actions/types/types';
+import { getWorkflow } from '@plone/volto/actions/workflow/workflow';
 
 import clearSVG from '@plone/volto/icons/clear.svg';
 import MultilingualRedirector from '@plone/volto/components/theme/MultilingualRedirector/MultilingualRedirector';
 import WorkingCopyToastsFactory from '@plone/volto/components/manage/WorkingCopyToastsFactory/WorkingCopyToastsFactory';
 import LockingToastsFactory from '@plone/volto/components/manage/LockingToastsFactory/LockingToastsFactory';
+import RouteAnnouncer from '@plone/volto/components/theme/RouteAnnouncer/RouteAnnouncer';
+import SlotRenderer from '@plone/volto/components/theme/SlotRenderer/SlotRenderer';
 
 /**
  * @export
@@ -146,7 +160,7 @@ export class App extends Component {
         {this.props.content && this.props.content['@type'] && (
           <BodyClass
             className={`contenttype-${this.props.content['@type']
-              .replace(' ', '-')
+              .replaceAll(' ', '-')
               .toLowerCase()}`}
           />
         )}
@@ -157,15 +171,24 @@ export class App extends Component {
             [trim(join(split(this.props.pathname, '/'), ' section-'))]:
               this.props.pathname !== '/',
             siteroot: this.props.pathname === '/',
+            [`is-adding-contenttype-${decodeURIComponent(
+              this.props.location?.search?.startsWith('?type=')
+                ? this.props.location?.search?.replace('?type=', '')
+                : '',
+            )
+              .replaceAll(' ', '-')
+              .toLowerCase()}`]:
+              this.props.location?.search?.startsWith('?type='),
             'is-authenticated': !!this.props.token,
             'is-anonymous': !this.props.token,
             'cms-ui': isCmsUI,
             'public-ui': !isCmsUI,
           })}
         />
+        <SlotRenderer name="aboveApp" content={this.props.content} />
         <SkipLinks />
-        {/* <Header pathname={path} /> */}
-        {/* <Breadcrumbs pathname={path} /> */}
+        <Header pathname={path} />
+        <Breadcrumbs pathname={path} />
         <MultilingualRedirector
           pathname={this.props.pathname}
           contentLanguage={this.props.content?.language?.token}
@@ -173,13 +196,14 @@ export class App extends Component {
           <Segment
             basic
             className="content-area"
-            style={{ padding: '0' }}
             onClick={this.dispatchContentClick}
           >
             <main ref={this.mainRef}>
               <OutdatedBrowser />
               {this.props.connectionRefused ? (
-                <ConnectionRefusedView />
+                <ConnectionRefusedView
+                  staticContext={this.props.staticContext}
+                />
               ) : this.state.hasError ? (
                 <Error
                   message={this.state.error.message}
@@ -193,7 +217,8 @@ export class App extends Component {
             </main>
           </Segment>
         </MultilingualRedirector>
-        {/* <Footer /> */}
+        <RouteAnnouncer />
+        <Footer />
         <LockingToastsFactory
           content={this.props.content}
           user={this.props.userId}
@@ -239,7 +264,9 @@ export const fetchContent = async ({ store, location }) => {
 
   const visitor = ([id, data]) => {
     const blockType = data['@type'];
-    const { getAsyncData } = blocksConfig[blockType];
+    const block = blocksConfig[blockType];
+    if (!block) return;
+    const { getAsyncData } = block;
     if (getAsyncData) {
       const p = getAsyncData({
         store,
@@ -266,7 +293,6 @@ export const fetchContent = async ({ store, location }) => {
 
   return content;
 };
-
 
 /**
  * Where the route's initial data can actually be fetched.
