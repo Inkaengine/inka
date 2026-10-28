@@ -56,6 +56,20 @@ export function hostedServer({ adminUrl, publicUrl, secret, poolSize, pageIdleMs
 
   // Requests must name this server's host (DNS rebinding protection).
   const app = createMcpExpressApp({ allowedHosts: [base.hostname] });
+  // Each request, as it ends: method, path (never its query: codes travel
+  // there) and status; for a refused sign-in step, the OAuth error answered
+  // (an error code and description, nothing secret).
+  app.use((req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = (body) => {
+      if (res.statusCode >= 400 && ['/token', '/register', '/authorize'].includes(req.path)) {
+        console.log(`http: ${req.method} ${req.path} answered ${JSON.stringify({ error: body?.error, error_description: body?.error_description })}`);
+      }
+      return json(body);
+    };
+    res.on('finish', () => console.log(`http: ${req.method} ${req.path} ${res.statusCode}`));
+    next();
+  });
   app.use(mcpAuthRouter({
     provider,
     issuerUrl: base,

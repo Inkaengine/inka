@@ -132,6 +132,7 @@ describe('oauthProvider', () => {
       `client registered: "Some agent", returns to ["${CLIENT_CB}"]`,
       `sign-in started by "Some agent", to return to ${CLIENT_CB}`,
       `sign-in allowed for jane; sending the browser to ${CLIENT_CB}`,
+      'code exchanged by "Some agent" for jane\'s tokens',
     ]);
     expect(logged.join('\n')).not.toContain(tokens.access_token);
     expect(logged.join('\n')).not.toContain('code=');

@@ -122,23 +122,37 @@ export function oauthProvider({ box, adminUrl, callbackUrl, renew, log }) {
     },
 
     async exchangeAuthorizationCode(client, code, _verifier, redirectUri) {
-      const data = open('code', code, InvalidGrantError);
-      sameClient(data, client);
-      if (redirectUri && redirectUri !== data.redirect_uri) throw new InvalidGrantError('the redirect_uri differs from the one signed in with');
-      return tokensFor(client, data.plone);
+      try {
+        const data = open('code', code, InvalidGrantError);
+        sameClient(data, client);
+        if (redirectUri && redirectUri !== data.redirect_uri) throw new InvalidGrantError('the redirect_uri differs from the one signed in with');
+        const tokens = tokensFor(client, data.plone);
+        log(`code exchanged by "${client.client_name}" for ${subjectOf(data.plone)}'s tokens`);
+        return tokens;
+      } catch (error) {
+        log(`code exchange by "${client.client_name}" refused: ${error.message}`);
+        throw error;
+      }
     },
 
     async exchangeRefreshToken(client, refreshToken) {
-      const data = open('refresh', refreshToken, InvalidGrantError);
-      sameClient(data, client);
-      let renewed;
       try {
-        renewed = await renew(data.plone);
+        const data = open('refresh', refreshToken, InvalidGrantError);
+        sameClient(data, client);
+        let renewed;
+        try {
+          renewed = await renew(data.plone);
+        } catch (error) {
+          if (error instanceof SignedOut) throw new InvalidGrantError(`the site signed this out (${error.message}); sign in again`);
+          throw error;
+        }
+        const tokens = tokensFor(client, renewed);
+        log(`tokens refreshed by "${client.client_name}" for ${subjectOf(renewed)}`);
+        return tokens;
       } catch (error) {
-        if (error instanceof SignedOut) throw new InvalidGrantError(`the site signed this out (${error.message}); sign in again`);
+        log(`refresh by "${client.client_name}" refused: ${error.message}`);
         throw error;
       }
-      return tokensFor(client, renewed);
     },
 
     async verifyAccessToken(token) {
