@@ -19,6 +19,7 @@
  *   INKA_FRONTEND_URL    optional: the front end the editor uses
  */
 import { realpathSync } from 'node:fs';
+import { createServer as httpServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
@@ -134,7 +135,16 @@ async function main(env) {
     pageIdleMs: Number(required(env, 'INKA_MCP_PAGE_IDLE_SECONDS')) * 1000,
     frontendUrl: env.INKA_FRONTEND_URL,
   });
-  const listening = app.listen(Number(required(env, 'PORT')));
+  // Every request, before anything can refuse it (the SDK's Host check runs
+  // first in the app): method, path without its query, Host, user agent, and
+  // the status it got.
+  const listening = httpServer((req, res) => {
+    res.on('finish', () => {
+      const path = req.url.split('?')[0];
+      console.log(`req: ${req.method} ${path} host=${req.headers.host} ua="${req.headers['user-agent']}" -> ${res.statusCode}`);
+    });
+    app(req, res);
+  }).listen(Number(required(env, 'PORT')));
   const stop = () => listening.close(() => close().then(() => process.exit(0)));
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);
