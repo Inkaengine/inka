@@ -8,15 +8,20 @@
  * our `callback`, which sends the client a code; the client trades the code
  * (with its PKCE verifier) for an access token and a refresh token.
  *
- * Nothing is stored: client ids, the pending sign-in, codes and tokens are
- * all sealed (sealed.mjs), and the access and refresh tokens carry the Plone
- * token, unreadable to the client. An access token ends before the Plone
+ * Little is stored: client ids, the pending sign-in and the tokens are sealed
+ * (sealed.mjs), and the access and refresh tokens carry the Plone token,
+ * unreadable to the client. The one-time code is the exception: a short
+ * random id, held in memory for its minute and good once, because clients
+ * expect a code to be short (Claude took a ~1,400-character sealed one and
+ * never came back to exchange it). With several machines, a code must be
+ * exchanged on the one that issued it. An access token ends before the Plone
  * token in it does; a refresh renews the Plone token, and when Plone won't,
  * the client is told to sign in again.
  */
 import {
   InvalidGrantError, InvalidTokenError,
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { randomBytes } from 'node:crypto';
 import { Unsealable } from './sealed.mjs';
 import { SignedOut } from './signIn.mjs';
 import { expiresAt, subjectOf } from './tokenStore.mjs';
@@ -35,7 +40,22 @@ const PLONE_MARGIN_MS = 5 * 60 * 1000;
  * sign-in step, for following one through (client names and return addresses;
  * never a code or token).
  */
-export function oauthProvider({ box, adminUrl, callbackUrl, renew, log }) {
+export function oauthProvider({ box, adminUrl, callbackUrl, renew, log, now = Date.now }) {
+  /** One-time codes: short id -> { data, until }, good once (see above). */
+  const codes = new Map();
+  const issueCode = (data) => {
+    for (const [id, held] of codes) if (held.until <= now()) codes.delete(id);
+    const id = randomBytes(24).toString('base64url');
+    codes.set(id, { data, until: now() + CODE_MS });
+    return id;
+  };
+  const codeData = (id, { use }) => {
+    const held = codes.get(id);
+    if (!held) throw new InvalidGrantError('not a code from this server, or already used');
+    if (use) codes.delete(id);
+    if (held.until <= now()) throw new InvalidGrantError('the code has lapsed; sign in again');
+    return held.data;
+  };
   /** Open a sealed token, turning a bad one into the OAuth error `Error`. */
   const open = (kind, token, Error) => {
     try {
@@ -110,20 +130,20 @@ export function oauthProvider({ box, adminUrl, callbackUrl, renew, log }) {
       }
       if (!token) throw new InvalidGrantError('the connect page sent no token');
       subjectOf(token);
-      back.searchParams.set('code', box.seal('code', { ...pending, plone: token }, CODE_MS));
+      back.searchParams.set('code', issueCode({ ...pending, plone: token }));
       log(`sign-in allowed for ${subjectOf(token)}; sending the browser to ${back.origin}${back.pathname}`);
       return back.href;
     },
 
     async challengeForAuthorizationCode(client, code) {
-      const data = open('code', code, InvalidGrantError);
+      const data = codeData(code, { use: false });
       sameClient(data, client);
       return data.code_challenge;
     },
 
     async exchangeAuthorizationCode(client, code, _verifier, redirectUri) {
       try {
-        const data = open('code', code, InvalidGrantError);
+        const data = codeData(code, { use: true });
         sameClient(data, client);
         if (redirectUri && redirectUri !== data.redirect_uri) throw new InvalidGrantError('the redirect_uri differs from the one signed in with');
         const tokens = tokensFor(client, data.plone);
