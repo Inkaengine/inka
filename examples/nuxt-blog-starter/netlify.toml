@@ -34,11 +34,8 @@
 [build.processing.html]
   pretty_urls = false
 
-# SPA fallback for edit mode (client-side routing)
-[[redirects]]
-  from = "/edit/*"
-  to = "/edit/index.html"
-  status = 200
+# No rule for the canvas (/canvas/): it is hash-routed, so its one file serves
+# every page.
 
 [images]
   remote_images = ["https://api.inka.sh/.*"]

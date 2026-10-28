@@ -673,7 +673,12 @@ jobs:
           name: volto-build
           path: build/
       - name: Install and build Nuxt
-        run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
+        run: |
+          # The canvas first: building it empties .output, which build:test then
+          # fills and the specs are served from (nuxt-canvas-static.spec.ts).
+          cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile
+          NUXT_TEST_BACKEND=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} NUXT_ADMIN_URL=http://localhost:${{ env.HYDRA_VOLTO_SSR_PORT }} pnpm run canvas
+          pnpm run build:test
       - name: Start servers
         run: |
           # The servers outlive this step, but its stdout does not: in a container

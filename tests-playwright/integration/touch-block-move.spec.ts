@@ -681,3 +681,132 @@ test.describe('touch-mode block move via chevron', () => {
     }, { timeout: 5000 }).not.toBe('col-1');
   });
 });
+
+/**
+ * A multi-selection moves as ONE group under the chevrons, exactly as it does
+ * under drag-and-drop (docs/editor-guide/adding-and-moving-blocks.md, "Working
+ * with multiple blocks at once": drag and drop "works on the whole group").
+ * ▲ puts the group, in its order, before the block above its top-most member;
+ * ▼ after the block below its bottom-most. A gap in the selection closes, as
+ * it does when a group is dropped. On a phone the selection is made with a
+ * long press and the selection-mode checkboxes.
+ */
+test.describe('touch-mode chevron moves a multi-selection as one group', () => {
+  // Long-press a block into selection mode, then tick the others. (No tap
+  // first: the long press starts selection mode on its own, and a tap on the
+  // block the editor restored as selected would put it in text mode.)
+  const selectGroup = async (helper: AdminUIHelper, uids: string[]) => {
+    const page = helper.page;
+    await helper.longPressBlock(uids[0]);
+    await expect(
+      page.locator(`.volto-hydra-selection-checkbox[data-block-uid="${uids[0]}"]`),
+    ).toHaveAttribute('data-checked', 'true', { timeout: 5000 });
+    for (const uid of uids.slice(1)) {
+      const box = page.locator(`.volto-hydra-selection-checkbox[data-block-uid="${uid}"]`);
+      await box.click();
+      await expect(box).toHaveAttribute('data-checked', 'true', { timeout: 5000 });
+    }
+    await expect(page.locator('.multi-select-bar')).toContainText(`${uids.length} selected`, { timeout: 5000 });
+  };
+
+  const tapChevron = async (helper: AdminUIHelper, dir: 'up' | 'down') => {
+    const chev = helper.page.locator(`.quanta-toolbar .chevron-${dir}`);
+    await expect(chev, `chevron ${dir} is shown for the group`).toBeVisible({ timeout: 5000 });
+    await expect(chev, `chevron ${dir} is enabled for the group`).toBeEnabled();
+    await chev.click();
+  };
+
+  const topOfPage = async (helper: AdminUIHelper, n: number) =>
+    (await helper.getBlockOrder()).slice(0, n);
+
+  test('▼ moves two adjacent selected blocks together, below the next block', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    expect(await topOfPage(helper, 4)).toEqual(['block-1-uuid', 'block-2-uuid', 'block-3-uuid', 'block-4-hero']);
+
+    await selectGroup(helper, ['block-1-uuid', 'block-2-uuid']);
+    await tapChevron(helper, 'down');
+
+    await expect.poll(() => topOfPage(helper, 4), { timeout: 5000 })
+      .toEqual(['block-3-uuid', 'block-1-uuid', 'block-2-uuid', 'block-4-hero']);
+  });
+
+  test('▼ on a selection with a gap lands the group together after the block below it', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    expect(await topOfPage(helper, 5)).toEqual(['block-1-uuid', 'block-2-uuid', 'block-3-uuid', 'block-4-hero', 'block-5-linked-image']);
+
+    await selectGroup(helper, ['block-1-uuid', 'block-3-uuid']);
+    await tapChevron(helper, 'down');
+
+    await expect.poll(() => topOfPage(helper, 5), { timeout: 5000 })
+      .toEqual(['block-2-uuid', 'block-4-hero', 'block-1-uuid', 'block-3-uuid', 'block-5-linked-image']);
+  });
+
+  test('▲ moves two adjacent selected blocks together, above the block before them', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    expect(await topOfPage(helper, 4)).toEqual(['block-1-uuid', 'block-2-uuid', 'block-3-uuid', 'block-4-hero']);
+
+    await selectGroup(helper, ['block-2-uuid', 'block-3-uuid']);
+    await tapChevron(helper, 'up');
+
+    await expect.poll(() => topOfPage(helper, 4), { timeout: 5000 })
+      .toEqual(['block-2-uuid', 'block-3-uuid', 'block-1-uuid', 'block-4-hero']);
+  });
+});
+
+/**
+ * A chevron step accepts the same regions a drop does: a region that takes a
+ * type the block CONVERTS to is a landing spot (docs/editor-guide/
+ * adding-and-moving-blocks.md: drop targets include "regions that don't
+ * accept the block directly but accept a type it can convert to"). Both ask
+ * conversionMap's acceptableAt, and the move converts through the same
+ * "Convert blocks?" confirm. Fixtures (dnd-convert-page, mock only):
+ * convSource converts to convTargetA; convBox (box-1) accepts only convTargetA.
+ */
+test.describe('touch-mode chevron moves into a region by conversion, as a drop does', () => {
+  test.beforeEach(({}, testInfo) => {
+    test.skip(testInfo.project.name !== 'admin-mock', 'mock-only synthetic conversion blocks');
+  });
+
+  test('▼ takes a block into the next container that accepts it only by converting', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/dnd-convert-page');
+    const iframe = helper.getIframe();
+    expect((await helper.getBlockOrder()).slice(0, 5))
+      .toEqual(['title-block', 'src-1', 'src-2', 'alien-1', 'box-1']);
+    await expect(iframe.locator('[data-block-uid="box-1"] [data-conv-type="convTargetA"]')).toHaveCount(2);
+
+    // Tap src-2 into block mode, as the other chevron tests do.
+    await iframe.locator('[data-block-uid="src-2"]').first().evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const x = r.x + r.width / 2;
+      const y = r.y + r.height / 2;
+      const t = new Touch({ identifier: 1, target: el, clientX: x, clientY: y });
+      el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] }));
+      el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [t] }));
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }));
+    });
+    await expect(iframe.locator('body')).toHaveAttribute('data-hydra-edit-mode', 'block', { timeout: 5000 });
+    const down = page.locator('.quanta-toolbar .chevron-down');
+
+    // ▼ past alien-1, a plain sibling.
+    await expect(down).toBeEnabled({ timeout: 5000 });
+    await down.click();
+    await expect.poll(async () => (await helper.getBlockOrder()).slice(0, 5), { timeout: 5000 })
+      .toEqual(['title-block', 'src-1', 'alien-1', 'src-2', 'box-1']);
+
+    // ▼ again: box-1 takes src-2 only as a convTargetA — into it, converted.
+    await expect(down).toBeEnabled({ timeout: 5000 });
+    await down.click();
+    await helper.confirmConvert();
+    await expect(iframe.locator('[data-block-uid="box-1"] [data-conv-type="convTargetA"]')).toHaveCount(3);
+    await expect(iframe.locator('[data-block-uid="box-1"] [data-block-uid="src-2"] [data-conv-type="convTargetA"]'))
+      .toHaveCount(1);
+  });
+});

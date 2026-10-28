@@ -287,16 +287,14 @@ const SyncedSlateToolbar = ({
   // The move target is computed by hydra.js from RENDER geometry (reusing the
   // container edge-handle machinery) and delivered on BLOCK_SELECTED. The chevron
   // just dispatches it through the existing MOVE_BLOCKS → moveBlockBetweenContainers
-  // path; the admin no longer re-derives the tree from data order.
+  // path; the admin no longer re-derives the tree from data order. The target
+  // names the blocks too (target.blockIds): the selected block, or a
+  // multi-selection moved as one group, as drag-and-drop moves it.
   const moveSelectedBlock = (direction) => {
     const target =
       direction === 'up' ? blockUI?.moveUpTarget : blockUI?.moveDownTarget;
     if (!target) return;
-    document.dispatchEvent(
-      new CustomEvent('hydra-move-block', {
-        detail: { blockId: selectedBlock, ...target },
-      }),
-    );
+    document.dispatchEvent(new CustomEvent('hydra-move-block', { detail: target }));
   };
 
   // null target => no move that way => chevron disabled.
