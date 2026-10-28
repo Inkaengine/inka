@@ -2292,25 +2292,25 @@ export class Bridge {
    * Deepest render-order insertion target when a block ENTERS `containerUid`
    * from `enterEdge` ('top' → before the first child, 'bottom' → after the
    * last child). Follows the near-edge child chain down and returns the
-   * DEEPEST sub-container whose region accepts `type` (so a slate entering
-   * `columns` lands in the nearest column, not beside the columns). Returns
-   * null when no reachable level accepts `type` — the caller then swaps/skips
-   * past the container. Acceptance is the schema's region rule
-   * (allowedSiblingTypes); which child to follow is DOM order (render).
+   * DEEPEST sub-container whose region accepts every one of `types` (so a
+   * slate entering `columns` lands in the nearest column, not beside the
+   * columns). Returns null when no reachable level accepts them — the caller
+   * then swaps/skips past the container. Acceptance is the schema's region
+   * rule (allowedSiblingTypes); which child to follow is DOM order (render).
    */
-  _descendAbsorbTarget(containerUid, enterEdge, type) {
+  _descendAbsorbTarget(containerUid, enterEdge, types) {
     const children = this._getSiblingsByDomOrder(null, containerUid);
     if (children.length === 0) return null; // leaf / empty container: not enterable here
     const insertAfter = enterEdge === 'bottom';
     const nearChild = insertAfter ? children[children.length - 1] : children[0];
     // Deepest-acceptable wins: try to descend into the near child first.
     if (this._getSiblingsByDomOrder(null, nearChild).length > 0) {
-      const deeper = this._descendAbsorbTarget(nearChild, enterEdge, type);
+      const deeper = this._descendAbsorbTarget(nearChild, enterEdge, types);
       if (deeper) return deeper;
     }
-    // Accept at THIS level if the container's region allows `type`.
+    // Accept at THIS level if the container's region allows every type.
     const childAllowed = this.blockPathMap?.[children[0]]?.allowedSiblingTypes || null;
-    if (!childAllowed || (type && childAllowed.includes(type))) {
+    if (this._regionAcceptsAll(childAllowed, types)) {
       return { targetBlockId: nearChild, insertAfter, targetParentId: containerUid };
     }
     return null;
@@ -2319,13 +2319,12 @@ export class Bridge {
   /**
    * When a block is at its container's edge (no sibling in the move
    * direction), walk UP through ancestor containers until one whose region
-   * accepts `type` is found, and place the block as a sibling of the highest
-   * rejecting container in that region. e.g. a slate at the top of a column
-   * escapes col → columns (rejects slate) → page (accepts). Null when nothing
-   * up to the page accepts `type` (chevron stays disabled).
+   * accepts every one of `types` is found, and place the block as a sibling
+   * of the highest rejecting container in that region. e.g. a slate at the
+   * top of a column escapes col → columns (rejects slate) → page (accepts).
+   * Null when nothing up to the page accepts them (chevron stays disabled).
    */
-  _ascendExpelTarget(blockUid, down) {
-    const type = this.getBlockData(blockUid)?.['@type'];
+  _ascendExpelTarget(blockUid, down, types) {
     let container = this.blockPathMap?.[blockUid]?.parentId;
     while (container && container !== PAGE_BLOCK_UID) {
       const cInfo = this.blockPathMap[container];
@@ -2333,7 +2332,7 @@ export class Bridge {
       // Types allowed as siblings of `container` = the region the block would
       // land in if it escapes to this level.
       const regionAllowed = cInfo?.allowedSiblingTypes || null;
-      if (!regionAllowed || (type && regionAllowed.includes(type))) {
+      if (this._regionAcceptsAll(regionAllowed, types)) {
         return {
           targetBlockId: container,
           insertAfter: down,
@@ -2347,62 +2346,106 @@ export class Bridge {
   }
 
   /**
+   * Can the blocks of `types` land in a region whose accepted types are
+   * `allowed`? The same test a drop uses (conversionMap's acceptableAt):
+   * natively, or by converting to an allowed type — any option for one block,
+   * exactly one each for a group. The move then converts as a drop does.
+   */
+  _regionAcceptsAll(allowed, types) {
+    const isMulti = types.length > 1;
+    return types.every((type) => acceptableAt(type, allowed, isMulti, this.conversionMap));
+  }
+
+  /**
    * Chevron (mobile up/down) move target. ONE rule for every case, computed
    * from render order (_getSiblingsByDomOrder) + the schema's region
    * acceptance, routed through the MOVE_BLOCKS → moveBlockBetweenContainers
-   * container API. Moving `blockUid` one visual step in `direction`
-   * ('up'|'down'):
-   *   - neighbour in that direction is a container that accepts us at some
-   *     reachable level → ABSORB into it (deepest near-edge position);
-   *   - neighbour is a plain sibling (or a container that rejects us at every
-   *     level) → SWAP past it within this region;
+   * container API. Moves `blockUids` — one block, or a multi-selection as ONE
+   * group, as drag-and-drop moves it — one visual step in `direction`
+   * ('up'|'down'). The step is taken from the group's edge in that direction
+   * (its top-most block going up, its bottom-most going down):
+   *   - neighbour in that direction is a container that accepts the group at
+   *     some reachable level → ABSORB into it (deepest near-edge position);
+   *   - neighbour is a plain sibling (or a container that rejects the group at
+   *     every level) → SWAP past it within this region;
    *   - no neighbour (at the container edge) → EXPEL to the nearest ancestor
-   *     region that accepts us.
-   * Returns { targetBlockId, insertAfter, targetParentId } or null (disabled).
+   *     region that accepts the group.
+   * The group lands together in render order, so a gap in the selection
+   * closes, as it does when a group is dropped. Locked blocks stay put.
+   * Returns { blockIds, targetBlockId, insertAfter, targetParentId } or null
+   * (disabled).
    */
-  _computeChevronMove(blockUid, direction) {
-    if (!blockUid || blockUid === PAGE_BLOCK_UID) return null;
-    const info = this.blockPathMap?.[blockUid];
-    if (!info) return null;
-    if (this._filterMutableBlockUids([blockUid], 'move').length === 0) return null;
-
-    const parentId = info.parentId;
+  _computeChevronMove(blockUids, direction) {
+    const group = this._filterMutableBlockUids(
+      blockUids.filter((uid) => uid !== PAGE_BLOCK_UID && this.blockPathMap?.[uid]),
+      'move',
+    );
+    if (group.length === 0) return null;
+    const ordered = this._inDocumentOrder(group);
     const down = direction === 'down';
-    const type = this.getBlockData(blockUid)?.['@type'];
+    const edgeUid = down ? ordered[ordered.length - 1] : ordered[0];
+    const info = this.blockPathMap[edgeUid];
+    const parentId = info.parentId;
+    const types = ordered.map((uid) => this.getBlockData(uid)?.['@type']);
 
-    // Render-order siblings sharing this block's region.
+    // Render-order siblings sharing the edge block's region.
     const siblings = this._getSiblingsByDomOrder(null, parentId).filter(
       (id) => this.blockPathMap?.[id]?.region === info.region,
     );
-    const idx = siblings.indexOf(blockUid);
+    const idx = siblings.indexOf(edgeUid);
     if (idx < 0) return null;
     const neighborId = siblings[down ? idx + 1 : idx - 1];
+    const move = (target) => (target ? { blockIds: ordered, ...target } : null);
 
     if (neighborId) {
-      // ABSORB into the neighbour if it's a container that accepts us at some
-      // reachable level; otherwise SWAP past it within this region.
+      // ABSORB into the neighbour if it's a container that accepts the group
+      // at some reachable level; otherwise SWAP past it within this region.
       const neighborIsContainer =
         this._getSiblingsByDomOrder(null, neighborId).length > 0;
       if (neighborIsContainer) {
         const target = this._descendAbsorbTarget(
           neighborId,
           down ? 'top' : 'bottom',
-          type,
+          types,
         );
-        if (target) return target;
+        if (target) return move(target);
       }
-      return {
+      return move({
         targetBlockId: neighborId,
         insertAfter: down,
         targetParentId: parentId === PAGE_BLOCK_UID ? null : parentId,
-      };
+      });
     }
 
-    // At the container edge → EXPEL to the nearest ancestor region that accepts us.
+    // At the container edge → EXPEL to the nearest ancestor region that accepts the group.
     if (parentId && parentId !== PAGE_BLOCK_UID) {
-      return this._ascendExpelTarget(blockUid, down);
+      return move(this._ascendExpelTarget(edgeUid, down, types));
     }
     return null;
+  }
+
+  /** `uids` sorted by where their blocks render (document order). */
+  _inDocumentOrder(uids) {
+    return [...uids].sort((a, b) => {
+      const elA = this.queryBlockElement(a);
+      const elB = this.queryBlockElement(b);
+      if (!elA || !elB) return 0;
+      return elA.compareDocumentPosition(elB) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
+  }
+
+  /**
+   * The blocks a move gesture moves: the multi-selection when there is one,
+   * else the selected block, minus blocks locked in place. Drag-and-drop and
+   * the chevrons both move exactly this list, so a group moves as one either
+   * way (docs/editor-guide/adding-and-moving-blocks.md, "Working with
+   * multiple blocks at once").
+   */
+  _movableBlockUids() {
+    const uids = this.multiSelectedBlockUids.length > 0
+      ? this.multiSelectedBlockUids
+      : [this.selectedBlockUid];
+    return this._filterMutableBlockUids(uids, 'move');
   }
 
   /**
@@ -4152,8 +4195,13 @@ export class Bridge {
       // (reusing _computeEdgePlan) rather than by a data-order walk in the admin.
       // The admin uses them for the chevrons' enabled state and, on press,
       // dispatches the target straight through the existing MOVE_BLOCKS path.
-      moveUpTarget: blockUid && blockUid !== PAGE_BLOCK_UID ? this._computeChevronMove(blockUid, 'up') : null,
-      moveDownTarget: blockUid && blockUid !== PAGE_BLOCK_UID ? this._computeChevronMove(blockUid, 'down') : null,
+      // A multi-selection gets the group's targets, as drag-and-drop moves it.
+      moveUpTarget: blockUid && blockUid !== PAGE_BLOCK_UID
+        ? this._computeChevronMove(options.isMultipleSelection ? options.blockUids : [blockUid], 'up')
+        : null,
+      moveDownTarget: blockUid && blockUid !== PAGE_BLOCK_UID
+        ? this._computeChevronMove(options.isMultipleSelection ? options.blockUids : [blockUid], 'down')
+        : null,
       isMultiElement: blockUid && blockUid !== PAGE_BLOCK_UID ? this.getAllBlockElements(blockUid).length > 1 : false,
     };
 
@@ -5092,6 +5140,15 @@ export class Bridge {
           // Admin (sidebar Ctrl+Click) asked us to enter selection mode.
           // Enter without toggling any block — admin already set multiSelected.
           this._enterSelectionModeActivateOnly();
+        } else if (event.data.type === 'SELECT_BLOCKS') {
+          // The admin's multi-selection — e.g. blocks ticked in touch
+          // selection mode, which only the admin sees. Mirror it so a move
+          // (drag-and-drop or chevrons) takes the same blocks the admin's
+          // Delete/Copy/Cut do, and report it back with its move targets.
+          const uids = (event.data.uids || []).filter((uid) => this.blockPathMap?.[uid]);
+          log('Received SELECT_BLOCKS:', uids);
+          this.multiSelectedBlockUids = uids;
+          if (uids.length > 0) this._sendMultiBlockSelected();
         } else if (event.data.type === 'EXIT_SELECTION_MODE') {
           log('Received EXIT_SELECTION_MODE');
           this._selectionModeBlockUids = null;
@@ -10980,13 +11037,9 @@ export class Bridge {
       // Set flag to suppress scrollHandler during drag
       this._isDragging = true;
 
-      // Get all elements for dragged blocks — supports multi-selection.
-      // Drop locked blocks from the dragged set: they can't be moved.
-      // For single-block drag: if the sole block is locked, abort.
-      const rawDraggedUids = this.multiSelectedBlockUids.length > 0
-        ? [...this.multiSelectedBlockUids]
-        : [this.selectedBlockUid];
-      const draggedUids = this._filterMutableBlockUids(rawDraggedUids, 'move');
+      // The dragged blocks: the multi-selection or the selected block, minus
+      // locked ones. If none can move, abort.
+      const draggedUids = this._movableBlockUids();
       if (draggedUids.length === 0) {
         this._isDragging = false;
         return;
