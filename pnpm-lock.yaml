@@ -398,7 +398,7 @@ importers:
         specifier: 'catalog:'
         version: 3.2.6(vitest@3.2.6)
       browserslist:
-        specifier: ^4.28.2
+        specifier: ^4.28.7
         version: 4.29.5
       jest-axe:
         specifier: ^8.0.0
@@ -706,9 +706,6 @@ importers:
       jwt-decode:
         specifier: 2.2.0
         version: 2.2.0
-      linkify-it:
-        specifier: 3.0.2
-        version: 3.0.2
       locale:
         specifier: 0.1.0
         version: 0.1.0
@@ -796,9 +793,6 @@ importers:
       react-intl-redux:
         specifier: 2.3.0
         version: 2.3.0(@babel/runtime@7.28.4)(prop-types@15.7.2)(react-intl@3.12.1(@types/react@18.3.30)(react@18.2.0))(react-redux@8.1.2(@types/react-dom@18.3.7(@types/react@18.3.30))(@types/react@18.3.30)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(redux@4.2.1))(react@18.2.0)
-      react-medium-image-zoom:
-        specifier: 3.0.15
-        version: 3.0.15(prop-types@15.7.2)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       react-popper:
         specifier: ^2.3.0
         version: 2.3.0(@popperjs/core@2.11.8)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
@@ -1194,7 +1188,7 @@ importers:
         specifier: 0.0.2
         version: 0.0.2
       svgo:
-        specifier: ^3.0.0
+        specifier: ^3.3.5
         version: 3.3.5
       svgo-loader:
         specifier: 3.0.3
@@ -1389,6 +1383,9 @@ importers:
       terminate:
         specifier: ^2.1.2
         version: 2.8.0
+      terser:
+        specifier: 5.46.0
+        version: 5.46.0
       terser-webpack-plugin:
         specifier: 5.4.0
         version: 5.4.0(esbuild@0.25.12)(webpack@5.105.4(esbuild@0.25.12))
@@ -1437,7 +1434,7 @@ importers:
         version: 26.6.2
       react-dev-utils:
         specifier: ^12.0.1
-        version: 12.0.1(eslint@8.57.1)(typescript@5.9.3)(webpack@5.90.1)
+        version: 12.0.1(eslint@8.57.1)(typescript@5.9.3)(webpack@5.105.4)
       react-error-overlay:
         specifier: ^6.0.7
         version: 6.0.9
@@ -1453,12 +1450,13 @@ importers:
       strip-ansi:
         specifier: ^6.0.0
         version: 6.0.1
-      webpack:
-        specifier: ~5
-        version: 5.90.1
       webpack-dev-server:
         specifier: 'catalog:'
-        version: 5.2.4(tslib@2.8.1)(webpack@5.90.1)
+        version: 5.2.4(tslib@2.8.1)(webpack@5.105.4)
+    devDependencies:
+      webpack:
+        specifier: 'catalog:'
+        version: 5.105.4
 
   core/packages/volto-slate:
     dependencies:
@@ -10458,9 +10456,6 @@ packages:
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
-  linkify-it@3.0.2:
-    resolution: {integrity: sha512-gDBO4aHNZS6coiZCKVhSNh43F9ioIL4JwRjLZPkoLIY4yZFwg264Y5lu2x6rb1Js42Gh6Yqm2f6L2AJcnkzinQ==}
-
   listr2@9.0.5:
     resolution: {integrity: sha512-ME4Fb83LgEgwNw96RKNvKV4VTLuXfoKudAmm2lP8Kk87KaMK0/Xrx/aAkMWmT8mDb+3MlFDspfbCs7adjRxA2g==}
     engines: {node: '>=20.0.0'}
@@ -12529,13 +12524,6 @@ packages:
   react-lifecycles-compat@3.0.4:
     resolution: {integrity: sha512-fBASbA6LnOU9dOU2eW7aQ8xmYBSXUIWr+UmF9b1efZBazGNO+rcXT/icdKnYm2pTwcRylVUYwW7H1PHfLekVzA==}
 
-  react-medium-image-zoom@3.0.15:
-    resolution: {integrity: sha512-OJc6XXmSFr0ApniFdCL1TliP6BG9eQabkcahWA9CbHha3y2IJXo1aAsQs7Irc2Wcek/N9QCeAY4wTitoMg5iLg==}
-    peerDependencies:
-      prop-types: ^15.5.8
-      react: 18.2.0
-      react-dom: 18.2.0
-
   react-moment-proptypes@1.8.1:
     resolution: {integrity: sha512-Er940DxWoObfIqPrZNfwXKugjxMIuk1LAuEzn23gytzV6hKS/sw108wibi9QubfMN4h+nrlje8eUCSbQRJo2fQ==}
     peerDependencies:
@@ -14337,9 +14325,6 @@ packages:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
     hasBin: true
-
-  uc.micro@1.0.6:
-    resolution: {integrity: sha512-8Y75pvTYkLJW2hWQHXxoqRgV7qb9B+9vFEtidML+7koHUFapnVJAZ6cKs+Qjz5Aw3aZWHMC6u0wJE3At+nSGwA==}
 
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
@@ -24437,7 +24422,7 @@ snapshots:
     optionalDependencies:
       eslint: 8.57.1
 
-  fork-ts-checker-webpack-plugin@6.5.3(eslint@8.57.1)(typescript@5.9.3)(webpack@5.90.1):
+  fork-ts-checker-webpack-plugin@6.5.3(eslint@8.57.1)(typescript@5.9.3)(webpack@5.105.4):
     dependencies:
       '@babel/code-frame': 7.29.0
       '@types/json-schema': 7.0.15
@@ -24453,7 +24438,7 @@ snapshots:
       semver: 7.7.4
       tapable: 1.1.3
       typescript: 5.9.3
-      webpack: 5.90.1
+      webpack: 5.105.4
     optionalDependencies:
       eslint: 8.57.1
 
@@ -25890,7 +25875,7 @@ snapshots:
       jest-environment-jsdom: 26.6.2
       jest-environment-node: 26.6.2
       jest-get-type: 26.3.0
-      jest-jasmine2: 26.6.3
+      jest-jasmine2: 26.6.3(ts-node@10.9.2(@types/node@22.19.3)(typescript@5.9.3))
       jest-regex-util: 26.0.0
       jest-resolve: 26.6.2
       jest-util: 26.6.2
@@ -26057,7 +26042,7 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
-  jest-jasmine2@26.6.3:
+  jest-jasmine2@26.6.3(ts-node@10.9.2(@types/node@22.19.3)(typescript@5.9.3)):
     dependencies:
       '@babel/traverse': 7.29.7
       '@jest/environment': 26.6.2
@@ -26078,7 +26063,11 @@ snapshots:
       pretty-format: 26.6.2
       throat: 5.0.0
     transitivePeerDependencies:
+      - bufferutil
+      - canvas
       - supports-color
+      - ts-node
+      - utf-8-validate
 
   jest-leak-detector@26.6.2:
     dependencies:
@@ -26903,10 +26892,6 @@ snapshots:
   lilconfig@3.1.3: {}
 
   lines-and-columns@1.2.4: {}
-
-  linkify-it@3.0.2:
-    dependencies:
-      uc.micro: 1.0.6
 
   listr2@9.0.5:
     dependencies:
@@ -29411,7 +29396,7 @@ snapshots:
       - supports-color
       - vue-template-compiler
 
-  react-dev-utils@12.0.1(eslint@8.57.1)(typescript@5.9.3)(webpack@5.90.1):
+  react-dev-utils@12.0.1(eslint@8.57.1)(typescript@5.9.3)(webpack@5.105.4):
     dependencies:
       '@babel/code-frame': 7.29.0
       address: 1.1.2
@@ -29422,7 +29407,7 @@ snapshots:
       escape-string-regexp: 4.0.0
       filesize: 8.0.7
       find-up: 5.0.0
-      fork-ts-checker-webpack-plugin: 6.5.3(eslint@8.57.1)(typescript@5.9.3)(webpack@5.90.1)
+      fork-ts-checker-webpack-plugin: 6.5.3(eslint@8.57.1)(typescript@5.9.3)(webpack@5.105.4)
       global-modules: 2.0.0
       globby: 11.1.0
       gzip-size: 6.0.0
@@ -29437,7 +29422,7 @@ snapshots:
       shell-quote: 1.8.4
       strip-ansi: 6.0.1
       text-table: 0.2.0
-      webpack: 5.90.1
+      webpack: 5.105.4
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
@@ -29541,12 +29526,6 @@ snapshots:
   react-is@18.3.1: {}
 
   react-lifecycles-compat@3.0.4: {}
-
-  react-medium-image-zoom@3.0.15(prop-types@15.7.2)(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
-    dependencies:
-      prop-types: 15.7.2
-      react: 18.2.0
-      react-dom: 18.2.0(react@18.2.0)
 
   react-moment-proptypes@1.8.1(moment@2.29.4):
     dependencies:
@@ -31488,6 +31467,14 @@ snapshots:
     optionalDependencies:
       esbuild: 0.25.12
 
+  terser-webpack-plugin@5.4.0(webpack@5.105.4):
+    dependencies:
+      '@jridgewell/trace-mapping': 0.3.31
+      jest-worker: 27.5.1
+      schema-utils: 4.3.3
+      terser: 5.44.1
+      webpack: 5.105.4
+
   terser-webpack-plugin@5.4.0(webpack@5.90.1):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
@@ -31854,8 +31841,6 @@ snapshots:
   typescript@5.6.1-rc: {}
 
   typescript@5.9.3: {}
-
-  uc.micro@1.0.6: {}
 
   ufo@1.6.4: {}
 
@@ -32609,7 +32594,7 @@ snapshots:
     transitivePeerDependencies:
       - tslib
 
-  webpack-dev-middleware@7.4.5(tslib@2.8.1)(webpack@5.90.1):
+  webpack-dev-middleware@7.4.5(tslib@2.8.1)(webpack@5.105.4):
     dependencies:
       colorette: 2.0.20
       memfs: 4.57.3(tslib@2.8.1)
@@ -32618,7 +32603,7 @@ snapshots:
       range-parser: 1.2.1
       schema-utils: 4.3.3
     optionalDependencies:
-      webpack: 5.90.1
+      webpack: 5.105.4
     transitivePeerDependencies:
       - tslib
 
@@ -32738,7 +32723,7 @@ snapshots:
       - tslib
       - utf-8-validate
 
-  webpack-dev-server@5.2.4(tslib@2.8.1)(webpack@5.90.1):
+  webpack-dev-server@5.2.4(tslib@2.8.1)(webpack@5.105.4):
     dependencies:
       '@types/bonjour': 3.5.13
       '@types/connect-history-api-fallback': 1.5.4
@@ -32766,10 +32751,10 @@ snapshots:
       serve-index: 1.9.1
       sockjs: 0.3.24
       spdy: 4.0.2
-      webpack-dev-middleware: 7.4.5(tslib@2.8.1)(webpack@5.90.1)
+      webpack-dev-middleware: 7.4.5(tslib@2.8.1)(webpack@5.105.4)
       ws: 8.19.0
     optionalDependencies:
-      webpack: 5.90.1
+      webpack: 5.105.4
     transitivePeerDependencies:
       - bufferutil
       - debug
@@ -32810,6 +32795,38 @@ snapshots:
   webpack-sources@3.5.0: {}
 
   webpack-virtual-modules@0.6.2: {}
+
+  webpack@5.105.4:
+    dependencies:
+      '@types/eslint-scope': 3.7.7
+      '@types/estree': 1.0.8
+      '@types/json-schema': 7.0.15
+      '@webassemblyjs/ast': 1.14.1
+      '@webassemblyjs/wasm-edit': 1.14.1
+      '@webassemblyjs/wasm-parser': 1.14.1
+      acorn: 8.16.0
+      acorn-import-phases: 1.0.4(acorn@8.16.0)
+      browserslist: 4.29.5
+      chrome-trace-event: 1.0.4
+      enhanced-resolve: 5.22.1
+      es-module-lexer: 2.1.0
+      eslint-scope: 5.1.1
+      events: 3.3.0
+      glob-to-regexp: 0.4.1
+      graceful-fs: 4.2.11
+      json-parse-even-better-errors: 2.3.1
+      loader-runner: 4.3.1
+      mime-types: 2.1.35
+      neo-async: 2.6.2
+      schema-utils: 4.3.3
+      tapable: 2.3.3
+      terser-webpack-plugin: 5.4.0(webpack@5.105.4)
+      watchpack: 2.5.1
+      webpack-sources: 3.5.0
+    transitivePeerDependencies:
+      - '@swc/core'
+      - esbuild
+      - uglify-js
 
   webpack@5.105.4(esbuild@0.25.12):
     dependencies:
