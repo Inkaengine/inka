@@ -49,6 +49,13 @@ export default function devProxyMiddleware() {
     onProxyReq: (proxyReq, req, res) => {
       //Fixes https://github.com/plone/volto/issues/6283
       proxyReq.setHeader('Host', new URL(config.settings.apiPath).host);
+      // Ask the API only for encodings responseInterceptor can decompress.
+      // It drops content-encoding from every response it passes on, decoded
+      // or not, so a browser's `zstd` reached the API (or the CDN or edge in
+      // front of it), its zstd body went out labelled as plain JSON, and the
+      // host's edge compressed it again: a browser undid one layer and got
+      // zstd where it expected JSON.
+      proxyReq.setHeader('Accept-Encoding', 'gzip, deflate, br');
       // Fixes https://github.com/chimurai/http-proxy-middleware/issues/320
       if (!req.body || !Object.keys(req.body).length) {
         return;
