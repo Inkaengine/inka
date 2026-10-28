@@ -333,6 +333,32 @@ describe('navigation is the tree; a menu is a located view', () => {
     expect(query).not.toContain('location');
   });
 
+  it('names an unregistered location rather than blaming the plugin', async () => {
+    // MenuLocationEnum holds the locations the THEME registers, so a location
+    // nobody registered cannot even be named in the query: WPGraphQL rejects
+    // the enum value. Captured against Playground, where only `primary` is
+    // registered. Reporting this as "WPGraphQL is not installed" would send a
+    // reader to a plugin that is working perfectly.
+    const reader = createPublicReader({
+      cmsBaseUrl: 'http://wp.example',
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () =>
+          JSON.stringify({
+            errors: [
+              { message: 'Value "FOOTER" does not exist in "MenuLocationEnum" enum.' },
+            ],
+          }),
+      }),
+    });
+
+    await expect(reader.menu({ location: 'footer' })).rejects.toThrow(
+      /no theme location 'footer'/,
+    );
+  });
+
   it('says WPGraphQL is missing rather than guessing', async () => {
     // WordPress serves its ordinary HTML for a query string it does not know,
     // so the request succeeds and only the parse gives it away.

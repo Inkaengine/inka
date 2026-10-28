@@ -139,6 +139,23 @@ export function createPublicReader({ cmsBaseUrl, fetch: fetchImpl = globalThis.f
       );
     }
     if (body.errors) {
+      const said = body.errors
+        .map((e) => e?.message)
+        .filter(Boolean)
+        .join('; ');
+      // An unregistered LOCATION is a different fault from a missing plugin,
+      // and WPGraphQL reports it as an unknown enum value: MenuLocationEnum
+      // holds the locations the THEME registers, so one nobody registered is
+      // not a value the query can even name. Said plainly, because "WPGraphQL
+      // is not installed" sends the reader somewhere there is nothing wrong.
+      if (/MenuLocationEnum/.test(said)) {
+        throw new Error(
+          `wordpress: no theme location '${location}' — WordPress knows only ` +
+            `the locations a theme registers, and a menu is published by ` +
+            `being assigned to one of them. Register it (register_nav_menus) ` +
+            `or name a location this theme has. WPGraphQL said: ${said}`,
+        );
+      }
       throw new Error(
         `wordpress: the public menu query failed, which usually means ` +
           `WPGraphQL is not installed: ${JSON.stringify(body.errors)}`,
