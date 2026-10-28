@@ -323,6 +323,13 @@ let tokenCounter = 0;
  * moved the same page then interfered with each other, passing or failing on
  * where the second boundary happened to fall.
  */
+/** The user a token (a JWT) is for: its `sub`, or null if it is not a JWT. */
+function tokenSubject(token) {
+  const payload = token.split('.')[1];
+  if (!payload) return null;
+  return JSON.parse(Buffer.from(payload, 'base64url').toString()).sub ?? null;
+}
+
 function generateAuthToken(username = 'admin') {
   const header = Buffer.from(JSON.stringify({"alg":"HS256","typ":"JWT"})).toString('base64').replace(/=/g, '');
   tokenCounter += 1;
@@ -2874,17 +2881,22 @@ app.post('/@login-renew', (req, res) => {
     console.log('Token renewal requested');
   }
 
-  // Fresh token, same session. See migrateSession.
+  // A fresh token for the user the old one is for, in the same session (see
+  // migrateSession), as Plone renews it; without one, Plone refuses.
   const previous = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  const renewed = generateAuthToken('admin');
+  const user = previous ? tokenSubject(previous) : null;
+  if (!user) {
+    return res.status(401).json({ error: { type: 'Unauthorized', message: 'No valid token to renew.' } });
+  }
+  const renewed = generateAuthToken(user);
   migrateSession(previous, renewed);
   res.json({
     token: renewed,
     user: {
-      '@id': `${API_ORIGIN}/@users/admin`,
-      id: 'admin',
-      fullname: 'Admin User',
-      email: 'admin@example.com',
+      '@id': `${API_ORIGIN}/@users/${user}`,
+      id: user,
+      fullname: user === 'admin' ? 'Admin User' : user,
+      email: `${user}@example.com`,
       roles: ['Manager', 'Authenticated'],
     },
   });
