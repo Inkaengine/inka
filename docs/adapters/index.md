@@ -1,5 +1,5 @@
 ---
-'@type': Document
+"@type": Document
 UID: docs-adapters-000000000000001
 allow_discussion: false
 contributors: []
@@ -12,12 +12,12 @@ effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
 is_folderish: true
-language: '##DEFAULT##'
+language: "##DEFAULT##"
 layout: document_view
 preview_caption: null
 preview_image: null
 review_state: published
-rights: ''
+rights: ""
 subjects:
   - adapters
   - frontend
@@ -28,7 +28,7 @@ blocks-matched: |
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />
+      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
@@ -65,54 +65,27 @@ Adapters ship for Plone, WordPress and Drupal. The admin is byte-identical acros
 
 ## What an adapter is for
 
-An adapter serves **editing**. It is not a CMS proxy, and it is not a layer every
-request goes through.
+An adapter serves **editing**. It is not a CMS proxy, and it is not a layer every request goes through.
 
-Its job is to tell the admin what this CMS can do and to carry out the editor's
-changes: what content types exist and what fields they have, what a listing can
-be queried on and ordered by, what a column holds, what a picked image or link
-should leave behind in a block. The admin is generic and is not customised per
-CMS, so everything it offers an editor comes from the adapter's answers. Where
-the admin guessed instead, it guessed in Plone's vocabulary and was wrong
-everywhere else.
+Its job is to tell the admin what this CMS can do and to carry out the editor's changes: what content types exist and what fields they have, what a listing can be queried on and ordered by, what a column holds, what a picked image or link should leave behind in a block. The admin is generic and is not customised per CMS, so everything it offers an editor comes from the adapter's answers. Where the admin guessed instead, it guessed in Plone's vocabulary and was wrong everywhere else.
 
 Two things follow, and they are easy to get the wrong way round.
 
-**A visitor's page does not go through the adapter.** The public site reads the
-CMS directly, the way any headless frontend does — Plone has never needed a
-bridge to serve a page, and neither does anything else. There is no adapter
-mounted in view mode at all: the editing bridge is in the editor's build, and a
-visitor's bundle has none of it. A frontend reading a CMS as a visitor uses that
-CMS's own public read, which is a separate, smaller thing (`publicRead`).
+**A visitor's page does not go through the adapter.** The public site reads the CMS directly, the way any headless frontend does — Plone has never needed a bridge to serve a page, and neither does anything else. There is no adapter mounted in view mode at all: the editing bridge is in the editor's build, and a visitor's bundle has none of it. A frontend reading a CMS as a visitor uses that CMS's own public read, which is a separate, smaller thing (`publicRead`).
 
-**The adapter is not a translation layer.** It does not restate one CMS in
-another's terms. It answers in its own: WordPress says `parent` where Plone says
-`path`, and a listing block stores whichever name its adapter advertised. Each
-CMS then builds its own query from what it stored. The adapters that once
-carried tables mapping Plone's index names onto their own fields were papering
-over the admin's guessing, and those tables are gone.
+**The adapter is not a translation layer.** It does not restate one CMS in another's terms. It answers in its own: WordPress says `parent` where Plone says `path`, and a listing block stores whichever name its adapter advertised. Each CMS then builds its own query from what it stored. The adapters that once carried tables mapping Plone's index names onto their own fields were papering over the admin's guessing, and those tables are gone.
 
 <block type="callout" variation="note">
 
-The frontend and its adapter are built and deployed together, so the frontend
-may rely on what its adapter stores. That is why a picker's result matters: what
-the adapter hands back when an editor chooses an image or a link is what ends up
-in the block, and what the public site later renders from.
+The frontend and its adapter are built and deployed together, so the frontend may rely on what its adapter stores. That is why a picker's result matters: what the adapter hands back when an editor chooses an image or a link is what ends up in the block, and what the public site later renders from.
 
 </block>
 
 ## What a picker leaves behind
 
-When an editor picks an image or a link, what the adapter hands back is what
-ends up in the block — and what the public site renders from later. The admin
-stores it and round-trips it; it does not interpret it.
+When an editor picks an image or a link, what the adapter hands back is what ends up in the block — and what the public site renders from later. The admin stores it and round-trips it; it does not interpret it.
 
-So this is **your CMS's own metadata, in your CMS's own terms**, the same way
-index names are. There is no shape to convert to. Volto's image widget wants
-one thing, an `@id` to identify what was picked, and the only other handling
-anywhere in the admin is resolving a RELATIVE url against the content — which
-Plone needs, because Plone's scales are relative. An absolute url passes
-through untouched.
+So this is **your CMS's own metadata, in your CMS's own terms**, the same way index names are. There is no shape to convert to. Volto's image widget wants one thing, an `@id` to identify what was picked, and the only other handling anywhere in the admin is resolving a RELATIVE url against the content — which Plone needs, because Plone's scales are relative. An absolute url passes through untouched.
 
 ### Js
 
@@ -133,20 +106,11 @@ return {
 };
 ```
 
-Your frontend reads that, because it ships with the adapter. A frontend written
-for Plone reads Plone's `download` (relative, joined to the content path); one
-serving WordPress reads `source_url` (absolute, used as it stands). The same
-file can read both — what it must not do is assume one CMS's convention and
-apply it to another's data.
+Your frontend reads that, because it ships with the adapter. A frontend written for Plone reads Plone's `download` (relative, joined to the content path); one serving WordPress reads `source_url` (absolute, used as it stands). The same file can read both — what it must not do is assume one CMS's convention and apply it to another's data.
 
 <block type="callout" variation="warning">
 
-That assumption is worth naming, because it hides. A resolver that joins a
-scale's url to the content path is correct for Plone and silently wrong for a
-CMS whose urls are absolute: it produces `…/logo.png/http://…/logo.png`, which
-renders as a broken image rather than an error. It stays hidden for as long as
-the sizes are missing — with no scales there is no url to join, so the picture
-works — and appears the moment the adapter starts supplying them.
+That assumption is worth naming, because it hides. A resolver that joins a scale's url to the content path is correct for Plone and silently wrong for a CMS whose urls are absolute: it produces `…/logo.png/http://…/logo.png`, which renders as a broken image rather than an error. It stays hidden for as long as the sizes are missing — with no scales there is no url to join, so the picture works — and appears the moment the adapter starts supplying them.
 
 </block>
 
@@ -205,12 +169,9 @@ new DrupalAdapter({ cmsBaseUrl, credentials, bundle });
 
 ## Rendering a site that is not on Plone
 
-The adapter is only for editing. Your frontend renders straight from its CMS,
-as any headless frontend does, and a visitor's page never goes near the adapter
-— the admin sends a page over the bridge only while that page is being edited.
+The adapter is only for editing. Your frontend renders straight from its CMS, as any headless frontend does, and a visitor's page never goes near the adapter — the admin sends a page over the bridge only while that page is being edited.
 
-So each adapter package ships a second, much smaller thing: a **public read**,
-for a client with no credentials and no bridge.
+So each adapter package ships a second, much smaller thing: a **public read**, for a client with no credentials and no bridge.
 
 ### Js
 
@@ -230,38 +191,15 @@ const site = await cms.site();                       // the site's own name
 const menu = await cms.menu({ location: 'primary' });
 ```
 
-It answers only what a published page needs, and it asks the CMS only for what
-a visitor may see: WordPress's reader sends `status=publish` and never
-`context=edit`, because asking for either of the editor's parameters is what
-would demand a session.
+It answers only what a published page needs, and it asks the CMS only for what a visitor may see: WordPress's reader sends `status=publish` and never `context=edit`, because asking for either of the editor's parameters is what would demand a session.
 
-A visitor's SEARCH block needs one more thing, and the rule for it is tighter
-than the editor's. "Advertise only what you can serve" says a selection index
-must offer either `values` or a `vocabulary` to look up. A visitor has no
-adapter, so there is nothing to look a vocabulary up THROUGH: for a public
-search block the index must carry `values`. Naming a vocabulary and stopping
-there renders a filter with nothing to tick while the query behind it works
-perfectly, which is the failure that looks like a styling bug.
+A visitor's SEARCH block needs one more thing, and the rule for it is tighter than the editor's. "Advertise only what you can serve" says a selection index must offer either `values` or a `vocabulary` to look up. A visitor has no adapter, so there is nothing to look a vocabulary up THROUGH: for a public search block the index must carry `values`. Naming a vocabulary and stopping there renders a filter with nothing to tick while the query behind it works perfectly, which is the failure that looks like a styling bug.
 
-It does not need the adapter, though. The registries the adapter reads to build
-those indexes are themselves public: WordPress answers `/wp/v2/types` and
-`/wp/v2/taxonomies` to anyone, and a taxonomy's terms come back from its own
-`rest_base`. Note which terms, and in which form — a criterion carries a term's
-SLUG, because that is what survives being written into a block and what the
-query resolves back to an id.
+It does not need the adapter, though. The registries the adapter reads to build those indexes are themselves public: WordPress answers `/wp/v2/types` and `/wp/v2/taxonomies` to anyone, and a taxonomy's terms come back from its own `rest_base`. Note which terms, and in which form — a criterion carries a term's SLUG, because that is what survives being written into a block and what the query resolves back to an id.
 
-And a visitor's facets inherit "only where it applies" unchanged. WordPress
-registers `category` and `post_tag` for `post` ALONE, so a site of pages has no
-taxonomy to filter by at all and its visitor vocabulary is the post type and
-nothing else. A site whose pages must be filterable registers a taxonomy of its
-own for them, which is ordinary WordPress and is the site's design, not
-something an adapter should invent on its behalf.
+And a visitor's facets inherit "only where it applies" unchanged. WordPress registers `category` and `post_tag` for `post` ALONE, so a site of pages has no taxonomy to filter by at all and its visitor vocabulary is the post type and nothing else. A site whose pages must be filterable registers a taxonomy of its own for them, which is ordinary WordPress and is the site's design, not something an adapter should invent on its behalf.
 
-Listings are the same story, and this is where a frontend stops being generic.
-A listing block stores its criteria in the index names and operation ids **its
-own** adapter advertised, so building the request is that CMS's own work. Each
-package ships the fetcher for its CMS, and a frontend imports the one for the
-CMS it reads:
+Listings are the same story, and this is where a frontend stops being generic. A listing block stores its criteria in the index names and operation ids **its own** adapter advertised, so building the request is that CMS's own work. Each package ships the fetcher for its CMS, and a frontend imports the one for the CMS it reads:
 
 ### Js
 
@@ -275,32 +213,17 @@ import { ploneFetchItems } from '@volto-hydra/helpers';
 const fetchItems = ploneFetchItems({ apiUrl, contextPath, extraCriteria });
 ```
 
-Both answer the same `fetchItems(block, { start, size })` that
-`expandListingBlocks` calls, and nothing sits between them. There used to be a
-generic `publicFetchItems({ reader })` here, programmed against whatever every
-CMS had in common, and every one of its limits came from that: it threw on
-facets, dropped every field but the title, ignored the OPERATION in a criterion
-so "none of" filtered as "any of", and carried a leftover Plone sort name. A
-frontend is written for a CMS; the fetcher it imports can answer all of those,
-because there is only one CMS in it.
+Both answer the same `fetchItems(block, { start, size })` that `expandListingBlocks` calls, and nothing sits between them. There used to be a generic `publicFetchItems({ reader })` here, programmed against whatever every CMS had in common, and every one of its limits came from that: it threw on facets, dropped every field but the title, ignored the OPERATION in a criterion so "none of" filtered as "any of", and carried a leftover Plone sort name. A frontend is written for a CMS; the fetcher it imports can answer all of those, because there is only one CMS in it.
 
-What a VISITOR asked for goes in as `extraCriteria` — `SearchableText`,
-`facet.<index>`, `facet.<index>.after|before`, `sort_on` — and the fetcher turns
-it into its own CMS's parameters.
+What a VISITOR asked for goes in as `extraCriteria` — `SearchableText`, `facet.<index>`, `facet.<index>.after|before`, `sort_on` — and the fetcher turns it into its own CMS's parameters.
 
 <block type="callout" variation="note">
 
-`adapterGetContent` and `adapterFetchItems` read through an adapter you already
-hold and return Plone's REST shape. They are for a build that HAS an adapter —
-the editor's build, where the admin's view mode shows a draft — not for a
-visitor's page. A public bundle that carried an adapter would carry the editing
-bridge and a CMS credential with it.
+`adapterGetContent` and `adapterFetchItems` read through an adapter you already hold and return Plone's REST shape. They are for a build that HAS an adapter — the editor's build, where the admin's view mode shows a draft — not for a visitor's page. A public bundle that carried an adapter would carry the editing bridge and a CMS credential with it.
 
 </block>
 
-The credential is the frontend's own. A published page needs none; showing a
-draft in the preview needs one for your CMS, because the admin's session is not
-something WordPress or Drupal would accept.
+The credential is the frontend's own. A published page needs none; showing a draft in the preview needs one for your CMS, because the admin's session is not something WordPress or Drupal would accept.
 
 A Plone frontend needs none of this and can keep fetching Plone directly.
 
@@ -498,7 +421,7 @@ throw new AdapterError('my-cms: no workflow on this content', {
 
 Adapters are held to one shared suite rather than per-CMS tests. Every target seeds itself from the same fixture and the assertions refer to that seed, so a test that needs a CMS-specific value to pass has found a leak in the abstraction.
 
-Register a target that boots your CMS, seeds it and exposes your adapter, then run the suite against it. A capability you do not declare must be _rejected_, and the suite checks that too.
+Register a target that boots your CMS, seeds it and exposes your adapter, then run the suite against it. A capability you do not declare must be *rejected*, and the suite checks that too.
 
 ### Bash
 
@@ -510,84 +433,38 @@ The suite covers content CRUD, listings, search, navigation, breadcrumbs, schema
 
 ## A menu is a view, not a flag on content
 
-A CMS organises the same content in more than one way. The page tree is one; a
-curated menu is another; a taxonomy is another again. Each is a **view**, and a
-view is a place you can browse, not a property stored on a page.
+A CMS organises the same content in more than one way. The page tree is one; a curated menu is another; a taxonomy is another again. Each is a **view**, and a view is a place you can browse, not a property stored on a page.
 
-So a view's nodes come back **as content**, at paths the adapter owns, and no new
-intent is needed for them. `tree.list` browses a view, `content.create` adds to
-one, `content.move` relocates within one, `content.delete` removes one. The
-reserved prefix is `@@menu`:
+So a view's nodes come back **as content**, at paths the adapter owns, and no new intent is needed for them. `tree.list` browses a view, `content.create` adds to one, `content.move` relocates within one, `content.delete` removes one. The reserved prefix is `@@menu`:
 
 - `/@@menu/primary` is the view
 - `/@@menu/primary/17` is a node in it
 - `/@@menu/primary/@@excluded` is the bucket holding what has been taken out
 - `/@@menu/primary/@@excluded/17` is a node in that bucket
 
-A prefix rather than a suffix costs one token content could never contain, where
-a reserved suffix would cost a word authors cannot use. These paths are an
-addressing convenience for browsing and must never escape into stored data:
-anything written down, rendered, or handed outside resolves to the referenced
-content first.
+A prefix rather than a suffix costs one token content could never contain, where a reserved suffix would cost a word authors cannot use. These paths are an addressing convenience for browsing and must never escape into stored data: anything written down, rendered, or handed outside resolves to the referenced content first.
 
-**What identifies a node differs per CMS, deliberately.** WordPress and Drupal
-address a PLACEMENT, which has an id of its own because a page can appear in a
-menu twice and a heading has no slug at all. In Plone the menu view IS the
-content tree, so a node's path mirrors the content path. A node is a `placement`
-when it references content, a `link` when it does not — a link is the absence of
-a reference, not a type of its own — and the bucket itself is a `bucket`, offered
-at the view's root so what was taken out is discoverable in the menu rather than
-only through the picker.
+**What identifies a node differs per CMS, deliberately.** WordPress and Drupal address a PLACEMENT, which has an id of its own because a page can appear in a menu twice and a heading has no slug at all. In Plone the menu view IS the content tree, so a node's path mirrors the content path. A node is a `placement` when it references content, a `link` when it does not — a link is the absence of a reference, not a type of its own — and the bucket itself is a `bucket`, offered at the view's root so what was taken out is discoverable in the menu rather than only through the picker.
 
-**Removing a page from a menu is a MOVE into `@@excluded`, never a delete.**
-That is what lets `content.delete` mean "destroy this" in every view and
-`content.move` mean "relocate it" in every view — no verb whose blast radius
-depends on the path it was handed. It matters less for the button an editor sees
-than for every other caller: a retry, a bulk action, or a bug that loses view
-context would otherwise delete a page where it meant to tidy a menu.
+**Removing a page from a menu is a MOVE into `@@excluded`, never a delete.** That is what lets `content.delete` mean "destroy this" in every view and `content.move` mean "relocate it" in every view — no verb whose blast radius depends on the path it was handed. It matters less for the button an editor sees than for every other caller: a retry, a bulk action, or a bug that loses view context would otherwise delete a page where it meant to tidy a menu.
 
-The bucket holds DISABLED PLACEMENTS, not everything absent from the menu. Each
-CMS has a native one — an unpublished `nav_menu_item`, a Drupal link with
-`enabled` false, a Plone page with `exclude_from_nav` — so the set is bounded by
-the menu's own definition. "Everything not in the menu" would be nearly the whole
-site in WordPress, where a menu is a curated subset, and a handful in Plone,
-where it is the tree minus exceptions; the view would stop meaning the same thing
-per CMS. Adding something that was never in the menu is therefore not a move from
-the bucket: it comes from the picker, as a new placement.
+The bucket holds DISABLED PLACEMENTS, not everything absent from the menu. Each CMS has a native one — an unpublished `nav_menu_item`, a Drupal link with `enabled` false, a Plone page with `exclude_from_nav` — so the set is bounded by the menu's own definition. "Everything not in the menu" would be nearly the whole site in WordPress, where a menu is a curated subset, and a handful in Plone, where it is the tree minus exceptions; the view would stop meaning the same thing per CMS. Adding something that was never in the menu is therefore not a move from the bucket: it comes from the picker, as a new placement.
 
 ### navigation.get is the main hierarchy, not a menu
 
-`navigation.get` answers the hierarchy a site's navigation is built from, and
-which one that is depends on the CMS. WordPress pages form a tree, and that tree
-is what `wp_list_pages`, the page-list block and a theme with no menu assigned
-all render — so that is what it answers. Drupal's reads menu links instead,
-because its nodes are flat and a menu is its only hierarchy.
+`navigation.get` answers the hierarchy a site's navigation is built from, and which one that is depends on the CMS. WordPress pages form a tree, and that tree is what `wp_list_pages`, the page-list block and a theme with no menu assigned all render — so that is what it answers. Drupal's reads menu links instead, because its nodes are flat and a menu is its only hierarchy.
 
-A curated menu is the separate view above. Do not let a site reconfigure which
-one `navigation.get` returns: it would then mean something different per
-deployment, and a caller could not know what it was asking for.
+A curated menu is the separate view above. Do not let a site reconfigure which one `navigation.get` returns: it would then mean something different per deployment, and a caller could not know what it was asking for.
 
 ## References, and what a delete would break
 
 Two different questions, and only one of them every CMS can answer.
 
-`reference.resolve` turns a stored reference into something renderable, and the
-contract is an OUTCOME: a reference stored today still resolves after the target
-is renamed or moved. It does not say how. Plone stores `resolveuid`, which is an
-encoding its own REST layer produces and consumes; WordPress stores the post id,
-stable across renames where the permalink is not, and resolves it on every render;
-Drupal has `/node/<id>`, which is rename-proof already. Do not copy Plone's
-encoding into your adapter — copy the promise.
+`reference.resolve` turns a stored reference into something renderable, and the contract is an OUTCOME: a reference stored today still resolves after the target is renamed or moved. It does not say how. Plone stores `resolveuid`, which is an encoding its own REST layer produces and consumes; WordPress stores the post id, stable across renames where the permalink is not, and resolves it on every render; Drupal has `/node/<id>`, which is rename-proof already. Do not copy Plone's encoding into your adapter — copy the promise.
 
-`reference.dependents` asks the other way round: what links TO this document. That
-needs an index of incoming links, and it is where CMSes genuinely differ rather
-than differing in spelling. Plone has one, so it answers; WordPress indexes
-nothing of the kind, so it does not claim `link-integrity` and the intent refuses.
-The admin then withholds its delete warning there, which is better than a
-confirmation dialog that quietly means nothing.
+`reference.dependents` asks the other way round: what links TO this document. That needs an index of incoming links, and it is where CMSes genuinely differ rather than differing in spelling. Plone has one, so it answers; WordPress indexes nothing of the kind, so it does not claim `link-integrity` and the intent refuses. The admin then withholds its delete warning there, which is better than a confirmation dialog that quietly means nothing.
 
-Containment — "and it holds twelve things" — is not part of either: `tree.list`
-answers that already.
+Containment — "and it holds twelve things" — is not part of either: `tree.list` answers that already.
 
 ## Several operations at once
 
@@ -595,28 +472,17 @@ answers that already.
 
 <block type="slateTable" table.fixed table.celled>
 
-| You send                                       | What happens                                                                                  |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `batch` with `operations: [{intent, args}, …]` | applied in the order given; the answer is `results`, one per operation, in that order         |
-| a failure part-way                             | the error carries `failedIndex` and `applied`, so a caller can resume rather than start again |
-| `atomic: true`                                 | honoured by a CMS that can promise it, refused with `NOT_IMPLEMENTED` by one that cannot      |
+| You send | What happens |
+| --- | --- |
+| `batch` with `operations: [{intent, args}, …]` | applied in the order given; the answer is `results`, one per operation, in that order |
+| a failure part-way | the error carries `failedIndex` and `applied`, so a caller can resume rather than start again |
+| `atomic: true` | honoured by a CMS that can promise it, refused with `NOT_IMPLEMENTED` by one that cannot |
 
 </block>
 
-You do not implement this. `BaseAdapter` applies the operations one at a time, so
-your adapter answers `batch` the day you write it. Override it only if your CMS
-can genuinely group writes — WordPress core takes 25 requests per `/batch/v1`
-call, Plone can take a whole subtree through `@import` — and then declare
-`batch-native`, which tells callers that grouping is worth doing here. Drupal's
-JSON:API has neither a batch route nor the atomic-operations extension, so it
-keeps the floor and never claims the capability.
+You do not implement this. `BaseAdapter` applies the operations one at a time, so your adapter answers `batch` the day you write it. Override it only if your CMS can genuinely group writes — WordPress core takes 25 requests per `/batch/v1` call, Plone can take a whole subtree through `@import` — and then declare `batch-native`, which tells callers that grouping is worth doing here. Drupal's JSON:API has neither a batch route nor the atomic-operations extension, so it keeps the floor and never claims the capability.
 
-This is the same layering as expansion, with one deliberate difference: expansion
-is reads, so it runs concurrently and omits what a CMS cannot serve. A batch is
-writes. Order carries meaning — a parent before its child, an ordering after the
-documents it orders — so operations are never reordered, a failure stops the run
-rather than being skipped, and atomicity is asked for explicitly because it
-cannot be emulated from outside the CMS.
+This is the same layering as expansion, with one deliberate difference: expansion is reads, so it runs concurrently and omits what a CMS cannot serve. A batch is writes. Order carries meaning — a parent before its child, an ordering after the documents it orders — so operations are never reordered, a failure stops the run rather than being skipped, and atomicity is asked for explicitly because it cannot be emulated from outside the CMS.
 
 ## Reference
 
@@ -624,18 +490,18 @@ cannot be emulated from outside the CMS.
 
 <block type="slateTable" table.fixed table.celled>
 
-| Group           | Intents                                                                                                                                                                  |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Content         | `content.get`, `content.create`, `content.update`, `content.delete`, `content.order`, `content.sort`, `content.move`, `content.copy`, `content.lock`, `content.unlock` |
-| Types           | `types.list`, `types.getSchema`                                                                                                                                          |
-| Reading         | `search`, `querystringSearch`, `querystring.getIndexes`, `tree.list`, `navigation.get`, `breadcrumbs.get`, `reference.resolve`, `reference.dependents`, `vocabulary.get` |
-| Assets          | `asset.upload`, `asset.imageUrl`                                                                                                                                         |
-| Session         | `auth.whoami`, `auth.logout`                                                                                                                                             |
-| Workflow        | `state.get`, `state.getForms`, `state.transition`                                                                                                                        |
-| The site        | `site.get`                                                                                                                                                               |
-| Translations    | `translations.get`, `translations.create`, `translations.link`, `translations.unlink`, `translations.locate`                                                             |
-| Several at once | `batch`                                                                                                                                                                  |
-| Escape hatch    | `http`                                                                                                                                                                   |
+| Group | Intents |
+| --- | --- |
+| Content | `content.get`, `content.create`, `content.update`, `content.delete`, `content.order`, `content.sort`, `content.move`, `content.copy`, `content.lock`, `content.unlock` |
+| Types | `types.list`, `types.getSchema` |
+| Reading | `search`, `querystringSearch`, `querystring.getIndexes`, `tree.list`, `navigation.get`, `breadcrumbs.get`, `reference.resolve`, `reference.dependents`, `vocabulary.get` |
+| Assets | `asset.upload`, `asset.imageUrl` |
+| Session | `auth.whoami`, `auth.logout` |
+| Workflow | `state.get`, `state.getForms`, `state.transition` |
+| The site | `site.get` |
+| Translations | `translations.get`, `translations.create`, `translations.link`, `translations.unlink`, `translations.locate` |
+| Several at once | `batch` |
+| Escape hatch | `http` |
 
 </block>
 
@@ -643,22 +509,22 @@ cannot be emulated from outside the CMS.
 
 <block type="slateTable" table.fixed table.celled>
 
-| Capability                                                       | The admin turns on                                                              |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `content`                                                        | Editing at all — every adapter needs it                                         |
-| `search-fulltext`, `search-filter`                               | Text search, and server-side filtering                                          |
-| `schema`                                                         | Type-driven edit forms                                                          |
-| `vocabulary`                                                     | Choice widgets backed by CMS vocabularies                                       |
-| `asset`                                                          | Image and file upload                                                           |
-| `state`                                                          | The workflow menu                                                               |
-| `sharing`, `per-content-permissions`, `hierarchical-permissions` | The access dialog                                                               |
-| `versioning`                                                     | History and revisions                                                           |
-| `comments`                                                       | Reader comments and moderation                                                  |
-| `multilingual`                                                   | Manage Translations, and the translate/link controls                            |
-| `http-passthrough`                                               | Forwarding Plone-dialect requests unchanged                                     |
-| `expand-native`                                                  | The admin asks for its expander bundle inside the content response              |
-| `batch-native`                                                   | Grouping writes into one request saves round trips, so callers may batch freely |
-| `link-integrity`                                                 | The CMS can say what links TO a document, so a delete can be warned about       |
-| `locking`                                                        | The CMS can say who is editing a document now, so a second editor is warned     |
+| Capability | The admin turns on |
+| --- | --- |
+| `content` | Editing at all — every adapter needs it |
+| `search-fulltext`, `search-filter` | Text search, and server-side filtering |
+| `schema` | Type-driven edit forms |
+| `vocabulary` | Choice widgets backed by CMS vocabularies |
+| `asset` | Image and file upload |
+| `state` | The workflow menu |
+| `sharing`, `per-content-permissions`, `hierarchical-permissions` | The access dialog |
+| `versioning` | History and revisions |
+| `comments` | Reader comments and moderation |
+| `multilingual` | Manage Translations, and the translate/link controls |
+| `http-passthrough` | Forwarding Plone-dialect requests unchanged |
+| `expand-native` | The admin asks for its expander bundle inside the content response |
+| `batch-native` | Grouping writes into one request saves round trips, so callers may batch freely |
+| `link-integrity` | The CMS can say what links TO a document, so a delete can be warned about |
+| `locking` | The CMS can say who is editing a document now, so a second editor is warned |
 
 </block>
