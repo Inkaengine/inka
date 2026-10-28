@@ -1,19 +1,28 @@
-// @vitest-environment node
-// The listener is a Node server, and the browser posting to it is Node fetch.
 import { describe, it, expect } from 'vitest';
 import { mkdtempSync, statSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { request } from 'node:http';
 import { connectInBrowser } from './connect.mjs';
 import { loadToken, saveToken, expiresAt } from './tokenStore.mjs';
 
 const ADMIN = 'https://admin.example.org';
 
-/** A browser that, on opening the connect page, posts `fields` to its redirect_uri. */
+/**
+ * A browser that, on opening the connect page, posts `fields` to its
+ * redirect_uri, as the page's form does. (node:http, not fetch: the test
+ * setup stubs fetch out.)
+ */
 const browserThatPosts = (fields) => async (url) => {
   const connect = new URL(url);
-  const body = new URLSearchParams(fields(connect.searchParams.get('state')));
-  await fetch(connect.searchParams.get('redirect_uri'), { method: 'POST', body });
+  const body = new URLSearchParams(fields(connect.searchParams.get('state'))).toString();
+  await new Promise((resolve, reject) => {
+    const req = request(connect.searchParams.get('redirect_uri'), {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    }, (res) => { res.resume(); res.on('end', resolve); });
+    req.on('error', reject);
+    req.end(body);
+  });
 };
 
 describe('connectInBrowser', () => {
