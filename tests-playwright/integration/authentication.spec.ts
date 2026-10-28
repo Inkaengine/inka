@@ -49,10 +49,14 @@ test.describe('Authentication and Access Control', () => {
     // GET @login) for the visitor, who never sees the login form; no password
     // is sent, or held by the admin.
     const helper = new AdminUIHelper(page);
+    // A page no other spec uses: opening it in the editor takes its lock as
+    // `demo`, and a lock is seen by every session, so on a shared page the
+    // other tests' admin would find it being edited by someone else.
+    const PAGE = `${helper.contentPrefix}/skip-logic-page`;
     const signIn = page.waitForRequest((req) => req.url().includes('@login-demo') && req.method() === 'POST');
-    await page.goto(`${URLS.voltoSsr}/login?demo&return_url=${encodeURIComponent(`${helper.contentPrefix}/test-page/edit`)}`);
+    await page.goto(`${URLS.voltoSsr}/login?demo&return_url=${encodeURIComponent(`${PAGE}/edit`)}`);
     expect((await signIn).postData() ?? '').not.toContain('password');
-    await page.waitForURL(/\/test-page\/edit$/, { timeout: 15000 });
+    await page.waitForURL(/\/skip-logic-page\/edit$/, { timeout: 15000 });
     await expect(page.getByLabel('Login Name')).toHaveCount(0);
     await helper.waitForIframeReady();
     // Signed in and editing: the edit toolbar's Save.
