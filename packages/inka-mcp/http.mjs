@@ -50,6 +50,7 @@ export function hostedServer({ adminUrl, publicUrl, secret, poolSize, pageIdleMs
     adminUrl: admin,
     callbackUrl: new URL('/oauth/callback', base).href,
     renew: (token) => renewThrough(admin, token),
+    log: (line) => console.log(`oauth: ${line}`),
   });
   const pool = adminPool({ adminUrl: admin, frontendUrl, size: poolSize, maxIdleMs: pageIdleMs });
 

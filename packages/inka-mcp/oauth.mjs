@@ -31,9 +31,11 @@ const PLONE_MARGIN_MS = 5 * 60 * 1000;
 /**
  * `box`: a sealer (sealed.mjs). `adminUrl`: the site's admin. `callbackUrl`:
  * where the admin's connect page posts (this server's /oauth/callback).
- * `renew(ploneToken)`: a renewed Plone token, or SignedOut.
+ * `renew(ploneToken)`: a renewed Plone token, or SignedOut. `log(line)`: each
+ * sign-in step, for following one through (client names and return addresses;
+ * never a code or token).
  */
-export function oauthProvider({ box, adminUrl, callbackUrl, renew }) {
+export function oauthProvider({ box, adminUrl, callbackUrl, renew, log }) {
   /** Open a sealed token, turning a bad one into the OAuth error `Error`. */
   const open = (kind, token, Error) => {
     try {
@@ -71,12 +73,14 @@ export function oauthProvider({ box, adminUrl, callbackUrl, renew }) {
         }
       },
       registerClient(metadata) {
+        log(`client registered: "${metadata.client_name}", returns to ${JSON.stringify(metadata.redirect_uris)}`);
         const registered = { ...metadata, client_id_issued_at: Math.floor(Date.now() / 1000) };
         return { ...registered, client_id: box.seal('client', registered, null) };
       },
     },
 
     async authorize(client, params, res) {
+      log(`sign-in started by "${client.client_name}", to return to ${params.redirectUri}`);
       const pending = box.seal('pending', {
         client_id: client.client_id,
         redirect_uri: params.redirectUri,
@@ -101,11 +105,13 @@ export function oauthProvider({ box, adminUrl, callbackUrl, renew }) {
       if (pending.state !== undefined) back.searchParams.set('state', pending.state);
       if (error) {
         back.searchParams.set('error', 'access_denied');
+        log(`sign-in declined; sending the browser to ${back.origin}${back.pathname}`);
         return back.href;
       }
       if (!token) throw new InvalidGrantError('the connect page sent no token');
       subjectOf(token);
       back.searchParams.set('code', box.seal('code', { ...pending, plone: token }, CODE_MS));
+      log(`sign-in allowed for ${subjectOf(token)}; sending the browser to ${back.origin}${back.pathname}`);
       return back.href;
     },
 

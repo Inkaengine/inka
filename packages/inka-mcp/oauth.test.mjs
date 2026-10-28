@@ -16,13 +16,15 @@ const plone = (user, hours = 12) => {
 
 function setup({ renew = async (token) => plone('jane') + token.length } = {}) {
   const renewed = [];
+  const logged = [];
   const provider = oauthProvider({
     box: sealer(randomBytes(32).toString('base64')),
     adminUrl: ADMIN,
     callbackUrl: CALLBACK,
     renew: async (token) => { renewed.push(token); return renew(token); },
+    log: (line) => logged.push(line),
   });
-  return { provider, renewed };
+  return { provider, renewed, logged };
 }
 
 /** Register a client and sign `user` in through it, as the OAuth flow does; the client's tokens. */
@@ -121,5 +123,17 @@ describe('oauthProvider', () => {
     const code = new URL(await provider.callback({ token: short, state: to.searchParams.get('state') })).searchParams.get('code');
     const tokens = await provider.exchangeAuthorizationCode(client, code, 'v', CLIENT_CB);
     expect(tokens.expires_in).toBeLessThan(15 * 60);
+  });
+
+  it('logs each sign-in step: who, and where the browser goes; never a code or token', async () => {
+    const { provider, logged } = setup();
+    const { tokens } = await signedIn(provider);
+    expect(logged).toEqual([
+      `client registered: "Some agent", returns to ["${CLIENT_CB}"]`,
+      `sign-in started by "Some agent", to return to ${CLIENT_CB}`,
+      `sign-in allowed for jane; sending the browser to ${CLIENT_CB}`,
+    ]);
+    expect(logged.join('\n')).not.toContain(tokens.access_token);
+    expect(logged.join('\n')).not.toContain('code=');
   });
 });
