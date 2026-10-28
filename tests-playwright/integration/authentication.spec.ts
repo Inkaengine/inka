@@ -43,19 +43,31 @@ test.describe('Authentication and Access Control', () => {
     expect(page.url()).not.toContain('/login');
   });
 
-  test('a demo link signs in with the demo account and opens the page for editing', async ({ page }) => {
+  test('a demo link signs in as the demo editor, with no password, and opens the page for editing', async ({ page }) => {
     // A public demo site's "try editing" button: /login?demo&return_url=<page>/edit
-    // signs in with the site's demo account (RAZZLE_DEMO_LOGIN/PASSWORD) — the
-    // visitor never fills the form — and lands in the editor.
+    // presses the site's demo sign-in (plone.demoeditor's @login-demo, listed by
+    // GET @login) for the visitor, who never sees the login form; no password
+    // is sent, or held by the admin.
     const helper = new AdminUIHelper(page);
-    const loginRequest = page.waitForRequest((req) => req.url().includes('@login') && req.method() === 'POST');
+    const signIn = page.waitForRequest((req) => req.url().includes('@login-demo') && req.method() === 'POST');
     await page.goto(`${URLS.voltoSsr}/login?demo&return_url=${encodeURIComponent(`${helper.contentPrefix}/test-page/edit`)}`);
-    expect((await loginRequest).postDataJSON()).toMatchObject({ login: 'demo', password: 'demo' });
+    expect((await signIn).postData() ?? '').not.toContain('password');
     await page.waitForURL(/\/test-page\/edit$/, { timeout: 15000 });
     await expect(page.getByLabel('Login Name')).toHaveCount(0);
     await helper.waitForIframeReady();
     // Signed in and editing: the edit toolbar's Save.
     await expect(page.locator('#toolbar-save, #toolbar button.save')).toBeVisible({ timeout: 10000 });
+  });
+
+  test("the login page offers the site's demo sign-in as a button", async ({ page }) => {
+    await page.goto(`${URLS.voltoSsr}/login`);
+    const demo = page.getByRole('button', { name: 'Try it as a demo editor' });
+    await expect(demo).toBeVisible({ timeout: 15000 });
+    await demo.click();
+    // Signed in (as demo): the login page sends you on.
+    await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 15000 });
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+    expect(JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).sub).toBe('demo');
   });
 
   test('Edit page requires authentication', async ({ page }) => {
