@@ -235,6 +235,28 @@ a visitor may see: WordPress's reader sends `status=publish` and never
 `context=edit`, because asking for either of the editor's parameters is what
 would demand a session.
 
+A visitor's SEARCH block needs one more thing, and the rule for it is tighter
+than the editor's. "Advertise only what you can serve" says a selection index
+must offer either `values` or a `vocabulary` to look up. A visitor has no
+adapter, so there is nothing to look a vocabulary up THROUGH: for a public
+search block the index must carry `values`. Naming a vocabulary and stopping
+there renders a filter with nothing to tick while the query behind it works
+perfectly, which is the failure that looks like a styling bug.
+
+It does not need the adapter, though. The registries the adapter reads to build
+those indexes are themselves public: WordPress answers `/wp/v2/types` and
+`/wp/v2/taxonomies` to anyone, and a taxonomy's terms come back from its own
+`rest_base`. Note which terms, and in which form — a criterion carries a term's
+SLUG, because that is what survives being written into a block and what the
+query resolves back to an id.
+
+And a visitor's facets inherit "only where it applies" unchanged. WordPress
+registers `category` and `post_tag` for `post` ALONE, so a site of pages has no
+taxonomy to filter by at all and its visitor vocabulary is the post type and
+nothing else. A site whose pages must be filterable registers a taxonomy of its
+own for them, which is ordinary WordPress and is the site's design, not
+something an adapter should invent on its behalf.
+
 Listings are the same story, and this is where a frontend stops being generic.
 A listing block stores its criteria in the index names and operation ids **its
 own** adapter advertised, so building the request is that CMS's own work. Each
