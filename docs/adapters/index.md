@@ -220,9 +220,14 @@ import { createPublicReader } from '@volto-hydra/hydra-adapters-wordpress/public
 const cms = createPublicReader({ cmsBaseUrl });
 
 const page = await cms.document('/news/first-post'); // title and blocks
-const menu = await cms.navigation();                 // the page tree
+const nav = await cms.navigation();                  // the main hierarchy
 const trail = await cms.breadcrumbs('/news/first-post');
 const site = await cms.site();                       // the site's own name
+
+// A curated menu is a separate VIEW over the same content. WordPress needs
+// WPGraphQL for it (core answers a visitor's menu read with 401), and a menu is
+// published by being assigned to a theme LOCATION, so that is what selects one.
+const menu = await cms.menu({ location: 'primary' });
 ```
 
 It answers only what a published page needs, and it asks the CMS only for what
@@ -480,6 +485,65 @@ ADAPTER_TARGET=my-cms npx vitest run --config vitest.adapters.config.mjs
 ```
 
 The suite covers content CRUD, listings, search, navigation, breadcrumbs, schemas, vocabularies, references, assets, workflow, moves, auth and expansion. Getting it green is what "supports this CMS" means here.
+
+## A menu is a view, not a flag on content
+
+A CMS organises the same content in more than one way. The page tree is one; a
+curated menu is another; a taxonomy is another again. Each is a **view**, and a
+view is a place you can browse, not a property stored on a page.
+
+So a view's nodes come back **as content**, at paths the adapter owns, and no new
+intent is needed for them. `tree.list` browses a view, `content.create` adds to
+one, `content.move` relocates within one, `content.delete` removes one. The
+reserved prefix is `@@menu`:
+
+- `/@@menu/primary` is the view
+- `/@@menu/primary/17` is a node in it
+- `/@@menu/primary/@@excluded` is the bucket holding what has been taken out
+- `/@@menu/primary/@@excluded/17` is a node in that bucket
+
+A prefix rather than a suffix costs one token content could never contain, where
+a reserved suffix would cost a word authors cannot use. These paths are an
+addressing convenience for browsing and must never escape into stored data:
+anything written down, rendered, or handed outside resolves to the referenced
+content first.
+
+**What identifies a node differs per CMS, deliberately.** WordPress and Drupal
+address a PLACEMENT, which has an id of its own because a page can appear in a
+menu twice and a heading has no slug at all. In Plone the menu view IS the
+content tree, so a node's path mirrors the content path. A node is a `placement`
+when it references content, a `link` when it does not — a link is the absence of
+a reference, not a type of its own — and the bucket itself is a `bucket`, offered
+at the view's root so what was taken out is discoverable in the menu rather than
+only through the picker.
+
+**Removing a page from a menu is a MOVE into `@@excluded`, never a delete.**
+That is what lets `content.delete` mean "destroy this" in every view and
+`content.move` mean "relocate it" in every view — no verb whose blast radius
+depends on the path it was handed. It matters less for the button an editor sees
+than for every other caller: a retry, a bulk action, or a bug that loses view
+context would otherwise delete a page where it meant to tidy a menu.
+
+The bucket holds DISABLED PLACEMENTS, not everything absent from the menu. Each
+CMS has a native one — an unpublished `nav_menu_item`, a Drupal link with
+`enabled` false, a Plone page with `exclude_from_nav` — so the set is bounded by
+the menu's own definition. "Everything not in the menu" would be nearly the whole
+site in WordPress, where a menu is a curated subset, and a handful in Plone,
+where it is the tree minus exceptions; the view would stop meaning the same thing
+per CMS. Adding something that was never in the menu is therefore not a move from
+the bucket: it comes from the picker, as a new placement.
+
+### navigation.get is the main hierarchy, not a menu
+
+`navigation.get` answers the hierarchy a site's navigation is built from, and
+which one that is depends on the CMS. WordPress pages form a tree, and that tree
+is what `wp_list_pages`, the page-list block and a theme with no menu assigned
+all render — so that is what it answers. Drupal's reads menu links instead,
+because its nodes are flat and a menu is its only hierarchy.
+
+A curated menu is the separate view above. Do not let a site reconfigure which
+one `navigation.get` returns: it would then mean something different per
+deployment, and a caller could not know what it was asking for.
 
 ## References, and what a delete would break
 
