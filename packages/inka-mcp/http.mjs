@@ -146,8 +146,9 @@ async function main(env) {
   // first in the app): method, path without its query, Host, user agent, and
   // the status it got.
   const listening = httpServer((req, res) => {
+    // Taken now: Express rewrites req.url as it routes.
+    const path = req.url.split('?')[0];
     res.on('finish', () => {
-      const path = req.url.split('?')[0];
       console.log(`req: ${req.method} ${path} host=${req.headers.host} ua="${req.headers['user-agent']}" -> ${res.statusCode}`);
     });
     app(req, res);
