@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeBlock, getPage, editPage, movePage, renamePage, deletePage } from './tools.mjs';
+import { describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -88,5 +88,40 @@ describe('a page someone else is editing', () => {
     ]) {
       await expect(act()).rejects.toThrow(/being edited by Jane Doe/);
     }
+  });
+});
+
+describe('previewLayout', () => {
+  const page = { title: 'News', modified: 'v1', blocks: { t: { '@type': 'title' } }, blocks_layout: { items: ['t'] } };
+  const layoutAgent = {
+    getDraft: async () => page,
+    getBlockSchemas: async () => ({
+      page: schemas.page,
+      types: { ...schemas.types, slate: { title: 'Text', variations: [], blockSchema: { required: [], properties: { value: { widget: 'slate' } } }, regions: [] } },
+    }),
+  };
+  let n = 0;
+  const mintId = () => `new-${++n}`;
+
+  it('renders the page with the proposed blocks in place of its own, saving nothing', async () => {
+    let drafted;
+    const rendered = await previewLayout(layoutAgent, {
+      blocks: [{ '@type': 'teaser', href: [{ '@id': '/events' }] }, { '@type': 'slate', value: 'A *new* intro' }],
+      render: async (draft) => { drafted = draft; return { image: 'png', text: 'A new intro' }; },
+      mintId,
+    });
+    expect(rendered).toEqual({ image: 'png', text: 'A new intro' });
+    expect(drafted.title).toBe('News');
+    expect(drafted.blocks_layout.items).toHaveLength(2);
+    const [first, second] = drafted.blocks_layout.items.map((id) => drafted.blocks[id]);
+    expect(first).toMatchObject({ '@type': 'teaser', href: [{ '@id': '/events' }] });
+    expect(second['@type']).toBe('slate');
+    const textOf = (node) => node.text ?? (node.children ?? []).map(textOf).join('');
+    expect(textOf(second.value[0])).toBe('A new intro');
+  });
+
+  it('refuses a block type the page has no config for', async () => {
+    await expect(previewLayout(layoutAgent, { blocks: [{ '@type': 'ghost' }], render: async () => ({}), mintId }))
+      .rejects.toThrow(/no block type "ghost"/);
   });
 });

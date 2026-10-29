@@ -6,7 +6,7 @@
  * the caller discards it by reloading. A save is refused if the page has
  * changed since the agent read it (its version).
  */
-import { toAgentBlocks, toAgentBlock } from './pageFormat.mjs';
+import { toAgentBlocks, toAgentBlock, toStoredBlocks } from './pageFormat.mjs';
 import { editBlocks } from './editBlocks.mjs';
 import { describeBlockTypes, describeBlockType } from './blockTypes.mjs';
 
@@ -167,4 +167,21 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, mi
   }
   const { version } = await agent.save({ expectedVersion });
   return { results, ids, version };
+}
+
+/**
+ * A whole proposed layout for the page, rendered as a visitor would see it
+ * and not saved: the page as it is, with `blocks` (agent format, as get_page
+ * gives them) in place of its own. For trying alternatives before suggesting
+ * one; `render(draft)` renders a draft of the page.
+ */
+export async function previewLayout(agent, { blocks, render, mintId }) {
+  const blocksConfig = (await agent.getBlockSchemas()).types;
+  for (const block of blocks) {
+    if (!blocksConfig[block['@type']]) {
+      throw new Error(`no block type "${block['@type']}" (list_block_types lists what this page can hold)`);
+    }
+  }
+  const page = await agent.getDraft();
+  return render({ ...page, ...toStoredBlocks(blocks, { blocksConfig, mintId }) });
 }

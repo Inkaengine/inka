@@ -28,7 +28,7 @@ import { adminPool } from './adminPool.mjs';
 import { subjectOf } from './tokenStore.mjs';
 import { signIn, renewDelay } from './signIn.mjs';
 import {
-  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
+  previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
@@ -81,6 +81,19 @@ export function headlessAdmin({ adminUrl, auth, frontendUrl }) {
   };
 }
 
+/**
+ * Sent to a client when it connects (clients like Claude give it to the model):
+ * how to work with an Inka site. Without it an agent asked what a page looks
+ * like, or for other ways to lay it out, answered from the block data with
+ * guessed wireframes, not knowing it could render pages and tries.
+ */
+const INSTRUCTIONS = `This server edits a website built with Inka: pages made of blocks, rendered by the site's own front end.
+
+- Read a page's blocks with get_page; see it as visitors do with view_page (a screenshot and its text). Look before you describe or judge how a page looks.
+- Explore what you can use: list_block_types for the blocks a page can hold, describe_block (with "preview") for one type in full, with examples rendered.
+- To suggest changes or alternative layouts, try them first: preview_layout renders a whole proposed list of blocks for the page, and edit_blocks with dryRun and preview renders a change to the current page. Both save nothing. Render each alternative and compare them before recommending one; describe what each render shows.
+- Save (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page) only when asked to change the site.`;
+
 const asResult = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] });
 
 /**
@@ -89,13 +102,33 @@ const asResult = (value) => ({ content: [{ type: 'text', text: JSON.stringify(va
  * their access token (http.mjs).
  */
 export function createServer(adminFor) {
-  const server = new McpServer({ name: 'inka', version: '0.0.1' });
+  const server = new McpServer({ name: 'inka', version: '0.0.1' }, { instructions: INSTRUCTIONS });
 
   server.registerTool('get_page', {
     title: 'Read a page',
     description: 'Read a page as an ordered list of blocks. Each block has "@uid" and "@type"; containers hold their child blocks in lists named for the region; rich text is {"md": "..."}. Keep "version" — edit_blocks needs it.',
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, getPage)));
+
+  server.registerTool('preview_layout', {
+    title: 'Try a layout',
+    description: 'Render a whole proposed layout for a page as a visitor would see it, without saving anything: the page with "blocks" (in the get_page format; containers hold their child blocks in lists) in place of its own. Use it to try alternative layouts or designs before suggesting them: render each one and compare. Returns a screenshot and the rendered text. To change part of the current page, use edit_blocks with dryRun and preview instead.',
+    inputSchema: {
+      path: z.string().describe('The page path, e.g. /about'),
+      blocks: z.array(z.object({ '@type': z.string() }).passthrough()).describe('The proposed blocks, in order'),
+      viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
+    },
+  }, async ({ path, blocks, viewport = 'desktop' }, extra) => {
+    const { image, text, renderedOn } = await adminFor(extra).withEditor(path, (agent, { render }) => previewLayout(agent, {
+      blocks, mintId: randomUUID, render: (draft) => render(draft, viewport),
+    }));
+    return {
+      content: [
+        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, renderedText: text, saved: false }, null, 2) },
+        { type: 'image', data: image, mimeType: 'image/png' },
+      ],
+    };
+  });
 
   server.registerTool('view_page', {
     title: 'See a page',
@@ -175,7 +208,7 @@ export function createServer(adminFor) {
 
   server.registerTool('describe_block', {
     title: 'Describe a block type',
-    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also shown as a visitor sees it. Use it before adding a type you have not used, or to see how to fill a field.',
+    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it. Use it before adding a type you have not used, or to see how to fill a field.',
     inputSchema: {
       path: z.string().describe('The page you will add it to, e.g. /about'),
       type: z.string().describe('The block type, as list_block_types names it, e.g. teaser'),
@@ -215,7 +248,7 @@ export function createServer(adminFor) {
 
   server.registerTool('edit_blocks', {
     title: 'Edit a page',
-    description: `Change a page's blocks. With dryRun the changes are applied but not saved, and the resulting page is returned; resubmit without dryRun to save. With dryRun, "preview" also renders the result as a visitor would see it — a screenshot and the page's text. A save is refused if the page has changed since expectedVersion — read it again and reapply.\n\n${OPS_HELP}`,
+    description: `Change a page's blocks. With dryRun the changes are applied but not saved, and the resulting page is returned; resubmit without dryRun to save. With dryRun, "preview" also renders the result as a visitor would see it — a screenshot and the page's text: the way to try a change and see it before suggesting or saving it. A save is refused if the page has changed since expectedVersion — read it again and reapply.\n\n${OPS_HELP}`,
     inputSchema: {
       path: z.string().describe('The page path, e.g. /about'),
       expectedVersion: z.string().describe('The version get_page returned'),

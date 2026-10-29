@@ -36,7 +36,30 @@ test.describe('MCP server', () => {
 
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'rename_page', 'search', 'view_page']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'preview_layout', 'rename_page', 'search', 'view_page']);
+  });
+
+  test('tells a client how to work with the site: see pages, and try layouts before suggesting them', async () => {
+    const instructions = client.getInstructions();
+    expect(instructions).toMatch(/view_page/);
+    expect(instructions).toMatch(/preview_layout/);
+    expect(instructions).toMatch(/saves? nothing/);
+  });
+
+  test('preview_layout: a whole proposed layout rendered, and the page left as it was', async () => {
+    test.setTimeout(120000);
+    const before = (await call('get_page', { path: PAGE })).json();
+    const result = await client.callTool({
+      name: 'preview_layout',
+      arguments: { path: PAGE, blocks: [{ '@type': 'slate', value: 'An *alternative* opening' }] },
+    }, undefined, CALL);
+    const [text, image] = result.content as any[];
+    expect(result.isError, text.text).toBeFalsy();
+    expect(JSON.parse(text.text).renderedText).toContain('An alternative opening');
+    expect(image).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    const after = (await call('get_page', { path: PAGE })).json();
+    expect(after.version).toBe(before.version);
+    expect(after.blocks.map((b: any) => b['@uid'])).toEqual(before.blocks.map((b: any) => b['@uid']));
   });
 
   test('view_page: a picture of the page as visitors see it, and its text', async () => {
