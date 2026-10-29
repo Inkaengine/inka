@@ -5,6 +5,7 @@ import config from '@plone/volto/registry';
 import { getIframeUrlCookieName } from '../utils/cookieNames';
 import { subscribeAdapter } from './client';
 import { getURlsFromEnv } from '../utils/getSavedURLs';
+import { proxyFrameUrl } from '../utils/iframeUrl';
 
 /**
  * The PROXY frame: a hidden iframe that hosts the frontend's adapter, always.
@@ -78,16 +79,16 @@ export default function AdapterHost() {
   // iframe at render time on the server.
   if (!config.settings.useBridgeBackend || !isClient || !frontendUrl) return null;
 
-  const src = (() => {
-    const url = new URL(frontendUrl, window.location.origin);
-    // The frontend's own parameters (which adapter, which CMS) are carried
-    // over; only the PATH changes, to the page that hosts an adapter and
-    // renders nothing.
-    url.pathname = '/hydra-proxy.html';
-    if (token) url.searchParams.set('access_token', token);
-    url.searchParams.delete('_edit');
-    return url.toString();
-  })();
+  // The frontend's own parameters (which adapter, which CMS) are carried over;
+  // only the PAGE changes, to the one that hosts an adapter and renders
+  // nothing. Addressed the way this frontend addresses any page — in the hash
+  // when it is hash-routed, under its base path either way — because a
+  // statically deployed canvas is both, and setting an absolute pathname
+  // served it a 404 instead of an adapter.
+  const src = proxyFrameUrl(
+    new URL(frontendUrl, window.location.origin).toString(),
+    token,
+  );
 
   // The frontend reads window.name to learn it is inside Hydra and in WHICH
   // role, and an iframe inherits the name from this attribute at creation.

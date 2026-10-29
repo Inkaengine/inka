@@ -68,11 +68,33 @@ test.describe('the deployed canvas (static, hash-routed)', () => {
     expect(deep.status).toBe(404);
 
     await context.addCookies([{ name: `iframe_url_${PORTS.voltoSsr}`, value: canvas, domain: 'localhost', path: '/' }]);
+
+    // Nothing the admin asks of the canvas may be missing from it. A static
+    // build serves the files it has and 404s the rest, so a page the admin
+    // addresses by a path of its own — the bridge's hydra-proxy.html — is
+    // simply absent: no adapter announces, every request waits behind a gate
+    // that never opens, and the only symptom upstream is the preview iframe
+    // never getting a src. Collected rather than asserted per URL so any
+    // future such page is caught the same way.
+    const origin = new URL(canvas).origin;
+    const notFound: string[] = [];
+    page.on('response', (r) => {
+      if (r.status() === 404 && r.url().startsWith(origin)) notFound.push(r.url());
+    });
+
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/test-page');
     await expect(page.locator('#previewIframe')).toHaveAttribute('src', /\/canvas\/\?.*#\/.*test-page/);
     await helper.waitForIframeReady();
     await helper.clickBlockInIframe('block-1-uuid');
+
+    expect(notFound).toEqual([]);
+    // The proxy frame only exists in a bridge session; where it does, it has to
+    // be addressed inside the canvas, not at the host's root.
+    const proxy = page.locator('#hydraProxyFrame');
+    if (await proxy.count()) {
+      expect(await proxy.getAttribute('src')).toContain('/canvas/');
+    }
   });
 });
