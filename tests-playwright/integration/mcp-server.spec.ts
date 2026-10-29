@@ -44,6 +44,9 @@ test.describe('MCP server', () => {
     expect(instructions).toMatch(/view_page/);
     expect(instructions).toMatch(/preview_layout/);
     expect(instructions).toMatch(/saves? nothing/);
+    // It talks to the person about pages as visitors see them, not data.
+    expect(instructions).toMatch(/not in data/);
+    expect(instructions).toMatch(/Do not mention blocks, JSON/);
   });
 
   test('preview_layout: a whole proposed layout rendered, and the page left as it was', async () => {

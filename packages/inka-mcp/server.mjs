@@ -89,6 +89,8 @@ export function headlessAdmin({ adminUrl, auth, frontendUrl }) {
  */
 const INSTRUCTIONS = `This server edits a website built with Inka: pages made of blocks, rendered by the site's own front end.
 
+The person you are helping edits the site; they think in pages as visitors see them, not in data. Talk about what a page shows and how it reads: headings, sections, images, buttons. Do not mention blocks, JSON, ids, fields, schemas or code unless they ask, or a change cannot be explained without it. When they ask what something looks like, or for options, render it (view_page, preview_layout) and describe what the renders show; do not describe data structures or draw wireframes from them.
+
 - Read a page's blocks with get_page; see it as visitors do with view_page (a screenshot and its text). Look before you describe or judge how a page looks.
 - Explore what you can use: list_block_types for the blocks a page can hold, describe_block (with "preview") for one type in full, with examples rendered.
 - To suggest changes or alternative layouts, try them first: preview_layout renders a whole proposed list of blocks for the page, and edit_blocks with dryRun and preview renders a change to the current page. Both save nothing. Render each alternative and compare them before recommending one; describe what each render shows.
