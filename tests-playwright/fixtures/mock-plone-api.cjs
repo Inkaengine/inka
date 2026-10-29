@@ -3009,6 +3009,31 @@ app.post('/@login-renew', (req, res) => {
 });
 
 /**
+ * GET /@login
+ * The site's login options, beside the login form (plone.restapi lists them
+ * from ILoginProviders). This site has a demo editor, as plone.demoeditor
+ * offers it: a sign-in with no password (POST @login-demo).
+ */
+app.get('/@login', (req, res) => {
+  res.json({
+    options: [{
+      id: 'demo',
+      plugin: 'demo',
+      title: 'Try it as a demo editor',
+      url: `${req.protocol}://${req.get('host')}/@login-demo`,
+    }],
+  });
+});
+
+/**
+ * POST /@login-demo
+ * Sign in as the demo editor, with no password (plone.demoeditor).
+ */
+app.post('/@login-demo', (req, res) => {
+  res.json({ token: generateAuthToken('demo') });
+});
+
+/**
  * POST /@login
  * Authenticate and return JWT token with user info - generates fresh token each time
  */

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector, shallowEqual } from 'react-redux';
 import { Link, useHistory, useLocation } from 'react-router-dom';
 import {
@@ -28,8 +28,7 @@ import aheadSVG from '@plone/volto/icons/ahead.svg';
 import clearSVG from '@plone/volto/icons/clear.svg';
 import { getURlsFromEnv } from '../../../../../utils/getSavedURLs';
 import getDomainInitials from '../../../../../utils/getDomainInitials';
-import { demoAccount } from '../../../../../utils/demoAccount';
-import { runtimeConfig } from '@plone/volto/runtime_config';
+import { LOGIN } from '@plone/volto/constants/ActionTypes';
 
 const messages = defineMessages({
   login: {
@@ -87,10 +86,21 @@ const Login = (props) => {
   // hydration, or the form posts unhandled and the server 404s.
   const isClient = useClient();
   const query = qs.parse(props.location?.search ?? location.search);
-  // HYDRA: a demo site's "try editing" link (/login?demo&return_url=…) signs in
-  // with the site's demo account, so the visitor never sees this form.
+  // HYDRA: the site's own sign-in options beside the form (GET @login, from
+  // the CMS's login providers). One is a demo editor, where the site has one
+  // (plone.demoeditor): a button that signs in with no password. A demo
+  // site's "try editing" link (/login?demo&return_url=…) presses it for the
+  // visitor, who never sees this form.
   const demoRequested = 'demo' in query;
-  const demo = demoRequested ? demoAccount(runtimeConfig) : null;
+  const [signInOptions, setSignInOptions] = useState(null);
+  const [optionsError, setOptionsError] = useState(null);
+  useEffect(() => {
+    dispatch({ type: 'GET_SIGN_IN_OPTIONS', request: { op: 'get', path: '@login' } })
+      .then((result) => setSignInOptions(result.options))
+      .catch((failure) => setOptionsError(failure?.message || String(failure?.status)));
+  }, [dispatch]);
+  const demo = signInOptions?.find((option) => option.plugin === 'demo') ?? null;
+  const signInAsDemo = () => dispatch({ type: LOGIN, request: { op: 'post', path: '@login-demo' } });
   const returnUrl =
     query.return_url ||
     location.pathname.replace(/\/login\/?$/, '').replace(/\/logout\/?$/, '') ||
@@ -138,13 +148,12 @@ const Login = (props) => {
     location?.state?.isLogout,
   ]);
 
-  const demoLogin = demo?.login;
-  const demoPassword = demo?.password;
+  const demoOffered = !!demo;
   useEffect(() => {
-    if (demoLogin && !token && !loading && !error) {
-      dispatch(login(demoLogin, demoPassword));
+    if (demoRequested && demoOffered && !token && !loading && !error) {
+      dispatch({ type: LOGIN, request: { op: 'post', path: '@login-demo' } });
     }
-  }, [demoLogin, demoPassword, token, loading, error, dispatch]);
+  }, [demoRequested, demoOffered, token, loading, error, dispatch]);
 
   const onLogin = (event) => {
     dispatch(
@@ -155,8 +164,9 @@ const Login = (props) => {
     );
     event.preventDefault();
   };
-  // Signing in with the demo account: say so instead of showing the form.
-  if (demo && !error) {
+  // Signing in with the demo account (or finding out whether the site has
+  // one): say so instead of showing the form.
+  if (demoRequested && !error && !optionsError && (signInOptions === null || demo)) {
     return (
       <div id="page-login">
         <Container>
@@ -186,10 +196,15 @@ const Login = (props) => {
                 </a>
                 <Header.Subheader>Headless Visual Editor</Header.Subheader>
               </Header>
-              {demoRequested && !demo ? (
+              {demoRequested && signInOptions && !demo ? (
                 <p role="alert" style={{ margin: '1em 0', color: '#a00' }}>
-                  This editor has no demo account to sign in with
-                  (RAZZLE_DEMO_LOGIN and RAZZLE_DEMO_PASSWORD are not set).
+                  This site offers no demo sign-in (no demo editor, such as
+                  plone.demoeditor, on the CMS).
+                </p>
+              ) : null}
+              {optionsError ? (
+                <p role="alert" style={{ margin: '1em 0', color: '#a00' }}>
+                  Could not read the site's sign-in options: {optionsError}
                 </p>
               ) : null}
               <p style={{ margin: '1em 0 0.5em' }}>Editor for</p>
@@ -359,6 +374,13 @@ const Login = (props) => {
                 </Segment>
               </Segment.Group>
             </Form>
+            {demo ? (
+              <Segment basic textAlign="center">
+                <Button type="button" onClick={signInAsDemo} disabled={!isClient || loading}>
+                  {demo.title}
+                </Button>
+              </Segment>
+            ) : null}
           </Grid.Column>
         </Grid>
       </Container>

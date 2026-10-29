@@ -248,9 +248,9 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 | Title Tablehead&#x20; | Title Tablehead&#x20; | Title Tablehead&#x20; |
 | --- | --- | --- |
-| <h2>Heading H3</h2><h3>Heading H2</h3>Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | <h2>Heading H3</h2><h3>Heading H2</h3>Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | <h2>Heading H3</h2><h3>Heading H2</h3>Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; |
-| <h2>Heading H3</h2><h3>Heading H2</h3>Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | <h2>Heading H3</h2><h3>Heading H2</h3>Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | <h2>Heading H3</h2><h3>Heading H2</h3>Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; |
-| <h2>Heading H3</h2><h3>Heading H2</h3>Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | <h2>Heading H3</h2><h3>Heading H2</h3>Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | <h2>Heading H3</h2><h3>Heading H2</h3>Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; |
+| Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; |
+| Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; |
+| Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; | Text can be **bold** or *italic* or a [Link](./content-types/image-dark.md)&#x20; |
 
 </block>
 

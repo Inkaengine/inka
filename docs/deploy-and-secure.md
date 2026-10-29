@@ -105,16 +105,11 @@ The token is the editor's CMS session token, so its lifetime is set by the CMS. 
 
 ## A demo site's "try editing" link
 
-A public demo can send visitors straight into editing a page, without a login form: link to your Inka's `/login?demo&return_url=/some/page/edit`. Inka signs in with the demo account you configure and opens the page in the editor. Set the account on the Inka server; it is read at runtime, so no rebuild is needed.
+A public demo can send visitors straight into editing a page, without a login form: link to your Inka's `/login?demo&return_url=/some/page/edit`. Inka signs the visitor in as the site's demo editor and opens the page in the editor.
 
-### Settings
+The demo editor is the CMS's: a login option the site lists (`GET @login`), which signs in with no password. For Plone, that is [plone.demoeditor](https://github.com/pretagov/plone.demoeditor): it makes a `demo` account whose saves are all thrown away, and offers "Try it as a demo editor" among the site's login options. Inka's login page shows it as a button beside the form, and the `?demo` link presses it. Inka holds no demo password, and none reaches the browser.
 
-```text
-RAZZLE_DEMO_LOGIN=demo
-RAZZLE_DEMO_PASSWORD=…
-```
-
-**These reach the browser** (every `RAZZLE_` setting does), so treat the account as public: it must be one whose saves the CMS throws away (for Plone, a subscriber that dooms every transaction the account makes), or a backend nobody else reads. Without both settings, a `?demo` link shows the login form with a message saying the editor has no demo account.
+A site whose CMS offers no demo editor shows the login form, with a message saying so.
 
 ## Pin the bridge to Inka's origin
 
