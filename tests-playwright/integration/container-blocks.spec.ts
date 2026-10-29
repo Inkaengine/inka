@@ -3992,6 +3992,75 @@ test.describe('slateTable Container', () => {
     await helper.waitForIframeBlockHandle(selectedBlockUid!);
   });
 
+/**
+ * The multi-node table page, built at runtime.
+ *
+ * `mn-cell-2` holds two top-level nodes, which a slate field may never do
+ * (frontend-guide/visual-editing.md "One top-level node per slate field").
+ * That is the point — these tests prove the admin FLATTENS such a value — but
+ * it also means the page cannot be a fixture on disk: the mock validates the
+ * content it serves and refuses to start on a problem, and nothing excuses one
+ * ("content a test needs broken is made by that test, at runtime").
+ *
+ * The mock keys session content by the Bearer token, and `helper.authToken` is
+ * unique per helper, so this page exists only for the test that asks for it.
+ */
+async function createMultinodeTablePage(helper: AdminUIHelper, page: any) {
+  const cell = (key: string, type: string, value: unknown[]) => ({ key, type, value });
+  const p = (text: string) => ({ type: 'p', children: [{ text }] });
+  const response = await page.request.post(`${URLS.mockApi}${helper.contentPrefix}`, {
+    headers: { Authorization: `Bearer ${helper.authToken}` },
+    data: {
+      '@type': 'Document',
+      id: 'table-multinode-page',
+      title: 'Table Multinode Page',
+      blocks: {
+        'title-block': { '@type': 'title' },
+        'table-mn': {
+          '@type': 'slateTable',
+          table: {
+            hideHeaders: false,
+            rows: [
+              { key: 'mn-row-1', cells: [cell('mn-cell-1', 'header', [p('Header')])] },
+              {
+                key: 'mn-row-2',
+                cells: [
+                  // The invalid one: two top-level nodes.
+                  cell('mn-cell-2', 'data', [
+                    { type: 'h2', children: [{ text: 'Cell heading' }] },
+                    p('Cell paragraph'),
+                  ]),
+                ],
+              },
+              { key: 'mn-row-3', cells: [cell('mn-cell-3', 'data', [p('Editable cell text')])] },
+              {
+                key: 'mn-row-4',
+                cells: [
+                  cell('mn-cell-4', 'data', [
+                    {
+                      type: 'ul',
+                      children: [
+                        { type: 'li', children: [{ text: 'First item' }] },
+                        { type: 'li', children: [{ text: 'Second item' }] },
+                      ],
+                    },
+                  ]),
+                ],
+              },
+            ],
+          },
+        },
+      },
+      blocks_layout: { items: ['title-block', 'table-mn'] },
+    },
+  });
+  if (!response.ok()) {
+    throw new Error(
+      `Could not create the multi-node table page: ${response.status()} ${await response.text()}`,
+    );
+  }
+}
+
   test('cell with multi-node slate value is flattened, not split', async ({
     page,
   }) => {
@@ -4002,8 +4071,8 @@ test.describe('slateTable Container', () => {
     // corrupts the row (stray non-cell block) and, on Nuxt, loops until React
     // throws "Maximum update depth exceeded". The correct outcome is to
     // FLATTEN the multi-node value into one node. table-test-page never
-    // caught this because all its cells are single-node; table-multinode-page
-    // has a cell whose value is [h2, p].
+    // caught this because all its cells are single-node, so the page below is
+    // built at runtime with a cell whose value is [h2, p].
     const helper = new AdminUIHelper(page);
     const updateDepthErrors: string[] = [];
     page.on('pageerror', (e) => {
@@ -4013,6 +4082,7 @@ test.describe('slateTable Container', () => {
     });
 
     await helper.login();
+    await createMultinodeTablePage(helper, page);
     await helper.navigateToEdit('/table-multinode-page');
 
     const iframe = helper.getIframe();
@@ -4064,6 +4134,7 @@ test.describe('slateTable Container', () => {
     });
 
     await helper.login();
+    await createMultinodeTablePage(helper, page);
     await helper.navigateToEdit('/table-multinode-page');
 
     const editor = await helper.enterEditMode('mn-cell-3');
@@ -4091,6 +4162,7 @@ test.describe('slateTable Container', () => {
     });
 
     await helper.login();
+    await createMultinodeTablePage(helper, page);
     await helper.navigateToEdit('/table-multinode-page');
 
     const editor = await helper.enterEditMode('mn-cell-3');
@@ -4126,6 +4198,7 @@ test.describe('slateTable Container', () => {
     });
 
     await helper.login();
+    await createMultinodeTablePage(helper, page);
     await helper.navigateToEdit('/table-multinode-page');
 
     // Backspace at the start of the second list item demotes it to a
