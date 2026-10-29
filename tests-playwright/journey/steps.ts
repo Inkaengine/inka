@@ -435,7 +435,10 @@ export async function uploadIntoImageBlock(
 ): Promise<void> {
   const overlay = page.locator('.empty-image-overlay');
   await expect(overlay).toBeVisible({ timeout: 20_000 });
-  const dropzone = overlay.locator('.hydra-image-picker-inline');
+  // `data-testid`, not a class: the bare `hydra-image-picker-inline` class was
+  // styled by nothing and got deleted as dead CSS, and the widget now marks
+  // this element the way Volto marks one that exists only for tests to find.
+  const dropzone = overlay.locator('[data-testid="image-picker-inline"]');
   await expect(dropzone).toBeVisible({ timeout: 15_000 });
 
   // hover() before dropping, not just toBeVisible().
