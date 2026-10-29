@@ -186,6 +186,11 @@ for (const where of Object.keys(WHERE)) {
       ]);
     });
 
+    test("every block new to the page gets a uid from the editor's generator", async () => {
+      const opened = await open(EMPTY_PAGE, template(where));
+      for (const id of ids(where, opened)) expect(id).toMatch(/^uuid-\d+$/);
+    });
+
     test('opening it again gives the same ids', async () => {
       const once = await open(EMPTY_PAGE, template(where));
       const twice = await open(once, template(where));

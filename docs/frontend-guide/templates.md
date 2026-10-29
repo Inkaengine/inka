@@ -333,7 +333,7 @@ The merge algorithm follows these rules:
 3. Recursively replace any block fields using the same rules.
 4. Any slot blocks left over are inserted at the end of a special slot called `"default"` if it exists, otherwise are dropped.
 
-The rules are the same in every region: the page's own blocks fields, and every region inside a block at any depth, `blocks_layout` and object_list alike. A block the page already has keeps its id: a fixed block takes the id of the page's block in its slot (where two fixed blocks share a slot name, the first takes the first one's, and so on), and slot content keeps its own. A block new to the page gets `${instanceId}::${templateBlockId}`, the same each time the page is merged.
+The rules are the same in every region: the page's own blocks fields, and every region inside a block at any depth, `blocks_layout` and object_list alike. A block the page already has keeps its id: a fixed block takes the id of the page's block in its slot (where two fixed blocks share a slot name, the first takes the first one's, and so on), and slot content keeps its own. A block new to the page gets a new id: from `uuidGenerator` when the caller passes one (the editor does, so every id it saves is a uid), else `${instanceId}::${templateBlockId}`, so a render that is never saved gives the same ids on the server and in the client's hydration.
 
 They are the same in both directions too. **Change on all pages** merges the page's instance into its template with these rules: the template keeps its own ids and its slots' own blocks, and takes the instance's fixed blocks. What a page put in a slot is never written to the template.
 

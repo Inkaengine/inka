@@ -3862,9 +3862,15 @@ function takeFixedBlock(existingFixedBlockIds, slotId) {
   return slotId ? existingFixedBlockIds?.get(slotId)?.shift() : undefined;
 }
 
-// A block of a template instance: the instance's id and the template block's own.
-function instanceBlockId(instanceId, tplBlockId) {
-  return `${instanceId}::${tplBlockId}`;
+/**
+ * THE single policy for a template child's block id. A caller-provided generator
+ * wins: the admin passes one, so every id it saves is a real uid. Without one (a
+ * render-time expansion that is never saved) the id is `${instanceId}::${tplChildId}`:
+ * stable across a server render and the client hydration, and instance-scoped so
+ * two instances of one template never collide.
+ */
+function mintChildBlockId(instanceId, tplChildId, uuidGenerator) {
+  return uuidGenerator ? uuidGenerator() : `${instanceId}::${tplChildId}`;
 }
 
 // The block, and its descendants that `own` picks, marked as `instanceId`'s.
@@ -3918,7 +3924,7 @@ function templateSlotIds(template, idFieldMap) {
 function fillRegionEntries(entries, templateState, options) {
   const { instanceId, templateId } = templateState;
   const ctx = templateState.instances?.[instanceId];
-  const { firstInsert } = options;
+  const { uuidGenerator, firstInsert } = options;
   const out = [];
   const slotOf = (block) => (block && !block.fixed ? block.slotId || 'default' : null);
   for (let idx = 0; idx < entries.length; idx++) {
@@ -3928,7 +3934,7 @@ function fillRegionEntries(entries, templateState, options) {
     if (child.fixed) {
       const editable = !child.readOnly && !!child.slotId;
       const existingFixed = takeFixedBlock(ctx?.existingFixedBlockIds, child.slotId);
-      const outId = existingFixed?.blockId || instanceBlockId(instanceId, tplChildId);
+      const outId = existingFixed?.blockId || mintChildBlockId(instanceId, tplChildId, uuidGenerator);
       if (child.blocks && isBlocksMap(child.blocks) && !hasNestedBlocksLayout(child)) {
         throw new Error(
           `expandTemplatesSync: template block "${tplChildId}" has nested ` +
@@ -3994,7 +4000,7 @@ function fillRegionEntries(entries, templateState, options) {
         const placeholders = extractFieldPlaceholders(child);
         if (Object.keys(placeholders).length > 0) nb.fieldPlaceholders = placeholders;
       }
-      out.push({ id: instanceBlockId(instanceId, tplChildId), block: nb });
+      out.push({ id: mintChildBlockId(instanceId, tplChildId, uuidGenerator), block: nb });
       continue;
     }
 

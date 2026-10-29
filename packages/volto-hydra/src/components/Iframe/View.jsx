@@ -1743,7 +1743,7 @@ const Iframe = (props) => {
 
     if (templateId && templateCacheRef.current[templateId]) {
       const template = templateCacheRef.current[templateId];
-      mergeInstanceIntoTemplate(template, formData, prevInstanceId, { idFieldMap })
+      mergeInstanceIntoTemplate(template, formData, prevInstanceId, { idFieldMap, uuidGenerator: uuid })
         .then(async ({ merged: updatedTemplate }) => {
           templateCacheRef.current[templateId] = updatedTemplate;
           // "Change on all pages": persist the template document immediately.

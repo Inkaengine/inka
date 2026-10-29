@@ -24,6 +24,7 @@ import {
  * @param {Object} options
  * @param {Function} options.loadTemplate - Async function: (templateId) => Promise<templateData>
  * @param {Object} options.pageBlocksFields - Map of field names to field config (e.g. { blocks_layout: { allowedLayouts: [...] } })
+ * @param {Function} options.uuidGenerator - Mints the ids of blocks new to the page
  * @param {boolean} options.skipOwnTemplate - Set when preparing a document to be
  *   EDITED (the INITIAL_DATA path): don't merge it against its own template. Off
  *   by default because the reverse direction — capturing a page's edits back into
@@ -113,6 +114,7 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
   const {
     loadTemplate,
     pageBlocksFields = { items: {} },
+    uuidGenerator,
     skipOwnTemplate = false,
     preloadedTemplates = {},
     firstInsert,
@@ -131,6 +133,7 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
     templateState,
     loadTemplate,
     preloadedTemplates,
+    uuidGenerator,
     firstInsert,
     idFieldMap, // { blockType: { field: idField } } — admin-resolved from the schema
   });
@@ -322,10 +325,10 @@ export function instanceContent(formData, instanceId, idFieldMap) {
  * @param {Object} template - the template document, as stored
  * @param {Object} page - the page holding the instance
  * @param {string} instanceId
- * @param {Object} options - idFieldMap
+ * @param {Object} options - idFieldMap, and uuidGenerator for the ids of blocks new to the template
  * @returns {Promise<{merged: Object, newTemplateIds: string[]}>} the template to save
  */
-export async function mergeInstanceIntoTemplate(template, page, instanceId, { idFieldMap }) {
+export async function mergeInstanceIntoTemplate(template, page, instanceId, { idFieldMap, uuidGenerator }) {
   const instance = instanceContent(page, instanceId, idFieldMap);
   const instancePage = {
     ...page,
@@ -334,6 +337,7 @@ export async function mergeInstanceIntoTemplate(template, page, instanceId, { id
   };
   return mergeTemplatesIntoPage(template, {
     loadTemplate: async () => instancePage,
+    uuidGenerator,
     idFieldMap,
   });
 }
