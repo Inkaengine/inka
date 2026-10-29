@@ -148,7 +148,20 @@ async function main(env) {
   const listening = httpServer((req, res) => {
     // Taken now: Express rewrites req.url as it routes.
     const path = req.url.split('?')[0];
+    // A refused MCP request says why in its body (a JSON-RPC error, no
+    // arguments or tokens): kept to log with it.
+    let refusal = '';
+    if (path === '/mcp') {
+      const end = res.end.bind(res);
+      res.end = (chunk, ...rest) => {
+        if (res.statusCode >= 400 && chunk) refusal = String(chunk).slice(0, 300);
+        return end(chunk, ...rest);
+      };
+    }
     res.on('finish', () => {
+      if (refusal) {
+        console.log(`req: refused ${req.method} /mcp protocol=${req.headers['mcp-protocol-version']} accept="${req.headers.accept}" -> ${refusal}`);
+      }
       console.log(`req: ${req.method} ${path} host=${req.headers.host} ua="${req.headers['user-agent']}" -> ${res.statusCode}`);
     });
     app(req, res);
