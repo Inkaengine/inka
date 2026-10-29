@@ -97,6 +97,25 @@ export function createServer(adminFor) {
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, getPage)));
 
+  server.registerTool('view_page', {
+    title: 'See a page',
+    description: 'See a page as a visitor sees it: a screenshot rendered by the site\'s own front end, and the page\'s visible text. Use it whenever asked what a page looks like, to check a layout, or before suggesting design or layout changes: get_page gives the blocks, not how they render. To see a change before saving it, use edit_blocks with dryRun and preview.',
+    inputSchema: {
+      path: z.string().describe('The page path, e.g. /about'),
+      viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
+    },
+  }, async ({ path, viewport = 'desktop' }, extra) => {
+    const { image, text, renderedOn } = await adminFor(extra).withEditor(
+      path, async (agent, { render }) => render(await agent.getDraft(), viewport),
+    );
+    return {
+      content: [
+        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, renderedText: text }, null, 2) },
+        { type: 'image', data: image, mimeType: 'image/png' },
+      ],
+    };
+  });
+
   const paging = {
     limit: z.number().int().positive().max(100).optional().describe('At most this many (default 25)'),
     start: z.number().int().nonnegative().optional().describe('Skip this many, to page through'),

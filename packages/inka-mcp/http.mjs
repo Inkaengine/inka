@@ -162,7 +162,11 @@ async function main(env) {
       if (refusal) {
         console.log(`req: refused ${req.method} /mcp protocol=${req.headers['mcp-protocol-version']} accept="${req.headers.accept}" -> ${refusal}`);
       }
-      console.log(`req: ${req.method} ${path} host=${req.headers.host} ua="${req.headers['user-agent']}" -> ${res.statusCode}`);
+      // For an MCP request, what it asked for: its JSON-RPC method, and the
+      // tool for a tool call (no arguments).
+      const rpc = path === '/mcp' && req.body?.method
+        ? ` ${req.body.method}${req.body.params?.name ? `:${req.body.params.name}` : ''}` : '';
+      console.log(`req: ${req.method} ${path}${rpc} host=${req.headers.host} ua="${req.headers['user-agent']}" -> ${res.statusCode}`);
     });
     app(req, res);
   }).listen(Number(required(env, 'PORT')));

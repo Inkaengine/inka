@@ -36,7 +36,22 @@ test.describe('MCP server', () => {
 
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'rename_page', 'search']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'rename_page', 'search', 'view_page']);
+  });
+
+  test('view_page: a picture of the page as visitors see it, and its text', async () => {
+    // An agent asked "what does it look like?" answered from the block data
+    // with a guessed wireframe: nothing showed it the page.
+    test.setTimeout(120000);
+    const result = await client.callTool({ name: 'view_page', arguments: { path: PAGE, viewport: 'mobile' } }, undefined, CALL);
+    const [text, image] = result.content as any[];
+    expect(result.isError, text.text).toBeFalsy();
+    const viewed = JSON.parse(text.text);
+    expect(viewed).toMatchObject({ path: PAGE, viewport: 'mobile' });
+    expect(viewed.renderedText).toContain('This is a test paragraph');
+    expect(image).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    // Mobile width: the picture is the phone's, not the desktop's.
+    expect(Buffer.from(image.data, 'base64').readUInt32BE(16)).toBe(390);
   });
 
   test('describe_block with preview: a picture of each example, after the text', async () => {
