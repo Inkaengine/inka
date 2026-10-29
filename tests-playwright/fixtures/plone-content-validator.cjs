@@ -715,6 +715,15 @@ function imageDimensions(file) {
           }
         } else if (def.widget === 'slate' && !Array.isArray(v)) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:slate but its value is ${shape(v)} — a slate field must be a bare array of nodes (a {value:[…]} wrapper or richtext value has leaked in)`);
+        } else if (def.widget === 'slate' && v.length > 1) {
+          // The single-top-level-node rule below is gated on `@type === 'slate'`,
+          // so it only ever saw slate BLOCKS. A slate FIELD of any other block
+          // went unchecked, and a renderer that hoists node [0] — as hero_block
+          // does for `description` — drew the first paragraph and silently
+          // dropped the rest: the text reached the browser in the payload and
+          // appeared nowhere on the page, passing every gate. A slate field is
+          // a slate field.
+          errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" has ${v.length} top-level nodes (expected 1; only the first renders — put the rest in their own blocks)`);
         } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
         } else if (def.widget === 'object_list' && Array.isArray(v)) {
