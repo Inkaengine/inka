@@ -24,8 +24,6 @@ import {
  * @param {Object} options
  * @param {Function} options.loadTemplate - Async function: (templateId) => Promise<templateData>
  * @param {Object} options.pageBlocksFields - Map of field names to field config (e.g. { blocks_layout: { allowedLayouts: [...] } })
- * @param {Function} options.uuidGenerator - UUID generator function (required)
- * @param {string} options.filterInstanceId - Only process blocks matching this instance ID
  * @param {boolean} options.skipOwnTemplate - Set when preparing a document to be
  *   EDITED (the INITIAL_DATA path): don't merge it against its own template. Off
  *   by default because the reverse direction — capturing a page's edits back into
@@ -115,8 +113,6 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
   const {
     loadTemplate,
     pageBlocksFields = { items: {} },
-    uuidGenerator,
-    filterInstanceId,
     skipOwnTemplate = false,
     preloadedTemplates = {},
     firstInsert,
@@ -135,8 +131,6 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
     templateState,
     loadTemplate,
     preloadedTemplates,
-    uuidGenerator,
-    filterInstanceId,
     firstInsert,
     idFieldMap, // { blockType: { field: idField } } — admin-resolved from the schema
   });
@@ -282,4 +276,64 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
     merged: result,
     newTemplateIds: Array.from(allNewTemplateIds),
   };
+}
+
+/**
+ * Every block of one template instance, wherever it sits — the page's top level, a
+ * footer region, or inside a container at any depth — and the order each region
+ * holds them in, keyed by the region's path. Read through the helpers' container
+ * accessors (blocks_layout regions and object_list fields alike), never from
+ * formData.blocks alone: an instance inside a container is not there (CLAUDE.md,
+ * "Block Access"; docs/architecture.md, "Merging templates").
+ *
+ * @param {Object} formData - the page
+ * @param {string} instanceId
+ * @param {Object} idFieldMap - { blockType: { field: idField } }
+ * @returns {{ blocks: Object, regions: Object, layouts: Object }} the instance's
+ *   blocks, the order of its blocks in each region, and each region's full order
+ */
+export function instanceContent(formData, instanceId, idFieldMap) {
+  const blocks = {};
+  const regions = {};
+  const layouts = {};
+  const visit = (container, path) => {
+    for (const field of getChildFields(container, idFieldMap, { allObjectLists: true })) {
+      const entries = getChildBlockEntries(container, field);
+      layouts[`${path}/${field.region}`] = entries.map((entry) => entry.id);
+      const own = entries
+        .filter((entry) => entry.block?.templateInstanceId === instanceId)
+        .map((entry) => entry.id);
+      if (own.length) regions[`${path}/${field.region}`] = own;
+      for (const { id, block } of entries) {
+        if (block?.templateInstanceId === instanceId) blocks[id] = block;
+        else if (block) visit(block, `${path}/${id}`);
+      }
+    }
+  };
+  visit(formData, '');
+  return { blocks, regions, layouts };
+}
+
+/**
+ * "Change on all pages": one template instance on a page, merged into its template.
+ * The instance's own blocks, wherever it sits (instanceContent), in its own order:
+ * the merge reads a page's top-level regions, and a nested instance is not in them.
+ *
+ * @param {Object} template - the template document, as stored
+ * @param {Object} page - the page holding the instance
+ * @param {string} instanceId
+ * @param {Object} options - idFieldMap
+ * @returns {Promise<{merged: Object, newTemplateIds: string[]}>} the template to save
+ */
+export async function mergeInstanceIntoTemplate(template, page, instanceId, { idFieldMap }) {
+  const instance = instanceContent(page, instanceId, idFieldMap);
+  const instancePage = {
+    ...page,
+    blocks: instance.blocks,
+    blocks_layout: { items: Object.values(instance.regions).flat() },
+  };
+  return mergeTemplatesIntoPage(template, {
+    loadTemplate: async () => instancePage,
+    idFieldMap,
+  });
 }

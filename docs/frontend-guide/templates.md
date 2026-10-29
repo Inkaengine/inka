@@ -329,25 +329,31 @@ const { templates, errors } = await loadTemplates(
 The merge algorithm follows these rules:
 
 1. Remove the blocks with the `templateId` to replace, storing any that aren't fixed and readOnly by `slotId`.
-2. Insert in their place the template content: if fixed and readOnly, just insert it; if fixed, copy block content (not including block fields) from a page block with the same `slotId`; if a slot block, don't insert it, but insert the previous blocks with the same `slotId`.
+2. Insert in their place the template content: if fixed and readOnly, just insert it; if fixed, copy block content (not including block fields) from a page block with the same `slotId`; if a slot block, don't insert it, but insert the previous blocks with the same `slotId`. A slot the page has nothing for is the template's slot block, without anything it holds.
 3. Recursively replace any block fields using the same rules.
 4. Any slot blocks left over are inserted at the end of a special slot called `"default"` if it exists, otherwise are dropped.
 
-When a layout is applied, the rules are the same but applied across a whole blocks field. Content without a `slotId` ends up:
+The rules are the same in every region: the page's own blocks fields, and every region inside a block at any depth, `blocks_layout` and object_list alike. A block the page already has keeps its id: a fixed block takes the id of the page's block in its slot (where two fixed blocks share a slot name, the first takes the first one's, and so on), and slot content keeps its own. A block new to the page gets `${instanceId}::${templateBlockId}`, the same each time the page is merged.
+
+They are the same in both directions too. **Change on all pages** merges the page's instance into its template with these rules: the template keeps its own ids and its slots' own blocks, and takes the instance's fixed blocks. What a page put in a slot is never written to the template.
+
+When a layout is applied, the rules are the same but applied across a whole blocks field. Content without a `slotId`, or whose slot the layout doesn't have, ends up:
 
 - In the `"default"` slot if it exists
 - In the bottom slot outside the last fixed template block
 - In the top slot outside the first fixed template block
 - Otherwise it is dropped
 
-Content WITH a `slotId` goes in that slot. That holds for a fixed slot too: a page's editable fixed block (`fixed`, not `readOnly`) with the slot's `slotId` takes over the layout's fixed block there — its id and its edited fields — whether or not it carries the instance's id. So a page that has never been through a forced layout (its instance is minted when it renders) can still carry its own version of the layout's fixed heading, marked `templateId` + `slotId` + `fixed`.
+It takes the `slotId` of the slot it ends up in.
+
+Content WITH a `slotId` goes in that slot. That holds for a fixed slot too: a page's editable fixed block (`fixed`, not `readOnly`) with the slot's `slotId` takes over the layout's fixed block there — its id and its edited fields — whether or not it carries the instance's id. So a page that has never been through a forced layout (its instance is minted when it renders) can still carry its own version of the layout's fixed heading, marked `templateId` + `slotId` + `fixed`. Any other page block in a fixed block's slot is a copy of that block, and the fixed block replaces it.
 
 ### Diagram
 
 ```bash
 Before:  [User Block A] [User Block B]
 Layout:  [Fixed Header] [default] [Fixed Footer] [post_footer]
-After:   [Fixed Header] [User Block A] [User Block B] [Fixed Footer]
+After:   [Fixed Header] [User Block A] [User Block B] [Fixed Footer] [post_footer]
 ```
 
 ## Forcing Layouts

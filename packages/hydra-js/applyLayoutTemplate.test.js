@@ -1,5 +1,5 @@
 import { expandTemplates, expandTemplatesSync } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
 
 // Wrapper to match old applyLayoutTemplate signature for existing tests
 async function applyLayoutTemplate(pageData, templateData, uuidGenerator) {
@@ -312,8 +312,8 @@ describe('fallback placement when no default slot', () => {
     // User content should exist
     expect(result.blocks['user-block']).toBeDefined();
 
-    // User content should have slotId 'default' assigned
-    expect(result.blocks['user-block'].slotId).toBe('default');
+    // User content is in the bottom slot, and says so
+    expect(result.blocks['user-block'].slotId).toBe('post_footer');
 
     // Find positions
     const footerIndex = layout.findIndex(id => result.blocks[id]?.slotId === 'footer');
@@ -593,7 +593,7 @@ describe('reverse merge - page to template (for saving)', () => {
     expect(footerBlock.value[0].text).toBe('User Edited Footer');
   });
 
-  // The admin SAVE path (View.jsx "REVERSE MERGE") uses filterInstanceId — NOT
+  // The admin SAVE path (View.jsx "REVERSE MERGE") uses mergeInstanceIntoTemplate — NOT
   // allowedLayouts — to merge the edited instance back into the template, so a
   // fixed+readOnly edit made in template edit mode propagates to OTHER pages using the
   // template. This is integration :866 ("saved template changes … appear on other
@@ -617,10 +617,8 @@ describe('reverse merge - page to template (for saving)', () => {
       },
       blocks_layout: { items: ['page-header', 'user-block-1'] },
     };
-    // 1. SAVE: reverse-merge (filterInstanceId) captures the edit into the template.
-    const { merged: updatedTemplate } = await mergeTemplatesIntoPage(template, {
-      loadTemplate: async () => pageWithEdits,
-      filterInstanceId: 'inst-1',
+    // 1. SAVE: reverse merge (mergeInstanceIntoTemplate) captures the edit into the template.
+    const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, pageWithEdits, 'inst-1', {
       uuidGenerator: uuidGen,
     });
     const header = Object.values(updatedTemplate.blocks).find((b) => b.slotId === 'header' && b.fixed);
