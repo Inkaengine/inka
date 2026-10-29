@@ -352,7 +352,14 @@ test.describe('Page Metadata Editing', () => {
     // The race must actually have been constructed, or this test proves
     // nothing: the admin has to have asked for the schema over the wire while
     // we are still holding it. If it were fetched during SSR this is 0.
-    expect(schemaRequests.length).toBeGreaterThan(0);
+    //
+    // Polled, not read once. In bridge mode every admin API call first waits
+    // for the adapter to announce itself (BridgeApi.dispatch -> whenAdapterReady),
+    // so the schema request is issued AFTER load rather than during the first
+    // render — `goto` resolving says nothing about whether it has gone out yet.
+    // A single read happened to hold on a slow dev build, where goto is slower
+    // than the announcement, and failed in ~600ms on CI, where it is not.
+    await expect.poll(() => schemaRequests.length, { timeout: 30000 }).toBeGreaterThan(0);
 
     // ... and INIT must already have been posted, while the schema is still
     // held. This is the race itself; without it the rest is theatre.
