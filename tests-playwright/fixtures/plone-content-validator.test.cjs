@@ -619,6 +619,56 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.ok(r.errors.some((e) => e.includes('top-level nodes')), r.errors.join('\n'));
   });
 
+  it('FAILS on a multi-node slate FIELD of a non-slate block', () => {
+    // The same rule, on a `widget: slate` field of any other block. The check
+    // above is gated on `@type === 'slate'`, so a hero's `description` holding
+    // two paragraphs passed every gate while the renderer drew only the first:
+    // the second paragraph reached the browser in the payload and appeared
+    // nowhere on the page. A slate field is a slate field.
+    const HERO_CONFIG = {
+      hero_block: { blockSchema: { properties: { description: { widget: 'slate' } } } },
+    };
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          h: {
+            '@type': 'hero_block',
+            description: [
+              { type: 'p', children: [{ text: 'Lead line.' }] },
+              { type: 'p', children: [{ text: 'A second paragraph nothing renders.' }] },
+            ],
+          },
+        },
+        blocks_layout: { items: ['h'] },
+      },
+    });
+    const r = checkIntegrity(contentDir, { schemasFor: () => HERO_CONFIG });
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('top-level nodes')), r.errors.join('\n'));
+  });
+
+  it('PASSES a single-node slate field', () => {
+    // The counterpart, so the rule cannot be satisfied by failing everything.
+    const HERO_CONFIG = {
+      hero_block: { blockSchema: { properties: { description: { widget: 'slate' } } } },
+    };
+    const { root, contentDir } = buildFixture({
+      pageA: {
+        '@id': '/page-a', '@type': 'Document', id: 'page-a',
+        UID: 'pageauid1234567', parent: { '@id': '/' },
+        blocks: {
+          h: { '@type': 'hero_block', description: [{ type: 'p', children: [{ text: 'Lead line.' }] }] },
+        },
+        blocks_layout: { items: ['h'] },
+      },
+    });
+    const r = checkIntegrity(contentDir, { schemasFor: () => HERO_CONFIG });
+    cleanup(root);
+    assert.ok(!r.errors.some((e) => e.includes('top-level nodes')), r.errors.join('\n'));
+  });
+
   it('FAILS on a template block with no templateId', () => {
     // A forced-layout template's blocks are matched to a page's region by
     // templateId + slotId. A block carrying only slotId is silently skipped by
