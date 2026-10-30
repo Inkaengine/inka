@@ -56,6 +56,7 @@ import BlockTypesControlpanel from '@plone/volto/components/manage/Controlpanels
 import BlockTypeControlpanel from '@plone/volto/components/manage/Controlpanels/BlockType';
 
 import withClientSideContent from '@plone/volto/helpers/Content/withClientSideContent';
+import withClientSideAsyncConnect from '../../bridge/withClientSideAsyncConnect';
 
 import App from '@plone/volto/components/theme/App/App';
 import View from '@plone/volto/components/theme/View/View';
@@ -265,7 +266,9 @@ export const defaultRoutes = [
   },
   {
     path: ['/contents', '/**/contents'],
-    component: Contents,
+    // Its asyncConnect fetches the object actions, which it refuses to render
+    // without; in a bridge session no server pass runs it. See the HOC.
+    component: withClientSideAsyncConnect(Contents),
   },
   {
     path: ['/sharing', '/**/sharing'],
@@ -358,4 +361,45 @@ const routes = [
   },
 ];
 
-export default routes;
+/**
+ * Render nothing on the server when the admin is bridge-backed.
+ *
+ * Volto server-renders because its usual job is being a public frontend, where
+ * prefetching the page for anonymous visitors and search engines is the whole
+ * point. A Hydra admin is not that. Its content comes from the adapter in an
+ * iframe that does not exist until the browser makes one, so there is nothing
+ * the server can render and nothing it can fetch — and every attempt to try
+ * has been a bug: asyncConnect prefetching from whichever CMS the admin was
+ * built against (the Drupal journey 404'd because the admin asked Plone for a
+ * path only Drupal had), and a token-renewal timer POSTing to the same place.
+ *
+ * So the server bundle swaps every route component for one that renders
+ * nothing. `loadOnServer` finds no `reduxAsyncConnect` to prefetch, and
+ * `renderToString` produces an empty body — the document still carries the
+ * scripts, styles and serialised store, and the client mounts the real app.
+ *
+ * This is only correct because the client MOUNTS rather than hydrates in
+ * bridge mode; see the start-client customization. Making one of these changes
+ * without the other gives React an empty container to hydrate against.
+ *
+ * Server-side redirects and status codes go with it: nothing renders, so
+ * nothing sets StaticRouter's context. The client decides both instead, which
+ * for an authenticated editor it had to anyway.
+ */
+const RendersNothing = () => null;
+RendersNothing.displayName = 'NoServerRender';
+
+function withoutServerRender(routeList) {
+  return routeList.map((route) => {
+    const stripped = { ...route };
+    if (route.component) stripped.component = RendersNothing;
+    if (route.routes) stripped.routes = withoutServerRender(route.routes);
+    return stripped;
+  });
+}
+
+const isServer = typeof window === 'undefined';
+
+export default config.settings.useBridgeBackend && isServer
+  ? withoutServerRender(routes)
+  : routes;

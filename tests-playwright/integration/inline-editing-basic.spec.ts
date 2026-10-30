@@ -669,12 +669,35 @@ test.describe('Inline Editing - Basic', () => {
     await sidebarEditor.click();
     await expect(sidebarEditor).toBeFocused();
     // Backspace acts on the selection the editor holds, so the whole text must
-    // be selected before it is pressed.
-    await helper.selectAllTextInEditor(sidebarEditor);
-    await page.keyboard.press('Backspace');
+    // be selected before it is pressed — and the pair has to be RETRIED, not
+    // just verified once.
+    //
+    // `selectAllTextInEditor` already proves the selection took: it polls
+    // window.getSelection() until it matches the editor's text. The selection
+    // is also stable once made — traced for 3s untouched, 24 chars,
+    // uncollapsed, no change — so nothing drops it spontaneously. What loses
+    // it is a sync landing in the gap between that proof and the keypress:
+    // this admin answers an edit through a FORM_DATA round trip to the iframe,
+    // and a re-render arriving right there leaves a collapsed caret, so
+    // Backspace deletes one character instead of the selection. One run in six
+    // locally, and worse on a loaded runner.
+    //
+    // So: select, delete, and check it actually emptied; repeat if not.
+    await expect
+      .poll(
+        async () => {
+          if ((await sidebarEditor.locator('[data-slate-string]').count()) === 0) {
+            return 0;
+          }
+          await helper.selectAllTextInEditor(sidebarEditor);
+          await page.keyboard.press('Backspace');
+          return sidebarEditor.locator('[data-slate-string]').count();
+        },
+        { timeout: 15000 },
+      )
+      .toBe(0);
     // Empty: the widget shows its placeholder, and nothing else.
     await expect(sidebarEditor.locator('[data-slate-placeholder]')).toBeVisible();
-    await expect(sidebarEditor.locator('[data-slate-string]')).toHaveCount(0);
     await page.keyboard.type('- First item', { delay: 50 });
     await expect(sidebarEditor.locator('li')).toHaveText(['First item']);
     await page.keyboard.press('Enter');

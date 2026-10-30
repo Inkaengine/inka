@@ -252,36 +252,30 @@ test.describe('Page Metadata Editing', () => {
     const outline = page.locator('.volto-hydra-block-outline');
     await expect(outline).toBeVisible({ timeout: 5000 });
 
-    // Get initial outline position
-    const initialOutlineBox = await outline.boundingBox();
-    expect(initialOutlineBox).toBeTruthy();
-
-    // Get initial preview image position relative to iframe
-    const initialImageBox = await previewImage.boundingBox();
-    expect(initialImageBox).toBeTruthy();
+    // How far the outline's top is from the image's top, in page coordinates.
+    // Tracking means this stays ~0. Polled rather than read once: the outline
+    // appears before the admin has finished laying out around the selection
+    // (sidebar opening), so a single early read measures a layout shift, not
+    // the outline's tracking.
+    const offset = async () => {
+      const o = await outline.boundingBox();
+      const i = await previewImage.boundingBox();
+      if (!o || !i) return Number.POSITIVE_INFINITY;
+      return Math.abs(o.y - i.y);
+    };
+    await expect.poll(offset, { timeout: 5000 }).toBeLessThan(10);
+    const imageYBefore = (await previewImage.boundingBox())!.y;
 
     // Scroll down in the iframe
     await iframe.locator('body').evaluate((body) => {
       body.ownerDocument.defaultView?.scrollBy(0, 100);
     });
 
-    // Wait for scroll to complete and outline to update
-    await page.waitForTimeout(300);
-
-    // Get new positions after scroll
-    const newOutlineBox = await outline.boundingBox();
-    const newImageBox = await previewImage.boundingBox();
-
-    expect(newOutlineBox).toBeTruthy();
-    expect(newImageBox).toBeTruthy();
-
-    // The outline should have moved with the image (both should move up by ~100px)
-    // Allow some tolerance for timing
-    const outlineMovement = initialOutlineBox!.y - newOutlineBox!.y;
-    const imageMovement = initialImageBox!.y - newImageBox!.y;
-
-    // Both should have moved approximately the same amount
-    expect(Math.abs(outlineMovement - imageMovement)).toBeLessThan(10);
+    // The image really moved, and the outline followed it.
+    await expect
+      .poll(async () => imageYBefore - (await previewImage.boundingBox())!.y, { timeout: 5000 })
+      .toBeGreaterThan(50);
+    await expect.poll(offset, { timeout: 5000 }).toBeLessThan(10);
   });
 
   // Regression for PRETAGOVSITE-K.
@@ -358,7 +352,14 @@ test.describe('Page Metadata Editing', () => {
     // The race must actually have been constructed, or this test proves
     // nothing: the admin has to have asked for the schema over the wire while
     // we are still holding it. If it were fetched during SSR this is 0.
-    expect(schemaRequests.length).toBeGreaterThan(0);
+    //
+    // Polled, not read once. In bridge mode every admin API call first waits
+    // for the adapter to announce itself (BridgeApi.dispatch -> whenAdapterReady),
+    // so the schema request is issued AFTER load rather than during the first
+    // render — `goto` resolving says nothing about whether it has gone out yet.
+    // A single read happened to hold on a slow dev build, where goto is slower
+    // than the announcement, and failed in ~600ms on CI, where it is not.
+    await expect.poll(() => schemaRequests.length, { timeout: 30000 }).toBeGreaterThan(0);
 
     // ... and INIT must already have been posted, while the schema is still
     // held. This is the race itself; without it the rest is theatre.

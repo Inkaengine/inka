@@ -86,11 +86,18 @@ const Login = (props) => {
   // hydration, or the form posts unhandled and the server 404s.
   const isClient = useClient();
   const query = qs.parse(props.location?.search ?? location.search);
-  // HYDRA: the site's own sign-in options beside the form (GET @login, from
-  // the CMS's login providers). One is a demo editor, where the site has one
-  // (plone.demoeditor): a button that signs in with no password. A demo
-  // site's "try editing" link (/login?demo&return_url=…) presses it for the
-  // visitor, who never sees this form.
+  // HYDRA: the site's own sign-in options beside the form (GET @login, which
+  // a bridge session answers from the ADAPTER as auth.loginOptions, so the
+  // question works on a CMS that has never heard of Plone's login providers).
+  // One of them may sign in with no password — a demo editor, where the site
+  // has one (plone.demoeditor). A demo site's "try editing" link
+  // (/login?demo&return_url=…) presses it for the visitor, who never sees
+  // this form.
+  //
+  // Chosen by what the option CAN do (`passwordFree`), not by which CMS
+  // plugin produced it: keying on `plugin === 'demo'` asked the admin to
+  // recognise one Plone add-on's name, which is the knowledge the adapter
+  // contract exists to move out of here.
   const demoRequested = 'demo' in query;
   const [signInOptions, setSignInOptions] = useState(null);
   const [optionsError, setOptionsError] = useState(null);
@@ -99,8 +106,14 @@ const Login = (props) => {
       .then((result) => setSignInOptions(result.options))
       .catch((failure) => setOptionsError(failure?.message || String(failure?.status)));
   }, [dispatch]);
-  const demo = signInOptions?.find((option) => option.plugin === 'demo') ?? null;
-  const signInAsDemo = () => dispatch({ type: LOGIN, request: { op: 'post', path: '@login-demo' } });
+  const demo = signInOptions?.find((option) => option.passwordFree) ?? null;
+  // The id travels in the path, as the CMS puts it there (@login-demo), so
+  // this one request shape reaches either transport.
+  const signInAsDemo = () =>
+    dispatch({
+      type: LOGIN,
+      request: { op: 'post', path: `@login-${demo.id}` },
+    });
   const returnUrl =
     query.return_url ||
     location.pathname.replace(/\/login\/?$/, '').replace(/\/logout\/?$/, '') ||

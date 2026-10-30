@@ -1018,7 +1018,7 @@ importers:
         version: 7.18.0(eslint@8.57.1)(typescript@5.9.3)
       '@vitejs/plugin-react':
         specifier: ^4.3.4
-        version: 4.7.0(vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.46.0)(yaml@2.8.2))
+        version: 4.7.0(vite@5.4.21(@types/node@24.12.4)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.46.0))
       '@vitest/ui':
         specifier: 'catalog:'
         version: 3.2.6(vitest@3.2.6)
@@ -1567,6 +1567,48 @@ importers:
 
   packages/helpers: {}
 
+  packages/hydra-adapters-core:
+    dependencies:
+      '@volto-hydra/hydra-types':
+        specifier: workspace:*
+        version: link:../hydra-types
+
+  packages/hydra-adapters-drupal:
+    dependencies:
+      '@volto-hydra/hydra-adapters-core':
+        specifier: workspace:*
+        version: link:../hydra-adapters-core
+      '@volto-hydra/hydra-types':
+        specifier: workspace:*
+        version: link:../hydra-types
+
+  packages/hydra-adapters-plone:
+    dependencies:
+      '@volto-hydra/hydra-adapters-core':
+        specifier: workspace:*
+        version: link:../hydra-adapters-core
+      '@volto-hydra/hydra-types':
+        specifier: workspace:*
+        version: link:../hydra-types
+
+  packages/hydra-adapters-strapi:
+    dependencies:
+      '@volto-hydra/hydra-adapters-core':
+        specifier: workspace:*
+        version: link:../hydra-adapters-core
+      '@volto-hydra/hydra-types':
+        specifier: workspace:*
+        version: link:../hydra-types
+
+  packages/hydra-adapters-wordpress:
+    dependencies:
+      '@volto-hydra/hydra-adapters-core':
+        specifier: workspace:*
+        version: link:../hydra-adapters-core
+      '@volto-hydra/hydra-types':
+        specifier: workspace:*
+        version: link:../hydra-types
+
   packages/hydra-js:
     dependencies:
       '@volto-hydra/helpers':
@@ -1588,6 +1630,8 @@ importers:
       jsdom:
         specifier: ^22.0.0
         version: 22.1.0
+
+  packages/hydra-types: {}
 
   packages/volto-hydra:
     dependencies:
@@ -6687,9 +6731,6 @@ packages:
   caniuse-lite@1.0.30001762:
     resolution: {integrity: sha512-PxZwGNvH7Ak8WX5iXzoK1KPZttBXNPuaOvI2ZYU7NrlM+d9Ov+TUvlLOBNGzVXAntMSMMlJPd+jY6ovrVjSmUw==}
 
-  caniuse-lite@1.0.30001793:
-    resolution: {integrity: sha512-iwSsYWaCOoh26cV8NwNRViHlrfUvYsHDfRVcbtmw0Kg6PJIZZXwMkj1442FYLBGkeUf1juAsU3DTfxW579mrPA==}
-
   caniuse-lite@1.0.30001819:
     resolution: {integrity: sha512-LFUqIIAwpzsIuevnKnsR9qnStBcgzPShTX61lBwN9uFkkf8o8zLiebEjbW8AYtZiF+1YKDWfdt/pWDtMuG8Xwg==}
 
@@ -7845,9 +7886,6 @@ packages:
 
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
-
-  electron-to-chromium@1.5.364:
-    resolution: {integrity: sha512-G/dYE3+AYhyHwzTwg8UbnXf7zqMERYh7l2jJ3QujhFsH8agSYwtnGAR2aZ7f0AakIKJXd5En/Hre4igIUrdlYw==}
 
   electron-to-chromium@1.5.465:
     resolution: {integrity: sha512-zg4iUpbeGw7YNZsswc2xKr2uiBex2d8dELAXo92Icw3but1ULbrvK8USe6wVLaWjgJnKBARv0pchx9Owktx6wQ==}
@@ -14815,10 +14853,6 @@ packages:
   warning@4.0.3:
     resolution: {integrity: sha512-rpJyN222KWIvHJ/F53XSZv0Zl/accqHR8et1kpaMTD/fLCRxtV8iX8czMzY7sVZupTI3zcUTg8eycS2kNF9l6w==}
 
-  watchpack@2.5.0:
-    resolution: {integrity: sha512-e6vZvY6xboSwLz2GD36c16+O/2Z6fKvIf4pOXptw2rY9MVwE/TXc6RGqxD3I3x0a28lwBY7DE+76uTPSsBrrCA==}
-    engines: {node: '>=10.13.0'}
-
   watchpack@2.5.1:
     resolution: {integrity: sha512-Zn5uXdcFNIA1+1Ei5McRd+iRzfhENPCe7LeABkJtNulSxjma+l7ltNx55BWZkRlwRnpOgHqxnjyaDgJnNXnqzg==}
     engines: {node: '>=10.13.0'}
@@ -14928,10 +14962,6 @@ packages:
 
   webpack-sources@2.3.1:
     resolution: {integrity: sha512-y9EI9AO42JjEcrTJFOYmVywVZdKVUfOvDUPsJea5GIr1JOEGFVqwlY2K098fFoIjOkDzHn2AjRvM8dsBZu+gCA==}
-    engines: {node: '>=10.13.0'}
-
-  webpack-sources@3.3.3:
-    resolution: {integrity: sha512-yd1RBzSGanHkitROoPFd6qsrxt+oFhg/129YzheDGqeustzX0vTZJZsSsQjVQC4yzBQ56K55XU8gaNCtIzOnTg==}
     engines: {node: '>=10.13.0'}
 
   webpack-sources@3.5.0:
@@ -20554,7 +20584,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitejs/plugin-react@4.7.0(vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.46.0)(yaml@2.8.2))':
+  '@vitejs/plugin-react@4.7.0(vite@5.4.21(@types/node@24.12.4)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.46.0))':
     dependencies:
       '@babel/core': 7.28.5
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.28.5)
@@ -20562,7 +20592,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 6.4.3(@types/node@24.12.4)(jiti@2.7.0)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.46.0)(yaml@2.8.2)
+      vite: 5.4.21(@types/node@24.12.4)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.46.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -21825,8 +21855,8 @@ snapshots:
 
   browserslist@4.14.2:
     dependencies:
-      caniuse-lite: 1.0.30001793
-      electron-to-chromium: 1.5.364
+      caniuse-lite: 1.0.30001819
+      electron-to-chromium: 1.5.465
       escalade: 3.2.0
       node-releases: 1.1.77
 
@@ -22006,13 +22036,11 @@ snapshots:
   caniuse-api@3.0.0:
     dependencies:
       browserslist: 4.29.5
-      caniuse-lite: 1.0.30001793
+      caniuse-lite: 1.0.30001819
       lodash.memoize: 4.1.2
       lodash.uniq: 4.5.0
 
   caniuse-lite@1.0.30001762: {}
-
-  caniuse-lite@1.0.30001793: {}
 
   caniuse-lite@1.0.30001819: {}
 
@@ -23222,8 +23250,6 @@ snapshots:
       safe-buffer: 5.2.1
 
   ee-first@1.1.1: {}
-
-  electron-to-chromium@1.5.364: {}
 
   electron-to-chromium@1.5.465: {}
 
@@ -32265,24 +32291,6 @@ snapshots:
       sass: 1.97.1
       terser: 5.46.0
 
-  vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(less@3.13.1)(lightningcss@1.32.0)(sass@1.58.0)(terser@5.46.0)(yaml@2.8.2):
-    dependencies:
-      esbuild: 0.25.12
-      fdir: 6.5.0(picomatch@4.0.3)
-      picomatch: 4.0.3
-      postcss: 8.5.6
-      rollup: 4.59.0
-      tinyglobby: 0.2.15
-    optionalDependencies:
-      '@types/node': 24.12.4
-      fsevents: 2.3.3
-      jiti: 2.7.0
-      less: 3.13.1
-      lightningcss: 1.32.0
-      sass: 1.58.0
-      terser: 5.46.0
-      yaml: 2.8.2
-
   vite@6.4.3(@types/node@24.12.4)(jiti@2.7.0)(less@3.13.1)(lightningcss@1.32.0)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2):
     dependencies:
       esbuild: 0.25.12
@@ -32509,11 +32517,6 @@ snapshots:
   warning@4.0.3:
     dependencies:
       loose-envify: 1.4.0
-
-  watchpack@2.5.0:
-    dependencies:
-      glob-to-regexp: 0.4.1
-      graceful-fs: 4.2.11
 
   watchpack@2.5.1:
     dependencies:
@@ -32789,8 +32792,6 @@ snapshots:
       source-list-map: 2.0.1
       source-map: 0.6.1
 
-  webpack-sources@3.3.3: {}
-
   webpack-sources@3.5.0: {}
 
   webpack-virtual-modules@0.6.2: {}
@@ -32870,7 +32871,7 @@ snapshots:
       acorn-import-assertions: 1.9.0(acorn@8.16.0)
       browserslist: 4.29.5
       chrome-trace-event: 1.0.4
-      enhanced-resolve: 5.18.4
+      enhanced-resolve: 5.22.1
       es-module-lexer: 1.7.0
       eslint-scope: 5.1.1
       events: 3.3.0
@@ -32881,10 +32882,10 @@ snapshots:
       mime-types: 2.1.35
       neo-async: 2.6.2
       schema-utils: 3.3.0
-      tapable: 2.3.0
+      tapable: 2.3.3
       terser-webpack-plugin: 5.4.0(webpack@5.90.1)
-      watchpack: 2.5.0
-      webpack-sources: 3.3.3
+      watchpack: 2.5.1
+      webpack-sources: 3.5.0
     transitivePeerDependencies:
       - '@swc/core'
       - esbuild
@@ -32901,7 +32902,7 @@ snapshots:
       acorn-import-assertions: 1.9.0(acorn@8.16.0)
       browserslist: 4.29.5
       chrome-trace-event: 1.0.4
-      enhanced-resolve: 5.18.4
+      enhanced-resolve: 5.22.1
       es-module-lexer: 1.7.0
       eslint-scope: 5.1.1
       events: 3.3.0
@@ -32912,10 +32913,10 @@ snapshots:
       mime-types: 2.1.35
       neo-async: 2.6.2
       schema-utils: 3.3.0
-      tapable: 2.3.0
+      tapable: 2.3.3
       terser-webpack-plugin: 5.4.0(esbuild@0.25.12)(webpack@5.90.1(esbuild@0.25.12))
-      watchpack: 2.5.0
-      webpack-sources: 3.3.3
+      watchpack: 2.5.1
+      webpack-sources: 3.5.0
     transitivePeerDependencies:
       - '@swc/core'
       - esbuild
