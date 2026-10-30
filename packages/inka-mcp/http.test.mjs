@@ -130,6 +130,13 @@ describe('a sign-in code across instances', () => {
   });
 });
 
+describe('hostedServer', () => {
+  it('refuses to start without a code store', () => {
+    expect(() => hostedServer({ adminUrl: ADMIN, publicUrl: 'http://127.0.0.1:1', secret: randomBytes(32).toString('base64'), poolSize: 1, pageIdleMs: 60_000 }))
+      .toThrow(/codes/);
+  });
+});
+
 describe('INKA_MCP_CODES', () => {
   const secret = randomBytes(32).toString('base64');
 

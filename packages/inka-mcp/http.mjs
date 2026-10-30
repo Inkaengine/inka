@@ -111,6 +111,7 @@ async function routeExchange(route, owner, req, res) {
  * { kind: 'fly-replay' | 'forward', instance, peerUrl } (see INKA_MCP_CODE_ROUTE).
  */
 export function hostedServer({ adminUrl, publicUrl, secret, codes, route, poolSize, pageIdleMs, frontendUrl }) {
+  if (!codes) throw new Error('hostedServer: `codes` is required, where sign-in codes wait (codes.mjs; codesFrom reads INKA_MCP_CODES)');
   if (route && !INSTANCE_NAME.test(route.instance)) {
     throw new Error(`an instance's name is letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
