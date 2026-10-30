@@ -188,6 +188,37 @@ const sessionBlobs = {};
 // only. Format: { sessionId: Set<'/path'> }
 const sessionDeletions = {};
 
+// Locks taken with @lock, as Plone keeps them: one per page, seen by every
+// user, naming who holds it. An editor locks the page it opens and unlocks it
+// when it leaves; until then another user's save is refused. Content is kept
+// per session, but a lock is the page's, so it is not.
+// Format: { '/path': lock }
+const locks = {};
+
+/** The user a request is made as: its token's `sub`, as Plone's JWT names it. */
+function requestUser(req) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) return null;
+  const payload = auth.slice(7).split('.')[1];
+  if (!payload) return null;
+  return JSON.parse(Buffer.from(payload, 'base64url').toString()).sub ?? null;
+}
+
+/** The lock on `path`, if it has not lapsed (a lock lasts its `timeout` seconds). */
+function lockOn(path) {
+  const lock = locks[path];
+  if (lock && (lock.time + lock.timeout) * 1000 <= Date.now()) delete locks[path];
+  return locks[path];
+}
+
+/** Is `path` locked by someone other than the user making `req`? */
+function lockedAgainst(req, path) {
+  const lock = lockOn(path);
+  return !!lock && lock.creator !== requestUser(req);
+}
+
+const UNLOCKED = { locked: false, stealable: true };
+
 // Explicit child ordering per container, set by @order. Absent means "use the
 // natural order", which is what every existing test relies on.
 const sessionOrder = {};
@@ -292,6 +323,13 @@ let tokenCounter = 0;
  * moved the same page then interfered with each other, passing or failing on
  * where the second boundary happened to fall.
  */
+/** The user a token (a JWT) is for: its `sub`, or null if it is not a JWT. */
+function tokenSubject(token) {
+  const payload = token.split('.')[1];
+  if (!payload) return null;
+  return JSON.parse(Buffer.from(payload, 'base64url').toString()).sub ?? null;
+}
+
 function generateAuthToken(username = 'admin') {
   const header = Buffer.from(JSON.stringify({"alg":"HS256","typ":"JWT"})).toString('base64').replace(/=/g, '');
   tokenCounter += 1;
@@ -709,7 +747,7 @@ function matchRawSearch(searchTerm, item) {
     .some(matchesAlternative);
 }
 
-function matchSearchableText(searchTerm, item) {
+function matchSearchableText(searchTerm, item, blocksText = '') {
   const term = (searchTerm || '').replace(/\*+$/g, '').trim().toLowerCase();
   if (!term) return true;
   const parts = term.split(/\s+/).filter(Boolean);
@@ -718,8 +756,27 @@ function matchSearchableText(searchTerm, item) {
     ...(item.title || '').toLowerCase().split(/\W+/),
     ...(item.description || '').toLowerCase().split(/\W+/),
     ...(item.id || '').toLowerCase().split(/\W+/),
+    ...blocksText.toLowerCase().split(/\W+/),
   ].filter(Boolean);
   return parts.every((p) => haystackTokens.some((tok) => tok.startsWith(p)));
+}
+
+/**
+ * The text of a page's blocks, as plone.restapi's blocks indexer adds it to
+ * SearchableText: every Text (slate) value, in containers too. (Other block
+ * types are indexed only where a site registers an indexer for them.)
+ */
+function blocksSearchableText(blocks) {
+  const texts = [];
+  const isSlate = (v) => Array.isArray(v) && v.length > 0 && v.every((n) => n && typeof n === 'object' && Array.isArray(n.children));
+  const slateText = (nodes) => nodes.map((n) => (typeof n.text === 'string' ? n.text : '') + slateText(n.children || [])).join(' ');
+  const walk = (v) => {
+    if (isSlate(v)) texts.push(slateText(v));
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  };
+  walk(blocks);
+  return texts.join(' ');
 }
 
 /**
@@ -769,11 +826,26 @@ function catalogImageFields(content, baseUrl, hasPreviewImage = hasServablePrevi
 }
 
 /**
- * Format a content item for search results
- * Includes image_field and image_scales matching real Plone API structure
- * Includes is_folderish for folder navigation in object browser
- * Includes hasPreviewImage for teaser blocks to show target's preview image
+ * Every block @type on a page, nested blocks included (plone.volto's
+ * block_types indexer): the entries of a `blocks` dict at any depth — not any
+ * object with an @type (a link's `{"@type": "Document"}` is not a block).
  */
+function blockTypesOf(content) {
+  const types = new Set();
+  const visit = (node) => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== 'object') return;
+    if (node.blocks && typeof node.blocks === 'object' && !Array.isArray(node.blocks)) {
+      for (const block of Object.values(node.blocks)) {
+        if (typeof block?.['@type'] === 'string') types.add(block['@type']);
+      }
+    }
+    Object.values(node).forEach(visit);
+  };
+  visit(content);
+  return [...types];
+}
+
 /**
  * What a summary may carry, as plone.restapi 10.0.4 decides it.
  *
@@ -839,6 +911,12 @@ function applyMetadataFields(item, req) {
   return out;
 }
 
+/**
+ * Format a content item for search results
+ * Includes image_field and image_scales matching real Plone API structure
+ * Includes is_folderish for folder navigation in object browser
+ * Includes hasPreviewImage for teaser blocks to show target's preview image
+ */
 function formatSearchItem(content, baseUrl) {
   const hasPreviewImage = hasServablePreviewImage(content);
 
@@ -2320,7 +2398,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     'exclude_from_nav': transformed.exclude_from_nav || false,
     'created': transformed.created || '2025-01-01T12:00:00+00:00',
     'modified': transformed.modified || '2025-01-01T12:00:00+00:00',
-    'lock': transformed.lock || { 'locked': false, 'stealable': true },
+    'lock': lockOn(cleanPath) || transformed.lock || UNLOCKED,
     'parent': parent,
     // Plone serialises `language` as a vocabulary term, never the bare code a
     // fixture writes — and Volto reads `content.language.token` throughout its
@@ -2822,17 +2900,22 @@ app.post('/@login-renew', (req, res) => {
     console.log('Token renewal requested');
   }
 
-  // Fresh token, same session. See migrateSession.
+  // A fresh token for the user the old one is for, in the same session (see
+  // migrateSession), as Plone renews it; without one, Plone refuses.
   const previous = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  const renewed = generateAuthToken('admin');
+  const user = previous ? tokenSubject(previous) : null;
+  if (!user) {
+    return res.status(401).json({ error: { type: 'Unauthorized', message: 'No valid token to renew.' } });
+  }
+  const renewed = generateAuthToken(user);
   migrateSession(previous, renewed);
   res.json({
     token: renewed,
     user: {
-      '@id': `${API_ORIGIN}/@users/admin`,
-      id: 'admin',
-      fullname: 'Admin User',
-      email: 'admin@example.com',
+      '@id': `${API_ORIGIN}/@users/${user}`,
+      id: user,
+      fullname: user === 'admin' ? 'Admin User' : user,
+      email: `${user}@example.com`,
       roles: ['Manager', 'Authenticated'],
     },
   });
@@ -5451,13 +5534,19 @@ app.get('*/@search', (req, res) => {
   // SearchableText and ANDs the parts — matchSearchableText replicates that on
   // title/description/id. The Title index is ZCTextIndex: whole words, with
   // optional right-truncation (`sea*`) — replicated on the title only.
-  if (searchableText || titleQuery) {
-    items = Object.keys(contentDirMap)
+  // block_types: plone.volto's KeywordIndex of every block's @type on a page,
+  // container children included.
+  const blockTypes = req.query.block_types === undefined ? null : [req.query.block_types].flat();
+  if (searchableText || titleQuery || blockTypes) {
+    // The site as this session has it, as Plone's catalog does: its own new
+    // and edited pages included, by the text in their blocks too.
+    items = allContentPaths(getSessionId(req))
       .filter((itemPath) => itemPath !== '/')
-      .map((itemPath) => formatSearchItem(loadContentFromDisk(itemPath), baseUrl));
-    if (searchableText) {
-      items = items.filter((item) => matchSearchableText(searchableText, item));
-    }
+      .map((itemPath) => getContent(itemPath, getSessionId(req)))
+      .filter((content) => content != null)
+      .filter((content) => !blockTypes || blockTypesOf(content).some((t) => blockTypes.includes(t)))
+      .filter((content) => !searchableText || matchSearchableText(searchableText, content, blocksSearchableText(content.blocks)))
+      .map((content) => formatSearchItem(content, baseUrl));
     if (titleQuery) {
       const terms = String(titleQuery)
         .toLowerCase()
@@ -6118,21 +6207,38 @@ app.delete('*/@form-data', (req, res) => {
  * Lock content for editing
  */
 app.post('*/@lock', (req, res) => {
-  res.json({
-    locked: true,
-    stealable: true,
-    creator: 'admin',
-    time: new Date().toISOString(),
-    timeout: 600
-  });
+  const contentPath = req.path.replace(/\/@lock$/, '') || '/';
+  const user = requestUser(req);
+  if (!user) return res.status(401).json({ error: { type: 'Unauthorized', message: 'Locking needs a logged-in user.' } });
+  // Plone's lock() leaves another user's lock as it is, and answers with it.
+  if (!lockedAgainst(req, contentPath)) {
+    // plone.restapi's lock_info: `time` in epoch seconds, `created` the same
+    // to the second as ISO (with its Z), and the holder's name (their id here).
+    const time = Date.now() / 1000;
+    locks[contentPath] = {
+      locked: true,
+      stealable: true,
+      creator: user,
+      creator_name: user,
+      creator_url: `${req.protocol}://${req.get('host')}/author/${user}`,
+      time,
+      created: new Date(Math.floor(time) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      token: `mock-lock-${Math.random().toString(36).slice(2)}`,
+      timeout: req.body?.timeout ?? 600
+    };
+  }
+  res.json(lockOn(contentPath));
 });
 
 /**
  * DELETE /:path/@lock
- * Unlock content after editing
+ * Unlock content after editing. Only the holder unlocks, unless `force`
+ * (Volto's "unlock" of a lock someone else left) says to.
  */
 app.delete('*/@lock', (req, res) => {
-  res.json({ locked: false });
+  const contentPath = req.path.replace(/\/@lock$/, '') || '/';
+  if (!lockedAgainst(req, contentPath) || req.body?.force) delete locks[contentPath];
+  res.json(lockOn(contentPath) || UNLOCKED);
 });
 
 /**
@@ -6549,6 +6655,11 @@ app.patch('*', (req, res) => {
   const logMsg = `[PATCH] ${cleanPath} sessionId: ${sessionId}\n`;
   fs.appendFileSync('/tmp/mock-api-patch.log', logMsg);
   console.log(logMsg);
+
+  // Plone refuses to change a page another user holds the lock on.
+  if (lockedAgainst(req, cleanPath.replace(/\/$/, '') || '/')) {
+    return res.status(403).json({ error: { type: 'Forbidden', message: 'Resource is locked.' } });
+  }
 
   // Reload content from disk to pick up changes during development
   const content = getContent(cleanPath, sessionId);

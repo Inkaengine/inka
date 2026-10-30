@@ -13,7 +13,6 @@ effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
 id: architecture
-is_folderish: false
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null
@@ -127,7 +126,7 @@ A machine can check colour contrast or heading order. It can't tell whether alt 
 
 ## AI agents
 
-An MCP connection for AI agents is [coming soon](https://inka.sh/plugins/mcp). An agent will connect with the access an editor has and be held to the same rules. There is no separate path for agents, so an agent can't write its way around the rules.
+AI agents connect through MCP ([Working with an AI agent](./editor-guide/ai-agents.md)). An agent connects with the access of the editor who signed it in, and works through the editor itself, so it is held to the same rules. There is no separate path for agents, so an agent can't write its way around the rules.
 
 An agent that comes in through the same door can be asked to check as well as write, for example cross-checking a claim against your own documents, or finding a figure that doesn't match its source. You set which checks run and which need a person to sign off.
 

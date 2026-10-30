@@ -13,7 +13,6 @@ effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
 id: link
-is_folderish: false
 language: "##DEFAULT##"
 layout: link_redirect_view
 remoteUrl: https://www.google.com

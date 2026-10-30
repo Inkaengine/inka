@@ -25,6 +25,7 @@ import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
 import { mergeFrontendBlock } from '../../../../hydra-js/mergeFrontendBlock.js';
+import { registerAgentApi } from './agentApi';
 import {
   isSlateFieldType,
   formDataContentEqual,
@@ -36,42 +37,6 @@ import {
   setFieldValue,
 } from '@volto-hydra/helpers';
 import Api from '@plone/volto/helpers/Api/Api';
-
-/**
- * Every block of one template instance, wherever it sits — the page's top level, a
- * footer region, or inside a container at any depth — and the order each region
- * holds them in, keyed by the region's path. Read through the helpers' container
- * accessors (blocks_layout regions and object_list fields alike), never from
- * formData.blocks alone: an instance inside a container is not there (CLAUDE.md,
- * "Block Access"; docs/architecture.md, "Merging templates").
- *
- * @param {Object} formData - the page
- * @param {string} instanceId
- * @param {Object} idFieldMap - { blockType: { field: idField } }
- * @returns {{ blocks: Object, regions: Object, layouts: Object }} the instance's
- *   blocks, the order of its blocks in each region, and each region's full order
- */
-function instanceContent(formData, instanceId, idFieldMap) {
-  const blocks = {};
-  const regions = {};
-  const layouts = {};
-  const visit = (container, path) => {
-    for (const field of getChildFields(container, idFieldMap, { allObjectLists: true })) {
-      const entries = getChildBlockEntries(container, field);
-      layouts[`${path}/${field.region}`] = entries.map((entry) => entry.id);
-      const own = entries
-        .filter((entry) => entry.block?.templateInstanceId === instanceId)
-        .map((entry) => entry.id);
-      if (own.length) regions[`${path}/${field.region}`] = own;
-      for (const { id, block } of entries) {
-        if (block?.templateInstanceId === instanceId) blocks[id] = block;
-        else if (block) visit(block, `${path}/${id}`);
-      }
-    }
-  };
-  visit(formData, '');
-  return { blocks, regions, layouts };
-}
 
 /**
  * The page with one template instance put back as it was in `snapshot` (Reset
@@ -377,7 +342,7 @@ import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlo
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { adoptTemplate, canContainAll, getBlockAddability, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage } from '../../utils/mergeTemplates.mjs';
+import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '../../utils/mergeTemplates.mjs';
 import {
   applySchemaDefaultsToFormData,
   previewSchemaDefaultConversions,
@@ -417,6 +382,15 @@ import ParentBlocksWidget from '../Sidebar/ParentBlocksWidget';
  * Prevents React errors when Volto tries to render a preview for blocks
  * that have Slate values or other non-serializable content.
  */
+/**
+ * Why a template block refuses a change: whose it is, and what changing it
+ * means. Said by the editor's handlers themselves, which keep a template's
+ * lock for every caller (its buttons hide the controls; an agent has none).
+ */
+const templateNote = (block) => (block?.templateId
+  ? ` (it belongs to the template ${block.templateId}: unlock it to change the template, and so every page that uses it)`
+  : '');
+
 const NoPreview = () => null;
 
 /**
@@ -1457,6 +1431,9 @@ const Iframe = (props) => {
   // Pending template edit exit - stores { requestId, prevInstanceId, mode } when
   // waiting for flush before a lock-commit reverse-merge.
   const pendingTemplateEditExitRef = useRef(null);
+  // How the last "Change on all pages" went, by instance: { templateId, error }.
+  // A person sees a toast; the agent API reads this.
+  const templateCommitOutcomeRef = useRef({});
 
   // True when the instance's blocks are identical to the snapshot taken at unlock
   // (i.e. the template wasn't edited). Compares the instance's blocks and the order
@@ -1779,26 +1756,17 @@ const Iframe = (props) => {
 
     if (templateId && templateCacheRef.current[templateId]) {
       const template = templateCacheRef.current[templateId];
-      // Capture edits to the instance's fixed+readOnly blocks into the template,
-      // merged against the instance alone, in its own order: the merge reads a
-      // page's top-level regions, and a nested instance is not in them.
-      const instancePage = {
-        ...formData,
-        blocks: instance.blocks,
-        blocks_layout: { items: Object.values(instance.regions).flat() },
-      };
-      mergeTemplatesIntoPage(template, {
-        loadTemplate: async () => instancePage,
-        filterInstanceId: prevInstanceId,
-        uuidGenerator: uuid,
-        idFieldMap,
-      })
+      mergeInstanceIntoTemplate(template, formData, prevInstanceId, { idFieldMap, uuidGenerator: uuid })
         .then(async ({ merged: updatedTemplate }) => {
           templateCacheRef.current[templateId] = updatedTemplate;
           // "Change on all pages": persist the template document immediately.
           await persistTemplateDoc(new Api(), templateId);
+          templateCommitOutcomeRef.current[prevInstanceId] = { templateId, error: null };
         })
         .catch((e) => {
+          templateCommitOutcomeRef.current[prevInstanceId] = {
+            templateId, error: e?.message || 'The template could not be saved.',
+          };
           toast.error(
             <Toast
               error
@@ -2035,7 +2003,7 @@ const Iframe = (props) => {
    * @returns {string} The new block's ID
    */
   /**
-   * Move blocks — the drag-and-drop move, as a named function. Runs
+   * Move blocks — the drag-and-drop move, also what the agent API calls. Runs
    * every check and conversion a drop does. Returns what happened: 'moved', or
    * why not: 'rejected' (not allowed or convertible there), 'needs-choice' (the
    * editor must pick a conversion), 'needs-confirm' (a conversion awaits the
@@ -2116,6 +2084,14 @@ const Iframe = (props) => {
         rejectMove = true;
         break;
       }
+    }
+    // A template's fixed block stays where the template puts it; the template
+    // instance itself moves as a whole (expanded above).
+    const lockedInPlace = (moveBlockIds || []).find((bid) => !currentBlockPathMap[bid]?.isTemplateInstance
+      && isBlockPositionLocked(getBlockById(currentFormData, currentBlockPathMap, bid), iframeSyncState.templateEditMode));
+    if (lockedInPlace) {
+      log('MOVE_BLOCKS: blocked — a fixed template block:', lockedInPlace);
+      return 'rejected';
     }
     if (rejectMove) return 'rejected';
     if (deferredToChooser) return 'needs-choice';
@@ -2243,6 +2219,21 @@ const Iframe = (props) => {
     const { blockData: customBlockData, formData: customFormData, blockPathMap: customBlockPathMap, formatRequestId, selectChildIndex, selectFirstLeaf, region: addRegion } = options;
     const formData = customFormData || properties;
     const blockPathMap = customBlockPathMap || iframeSyncState.blockPathMap;
+    // Adding beside a block goes where the editor's '+' would put it, whoever
+    // asks: nowhere when it offers no '+' (between a template's fixed blocks),
+    // and at the top of the layout's default slot when that is where its '+'
+    // adds (getBlockAddability → insertAt).
+    if (action === 'before' || action === 'after') {
+      const beside = getBlockById(formData, blockPathMap, blockId);
+      const room = getBlockAddability(blockId, blockPathMap, beside, iframeSyncState.templateEditMode);
+      if (!(action === 'after' ? room.canInsertAfter : room.canInsertBefore)) {
+        throw new Error(`insertAndSelectBlock: cannot add a block ${action} ${blockId}: the editor offers no place there${templateNote(beside)}`);
+      }
+      if (room.insertAt) {
+        blockId = room.insertAt.blockId;
+        action = room.insertAt.action;
+      }
+    }
     const mergedBlocksConfig = config.blocks.blocksConfig;
     const newBlockId = uuid();
 
@@ -2560,7 +2551,7 @@ const Iframe = (props) => {
     dispatch(setSidebarTab(1));
 
     return newBlockId;
-  }, [properties, iframeSyncState.blockPathMap, intl, metadata, onChangeFormData, dispatch]);
+  }, [properties, iframeSyncState.blockPathMap, iframeSyncState.templateEditMode, intl, metadata, onChangeFormData, dispatch]);
 
   const onMutateBlock = (id, value) => {
     // Use merged config from registry (includes frontend's custom blocks after INIT)
@@ -2659,6 +2650,12 @@ const Iframe = (props) => {
       return;
     }
 
+    // A template's fixed block can't be removed, as its toolbar offers no delete.
+    const deleting = getBlockById(properties, iframeSyncState.blockPathMap, id);
+    if (isBlockPositionLocked(deleting, iframeSyncState.templateEditMode)) {
+      throw new Error(`onDeleteBlock: block "${id}" cannot be removed${templateNote(deleting)}`);
+    }
+
     // Check if deleting from a container (null means page-level)
     const containerConfig = getContainerFieldConfig(
       id,
@@ -2705,6 +2702,35 @@ const Iframe = (props) => {
     dispatch(setSidebarTab(1));
   };
 
+  // The agent API (window.__inkaAgent): what an MCP server drives in a headless
+  // admin. It calls these same handlers, so an agent edits exactly as a person
+  // does. Refreshed every render so it always sees the current state.
+  // For the agent API: the page's lock as the editor took it, who is signed
+  // in, and how the last save went (a refusal from the CMS lands here).
+  const contentLock = useSelector((state) => state.content.data?.lock);
+  const sessionToken = useSelector((state) => state.userSession.token);
+  const contentUpdate = useSelector((state) => state.content.update);
+  const agentLiveRef = useRef(null);
+  agentLiveRef.current = {
+    contentLock,
+    sessionToken,
+    contentUpdate,
+    properties,
+    blockPathMap: iframeSyncState.blockPathMap,
+    // The content type's schema (its title, description and fields).
+    contentTypeSchema: schema,
+    templateEditMode: iframeSyncState.templateEditMode || [],
+    committingTemplate,
+    templateCommitOutcomes: templateCommitOutcomeRef.current,
+    // The editor's own handlers only, never onChangeFormData: whatever an agent
+    // does goes through the same checks a person's clicks do.
+    insertAndSelectBlock,
+    onDeleteBlock,
+    moveBlocks,
+    blocksConfig: config.blocks.blocksConfig,
+    intl,
+  };
+  useEffect(() => registerAgentApi(agentLiveRef), []);
 
   // Process pending delete from iframe DELETE_BLOCK message (same pattern as addNewBlockOpened)
   useEffect(() => {
@@ -5393,6 +5419,89 @@ const Iframe = (props) => {
     }
   };
 
+  // The template lock's own gestures, for the agent API (declared here, after
+  // the rest of agentLiveRef, because they are): unlock, and lock with
+  // "Change on all pages".
+  agentLiveRef.current.enterTemplateEdit = enterTemplateEdit;
+  agentLiveRef.current.commitTemplateEdit = commitTemplateEdit;
+
+  // A block's fields changed from the sidebar (or by the agent API, which calls
+  // this too); PAGE_BLOCK_UID changes the page's own fields (title, description).
+  const onChangeBlock = (blockId, newBlockData) => {
+    // DEBUG: trace facets changes through onChangeBlock
+    if (newBlockData?.facets) {
+      log('[onChangeBlock] blockId:', blockId, 'facets:', newBlockData.facets.length,
+        'ids:', newBlockData.facets.map(f => f['@id']));
+    }
+    // Guard: blockId can be undefined when Volto components like BlockDataForm
+    // are missing the block prop (e.g., SearchBlockEdit doesn't pass block to BlockDataForm)
+    if (!blockId) {
+      console.warn(
+        '[HYDRA] onChangeBlock called with undefined blockId. ' +
+        'This is likely a Volto bug where BlockDataForm is used without a block prop. ' +
+        'Data keys:', Object.keys(newBlockData || {}),
+        'Stack:', new Error().stack
+      );
+      return;
+    }
+
+    // Handle page-level changes (PAGE_BLOCK_UID) - merge directly into formData
+    if (blockId === PAGE_BLOCK_UID) {
+      const newFormData = { ...properties, ...newBlockData };
+      validateAndLog(newFormData, 'onChangeBlock (page-level)', blockFieldTypes);
+      onChangeFormData(newFormData);
+      return;
+    }
+
+    // Rebuild blockPathMap from current properties to ensure it's up to date
+    const currentBlockPathMap = buildBlockPathMap(properties, config.blocks.blocksConfig, intl);
+
+    // Get old block data before the update (for sync detection)
+    const oldBlockData = getBlockById(properties, currentBlockPathMap, blockId);
+    // A locked template block keeps its content, as the sidebar shows it read-only.
+    if (isBlockReadonly(oldBlockData, iframeSyncState.templateEditMode)) {
+      throw new Error(`onChangeBlock: block "${blockId}" is locked${templateNote(oldBlockData)}`);
+    }
+    log('onChangeBlock: blockId:', blockId, 'oldVariation:', oldBlockData?.variation, 'newVariation:', newBlockData?.variation);
+
+    // Find container config (works for both page-level and nested blocks)
+    const pathInfo = currentBlockPathMap[blockId];
+    if (!pathInfo) {
+      throw new Error(`[HYDRA] onChangeBlock: block ${blockId} not in pathMap`);
+    }
+    const containerConfig = getContainerFieldConfig(
+      blockId,
+      currentBlockPathMap,
+      properties,
+      blocksConfig,
+      intl,
+    );
+
+    let newFormData = mutateBlockInContainer(
+      properties,
+      currentBlockPathMap,
+      blockId,
+      newBlockData,
+      containerConfig,
+    );
+
+    // Sync child @type if parent has inheritSchemaFrom and typeField changed
+    newFormData = syncChildBlockTypes(
+      newFormData,
+      currentBlockPathMap,
+      blockId,
+      oldBlockData,
+      newBlockData,
+      config.blocks.blocksConfig,
+      intl,
+    );
+
+    // Validate data from sidebar before using it
+    validateAndLog(newFormData, 'onChangeBlock (sidebar)', blockFieldTypes);
+    onChangeFormData(newFormData);
+  };
+  agentLiveRef.current.onChangeBlock = onChangeBlock;
+
   // Entry point for the sidebar "Edit template" toggle AND the Quanta toolbar lock
   // icon. Unlocking warns first; locking asks what to do with the edits. The actual
   // enter/commit/reset run from the modal's buttons.
@@ -6837,75 +6946,7 @@ const Iframe = (props) => {
             insertAndSelectBlock(blockId, null, action);
           }
         }}
-        onChangeBlock={(blockId, newBlockData) => {
-          // DEBUG: trace facets changes through onChangeBlock
-          if (newBlockData?.facets) {
-            log('[onChangeBlock] blockId:', blockId, 'facets:', newBlockData.facets.length,
-              'ids:', newBlockData.facets.map(f => f['@id']));
-          }
-          // Guard: blockId can be undefined when Volto components like BlockDataForm
-          // are missing the block prop (e.g., SearchBlockEdit doesn't pass block to BlockDataForm)
-          if (!blockId) {
-            console.warn(
-              '[HYDRA] onChangeBlock called with undefined blockId. ' +
-              'This is likely a Volto bug where BlockDataForm is used without a block prop. ' +
-              'Data keys:', Object.keys(newBlockData || {}),
-              'Stack:', new Error().stack
-            );
-            return;
-          }
-
-          // Handle page-level changes (PAGE_BLOCK_UID) - merge directly into formData
-          if (blockId === PAGE_BLOCK_UID) {
-            const newFormData = { ...properties, ...newBlockData };
-            validateAndLog(newFormData, 'onChangeBlock (page-level)', blockFieldTypes);
-            onChangeFormData(newFormData);
-            return;
-          }
-
-          // Rebuild blockPathMap from current properties to ensure it's up to date
-          const currentBlockPathMap = buildBlockPathMap(properties, config.blocks.blocksConfig, intl);
-
-          // Get old block data before the update (for sync detection)
-          const oldBlockData = getBlockById(properties, currentBlockPathMap, blockId);
-          log('onChangeBlock: blockId:', blockId, 'oldVariation:', oldBlockData?.variation, 'newVariation:', newBlockData?.variation);
-
-          // Find container config (works for both page-level and nested blocks)
-          const pathInfo = currentBlockPathMap[blockId];
-          if (!pathInfo) {
-            throw new Error(`[HYDRA] onChangeBlock: block ${blockId} not in pathMap`);
-          }
-          const containerConfig = getContainerFieldConfig(
-            blockId,
-            currentBlockPathMap,
-            properties,
-            blocksConfig,
-            intl,
-          );
-
-          let newFormData = mutateBlockInContainer(
-            properties,
-            currentBlockPathMap,
-            blockId,
-            newBlockData,
-            containerConfig,
-          );
-
-          // Sync child @type if parent has inheritSchemaFrom and typeField changed
-          newFormData = syncChildBlockTypes(
-            newFormData,
-            currentBlockPathMap,
-            blockId,
-            oldBlockData,
-            newBlockData,
-            config.blocks.blocksConfig,
-            intl,
-          );
-
-          // Validate data from sidebar before using it
-          validateAndLog(newFormData, 'onChangeBlock (sidebar)', blockFieldTypes);
-          onChangeFormData(newFormData);
-        }}
+        onChangeBlock={onChangeBlock}
         templateEditMode={iframeSyncState.templateEditMode}
         onChangeTemplateSettings={(instanceId, settings) => {
           // Update template settings in templateCache

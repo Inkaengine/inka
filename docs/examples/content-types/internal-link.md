@@ -13,7 +13,6 @@ effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
 id: internal-link
-is_folderish: false
 language: "##DEFAULT##"
 layout: link_redirect_view
 remoteUrl: http://localhost:8080/Plone/example

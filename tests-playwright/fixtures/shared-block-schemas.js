@@ -43,6 +43,29 @@ export const sharedBlocksConfig = {
             { id: 'warning', title: 'Warning' },
             { id: 'important', title: 'Important' },
         ],
+        // For an agent (the Inka MCP's describe_block): how to use the block, and
+        // examples of it filled in, as stored blocks.
+        guidance: 'For an aside, a gotcha or a warning inside a page, set apart from the text around it. '
+            + 'The level (its variation) says how much it matters: note for background, tip for a helpful aside, '
+            + 'warning for something that can bite, important for a must-know. Keep the body short.',
+        examples: [
+            {
+                title: 'A tip',
+                block: {
+                    '@type': 'callout', variation: 'tip',
+                    blocks: { 'tip-text': { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Save often: drafts are kept per browser.' }] }], plaintext: 'Save often: drafts are kept per browser.' } },
+                    blocks_layout: { items: ['tip-text'] },
+                },
+            },
+            {
+                title: 'A warning',
+                block: {
+                    '@type': 'callout', variation: 'warning',
+                    blocks: { 'warning-text': { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Deleting a section deletes every page inside it.' }] }], plaintext: 'Deleting a section deletes every page inside it.' } },
+                    blocks_layout: { items: ['warning-text'] },
+                },
+            },
+        ],
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['variation', 'items'] }],
             properties: {

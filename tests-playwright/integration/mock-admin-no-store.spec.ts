@@ -8,18 +8,17 @@
  * page asks for `no-cache`, its error page for `public, max-age=60`).
  */
 import { test, expect } from '../fixtures';
-import { URLS } from '../ports';
 
 test.describe('the editor\'s pages and a shared cache', () => {
-  test('a page is no-store', async ({ request }) => {
-    const res = await request.get(`${URLS.voltoSsr}/test-page`);
+  test('a page is no-store', async ({ request, urls }) => {
+    const res = await request.get(`${urls.voltoSsr}/test-page`);
     expect(res.status()).toBe(200);
     expect(await res.text()).toContain('<!doctype html>');
     expect(res.headers()['cache-control']).toBe('no-store');
   });
 
-  test('a page that is not there is no-store too', async ({ request }) => {
-    const res = await request.get(`${URLS.voltoSsr}/no-such-page-anywhere`);
+  test('a page that is not there is no-store too', async ({ request, urls }) => {
+    const res = await request.get(`${urls.voltoSsr}/no-such-page-anywhere`);
     expect(res.status()).toBe(404);
     expect(res.headers()['cache-control']).toBe('no-store');
   });

@@ -5,7 +5,6 @@ id: services
 title: Services
 description: Services
 review_state: published
-is_folderish: false
 language: en
 subjects:
   - design

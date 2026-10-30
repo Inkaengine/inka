@@ -10,7 +10,6 @@ effective: 2024-03-08T15:35:00
 exclude_from_nav: true
 expires: null
 id: images
-is_folderish: true
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null

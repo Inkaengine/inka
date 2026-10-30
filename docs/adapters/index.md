@@ -9,7 +9,6 @@ description: Connect Inka to a content store through one adapter contract — th
 effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 review_state: published
-is_folderish: true
 layout: document_view
 title: CMS adapter guide
 id: adapters

@@ -15,7 +15,6 @@
  */
 import { test as base, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 const test = base.extend<{ helper: AdminUIHelper }>({
   helper: async ({ page }, use) => {
@@ -37,7 +36,7 @@ interface TemplateBlock {
 }
 
 test.describe('Forced-layout merge (mock parent ↔ admin fidelity)', () => {
-  test.beforeEach(async ({ page, helper }, testInfo) => {
+  test.beforeEach(async ({ page, helper, urls }, testInfo) => {
     // Only the mock test-frontend declares the forced footer layout in the
     // `page` schema it sends on INIT; the other frontends under test render
     // their own fixtures and have no forced region to merge.
@@ -46,7 +45,7 @@ test.describe('Forced-layout merge (mock parent ↔ admin fidelity)', () => {
       `forced-layout merge is declared by the mock test-frontend (skipping ${testInfo.project.name})`,
     );
     await page.goto(
-      `${URLS.testFrontend}/mock-parent.html?api_path=${encodeURIComponent(`${URLS.mockApi}${PAGE}`)}`,
+      `${urls.testFrontend}/mock-parent.html?api_path=${encodeURIComponent(`${urls.mockApi}${PAGE}`)}`,
     );
     await helper.waitForIframeReady();
     await helper.waitForBridgeConnected();
@@ -119,7 +118,7 @@ test.describe('Forced-layout merge (mock parent ↔ admin fidelity)', () => {
     );
   });
 
-  test('a template definition page keeps its own blocks', async ({ page, helper }) => {
+  test('a template definition page keeps its own blocks', async ({ page, helper, urls }) => {
     // The other side of the same rule: a page is never merged against its OWN
     // template. footer-layout is forced into the `footer` region while its
     // definition blocks live in `items`, so the merge used to see a templateId
@@ -128,7 +127,7 @@ test.describe('Forced-layout merge (mock parent ↔ admin fidelity)', () => {
     // empty. (Confirmed in the real admin too, before the fix: 2 blocks, no
     // branding text.)
     await page.goto(
-      `${URLS.testFrontend}/mock-parent.html?api_path=${encodeURIComponent(`${URLS.mockApi}/_test_data/templates/footer-layout`)}`,
+      `${urls.testFrontend}/mock-parent.html?api_path=${encodeURIComponent(`${urls.mockApi}/_test_data/templates/footer-layout`)}`,
     );
     await helper.waitForIframeReady();
     await helper.waitForBridgeConnected();

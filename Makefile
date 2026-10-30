@@ -200,26 +200,22 @@ docs-live: ## Start live-reloading documentation server
 ### HYDRA E2E / BRIDGE ###
 ##########################
 
-# Test-infrastructure ports have NO defaults (see tests-playwright/ports.ts —
-# defaults let one checkout hijack another's servers). This target IS the
-# canonical block; keep it aligned with .github/workflows/test.yaml. Override on
-# the command line if a second checkout collides, e.g.
-#   make hydra-test HYDRA_MOCK_API_PORT=18888 ARGS="..."
-export HYDRA_MOCK_API_PORT ?= 8888
-export HYDRA_TEST_FRONTEND_PORT ?= 8889
-export HYDRA_MOCK_PARENT_PORT ?= 8891
-export HYDRA_VOLTO_SSR_PORT ?= 3001
-export HYDRA_VOLTO_WEBPACK_PORT ?= 3002
-export HYDRA_NUXT_PORT ?= 3003
-export HYDRA_REACT_DOC_PORT ?= 3004
-export HYDRA_VUE_DOC_PORT ?= 3005
-export HYDRA_SVELTE_DOC_PORT ?= 3006
-export HYDRA_NEXTJS_PORT ?= 3007
-export HYDRA_F7_PORT ?= 3008
-export HYDRA_ASTRO_DOC_PORT ?= 3009
-export HYDRA_VANILLA_DOC_PORT ?= 3010
-export HYDRA_SVELTE_QS_PORT ?= 3011
-export HYDRA_ASTRO_QS_PORT ?= 3012
+# ONE number names the whole block (see tests-playwright/ports.ts): every port
+# is this plus a fixed offset, and there are no defaults below it — a port with
+# neither a base nor a value of its own is a hard failure, because the
+# historical numbers are shared with every other hydra checkout on the machine.
+#
+# This used to be fifteen `export HYDRA_*_PORT ?=` lines, with a comment
+# saying "this target IS the canonical block; keep it aligned with
+# .github/workflows/test.yaml" — two hand-synced copies of one list, which is
+# how a checkout ends up with its mock API in one block and its frontends in
+# another.
+#
+# Override the base if a second checkout collides:
+#   make hydra-test HYDRA_PORT_BASE=9100 ARGS="..."
+# or a single service, to point it at something already running:
+#   make hydra-test HYDRA_PLONE_SEED_PORT=8898 ARGS="..."
+export HYDRA_PORT_BASE ?= 8888
 
 .PHONY: hydra-test
 hydra-test: ## Run bridge/e2e tests. Playwright's webServer starts the mock API, Volto, and each frontend with the CORRECT env (NEXT_PUBLIC_BACKEND_BASE_URL=mock, ports) — never start them by hand. ARGS="tests-playwright/bridge/block-sanity.spec.ts --project=nuxt -g gridBlock"

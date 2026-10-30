@@ -1,4 +1,4 @@
-import { mergeTemplatesIntoPage } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -45,11 +45,7 @@ test('reverse merge captures a template-block edit using the default pageBlocksF
   };
 
   // 3. Reverse merge (save) — note: NO pageBlocksFields, so the default is used
-  const { merged: updatedTemplate } = await mergeTemplatesIntoPage(template, {
-    loadTemplate: async () => formData,
-    filterInstanceId: prevInstanceId,
-    uuidGenerator,
-  });
+  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, formData, prevInstanceId, { uuidGenerator });
 
   const hdr = Object.values(updatedTemplate.blocks).find((b) => b.slotId === 'header' && b.fixed);
   expect(hdr).toBeDefined();
@@ -107,13 +103,7 @@ test('reverse merge captures an edit to a DEEPLY-nested template block (columns 
     blocks_layout: { items: ['footer-cols'] },
   };
 
-  const { merged: updatedTemplate } = await mergeTemplatesIntoPage(template, {
-    loadTemplate: async () => formData,
-    filterInstanceId: instanceId,
-    blocksConfig: sharedBlocksConfig,
-    intl,
-    uuidGenerator,
-  });
+  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, formData, instanceId, { blocksConfig: sharedBlocksConfig, intl, uuidGenerator });
 
   // Walk down to the deeply-nested cell in the updated template + assert the edit.
   const cols = Object.values(updatedTemplate.blocks).find((b) => b['@type'] === 'columns');
@@ -173,13 +163,7 @@ test('reverse merge captures a nested edit when the forced footer is in the FOOT
     blocks_layout: { items: ['main-1'], footer: ['branding', 'fcols'] },
   };
 
-  const { merged: updatedTemplate } = await mergeTemplatesIntoPage(template, {
-    loadTemplate: async () => formData,
-    filterInstanceId: instanceId,
-    blocksConfig: sharedBlocksConfig,
-    intl,
-    uuidGenerator,
-  });
+  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, formData, instanceId, { blocksConfig: sharedBlocksConfig, intl, uuidGenerator });
 
   const cols = Object.values(updatedTemplate.blocks || {}).find((b) => b['@type'] === 'columns');
   expect(cols).toBeDefined(); // EMPTY before the fix

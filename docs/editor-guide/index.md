@@ -13,7 +13,6 @@ effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
 id: editor-guide
-is_folderish: true
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null
@@ -31,6 +30,7 @@ order:
   - containers
   - templates-and-layouts
   - translations
+  - ai-agents
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
   <block type="title" _="${h1}" />

@@ -11,7 +11,6 @@ effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
 id: deploy-and-secure
-is_folderish: false
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null
@@ -42,6 +41,35 @@ What to run, where to put it on your network, how editors' logins reach the fron
 - **Your CMS**, with its [adapter](./adapters/index.md). Inka does not replace it or store content of its own.
 - **An editing front end.** Your front end with the bridge script, which Inka opens in an iframe. This can be a separate editing build of the same code, such as a single-page app build.
 - **Your public front end.** Your site as the public sees it. It reads published content from the CMS and never loads Inka or the bridge.
+
+## The MCP server, for AI agents
+
+To let editors' AI assistants [work on the site](./editor-guide/ai-agents.md), run the hosted MCP server. It is one Node.js server that drives the Inka editor in a headless browser, signed in as each person who connects, so an agent is held to their permissions and the editor's rules. Its image is built from `packages/inka-mcp` (its `Dockerfile` says how).
+
+Settings, as environment variables:
+
+- `INKA_ADMIN_URL`: the Inka editor it drives.
+- `INKA_MCP_PUBLIC_URL`: where assistants reach it. Set the editor's `RAZZLE_INKA_MCP_URL` to the same address, so the editor's connect page sends sign-ins there.
+- `INKA_MCP_SECRET`: 32 random bytes, base64. It seals every token the server hands out, so keep it secret, and give every instance the same one.
+- `INKA_MCP_POOL_SIZE`: at most how many editor pages it keeps open, so how many calls run at once. It keeps as many as fit in its memory (the container's limit, or the machine's), up to this: about 250 MB for the system, the browser and the server, and 300 MB for each page. A 1 GB machine holds two. It says how many it chose when it starts.
+- `INKA_MCP_PAGE_IDLE_SECONDS`: how long a page may sit unused before it is loaded afresh, in case the editor has been redeployed.
+- `INKA_MCP_CODES`: where a sign-in waits for the assistant to collect it: `memory` (one instance), `sealed` (any instance, nothing held) or `stored`.
+- `PORT`: the port it listens on.
+
+The server keeps no sessions: each request carries its user's sealed token, so instances can be added and removed freely. Only a sign-in's one-time code is held between two requests. With several instances and `INKA_MCP_CODES=memory`, the code must get back to the instance that issued it, and that depends on your platform, so it is code of your own in the server's entry, along with a store for `stored`:
+
+### Javascript
+
+```javascript
+import { main, replayBy } from '@inka/mcp/http';
+
+// A proxy that replays a request on the instance a response header names.
+await main(process.env, {
+    route: { instance: process.env.MY_INSTANCE_NAME, send: replayBy('my-replay-header', 'instance={instance}') },
+});
+```
+
+`forwardTo(peerUrl)` is the other ready-made route, for instances that can reach each other: the instance that receives the code passes the request on. Sticky sessions can't do this, because the assistant's server sends the code, not the person's browser.
 
 ## Where it sits on your network
 

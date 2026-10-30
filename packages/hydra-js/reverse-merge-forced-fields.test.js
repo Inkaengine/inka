@@ -1,4 +1,4 @@
-import { mergeTemplatesIntoPage } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
 
 /**
  * Committing a forced template on a page whose OTHER blocks fields force
@@ -111,11 +111,7 @@ test('committing a forced footer saves only the footer, not the other fields\' t
   // 2. Commit the footer unchanged — the reverse merge commitTemplateEdit runs
   //    (View.jsx): the footer template, merged against the edited page,
   //    filtered to the footer's instance.
-  const { merged: savedFooter } = await mergeTemplatesIntoPage(templates[FOOTER], {
-    loadTemplate: async () => formData,
-    filterInstanceId: footerInstanceId,
-    uuidGenerator,
-  });
+  const { merged: savedFooter } = await mergeInstanceIntoTemplate(templates[FOOTER], formData, footerInstanceId, { uuidGenerator });
 
   // 3. The saved footer holds the footer's own blocks and nothing else.
   const saved = texts(savedFooter);

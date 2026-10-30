@@ -12,7 +12,6 @@ effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
 id: custom-blocks
-is_folderish: false
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null
@@ -129,6 +128,8 @@ Per-block options (most are passed through to Volto's block config):
 - **\`title\`** — display name in the BlockChooser. **Required for a new block type** — nothing makes one up from the key; a block without one fails to register with an error naming it.
 - **\`icon\`** — icon shown in the BlockChooser (data URL or SVG component).
 - **\`description\`** — what the block is for, kept short: the sidebar shows it at the top of the block's settings, and the BlockChooser as the block button's tooltip. It may link to the block's guidance with a markdown link, `[text](url)` (see [Links in advice](#links-in-advice)).
+- **\`guidance\`** — how to use the block, for an AI agent: when it suits, and how to fill it in. See [Describing a block to AI agents](#describing-a-block-to-ai-agents).
+- **\`examples\`** — the block filled in, as stored blocks, for an AI agent. See [Describing a block to AI agents](#describing-a-block-to-ai-agents).
 - **\`group\`** — chooser group (e.g. `'common'`). **Required for a new block type**, like `title`.
 - **\`restricted\`** — `true` hides the block from the chooser; can also be a function for conditional restrictions.
 - **\`mostUsed\`** — pin to the top of the chooser.
@@ -277,6 +278,42 @@ Child block types (like `slide` above) must be defined at the top level of `bloc
 **A \`widget: 'slate'\` field holds one top-level node.** A slate field — like `description` on the `slide` above — stores a single paragraph, heading, or list, not a document of several. Pasting or typing multiple paragraphs into it flattens them back into one node; only the built-in `slate` *block* splits multi-node content into separate blocks. Design slate fields for single-node content, and use a `blocks_layout`/`object_list` of `slate` blocks when you need several. See [Visual Editing › One top-level node per slate field](./visual-editing.md#one-top-level-node-per-slate-field).
 
 **Worked example:** [Heading Block](../examples/heading.md) — roughly the smallest custom block there is: one field, one annotation.
+
+## Describing a block to AI agents
+
+An AI agent [working on the site](../editor-guide/ai-agents.md) learns each block type from the block's own registration, in this order of detail:
+
+- **\`title\`** and **\`description\`** — what the block is, as the chooser shows it.
+- **The schema** — each field's `title` and `description`, which fields are required, and the block's variations.
+- **\`guidance\`** — how to use it: when it suits, what each variation is for, how much to put in it. Plain text, written for someone who has never seen the site.
+- **\`examples\`** — the block filled in, as stored blocks, each with a `title`. An agent reads them in its own format, and can ask to see each one rendered by your front end.
+- **A page that uses it** — the agent is also shown a real block of that type from the site, when one exists.
+
+Guidance and examples matter most for a block whose purpose isn't obvious from its fields, or one with variations that look alike. A site can't be relied on to already hold an example of every block, so declare them with the block:
+
+### Javascript
+
+```javascript
+callout: {
+    title: 'Callout',
+    group: 'common',
+    guidance: 'For an aside, a gotcha or a warning inside a page, set apart from the text around it. '
+        + 'The level (its variation) says how much it matters: note for background, tip for a helpful aside, '
+        + 'warning for something that can bite, important for a must-know. Keep the body short.',
+    examples: [
+        {
+            title: 'A tip',
+            block: {
+                '@type': 'callout', variation: 'tip',
+                blocks: { 'tip-text': { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Save often.' }] }] } },
+                blocks_layout: { items: ['tip-text'] },
+            },
+        },
+    ],
+},
+```
+
+Both must be plain data (strings, numbers, lists and objects), since they travel to the agent as they are.
 
 ## Inline-editable fields: annotation and schema must agree
 

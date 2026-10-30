@@ -10,7 +10,6 @@ effective: null
 exclude_from_nav: true
 expires: null
 id: static
-is_folderish: true
 language: "##DEFAULT##"
 layout: document_view
 review_state: published
