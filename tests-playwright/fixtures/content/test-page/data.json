@@ -36,8 +36,7 @@
       "@type": "image",
       "url": [
         {
-          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='100%25' height='100%25' fill='%2377aadd'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='24'%3ETest Image%3C/text%3E%3C/svg%3E",
-          "image_field": "image"
+          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='100%25' height='100%25' fill='%2377aadd'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='24'%3ETest Image%3C/text%3E%3C/svg%3E"
         }
       ],
       "alt": "Test image"
@@ -69,8 +68,7 @@
       ],
       "image": [
         {
-          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='400'%3E%3Crect width='100%25' height='100%25' fill='%234a90d9'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='24'%3EHero Image%3C/text%3E%3C/svg%3E",
-          "image_field": "image"
+          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='400'%3E%3Crect width='100%25' height='100%25' fill='%234a90d9'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='24'%3EHero Image%3C/text%3E%3C/svg%3E"
         }
       ],
       "description": [
@@ -93,8 +91,7 @@
       "@type": "image",
       "url": [
         {
-          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='100%25' height='100%25' fill='%2355aa77'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='24'%3ELinked Image%3C/text%3E%3C/svg%3E",
-          "image_field": "image"
+          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='100%25' height='100%25' fill='%2355aa77'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='24'%3ELinked Image%3C/text%3E%3C/svg%3E"
         }
       ],
       "alt": "Linked test image",
@@ -261,8 +258,7 @@
       "@type": "image",
       "url": [
         {
-          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='100'%3E%3Crect width='100%25' height='100%25' fill='%23999'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='14'%3EFooter%3C/text%3E%3C/svg%3E",
-          "image_field": "image"
+          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='100'%3E%3Crect width='100%25' height='100%25' fill='%23999'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='14'%3EFooter%3C/text%3E%3C/svg%3E"
         }
       ],
       "alt": "Footer image"

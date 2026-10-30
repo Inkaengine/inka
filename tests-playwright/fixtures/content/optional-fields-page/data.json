@@ -3,7 +3,7 @@
   "@type": "Document",
   "id": "optional-fields-page",
   "title": "Optional Fields Page",
-  "description": "Hero blocks with optional fields empty vs populated, for the reveal-optional-fields feature (issue #296). `hero` is the only block that exercises all four sentinel types at once: heading (plain string), subheading (textarea), description (slate), buttonLink (link), image (media). `anchor-slate` is here only so the page has a block-uid in VIEW mode: hero declares its uid in a hydra comment (renderer.js renderBlock), and comments are materialised by the bridge in edit mode only, so an all-hero page renders zero [data-block-uid] after save and AdminUIHelper.waitForIframeReady never settles. `teaser-empty` / `teaser-full`: a teaser's preview_image is an object_browser (image mode) field — empty must render no image element (no 'Click to add image' stand-in), and the reveal toggle must give it one.",
+  "description": "Hero blocks with optional fields empty vs populated, for the reveal-optional-fields feature (issue #296). `hero` is the only block that exercises all four sentinel types at once: heading (plain string), subheading (textarea), description (slate), buttonLink (link), image (media). `anchor-slate` is here only so the page has a block-uid in VIEW mode: hero declares its uid in a hydra comment (renderer.js renderBlock), and comments are materialised by the bridge in edit mode only, so an all-hero page renders zero [data-block-uid] after save and AdminUIHelper.waitForIframeReady never settles. `teaser-empty` / `teaser-full`: a teaser's preview_image is an object_browser (image mode) field \u2014 empty must render no image element (no 'Click to add image' stand-in), and the reveal toggle must give it one.",
   "blocks": {
     "hero-empty": {
       "@type": "hero"
@@ -29,8 +29,7 @@
       ],
       "image": [
         {
-          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='400'%3E%3Crect width='100%25' height='100%25' fill='%234a90d9'/%3E%3C/svg%3E",
-          "image_field": "image"
+          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='400'%3E%3Crect width='100%25' height='100%25' fill='%234a90d9'/%3E%3C/svg%3E"
         }
       ],
       "description": [

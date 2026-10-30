@@ -65,8 +65,7 @@
       "@type": "image",
       "url": [
         {
-          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='80'%3E%3Crect width='120' height='80' fill='%23bcd'/%3E%3C/svg%3E",
-          "image_field": "image"
+          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='80'%3E%3Crect width='120' height='80' fill='%23bcd'/%3E%3C/svg%3E"
         }
       ],
       "alt": "A placeholder image"
@@ -135,13 +134,13 @@
     },
     "after-columns": {
       "@type": "slate",
-      "plaintext": "A paragraph after the columns — adjacent block, useful for edge-drag and multi-select demos.",
+      "plaintext": "A paragraph after the columns \u2014 adjacent block, useful for edge-drag and multi-select demos.",
       "value": [
         {
           "type": "p",
           "children": [
             {
-              "text": "A paragraph after the columns — adjacent block, useful for edge-drag and multi-select demos."
+              "text": "A paragraph after the columns \u2014 adjacent block, useful for edge-drag and multi-select demos."
             }
           ]
         }

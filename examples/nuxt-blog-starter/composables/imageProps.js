@@ -151,10 +151,12 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
             // path an image block takes.
             return `${image_url}/${scale.download} ${scale.width}w`;
         }).join(", ");
-        sizes = Object.keys(meta.scales || {}).map((name) => {
-            const scale = meta.scales[name];
-            return `${name}:${scale.width}px`;
-        }).join(" ");
+        // `sizes` is a LAYOUT hint in NuxtImg's breakpoint syntax
+        // (`sm:100vw md:50vw`), not a list of the files that exist. Naming
+        // Plone's scales here produced `preview:400px large:400px`, whose keys
+        // are no breakpoint NuxtImg knows, and it rendered the <img> with no
+        // src at all. The scale ladder is already in `srcset`.
+        sizes = DEFAULT_SIZES;
         // src must be a SCALE download (`@@images/<field>/<name>`), NOT the bare
         // top-level `meta.download` (`@@images/image`). The srcset above uses the
         // scale form, which needs `image` to be a DIRECTORY; a bare `image` src is a
