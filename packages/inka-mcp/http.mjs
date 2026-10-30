@@ -14,26 +14,31 @@
  *   INKA_MCP_SECRET      the sealing key: 32 random bytes, base64
  *   INKA_MCP_CODES       where sign-in codes wait between sign-in and the client's
  *                        exchange (codes.mjs): `memory` (one instance, or several
- *                        with INKA_MCP_CODE_ROUTE), `sealed` (any instance, nothing
+ *                        with a route, below), `sealed` (any instance, nothing
  *                        held), or `stored` (a store of the deployment's own that
  *                        every instance reaches: start the server from an entry
  *                        of your own, `await main(process.env, { makeStore })`,
  *                        where makeStore(env) returns the store codes.mjs
  *                        storedCodes describes)
- *   INKA_MCP_CODE_ROUTE  with `memory` on several instances, how an exchange
- *                        reaching another instance gets to the one holding its
- *                        code: `fly-replay` (Fly replays it; the instance is
- *                        FLY_MACHINE_ID) or `forward` (this instance passes it on,
- *                        to INKA_MCP_PEER_URL with {instance} replaced, e.g.
- *                        http://{instance}.internal:8080; this instance's name is
- *                        INKA_MCP_INSTANCE). Sticky sessions can't do this: the
- *                        exchange comes from the client's server, without the
- *                        browser's cookies.
  *   INKA_MCP_POOL_SIZE   how many admin pages to share (how many calls at once)
  *   INKA_MCP_PAGE_IDLE_SECONDS  how long a page may sit unused before it is
  *                        loaded afresh (the admin may have been redeployed)
  *   PORT                 the port to listen on
  *   INKA_FRONTEND_URL    optional: the front end the editor uses
+ *
+ * What depends on where it runs is the deployment's own code, passed from an
+ * entry of its own: `await main(process.env, { makeStore, route })`.
+ *   makeStore(env)  the store for INKA_MCP_CODES=stored (codes.mjs storedCodes)
+ *   route           with `memory` on several instances, how an exchange that
+ *                   reaches another instance gets to the one holding its code:
+ *                   { instance: this instance's name (letters, digits, '-'),
+ *                     send(owner, req, res): answer the exchange for `owner` }.
+ *                   Sticky sessions can't do this: the exchange comes from the
+ *                   client's server, without the browser's cookies. Two sends:
+ *                   replayBy(header, value), for a proxy that replays a request
+ *                   by a response header (it must replay the POST with its
+ *                   body; nginx's X-Accel-Redirect makes it a GET), and
+ *                   forwardTo(peerUrl), where instances reach each other.
  */
 import { realpathSync } from 'node:fs';
 import { createServer as httpServer, request as httpRequest } from 'node:http';
@@ -62,58 +67,75 @@ async function formFields(req) {
 // exchange anywhere but to another instance.
 const INSTANCE_NAME = /^[A-Za-z0-9-]{1,64}$/;
 
+/** Where {instance} goes in `template`, or an error naming `what`. */
+function instanceTemplate(what, template) {
+  if (!String(template).includes('{instance}')) throw new Error(`${what} must say where {instance} goes`);
+  return template;
+}
+
 /**
- * Send a code exchange on to `owner`, the instance holding its code: Fly
- * replays the request there, or this instance passes it on and hands back
- * the answer. A request already passed on once is not passed on again.
+ * A route's send: answer with `header`, set to `value` with {instance}
+ * replaced, for the proxy in front to replay the request on that instance.
  */
-async function routeExchange(route, owner, req, res) {
-  if (!INSTANCE_NAME.test(owner) || req.headers['x-inka-mcp-forwarded']) {
-    res.status(400).json({ error: 'invalid_grant', error_description: 'not a code from this server, or already used' });
-    return;
-  }
-  if (route.kind === 'fly-replay') {
-    res.set('fly-replay', `instance=${owner}`).status(307).end();
-    return;
-  }
-  const target = new URL(`${route.peerUrl.replaceAll('{instance}', owner)}/token`);
-  const body = new URLSearchParams(req.body).toString();
-  const answer = await new Promise((resolve, reject) => {
-    const send = target.protocol === 'https:' ? httpsRequest : httpRequest;
-    const out = send(target, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(body),
-        'X-Inka-MCP-Forwarded': route.instance,
-        ...(req.headers.authorization && { Authorization: req.headers.authorization }),
-      },
-    }, (back) => {
-      const chunks = [];
-      back.on('data', (chunk) => chunks.push(chunk));
-      back.on('end', () => resolve({ status: back.statusCode, headers: back.headers, body: Buffer.concat(chunks) }));
-      back.on('error', reject);
+export function replayBy(header, value) {
+  instanceTemplate('a replay value', value);
+  return async (owner, req, res) => {
+    res.set(header, value.replaceAll('{instance}', owner)).status(307).end();
+  };
+}
+
+/**
+ * A route's send: pass the exchange on to the instance, at `peerUrl` with
+ * {instance} replaced (e.g. http://{instance}.internal:8080), and hand back
+ * its answer. A request already passed on is not passed on again.
+ */
+export function forwardTo(peerUrl) {
+  instanceTemplate('a peer URL', peerUrl);
+  const base = peerUrl.replace(/\/$/, '');
+  return async (owner, req, res) => {
+    if (req.headers['x-inka-mcp-forwarded']) {
+      res.status(400).json({ error: 'invalid_grant', error_description: 'not a code from this server, or already used' });
+      return;
+    }
+    const target = new URL(`${base.replaceAll('{instance}', owner)}/token`);
+    const body = new URLSearchParams(req.body).toString();
+    const answer = await new Promise((resolve, reject) => {
+      const send = target.protocol === 'https:' ? httpsRequest : httpRequest;
+      const out = send(target, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
+          'X-Inka-MCP-Forwarded': '1',
+          ...(req.headers.authorization && { Authorization: req.headers.authorization }),
+        },
+      }, (back) => {
+        const chunks = [];
+        back.on('data', (chunk) => chunks.push(chunk));
+        back.on('end', () => resolve({ status: back.statusCode, headers: back.headers, body: Buffer.concat(chunks) }));
+        back.on('error', reject);
+      });
+      out.on('error', reject);
+      out.end(body);
     });
-    out.on('error', reject);
-    out.end(body);
-  });
-  res.status(answer.status);
-  for (const header of ['content-type', 'cache-control', 'pragma']) {
-    if (answer.headers[header]) res.set(header, answer.headers[header]);
-  }
-  res.send(answer.body);
+    res.status(answer.status);
+    for (const header of ['content-type', 'cache-control', 'pragma']) {
+      if (answer.headers[header]) res.set(header, answer.headers[header]);
+    }
+    res.send(answer.body);
+  };
 }
 
 /**
  * The server as an Express app (from the MCP SDK), and `close()` for its
  * browser. `publicUrl` is where clients reach it. `codes`: where sign-in
  * codes wait (codes.mjs). `route`: for local codes on several instances,
- * { kind: 'fly-replay' | 'forward', instance, peerUrl } (see INKA_MCP_CODE_ROUTE).
+ * { instance, send } (see the configuration above).
  */
 export function hostedServer({ adminUrl, publicUrl, secret, codes, route, poolSize, pageIdleMs, frontendUrl }) {
   if (!codes) throw new Error('hostedServer: `codes` is required, where sign-in codes wait (codes.mjs; codesFrom reads INKA_MCP_CODES)');
   if (route && !INSTANCE_NAME.test(route.instance)) {
-    throw new Error(`an instance's name is letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
+    throw new Error(`a route's instance is its name: letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
   const base = new URL(publicUrl);
   const mcpUrl = new URL('/mcp', base);
@@ -154,7 +176,11 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, route, poolSi
         next();
         return;
       }
-      await routeExchange(route, owner, req, res);
+      if (!INSTANCE_NAME.test(owner)) {
+        res.status(400).json({ error: 'invalid_grant', error_description: 'not a code from this server, or already used' });
+        return;
+      }
+      await route.send(owner, req, res);
     });
   }
   app.use(mcpAuthRouter({
@@ -219,14 +245,14 @@ function required(env, name) {
 }
 
 /**
- * The code store and route INKA_MCP_CODES and INKA_MCP_CODE_ROUTE describe.
- * `makeStore(env)`: the deployment's own store, for `stored`.
+ * The code store INKA_MCP_CODES describes, and the route it is used with.
+ * `makeStore(env)`: the deployment's own store, for `stored`. `route`: the
+ * deployment's own, for `memory` on several instances.
  */
-export async function codesFrom(env, secret, { makeStore } = {}) {
+export async function codesFrom(env, secret, { makeStore, route } = {}) {
   const kind = required(env, 'INKA_MCP_CODES');
-  const routeKind = env.INKA_MCP_CODE_ROUTE;
-  if (routeKind && kind !== 'memory') {
-    throw new Error(`INKA_MCP_CODE_ROUTE routes codes held in memory; INKA_MCP_CODES is ${kind}, which any instance can take`);
+  if (route && kind !== 'memory') {
+    throw new Error(`a route routes codes held in memory; INKA_MCP_CODES is ${kind}, which any instance can take`);
   }
   if (kind === 'sealed') return { codes: sealedCodes({ box: sealer(secret) }) };
   if (kind === 'stored') {
@@ -236,16 +262,9 @@ export async function codesFrom(env, secret, { makeStore } = {}) {
     return { codes: storedCodes({ store: await makeStore(env), now: Date.now }) };
   }
   if (kind !== 'memory') throw new Error(`INKA_MCP_CODES is memory, sealed or stored, not ${JSON.stringify(kind)}`);
-  if (!routeKind) return { codes: localCodes({ instance: null, now: Date.now }) };
-  let route;
-  if (routeKind === 'fly-replay') {
-    route = { kind: routeKind, instance: required(env, 'FLY_MACHINE_ID') };
-  } else if (routeKind === 'forward') {
-    const peerUrl = required(env, 'INKA_MCP_PEER_URL');
-    if (!peerUrl.includes('{instance}')) throw new Error('INKA_MCP_PEER_URL must say where {instance} goes');
-    route = { kind: routeKind, instance: required(env, 'INKA_MCP_INSTANCE'), peerUrl: peerUrl.replace(/\/$/, '') };
-  } else {
-    throw new Error(`INKA_MCP_CODE_ROUTE is fly-replay or forward, not ${JSON.stringify(routeKind)}`);
+  if (!route) return { codes: localCodes({ instance: null, now: Date.now }) };
+  if (!INSTANCE_NAME.test(route.instance)) {
+    throw new Error(`a route's instance is its name: letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
   return { codes: localCodes({ instance: route.instance, now: Date.now }), route };
 }
@@ -254,14 +273,14 @@ export async function codesFrom(env, secret, { makeStore } = {}) {
  * Start the server as the environment describes. A deployment with a code
  * store of its own starts it from an entry of its own, passing `makeStore`.
  */
-export async function main(env, { makeStore } = {}) {
+export async function main(env, { makeStore, route } = {}) {
   const poolSize = Number(required(env, 'INKA_MCP_POOL_SIZE'));
   const secret = required(env, 'INKA_MCP_SECRET');
   const { app, close } = hostedServer({
     adminUrl: required(env, 'INKA_ADMIN_URL'),
     publicUrl: required(env, 'INKA_MCP_PUBLIC_URL'),
     secret,
-    ...(await codesFrom(env, secret, { makeStore })),
+    ...(await codesFrom(env, secret, { makeStore, route })),
     poolSize,
     pageIdleMs: Number(required(env, 'INKA_MCP_PAGE_IDLE_SECONDS')) * 1000,
     frontendUrl: env.INKA_FRONTEND_URL,

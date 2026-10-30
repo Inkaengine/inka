@@ -3,7 +3,7 @@
 # in. Build after bundling, from this folder:
 #
 #   node packages/inka-mcp/bundle.mjs
-#   docker build packages/inka-mcp      (or: fly deploy, with this as its Dockerfile)
+#   docker build packages/inka-mcp
 #
 # Configuration is the environment http.mjs documents; INKA_MCP_SECRET is a
 # secret, never baked in.

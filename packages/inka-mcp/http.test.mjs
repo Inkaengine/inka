@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createServer, request } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
-import { hostedServer, codesFrom } from './http.mjs';
+import { hostedServer, codesFrom, replayBy, forwardTo } from './http.mjs';
 import { sealer } from './sealed.mjs';
 import { localCodes, sealedCodes } from './codes.mjs';
 
@@ -96,7 +96,7 @@ describe('a sign-in code across instances', () => {
     const [one, two] = await instances(2, (port) => ({
       secret,
       codes: localCodes({ instance: String(port), now: Date.now }),
-      route: { kind: 'forward', instance: String(port), peerUrl: 'http://127.0.0.1:{instance}' },
+      route: { instance: String(port), send: forwardTo('http://127.0.0.1:{instance}') },
     }));
     const signedIn = await signIn(one);
     const answer = await exchange(two, signedIn);
@@ -106,15 +106,15 @@ describe('a sign-in code across instances', () => {
     expect((await exchange(two, signedIn)).status).toBe(400);
   });
 
-  it('local, replayed: another instance asks the platform to replay the exchange on the one that issued it', async () => {
+  it("local, a deployment's own route: another instance hands the exchange to it, naming the one that issued it", async () => {
     const secret = randomBytes(32).toString('base64');
     const [one, two] = await instances(2, (port) => ({
       secret,
       codes: localCodes({ instance: `m${port}`, now: Date.now }),
-      route: { kind: 'fly-replay', instance: `m${port}` },
+      route: { instance: `m${port}`, send: replayBy('X-Replay-To', 'machine={instance};path=/token') },
     }));
     const answer = await exchange(two, await signIn(one));
-    expect(answer.headers.get('fly-replay')).toBe(`instance=m${new URL(one).port}`);
+    expect(answer.headers.get('x-replay-to')).toBe(`machine=m${new URL(one).port};path=/token`);
   });
 
   it('local, routed: a code naming an instance that is not a plain name is refused, not routed', async () => {
@@ -122,7 +122,7 @@ describe('a sign-in code across instances', () => {
     const [one] = await instances(1, (port) => ({
       secret,
       codes: localCodes({ instance: `m${port}`, now: Date.now }),
-      route: { kind: 'forward', instance: `m${port}`, peerUrl: 'http://127.0.0.1:{instance}' },
+      route: { instance: `m${port}`, send: forwardTo('http://127.0.0.1:{instance}') },
     }));
     const signedIn = await signIn(one);
     const answer = await exchange(one, { ...signedIn, code: `evil.example%2Fx~${randomBytes(8).toString('base64url')}` });
@@ -162,7 +162,26 @@ describe('INKA_MCP_CODES', () => {
     await expect(codesFrom({ INKA_MCP_CODES: 'redis://somewhere' }, secret)).rejects.toThrow(/memory, sealed or stored/);
   });
 
+  it('memory with a route: codes name the instance the route says this is', async () => {
+    const route = { instance: 'm-1', send: replayBy('fly-replay', 'instance={instance}') };
+    const { codes, route: kept } = await codesFrom({ INKA_MCP_CODES: 'memory' }, secret, { route });
+    expect(kept).toBe(route);
+    const data = { client: 'c', redirect: 'r', code_challenge: 'x', plone: 'a.b.c' };
+    expect((await codes.issue(data)).startsWith('m-1~')).toBe(true);
+  });
+
+  it("a route's instance is a plain name", async () => {
+    await expect(codesFrom({ INKA_MCP_CODES: 'memory' }, secret, { route: { instance: 'evil.example/x', send: forwardTo('http://{instance}') } }))
+      .rejects.toThrow(/letters, digits and '-'/);
+  });
+
+  it('a replay or a forward says where {instance} goes', () => {
+    expect(() => replayBy('X-Replay-To', 'somewhere')).toThrow(/\{instance\}/);
+    expect(() => forwardTo('http://peer')).toThrow(/\{instance\}/);
+  });
+
   it('routes only codes held in memory', async () => {
-    await expect(codesFrom({ INKA_MCP_CODES: 'sealed', INKA_MCP_CODE_ROUTE: 'forward' }, secret)).rejects.toThrow(/routes codes held in memory/);
+    const route = { instance: 'm-1', send: forwardTo('http://{instance}') };
+    await expect(codesFrom({ INKA_MCP_CODES: 'sealed' }, secret, { route })).rejects.toThrow(/routes codes held in memory/);
   });
 });
