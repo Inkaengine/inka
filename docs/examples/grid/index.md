@@ -72,7 +72,7 @@ We craft beautiful interfaces that users love.
 
 </block>
 
-<block type="image" url="https://placehold.co/600x400" alt="Placeholder" />
+![Placeholder](https://placehold.co/600x400)
 
 <block type="teaser">
 
