@@ -649,6 +649,86 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.ok(r.errors.some((e) => e.includes('top-level nodes')), r.errors.join('\n'));
   });
 
+  // A field's value must be the shape its schema declares. The checks above
+  // cover the widgets whose value is a structure (slate, richtext, object_list)
+  // and the reference widgets, which legitimately store either the archive's
+  // `[{'@id': …}]` or the wire's path string. What had no check at all was the
+  // ORDINARY declarations -- `type: string`, `boolean`, `number`, `integer`,
+  // `array` -- and the vocabulary ones. isValidValue (schemaValidation.mjs)
+  // validates `choices`/`enum`/`actions` and its own docstring ends the list
+  // with "Otherwise (no constraints): always valid", so a string field holding
+  // an array reached the editor, which renders a text input over it.
+  const shapeFixture = (blockFields) => buildFixture({
+    pageA: {
+      '@id': '/page-a', '@type': 'Document', id: 'page-a',
+      UID: 'pageauid1234567', parent: { '@id': '/' },
+      blocks: { b: { '@type': 'thing', ...blockFields } },
+      blocks_layout: { items: ['b'] },
+    },
+  });
+  const shapeErrors = (properties, blockFields) => {
+    const { root, contentDir } = shapeFixture(blockFields);
+    const r = checkIntegrity(contentDir, {
+      schemasFor: () => ({ thing: { blockSchema: { properties } } }),
+    });
+    cleanup(root);
+    return r.errors.join('\n');
+  };
+
+  it('FAILS on a type:string field holding a non-string', () => {
+    // The hero description's shape after it stops being a slate field: nothing
+    // declares it slate any more, so the cardinality rule above no longer
+    // covers it, and a value left in the old shape renders only its first node.
+    const e = shapeErrors(
+      { description: { type: 'string' } },
+      { description: [{ type: 'p', children: [{ text: 'one' }] }, { type: 'p', children: [{ text: 'two' }] }] },
+    );
+    assert.match(e, /field "description" is type:string but its value is an array/);
+  });
+
+  it('FAILS on a single-line string field holding a newline', () => {
+    // A bare `type: string` is edited with a one-line text input, which cannot
+    // produce a newline and will not show one. Multi-line text says so:
+    // `widget: textarea`.
+    const e = shapeErrors({ heading: { type: 'string' } }, { heading: 'one\ntwo' });
+    assert.match(e, /field "heading" is a single-line string but its value contains a newline/);
+  });
+
+  it('PASSES a newline in a textarea', () => {
+    assert.equal(shapeErrors({ note: { type: 'string', widget: 'textarea' } }, { note: 'one\ntwo' }), '');
+  });
+
+  it('FAILS on boolean, number, integer and array fields holding the wrong type', () => {
+    const e = shapeErrors(
+      {
+        on: { type: 'boolean' }, ratio: { type: 'number' },
+        count: { type: 'integer' }, tags: { type: 'array' },
+      },
+      { on: 'yes', ratio: 'half', count: '7', tags: 'a,b' },
+    );
+    for (const [field, want] of [['on', 'type:boolean'], ['ratio', 'type:number'], ['count', 'type:integer'], ['tags', 'type:array']]) {
+      assert.match(e, new RegExp(`field "${field}" is ${want} but its value is`));
+    }
+  });
+
+  it('FAILS on a value outside the field\'s choices', () => {
+    // What isValidValue already rejects in the editor -- where the rejection is
+    // a silent null, not a message. Said here, before the content is served.
+    const e = shapeErrors(
+      { variation: { type: 'string', factory: 'Choice', choices: [['three-up', 'Three across'], ['single', 'Single']] } },
+      { variation: 'carousel' },
+    );
+    assert.match(e, /field "variation" holds "carousel", which is not one of its choices/);
+  });
+
+  it('PASSES a reference field in either the archive or the wire shape', () => {
+    // An export stores `[{'@id': 'resolveuid/…'}]`; the restapi serves a path.
+    // Both are correct, and a shape rule here would fail every served fixture.
+    // (The unresolved target is the link check's business, not a shape error.)
+    const e = shapeErrors({ url: { widget: 'object_browser' } }, { url: '/contact-info' });
+    assert.doesNotMatch(e, /is type:|single-line string|not one of its choices/);
+  });
+
   it('PASSES a single-node slate field', () => {
     // The counterpart, so the rule cannot be satisfied by failing everything.
     const HERO_CONFIG = {

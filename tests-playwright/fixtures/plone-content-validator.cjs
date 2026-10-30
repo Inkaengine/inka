@@ -677,6 +677,44 @@ function imageDimensions(file) {
     });
   }
 
+  // The tokens a vocabulary field allows, however it is declared: `choices`
+  // (Choice), `items.choices` (a List of Choice, which is how plone.restapi
+  // serialises a multi-select), `actions` (ButtonsWidget) or `enum`.
+  const vocabularyTokens = (def) => {
+    const choices = def.choices ?? def.items?.choices;
+    if (choices) {
+      return new Set(choices.map((c) => {
+        if (c === undefined || c === null) return c;
+        if (Array.isArray(c)) return c[0];
+        return c.value ?? c.token ?? c;
+      }));
+    }
+    if (Array.isArray(def.actions)) return new Set(def.actions);
+    if (Array.isArray(def.enum)) return new Set(def.enum);
+    return null;
+  };
+
+  // Only a field whose value is the plain thing its `type` names: no widget, or
+  // `textarea`. See the comment at its use.
+  const PLAIN_VALUE_FIELD = (def) =>
+    !!def.type && (!def.widget || def.widget === 'textarea');
+
+  // null when the value matches `type`, else why it does not.
+  const typeMismatch = (v, type) => {
+    const ok = {
+      string: (x) => typeof x === 'string',
+      boolean: (x) => typeof x === 'boolean',
+      number: (x) => typeof x === 'number',
+      integer: Number.isInteger,
+      array: Array.isArray,
+      object: (x) => x !== null && typeof x === 'object' && !Array.isArray(x),
+    }[type];
+    if (!ok || ok(v)) return null;
+    return type === 'integer' && typeof v === 'number'
+      ? 'a whole number'
+      : `expected ${type === 'array' ? 'an array' : `a ${type}`}`;
+  };
+
   function checkBlockRefs(rel, bid, block, schema = null) {
     // A table's rows and each row's cells are keyed by `key` — Volto's slateTable
     // shape, which every frontend reads. Not a schema object_list, so checked
@@ -724,6 +762,35 @@ function imageDimensions(file) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" has ${v.length} top-level nodes (expected 1 — put the rest in their own blocks)`);
         } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
+        } else if (vocabularyTokens(def)) {
+          // What the editor already refuses, said out loud. isValidValue
+          // (schemaValidation.mjs) nulls a value outside the vocabulary when
+          // the page loads -- no message, no save, nothing on screen -- so a
+          // fixture naming a variation the schema never had renders as the
+          // default and looks like the variation was tested.
+          const tokens = vocabularyTokens(def);
+          const held = Array.isArray(v) ? v : [v];
+          const bad = held.filter((x) => !tokens.has(x));
+          if (bad.length) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" holds ${JSON.stringify(bad[0])}, which is not one of its choices (${[...tokens].map((t) => JSON.stringify(t)).join(', ')}) — the editor nulls a value it cannot offer`);
+          }
+        } else if (PLAIN_VALUE_FIELD(def)) {
+          // The ordinary declarations. A widget that owns its storage shape is
+          // not judged here: a reference field is handled above, and an image,
+          // date or querystring field stores one shape in the export archive
+          // and another on the wire, so a type rule over both would fail every
+          // served fixture. `type` with no widget, and `textarea`, mean what
+          // they say in either format.
+          const wrong = typeMismatch(v, def.type);
+          if (wrong) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is type:${def.type} but its value is ${shape(v)} — ${wrong}`);
+          } else if (def.type === 'string' && def.widget !== 'textarea' && /[\r\n]/.test(v)) {
+            // A bare `type: string` is edited with a one-line input: it cannot
+            // produce a newline and does not show one, so stored newlines are
+            // invisible until something else reads the field. Multi-line text
+            // says so with `widget: 'textarea'`.
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is a single-line string but its value contains a newline — declare \`widget: 'textarea'\` if the field is meant to hold more than one line`);
+          }
         } else if (def.widget === 'object_list' && Array.isArray(v)) {
           // An object_list must declare ONE of three things, and which one it
           // declares is the whole answer:
