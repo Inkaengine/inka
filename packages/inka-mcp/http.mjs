@@ -40,10 +40,8 @@
  *                   body; nginx's X-Accel-Redirect makes it a GET), and
  *                   forwardTo(peerUrl), where instances reach each other.
  */
-import { realpathSync } from 'node:fs';
 import { createServer as httpServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { pathToFileURL } from 'node:url';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
@@ -316,8 +314,4 @@ export async function main(env, { makeStore, route } = {}) {
   const stop = () => listening.close(() => close().then(() => process.exit(0)));
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);
-}
-
-if (import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
-  await main(process.env);
 }
