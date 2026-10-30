@@ -3427,6 +3427,17 @@ app.post('/@export', async (req, res) => {
       // reference list its widget saves, and either way the path inside is
       // what goes back to the relative form the markdown was authored with.
       if (node['@type'] === 'image' || node['@type'] === 'video') node.url = mapRefPath(node.url, (u) => unresolve(u, baseSegs, m, true));
+      // And the same for a media path held in a FIELD of some other block -- a
+      // highlight's `image`. Which fields those are is the schema's answer,
+      // the mirror of the resolve side, which asks it too.
+      if (typeof node['@type'] === 'string' && mdRuntime) {
+        const schema = mdRuntime.schemaFor(node['@type']);
+        for (const [field, def] of Object.entries(schema?.properties ?? {})) {
+          if (def.widget === 'image' && node[field] != null) {
+            node[field] = mapRefPath(node[field], (u) => unresolve(u, baseSegs, m, true));
+          }
+        }
+      }
       for (const v of Object.values(node)) unresolveBlocks(v, baseSegs, m);
     };
 
