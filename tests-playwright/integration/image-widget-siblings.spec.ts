@@ -122,9 +122,19 @@ test.describe('ImageWidget sibling preservation', () => {
     // The heading change is what put the block in the PATCH.
     expect(block.heading).toBe(`${originalHeading} x`);
 
-    // The image URL itself MUST survive (basic sanity).
-    expect(block.image, 'block.image (URL string) must be in PATCH').toBeTruthy();
-    expect(typeof block.image, 'block.image expected to be a string per ImageWidget convention')
+    // The image reference itself MUST survive (basic sanity). It is the list
+    // the widget saves, not a bare string: Volto's ImageWidget writes
+    // `[{'@id': …}]` for a picked image AND for an external one --
+    //
+    //   // if it's an external link, we save it as is
+    //   onChange(props.id, [{ '@id': normalizeUrl(url), title: removeProtocol(url) }]);
+    //
+    // This asserted a string "per ImageWidget convention", which is the
+    // opposite of what that widget does.
+    expect(block.image, 'block.image (reference) must be in PATCH').toBeTruthy();
+    expect(Array.isArray(block.image), 'block.image is the list ImageWidget saves')
+      .toBe(true);
+    expect(typeof block.image[0]?.['@id'], 'the reference carries an @id')
       .toBe('string');
 
     // The two sibling fields are the question. These are what carry the
