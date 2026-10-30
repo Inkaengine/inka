@@ -1,0 +1,3 @@
+# Only the bundle goes into the image (see Dockerfile).
+*
+!dist/inka-mcp-http.mjs
