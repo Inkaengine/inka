@@ -87,14 +87,24 @@ export function headlessAdmin({ adminUrl, auth, frontendUrl }) {
  * like, or for other ways to lay it out, answered from the block data with
  * guessed wireframes, not knowing it could render pages and tries.
  */
-const INSTRUCTIONS = `This server edits a website built with Inka: pages made of blocks, rendered by the site's own front end.
+/**
+ * What the server tells a client about the site: facts an agent can't know
+ * from the request alone, never how to behave. The person says what they want
+ * changed, not how Inka works; this and the tools' own results fill in the rest.
+ */
+const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based CMS). The person you are working for edits the site in Inka's editor; they will say what they want changed, not how the site is built.
 
-The person you are helping edits the site; they think in pages as visitors see them, not in data. Talk about what a page shows and how it reads: headings, sections, images, buttons. Do not mention blocks, JSON, ids, fields, schemas or code unless they ask, or a change cannot be explained without it. When they ask what something looks like, or for options, render it (view_page, preview_layout) and describe what the renders show; do not describe data structures or draw wireframes from them.
+- A page is a block of its content type (a Page is "Document"): its own fields (title, summary and the rest of its content type's fields) and its regions, which hold its blocks. Blocks have types (Text, Image, Hero, …; list_block_types gives each type's title, fields and regions), and some hold blocks of their own. In the editor, blocks are known by those titles and fields by their labels; ids and JSON are never shown.
+- The site's own front end draws every page. view_page shows a page as visitors see it; preview_layout (a whole proposed layout) and edit_blocks with dryRun and preview (a change to the page) show the result the same way. None of them saves anything.
+- Some blocks come from a template that many pages share (they carry "templateId"; "readOnly" ones are locked, as the editor shows them). A change to one is a change to the template, and so to every page that uses it: edit_blocks with changeTemplates. In the editor, unlocking a template warns of the same.
+- Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page) changes the site itself: visitors of a published page see the change straight away; there is no separate publishing step.
+- search finds pages by their title, their summary and the text of their Text blocks. Text in other blocks' fields (a hero's heading, a teaser's title) may not be searched.`;
 
-- Read a page's blocks with get_page; see it as visitors do with view_page (a screenshot and its text). Look before you describe or judge how a page looks.
-- Explore what you can use: list_block_types for the blocks a page can hold, describe_block (with "preview") for one type in full, with examples rendered.
-- To suggest changes or alternative layouts, try them first: preview_layout renders a whole proposed list of blocks for the page, and edit_blocks with dryRun and preview renders a change to the current page. Both save nothing. Render each alternative and compare them before recommending one; describe what each render shows.
-- Save (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page) only when asked to change the site.`;
+/**
+ * For a tool that changes nothing on the site: a client may then let the
+ * person allow it once, for good, instead of on every call.
+ */
+const SAVES_NOTHING = { readOnlyHint: true };
 
 const asResult = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] });
 
@@ -108,13 +118,15 @@ export function createServer(adminFor) {
 
   server.registerTool('get_page', {
     title: 'Read a page',
-    description: 'Read a page as an ordered list of blocks. Each block has "@uid" and "@type"; containers hold their child blocks in lists named for the region; rich text is {"md": "..."}. Keep "version" — edit_blocks needs it.',
+    annotations: SAVES_NOTHING,
+    description: 'Read a page. The page is itself a block of its content type: "@uid" "_page", "@type" its content type (e.g. "Document"), its own fields (title, description — the summary — and the rest of its content type\'s fields), and its regions as lists of blocks ("blocks", and any others such as a footer). Each block has "@uid" and "@type"; containers hold their child blocks in lists named for the region; rich text is {"md": "..."}. Change the page\'s own fields with edit_blocks, an "update" on "_page". Keep "version" — edit_blocks needs it.',
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, getPage)));
 
   server.registerTool('preview_layout', {
     title: 'Try a layout',
-    description: 'Render a whole proposed layout for a page as a visitor would see it, without saving anything: the page with "blocks" (in the get_page format; containers hold their child blocks in lists) in place of its own. Use it to try alternative layouts or designs before suggesting them: render each one and compare. Returns a screenshot and the rendered text. To change part of the current page, use edit_blocks with dryRun and preview instead.',
+    annotations: SAVES_NOTHING,
+    description: 'Render a whole proposed layout for a page as a visitor would see it, without saving anything: the page with "blocks" (in the get_page format; containers hold their child blocks in lists) in place of its own. Returns a screenshot and the rendered text. To change part of the current page, use edit_blocks with dryRun and preview instead.',
     inputSchema: {
       path: z.string().describe('The page path, e.g. /about'),
       blocks: z.array(z.object({ '@type': z.string() }).passthrough()).describe('The proposed blocks, in order'),
@@ -134,7 +146,8 @@ export function createServer(adminFor) {
 
   server.registerTool('view_page', {
     title: 'See a page',
-    description: 'See a page as a visitor sees it: a screenshot rendered by the site\'s own front end, and the page\'s visible text. Use it whenever asked what a page looks like, to check a layout, or before suggesting design or layout changes: get_page gives the blocks, not how they render. To see a change before saving it, use edit_blocks with dryRun and preview.',
+    annotations: SAVES_NOTHING,
+    description: 'See a page as a visitor sees it: a screenshot rendered by the site\'s own front end, and the page\'s visible text. get_page gives the blocks, not how they render. To see a change before saving it, use edit_blocks with dryRun and preview.',
     inputSchema: {
       path: z.string().describe('The page path, e.g. /about'),
       viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
@@ -158,6 +171,7 @@ export function createServer(adminFor) {
 
   server.registerTool('search', {
     title: 'Search the site',
+    annotations: SAVES_NOTHING,
     description: 'Find pages by their text, narrowed by content type and to a section. Returns the total and a page of results: path, title, type, description and workflow state. Use a result\'s path with get_page.',
     inputSchema: {
       text: z.string().optional().describe('Words to find (each word matches as a prefix)'),
@@ -169,6 +183,7 @@ export function createServer(adminFor) {
 
   server.registerTool('list_children', {
     title: 'List a section',
+    annotations: SAVES_NOTHING,
     description: 'The pages directly inside a section, in their order: path, title, type, description and workflow state. "/" lists the top of the site.',
     inputSchema: { path: z.string().describe('The section, e.g. / or /docs'), ...paging },
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => listChildren(site, args))));
@@ -198,19 +213,22 @@ export function createServer(adminFor) {
 
   server.registerTool('delete_page', {
     title: 'Delete a page',
+    annotations: { destructiveHint: true },
     description: 'Delete a page and everything inside it. This cannot be undone here.',
     inputSchema: { path: z.string().describe('The page to delete'), expectedVersion: version },
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => deletePage(site, args))));
 
   server.registerTool('list_block_types', {
     title: 'List block types',
-    description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes. Read this before adding a block type you have not seen on the page.',
+    annotations: SAVES_NOTHING,
+    description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes; "contentType" names the page\'s own type, listed with the others — its fields are the page\'s own (title, summary, …).',
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, listBlockTypes)));
 
   server.registerTool('describe_block', {
     title: 'Describe a block type',
-    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it. Use it before adding a type you have not used, or to see how to fill a field.',
+    annotations: SAVES_NOTHING,
+    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it.',
     inputSchema: {
       path: z.string().describe('The page you will add it to, e.g. /about'),
       type: z.string().describe('The block type, as list_block_types names it, e.g. teaser'),
@@ -250,17 +268,19 @@ export function createServer(adminFor) {
 
   server.registerTool('edit_blocks', {
     title: 'Edit a page',
-    description: `Change a page's blocks. With dryRun the changes are applied but not saved, and the resulting page is returned; resubmit without dryRun to save. With dryRun, "preview" also renders the result as a visitor would see it — a screenshot and the page's text: the way to try a change and see it before suggesting or saving it. A save is refused if the page has changed since expectedVersion — read it again and reapply.\n\n${OPS_HELP}`,
+    description: `Change a page's blocks, or its own fields (an "update" on "_page"). With dryRun the changes are applied but not saved, and the resulting page is returned; resubmit without dryRun to save. With dryRun, "preview" also renders the result as a visitor would see it — a screenshot and the page's text. A save is refused if the page has changed since expectedVersion — read it again and reapply.\n\n${OPS_HELP}`,
     inputSchema: {
       path: z.string().describe('The page path, e.g. /about'),
       expectedVersion: z.string().describe('The version get_page returned'),
       ops: z.array(z.object({ op: z.enum(['update', 'add', 'move', 'delete']) }).passthrough()),
       dryRun: z.boolean().optional().describe('Show the result without saving'),
       preview: z.enum(['desktop', 'mobile']).optional().describe('With dryRun: render the result at this width'),
+      changeTemplates: z.boolean().optional().describe('Allow changing blocks that belong to a template (marked "templateId"; locked ones are "readOnly"). '
+        + 'The template is changed, so the change appears on every page that uses it.'),
     },
-  }, async ({ path, expectedVersion, ops, dryRun, preview }, extra) => {
+  }, async ({ path, expectedVersion, ops, dryRun, preview, changeTemplates }, extra) => {
     const result = await adminFor(extra).withEditor(path, (agent, { render }) => editPage(agent, {
-      ops, expectedVersion, dryRun, mintId: randomUUID,
+      ops, expectedVersion, dryRun, changeTemplates, mintId: randomUUID,
       render: preview && ((draft) => render(draft, preview)),
     }));
     if (!result.rendered) return asResult(result);

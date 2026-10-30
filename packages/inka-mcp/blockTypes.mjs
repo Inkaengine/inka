@@ -8,6 +8,9 @@
  * fields that hold child blocks are listed as regions, not fields. Items of a
  * list region without types of their own (an accordion's panels) are the
  * `<block>:<field>` types the admin registers for them.
+ *
+ * The page itself is a block of its content type (`contentType`): its fields
+ * are the page's own (title, summary, …) and its regions hold the blocks.
  */
 
 import { toAgentBlock } from './pageFormat.mjs';
@@ -45,13 +48,19 @@ export function describeBlockTypes({ page, types }) {
       const t = types[type];
       if (!t) throw new Error(`${where} allows "${type}", which no block config describes`);
       const regionFields = new Set(t.regions.filter((r) => !r.regionPath).map((r) => r.region));
-      out[type] = { title: t.title, fields: fieldsOut(t.blockSchema, regionFields), regions: t.regions.map(regionOut) };
+      out[type] = {
+        title: t.title,
+        ...(t.contentType && { contentType: true }),
+        fields: fieldsOut(t.blockSchema, regionFields),
+        regions: t.regions.map(regionOut),
+      };
       for (const r of t.regions) visit(r.allowedBlocks, `${type}'s ${r.region}`);
     }
   };
+  if (page.contentType) visit([page.contentType], 'the page');
   for (const r of page.regions) visit(r.allowedBlocks, `the page's ${r.region}`);
 
-  return { page: page.regions.map(regionOut), types: out };
+  return { page: page.regions.map(regionOut), ...(page.contentType && { contentType: page.contentType }), types: out };
 }
 
 /**
@@ -76,6 +85,7 @@ export function describeBlockType(schemas, type) {
     type,
     title: t.title,
     ...(t.description !== undefined && { description: t.description }),
+    ...(t.contentType && { contentType: true }),
     variations: t.variations,
     fields: fieldsOut(t.blockSchema, regionFields),
     regions: t.regions.map(regionOut),

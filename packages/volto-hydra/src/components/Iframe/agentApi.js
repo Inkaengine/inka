@@ -10,14 +10,21 @@
  * be chained. Saving checks the page's version first: if anyone saved since the
  * agent read it, the save is refused, never merged.
  *
+ * Nothing here decides what is allowed: the editor's handlers do, for every
+ * caller. A template's locked block refuses a change, a fixed one refuses
+ * removal, and nothing is added where the editor offers no "+"; the refusal
+ * reaches the agent as the error it throws. To change a template, the agent
+ * unlocks it and locks it again, as a person does (unlockTemplateOf,
+ * lockTemplates).
+ *
  * `live.current` is refreshed by the editor on every render with its current
- * state and handlers: { properties, blockPathMap, insertAndSelectBlock,
- * onDeleteBlock, moveBlocks, onChangeFormData, blocksConfig, intl }.
+ * state and handlers: { properties, blockPathMap, templateEditMode,
+ * insertAndSelectBlock, onDeleteBlock, moveBlocks, onChangeBlock,
+ * enterTemplateEdit, commitTemplateEdit, blocksConfig, intl }.
  */
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
   getBlockById,
-  updateBlockById,
   getBlockTypeSchema,
   getAllContainerFields,
   getContainerRegionDescriptors,
@@ -124,7 +131,8 @@ async function readVersion(contentPath) {
 
 export function registerAgentApi(live) {
   const properties = () => live.current.properties;
-  const contentPath = () => window.location.pathname.replace(/\/edit\/?$/, '');
+  // The home page's editor is at /edit: its path is "/", not "".
+  const contentPath = () => window.location.pathname.replace(/\/edit\/?$/, '') || '/';
   /** Run `act`, then wait for the editor's state to take the change. */
   const commit = async (what, act) => {
     const before = properties();
@@ -135,6 +143,7 @@ export function registerAgentApi(live) {
   const requireBlock = (what, id) => {
     if (!live.current.blockPathMap?.[id]) throw new Error(`${what}: no block "${id}" on this page`);
   };
+  const blockData = (id) => getBlockById(properties(), live.current.blockPathMap, id);
 
   const api = {
     /** The page as the editor holds it, and the version a save is checked against. */
@@ -146,7 +155,9 @@ export function registerAgentApi(live) {
     getPage() {
       const { properties: formData, blockPathMap, contentLock, sessionToken } = live.current;
       return {
-        path: contentPath(), version: formData.modified, formData, blockPathMap,
+        path: contentPath(), version: formData.modified, formData,
+        // The page is a block of its content type (see getBlockSchemas).
+        blockPathMap: { ...blockPathMap, [PAGE_BLOCK_UID]: { ...blockPathMap[PAGE_BLOCK_UID], blockType: formData['@type'] } },
         lockedBy: lockedBy(contentLock, sessionToken),
       };
     },
@@ -215,7 +226,21 @@ export function registerAgentApi(live) {
           }),
         };
       }
-      return { page, types };
+      // The page is a block of its content type. The editor holds it as
+      // `_page` (the content type's fields with the page's regions); an agent
+      // sees it under the content type's own name, titled and described as the
+      // content type is, so a page is read, described and changed as any block.
+      const contentType = properties['@type'];
+      const { contentTypeSchema } = live.current;
+      if (!contentTypeSchema?.title) throw new Error(`getBlockSchemas: no schema for the page's content type ${contentType}`);
+      types[contentType] = {
+        ...types[PAGE_BLOCK_UID],
+        title: contentTypeSchema.title,
+        ...(contentTypeSchema.description && { description: contentTypeSchema.description }),
+        contentType: true,
+      };
+      delete types[PAGE_BLOCK_UID];
+      return { page: { ...page, contentType }, types };
     },
 
     /**
@@ -236,20 +261,56 @@ export function registerAgentApi(live) {
       return id;
     },
 
-    /** Change some of a block's fields, as the sidebar does. */
+    /** Change some of a block's fields, through the sidebar's own handler. */
     async update({ id, fields }) {
       requireBlock('update', id);
-      await commit('update', () => {
-        const { properties: formData, blockPathMap, onChangeFormData } = live.current;
-        const current = getBlockById(formData, blockPathMap, id);
-        onChangeFormData(updateBlockById(formData, blockPathMap, id, { ...current, ...fields }));
-      });
+      await commit('update', () => live.current.onChangeBlock(id, { ...blockData(id), ...fields }));
     },
 
     /** Delete a block, as the editor's delete does. */
     async remove(id) {
       requireBlock('remove', id);
       await commit('remove', () => live.current.onDeleteBlock(id, true));
+    },
+
+    /**
+     * Unlock the template a block belongs to, as its lock icon does: its
+     * locked blocks become editable, and lockTemplates saves them to the
+     * template. Resolves to the template instance id, or null for a block that
+     * belongs to no template.
+     */
+    async unlockTemplateOf(id) {
+      requireBlock('unlockTemplateOf', id);
+      const instanceId = blockData(id)?.templateInstanceId;
+      if (!instanceId) return null;
+      if (!live.current.templateEditMode.includes(instanceId)) {
+        await live.current.enterTemplateEdit(instanceId);
+        await until(() => live.current.templateEditMode.includes(instanceId), STATE_LIMIT_MS,
+          `unlockTemplateOf: the template of "${id}" did not unlock`);
+      }
+      return instanceId;
+    },
+
+    /**
+     * Lock every unlocked template with "Change on all pages", as the lock's
+     * dialog does: each is saved to its template document now, so every page
+     * using it changes. Resolves to the templates saved.
+     */
+    async lockTemplates() {
+      const saved = [];
+      for (const instanceId of [...live.current.templateEditMode]) {
+        delete live.current.templateCommitOutcomes[instanceId];
+        if (!live.current.commitTemplateEdit(instanceId)) {
+          throw new Error(`lockTemplates: the template's structure is not valid, so it was not saved (${instanceId})`);
+        }
+        await until(() => !live.current.templateEditMode.includes(instanceId) && !live.current.committingTemplate,
+          SAVE_LIMIT_MS, `lockTemplates: the template (${instanceId}) did not finish saving`);
+        const outcome = live.current.templateCommitOutcomes[instanceId];
+        if (!outcome) throw new Error(`lockTemplates: the template (${instanceId}) was locked but not saved: the editor had not loaded it`);
+        if (outcome.error) throw new Error(`lockTemplates: ${outcome.templateId} was not saved: ${outcome.error}`);
+        saved.push(outcome.templateId);
+      }
+      return saved;
     },
 
     /** Move a block before or after another, as drag-and-drop does. */

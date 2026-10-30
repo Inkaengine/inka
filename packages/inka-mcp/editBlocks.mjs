@@ -17,9 +17,15 @@
  * the editor mints the real id, and this maps one to the other for the rest of
  * the call.
  *
+ * A template's locked blocks are refused, as the editor refuses them, unless
+ * `changeTemplates`: then each operation first unlocks the template of the
+ * block it touches, as the template's lock icon does (the caller locks them
+ * again, saving each template, before it saves the page).
+ *
  * `agent` is anything with the agent API's methods: getPage, insert, update,
- * remove, move (each resolving once the editor has taken the change). A failing
- * operation throws an EditError naming it, so the agent knows what to fix.
+ * remove, move, unlockTemplateOf (each resolving once the editor has taken the
+ * change). A failing operation throws an EditError naming it, so the agent
+ * knows what to fix.
  */
 import { toStoredBlock } from './pageFormat.mjs';
 
@@ -41,7 +47,7 @@ function position(op, real) {
   return { action: named[0], refId: real(op[named[0]]) };
 }
 
-export async function editBlocks(agent, ops, { blocksConfig, mintId }) {
+export async function editBlocks(agent, ops, { blocksConfig, mintId, changeTemplates = false }) {
   if (!Array.isArray(ops)) throw new EditError('the operations must be a JSON array');
   const realIds = new Map(); // an agent's "@uid" for a new block → the editor's id
   const real = (id) => {
@@ -49,6 +55,11 @@ export async function editBlocks(agent, ops, { blocksConfig, mintId }) {
     return realIds.get(id) ?? id;
   };
   const stored = (block) => toStoredBlock(block, { blocksConfig, mintId });
+  /** Unlock the template of the block `id`, when asked to change templates. */
+  const unlocking = async (id) => {
+    if (changeTemplates) await agent.unlockTemplateOf(id);
+    return id;
+  };
   const results = [];
 
   for (const [i, op] of ops.entries()) {
@@ -61,7 +72,7 @@ export async function editBlocks(agent, ops, { blocksConfig, mintId }) {
           if (!op.set || typeof op.set !== 'object' || Array.isArray(op.set)) {
             throw new EditError('"update" needs "set": {field: value}');
           }
-          const id = real(op.id);
+          const id = await unlocking(real(op.id));
           const type = (await agent.getPage()).blockPathMap?.[id]?.blockType;
           if (!type) throw new EditError(`no block "${op.id}" on this page`);
           const { '@type': _t, ...fields } = stored({ '@type': type, ...op.set });
@@ -73,6 +84,7 @@ export async function editBlocks(agent, ops, { blocksConfig, mintId }) {
           const blocks = op.blocks ?? (op.block ? [op.block] : null);
           if (!Array.isArray(blocks) || !blocks.length) throw new EditError('"add" needs "blocks": [ … ]');
           let { action, refId, field } = position(op, real);
+          await unlocking(refId);
           const added = [];
           for (const block of blocks) {
             if (block?.['@uid'] && realIds.has(block['@uid'])) {
@@ -92,12 +104,14 @@ export async function editBlocks(agent, ops, { blocksConfig, mintId }) {
         case 'move': {
           const { action, refId } = position(op, real);
           if (action === 'inside') throw new EditError('"move" takes "after" or "before" a block');
+          await unlocking(real(op.id));
+          await unlocking(refId);
           await agent.move({ id: real(op.id), targetId: refId, insertAfter: action === 'after' });
           results.push({ op: 'move', id: real(op.id) });
           break;
         }
         case 'delete': {
-          await agent.remove(real(op.id));
+          await agent.remove(await unlocking(real(op.id)));
           results.push({ op: 'delete', id: real(op.id) });
           break;
         }

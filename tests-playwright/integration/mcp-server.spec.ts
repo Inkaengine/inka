@@ -37,16 +37,23 @@ test.describe('MCP server', () => {
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'preview_layout', 'rename_page', 'search', 'view_page']);
+    // Those that change nothing say so, so a client need not ask the person every time.
+    expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
+      .toEqual(['describe_block', 'get_page', 'list_block_types', 'list_children', 'preview_layout', 'search', 'view_page']);
+    expect(tools.find((t) => t.name === 'delete_page')!.annotations).toMatchObject({ destructiveHint: true });
   });
 
-  test('tells a client how to work with the site: see pages, and try layouts before suggesting them', async () => {
+  test('tells a client about the site: what a person never says, and nothing about how to behave', async () => {
     const instructions = client.getInstructions();
+    // Facts about the site and its tools, filling in what a person never says.
     expect(instructions).toMatch(/view_page/);
     expect(instructions).toMatch(/preview_layout/);
-    expect(instructions).toMatch(/saves? nothing/);
-    // It talks to the person about pages as visitors see them, not data.
-    expect(instructions).toMatch(/not in data/);
-    expect(instructions).toMatch(/Do not mention blocks, JSON/);
+    expect(instructions).toMatch(/saves anything|saves nothing/);
+    expect(instructions).toMatch(/a change to the template, and so to every page that uses it/);
+    expect(instructions).toMatch(/visitors of a published page see the change straight away/);
+    expect(instructions).toMatch(/search finds pages by their title, their summary and the text of their Text blocks/);
+    // Never how to behave: that is the agent's and its host's, not the site's.
+    expect(instructions).not.toMatch(/\b(Never|Do not|only when asked|tell the person|Talk the way)\b/);
   });
 
   test('preview_layout: a whole proposed layout rendered, and the page left as it was', async () => {
@@ -91,6 +98,73 @@ test.describe('MCP server', () => {
     expect(images.map((i) => i.mimeType)).toEqual(described.examples.map(() => 'image/png'));
     // The pictures are not repeated in the text.
     expect(described.examples[0].rendered).toEqual({ renderedOn: expect.any(String), text: expect.any(String) });
+  });
+
+  test("templates: a locked block is refused, naming its template; with changeTemplates the template, and every page using it, changes", async () => {
+    test.setTimeout(240000);
+    const USES = '/_test_data/template-test-page';
+    const ALSO_USES = '/_test_data/template-test-page-2';
+    const headerOf = (page: any) => page.blocks.find((b: any) => b.slotId === 'header').value.md;
+    const read = (await call('get_page', { path: USES })).json();
+    expect(headerOf(read)).toBe('# Template Header - From Template');
+    const ops = [{ op: 'update', id: 'template-header', set: { value: { md: '# New header' } } }];
+
+    // Locked, as in the editor: the refusal names the template to change.
+    const refused = await call('edit_blocks', { path: USES, expectedVersion: read.version, ops });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/locked.*\/_test_data\/templates\/test-layout/);
+
+    // Changing the template: saved to the template, so another page using it shows it too.
+    const saved = (await call('edit_blocks', { path: USES, expectedVersion: read.version, ops, changeTemplates: true })).json();
+    expect(saved.templatesChanged).toEqual(['/_test_data/templates/test-layout']);
+    expect(headerOf((await call('get_page', { path: USES })).json())).toBe('# New header');
+    expect(headerOf((await call('get_page', { path: ALSO_USES })).json())).toBe('# New header');
+  });
+
+  test('the page is a block of its content type: read, listed and changed as any block', async () => {
+    // A page's summary had no way in: get_page left the page's own fields out,
+    // and list_block_types had no type for the page.
+    test.setTimeout(240000);
+    const read = (await call('get_page', { path: PAGE })).json();
+    expect(read).toMatchObject({ '@uid': '_page', '@type': 'Document', title: 'Test Page' });
+    expect(read).toHaveProperty('description');
+    expect(read.blocks.length).toBeGreaterThan(0);
+
+    const listed = (await call('list_block_types', { path: PAGE })).json();
+    expect(listed.contentType).toBe('Document');
+    expect(listed.types.Document).toMatchObject({ title: 'Page', contentType: true });
+    expect(listed.types.Document.fields).toHaveProperty('description');
+
+    (await call('edit_blocks', {
+      path: PAGE, expectedVersion: read.version,
+      ops: [{ op: 'update', id: '_page', set: { description: 'A summary set by the agent' } }],
+    })).json();
+    expect((await call('get_page', { path: PAGE })).json().description).toBe('A summary set by the agent');
+  });
+
+  test("templates: a dry run, then the change for every page, leaves the page's own slot content", async () => {
+    // As an agent did it: try the template change (dry run), then make it. The
+    // page's own blocks in the template's slot were replaced by an empty
+    // placeholder, and stayed lost through every save after.
+    test.setTimeout(240000);
+    const USES = '/_test_data/template-test-page';
+    const slotOf = (page: any) => page.blocks.filter((b: any) => b.slotId === 'primary').map((b: any) => b.value?.md);
+    const read = (await call('get_page', { path: USES })).json();
+    const before = slotOf(read);
+    expect(before).toEqual(['User content - different from template default', 'Second user content block in placeholder']);
+    const ops = [{ op: 'update', id: 'template-header', set: { value: { md: '# Welcome to Riverside' } } }];
+    (await call('edit_blocks', { path: USES, expectedVersion: read.version, ops, changeTemplates: true, dryRun: true })).json();
+    (await call('edit_blocks', { path: USES, expectedVersion: read.version, ops, changeTemplates: true })).json();
+    const after = (await call('get_page', { path: USES })).json();
+    expect(slotOf(after)).toEqual(before);
+  });
+
+  test('get_page opens the home page', async () => {
+    // Its editor is at /edit, which the agent API named "" rather than "/":
+    // the server waited for "/" until it timed out, and an agent told the
+    // person it had checked the home page when it never could.
+    test.setTimeout(120000);
+    expect((await call('get_page', { path: '/' })).json()).toMatchObject({ path: '/', '@uid': '_page' });
   });
 
   test('list_children runs without an editor', async () => {

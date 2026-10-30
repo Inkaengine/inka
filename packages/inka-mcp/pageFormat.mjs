@@ -50,6 +50,27 @@ export function schemaFacts(blocksConfig) {
 
 // --------------------------------------------------------------- stored → agent
 
+/** The page's own id as a block (the editor's PAGE_BLOCK_UID). */
+export const PAGE_UID = '_page';
+
+/**
+ * The page as a block of its content type: `@uid` the page's own id, `@type`
+ * its content type, its fields (the type's schema, without the regions), and
+ * each region's blocks as a list. `type` is the content type as the agent
+ * API describes it ({ blockSchema, regions }).
+ */
+export function toAgentPage(formData, type) {
+  const regions = new Set(type.regions.map((r) => r.region));
+  const fields = Object.keys(type.blockSchema.properties)
+    .filter((name) => !regions.has(name) && name !== 'blocks' && name !== 'blocks_layout' && name in formData);
+  return toAgentBlock(PAGE_UID, {
+    '@type': formData['@type'],
+    ...Object.fromEntries(fields.map((name) => [name, formData[name]])),
+    blocks: formData.blocks,
+    blocks_layout: formData.blocks_layout,
+  });
+}
+
 /** The page's blocks, in the agent format. */
 export function toAgentBlocks(page) {
   return layoutList(page, 'items');

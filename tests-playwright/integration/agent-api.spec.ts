@@ -108,4 +108,74 @@ test.describe('Agent API', () => {
     expect(refused, 'a stale save must be refused').toMatch(/changed since/i);
     await expect(page, 'still editing: nothing was saved').toHaveURL(/\/edit(\?|$)/);
   });
+
+  test("keeps a template's locked blocks as the editor does; its slots stay the page's to edit", async ({ page }) => {
+    // An agent's change to a locked template block used to be accepted and
+    // saved, then overwritten by the template on the next load: reported as
+    // done, never seen.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+    const refusal = (fn: (a: Agent, arg: any) => Promise<unknown>, arg: any) => agent(page, (a, [src, x]) => {
+      const run = new Function('a', 'x', `return (${src})(a, x);`);
+      return run(a, x).then(() => null, (e: Error) => e.message);
+    }, [fn.toString(), arg]);
+
+    // Locked (fixed + read-only): not editable, not removable; the refusal names the template.
+    expect(await refusal((a, x) => a.update(x), { id: 'template-header', fields: { value: slate('Changed') } }))
+      .toMatch(/template-header.*locked.*\/_test_data\/templates\/test-layout/);
+    expect(await refusal((a, x) => a.remove(x), 'template-header')).toMatch(/template-header.*cannot be (re)?moved/);
+    // Nothing goes between two of a template's fixed blocks.
+    expect(await refusal((a, x) => a.insert(x), { refId: 'template-header', action: 'after', block: { '@type': 'slate', value: slate('Wedged') } }))
+      .toMatch(/cannot add .* after template-header/);
+    expect(await layout(page)).toContain('template-header');
+
+    // A slot's blocks are the page's own.
+    await agent(page, (a, arg) => a.update(arg), { id: 'user-content-1', fields: { value: slate('Slot text by the agent') } });
+    await expect(helper.getIframe().locator('[data-block-uid="user-content-1"]')).toContainText('Slot text by the agent');
+    await agent(page, (a, arg) => a.remove(arg), 'user-content-2');
+    expect(await layout(page)).not.toContain('user-content-2');
+  });
+
+  test("a page using a template keeps its blocks' ids from one load to the next", async ({ page }) => {
+    // The page doesn't store the template's grid block yet, so loading merges
+    // it in. The merge minted it a random id on every load: an agent reads the
+    // page in one call and edits it in the next (a fresh editor each time), so
+    // the id it had just been given was gone.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const ids = async () => {
+      await helper.navigateToEdit('/template-test-page');
+      await expect.poll(() => agent(page, (a) => a.getPage().formData.blocks_layout.items.length)).toBeGreaterThan(0);
+      const { formData } = await agent(page, (a) => a.getPage());
+      return formData.blocks_layout.items.map((id: string) => `${id}:${formData.blocks[id]['@type']}`);
+    };
+    const first = await ids();
+    expect(first.some((id: string) => id.endsWith(':gridBlock')), 'the template merged in its grid').toBe(true);
+    await page.goto(helper.contentUrl('/template-test-page'));
+    expect(await ids()).toEqual(first);
+  });
+
+  test('changes a template as a person does: unlock, edit, lock with "Change on all pages"', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+
+    expect(await agent(page, (a) => a.unlockTemplateOf('template-header'))).toBe('tpl-instance-1');
+    expect(await agent(page, (a) => a.unlockTemplateOf('standalone-block-1')), 'a page block has no template').toBeNull();
+    await agent(page, (a, arg) => a.update(arg), { id: 'template-header', fields: { value: [{ type: 'h1', children: [{ text: 'Header for every page' }] }] } });
+    const saved = await agent(page, (a) => a.lockTemplates());
+    expect(saved).toEqual(['/_test_data/templates/test-layout']);
+
+    // The template document itself now has it, so every page using it does.
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
+    const template = await (await page.request.get(`${URLS.mockApi}/_test_data/templates/test-layout`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    const header = Object.values(template.blocks as Record<string, any>).find((b) => b.slotId === 'header');
+    expect(JSON.stringify(header.value)).toContain('Header for every page');
+    // Locked again.
+    expect(await agent(page, (a) => a.update({ id: 'template-header', fields: {} }).then(() => null, (e: Error) => e.message)))
+      .toMatch(/locked/);
+  });
 });

@@ -6,7 +6,7 @@
  * the caller discards it by reloading. A save is refused if the page has
  * changed since the agent read it (its version).
  */
-import { toAgentBlocks, toAgentBlock, toStoredBlocks } from './pageFormat.mjs';
+import { toAgentPage, toAgentBlock, toStoredBlocks } from './pageFormat.mjs';
 import { editBlocks } from './editBlocks.mjs';
 import { describeBlockTypes, describeBlockType } from './blockTypes.mjs';
 
@@ -22,7 +22,10 @@ export class Locked extends Error {
 /** The page in the agent format, with the version a later save is checked against. */
 export async function getPage(agent) {
   const { path, version, formData, lockedBy } = await agent.getPage();
-  return { path, version, title: formData.title, ...(lockedBy && { lockedBy }), blocks: toAgentBlocks(formData) };
+  const { page, types } = await agent.getBlockSchemas();
+  const type = types[page.contentType];
+  if (!type) throw new Error(`the page's content type "${page.contentType}" has no schema`);
+  return { path, version, ...(lockedBy && { lockedBy }), ...toAgentPage(formData, type) };
 }
 
 /**
@@ -44,9 +47,13 @@ export async function fillNewPage(agent, { blocks, mintId }) {
  * Find pages: by text, narrowed by content type and to a section (`path`).
  * Returns { total, items: [{ path, title, type, description, reviewState }] }.
  */
+/** What a text search looks in: Plone's SearchableText, with the text of Text blocks (plone.restapi's blocks indexer). */
+const SEARCHED = 'titles, summaries and the text of Text blocks; other blocks\' fields may not be searched';
+
 export async function search(site, { text, types, path, limit, start }) {
   if (!text && !types) throw new Error('search needs "text" or "types"; to browse a section use list_children');
-  return site.search({ text, types, path, limit, start });
+  const found = await site.search({ text, types, path, limit, start });
+  return text ? { ...found, searched: SEARCHED } : found;
 }
 
 /** The pages directly inside `path`, in their order. */
@@ -147,11 +154,14 @@ const EXAMPLE_UID = 'example';
  * without saving; otherwise save and return the new version. `expectedVersion`
  * is the version the agent read. With a dry run, `render(draft)` (if given)
  * renders the draft as a visitor would see it, and its result is `rendered`.
+ * With `changeTemplates`, the operations may change a template's locked
+ * blocks: each template is saved before the page (`templatesChanged`), and so
+ * changes on every page that uses it.
  */
-export async function editPage(agent, { ops, expectedVersion, dryRun = false, mintId, render }) {
+export async function editPage(agent, { ops, expectedVersion, dryRun = false, changeTemplates = false, mintId, render }) {
   if (render && !dryRun) throw new Error('a preview is for a dry run: add dryRun');
   if (!expectedVersion) throw new Error('edit_blocks needs the expectedVersion get_page returned');
-  const { path, version: loaded, lockedBy } = await agent.getPage();
+  const { path, version: loaded, lockedBy, formData } = await agent.getPage();
   if (lockedBy && !dryRun) throw new Locked(path, lockedBy);
   if (loaded !== expectedVersion) {
     throw new StaleVersion(
@@ -159,14 +169,17 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, mi
     );
   }
   const blocksConfig = (await agent.getBlockSchemas()).types;
-  const { results, ids } = await editBlocks(agent, ops, { blocksConfig, mintId });
+  const { results, ids } = await editBlocks(agent, ops, { blocksConfig, mintId, changeTemplates });
   if (dryRun) {
     const dry = { dryRun: true, results, ids, ...(lockedBy && { lockedBy }), page: await getPage(agent) };
     if (render) dry.rendered = await render(await agent.getDraft());
     return dry;
   }
+  // Templates are saved as their lock does it ("Change on all pages"), before the page.
+  const templatesChanged = changeTemplates ? await agent.lockTemplates() : [];
   const { version } = await agent.save({ expectedVersion });
-  return { results, ids, version };
+  // Its workflow state: a published page's visitors see the change now.
+  return { results, ids, version, reviewState: formData.review_state, ...(changeTemplates && { templatesChanged }) };
 }
 
 /**

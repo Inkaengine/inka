@@ -76,6 +76,35 @@ describe('describeBlockTypes', () => {
   });
 });
 
+describe('the page as a block of its content type', () => {
+  const items = { region: 'items', isObjectList: false, allowedBlocks: ['slate'], defaultBlockType: 'slate', maxLength: null };
+  const withPage = {
+    page: { regions: [items], contentType: 'Document' },
+    types: {
+      ...schemas.types,
+      Document: {
+        title: 'Page', description: 'A page in the site', contentType: true, variations: [],
+        blockSchema: { required: ['title'], properties: { title: field({ title: 'Title' }), description: field({ title: 'Summary', widget: 'textarea' }), items: field({ title: 'Blocks' }) } },
+        regions: [items],
+      },
+    },
+  };
+
+  it('list_block_types names the content type, and describes it as a block: its fields and its regions', () => {
+    const listed = describeBlockTypes(withPage);
+    expect(listed.contentType).toBe('Document');
+    expect(listed.types.Document).toEqual({
+      title: 'Page', contentType: true,
+      fields: { title: { title: 'Title', required: true }, description: { title: 'Summary', widget: 'textarea' } },
+      regions: [{ field: 'blocks', allowed: ['slate'] }],
+    });
+  });
+
+  it('describe_block describes it in full, as any type', () => {
+    expect(describeBlockType(withPage, 'Document')).toMatchObject({ type: 'Document', title: 'Page', description: 'A page in the site', contentType: true });
+  });
+});
+
 describe('describeBlockType', () => {
   const withVariations = {
     ...schemas,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout } from './tools.mjs';
+import { describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -59,10 +59,15 @@ describe('describeBlock', () => {
 
 describe('a page someone else is editing', () => {
   const jane = { user: 'Jane Doe', since: '2026-10-27T10:42:00+00:00' };
-  const formData = { title: 'News', modified: 'v1', blocks: { p: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hi' }] }] } }, blocks_layout: { items: ['p'] } };
+  const formData = { '@type': 'Document', title: 'News', modified: 'v1', blocks: { p: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hi' }] }] } }, blocks_layout: { items: ['p'] } };
+  const items = [{ region: 'items', allowedBlocks: ['slate'], isObjectList: false }];
+  const docSchemas = async () => ({
+    page: { regions: items, contentType: 'Document' },
+    types: { Document: { title: 'Page', variations: [], regions: items, blockSchema: { required: [], properties: { title: { title: 'Title' } } } } },
+  });
   const lockedAgent = {
     getPage: async () => ({ path: '/news', version: 'v1', formData, lockedBy: jane }),
-    getBlockSchemas: async () => { throw new Error('not reached'); },
+    getBlockSchemas: docSchemas,
   };
 
   it('get_page says who holds it', async () => {
@@ -70,7 +75,7 @@ describe('a page someone else is editing', () => {
   });
 
   it('get_page says nothing of a lock when no one else holds one', async () => {
-    const agent = { getPage: async () => ({ path: '/news', version: 'v1', formData, lockedBy: null }) };
+    const agent = { getPage: async () => ({ path: '/news', version: 'v1', formData, lockedBy: null }), getBlockSchemas: docSchemas };
     expect(await getPage(agent)).not.toHaveProperty('lockedBy');
   });
 
@@ -123,5 +128,115 @@ describe('previewLayout', () => {
   it('refuses a block type the page has no config for', async () => {
     await expect(previewLayout(layoutAgent, { blocks: [{ '@type': 'ghost' }], render: async () => ({}), mintId }))
       .rejects.toThrow(/no block type "ghost"/);
+  });
+});
+
+describe('editPage changing a template', () => {
+  const formData = {
+    '@type': 'Document', title: 'News', modified: 'v1',
+    blocks: {
+      head: { '@type': 'slate', templateInstanceId: 'i1', readOnly: true, fixed: true, value: [{ type: 'p', children: [{ text: 'Old' }] }] },
+      own: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Mine' }] }] },
+    },
+    blocks_layout: { items: ['head', 'own'] },
+  };
+  /** An agent recording the order it is asked to do things in. */
+  const recording = () => {
+    const did = [];
+    return {
+      did,
+      getPage: async () => ({ path: '/news', version: 'v1', formData, blockPathMap: { head: { blockType: 'slate' }, own: { blockType: 'slate' } }, lockedBy: null }),
+      getBlockSchemas: async () => ({
+        page: { regions: [{ region: 'items', allowedBlocks: ['slate'] }], contentType: 'Document' },
+        types: {
+          Document: { title: 'Page', regions: [{ region: 'items', allowedBlocks: ['slate'] }], blockSchema: { properties: { title: { title: 'Title' } } } },
+          slate: { title: 'Text', blockSchema: { properties: { value: { widget: 'slate' } } }, regions: [] },
+        },
+      }),
+      unlockTemplateOf: async (id) => { did.push(`unlock ${id}`); return formData.blocks[id].templateInstanceId ?? null; },
+      update: async ({ id }) => { did.push(`update ${id}`); },
+      lockTemplates: async () => { did.push('lock'); return ['/templates/news-layout']; },
+      save: async () => { did.push('save'); return { version: 'v2' }; },
+    };
+  };
+  const ops = [{ op: 'update', id: 'head', set: { value: { md: 'New' } } }];
+
+  it('unlocks the templates its operations touch, then locks them ("Change on all pages") before saving the page', async () => {
+    const agent = recording();
+    const result = await editPage(agent, { ops, expectedVersion: 'v1', changeTemplates: true });
+    expect(agent.did).toEqual(['unlock head', 'update head', 'lock', 'save']);
+    expect(result.templatesChanged).toEqual(['/templates/news-layout']);
+  });
+
+  it('leaves templates alone unless asked', async () => {
+    const agent = recording();
+    await editPage(agent, { ops, expectedVersion: 'v1' });
+    expect(agent.did).toEqual(['update head', 'save']);
+  });
+
+  it('a dry run unlocks to show the change, and saves no template', async () => {
+    const agent = recording();
+    agent.getDraft = async () => formData;
+    await editPage(agent, { ops, expectedVersion: 'v1', changeTemplates: true, dryRun: true });
+    expect(agent.did).toEqual(['unlock head', 'update head']);
+  });
+});
+
+describe('get_page: the page is a block of its content type', () => {
+  const formData = {
+    '@type': 'Document', title: 'News', description: 'What is new', review_state: 'published', modified: 'v1',
+    UID: 'abc', '@id': 'http://site/news',
+    blocks: {
+      p: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hi' }] }] },
+      f: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Footer text' }] }] },
+    },
+    blocks_layout: { items: ['p'], footer: ['f'] },
+  };
+  const regions = [
+    { region: 'items', allowedBlocks: ['slate'], isObjectList: false },
+    { region: 'footer', allowedBlocks: ['slate'], isObjectList: false },
+  ];
+  const pageAgent = {
+    getPage: async () => ({ path: '/news', version: 'v1', formData, lockedBy: null }),
+    getBlockSchemas: async () => ({
+      page: { regions, contentType: 'Document' },
+      types: {
+        Document: {
+          title: 'Page', contentType: true, variations: [], regions,
+          blockSchema: { required: ['title'], properties: { title: { title: 'Title' }, description: { title: 'Summary', widget: 'textarea' }, items: { title: 'Blocks' }, footer: { title: 'Footer' } } },
+        },
+        slate: { title: 'Text', variations: [], regions: [], blockSchema: { required: [], properties: { value: { widget: 'slate' } } } },
+      },
+    }),
+  };
+
+  it("has the page's own id and type, its fields, and every region's blocks", async () => {
+    expect(await getPage(pageAgent)).toEqual({
+      path: '/news', version: 'v1',
+      '@uid': '_page', '@type': 'Document',
+      title: 'News', description: 'What is new',
+      blocks: [{ '@uid': 'p', '@type': 'slate', value: { md: 'Hi' } }],
+      footer: [{ '@uid': 'f', '@type': 'slate', value: { md: 'Footer text' } }],
+    });
+  });
+});
+
+describe('what the results say of the site', () => {
+  it('a text search says what it looked in, as Plone searches it', async () => {
+    const site = { search: async () => ({ total: 0, items: [] }) };
+    expect(await search(site, { text: 'Riverside' })).toMatchObject({
+      total: 0, searched: 'titles, summaries and the text of Text blocks; other blocks\' fields may not be searched',
+    });
+    expect(await search(site, { types: ['Event'] })).not.toHaveProperty('searched');
+  });
+
+  it('a save says the page\'s state, so whether visitors see it now', async () => {
+    const formData = { '@type': 'Document', title: 'News', modified: 'v1', review_state: 'published', blocks: {}, blocks_layout: { items: [] } };
+    const agent = {
+      getPage: async () => ({ path: '/news', version: 'v1', formData, blockPathMap: {}, lockedBy: null }),
+      getBlockSchemas: async () => ({ page: { regions: [], contentType: 'Document' }, types: {} }),
+      save: async () => ({ version: 'v2' }),
+    };
+    expect(await editPage(agent, { ops: [], expectedVersion: 'v1' })).toMatchObject({ version: 'v2', reviewState: 'published' });
   });
 });

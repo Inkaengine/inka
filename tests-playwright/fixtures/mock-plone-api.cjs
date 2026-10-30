@@ -747,7 +747,7 @@ function matchRawSearch(searchTerm, item) {
     .some(matchesAlternative);
 }
 
-function matchSearchableText(searchTerm, item) {
+function matchSearchableText(searchTerm, item, blocksText = '') {
   const term = (searchTerm || '').replace(/\*+$/g, '').trim().toLowerCase();
   if (!term) return true;
   const parts = term.split(/\s+/).filter(Boolean);
@@ -756,8 +756,27 @@ function matchSearchableText(searchTerm, item) {
     ...(item.title || '').toLowerCase().split(/\W+/),
     ...(item.description || '').toLowerCase().split(/\W+/),
     ...(item.id || '').toLowerCase().split(/\W+/),
+    ...blocksText.toLowerCase().split(/\W+/),
   ].filter(Boolean);
   return parts.every((p) => haystackTokens.some((tok) => tok.startsWith(p)));
+}
+
+/**
+ * The text of a page's blocks, as plone.restapi's blocks indexer adds it to
+ * SearchableText: every Text (slate) value, in containers too. (Other block
+ * types are indexed only where a site registers an indexer for them.)
+ */
+function blocksSearchableText(blocks) {
+  const texts = [];
+  const isSlate = (v) => Array.isArray(v) && v.length > 0 && v.every((n) => n && typeof n === 'object' && Array.isArray(n.children));
+  const slateText = (nodes) => nodes.map((n) => (typeof n.text === 'string' ? n.text : '') + slateText(n.children || [])).join(' ');
+  const walk = (v) => {
+    if (isSlate(v)) texts.push(slateText(v));
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  };
+  walk(blocks);
+  return texts.join(' ');
 }
 
 /**
@@ -5475,15 +5494,15 @@ app.get('*/@search', (req, res) => {
   // container children included.
   const blockTypes = req.query.block_types === undefined ? null : [req.query.block_types].flat();
   if (searchableText || titleQuery || blockTypes) {
-    items = Object.keys(contentDirMap)
+    // The site as this session has it, as Plone's catalog does: its own new
+    // and edited pages included, by the text in their blocks too.
+    items = allContentPaths(getSessionId(req))
       .filter((itemPath) => itemPath !== '/')
-      .map((itemPath) => loadContentFromDisk(itemPath))
+      .map((itemPath) => getContent(itemPath, getSessionId(req)))
       .filter((content) => content != null)
       .filter((content) => !blockTypes || blockTypesOf(content).some((t) => blockTypes.includes(t)))
+      .filter((content) => !searchableText || matchSearchableText(searchableText, content, blocksSearchableText(content.blocks)))
       .map((content) => formatSearchItem(content, baseUrl));
-    if (searchableText) {
-      items = items.filter((item) => matchSearchableText(searchableText, item));
-    }
     if (titleQuery) {
       const terms = String(titleQuery)
         .toLowerCase()
