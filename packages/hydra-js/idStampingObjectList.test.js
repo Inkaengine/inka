@@ -32,8 +32,8 @@ describe('expandTemplatesSync: object_list item id stamping honours the idField'
     // eslint-disable-next-line no-console
     console.log('EXPANDED FIELD:', JSON.stringify(field));
     // field_id (the idField) is preserved + instance-scoped; NO bogus @id is minted.
-    expect(field.field_id).toBeTruthy();
-    expect(field.field_id).toContain('fld-a');
+    expect(field.field_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(field.field_id).not.toBe('fld-a');
     expect(field['@id']).toBeUndefined();
   });
 });

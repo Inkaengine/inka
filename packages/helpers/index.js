@@ -1764,28 +1764,39 @@ function generateUUID() {
 }
 
 /**
- * Deterministic UUID-format id derived from a seed string: the same seed always
- * yields the same id. Used to mint a template instance id from a stable data key
- * (the region's first block id) so a server render and the client hydration agree
- * on `${instanceId}::${tplChildId}` block uids — a random id would differ between
- * the two passes and trigger a React hydration mismatch (and, because that id is
- * the block's edit identity, confuse block selection). xfnv1a hash → mulberry32
- * PRNG, so it's pure/deterministic (no Math.random, no crypto).
+ * Deterministic UUID derived from a seed string: the same seed always yields the
+ * same id, and different seeds different ids. Used where an id must come out the
+ * same each time it is minted: a template instance id from a stable data key (so a
+ * server render and the client hydration agree), and a template block's uid in an
+ * instance (mintChildBlockId). The seed is hashed to 128 bits (cyrb128: four
+ * 32-bit lanes), which fill the UUID, so it is as unique as a random one; pure and
+ * synchronous, for every renderer (no Math.random, no crypto).
  * @param {string} seed
  * @returns {string} UUID v4 format string
  */
-function deterministicUUID(seed) {
-  let h = 2166136261 >>> 0;
+export function deterministicUUID(seed) {
+  let h1 = 1779033703;
+  let h2 = 3144134277;
+  let h3 = 1013904242;
+  let h4 = 2773480762;
   for (let i = 0; i < seed.length; i++) {
-    h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+    const k = seed.charCodeAt(i);
+    h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+    h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+    h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+    h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
   }
-  const rand = () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  return uuidFromRand(rand);
+  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+  h1 ^= h2 ^ h3 ^ h4;
+  h2 ^= h1;
+  h3 ^= h1;
+  h4 ^= h1;
+  const hex = [h1, h2, h3, h4].map((h) => (h >>> 0).toString(16).padStart(8, '0')).join('');
+  const variant = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 /**
@@ -3797,23 +3808,6 @@ export function collectContentFromTree(
 }
 
 /**
- * Fill ONE region's ordered template blocks — the SAME logic for a blocks_layout
- * region and an object_list array (they are one concept: an ordered list of blocks,
- * differing only in storage). Drops orphans (no templateId — never invents one), keeps
- * fixed blocks (preserving the template id, or the page's id+value when the page
- * overrode an editable one), replaces slot placeholders with the page's content from
- * the shared ctx (consumed so it isn't reused), and recurses into nested containers.
- * Returns filled [{ id, block }] in order.
- */
-/**
- * THE single policy for a template child's block id. Deterministic by default
- * (`${instanceId}::${tplChildId}` — stable across a server render and the
- * client hydration, and instance-scoped so two instances of one template
- * never collide); a caller-provided generator wins only where the caller
- * genuinely needs one-off ids (e.g. snippet insertion into a page).
- */
-
-/**
  * The fields an EDITABLE block carries back from the page.
  *
  * A fixed block that is not readOnly belongs to the page: the author can change
@@ -3869,14 +3863,15 @@ function takeFixedBlock(existingFixedBlockIds, slotId) {
 }
 
 /**
- * THE single policy for a template child's block id. A caller-provided generator
- * wins: the admin passes one, so every id it saves is a real uid. Without one (a
- * render-time expansion that is never saved) the id is `${instanceId}::${tplChildId}`:
- * stable across a server render and the client hydration, and instance-scoped so
- * two instances of one template never collide.
+ * THE single policy for the uid of a template block new to the target: a UUID
+ * derived from its instance and the template's block id. A real uid, unique to
+ * the instance, and the same each time it is minted: a page that hasn't stored a
+ * template block yet gets the same uid for it on every load (an agent reads it in
+ * one call and edits it in the next), and a server render and the client
+ * hydration agree on it.
  */
-function mintChildBlockId(instanceId, tplChildId, uuidGenerator) {
-  return uuidGenerator ? uuidGenerator() : `${instanceId}::${tplChildId}`;
+function mintChildBlockId(instanceId, tplChildId) {
+  return deterministicUUID(`${instanceId}::${tplChildId}`);
 }
 
 // The block, and its descendants that `own` picks, marked as `instanceId`'s.
@@ -3933,7 +3928,7 @@ function templateSlotIds(template, idFieldMap) {
 function fillRegionEntries(entries, templateState, options) {
   const { instanceId, templateId } = templateState;
   const ctx = templateState.instances?.[instanceId];
-  const { uuidGenerator, firstInsert } = options;
+  const { firstInsert } = options;
   const out = [];
   const slotOf = (block) => (block && !block.fixed ? block.slotId || 'default' : null);
   for (let idx = 0; idx < entries.length; idx++) {
@@ -3943,7 +3938,7 @@ function fillRegionEntries(entries, templateState, options) {
     if (child.fixed) {
       const editable = !child.readOnly && !!child.slotId;
       const existingFixed = takeFixedBlock(ctx?.existingFixedBlockIds, child.slotId);
-      const outId = existingFixed?.blockId || mintChildBlockId(instanceId, tplChildId, uuidGenerator);
+      const outId = existingFixed?.blockId || mintChildBlockId(instanceId, tplChildId);
       if (child.blocks && isBlocksMap(child.blocks) && !hasNestedBlocksLayout(child)) {
         throw new Error(
           `expandTemplatesSync: template block "${tplChildId}" has nested ` +
@@ -4009,7 +4004,7 @@ function fillRegionEntries(entries, templateState, options) {
         const placeholders = extractFieldPlaceholders(child);
         if (Object.keys(placeholders).length > 0) nb.fieldPlaceholders = placeholders;
       }
-      out.push({ id: mintChildBlockId(instanceId, tplChildId, uuidGenerator), block: nb });
+      out.push({ id: mintChildBlockId(instanceId, tplChildId), block: nb });
       continue;
     }
 
@@ -4818,7 +4813,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // the template's own blocks — the same ids AND the same content, because it is the same
   // document — is the template document itself, opened or viewed as a page. (Ids alone
   // aren't enough: a page can be saved with the template's ids and stale content, which
-  // must be re-applied.) Merging it against itself re-keys its nested blocks (`${instanceId}::childId`):
+  // must be re-applied.) Merging it against itself re-keys its nested blocks (uids minted from its instance):
   // ids the admin, which never merges a document against its own template
   // (skipOwnTemplate), doesn't know. Leave it as it is. Register its instance, so its
   // containers' re-entries are recognised as expanded; and remember the definition, so
@@ -4869,7 +4864,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // a page keeps its instance's id when its template is applied, and a template keeps
   // its own when a page's instance is merged into it ("Change on all pages").
   // For forced layouts (no existing instanceId), mint one — but re-expanding the SAME
-  // input in one pass must reuse it so generated block ids (`${instanceId}::tplId`)
+  // input in one pass must reuse it so the block uids minted from it (mintChildBlockId)
   // stay stable (idempotency, e.g. a React/StrictMode double render). Key that by a
   // DATA id (the first block id, a string), NOT the dict object — so it survives a Vue
   // proxy / clone / postMessage copy, unlike the WeakMap it replaces.
@@ -4881,7 +4876,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
     } else {
       // Derive the id deterministically from the region's first block id so the
       // server render and the client hydration mint the SAME instance id (and so
-      // the same `${instanceId}::tplChildId` block uids) — a random id differs
+      // the same block uids, mintChildBlockId) — a random id differs
       // between the two passes and causes a hydration mismatch. An EMPTY forced
       // layout has no first block id, but the forced template id itself is a
       // stable seed (one region, one forced template): without it, every block
@@ -4900,10 +4895,13 @@ export function expandTemplatesSync(inputItems, options = {}) {
         templateState.forcedSeedCounts[allowedLayouts[0]] = nth + 1;
         forcedSeed = `${allowedLayouts[0]}#${nth}`;
       }
+      // A caller that knows where this is (the admin: the page and its field)
+      // gives `templateState.scope`, so the same seed on another page differs.
+      const scoped = (seed) => (templateState.scope ? `${templateState.scope}|${seed}` : seed);
       instanceId = idemKey
-        ? deterministicUUID(idemKey)
+        ? deterministicUUID(scoped(idemKey))
         : forcedSeed
-          ? deterministicUUID(forcedSeed)
+          ? deterministicUUID(scoped(forcedSeed))
           : generateUUID();
       if (idemKey) {
         if (!templateState.generatedInstanceIds)

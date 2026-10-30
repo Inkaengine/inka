@@ -349,7 +349,7 @@ A merge puts a template's blocks into a **target** document. Opening a page merg
 4. **Keep the ids.**
    - Every block the target already has keeps its id.
    - Fixed blocks match the target's by slot. Where two share a slot name, they match in order.
-   - A block new to the target gets a new id: from `uuidGenerator` when the caller passes one, otherwise `${instanceId}::${templateBlockId}`. The editor always passes one, so every id it saves is a uid. The other form is for a render that is never saved, so the server and the client's hydration give the same ids.
+   - A block new to the target gets a uid derived from its instance and the template block's id: a UUID, unique to the instance, and the same each time it is merged. So a page that hasn't stored a template block yet gives it the same uid on every load, and the server and the client's hydration agree on it.
 
 Applied in each direction, the rules give:
 

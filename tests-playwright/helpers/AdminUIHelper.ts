@@ -1461,10 +1461,8 @@ export class AdminUIHelper {
   }
 
   /**
-   * Resolve a full (instance-scoped) block id from its template-child suffix. Forced-layout
-   * nested template blocks are emitted as `${instanceId}::${templateChildId}` so two
-   * instances of the same template don't collide in the blockPathMap; a test knows the
-   * template child id (e.g. 'tpl-slide-1') and resolves the actual rendered id here.
+   * Resolve a rendered block id that ends in `suffix`: a block the page stores under
+   * an id a test knows the end of (e.g. 'tpl-slide-1').
    */
   async resolveBlockId(suffix: string, timeout: number = 10000): Promise<string> {
     const iframe = this.getIframe();
