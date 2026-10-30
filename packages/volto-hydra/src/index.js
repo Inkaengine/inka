@@ -84,6 +84,7 @@ import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
 import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
+import { apiAcceptEncoding } from './express-middleware/apiAcceptEncoding';
 
 // The field types a `hydraRuleError` can land on. Volto looks a validator up by
 // the field's declared type (`field.type || 'string'`), so the rule's error has
@@ -104,6 +105,9 @@ const applyConfig = (config) => {
   // No shared cache keeps an editor's page (express-middleware/noStore.js).
   if (__SERVER__) {
     config.settings.expressMiddleware = [
+      // First: it sets what the API proxy (Volto's devproxy) asks the API
+      // for, so it must run before it (express-middleware/apiAcceptEncoding.js).
+      apiAcceptEncoding,
       ...(config.settings.expressMiddleware || []),
       noStore,
     ];

@@ -113,6 +113,7 @@ In block mode (after pressing `Escape`):
 If you've selected multiple blocks (see [Selecting blocks](./selecting-blocks.md)):
 
 - **Drag and drop** — works on the whole group; line indicator shows where the group will land.
+- **▲ / ▼ on a phone** — moves the whole group one step, the same way: ▲ puts it before the block above its top-most block, ▼ after the block below its bottom-most. As with a drop, the group lands together, so a gap in the selection closes.
 - **Delete** — removes all selected blocks.
 - **Wrap / Convert / Cut / Copy / Paste** — all apply to the group. See [Containers](./containers.md) for wrap.
 

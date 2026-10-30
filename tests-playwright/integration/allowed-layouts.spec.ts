@@ -809,7 +809,10 @@ test.describe('allowedLayouts', () => {
       const footerGroupId = await footerGroups
         .first()
         .evaluate((el) => el.closest('[data-block-uid]')!.getAttribute('data-block-uid'));
-      expect(footerGroupId).toMatch(/::cf-dst-1$/);
+      // The page's copy of the footer's group has a uid of its own: not the template's
+      // block id, and on no other block.
+      expect(footerGroupId).not.toBe('cf-dst-1');
+      await expect(iframe.locator(`[data-block-uid="${footerGroupId}"]`)).toHaveCount(1);
       const memberId = await footerContent
         .locator('[data-block-uid]')
         .filter({ hasText: 'Footer group child' })
@@ -845,6 +848,8 @@ test.describe('allowedLayouts', () => {
       await helper.confirmConvert();
 
       await expect(footerGroups).toHaveCount(2, { timeout: 5000 });
+      // Its uid is stable: the footer's group keeps it through the edit and re-merge.
+      await expect(footerContent.locator(`[data-block-uid="${footerGroupId}"]`)).toHaveCount(1);
       await expect(footerContent.getByText(movedText)).toHaveCount(1);
       // A drop moves it out of the page's layout; a paste leaves the original there.
       await expect(iframe.locator('#content [data-block-uid="moved-grp"]')).toHaveCount(how === 'drop' ? 0 : 1);
@@ -891,6 +896,9 @@ test.describe('allowedLayouts', () => {
       await helper.waitForIframeReady();
       await expect(iframe.locator('[data-block-uid]').filter({ hasText: 'second conv-footer page' }).first()).toBeVisible({ timeout: 15000 });
       await expect(iframe.locator('#footer-content').getByText(movedText).first()).toBeVisible({ timeout: 15000 });
+      // That page's copy of the footer's group is a block of its own, with its own uid.
+      await expect(iframe.locator('#footer-content [data-container-type="convGroupDst"]').first()).toBeVisible();
+      await expect(iframe.locator(`[data-block-uid="${footerGroupId}"]`)).toHaveCount(0);
     }
 
     test('a layout container dropped into an unlocked forced footer lands as an added block would, with its children', async ({ page }, testInfo) => {

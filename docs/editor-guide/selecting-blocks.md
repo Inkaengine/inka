@@ -92,6 +92,7 @@ You can select multiple blocks at once and operate on the group.
 | **Shift+Click** (in block mode) | Select range from currently-selected block to the clicked one |
 | **Ctrl+Click / Cmd+Click** (any mode) | Toggle the clicked block in/out of the selection |
 | **Shift+Arrow Up/Down** (block mode) | Extend or shrink the selection by one block |
+| **Long press** (touch) | Enter selection mode: a checkbox on every block; tick or untick blocks to change the selection |
 | Plain click | Clears multi-selection, selects only the clicked block |
 
 </block>
