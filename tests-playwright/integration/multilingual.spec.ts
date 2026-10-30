@@ -90,11 +90,9 @@ test.describe('Multilingual editing', () => {
     await row.getByRole('button', { name: /link/i }).click();
     const browser = await helper.waitForObjectBrowser();
     await helper.objectBrowserNavigateToFolder(browser, /Deutsch/);
-    await page
-      .locator('.object-listing li')
-      .filter({ hasText: /Dienstleistungen/ })
-      .first()
-      .click();
+    // A Document is folderish, as Plone serves it, so clicking its row browses
+    // into it; the select control is what picks it.
+    await helper.objectBrowserSelectItem(browser, /Dienstleistungen/);
 
     // Linked, both ways — the point of a translation group.
     const token = helper.authToken;

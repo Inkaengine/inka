@@ -5,7 +5,6 @@ id: dienstleistungen
 title: Dienstleistungen
 description: Dienstleistungen
 review_state: published
-is_folderish: false
 language: de
 effective: 2025-01-01T00:00:00
 blocks-matched: |
