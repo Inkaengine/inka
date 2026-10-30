@@ -32,11 +32,30 @@ async function goTo(page, path) {
   if (!navigated) throw new Error(`going to ${path}: this page is not a loaded admin (openAdmin first)`);
 }
 
-/** Open a page's editor in the loaded admin and wait until it can be edited. */
+/**
+ * Open a page's editor in the loaded admin and wait until it can be edited. A
+ * page the site doesn't have is refused as soon as the site says so (the
+ * editor's read of it answers 404), not after waiting out the editor.
+ */
 export async function openForEdit(page, { path }) {
   const target = path.replace(/\/$/, '') || '/';
-  await goTo(page, `${target === '/' ? '' : target}/edit`);
-  await page.waitForFunction((p) => !!window.__inkaAgent?.loaded() && window.__inkaAgent.getPage().path === p, target, { timeout: READY_MS });
+  let missing = false;
+  const onResponse = (response) => {
+    if (response.status() === 404 && response.request().method() === 'GET' && apiPathOf(response.url()) === target) missing = true;
+  };
+  page.on('response', onResponse);
+  try {
+    await goTo(page, `${target === '/' ? '' : target}/edit`);
+    const deadline = Date.now() + READY_MS;
+    for (;;) {
+      if (missing) throw new Error(`no page at ${target}`);
+      if (await page.evaluate((p) => !!window.__inkaAgent?.loaded() && window.__inkaAgent.getPage().path === p, target)) break;
+      if (Date.now() > deadline) throw new Error(`the editor did not open ${target} within ${READY_MS / 1000}s`);
+      await page.waitForTimeout(100);
+    }
+  } finally {
+    page.off('response', onResponse);
+  }
   await waitForAgent(page);
 }
 
@@ -58,7 +77,8 @@ export async function park(page) {
 }
 
 const heldLocks = new WeakMap();
-const lockedPath = (url) => new URL(url).pathname.replace(/^\/\+\+api\+\+/, '').replace(/\/@lock$/, '') || '/';
+// The page an admin API request is about: its path without /++api++ (or a trailing @lock).
+const apiPathOf = (url) => new URL(url).pathname.replace(/^\/\+\+api\+\+/, '').replace(/\/@lock$/, '') || '/';
 
 /** Note each lock an editor in `page` takes (POST @lock) and lets go (DELETE @lock). */
 function trackLocks(page) {
@@ -68,8 +88,8 @@ function trackLocks(page) {
   page.on('response', (response) => {
     if (!/\/@lock$/.test(new URL(response.url()).pathname) || !response.ok()) return;
     const method = response.request().method();
-    if (method === 'POST') held.add(lockedPath(response.url()));
-    if (method === 'DELETE') held.delete(lockedPath(response.url()));
+    if (method === 'POST') held.add(apiPathOf(response.url()));
+    if (method === 'DELETE') held.delete(apiPathOf(response.url()));
   });
 }
 

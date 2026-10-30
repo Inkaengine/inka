@@ -41,6 +41,14 @@ test.describe('MCP headless admin session', () => {
     expect(admin.adminLoads).toBe(1);
   });
 
+  test("a page that isn't there says so, at once, and the next call still works", async () => {
+    test.setTimeout(60000);
+    const started = Date.now();
+    await expect(admin.withEditor('/_test_data/no-such-page', getPage)).rejects.toThrow('no page at /_test_data/no-such-page');
+    expect(Date.now() - started, 'refused without waiting out the editor').toBeLessThan(15000);
+    expect((await admin.withEditor(PAGE, getPage)).path).toBe(PAGE);
+  });
+
   test('an editor call lets go of its page: no lock left behind', async ({ urls }) => {
     test.setTimeout(60000);
     // A page of its own: locks are seen by every session, and other tests edit the fixtures.
