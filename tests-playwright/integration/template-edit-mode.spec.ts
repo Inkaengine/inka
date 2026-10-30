@@ -1505,8 +1505,7 @@ test.describe('Template Edit Mode - Object List Items', () => {
   // Carousel slides: only the first slide is visible by default.
   // Use carousel next button (data-block-selector="+1") to navigate to subsequent slides.
   const SLIDER_BLOCK_ID = 'template-slider';
-  // Forced-layout nested template blocks are instance-scoped (`${instanceId}::tpl-slide-1`)
-  // so two instances don't collide; resolve the actual rendered id from this suffix.
+  // The page stores its slides under these ids; resolve the rendered id from the suffix.
   const SLIDE_1_SUFFIX = 'tpl-slide-1';
   const SLIDE_2_SUFFIX = 'tpl-slide-2';
 

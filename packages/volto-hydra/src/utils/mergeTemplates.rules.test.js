@@ -186,9 +186,25 @@ for (const where of Object.keys(WHERE)) {
       ]);
     });
 
-    test("every block new to the page gets a uid from the editor's generator", async () => {
-      const opened = await open(EMPTY_PAGE, template(where));
-      for (const id of ids(where, opened)) expect(id).toMatch(/^uuid-\d+$/);
+    test('a template block the page has not stored gets a uid of its instance: a UUID, the same on every load', async () => {
+      // The page as saved, before the template gained a note: every load merges
+      // the note in afresh, and an agent that read its id in one call edits it in
+      // the next.
+      const page = await usedPage(where);
+      const NOTE = spec('note', 'note', 'Template note', { fixed: true, readOnly: true });
+      const withNote = template(where, [HEAD, INTRO, MAIN, FOOT, NOTE]);
+      const once = ids(where, await open(page, withNote));
+      const again = ids(where, await open(page, withNote));
+      expect(again).toEqual(once);
+      for (const id of once.filter((id) => !ids(where, page).includes(id))) {
+        expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      }
+    });
+
+    test("another page new to the template gets uids of its own", async () => {
+      const one = ids(where, await open(EMPTY_PAGE, template(where)));
+      const two = ids(where, await open({ ...EMPTY_PAGE, '@id': '/q' }, template(where)));
+      expect(one.filter((id) => two.includes(id))).toEqual([]);
     });
 
     test('opening it again gives the same ids', async () => {

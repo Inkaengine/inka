@@ -259,7 +259,9 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
       continue;
     }
 
-    const templateState = {};
+    // The ids the merge mints are seeded by where they are, this page's field
+    // included, so another page's (or field's) differ.
+    const templateState = { scope: `${page['@id']}#${fieldName}` };
     const { blocks: newBlocks, layout: newLayout } = await expandBlocksField(
       fieldBlocks,
       layout,
