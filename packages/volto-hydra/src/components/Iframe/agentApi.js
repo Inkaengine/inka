@@ -146,6 +146,11 @@ export function registerAgentApi(live) {
   const blockData = (id) => getBlockById(properties(), live.current.blockPathMap, id);
 
   const api = {
+    /** Whether the editor has its page yet: the API is there from the editor's mount, the page once loaded. */
+    loaded() {
+      return !!properties();
+    },
+
     /** The page as the editor holds it, and the version a save is checked against. */
     /**
      * The page as the editor has it, and `lockedBy` when someone else holds
@@ -154,6 +159,7 @@ export function registerAgentApi(live) {
      */
     getPage() {
       const { properties: formData, blockPathMap, contentLock, sessionToken } = live.current;
+      if (!formData) throw new Error(`the editor has no page loaded yet (${contentPath()}): wait for loaded()`);
       return {
         path: contentPath(), version: formData.modified, formData,
         // The page is a block of its content type (see getBlockSchemas).

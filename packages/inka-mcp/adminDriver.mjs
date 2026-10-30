@@ -36,7 +36,7 @@ async function goTo(page, path) {
 export async function openForEdit(page, { path }) {
   const target = path.replace(/\/$/, '') || '/';
   await goTo(page, `${target === '/' ? '' : target}/edit`);
-  await page.waitForFunction((p) => window.__inkaAgent?.getPage().path === p, target, { timeout: READY_MS });
+  await page.waitForFunction((p) => !!window.__inkaAgent?.loaded() && window.__inkaAgent.getPage().path === p, target, { timeout: READY_MS });
   await waitForAgent(page);
 }
 
@@ -131,7 +131,7 @@ export async function waitForAgent(page) {
   await page.waitForFunction(
     () => {
       const agent = window.__inkaAgent;
-      const map = agent?.getPage().blockPathMap;
+      const map = agent?.loaded() && agent.getPage().blockPathMap;
       return !!map && Object.keys(map).length > 0;
     },
     null,
