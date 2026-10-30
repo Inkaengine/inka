@@ -11,7 +11,6 @@ effective: null
 exclude_from_nav: false
 expires: null
 id: examples
-is_folderish: true
 language: "##DEFAULT##"
 layout: document_view
 review_state: published

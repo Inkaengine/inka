@@ -1,19 +1,52 @@
 /**
- * Playwright test fixtures.
+ * Playwright test fixtures: everything a spec needs from the harness.
  *
  * All test files should import `test` and `expect` from this file instead of
- * directly from @playwright/test.
+ * directly from @playwright/test — and `URLS`/`PORTS` from here too, rather
+ * than from ports.ts.
  *
  * Usage in test files:
- *   import { test, expect } from '../fixtures';
+ *   import { test, expect, URLS } from '../fixtures';
  *   // or
  *   import { test, expect } from '../../fixtures';
  */
 
 import { test as playwrightTest, expect } from '@playwright/test';
+import { PORTS, URLS } from './ports';
+
+/**
+ * Where a test gets an address.
+ *
+ * A test is HANDED its urls — `async ({ page, urls })` — so it never imports
+ * them, never names a port variable, and never learns that ports are
+ * configurable at all. It wants "the mock API" and "the admin"; that they come
+ * from a block that starts somewhere is the harness's business.
+ *
+ * `URLS`/`PORTS` are also exported, for the places a fixture cannot reach: a
+ * constant built once above the tests, a `test.use()`, a cookie name holding a
+ * port number. Those are module scope, and a fixture only exists inside a test
+ * body. Inside a test, take the fixture.
+ *
+ * ports-are-not-hardcoded.test.ts holds the rule: a spec that imports the
+ * ports module directly fails. That is the door the numbers came back through
+ * before — a suite that decided its own ports, with its own `const PORT`.
+ */
+export { PORTS, URLS };
+
+export interface HarnessUrls {
+  /** Addresses, as `http://host:port`. */
+  urls: typeof URLS;
+  /** Port numbers, for the few things that need the number itself. */
+  ports: typeof PORTS;
+}
 
 // Extend test to capture console logs from page and iframe
-const test = playwrightTest.extend({
+const test = playwrightTest.extend<HarnessUrls>({
+  // Worker-scoped in effect: the same frozen objects every test, no setup cost.
+  // Declared as fixtures rather than imported so a spec cannot be written
+  // against a port at all — see the note above.
+  urls: [async ({}, use) => { await use(URLS); }, { scope: 'worker' }],
+  ports: [async ({}, use) => { await use(PORTS); }, { scope: 'worker' }],
   page: async ({ page }, use, testInfo) => {
     // Session isolation is handled via auth tokens - each login generates a unique
     // token (based on timestamp) which the mock API uses as the session identifier.

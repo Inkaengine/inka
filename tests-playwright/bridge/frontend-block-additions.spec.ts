@@ -10,18 +10,17 @@
  * with only a schemaEnhancer (a warning about Heading 5).
  */
 import { test, expect } from './fixtures';
-import { URLS } from '../ports';
 
 const PAGE = '/_test_data/block-formats-page';
 
 test.describe('A frontend adding to a block the admin has', () => {
-  test.beforeEach(async ({ page, helper }, testInfo) => {
+  test.beforeEach(async ({ page, helper, urls }, testInfo) => {
     testInfo.skip(
       testInfo.project.name !== 'mock',
       `the partial slate entry is sent by the mock test-frontend (skipping ${testInfo.project.name})`,
     );
     await page.goto(
-      `${URLS.testFrontend}/mock-parent.html?api_path=${encodeURIComponent(`${URLS.mockApi}${PAGE}`)}`,
+      `${urls.testFrontend}/mock-parent.html?api_path=${encodeURIComponent(`${urls.mockApi}${PAGE}`)}`,
     );
     await helper.waitForIframeReady();
     await helper.waitForBridgeConnected();

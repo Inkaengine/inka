@@ -5,16 +5,15 @@
 
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('getNodePath() - DOM to Slate path conversion (real hydra.js)', () => {
   let helper: AdminUIHelper;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, urls }) => {
     helper = new AdminUIHelper(page);
 
     // Load the mock parent page which initializes the real hydra.js bridge
-    await page.goto(`${URLS.testFrontend}/mock-parent.html`);
+    await page.goto(`${urls.testFrontend}/mock-parent.html`);
     await helper.waitForIframeReady();
     await helper.waitForIframeBlockHandle('mock-block-1');
 
@@ -1538,11 +1537,11 @@ test.describe('getNodePath() - DOM to Slate path conversion (real hydra.js)', ()
 test.describe('getNodeIdFromPath() - Slate path to DOM nodeId conversion (real hydra.js)', () => {
   let helper: AdminUIHelper;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, urls }) => {
     helper = new AdminUIHelper(page);
 
     // Load the mock parent page which initializes the real hydra.js bridge
-    await page.goto(`${URLS.testFrontend}/mock-parent.html`);
+    await page.goto(`${urls.testFrontend}/mock-parent.html`);
     await helper.waitForIframeReady();
     await helper.waitForIframeBlockHandle('mock-block-1');
 

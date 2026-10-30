@@ -10,7 +10,6 @@ effective: 2024-03-08T12:40:00
 exclude_from_nav: false
 expires: null
 id: form
-is_folderish: true
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null
