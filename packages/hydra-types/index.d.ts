@@ -29,6 +29,17 @@ export type Capability =
    * content out of the store and the edit form never renders.
    */
   | 'locking'
+  /**
+   * Runs its own sign-in, in the proxy frame: `auth.begin` hands back a URL to
+   * open (the CMS's own login page) and `auth.complete` takes the credential
+   * straight from the popup, so it never passes through the admin.
+   *
+   * Declared because the admin has to know whether a signed-out session has
+   * anywhere to go. Without it the admin keeps its own login screen — which is
+   * where a CMS's password form and its `auth.loginOptions` buttons belong —
+   * instead of handing the screen to a frame with no flow to offer.
+   */
+  | 'adapter-sign-in'
   /** Supports per-document principal grants (Plone yes, Strapi no). */
   | 'per-content-permissions'
   /** Supports inherit-from-parent / break-inheritance. Plone-only in practice. */
@@ -195,6 +206,31 @@ export type Intent =
    * Idempotent. A second click must not raise something different.
    */
   | 'auth.logout'
+  /**
+   * How this CMS lets someone sign in, beside the credential the adapter
+   * already holds: a password form and nothing else, an SSO provider, a
+   * sign-in that needs no password at all.
+   *
+   * Which of those exist is the CMS's business, so the ADMIN has to ask rather
+   * than assume. Plone answers it at `GET @login` from its login providers;
+   * this is the same question put to the adapter, so an admin over any CMS can
+   * ask it. Answer it even where there is nothing to offer: an empty list is a
+   * real answer ("no alternative way in") and the admin renders no extra
+   * buttons. An adapter that cannot be asked sends the admin back to guessing.
+   *
+   * `passwordFree` is the part the admin acts on — can this be pressed from
+   * here, or must the user's browser be sent somewhere.
+   */
+  | 'auth.loginOptions'
+  /**
+   * Press one of those options, by its `id`.
+   *
+   * Only one that needs no password can be pressed by the adapter; the rest
+   * send the BROWSER somewhere, which an adapter cannot do on the user's
+   * behalf. NOT_FOUND for an id the CMS does not offer — never a session
+   * invented to satisfy the caller.
+   */
+  | 'auth.loginWithOption'
   /**
    * Turn a stored reference into something renderable.
    *

@@ -527,6 +527,7 @@ This is the same layering as expansion, with one deliberate difference: expansio
 | `versioning` | History and revisions |
 | `comments` | Reader comments and moderation |
 | `multilingual` | Manage Translations, and the translate/link controls |
+| `adapter-sign-in` | The proxy frame takes the screen while nobody is signed in, because the adapter runs the sign-in itself |
 | `http-passthrough` | Forwarding Plone-dialect requests unchanged |
 | `expand-native` | The admin asks for its expander bundle inside the content response |
 | `batch-native` | Grouping writes into one request saves round trips, so callers may batch freely |
