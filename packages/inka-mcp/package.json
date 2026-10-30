@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     "./pageFormat": "./pageFormat.mjs",
-    "./server": "./server.mjs"
+    "./server": "./server.mjs",
+    "./http": "./http.mjs"
   },
   "license": "MIT",
   "bin": {

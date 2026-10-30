@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { sealer } from './sealed.mjs';
 import { oauthProvider } from './oauth.mjs';
+import { localCodes } from './codes.mjs';
 import { SignedOut } from './signIn.mjs';
 
 const ADMIN = 'https://admin.example.org';
@@ -14,7 +15,7 @@ const plone = (user, hours = 12) => {
   return `${part({ alg: 'HS256' })}.${part({ sub: user, exp: Math.floor(Date.now() / 1000) + hours * 3600 })}.sig`;
 };
 
-function setup({ renew = async (token) => plone('jane') + token.length, now } = {}) {
+function setup({ renew = async (token) => plone('jane') + token.length, now = Date.now } = {}) {
   const renewed = [];
   const logged = [];
   const provider = oauthProvider({
@@ -23,7 +24,7 @@ function setup({ renew = async (token) => plone('jane') + token.length, now } = 
     callbackUrl: CALLBACK,
     renew: async (token) => { renewed.push(token); return renew(token); },
     log: (line) => logged.push(line),
-    ...(now && { now }),
+    codes: localCodes({ instance: null, now }),
   });
   return { provider, renewed, logged };
 }

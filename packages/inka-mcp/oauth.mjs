@@ -10,52 +10,39 @@
  *
  * Little is stored: client ids, the pending sign-in and the tokens are sealed
  * (sealed.mjs), and the access and refresh tokens carry the Plone token,
- * unreadable to the client. The one-time code is the exception: a short
- * random id, held in memory for its minute and good once, because clients
- * expect a code to be short (Claude took a ~1,400-character sealed one and
- * never came back to exchange it). With several machines, a code must be
- * exchanged on the one that issued it. An access token ends before the Plone
+ * unreadable to the client. The one-time code waits in `codes` (codes.mjs),
+ * which says how several instances find it; it holds the Plone token, the
+ * PKCE challenge and hashes binding it to its client and return address,
+ * nothing more, because clients expect a code to be short (Claude took a
+ * ~1,400-character sealed one and never came back to exchange it). An access token ends before the Plone
  * token in it does; a refresh renews the Plone token, and when Plone won't,
  * the client is told to sign in again.
  */
 import {
   InvalidGrantError, InvalidTokenError,
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
-import { randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { Unsealable } from './sealed.mjs';
 import { SignedOut } from './signIn.mjs';
 import { expiresAt, subjectOf } from './tokenStore.mjs';
 
 const PENDING_MS = 10 * 60 * 1000;
-const CODE_MS = 60 * 1000;
 const ACCESS_MS = 60 * 60 * 1000;
 // An access token ends this long before the Plone token in it, so a refresh
 // renews the Plone token while it still can.
 const PLONE_MARGIN_MS = 5 * 60 * 1000;
 
 /**
- * `box`: a sealer (sealed.mjs). `adminUrl`: the site's admin. `callbackUrl`:
+ * `box`: a sealer (sealed.mjs). `codes`: where codes wait (codes.mjs).
+ * `adminUrl`: the site's admin. `callbackUrl`:
  * where the admin's connect page posts (this server's /oauth/callback).
  * `renew(ploneToken)`: a renewed Plone token, or SignedOut. `log(line)`: each
  * sign-in step, for following one through (client names and return addresses;
  * never a code or token).
  */
-export function oauthProvider({ box, adminUrl, callbackUrl, renew, log, now = Date.now }) {
-  /** One-time codes: short id -> { data, until }, good once (see above). */
-  const codes = new Map();
-  const issueCode = (data) => {
-    for (const [id, held] of codes) if (held.until <= now()) codes.delete(id);
-    const id = randomBytes(24).toString('base64url');
-    codes.set(id, { data, until: now() + CODE_MS });
-    return id;
-  };
-  const codeData = (id, { use }) => {
-    const held = codes.get(id);
-    if (!held) throw new InvalidGrantError('not a code from this server, or already used');
-    if (use) codes.delete(id);
-    if (held.until <= now()) throw new InvalidGrantError('the code has lapsed; sign in again');
-    return held.data;
-  };
+export function oauthProvider({ box, codes, adminUrl, callbackUrl, renew, log }) {
+  /** What binds a code to its client and return address: 8 bytes of a hash, as a code must be short. */
+  const binding = (value) => createHash('sha256').update(String(value)).digest().subarray(0, 8).toString('base64url');
   /** Open a sealed token, turning a bad one into the OAuth error `Error`. */
   const open = (kind, token, Error) => {
     try {
@@ -67,6 +54,9 @@ export function oauthProvider({ box, adminUrl, callbackUrl, renew, log, now = Da
   };
   const sameClient = (data, client) => {
     if (data.client_id !== client.client_id) throw new InvalidGrantError('this was issued to another client');
+  };
+  const codeForClient = (data, client) => {
+    if (data.client !== binding(client.client_id)) throw new InvalidGrantError('this was issued to another client');
   };
   /** Access and refresh tokens holding `ploneToken`, for `client`. */
   const tokensFor = (client, ploneToken) => {
@@ -130,22 +120,27 @@ export function oauthProvider({ box, adminUrl, callbackUrl, renew, log, now = Da
       }
       if (!token) throw new InvalidGrantError('the connect page sent no token');
       subjectOf(token);
-      back.searchParams.set('code', issueCode({ ...pending, plone: token }));
+      back.searchParams.set('code', await codes.issue({
+        client: binding(pending.client_id),
+        redirect: binding(pending.redirect_uri),
+        code_challenge: pending.code_challenge,
+        plone: token,
+      }));
       log(`sign-in allowed for ${subjectOf(token)}; sending the browser to ${back.origin}${back.pathname}`);
       return back.href;
     },
 
     async challengeForAuthorizationCode(client, code) {
-      const data = codeData(code, { use: false });
-      sameClient(data, client);
+      const data = await codes.peek(code);
+      codeForClient(data, client);
       return data.code_challenge;
     },
 
     async exchangeAuthorizationCode(client, code, _verifier, redirectUri) {
       try {
-        const data = codeData(code, { use: true });
-        sameClient(data, client);
-        if (redirectUri && redirectUri !== data.redirect_uri) throw new InvalidGrantError('the redirect_uri differs from the one signed in with');
+        const data = await codes.take(code);
+        codeForClient(data, client);
+        if (redirectUri && binding(redirectUri) !== data.redirect) throw new InvalidGrantError('the redirect_uri differs from the one signed in with');
         const tokens = tokensFor(client, data.plone);
         log(`code exchanged by "${client.client_name}" for ${subjectOf(data.plone)}'s tokens`);
         return tokens;
