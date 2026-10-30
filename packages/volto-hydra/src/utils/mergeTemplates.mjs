@@ -20,6 +20,10 @@ import {
  * template placed inside a plain container is only expanded when that container is
  * re-entered.
  *
+ * The rules: docs/frontend-guide/templates.md "How the Merge Works". The reverse
+ * direction is mergeInstanceIntoTemplate, the same merge. Both are checked by
+ * mergeTemplates.rules.test.js.
+ *
  * @param {Object} page - Page formData
  * @param {Object} options
  * @param {Function} options.loadTemplate - Async function: (templateId) => Promise<templateData>
@@ -321,6 +325,10 @@ export function instanceContent(formData, instanceId, idFieldMap) {
  * "Change on all pages": one template instance on a page, merged into its template.
  * The instance's own blocks, wherever it sits (instanceContent), in its own order:
  * the merge reads a page's top-level regions, and a nested instance is not in them.
+ *
+ * The same merge as opening a page, the other way round: the rules are
+ * docs/frontend-guide/templates.md "How the Merge Works", checked both ways by
+ * mergeTemplates.rules.test.js.
  *
  * @param {Object} template - the template document, as stored
  * @param {Object} page - the page holding the instance

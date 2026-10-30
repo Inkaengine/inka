@@ -124,7 +124,7 @@ uses that template shows the change on its next render.
 
 What propagates and what doesn't:
 
-- **\`fixed\` / \`fixed+readOnly\` blocks edited in template edit mode** → propagate to all
+- **\`fixed+readOnly\` blocks edited in template edit mode** → propagate to all
 
 pages using the template (template-controlled).
 
@@ -132,9 +132,9 @@ pages using the template (template-controlled).
 
 and is never written back to the template.
 
-- Editing a `fixed` block's content in *normal* mode overrides it for **that page only**;
+- An editable `fixed` block's content is the page's: editing it changes **that page only**,
 
-the template's version stays the default for other pages.
+in either mode. The template's version stays the default for other pages (see How the Merge Works).
 
 **Reusing a template multiple times:** a page may apply the same template more than once (e.g. two of the same layout or snippet). Each use is a distinct *instance*; the merge gives every instance its own block ids, so they never collide.
 
@@ -326,34 +326,61 @@ const { templates, errors } = await loadTemplates(
 
 ## How the Merge Works
 
-The merge algorithm follows these rules:
+A merge puts a template's blocks into a **target** document. Opening a page merges the template into the page. **Change on all pages** merges the page's instance into the stored template. Both directions follow the same rules, and every rule applies in every region: the page's own blocks fields, and every region inside a block (`blocks_layout` or object_list), at any depth.
 
-1. Remove the blocks with the `templateId` to replace, storing any that aren't fixed and readOnly by `slotId`.
-2. Insert in their place the template content: if fixed and readOnly, just insert it; if fixed, copy block content (not including block fields) from a page block with the same `slotId`; if a slot block, don't insert it, but insert the previous blocks with the same `slotId`. A slot the page has nothing for is the template's slot block, without anything it holds.
-3. Recursively replace any block fields using the same rules.
-4. Any slot blocks left over are inserted at the end of a special slot called `"default"` if it exists, otherwise are dropped.
+1. **Collect the target's blocks of this instance**, by `slotId`.
+   - A block of this template without a `templateInstanceId` counts as this instance's.
+   - Fixed blocks are kept for their ids and, when editable, their fields. That includes a page's editable fixed block (`fixed`, not `readOnly`) in one of the template's fixed slots. So a page that has never been through a forced layout can still carry its own version of the layout's fixed heading, marked `templateId` + `slotId` + `fixed`.
+   - Everything else is slot content. Each block is taken whole, with its children.
+   - When a layout is forced across a blocks field, the field's blocks without a `slotId` are content with no slot.
+2. **Place the template's blocks, in order.**
+   - A **fixed, readOnly** block is the template's.
+   - A **fixed** block that is editable is the template's, with the target's fields over it.
+   - A fixed block's regions are filled by these same rules.
+   - A **slot** is replaced by the target's content for that slot, in order. A slot name that appears more than once is filled where it first appears. A template inside that content, such as a snippet, is merged in place by these same rules, with its own instance and ids.
+   - A slot the target has nothing for is the template's slot block, without anything it holds.
+3. **Place the leftovers.** Content with no slot, or whose slot the template doesn't have, goes to the start of the first of these that exists:
+   - the `"default"` slot;
+   - the slot after the template's last fixed block;
+   - the slot before its first fixed block.
 
-The rules are the same in every region: the page's own blocks fields, and every region inside a block at any depth, `blocks_layout` and object_list alike. A block the page already has keeps its id: a fixed block takes the id of the page's block in its slot (where two fixed blocks share a slot name, the first takes the first one's, and so on), and slot content keeps its own. A block new to the page gets a new id: from `uuidGenerator` when the caller passes one (the editor does, so every id it saves is a uid), else `${instanceId}::${templateBlockId}`, so a render that is never saved gives the same ids on the server and in the client's hydration.
+   If none exists, it is dropped. Content takes the `slotId` of the slot it lands in. Any other target block in a fixed block's slot is a stale copy of that block, and is replaced.
+4. **Keep the ids.**
+   - Every block the target already has keeps its id.
+   - Fixed blocks match the target's by slot. Where two share a slot name, they match in order.
+   - A block new to the target gets a new id: from `uuidGenerator` when the caller passes one, otherwise `${instanceId}::${templateBlockId}`. The editor always passes one, so every id it saves is a uid. The other form is for a render that is never saved, so the server and the client's hydration give the same ids.
 
-They are the same in both directions too. **Change on all pages** merges the page's instance into its template with these rules: the template keeps its own ids and its slots' own blocks, and takes the instance's fixed blocks. What a page put in a slot is never written to the template.
+Applied in each direction, the rules give:
 
-When a layout is applied, the rules are the same but applied across a whole blocks field. Content without a `slotId`, or whose slot the layout doesn't have, ends up:
+<block type="slateTable" table.fixed table.celled>
 
-- In the `"default"` slot if it exists
-- In the bottom slot outside the last fixed template block
-- In the top slot outside the first fixed template block
-- Otherwise it is dropped
+| | Opening a page | Change on all pages |
+| --- | --- | --- |
+| fixed, readOnly block | the template's | the page's edit goes to the template |
+| fixed, editable block | the page keeps its own | the template keeps its own |
+| slot | the page's content | the template's slot block |
+| ids | the page's | the template's |
 
-It takes the `slotId` of the slot it ends up in.
+</block>
 
-Content WITH a `slotId` goes in that slot. That holds for a fixed slot too: a page's editable fixed block (`fixed`, not `readOnly`) with the slot's `slotId` takes over the layout's fixed block there — its id and its edited fields — whether or not it carries the instance's id. So a page that has never been through a forced layout (its instance is minted when it renders) can still carry its own version of the layout's fixed heading, marked `templateId` + `slotId` + `fixed`. Any other page block in a fixed block's slot is a copy of that block, and the fixed block replaces it.
+What a page puts in a slot, or writes in an editable fixed block, is never written to the template. To change an editable block's text for every page, edit the template itself.
 
-### Diagram
+**Switching layout** treats the old layout's blocks as the target's. Its slot content is kept and lands by slot as above. An editable fixed block takes over the new layout's editable fixed block in the same slot, with its id and fields. The old layout's other fixed blocks are dropped, including any the page edited. **Removing a layout** (`null`) keeps the content and strips every template mark from it.
+
+### Diagram: opening a page
 
 ```bash
 Before:  [User Block A] [User Block B]
 Layout:  [Fixed Header] [default] [Fixed Footer] [post_footer]
 After:   [Fixed Header] [User Block A] [User Block B] [Fixed Footer] [post_footer]
+```
+
+### Diagram: Change on all pages, after the header was edited
+
+```bash
+Page:      [Fixed Header*] [User Block A] [User Block B] [Fixed Footer] [post_footer]
+Template:  [Fixed Header]  [default]                     [Fixed Footer] [post_footer]
+Saved:     [Fixed Header*] [default]                     [Fixed Footer] [post_footer]
 ```
 
 ## Forcing Layouts

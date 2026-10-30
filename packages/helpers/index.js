@@ -3681,6 +3681,10 @@ export function collectNestedAuthorContent(block, pendingContent, visited = new 
  * Handles arbitrary nesting - looks for blocks maps (values have @type)
  * and corresponding layout arrays.
  *
+ * The first rule of docs/frontend-guide/templates.md "How the Merge Works": the
+ * target's blocks of this instance, by slot — its fixed blocks (for their ids and
+ * edited fields) and its slot content. The section lists the rest.
+ *
  * @param {Object} container - Container object to scan
  * @param {string} instanceId - Template instance ID to match
  * @param {Map} pendingContent - Map of slotId -> [{blockId, block}]
@@ -3839,6 +3843,8 @@ const TEMPLATE_OWNED_FIELDS = new Set([
   'blocks',
   'blocks_layout',
   'nextSlotId',
+  'prevSlotId',
+  'childSlotIds',
   'fieldPlaceholders',
 ]);
 
@@ -3920,6 +3926,9 @@ function templateSlotIds(template, idFieldMap) {
  *   of the source's blocks it holds.
  * - Content whose slot the template doesn't have goes to the slot chosen for it
  *   (ctx.leftoverSlotId), else it is dropped.
+ *
+ * Each rule is checked in every kind of region and both directions by
+ * packages/volto-hydra/src/utils/mergeTemplates.rules.test.js: a new case is a row there.
  */
 function fillRegionEntries(entries, templateState, options) {
   const { instanceId, templateId } = templateState;
@@ -4333,6 +4342,9 @@ export async function loadTemplates(
  * frontend AND the admin — re-enters every container. Read docs/frontend-guide/
  * templates.md "Expand every container" before changing how this is called.
  *
+ * The merge's rules are docs/frontend-guide/templates.md "How the Merge Works":
+ * change that section, this code and packages/volto-hydra/src/utils/mergeTemplates.rules.test.js together.
+ *
  * @param {Array} inputItems - Input items (block IDs or block objects)
  * @param {Object} options - Configuration options
  * @param {Object} options.blocks - Blocks dict for ID lookup
@@ -4561,6 +4573,9 @@ function objectListItemId(item, idField) {
 // caller passes that container's children through here too. Every renderer — each
 // frontend AND the admin — re-enters every container. Read docs/frontend-guide/
 // templates.md "Expand every container" before changing how this is called.
+//
+// The merge's rules are docs/frontend-guide/templates.md "How the Merge Works":
+// change that section, this code and packages/volto-hydra/src/utils/mergeTemplates.rules.test.js together.
 export function expandTemplatesSync(inputItems, options = {}) {
   const {
     blocks: blocksDict,

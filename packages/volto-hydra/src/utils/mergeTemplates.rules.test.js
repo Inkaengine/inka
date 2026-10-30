@@ -272,6 +272,14 @@ for (const where of Object.keys(WHERE)) {
         expect(ids(where, saved)).toEqual(ids(where, tpl));
       });
 
+      test("an editable block's text is the page's: the template keeps its own", async () => {
+        const tpl = template(where, STRUCTURE, marks);
+        const page = await open(await usedPage(where, tpl), tpl);
+        expect(seen(where, page)).toContainEqual(['intro', 'Page intro']);
+        const saved = await commit(page, tpl);
+        expect(seen(where, saved)).toEqual(seen(where, tpl));
+      });
+
       test('two locked blocks sharing a slot name come back with their own ids and text', async () => {
         const DECO1 = spec('deco-1', 'deco', 'Deco one', { fixed: true, readOnly: true });
         const DECO2 = spec('deco-2', 'deco', 'Deco two', { fixed: true, readOnly: true });

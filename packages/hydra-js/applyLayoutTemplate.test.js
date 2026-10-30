@@ -1151,6 +1151,98 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
     expect(footerBlock.nextSlotId).toBeUndefined();
   });
 
+  test("an editable fixed block keeps the page's fields, but its slot hints are the template's as it is now", async () => {
+    const page = {
+      blocks: {
+        intro: {
+          '@type': 'slate', templateId: '/templates/t1', templateInstanceId: 'inst-1', slotId: 'intro', fixed: true,
+          value: [{ text: 'Page intro' }],
+          // Stamped when the template had slots on both sides of it, and a nested one.
+          nextSlotId: 'old-after', prevSlotId: 'old-before', childSlotIds: { blocks: 'old-inside' },
+        },
+      },
+      blocks_layout: { items: ['intro'] },
+    };
+    const templateData = {
+      '@id': '/templates/t1',
+      blocks: { intro: { '@type': 'slate', fixed: true, slotId: 'intro', value: [{ text: 'Template intro' }] } },
+      blocks_layout: { items: ['intro'] },
+    };
+    const result = await applyLayoutTemplate(page, templateData, uuidGenerator);
+    expect(result.blocks.intro.value).toEqual([{ text: 'Page intro' }]);
+    expect(result.blocks.intro).not.toHaveProperty('nextSlotId');
+    expect(result.blocks.intro).not.toHaveProperty('prevSlotId');
+    expect(result.blocks.intro).not.toHaveProperty('childSlotIds');
+  });
+
+  test("switching layout keeps the page's editable text where the new layout has that slot, drops the rest of the old layout's fixed blocks, and keeps its slot content", async () => {
+    const A = {
+      '@id': '/templates/a',
+      blocks: {
+        h: { '@type': 'slate', fixed: true, readOnly: true, slotId: 'header', text: 'A head' },
+        e: { '@type': 'slate', fixed: true, slotId: 'intro', text: 'A intro' },
+        n: { '@type': 'slate', fixed: true, slotId: 'note', text: 'A note' },
+        s: { '@type': 'slate', slotId: 'default' },
+        x: { '@type': 'slate', slotId: 'aside' },
+      },
+      blocks_layout: { items: ['h', 'e', 'n', 's', 'x'] },
+    };
+    const B = {
+      '@id': '/templates/b',
+      blocks: {
+        h: { '@type': 'slate', fixed: true, readOnly: true, slotId: 'header', text: 'B head' },
+        i: { '@type': 'slate', fixed: true, slotId: 'intro', text: 'B intro' },
+        s: { '@type': 'slate', slotId: 'default' },
+      },
+      blocks_layout: { items: ['h', 'i', 's'] },
+    };
+    const loadTemplate = async (id) => ({ '/templates/a': A, '/templates/b': B })[id];
+    const page = { blocks: { mine: { '@type': 'slate', text: 'Mine' } }, blocks_layout: { items: ['mine'] } };
+    const { merged: onA } = await mergeTemplatesIntoPage(page, {
+      loadTemplate, pageBlocksFields: { items: { allowedLayouts: ['/templates/a'] } }, uuidGenerator,
+    });
+    for (const id of onA.blocks_layout.items) {
+      if (onA.blocks[id].slotId === 'intro') onA.blocks[id].text = 'Page intro';
+      if (onA.blocks[id].slotId === 'note') onA.blocks[id].text = 'Page note';
+      if (onA.blocks[id].slotId === 'aside') onA.blocks[id].text = 'Page aside';
+    }
+    const { merged: onB } = await mergeTemplatesIntoPage(onA, {
+      loadTemplate, pageBlocksFields: { items: { allowedLayouts: ['/templates/b'] } }, uuidGenerator,
+    });
+    const introId = onA.blocks_layout.items.find((id) => onA.blocks[id].slotId === 'intro');
+    expect(onB.blocks_layout.items.map((id) => [onB.blocks[id].slotId, onB.blocks[id].text])).toEqual([
+      ['header', 'B head'],
+      ['intro', 'Page intro'],
+      ['default', 'Page aside'],
+      ['default', 'Mine'],
+    ]);
+    expect(onB.blocks_layout.items[1]).toBe(introId);
+  });
+
+  test("removing the layout leaves the page's content without any of the merge's marks", async () => {
+    const templateData = {
+      '@id': '/templates/t1',
+      blocks: {
+        'header': { '@type': 'slate', fixed: true, slotId: 'header', value: [{ text: 'Header' }] },
+        'slot': { '@type': 'slate', slotId: 'default', value: [] },
+        'footer': { '@type': 'slate', fixed: true, slotId: 'footer', value: [{ text: 'Footer' }] },
+      },
+      blocks_layout: { items: ['header', 'slot', 'footer'] },
+    };
+    const page = { blocks: { mine: { '@type': 'slate', value: [{ text: 'Mine' }] } }, blocks_layout: { items: ['mine'] } };
+    const applied = await applyLayoutTemplate(page, templateData, uuidGenerator);
+    expect(applied.blocks.mine.templateId).toBe('/templates/t1');
+
+    const { merged } = await mergeTemplatesIntoPage(applied, {
+      loadTemplate: async () => templateData,
+      pageBlocksFields: { items: { allowedLayouts: [null] } },
+      uuidGenerator,
+    });
+    const marks = ['templateId', 'templateInstanceId', 'slotId', 'fixed', 'readOnly', 'nextSlotId', 'prevSlotId', 'childSlotIds', '_orphaned'];
+    expect(merged.blocks_layout.items).toEqual(['mine']);
+    for (const mark of marks) expect(merged.blocks.mine).not.toHaveProperty(mark);
+  });
+
   test('nextSlotId not set when next block is another fixed block', async () => {
     const pageData = {
       blocks: {
