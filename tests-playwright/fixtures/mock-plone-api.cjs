@@ -260,6 +260,8 @@ const markdownItems = new Map();   // url path -> raw content
 const markdownBlobs = new Map();   // url path -> absolute blob file
 const markdownOrder = new Map();   // folder url path -> authored child order (curated)
 let ready = Promise.resolve();
+// null while the content is still loading; {ok} or {ok:false, error} after.
+let readyState = null;
 // The prototype engine, imported once for the /@export endpoint's markdown mode.
 let engine = null; // { emitPage, parsePrototypes }
 
@@ -2802,6 +2804,16 @@ initContentDirMap();
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
 ready = loadBlockSchemas().then(loadSiteSchemas).then(initMarkdownMounts).then(assertServedContentValid);
+// What /health reports. The server starts listening before this settles, so
+// without it a mock whose content never loaded still answered `{status:'ok'}`,
+// Playwright's webServer poll passed, and every test in the run then timed out
+// against an API serving nothing -- a job full of failures in unrelated specs,
+// with the actual reason only in a log nobody reads. A server that did not
+// come up should say so, once, where the harness is already looking.
+ready.then(
+  () => { readyState = { ok: true }; },
+  (err) => { readyState = { ok: false, error: err && err.message ? err.message : String(err) }; },
+);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
@@ -4022,7 +4034,18 @@ app.post('/*', (req, res, next) => {
  * Health check endpoint for server readiness
  */
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  // Readiness, not liveness: the point of this endpoint is that the harness
+  // waits on it before running a suite, so answering `ok` while the content
+  // failed to load tells the harness the opposite of the truth.
+  if (readyState && readyState.ok) return res.json({ status: 'ok' });
+  if (readyState) {
+    return res.status(503).json({
+      status: 'content-failed',
+      error: readyState.error,
+      hint: 'the mock is listening but its content did not load; fix the content above',
+    });
+  }
+  return res.status(503).json({ status: 'loading' });
 });
 
 /**
