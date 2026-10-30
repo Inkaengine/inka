@@ -5,7 +5,6 @@ id: ueber-uns
 title: Über uns
 description: Über uns
 review_state: published
-is_folderish: false
 language: de
 subjects:
   - design

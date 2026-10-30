@@ -5,7 +5,6 @@ id: de
 title: Deutsch
 description: The Deutsch side of the site
 review_state: published
-is_folderish: true
 # Out of the navigation so the single-language fixture site — every other spec
 # in this suite — still lists the children it always did. The language switcher
 # finds these through @translations and @site, never through the menu.

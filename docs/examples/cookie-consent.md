@@ -12,7 +12,6 @@ effective: null
 exclude_from_nav: false
 expires: null
 id: cookie-consent
-is_folderish: false
 language: "##DEFAULT##"
 layout: document_view
 review_state: published

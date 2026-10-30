@@ -13,7 +13,6 @@ expires: null
 id: news-item
 image: null
 image_caption: null
-is_folderish: true
 language: "##DEFAULT##"
 layout: newsitem_view
 review_state: published
