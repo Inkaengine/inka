@@ -37,8 +37,16 @@ import { describe, expect, it } from 'vitest';
 
 const REPO = path.resolve(__dirname, '..');
 
-/** Ours to hold to this rule. */
-const SCANNED = /\.(ts|tsx|js|jsx|cjs|mjs|vue)$/;
+/**
+ * Ours to hold to this rule.
+ *
+ * package.json and the framework file types come from the guard this replaces
+ * (tests-playwright/fixtures/test-ports-not-hardcoded.test.cjs), which caught a
+ * real class of bug there: a frontend's own `dev:test` script listening on a
+ * literal while the harness waited on its configured port — astro served 3009
+ * and nothing was there to answer.
+ */
+const SCANNED = /\.(ts|tsx|js|jsx|cjs|mjs|vue|svelte|astro)$|(^|\/)package\.json$/;
 
 const SKIPPED = [
   // The Volto fork. Upstream's code, upstream's ports.
@@ -83,6 +91,11 @@ const ALLOWED: Record<string, string> = {
   // HYDRA_PORT_BASE here would break plain `pnpm start`, which is not a test
   // run. Hardcoding 3001 instead was the bug: /health answered 503 forever on
   // any non-default-port run, timing out Playwright's readiness gate.
+  // This file. Its cases ARE port literals — `const PORT = 8899`, `|| 8888` —
+  // and a guard cannot be its own counter-example without them.
+  'tests-playwright/ports-are-not-hardcoded.test.ts':
+    'the cases this guard is built from, including the ones it must reject',
+
   'packages/volto-hydra/razzle.extend.js':
     "mirrors razzle's own default for PORT, which this health check has to match",
 };
@@ -148,6 +161,12 @@ export function code(source: string): string {
 const ADDRESS = /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{4,5})/g;
 
 /**
+ * Told to listen somewhere on the command line, which is how a frontend's own
+ * start script disagreed with the harness that was waiting for it.
+ */
+const LISTEN_FLAG = /(?:--port[ =]|--inspect-port[ =]|\s-p\s+)(\d{4,5})\b/g;
+
+/**
  * The three ways a port gets a value in code, each matched on the NAME being
  * given one rather than on "the line mentions a port" — which flagged
  * `isProportionate({ actualWidth: 2400 })`, because `isProportionate` contains
@@ -191,8 +210,22 @@ function offenders(): string[] {
     const lines = scanned.split('\n');
     lines.forEach((line, index) => {
       const where = `${file}:${index + 1}`;
+      // An example's own `dev`/`start` script runs it for a developer against a
+      // real admin, not a test server, so only its test scripts are held to
+      // this. Carried over from the guard this replaces.
+      const script = /^\s*"([^"]+)":/.exec(line);
+      if (file.endsWith('package.json') && (!script || !/test/.test(script[1]))) {
+        return;
+      }
       for (const match of line.matchAll(ADDRESS)) {
         found.push(`${where} binds or fetches a hardcoded port: ${match[0]}`);
+      }
+      for (const match of line.matchAll(LISTEN_FLAG)) {
+        found.push(
+          `${where} tells a server to listen on ${match[1]}: ` +
+            `the harness waits on the configured port, so a literal here ` +
+            `serves where nothing is listening`,
+        );
       }
       for (const [pattern, what] of DEFAULTS) {
         const hit = pattern.exec(line);

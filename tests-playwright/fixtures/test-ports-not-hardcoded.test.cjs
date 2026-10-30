@@ -17,19 +17,40 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '../..');
 const WORKFLOW = path.join(ROOT, '.github/workflows/test.yaml');
 
-/** HYDRA_*_PORT: number, from the workflow's top-level env block. */
+/**
+ * HYDRA_*_PORT: number, for THIS run's block.
+ *
+ * Read from the one module that knows the offsets, via the launcher that
+ * derives them. It used to parse the workflow's top-level env block, which was
+ * where the numbers were stated — nineteen of them, kept aligned with the
+ * Makefile's identical list by hand. The workflow states only
+ * HYDRA_PORT_BASE now.
+ *
+ * Note the limit this exposes, and why ports-are-not-hardcoded.test.ts exists
+ * beside this: a check that only knows TODAY'S numbers cannot see a literal
+ * outside them, which is why the contract suite's 8899/1337/8793 went
+ * unnoticed here for as long as they did. This one still earns its place for
+ * the files it scans — an example frontend's own start scripts, where a
+ * literal and the harness's configured port disagree silently.
+ */
 function declaredPorts() {
-  const text = fs.readFileSync(WORKFLOW, 'utf8');
+  const printed = execFileSync(
+    process.execPath,
+    [path.join(ROOT, 'scripts/with-ports.mjs'), '--print'],
+    { encoding: 'utf8' },
+  );
   const ports = new Map();
-  for (const m of text.matchAll(/^ {2}(HYDRA_[A-Z0-9_]+_PORT): (\d+)$/gm)) {
-    ports.set(m[2], m[1]);
+  for (const line of printed.split('\n')) {
+    const m = /^(HYDRA_[A-Z0-9_]+_PORT)=(\d+)$/.exec(line.trim());
+    if (m) ports.set(m[2], m[1]);
   }
-  assert.ok(ports.size > 0, `no HYDRA_*_PORT values found in ${WORKFLOW}`);
+  assert.ok(ports.size > 0, 'scripts/with-ports.mjs --print listed no ports');
   return ports;
 }
 

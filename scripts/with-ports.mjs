@@ -36,9 +36,24 @@ while (argv.length && argv[0].startsWith('--port')) {
   portName = arg.includes('=') ? arg.split('=')[1] : argv.shift();
 }
 
-if (argv.length === 0) {
+/**
+ * `--print` writes the block as KEY=VALUE lines instead of running anything,
+ * for a launcher that cannot be a parent process.
+ *
+ * GitHub Actions is the case: its YAML refers to `${{ env.HYDRA_NUXT_PORT }}`
+ * in thirty-odd places, so the workflow listed all nineteen and carried a
+ * comment telling whoever edited it to keep that list aligned with the
+ * Makefile's. One step per job now derives them:
+ *
+ *   - run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
+ */
+const printOnly = argv[0] === '--print';
+if (printOnly) argv.shift();
+
+if (argv.length === 0 && !printOnly) {
   console.error(
     'usage: node scripts/with-ports.mjs [--port=<name>] <command> [args...]\n' +
+      '       node scripts/with-ports.mjs --print\n' +
       `  port names: ${Object.keys(PORT_ENV).join(', ')}`,
   );
   process.exit(2);
@@ -46,6 +61,13 @@ if (argv.length === 0) {
 
 // Throws, naming HYDRA_PORT_BASE, if nobody has said where the block starts.
 const ports = allPorts();
+
+if (printOnly) {
+  for (const [name, value] of Object.entries(ports)) {
+    console.log(`${PORT_ENV[name]}=${value}`);
+  }
+  process.exit(0);
+}
 
 if (portName !== null && !(portName in ports)) {
   console.error(

@@ -9,34 +9,21 @@ defaults:
   run:
     shell: bash
 
-# Every test port, stated. `tests-playwright/ports.ts` has no defaults on
-# purpose — a checkout that fell back to these numbers could take over another
-# checkout's servers without saying so — so CI declares them like any other
-# caller. The values are the historical ones; a runner has the machine to
-# itself, so there is nothing to avoid here.
+# Where this run's port block starts. `tests-playwright/ports.ts` derives every
+# port from it, so this is the only number CI states.
+#
+# It used to state all nineteen, with a comment on the Makefile's identical
+# list telling whoever edited either one to keep them aligned — two hand-synced
+# copies of the same thing. The ports themselves are still required with no
+# defaults, because a checkout that fell back to the historical numbers could
+# take over another checkout's servers without saying so; a runner has the
+# machine to itself, so the value here hardly matters.
+#
+# The derived names reach the steps through $GITHUB_ENV (see "Port block"
+# below): the YAML refers to `${{ env.HYDRA_NUXT_PORT }}` in thirty-odd places,
+# and those keep working.
 env:
-  HYDRA_MOCK_API_PORT: 8888
-  HYDRA_TEST_FRONTEND_PORT: 8889
-  HYDRA_MOCK_PARENT_PORT: 8891
-  # The three-CMS journey's backends. Declared here with everything else
-  # because PORTS is built eagerly: one missing name throws on import, so a
-  # run that never touches Drupal still needs the name to exist.
-  HYDRA_MOCK_DRUPAL_PORT: 8794
-  HYDRA_WORDPRESS_PORT: 8795
-  HYDRA_STRAPI_PORT: 1338
-  HYDRA_PLONE_SEED_PORT: 8898
-  HYDRA_VOLTO_SSR_PORT: 3001
-  HYDRA_VOLTO_WEBPACK_PORT: 3002
-  HYDRA_NUXT_PORT: 3003
-  HYDRA_REACT_DOC_PORT: 3004
-  HYDRA_VUE_DOC_PORT: 3005
-  HYDRA_SVELTE_DOC_PORT: 3006
-  HYDRA_NEXTJS_PORT: 3007
-  HYDRA_F7_PORT: 3008
-  HYDRA_ASTRO_DOC_PORT: 3009
-  HYDRA_VANILLA_DOC_PORT: 3010
-  HYDRA_SVELTE_QS_PORT: 3011
-  HYDRA_ASTRO_QS_PORT: 3012
+  HYDRA_PORT_BASE: 8888
 
 jobs:
   # ── Build Volto and upload artifact ──────────────────────────────────────
@@ -57,6 +44,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -151,6 +142,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Install dependencies
         # The addon's tests run against the SAME template fixtures as the JS suites: the
         # mock API exports them as a plone.exportimport distribution at test time, so the
@@ -202,6 +197,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -321,6 +320,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -419,6 +422,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -516,6 +523,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -629,6 +640,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -753,6 +768,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -865,6 +884,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -981,6 +1004,10 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
