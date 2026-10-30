@@ -72,6 +72,14 @@ function imageProps(block, backendBaseUrl) {
   if (Array.isArray(block) && block.length > 0) {
     block = block[0];
   }
+  // An image BLOCK whose `url` holds the list its widget saves: the picked
+  // reference, with image_scales on the ENTRY rather than the block. Lift it so
+  // the rest of this function sees the shape it already handles for every other
+  // picked image -- otherwise no branch below matches an array and the block
+  // renders nothing.
+  if (block?.["@type"] === "image" && Array.isArray(block.url) && block.url.length > 0) {
+    block = { ...block, ...block.url[0] };
+  }
 
   if (!block) return { url: null };
 

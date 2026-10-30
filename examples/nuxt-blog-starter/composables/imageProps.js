@@ -36,6 +36,15 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
     if (Array.isArray(block) && block.length > 0) {
         block = block[0];
     }
+    // An image BLOCK whose `url` holds the list its widget saves. A url
+    // declared `widget: 'image'` stores the picked reference as a list, and the
+    // restapi hangs image_scales off the ENTRY rather than the block. Lift it
+    // so the rest of this function sees the shape it already handles for every
+    // other picked image. Without it no branch below matches an array and the
+    // block renders nothing at all.
+    if (block?.['@type'] === 'image' && Array.isArray(block.url) && block.url.length > 0) {
+        block = { ...block, ...block.url[0] };
+    }
     var image_url = null;
     if (!block) {
         return {
