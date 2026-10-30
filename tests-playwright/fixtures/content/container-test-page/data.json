@@ -53,7 +53,12 @@
             },
             "col1-img-1": {
               "@type": "image",
-              "url": "/images/test-image-1",
+              "url": [
+                {
+                  "@id": "/images/test-image-1",
+                  "image_field": "image"
+                }
+              ],
               "alt": "Sample image"
             }
           },
@@ -118,7 +123,9 @@
         "grid-cell-1": {
           "@type": "teaser",
           "title": "Grid Teaser 1",
-          "_customFields": ["title"],
+          "_customFields": [
+            "title"
+          ],
           "description": "First grid teaser",
           "href": [
             {
@@ -131,7 +138,9 @@
         "grid-cell-2": {
           "@type": "teaser",
           "title": "Grid Teaser 2",
-          "_customFields": ["title"],
+          "_customFields": [
+            "title"
+          ],
           "description": "Second grid teaser",
           "href": [
             {
@@ -155,7 +164,9 @@
         "grid-cell-3": {
           "@type": "teaser",
           "title": "Grid Teaser 3",
-          "_customFields": ["title"],
+          "_customFields": [
+            "title"
+          ],
           "description": "Third grid teaser",
           "href": [
             {
@@ -168,7 +179,9 @@
         "grid-cell-4": {
           "@type": "teaser",
           "title": "Grid Teaser 4",
-          "_customFields": ["title"],
+          "_customFields": [
+            "title"
+          ],
           "description": "Fourth grid teaser",
           "href": [
             {

@@ -33,7 +33,9 @@
               {
                 "i": "portal_type",
                 "o": "plone.app.querystring.operation.selection.any",
-                "v": ["Image"]
+                "v": [
+                  "Image"
+                ]
               },
               {
                 "i": "path",
@@ -48,14 +50,22 @@
         {
           "@id": "manual-image-1",
           "@type": "image",
-          "url": "http://localhost:8888/images/penguin1.jpg/@@images/image",
+          "url": [
+            {
+              "@id": "http://localhost:8888/images/penguin1.jpg/@@images/image",
+              "image_field": "image"
+            }
+          ],
           "alt": "Manual penguin image"
         }
       ]
     }
   },
   "blocks_layout": {
-    "items": ["title-block", "gallery-slider"]
+    "items": [
+      "title-block",
+      "gallery-slider"
+    ]
   },
   "allow_discussion": false,
   "is_folderish": false,
@@ -70,7 +80,20 @@
     "actions": {
       "@id": "http://localhost:8888/gallery-test-page/@actions",
       "document_actions": [],
-      "object": [{"id": "view", "title": "View"}, {"id": "edit", "title": "Edit"}, {"id": "folderContents", "title": "Contents"}],
+      "object": [
+        {
+          "id": "view",
+          "title": "View"
+        },
+        {
+          "id": "edit",
+          "title": "Edit"
+        },
+        {
+          "id": "folderContents",
+          "title": "Contents"
+        }
+      ],
       "object_buttons": [],
       "portal_tabs": [],
       "site_actions": [],
@@ -79,8 +102,14 @@
     "breadcrumbs": {
       "@id": "http://localhost:8888/gallery-test-page/@breadcrumbs",
       "items": [
-        {"@id": "http://localhost:8888", "title": "Home"},
-        {"@id": "http://localhost:8888/gallery-test-page", "title": "Gallery Test Page"}
+        {
+          "@id": "http://localhost:8888",
+          "title": "Home"
+        },
+        {
+          "@id": "http://localhost:8888/gallery-test-page",
+          "title": "Gallery Test Page"
+        }
       ],
       "root": "http://localhost:8888"
     },

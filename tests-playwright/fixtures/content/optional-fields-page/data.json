@@ -27,11 +27,20 @@
           "title": "Target Page"
         }
       ],
-      "image": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='400'%3E%3Crect width='100%25' height='100%25' fill='%234a90d9'/%3E%3C/svg%3E",
+      "image": [
+        {
+          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='400'%3E%3Crect width='100%25' height='100%25' fill='%234a90d9'/%3E%3C/svg%3E",
+          "image_field": "image"
+        }
+      ],
       "description": [
         {
           "type": "p",
-          "children": [{ "text": "Populated description" }]
+          "children": [
+            {
+              "text": "Populated description"
+            }
+          ]
         }
       ]
     },
@@ -39,27 +48,52 @@
       "@type": "teaser",
       "overwrite": true,
       "title": "Teaser without image",
-      "href": [{ "@id": "/_test_data/target-page", "title": "Target Page" }]
+      "href": [
+        {
+          "@id": "/_test_data/target-page",
+          "title": "Target Page"
+        }
+      ]
     },
     "teaser-full": {
       "@type": "teaser",
       "overwrite": true,
       "title": "Teaser with image",
-      "href": [{ "@id": "/_test_data/target-page", "title": "Target Page" }],
-      "preview_image": [{ "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300'%3E%3Crect width='100%25' height='100%25' fill='%2350a050'/%3E%3C/svg%3E" }]
+      "href": [
+        {
+          "@id": "/_test_data/target-page",
+          "title": "Target Page"
+        }
+      ],
+      "preview_image": [
+        {
+          "@id": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300'%3E%3Crect width='100%25' height='100%25' fill='%2350a050'/%3E%3C/svg%3E"
+        }
+      ]
     },
     "anchor-slate": {
       "@type": "slate",
       "value": [
         {
           "type": "p",
-          "children": [{ "text": "Anchor block" }]
+          "children": [
+            {
+              "text": "Anchor block"
+            }
+          ]
         }
       ]
     }
   },
   "blocks_layout": {
-    "items": ["hero-empty", "hero-cleared", "hero-full", "teaser-empty", "teaser-full", "anchor-slate"]
+    "items": [
+      "hero-empty",
+      "hero-cleared",
+      "hero-full",
+      "teaser-empty",
+      "teaser-full",
+      "anchor-slate"
+    ]
   },
   "@components": {
     "actions": {
