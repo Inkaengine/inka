@@ -721,12 +721,29 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.match(e, /field "variation" holds "carousel", which is not one of its choices/);
   });
 
-  it('PASSES a reference field in either the archive or the wire shape', () => {
-    // An export stores `[{'@id': 'resolveuid/…'}]`; the restapi serves a path.
-    // Both are correct, and a shape rule here would fail every served fixture.
-    // (The unresolved target is the link check's business, not a shape error.)
-    const e = shapeErrors({ url: { widget: 'object_browser' } }, { url: '/contact-info' });
-    assert.doesNotMatch(e, /is type:|single-line string|not one of its choices/);
+  it('FAILS on an object_browser field holding a bare string', () => {
+    // The widget saves a list of picked references. A bare path is a value no
+    // editor session produced -- whatever wrote it bypassed the widget -- and
+    // it reaches the renderer in a shape real content never has.
+    const e = shapeErrors({ href: { widget: 'object_browser' } }, { href: '/contact-info' });
+    assert.match(e, /field "href" is widget:object_browser but its value is string/);
+  });
+
+  it('PASSES a reference field in the shape the widget saves', () => {
+    // The reference inside is the link check's business; the SHAPE is this one's.
+    const e = shapeErrors({ href: { widget: 'object_browser' } }, { href: [{ '@id': '/contact-info' }] });
+    assert.doesNotMatch(e, /is widget:object_browser but/);
+  });
+
+  it("treats '' as a cleared reference field, not a bad shape", () => {
+    // What a hero whose image was removed stores.
+    const e = shapeErrors({ image: { widget: 'image' } }, { image: '' });
+    assert.doesNotMatch(e, /is widget:image but/);
+  });
+
+  it('leaves widget:url alone, which is a plain URL text input', () => {
+    const e = shapeErrors({ link: { widget: 'url' } }, { link: 'https://example.com/x' });
+    assert.doesNotMatch(e, /is widget:url but/);
   });
 
   it('PASSES a single-node slate field', () => {

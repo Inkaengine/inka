@@ -741,6 +741,18 @@ function imageDimensions(file) {
         const v = block[field];
         if (v == null) continue;
         if (REFERENCE_WIDGETS.has(def.widget)) {
+          // An object_browser or image field holds what its WIDGET saves, and
+          // the widget saves one thing: a list of picked references. There is
+          // no second legitimate spelling -- across this site's content all 150
+          // such fields are arrays, and a bare string is a value no editor
+          // session could have produced, so whatever wrote it bypassed the
+          // widget. (`url` is excluded: it is a plain URL text input.)
+          // `''` is the cleared field, the same "no value" `[]` is -- the hero
+          // whose image was removed stores it, and 12 blocks across this site's
+          // content do. Not a shape to report; an empty one.
+          if (def.widget !== 'url' && v !== '' && !Array.isArray(v)) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:${def.widget} but its value is ${shape(v)} — the widget saves a list of picked references, so a bare value here was not written by the editor`);
+          }
           // Every reference the field holds, in whichever shape it stores it.
           for (const ref of refStrings(v)) {
             const reason = refFailure(ref);
