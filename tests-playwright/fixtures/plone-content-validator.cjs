@@ -677,6 +677,48 @@ function imageDimensions(file) {
     });
   }
 
+  // The Plone rich-text serialisation: `{data: '<html>', content-type, encoding}`.
+  const looksLikeRichText = (v) =>
+    !!v && typeof v === 'object' && !Array.isArray(v) && typeof v.data === 'string';
+
+  // The tokens a vocabulary field allows, however it is declared: `choices`
+  // (Choice), `items.choices` (a List of Choice, which is how plone.restapi
+  // serialises a multi-select), `actions` (ButtonsWidget) or `enum`.
+  const vocabularyTokens = (def) => {
+    const choices = def.choices ?? def.items?.choices;
+    if (choices) {
+      return new Set(choices.map((c) => {
+        if (c === undefined || c === null) return c;
+        if (Array.isArray(c)) return c[0];
+        return c.value ?? c.token ?? c;
+      }));
+    }
+    if (Array.isArray(def.actions)) return new Set(def.actions);
+    if (Array.isArray(def.enum)) return new Set(def.enum);
+    return null;
+  };
+
+  // Only a field whose value is the plain thing its `type` names: no widget, or
+  // `textarea`. See the comment at its use.
+  const PLAIN_VALUE_FIELD = (def) =>
+    !!def.type && (!def.widget || def.widget === 'textarea');
+
+  // null when the value matches `type`, else why it does not.
+  const typeMismatch = (v, type) => {
+    const ok = {
+      string: (x) => typeof x === 'string',
+      boolean: (x) => typeof x === 'boolean',
+      number: (x) => typeof x === 'number',
+      integer: Number.isInteger,
+      array: Array.isArray,
+      object: (x) => x !== null && typeof x === 'object' && !Array.isArray(x),
+    }[type];
+    if (!ok || ok(v)) return null;
+    return type === 'integer' && typeof v === 'number'
+      ? 'a whole number'
+      : `expected ${type === 'array' ? 'an array' : `a ${type}`}`;
+  };
+
   function checkBlockRefs(rel, bid, block, schema = null) {
     // A table's rows and each row's cells are keyed by `key` — Volto's slateTable
     // shape, which every frontend reads. Not a schema object_list, so checked
@@ -702,7 +744,36 @@ function imageDimensions(file) {
       for (const [field, def] of Object.entries(schema.properties)) {
         const v = block[field];
         if (v == null) continue;
-        if (REFERENCE_WIDGETS.has(def.widget)) {
+        if (def.backendExpectsHtml) {
+          // A field whose consumer is not a renderer. A form block's
+          // mail_header/mail_footer are pasted into an EMAIL, and the backend
+          // (collective.volto.formsupport) expects HTML, so the stored value
+          // is the one shape it can use. The field should still become slate,
+          // with the HTML produced at send time rather than stored -- this
+          // says the exception is deliberate and names what is keeping it.
+        } else if (def.widget === 'richtext' || looksLikeRichText(v)) {
+          // Plone rich text is not supported: rich text here is slate, so it
+          // round-trips through the editing bridge. discover-blocks has
+          // rejected it from both sides for a while; this pass used to describe
+          // `{data: '<html>'}` as the CORRECT shape for such a field, which is
+          // the opposite rule, so a form block's mail_header could keep an HTML
+          // body and be told it was right. Flagged from either side: the schema
+          // declaring the widget, or a value still in that shape after the
+          // schema has been flipped to slate.
+          errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}": Plone rich text is not supported — declare \`widget: 'slate'\` (an array of slate nodes) and store slate, not {data: '<html>'}`);
+        } else if (REFERENCE_WIDGETS.has(def.widget)) {
+          // An object_browser or image field holds what its WIDGET saves, and
+          // the widget saves one thing: a list of picked references. There is
+          // no second legitimate spelling -- across this site's content all 150
+          // such fields are arrays, and a bare string is a value no editor
+          // session could have produced, so whatever wrote it bypassed the
+          // widget. (`url` is excluded: it is a plain URL text input.)
+          // `''` is the cleared field, the same "no value" `[]` is -- the hero
+          // whose image was removed stores it, and 12 blocks across this site's
+          // content do. Not a shape to report; an empty one.
+          if (def.widget !== 'url' && v !== '' && !Array.isArray(v)) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:${def.widget} but its value is ${shape(v)} — the widget saves a list of picked references, so a bare value here was not written by the editor`);
+          }
           // Every reference the field holds, in whichever shape it stores it.
           for (const ref of refStrings(v)) {
             const reason = refFailure(ref);
@@ -722,8 +793,35 @@ function imageDimensions(file) {
           // held two paragraphs while the page drew one, passing every gate.
           // A slate field is a slate field.
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" has ${v.length} top-level nodes (expected 1 — put the rest in their own blocks)`);
-        } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
-          errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
+        } else if (vocabularyTokens(def)) {
+          // What the editor already refuses, said out loud. isValidValue
+          // (schemaValidation.mjs) nulls a value outside the vocabulary when
+          // the page loads -- no message, no save, nothing on screen -- so a
+          // fixture naming a variation the schema never had renders as the
+          // default and looks like the variation was tested.
+          const tokens = vocabularyTokens(def);
+          const held = Array.isArray(v) ? v : [v];
+          const bad = held.filter((x) => !tokens.has(x));
+          if (bad.length) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" holds ${JSON.stringify(bad[0])}, which is not one of its choices (${[...tokens].map((t) => JSON.stringify(t)).join(', ')}) — the editor nulls a value it cannot offer`);
+          }
+        } else if (PLAIN_VALUE_FIELD(def)) {
+          // The ordinary declarations. A widget that owns its storage shape is
+          // not judged here: a reference field is handled above, and an image,
+          // date or querystring field stores one shape in the export archive
+          // and another on the wire, so a type rule over both would fail every
+          // served fixture. `type` with no widget, and `textarea`, mean what
+          // they say in either format.
+          const wrong = typeMismatch(v, def.type);
+          if (wrong) {
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is type:${def.type} but its value is ${shape(v)} — ${wrong}`);
+          } else if (def.type === 'string' && def.widget !== 'textarea' && /[\r\n]/.test(v)) {
+            // A bare `type: string` is edited with a one-line input: it cannot
+            // produce a newline and does not show one, so stored newlines are
+            // invisible until something else reads the field. Multi-line text
+            // says so with `widget: 'textarea'`.
+            errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is a single-line string but its value contains a newline — declare \`widget: 'textarea'\` if the field is meant to hold more than one line`);
+          }
         } else if (def.widget === 'object_list' && Array.isArray(v)) {
           // An object_list must declare ONE of three things, and which one it
           // declares is the whole answer:

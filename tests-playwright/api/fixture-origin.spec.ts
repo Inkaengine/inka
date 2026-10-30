@@ -85,7 +85,14 @@ test.describe('mock API origin', () => {
 
     const data = JSON.parse(body);
     expect(data['@id']).toBe(`http://localhost:${port}/gallery-test-page`);
-    expect(data.blocks['gallery-slider'].slides[1].url).toBe(
+    // A slide is a typed block, and this one is an `image` whose `url` is
+    // declared `widget: 'image'` -- so it holds the list that widget saves.
+    // The shape is pinned as well as the origin: this test exists because an
+    // origin the client cannot reach is wrong wherever it appears, and it is
+    // just as wrong one level inside a reference.
+    const slideUrl = data.blocks['gallery-slider'].slides[1].url;
+    expect(Array.isArray(slideUrl)).toBe(true);
+    expect(slideUrl[0]['@id']).toBe(
       `http://localhost:${port}/images/penguin1.jpg/@@images/image`,
     );
   });

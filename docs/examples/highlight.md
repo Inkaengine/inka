@@ -38,7 +38,7 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
-  <block type="highlight" description="${p/slate}" cta_link="${a?/link}" />
+  <block type="highlight" image="${img?/src}" description="${p/slate}" cta_link="${a?/link}" />
 ---
 
 # Highlight
@@ -51,9 +51,11 @@ A prominent content section with a background image, overlay, title, rich text b
 
 </block>
 
-<fields title="Highlight-Block" cta_title="Button" image="/docs/examples/content-types/example-image.jpg/@@images/image">
+<fields title="Highlight-Block" cta_title="Button">
 
 <block type="highlight">
+
+![](./content-types/example-image.jpg)
 
 Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt.
 
@@ -65,6 +67,8 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 <block type="highlight">
 
+![](./content-types/example-image.jpg)
+
 Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt.
 
 [](/docs/examples/content-types/page)
@@ -74,6 +78,8 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 </block>
 
 <block type="highlight">
+
+![](./content-types/example-image.jpg)
 
 Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt.
 
@@ -85,6 +91,8 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 <block type="highlight">
 
+![](./content-types/example-image.jpg)
+
 Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt.
 
 [](/docs/examples/content-types/page)
@@ -94,6 +102,8 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 </block>
 
 <block type="highlight">
+
+![](./content-types/example-image.jpg)
 
 Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt.
 

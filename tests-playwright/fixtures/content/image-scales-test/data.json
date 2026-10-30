@@ -7,10 +7,17 @@
   "UID": "image-scales-test-0000-0000-000000000000",
   "review_state": "published",
   "blocks": {
-    "title-block": { "@type": "title" },
+    "title-block": {
+      "@type": "title"
+    },
     "image-block-1": {
       "@type": "image",
-      "url": "/image-scales-test/test-image.png",
+      "url": [
+        {
+          "@id": "/image-scales-test/test-image.png",
+          "image_field": "image"
+        }
+      ],
       "alt": "scaled image",
       "image_field": "image",
       "image_scales": {
@@ -38,5 +45,10 @@
       }
     }
   },
-  "blocks_layout": { "items": ["title-block", "image-block-1"] }
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "image-block-1"
+    ]
+  }
 }

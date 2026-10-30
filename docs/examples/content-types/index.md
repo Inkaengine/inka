@@ -30,7 +30,7 @@ order:
   - page
   - typography
 blobs:
-  - file: danielle-barnes-kGNaS3lYCso-unsplash.jpg
+  - file: example-image.jpg
     uid: 6cca02c5580d4f7c865af74835ceab9d
     id: example-image.jpg
     title: Image

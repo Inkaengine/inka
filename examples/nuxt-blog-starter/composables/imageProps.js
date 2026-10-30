@@ -36,6 +36,15 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
     if (Array.isArray(block) && block.length > 0) {
         block = block[0];
     }
+    // An image BLOCK whose `url` holds the list its widget saves. A url
+    // declared `widget: 'image'` stores the picked reference as a list, and the
+    // restapi hangs image_scales off the ENTRY rather than the block. Lift it
+    // so the rest of this function sees the shape it already handles for every
+    // other picked image. Without it no branch below matches an array and the
+    // block renders nothing at all.
+    if (block?.['@type'] === 'image' && Array.isArray(block.url) && block.url.length > 0) {
+        block = { ...block, ...block.url[0] };
+    }
     var image_url = null;
     if (!block) {
         return {
@@ -142,10 +151,12 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
             // path an image block takes.
             return `${image_url}/${scale.download} ${scale.width}w`;
         }).join(", ");
-        sizes = Object.keys(meta.scales || {}).map((name) => {
-            const scale = meta.scales[name];
-            return `${name}:${scale.width}px`;
-        }).join(" ");
+        // `sizes` is a LAYOUT hint in NuxtImg's breakpoint syntax
+        // (`sm:100vw md:50vw`), not a list of the files that exist. Naming
+        // Plone's scales here produced `preview:400px large:400px`, whose keys
+        // are no breakpoint NuxtImg knows, and it rendered the <img> with no
+        // src at all. The scale ladder is already in `srcset`.
+        sizes = DEFAULT_SIZES;
         // src must be a SCALE download (`@@images/<field>/<name>`), NOT the bare
         // top-level `meta.download` (`@@images/image`). The srcset above uses the
         // scale form, which needs `image` to be a DIRECTORY; a bare `image` src is a

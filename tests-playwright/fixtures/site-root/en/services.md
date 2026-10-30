@@ -31,7 +31,7 @@ What we do, in English.
 
 <region name="items" widget="blocks_layout">
 
-<block type="teaser" href="/en/about">
+<block type="teaser" overwrite href="/en/about">
 
 ### Design
 
@@ -39,7 +39,7 @@ We design in English.
 
 </block>
 
-<block type="teaser" href="/en/about">
+<block type="teaser" overwrite href="/en/about">
 
 ### Build
 

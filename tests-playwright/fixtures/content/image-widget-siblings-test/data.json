@@ -13,7 +13,12 @@
             "@type": "hero",
             "heading": "Hero with image siblings",
             "subheading": "image is a URL string plus image_field + image_scales siblings on the block — the ImageWidget storage convention.",
-            "image": "http://localhost:8888/_test_data/images/test-image-1/@@images/image",
+            "image": [
+                {
+                    "@id": "http://localhost:8888/_test_data/images/test-image-1/@@images/image",
+                    "image_field": "image"
+                }
+            ],
             "image_field": "image",
             "image_scales": {
                 "image": [
@@ -37,7 +42,9 @@
                 {
                     "type": "p",
                     "children": [
-                        { "text": "Sibling-preservation test fixture." }
+                        {
+                            "text": "Sibling-preservation test fixture."
+                        }
                     ]
                 }
             ]

@@ -7,13 +7,25 @@
   "description": "Source-shaped: exactly how Plone stores an image block on disk. The block carries a resolveuid url and NO image_scales / image_field — the serializer adds image_scales at request time.",
   "review_state": "published",
   "blocks": {
-    "title-1": { "@type": "title" },
+    "title-1": {
+      "@type": "title"
+    },
     "image-1": {
       "@type": "image",
-      "url": "resolveuid/test-image-1-uid",
+      "url": [
+        {
+          "@id": "resolveuid/test-image-1-uid",
+          "image_field": "image"
+        }
+      ],
       "alt": "an image referenced by uid",
       "align": "center"
     }
   },
-  "blocks_layout": { "items": ["title-1", "image-1"] }
+  "blocks_layout": {
+    "items": [
+      "title-1",
+      "image-1"
+    ]
+  }
 }

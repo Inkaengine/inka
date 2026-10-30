@@ -81,6 +81,32 @@ const teaserTo = (href) => ({
 });
 
 /** Wait for the module's `ready`, then report how it settled. */
+/** Start the server on a free port and ask /health, the way a harness does. */
+function health(mounts, env = {}) {
+  const script = `
+    const http = require('node:http');
+    const { app, ready } = require(${JSON.stringify('MODULE_PATH')});
+    ready.catch(() => {});
+    const srv = app.listen(0, async () => {
+      const port = srv.address().port;
+      // Give the ready chain a turn to settle before asking.
+      await new Promise((r) => setTimeout(r, 2000));
+      http.get({ port, path: '/health' }, (res) => {
+        let body = '';
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => { console.log(JSON.stringify({ status: res.statusCode, body })); process.exit(0); });
+      });
+    });
+  `.replace('MODULE_PATH', JSON.stringify(MODULE).slice(1, -1));
+  const r = spawnSync(process.execPath, ['-e', script], {
+    env: { ...process.env, CONTENT_MOUNTS: mounts, ...env },
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
+  const line = (r.stdout || '').trim().split('\n').filter((l) => l.startsWith('{"status"')).pop();
+  return line ? JSON.parse(line) : { status: 0, body: r.stderr };
+}
+
 function loadAndAwaitReady(mounts, env = {}) {
   return spawnSync(
     process.execPath,
@@ -152,6 +178,28 @@ describe('mock API: blobs not on disk', () => {
     );
     assert.equal(run.status, 3, run.stderr.slice(-2000));
     assert.match(run.stderr, /path not in content: \/no-such-page/);
+  });
+});
+
+describe('/health answers for the content, not just the process', () => {
+  // A harness waits on /health before it runs a suite. It used to answer
+  // `{status:'ok'}` the moment the process listened, which it does before the
+  // content has loaded -- so a mock whose content was rejected looked healthy,
+  // the suite ran against an API serving nothing, and every test in it timed
+  // out. A whole job of failures in unrelated specs, with the real reason only
+  // in a log. It has to say it did not come up.
+  it('is 503, naming the problem, when the content is rejected', () => {
+    const res = health(`/:${jsonMount(teaserTo('/nowhere'))}`);
+    assert.equal(res.status, 503, res.body);
+    const body = JSON.parse(res.body);
+    assert.equal(body.status, 'content-failed');
+    assert.match(body.error, /content problem/);
+  });
+
+  it('is 200 on content that loads', () => {
+    const res = health(`/:${jsonMount({ blocks: {}, blocks_layout: { items: [] } })}`);
+    assert.equal(res.status, 200, res.body);
+    assert.equal(JSON.parse(res.body).status, 'ok');
   });
 });
 

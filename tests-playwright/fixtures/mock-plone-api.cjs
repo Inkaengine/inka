@@ -260,6 +260,8 @@ const markdownItems = new Map();   // url path -> raw content
 const markdownBlobs = new Map();   // url path -> absolute blob file
 const markdownOrder = new Map();   // folder url path -> authored child order (curated)
 let ready = Promise.resolve();
+// null while the content is still loading; {ok} or {ok:false, error} after.
+let readyState = null;
 // The prototype engine, imported once for the /@export endpoint's markdown mode.
 let engine = null; // { emitPage, parsePrototypes }
 
@@ -2802,6 +2804,16 @@ initContentDirMap();
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
 ready = loadBlockSchemas().then(loadSiteSchemas).then(initMarkdownMounts).then(assertServedContentValid);
+// What /health reports. The server starts listening before this settles, so
+// without it a mock whose content never loaded still answered `{status:'ok'}`,
+// Playwright's webServer poll passed, and every test in the run then timed out
+// against an API serving nothing -- a job full of failures in unrelated specs,
+// with the actual reason only in a log nobody reads. A server that did not
+// come up should say so, once, where the harness is already looking.
+ready.then(
+  () => { readyState = { ok: true }; },
+  (err) => { readyState = { ok: false, error: err && err.message ? err.message : String(err) }; },
+);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
@@ -3497,11 +3509,30 @@ app.post('/@export', async (req, res) => {
       if (!rel.startsWith('..')) rel = `./${rel}`;
       return `${rel}${anchor}`;
     };
+    const mapRefPath = (value, fn) => {
+      if (typeof value === 'string') return fn(value);
+      if (Array.isArray(value)) return value.map((el) => (el && typeof el['@id'] === 'string' ? { ...el, '@id': fn(el['@id']) } : el));
+      return value;
+    };
     const unresolveBlocks = (node, baseSegs, m) => {
       if (Array.isArray(node)) { node.forEach((n) => unresolveBlocks(n, baseSegs, m)); return; }
       if (!node || typeof node !== 'object') return;
       if (node.type === 'link' && node.data && typeof node.data.url === 'string') node.data.url = unresolve(node.data.url, baseSegs, m, false);
-      if ((node['@type'] === 'image' || node['@type'] === 'video') && typeof node.url === 'string') node.url = unresolve(node.url, baseSegs, m, true);
+      // The mirror of resolveMarkdownLinksInBlocks: the url is bare or the
+      // reference list its widget saves, and either way the path inside is
+      // what goes back to the relative form the markdown was authored with.
+      if (node['@type'] === 'image' || node['@type'] === 'video') node.url = mapRefPath(node.url, (u) => unresolve(u, baseSegs, m, true));
+      // And the same for a media path held in a FIELD of some other block -- a
+      // highlight's `image`. Which fields those are is the schema's answer,
+      // the mirror of the resolve side, which asks it too.
+      if (typeof node['@type'] === 'string' && mdRuntime) {
+        const schema = mdRuntime.schemaFor(node['@type']);
+        for (const [field, def] of Object.entries(schema?.properties ?? {})) {
+          if (def.widget === 'image' && node[field] != null) {
+            node[field] = mapRefPath(node[field], (u) => unresolve(u, baseSegs, m, true));
+          }
+        }
+      }
       for (const v of Object.values(node)) unresolveBlocks(v, baseSegs, m);
     };
 
@@ -4003,7 +4034,18 @@ app.post('/*', (req, res, next) => {
  * Health check endpoint for server readiness
  */
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  // Readiness, not liveness: the point of this endpoint is that the harness
+  // waits on it before running a suite, so answering `ok` while the content
+  // failed to load tells the harness the opposite of the truth.
+  if (readyState && readyState.ok) return res.json({ status: 'ok' });
+  if (readyState) {
+    return res.status(503).json({
+      status: 'content-failed',
+      error: readyState.error,
+      hint: 'the mock is listening but its content did not load; fix the content above',
+    });
+  }
+  return res.status(503).json({ status: 'loading' });
 });
 
 /**
