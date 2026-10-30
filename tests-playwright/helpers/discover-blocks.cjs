@@ -673,7 +673,10 @@ const UNDECLARED_EXEMPT = new Set([
   'fixed', 'slotId', 'templateId', 'templateInstanceId', 'readOnly',
   // Written by the merge beside slotId when a fixed slot separates two groups
   // (apply-templates stamps it); hydra's bookkeeping, never sidebar-authored.
-  'nextSlotId',
+  // `prevSlotId` is its other half, stamped on the group's near side, and was
+  // missing here: the merge wrote it onto every templated page and the gate
+  // then refused the content it had just produced.
+  'nextSlotId', 'prevSlotId',
   // codeExample selector directives (single-source example pages): `source`
   // names a block/@type on the page and `format` (json|schema) says what to
   // show; resolved to `tabs` at load/build, not sidebar-authored schema fields.
