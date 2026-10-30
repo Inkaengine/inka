@@ -340,6 +340,7 @@ A merge puts a template's blocks into a **target** document. Opening a page merg
    - A **slot** is replaced by the target's content for that slot, in order. A slot name that appears more than once is filled where it first appears. A template inside that content, such as a snippet, is merged in place by these same rules, with its own instance and ids.
    - A slot the target has nothing for is the template's slot block, without anything it holds.
 3. **Place the leftovers.** Content with no slot, or whose slot the template doesn't have, goes to the start of the first of these that exists:
+
    - the `"default"` slot;
    - the slot after the template's last fixed block;
    - the slot before its first fixed block.
@@ -354,12 +355,12 @@ Applied in each direction, the rules give:
 
 <block type="slateTable" table.fixed table.celled>
 
-| | Opening a page | Change on all pages |
+| Block | Opening a page | Change on all pages |
 | --- | --- | --- |
 | fixed, readOnly block | the template's | the page's edit goes to the template |
 | fixed, editable block | the page keeps its own | the template keeps its own |
 | slot | the page's content | the template's slot block |
-| ids | the page's | the template's |
+| ids | the page keeps its own | the template keeps its own |
 
 </block>
 
