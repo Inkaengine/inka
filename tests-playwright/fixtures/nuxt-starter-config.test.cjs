@@ -26,7 +26,11 @@ function editBuild(env) {
       csp: edit.routeRules['/**'].security.headers.contentSecurityPolicy,
       runtime: edit.runtimeConfig.public,
     }));`;
-  const clean = { ...process.env };
+  // Only what each case names: CI sets the HYDRA_* ports for the whole job,
+  // and inherited they hid that a deploy (which has none) failed to load.
+  const clean = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith('HYDRA_')),
+  );
   delete clean.NUXT_TEST_BACKEND;
   delete clean.NUXT_ADMIN_URL;
   const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
@@ -58,8 +62,16 @@ describe('nuxt starter edit build', () => {
     }
   });
 
+  it('names no local server in a deploy', () => {
+    for (const directive of ['connect-src', 'img-src']) {
+      assert.ok(!deployed.csp[directive].includes('localhost'), `${directive}: ${deployed.csp[directive]}`);
+    }
+  });
+
   it('a test build with no admin named still talks to the local admin', () => {
-    const test = editBuild({ NUXT_TEST_BACKEND: 'http://localhost:8888', HYDRA_VOLTO_SSR_PORT: '3001' });
+    const test = editBuild({
+      NUXT_TEST_BACKEND: 'http://localhost:8888', HYDRA_MOCK_API_PORT: '8888', HYDRA_VOLTO_SSR_PORT: '3001',
+    });
     assert.equal(test.runtime.adminUrl, 'http://localhost:3001');
     assert.ok(test.csp['connect-src'].includes('http://localhost:8888'));
   });
