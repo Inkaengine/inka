@@ -233,6 +233,12 @@ A Plone frontend needs none of this and can keep fetching Plone directly.
 
 **Logging out ends the real session.** The admin's logout button reaches the adapter as `auth.logout`. Clearing only the admin's own state would be the dangerous half of a logout: the editor sees an empty toolbar while the credential that reaches the CMS is still live.
 
+**The ways in are your CMS's to list.** A site may offer a password form and nothing else, an SSO provider, or a sign-in that needs no password at all — a demo editor, say. Which of those exist is your CMS's business, so the admin asks the adapter: `auth.loginOptions` returns the options, each with an `id`, a `title` to show, and `passwordFree` saying whether it can be pressed directly. `auth.loginWithOption` presses one. An empty list is a real answer, and the admin renders no extra buttons.
+
+Answer it even where there is nothing to offer. The admin asks every adapter the same question, and one that cannot be asked sends it back to guessing — which is how this started: the question reached a Plone backend through the HTTP passthrough and was simply unroutable anywhere else.
+
+**Say so if you run the sign-in yourself.** An adapter that opens the CMS's own login page — `auth.begin` hands back a URL, `auth.complete` takes the credential straight from the popup, so it never passes through the admin — declares `adapter-sign-in`, and the admin gives your proxy frame the screen while nobody is signed in. Without it the admin keeps its own login screen, which is where a CMS's password form and its `auth.loginOptions` buttons belong.
+
 **Buttons appear only when the CMS can back them.** The admin gates its UI on what the adapter declares, so a CMS without workflow shows no publish menu rather than a button that fails.
 
 ## Write a custom adapter
@@ -496,7 +502,7 @@ This is the same layering as expansion, with one deliberate difference: expansio
 | Types | `types.list`, `types.getSchema` |
 | Reading | `search`, `querystringSearch`, `querystring.getIndexes`, `tree.list`, `navigation.get`, `breadcrumbs.get`, `reference.resolve`, `reference.dependents`, `vocabulary.get` |
 | Assets | `asset.upload`, `asset.imageUrl` |
-| Session | `auth.whoami`, `auth.logout` |
+| Session | `auth.whoami`, `auth.logout`, `auth.loginOptions`, `auth.loginWithOption` |
 | Workflow | `state.get`, `state.getForms`, `state.transition` |
 | The site | `site.get` |
 | Translations | `translations.get`, `translations.create`, `translations.link`, `translations.unlink`, `translations.locate` |

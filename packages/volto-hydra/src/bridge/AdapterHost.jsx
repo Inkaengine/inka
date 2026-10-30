@@ -32,10 +32,30 @@ export default function AdapterHost() {
   useEffect(() => setIsClient(true), []);
 
   // Who, if anyone, is signed in to the CMS. Null adapter means it has not
-  // announced yet; an announced adapter with no user means sign-in is needed.
+  // announced yet; an announced adapter with no user means nobody is signed in.
   const [adapter, setAdapter] = useState(null);
   useEffect(() => subscribeAdapter(setAdapter), []);
-  const needsSignIn = Boolean(adapter) && !adapter.user;
+
+  // Nobody is signed in. The plain fact, kept apart from what to DO about it.
+  const signedOut = Boolean(adapter) && !adapter.user;
+
+  // Whether to hand this frame the SCREEN, which is a different question from
+  // whether anyone is signed in.
+  //
+  // Only an adapter that runs its own sign-in has anything to show: it opens
+  // the CMS's login page itself (auth.begin) so the credential never passes
+  // through the admin, and that has to happen in this frame. Adapters without
+  // it — Plone, which takes the admin's token — have no flow to offer, and the
+  // panel covered the admin's own login page with a button that could do
+  // nothing: `[PROXY] auth.begin failed: NOT_IMPLEMENTED`, over the one
+  // sign-in UI that worked, including the site's password-free demo option.
+  //
+  // Read from the announcement rather than probed, like every other decision
+  // the admin makes about an adapter.
+  const needsSignIn =
+    Boolean(adapter) &&
+    !adapter.user &&
+    (adapter.capabilities ?? []).includes('adapter-sign-in');
 
   // Start the admin over once someone signs in.
   //
@@ -47,9 +67,15 @@ export default function AdapterHost() {
   // Guarded by a ref rather than reloading whenever a user appears, so a normal
   // authenticated start — credential already stored, no sign-in shown — does
   // not reload at all.
+  //
+  // Keyed on having BEEN signed out, not on this frame having offered the
+  // sign-in: whichever surface was used, the stale anonymous reads are the
+  // same. Keying it on the panel meant that gating the panel also silently
+  // removed the reload, and a demo sign-in through the admin's own login page
+  // landed in an editor whose content had been fetched as nobody.
   const wasSignedOut = useRef(false);
   useEffect(() => {
-    if (needsSignIn) {
+    if (signedOut) {
       wasSignedOut.current = true;
       return;
     }
@@ -57,7 +83,7 @@ export default function AdapterHost() {
       wasSignedOut.current = false;
       window.location.reload();
     }
-  }, [needsSignIn, adapter]);
+  }, [signedOut, adapter]);
 
   // EVERY route, for the whole session. There is no condition here on purpose:
   // the moment this frame's presence depends on what the editor is doing, the

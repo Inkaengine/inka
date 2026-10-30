@@ -1752,6 +1752,25 @@ export class StrapiAdapter extends BaseAdapter {
         return this.absoluteUrl(url);
       }
 
+      // The ways in, beside the credential this adapter already holds.
+      //
+      // Strapi authenticates this adapter with an API token, and the content
+      // API advertises no login providers; the users-permissions plugin's
+      // sign-in is a JWT exchange, not an option a site offers a visitor.
+      // An empty list is the real answer, not a gap: the admin renders no
+      // extra buttons and shows its form, which is exactly right. It is
+      // answered rather than left unimplemented because the admin asks every
+      // adapter the same question, and an adapter that cannot be asked sends
+      // it back to guessing.
+      case 'auth.loginOptions':
+        return { options: [] };
+
+      case 'auth.loginWithOption':
+        throw new AdapterError(
+          `This site offers no sign-in option '${args.id}'`,
+          { code: 'NOT_FOUND', status: 404 },
+        );
+
       case 'auth.whoami': {
         // An API token is not a user. Strapi's /api/users/me belongs to the
         // users-permissions plugin and answers for a JWT session, so a token-based

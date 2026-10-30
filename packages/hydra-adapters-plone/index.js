@@ -385,6 +385,33 @@ export class PloneAdapter extends BaseAdapter {
     return JSON.parse(decodeBase64Url(parts[1])).sub ?? null;
   }
 
+  /**
+   * Plone's login providers, as canonical options.
+   *
+   * `passwordFree` is the one judgement here, and it is the adapter's to make:
+   * it maps Plone's vocabulary (plone.demoeditor registers the `demo` plugin,
+   * which signs in with no password at all) onto what the admin needs to know
+   * — can I press this myself, or must I send the user's browser somewhere.
+   * The admin cannot be asked to recognise plugin names, and nothing else in
+   * the chain knows what `demo` means.
+   *
+   * `endpoint` is kept beside it rather than derived: the CMS says where its
+   * provider lives, and guessing `/@login-<id>` would work for the one
+   * provider we know and break for any other.
+   *
+   * An unauthenticated read, deliberately: this is the question asked BEFORE
+   * there is a session, and Plone answers it to anonymous callers.
+   */
+  async loginOptions() {
+    const raw = await this.fetchJson('/@login');
+    return (raw?.options ?? []).map((option) => ({
+      id: option.id,
+      title: option.title,
+      passwordFree: option.plugin === 'demo',
+      endpoint: option.url,
+    }));
+  }
+
   toUser(raw) {
     return {
       id: String(raw.id),
@@ -777,6 +804,56 @@ export class PloneAdapter extends BaseAdapter {
 
       case 'auth.logout':
         return this.logout();
+
+      // The ways in, as this CMS offers them. plone.restapi lists them from
+      // ILoginProviders at GET @login: a demo editor (plone.demoeditor), an
+      // SSO provider, whatever the site has installed beside the password
+      // form. Canonicalised here because the admin must not have to know
+      // Plone's plugin names to render a button.
+      case 'auth.loginOptions':
+        return { options: await this.loginOptions() };
+
+      // Press one of them.
+      //
+      // Only an option that needs no password can be pressed from here; the
+      // rest send the user's BROWSER somewhere (an SSO redirect), which an
+      // adapter cannot do on their behalf. Saying so names the limit instead
+      // of failing as if the option did not exist.
+      case 'auth.loginWithOption': {
+        const options = await this.loginOptions();
+        const option = options.find((o) => o.id === args.id);
+        if (!option) {
+          throw new AdapterError(
+            `This site offers no sign-in option '${args.id}'`,
+            { code: 'NOT_FOUND', status: 404 },
+          );
+        }
+        if (!option.passwordFree) {
+          throw new AdapterError(
+            `Sign-in option '${args.id}' has to be opened in the browser, ` +
+              `not pressed by the adapter`,
+            { code: 'NOT_IMPLEMENTED', status: 501 },
+          );
+        }
+        // No body: that is the whole point of a password-free sign-in. The
+        // token becomes THIS adapter's session, or signing in would succeed
+        // and change nothing about what the CMS answers.
+        const { token } = await this.fetchJson(option.endpoint, {
+          method: 'POST',
+        });
+        if (!token) {
+          throw new AdapterError(
+            `Sign-in option '${args.id}' returned no token`,
+            { code: 'UNAUTHORIZED', status: 401 },
+          );
+        }
+        this.authToken = token;
+        this.getAuthToken = null;
+        // Everything read while anonymous came back as an anonymous visitor
+        // sees it; none of it is right for the session that just started.
+        this.invalidateReads();
+        return { token };
+      }
 
       case 'auth.whoami': {
         const sub = this.subjectFromToken();

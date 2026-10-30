@@ -130,6 +130,35 @@ export class BridgeApi {
       return plonify('querystring.getIndexes', result, { path });
     }
 
+    // How this site lets someone sign in is the SITE's answer, not Plone's.
+    //
+    // Relayed through the passthrough it worked on a Plone backend and was
+    // unroutable everywhere else — `No canonical intent for GET /@login` —
+    // so an admin over WordPress or Drupal could not even ask. Before
+    // passthrough for the same reason @logout and @querystring are: one
+    // question, one canonical answer, every adapter.
+    //
+    // Asked while anonymous, which is the only time it matters. The adapter
+    // announces before anyone has signed in (an announced adapter with no
+    // user is exactly what the sign-in prompt is for), so there is a peer to
+    // ask.
+    if (op === 'get' && String(path).split('?')[0].endsWith('@login')) {
+      const result = await this.rpc.request('auth.loginOptions', {});
+      return plonify('auth.loginOptions', result, { path });
+    }
+
+    // Pressing one of them. The id is in the path, as Plone puts it there
+    // (@login-demo), so Volto's action creators stay URL-shaped and the same
+    // component works on either transport. @login-renew is not one of these —
+    // it is answered above, before this can see it.
+    const pressed = /@login-([^/?]+)$/.exec(String(path).split('?')[0]);
+    if (op === 'post' && pressed) {
+      const result = await this.rpc.request('auth.loginWithOption', {
+        id: decodeURIComponent(pressed[1]),
+      });
+      return plonify('auth.loginWithOption', result, { path });
+    }
+
     if (this.supportsPassthrough(info)) {
       return this.rpc.request('http', { op, path, data, headers, params });
     }

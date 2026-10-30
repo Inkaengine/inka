@@ -258,6 +258,17 @@ export class WordPressAdapter extends BaseAdapter {
       name: 'wordpress',
       capabilities: [
         'content',
+        // This adapter runs its own sign-in, in the proxy frame: auth.begin
+        // hands back a URL to open (WordPress's authorize-application page)
+        // and auth.complete takes the credential straight from the popup, so
+        // it never passes through the admin.
+        //
+        // Declared because the ADMIN has to know whether a signed-out session
+        // has anywhere to go. It used to show the proxy's sign-in panel over
+        // the whole screen whenever an adapter announced with no user — which
+        // against Plone covered the admin's own login page with a panel whose
+        // button could do nothing, auth.begin being unimplemented there.
+        'adapter-sign-in',
         // NOT navigation-exclusion or navigation-title.
         //
         // "Hide from navigation" is a PLONE mechanism — a field on its content
@@ -1480,6 +1491,24 @@ export class WordPressAdapter extends BaseAdapter {
 
       case 'auth.logout':
         return this.logout();
+
+      // The ways in, beside the credential this adapter already holds.
+      //
+      // WordPress authenticates this adapter with an application password, and
+      // core exposes no list of login providers over the REST API.
+      // An empty list is the real answer, not a gap: the admin renders no
+      // extra buttons and shows its form, which is exactly right. It is
+      // answered rather than left unimplemented because the admin asks every
+      // adapter the same question, and an adapter that cannot be asked sends
+      // it back to guessing.
+      case 'auth.loginOptions':
+        return { options: [] };
+
+      case 'auth.loginWithOption':
+        throw new AdapterError(
+          `This site offers no sign-in option '${args.id}'`,
+          { code: 'NOT_FOUND', status: 404 },
+        );
 
       case 'auth.whoami': {
         const me = await this.fetchJson('/wp/v2/users/me', {

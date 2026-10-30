@@ -1086,6 +1086,25 @@ export class DrupalAdapter extends BaseAdapter {
       case 'auth.logout':
         return this.logout();
 
+      // The ways in, beside the credential this adapter already holds.
+      //
+      // Drupal has no endpoint that advertises alternative sign-ins over
+      // JSON:API; a site's SSO module is a browser-side login route, not
+      // something the content API lists.
+      // An empty list is the real answer, not a gap: the admin renders no
+      // extra buttons and shows its form, which is exactly right. It is
+      // answered rather than left unimplemented because the admin asks every
+      // adapter the same question, and an adapter that cannot be asked sends
+      // it back to guessing.
+      case 'auth.loginOptions':
+        return { options: [] };
+
+      case 'auth.loginWithOption':
+        throw new AdapterError(
+          `This site offers no sign-in option '${args.id}'`,
+          { code: 'NOT_FOUND', status: 404 },
+        );
+
       case 'auth.whoami': {
         // The JSON:API index names the current user and nothing else does:
         // `meta.links.me` carries their uuid when authenticated and is ABSENT

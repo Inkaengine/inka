@@ -180,3 +180,56 @@ describe('logging out', () => {
     expect(request).toHaveBeenCalledWith('auth.logout', {});
   });
 });
+
+/**
+ * How a site lets someone sign in is the SITE's answer.
+ *
+ * Relayed verbatim through the passthrough it worked against Plone and was
+ * unroutable everywhere else — `No canonical intent for GET /@login` — so an
+ * admin over WordPress or Drupal could not even ask, and the login page had
+ * nothing to render. Answered before the transport choice, like @logout and
+ * @querystring: one question, one canonical answer, every adapter.
+ */
+describe('the ways in', () => {
+  it('asks the adapter for the sign-in options rather than relaying @login', async () => {
+    config.settings.useBridgeBackend = true;
+    const request = vi.fn().mockResolvedValue({ options: [] });
+    window.__hydraBridgeRpc = { request };
+    announceAdapter(['content', 'http-passthrough']);
+
+    await new Api().get('/@login');
+
+    expect(request).toHaveBeenCalledWith('auth.loginOptions', {});
+    expect(request).not.toHaveBeenCalledWith('http', expect.anything());
+  });
+
+  it('presses one by the id in the path', async () => {
+    config.settings.useBridgeBackend = true;
+    const request = vi.fn().mockResolvedValue({ token: 'tok' });
+    window.__hydraBridgeRpc = { request };
+    announceAdapter(['content', 'http-passthrough']);
+
+    await new Api().post('/@login-demo', { data: {} });
+
+    expect(request).toHaveBeenCalledWith('auth.loginWithOption', { id: 'demo' });
+  });
+
+  /**
+   * @login-renew is NOT one of these, and it is answered earlier — the admin
+   * holds no CMS credential to renew, so it is handed back the token it has.
+   * It only looks like an option id because of where Plone put the hyphen.
+   */
+  it('does not mistake a token renewal for a sign-in option', async () => {
+    config.settings.useBridgeBackend = true;
+    const request = vi.fn();
+    window.__hydraBridgeRpc = { request };
+    announceAdapter(['content', 'http-passthrough']);
+
+    await new Api().post('/@login-renew', { data: {} });
+
+    expect(request).not.toHaveBeenCalledWith(
+      'auth.loginWithOption',
+      expect.anything(),
+    );
+  });
+});
