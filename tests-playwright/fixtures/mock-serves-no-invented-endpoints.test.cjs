@@ -42,6 +42,9 @@ const DECLARED = {
   '@form-data': 'addon: collective.volto.formsupport (stored submissions)',
   '@export':
     'addon: plone.exportimport (our --markdown flavour extends it; see docs)',
+  '@login-demo':
+    'addon: plone.demoeditor — signs in as the demo editor with no password, ' +
+    'and is listed by core @login as one of the site\'s login providers',
   // Ours, implemented by the Plone addon in backend/.
   '@templates': 'ours: the templates feature — see backend/README.md',
   // Mock-only, and named so nobody mistakes it for an API.
