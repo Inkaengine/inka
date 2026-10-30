@@ -12,7 +12,7 @@ import {
   pickLinkTarget,
   returnToListing,
 } from './steps';
-import { PORTS } from '../ports';
+import { PORTS } from '../fixtures';
 
 /**
  * Nothing may reach the Plone API during a non-Plone run.

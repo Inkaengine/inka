@@ -11,9 +11,8 @@
  * A navItem's `label` is required and inline-editable, and a new one starts
  * empty: the exact case.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('save validation', () => {
   test('a required field typed on the canvas and saved at once is not refused', async ({

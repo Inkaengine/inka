@@ -5,9 +5,8 @@
  * and add/delete operations within containers.
  */
 import type { FrameLocator } from '@playwright/test';
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('Container Block Detection', () => {
   test('clicking nested block selects it', async ({ page }) => {

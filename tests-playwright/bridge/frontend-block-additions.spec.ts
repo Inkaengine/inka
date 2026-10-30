@@ -10,7 +10,7 @@
  * with only a schemaEnhancer (a warning about Heading 5).
  */
 import { test, expect } from './fixtures';
-import { URLS } from '../ports';
+import { URLS } from '../fixtures';
 
 const PAGE = '/_test_data/block-formats-page';
 

@@ -8,9 +8,8 @@
  * 4. Fixed edge blocks prevent insertion outside them
  * 5. Layouts can be switched while preserving content
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 import type { Page } from '@playwright/test';
 
 /**

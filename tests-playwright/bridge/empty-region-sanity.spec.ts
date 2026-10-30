@@ -22,10 +22,9 @@
  * Run with:
  *   DISCOVER_BLOCKS_API=<mock-api-url> pnpm exec playwright test empty-region-sanity
  */
-import { test as base, expect } from '../fixtures';
+import { test as base, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { getFrontendUrl } from './fixtures';
-import { URLS } from '../ports';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';

@@ -220,7 +220,9 @@ jobs:
           # the step is a `docker exec` whose pipe closes when it ends, and the
           # next line a server logs kills it with EPIPE. Log to a file instead.
           exec > "$RUNNER_TEMP/servers.log" 2>&1
-          node tests-playwright/fixtures/mock-api-server.cjs &
+          # Through the launcher, so PORT is set: the server requires it rather
+          # than defaulting to 8888, which is the whole point of the block.
+          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           # Every interface (--host): in the container `localhost` is both
           # 127.0.0.1 and ::1, a server bound to "localhost" takes one, and the
@@ -555,7 +557,9 @@ jobs:
           # the step is a `docker exec` whose pipe closes when it ends, and the
           # next line a server logs kills it with EPIPE. Log to a file instead.
           exec > "$RUNNER_TEMP/servers.log" 2>&1
-          node tests-playwright/fixtures/mock-api-server.cjs &
+          # Through the launcher, so PORT is set: the server requires it rather
+          # than defaulting to 8888, which is the whole point of the block.
+          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
@@ -676,7 +680,9 @@ jobs:
           # the step is a `docker exec` whose pipe closes when it ends, and the
           # next line a server logs kills it with EPIPE. Log to a file instead.
           exec > "$RUNNER_TEMP/servers.log" 2>&1
-          node tests-playwright/fixtures/mock-api-server.cjs &
+          # Through the launcher, so PORT is set: the server requires it rather
+          # than defaulting to 8888, which is the whole point of the block.
+          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
@@ -793,7 +799,9 @@ jobs:
           # the step is a `docker exec` whose pipe closes when it ends, and the
           # next line a server logs kills it with EPIPE. Log to a file instead.
           exec > "$RUNNER_TEMP/servers.log" 2>&1
-          node tests-playwright/fixtures/mock-api-server.cjs &
+          # Through the launcher, so PORT is set: the server requires it rather
+          # than defaulting to 8888, which is the whole point of the block.
+          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
           sleep 3
@@ -923,7 +931,9 @@ jobs:
           # the step is a `docker exec` whose pipe closes when it ends, and the
           # next line a server logs kills it with EPIPE. Log to a file instead.
           exec > "$RUNNER_TEMP/servers.log" 2>&1
-          node tests-playwright/fixtures/mock-api-server.cjs &
+          # Through the launcher, so PORT is set: the server requires it rather
+          # than defaulting to 8888, which is the whole point of the block.
+          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
@@ -1037,7 +1047,9 @@ jobs:
           # the step is a `docker exec` whose pipe closes when it ends, and the
           # next line a server logs kills it with EPIPE. Log to a file instead.
           exec > "$RUNNER_TEMP/servers.log" 2>&1
-          node tests-playwright/fixtures/mock-api-server.cjs &
+          # Through the launcher, so PORT is set: the server requires it rather
+          # than defaulting to 8888, which is the whole point of the block.
+          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/hydra-nextjs && pnpm run start:test &
           cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} npx vite --port ${{ env.HYDRA_F7_PORT }} --strictPort --config vite.config.test.mjs &

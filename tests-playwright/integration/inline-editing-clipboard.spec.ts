@@ -7,9 +7,8 @@
  * - paste rich text
  * - paste multi-paragraph rich text
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('Inline Editing - Clipboard', () => {
   test('can cut and paste plain text', async ({ page }) => {

@@ -24,9 +24,8 @@
  * exactly one of the two pastes would survive. Both pass only when
  * publicURL follows the active frontend.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, PORTS, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { PORTS, URLS } from '../ports';
 
 const FRONTEND_A_EDIT = `http://localhost:${PORTS.testFrontend}`;
 const FRONTEND_A_PUBLISH = 'http://www.published-a.example.test';

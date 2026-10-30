@@ -9,9 +9,8 @@
  *
  * TODO: Add test where the same template is inserted twice on a page
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('Fixed Editable Blocks', () => {
   test('fixed block without readOnly can be edited', async ({ page }) => {

@@ -5,7 +5,7 @@
  * the selection outline is updated to match the new dimensions.
  */
 import { test, expect } from './fixtures';
-import { URLS } from '../ports';
+import { URLS } from '../fixtures';
 
 test.describe('Block Resize Detection', () => {
   test('ResizeObserver updates overlay when block size changes', async ({ helper, page }) => {

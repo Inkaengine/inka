@@ -12,9 +12,8 @@
  * Note: Fixed template blocks get random UUIDs from template merge, so we find them by content.
  * User content blocks keep their original IDs from the page fixture.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 // Content strings to find fixed template blocks (they have random UUIDs after merge)
 const TEMPLATE_HEADER_CONTENT = 'Template Header - From Template';

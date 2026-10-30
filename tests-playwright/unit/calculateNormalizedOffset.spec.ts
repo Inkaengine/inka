@@ -3,9 +3,8 @@
  * Uses real browser Range API which jsdom cannot properly simulate
  */
 
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('calculateNormalizedOffset() - Vue whitespace handling', () => {
   let helper: AdminUIHelper;

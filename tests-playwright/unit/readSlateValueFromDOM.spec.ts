@@ -7,9 +7,8 @@
  *   expected  — the Slate JSON we expect readSlateValueFromDOM to produce
  */
 
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('Bridge.readSlateValueFromDOM()', () => {
   let helper: AdminUIHelper;

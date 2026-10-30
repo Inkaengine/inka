@@ -7,9 +7,8 @@
  * 3. Fixed template blocks cannot be edited or deleted
  * 4. Placeholder content remains fully editable
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('Templates', () => {
   test('template content is merged on page load', async ({ page }) => {

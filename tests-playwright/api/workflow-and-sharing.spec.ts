@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { URLS } from '../ports';
+import { URLS } from '../fixtures';
 
 /**
  * The endpoints the admin's Publishing and Sharing views read.

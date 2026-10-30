@@ -30,9 +30,8 @@
  * The heading touch (type+delete) returns the value to its original text but
  * marks the block dirty.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 // navigateToEdit prepends helper.contentPrefix ("/_test_data"), so the
 // path passed in must NOT already include it.

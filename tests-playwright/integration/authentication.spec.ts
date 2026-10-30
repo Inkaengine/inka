@@ -1,6 +1,5 @@
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('Authentication and Access Control', () => {
   test('signing in happens in the proxy frame, not the admin', async ({ page }) => {

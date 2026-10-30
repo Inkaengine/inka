@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { URLS } from '../ports';
+import { URLS } from '../fixtures';
 
 /**
  * @actions as a real Plone 6 site with plone.volto serves it to a Manager.

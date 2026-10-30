@@ -4,8 +4,7 @@
  * public site, the site's card as the image when the page has none of its own,
  * and the Inka mark as its icons.
  */
-import { test, expect } from '../fixtures';
-import { URLS } from '../ports';
+import { test, expect, URLS } from '../fixtures';
 
 const meta = (page, attr: string, name: string) =>
   page.locator(`head meta[${attr}="${name}"]`).getAttribute('content');

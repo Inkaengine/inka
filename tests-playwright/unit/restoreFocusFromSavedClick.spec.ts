@@ -8,9 +8,8 @@
  * when a sidebar edit to one field of a block (a question's options) re-rendered
  * the block while a click in another of its fields (its label) was saved.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('Bridge.restoreFocusFromSavedClick()', () => {
   let helper: AdminUIHelper;

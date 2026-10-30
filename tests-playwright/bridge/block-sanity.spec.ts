@@ -19,7 +19,7 @@
  *
  * Works against any Plone API — mock or remote.
  */
-import { test as base, expect } from '../fixtures';
+import { test as base, expect, URLS } from '../fixtures';
 import { AdminUIHelper, previewFrame } from '../helpers/AdminUIHelper';
 import { verifyBlockRendering, revealBlock } from '../helpers/BlockVerificationHelper';
 import { drainFieldCoverage } from '../helpers/field-coverage';
@@ -27,7 +27,6 @@ import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } 
 import { drainImageSizeCoverage } from '../helpers/imageSizes.mjs';
 import { axeCheckPage, formatViolations } from '../helpers/axe-sanity';
 import { getFrontendUrl, SANITY_PROJECTS } from './fixtures';
-import { URLS } from '../ports';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';

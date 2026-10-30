@@ -165,7 +165,17 @@ async function startStrapi(): Promise<void> {
     ],
     // Its own process group too, so teardown's stopGroup takes the Strapi
     // server rather than only the node that launched it.
-    { cwd: resolve(STRAPI_APP), stdio: 'pipe', detached: true },
+    {
+      cwd: resolve(STRAPI_APP),
+      stdio: 'pipe',
+      detached: true,
+      // TOLD its port. Strapi's own config is `port: env.int('PORT', 1337)`,
+      // and this harness used to wait on a hardcoded 1337 — so the two agreed
+      // by coincidence rather than because anyone passed it. The moment the
+      // port came from the block instead, Strapi kept starting on its default
+      // and the wait timed out against an address nothing was listening on.
+      env: { ...process.env, PORT: String(STRAPI_PORT) },
+    },
   );
   strapi.stderr?.on('data', (d) => process.stderr.write(`[strapi] ${d}`));
   strapi.stdout?.on('data', (d) => process.stderr.write(`[strapi] ${d}`));

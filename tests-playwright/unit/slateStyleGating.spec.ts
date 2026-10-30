@@ -4,9 +4,8 @@
  * keystroke before the admin ever sees it — rejecting them admin-side is too
  * late, so the bridge checks the rules that ride on its blockPathMap entry.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 const BLOCK = 'mock-block-1';
 

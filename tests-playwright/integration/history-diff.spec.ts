@@ -1,6 +1,5 @@
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 /**
  * History + the Inka compare view (volto-hydra#326/#327).

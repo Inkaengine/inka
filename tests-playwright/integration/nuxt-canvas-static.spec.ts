@@ -13,9 +13,8 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 
 import { extname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { AddressInfo } from 'node:net';
-import { test, expect } from '../fixtures';
+import { test, expect, PORTS, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { PORTS, URLS } from '../ports';
 
 const STARTER = new URL('../../examples/nuxt-blog-starter/', import.meta.url).pathname;
 const TYPES: Record<string, string> = {

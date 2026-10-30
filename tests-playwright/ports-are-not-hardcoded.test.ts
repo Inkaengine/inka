@@ -243,6 +243,46 @@ function offenders(): string[] {
   return found;
 }
 
+/**
+ * A spec takes its addresses from the fixtures base, never from ports.ts.
+ *
+ * The base hands a test its urls (`async ({ page, urls })`) and re-exports
+ * them for module scope, so there is nothing a spec needs the ports module
+ * for. Keeping that door shut is what stops the next suite deciding its own
+ * ports — which is how `const PORT = 8899` got into tests-adapters and stayed
+ * invisible, being a number no other check knew to look for.
+ */
+function specsImportingPorts(): string[] {
+  const files = execFileSync('git', ['ls-files', '*.spec.ts'], {
+    cwd: REPO,
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean);
+  return files.filter((file) =>
+    /from '(?:\.\.\/)+ports'/.test(readFileSync(path.join(REPO, file), 'utf8')),
+  );
+}
+
+/**
+ * These two read every tracked file in the repo, so their cost grows with it:
+ * about a second alone, and well past vitest's 5s default when the whole suite
+ * is running in parallel around them. Timed out rather than made faster
+ * because a guard that skips files to be quick is a guard with holes.
+ */
+const SCAN_TIMEOUT = 60_000;
+
+describe('a test is handed its urls', () => {
+  it('no spec imports the ports module', () => {
+    expect(
+      specsImportingPorts(),
+      "take `urls` from the test's arguments — `async ({ page, urls })` — or " +
+        'import URLS/PORTS from the fixtures base for module scope. A spec ' +
+        'should not have to know that ports are configurable at all.',
+    ).toEqual([]);
+  }, SCAN_TIMEOUT);
+});
+
 describe('no code names a port, and nothing defaults one', () => {
   it('every port comes from the environment, with no fallback', () => {
     expect(
@@ -253,7 +293,7 @@ describe('no code names a port, and nothing defaults one', () => {
         'address — a usage example, a stored fixture origin, a URL under test ' +
         '— add the file to ALLOWED in this test with the reason.',
     ).toEqual([]);
-  });
+  }, SCAN_TIMEOUT);
 
   /** The tokenizer is the part that decides whether this guard is bearable. */
   it('reads code, not prose', () => {

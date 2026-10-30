@@ -7,8 +7,7 @@
  * every page `no-store`, including the ones Volto marks itself (its not-found
  * page asks for `no-cache`, its error page for `public, max-age=60`).
  */
-import { test, expect } from '../fixtures';
-import { URLS } from '../ports';
+import { test, expect, URLS } from '../fixtures';
 
 test.describe('the editor\'s pages and a shared cache', () => {
   test('a page is no-store', async ({ request }) => {

@@ -3,9 +3,8 @@
  * Tests selection restoration after format operations
  */
 
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('Bridge.restoreSlateSelection()', () => {
   let helper: AdminUIHelper;

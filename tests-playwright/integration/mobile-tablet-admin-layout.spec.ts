@@ -21,8 +21,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { test, expect } from '../fixtures';
-import { URLS } from '../ports';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 // When CAPTURE_MOBILE_SCREENSHOTS=1, the four "snapshot" tests at the

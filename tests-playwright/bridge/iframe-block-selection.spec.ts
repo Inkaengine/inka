@@ -24,7 +24,7 @@
  */
 import type { Page } from '@playwright/test';
 import { test, expect, getFrontendUrl } from './fixtures';
-import { URLS } from '../ports';
+import { URLS } from '../fixtures';
 
 // Which frontend the mock parent frames.
 //

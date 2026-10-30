@@ -16,9 +16,8 @@
  * explicitly rather than the count alone, because a stale copy is only
  * recognisable by the text it carries.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 const PAGE = '/test-page';
 const BLOCK = 'block-1-uuid';

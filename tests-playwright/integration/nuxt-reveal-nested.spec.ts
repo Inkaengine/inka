@@ -1,6 +1,5 @@
-import { test, expect } from '../fixtures';
+import { test, expect, PORTS, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { PORTS, URLS } from '../ports';
 
 // Point the admin iframe at the Nuxt frontend: its accordion collapses panels
 // and renders nested blocks, which is what this case needs — the mock renders

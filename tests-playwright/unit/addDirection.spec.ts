@@ -12,9 +12,8 @@
  * tests pin the measured behaviour, and the fallback for when there is nothing
  * to measure.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('getAddDirection() — measured, not guessed', () => {
   let helper: AdminUIHelper;

@@ -29,10 +29,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { test, expect } from '../fixtures';
+import { test, expect, PORTS, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { glance, holdOn, readFor } from '../helpers/demoPacing';
-import { PORTS, URLS } from '../ports';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_PATH = '/demo-video-page';

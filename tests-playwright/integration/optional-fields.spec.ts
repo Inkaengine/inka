@@ -1,6 +1,5 @@
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 /**
  * Issue #296 — "empty means absent" for optional block fields.

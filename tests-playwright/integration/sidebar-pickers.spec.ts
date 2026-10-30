@@ -12,9 +12,8 @@
  * A form is the case that exercises it: its questions are object_list ITEMS, so
  * a widget on one has to know which item it is inside.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 /** The form fixture's questions, in the order the page holds them. */
 const FIRST_QUESTION = 'field-name';

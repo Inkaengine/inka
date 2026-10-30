@@ -13,9 +13,8 @@
  * That gap made every mock-parent-driven test — block sanity above all — assert
  * against a data model the real editor never has. These tests pin the fidelity.
  */
-import { test as base, expect } from '../fixtures';
+import { test as base, expect, URLS } from '../fixtures';
 import { AdminUIHelper, previewFrame } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 const test = base.extend<{ helper: AdminUIHelper }>({
   helper: async ({ page }, use) => {

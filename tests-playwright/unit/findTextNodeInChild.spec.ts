@@ -3,9 +3,8 @@
  * Tests finding text nodes in children while skipping Vue artifact nodes
  */
 
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('findTextNodeInChild() - Vue empty text node handling', () => {
   let helper: AdminUIHelper;

@@ -6,9 +6,8 @@
  * - FieldMappingWidget: mapping source fields to target block fields
  * - Block sync: inheriting non-mapped fields from referenced type
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('Block Sync - Listing Block Item Type', () => {
   test('listing block shows variation selector in sidebar', async ({ page }) => {

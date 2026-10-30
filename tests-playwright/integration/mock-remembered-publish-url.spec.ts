@@ -11,9 +11,8 @@
  * Both addresses serve the test frontend, as different origins, so the old one
  * would load too: the test tells them apart by the iframe's address.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, PORTS, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { PORTS, URLS } from '../ports';
 
 const EDIT = `http://localhost:${PORTS.testFrontend}`;
 const PUBLISH = `http://127.0.0.1:${PORTS.testFrontend}`;

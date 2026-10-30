@@ -1,7 +1,6 @@
-import { test, expect } from '../fixtures';
+import { test, expect, PORTS, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { TEST_DATA_PREFIX } from '../helpers/test-paths';
-import { PORTS, URLS } from '../ports';
 
 test.describe('Navigation and URL Handling', () => {
   test('External URLs do not load in iframe', async ({ page }, testInfo) => {

@@ -5,9 +5,8 @@
  * Each test sets innerHTML on the mock block, places cursor, replays keys
  * via the real bridge code, and checks the result.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 /**
  * Set up DOM, place cursor, replay keys, return { text, textBefore }.
