@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { mergeTemplatesIntoPage } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
 
 const load = (p) => JSON.parse(fs.readFileSync(path.resolve(process.cwd(), '..', '..', p), 'utf-8'));
 
@@ -48,9 +48,7 @@ describe('REPRO: converted field nested in a NEW column survives the reverse mer
     cols.blocks_layout.columns = [...cols.blocks_layout.columns, 'add-col'];
 
     // 3. Reverse merge (exit/save) into the template.
-    const { merged: saved } = await mergeTemplatesIntoPage(template, {
-      loadTemplate: async () => home, filterInstanceId: iid, uuidGenerator, idFieldMap,
-    });
+    const { merged: saved } = await mergeInstanceIntoTemplate(template, home, iid, { uuidGenerator, idFieldMap });
 
     // 4. The captured nested form's field must be 'from'.
     const savedCols = findCols(saved);
