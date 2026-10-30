@@ -412,9 +412,13 @@ describe('image blocks', () => {
     const data = await res.json();
     const block = data.blocks['image-1'];
 
+    // `url` is the list its widget saves -- the image block declares
+    // `widget: 'image'` -- so the resolved path is the entry's `@id`.
+    assert.ok(Array.isArray(block.url), `image block url must be a reference list, got ${JSON.stringify(block.url)}`);
+    const resolved = block.url[0]['@id'];
     assert.ok(
-      block.url.endsWith('/_test_data/images/test-image-1'),
-      `resolveuid should resolve to the image object, got ${block.url}`,
+      resolved.endsWith('/_test_data/images/test-image-1'),
+      `resolveuid should resolve to the image object, got ${resolved}`,
     );
     assert.ok(block.image_scales, 'image block must carry image_scales');
 
