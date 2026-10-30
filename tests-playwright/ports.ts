@@ -79,11 +79,11 @@ const OFFSET = {
   svelteDoc: 7,
   vueDoc: 8,
   nextjs: 9,
-  f7: 14,
-  astroDoc: 10,
-  vanillaDoc: 11,
-  svelteQs: 12,
-  astroQs: 13,
+  f7: 10,
+  astroDoc: 11,
+  vanillaDoc: 12,
+  svelteQs: 13,
+  astroQs: 14,
 } as const;
 
 export type PortName = keyof typeof OFFSET;
@@ -175,14 +175,7 @@ export const PORTS = {
  */
 export const URLS = {
   mockApi: `http://localhost:${PORTS.mockApi}`,
-  // 127.0.0.1, not localhost.
-  //
-  // WordPress refuses `localhost` as an application-password success_url — its
-  // SSRF guard rejects the host, and authorize-application.php 500s rather than
-  // declining cleanly. The sign-in flow redirects back to this origin, so the
-  // frontend has to be addressed as something the CMS will accept. The CMS
-  // mocks already use 127.0.0.1, so this is also the more consistent choice.
-  testFrontend: `http://127.0.0.1:${PORTS.testFrontend}`,
+  testFrontend: `http://localhost:${PORTS.testFrontend}`,
   mockParent: `http://localhost:${PORTS.mockParent}`,
   voltoSsr: `http://localhost:${PORTS.voltoSsr}`,
   voltoWebpack: `http://localhost:${PORTS.voltoWebpack}`,
