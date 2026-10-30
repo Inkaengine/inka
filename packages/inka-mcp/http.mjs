@@ -20,7 +20,9 @@
  *                        of your own, `await main(process.env, { makeStore })`,
  *                        where makeStore(env) returns the store codes.mjs
  *                        storedCodes describes)
- *   INKA_MCP_POOL_SIZE   how many admin pages to share (how many calls at once)
+ *   INKA_MCP_POOL_SIZE   at most how many admin pages to share (how many calls at
+ *                        once); the pool holds as many as fit in the memory the
+ *                        server may use, up to this (poolSize.mjs)
  *   INKA_MCP_PAGE_IDLE_SECONDS  how long a page may sit unused before it is
  *                        loaded afresh (the admin may have been redeployed)
  *   PORT                 the port to listen on
@@ -52,6 +54,7 @@ import { oauthProvider } from './oauth.mjs';
 import { sealer } from './sealed.mjs';
 import { localCodes, storedCodes, sealedCodes, instanceOfCode } from './codes.mjs';
 import { renewThrough } from './signIn.mjs';
+import { memoryLimit, poolSize as poolSizeFor } from './poolSize.mjs';
 
 /** A form post's fields (the connect page posts application/x-www-form-urlencoded). */
 async function formFields(req) {
@@ -274,7 +277,10 @@ export async function codesFrom(env, secret, { makeStore, route } = {}) {
  * store of its own starts it from an entry of its own, passing `makeStore`.
  */
 export async function main(env, { makeStore, route } = {}) {
-  const poolSize = Number(required(env, 'INKA_MCP_POOL_SIZE'));
+  const atMost = Number(required(env, 'INKA_MCP_POOL_SIZE'));
+  const memory = memoryLimit();
+  const { size: poolSize, fits } = poolSizeFor({ memory, atMost });
+  console.log(`pool: ${poolSize} admin pages (${Math.round(memory / 1048576)} MB fits ${fits}; INKA_MCP_POOL_SIZE ${atMost})`);
   const secret = required(env, 'INKA_MCP_SECRET');
   const { app, close } = hostedServer({
     adminUrl: required(env, 'INKA_ADMIN_URL'),
