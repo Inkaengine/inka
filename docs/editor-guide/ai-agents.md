@@ -37,9 +37,12 @@ An AI assistant such as Claude can read and edit the site's pages for you. It wo
 
 The assistant connects to the site through MCP (the Model Context Protocol), which most AI assistants support.
 
-## Connecting your assistant
+## Setting it up
 
-Your site's team gives you its MCP address, which ends in `/mcp`. Add it to your assistant as a custom connector or MCP server. In Claude Code, for example:
+Your site's team gives you its MCP address, which ends in `/mcp`. You add it to your assistant once.
+
+- **Claude (on the web or the desktop app):** in **Settings**, open **Connectors**, choose **Add custom connector**, and paste the address. Your plan must allow custom connectors.
+- **Claude Code:** run this, with your site's address:
 
 ### Shell
 
@@ -47,7 +50,9 @@ Your site's team gives you its MCP address, which ends in `/mcp`. Add it to your
 claude mcp add --transport http inka https://mcp.example.org/mcp
 ```
 
-The first time the assistant uses it, your browser opens the site's sign-in. Sign in as you always do, then choose **Allow** on the page that asks whether to connect the assistant. From then on the assistant works as you until you sign out or the sign-in runs out, when it asks you again.
+- **Another assistant:** add the address wherever it lets you add an MCP server or connector that is reached by URL.
+
+The first time the assistant uses it, your browser opens the site's sign-in. Sign in as you always do, then choose **Allow** on the page that asks whether to connect the assistant. From then on the assistant works as you, until you sign out or the sign-in runs out, when it asks you again.
 
 ## Running it on your own computer
 
@@ -71,6 +76,26 @@ The first call opens your browser to sign in, as above. The sign-in is kept in `
 - Change a template's locked blocks on every page that uses it, but only when you ask for that.
 
 It learns what each kind of block is for from the site itself: the description and guidance the site's developers gave it, examples of it, and pages that already use it.
+
+## What you can ask it
+
+Ask in your own words, naming pages by their title or where they are on the site. Some examples:
+
+- **Find things:** "Which pages mention our opening hours?" or "List the pages in the News section that are still private."
+- **Read and check:** "Read the About page and tell me what's out of date." or "Show me the Pricing page as a visitor sees it."
+- **Change a page:** "On the Contact page, add a tip after the first paragraph saying we reply within two days."
+- **Rework a page:** "Rewrite the summary of the Events page to under 30 words, and put the opening hours in a table."
+- **Try a layout:** "Show me two ways to lay out the Services page with what's on it now, then build the one I choose."
+- **Make a page:** "Create a page in News called 'Spring opening', with a heading, a short introduction and a link to the Events page."
+- **Tidy the site:** "Move the old Press page into the About section and rename it 'Media'."
+- **Learn the blocks:** "Which block should I use for a list of steps? Show me an example of it."
+- **Change a template:** "Change the footer's copyright line on every page." It changes a template's locked blocks only when you ask, and says which templates it changed; every page using them changes too.
+
+A few things help:
+
+- Ask it to show you a change before it saves. Its preview is drawn by the site itself, as visitors would see it.
+- Say what not to touch, such as "leave the headings as they are".
+- It can't publish. Publish its pages yourself, through your site's usual workflow.
 
 ## The same rules as you
 
