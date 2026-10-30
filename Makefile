@@ -205,7 +205,7 @@ docs-live: ## Start live-reloading documentation server
 # neither a base nor a value of its own is a hard failure, because the
 # historical numbers are shared with every other hydra checkout on the machine.
 #
-# This used to be nineteen `export HYDRA_*_PORT ?=` lines, with a comment
+# This used to be one `export HYDRA_*_PORT ?=` line per port, with a comment
 # saying "this target IS the canonical block; keep it aligned with
 # .github/workflows/test.yaml" — two hand-synced copies of one list, which is
 # how a checkout ends up with its mock API in one block and its frontends in

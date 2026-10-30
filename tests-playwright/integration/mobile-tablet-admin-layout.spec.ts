@@ -786,7 +786,7 @@ test.describe('Admin layout — mobile (≤767px)', () => {
   });
 
   test('view mode: every bottom-toolbar icon is vertically centred in the bar', async ({
-    page,
+    page, urls,
   }) => {
     // The bar is 44px tall, but its <a>/<button> children are `display: block`
     // (align-items has no effect), so a 22px icon sits at padding-top:6px —

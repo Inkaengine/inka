@@ -101,12 +101,17 @@ describe('what still has to be said explicitly', () => {
    * kept up between runs — and for a consuming repo that still exports the
    * whole list, which must keep working.
    */
-  it('lets a single port be overridden, base or no base', async () => {
+  it('lets a single port be overridden, and leaves the rest derived', async () => {
+    // The OTHER port is compared against what the base alone gives it, not
+    // against a number written here: an offset is an implementation detail,
+    // and pinning one in a test is the same coupling this file removes.
     process.env.HYDRA_PORT_BASE = '8980';
+    const derived = (await load()).PORTS.testFrontend;
+
     process.env.HYDRA_MOCK_API_PORT = '9123';
     const { PORTS } = await load();
     expect(PORTS.mockApi).toBe(9123);
-    expect(PORTS.testFrontend).toBe(8984);
+    expect(PORTS.testFrontend).toBe(derived);
   });
 
   it('rejects a base that is not a port', async () => {

@@ -10,7 +10,6 @@ effective: 2023-07-06T18:35:00
 exclude_from_nav: false
 expires: null
 id: video
-is_folderish: true
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null

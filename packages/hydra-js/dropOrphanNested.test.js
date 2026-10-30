@@ -39,7 +39,7 @@ describe('expandTemplatesSync — a template sub-block without templateId is dro
     });
     const cols = out.find((b) => b['@type'] === 'columns');
     expect(cols).toBeDefined();
-    // Nested ids are instance-scoped (`${instanceId}::good`), so assert structurally:
+    // Nested ids are minted from the instance, so assert structurally:
     // exactly one child survives, it's the good one (kept, not invented), orphan gone.
     expect(cols.blocks_layout.items).toHaveLength(1);
     const kept = cols.blocks[cols.blocks_layout.items[0]];

@@ -10,7 +10,6 @@ effective: 2023-09-22T16:09:00
 exclude_from_nav: false
 expires: null
 id: content-types
-is_folderish: true
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null

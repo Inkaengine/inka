@@ -14,7 +14,6 @@ effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
 id: templates-and-layouts
-is_folderish: false
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null
@@ -143,7 +142,7 @@ Unlocking one template unlocks only *that* template. The rest of the page stays 
 
 **Locking is where your template edits commit.** When you lock a template you choose:
 
-- **Change on all pages** — save your edits to the template; every page using it picks them up.
+- **Change on all pages** — save your edits to the template's locked blocks; every page using it picks them up. What you write in its editable blocks and its slots stays this page's.
 - **Reset changes** — discard the edits and revert the template to its saved version. Only the template reverts; any page content you edited while it was unlocked stays.
 - **Cancel** — keep editing (stay unlocked).
 

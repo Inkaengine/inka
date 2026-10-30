@@ -36,9 +36,10 @@
  * how astro once served a port the harness was not waiting on.
  *
  * That guard could only flag numbers that appeared in the workflow's env block,
- * so it was blind to any literal outside the current block: 8899, 1337, 8793
- * and 8791 sat in tests-adapters for as long as they did because no check knew
- * to look for them. This one does not care what the number is.
+ * so it was blind to any literal outside the current block. A suite that set
+ * its own ports — 8899, 1337, 8793, 8791 — was invisible to it by
+ * construction, because no check knew those numbers existed. This one does not
+ * care what the number is.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -303,8 +304,8 @@ function offenders(): string[] {
  * The base hands a test its urls (`async ({ page, urls })`) and re-exports
  * them for module scope, so there is nothing a spec needs the ports module
  * for. Keeping that door shut is what stops the next suite deciding its own
- * ports — which is how `const PORT = 8899` got into tests-adapters and stayed
- * invisible, being a number no other check knew to look for.
+ * ports — which is how a `const PORT = 8899` survives: a number no other check
+ * knows to look for, in a file nothing else thinks to scan.
  */
 function specsImportingPorts(): string[] {
   const files = execFileSync('git', ['ls-files', '*.spec.ts'], {

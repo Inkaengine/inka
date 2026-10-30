@@ -94,7 +94,7 @@ test('collectContentFromTree still captures a fixed slot in a blocks_layout cont
 
   expect(existingFixedBlockIds.has('heading')).toBe(true);
   expect(
-    existingFixedBlockIds.get('heading').block.value[0].children[0].text,
+    existingFixedBlockIds.get('heading')[0].block.value[0].children[0].text,
   ).toBe('branded heading');
 });
 

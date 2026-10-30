@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { mergeTemplatesIntoPage } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
 
 const load = (p) => JSON.parse(fs.readFileSync(path.resolve(process.cwd(), '..', '..', p), 'utf-8'));
 const textOf = (b) =>
@@ -12,7 +12,7 @@ const textOf = (b) =>
  * which a minimal header+slot fixture doesn't exercise):
  *   1. apply the template to page 1 (load)
  *   2. edit the fixed+readOnly header (template edit mode)
- *   3. SAVE: reverse-merge (filterInstanceId) the edited page back into the template
+ *   3. SAVE: reverse merge (mergeInstanceIntoTemplate) the edited page back into the template
  *   4. VIEW page 2: forward-merge the UPDATED template — the edit must appear.
  */
 test('template edit propagates to another page — real fixtures (integration :866)', async () => {
@@ -38,11 +38,7 @@ test('template edit propagates to another page — real fixtures (integration :8
   header1.plaintext = 'Template Header - EDITED';
 
   // 3. SAVE: reverse-merge the edited instance back into the template (View.jsx path).
-  const { merged: updatedTemplate } = await mergeTemplatesIntoPage(template, {
-    loadTemplate: async () => applied1,
-    filterInstanceId: instanceId,
-    uuidGenerator,
-  });
+  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, applied1, instanceId, { uuidGenerator });
   const tplHeader = Object.values(updatedTemplate.blocks).find((b) => b.slotId === 'header' && b.fixed);
   expect(textOf(tplHeader)).toContain('EDITED'); // captured into the template
 
@@ -118,9 +114,7 @@ test('a form added inside a NEW column propagates to another page (footer column
   cols.blocks_layout.columns = [...cols.blocks_layout.columns, 'add-col'];
 
   // 3. SAVE: reverse-merge the edited home back into the template.
-  const { merged: saved } = await mergeTemplatesIntoPage(template, {
-    loadTemplate: async () => home, filterInstanceId: iid, uuidGenerator,
-  });
+  const { merged: saved } = await mergeInstanceIntoTemplate(template, home, iid, { uuidGenerator });
   expect(hasForm(findCols(saved))).toBe(true); // reverse merge must capture the form
 
   // 4. VIEW another page: forward-merge the updated template — the form must appear.
@@ -168,9 +162,7 @@ test('an empty slot added inside a NEW column propagates as a slot definition', 
   cols.blocks_layout.columns = [...cols.blocks_layout.columns, 'add-col'];
 
   // SAVE: the slot definition must be captured (not dropped).
-  const { merged: saved } = await mergeTemplatesIntoPage(template, {
-    loadTemplate: async () => home, filterInstanceId: iid, uuidGenerator,
-  });
+  const { merged: saved } = await mergeInstanceIntoTemplate(template, home, iid, { uuidGenerator });
   expect(hasSlot(findCols(saved))).toBe(true);
 
   // VIEW another page: the slot appears (empty, fillable by that page's users).
@@ -214,9 +206,7 @@ test('a fixed block wrongly placed inside a slot does not propagate (definition 
   };
   cols.blocks_layout.columns = [...cols.blocks_layout.columns, 'bad-slot'];
 
-  const { merged: saved } = await mergeTemplatesIntoPage(template, {
-    loadTemplate: async () => home, filterInstanceId: iid, uuidGenerator,
-  });
+  const { merged: saved } = await mergeInstanceIntoTemplate(template, home, iid, { uuidGenerator });
 
   const savedCols = findCols(saved);
   // The slot definition survives...

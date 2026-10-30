@@ -11,7 +11,6 @@ description: Inka's admin holds no CMS credentials. Your frontend picks the
 effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
-is_folderish: true
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null

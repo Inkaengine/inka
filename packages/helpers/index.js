@@ -1933,28 +1933,39 @@ function generateUUID() {
 }
 
 /**
- * Deterministic UUID-format id derived from a seed string: the same seed always
- * yields the same id. Used to mint a template instance id from a stable data key
- * (the region's first block id) so a server render and the client hydration agree
- * on `${instanceId}::${tplChildId}` block uids — a random id would differ between
- * the two passes and trigger a React hydration mismatch (and, because that id is
- * the block's edit identity, confuse block selection). xfnv1a hash → mulberry32
- * PRNG, so it's pure/deterministic (no Math.random, no crypto).
+ * Deterministic UUID derived from a seed string: the same seed always yields the
+ * same id, and different seeds different ids. Used where an id must come out the
+ * same each time it is minted: a template instance id from a stable data key (so a
+ * server render and the client hydration agree), and a template block's uid in an
+ * instance (mintChildBlockId). The seed is hashed to 128 bits (cyrb128: four
+ * 32-bit lanes), which fill the UUID, so it is as unique as a random one; pure and
+ * synchronous, for every renderer (no Math.random, no crypto).
  * @param {string} seed
  * @returns {string} UUID v4 format string
  */
-function deterministicUUID(seed) {
-  let h = 2166136261 >>> 0;
+export function deterministicUUID(seed) {
+  let h1 = 1779033703;
+  let h2 = 3144134277;
+  let h3 = 1013904242;
+  let h4 = 2773480762;
   for (let i = 0; i < seed.length; i++) {
-    h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+    const k = seed.charCodeAt(i);
+    h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+    h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+    h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+    h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
   }
-  const rand = () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  return uuidFromRand(rand);
+  h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+  h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+  h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+  h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+  h1 ^= h2 ^ h3 ^ h4;
+  h2 ^= h1;
+  h3 ^= h1;
+  h4 ^= h1;
+  const hex = [h1, h2, h3, h4].map((h) => (h >>> 0).toString(16).padStart(8, '0')).join('');
+  const variant = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 /**
@@ -3850,6 +3861,10 @@ export function collectNestedAuthorContent(block, pendingContent, visited = new 
  * Handles arbitrary nesting - looks for blocks maps (values have @type)
  * and corresponding layout arrays.
  *
+ * The first rule of docs/frontend-guide/templates.md "How the Merge Works": the
+ * target's blocks of this instance, by slot — its fixed blocks (for their ids and
+ * edited fields) and its slot content. The section lists the rest.
+ *
  * @param {Object} container - Container object to scan
  * @param {string} instanceId - Template instance ID to match
  * @param {Map} pendingContent - Map of slotId -> [{blockId, block}]
@@ -3892,7 +3907,7 @@ export function collectContentFromTree(
       if (slotId) {
         if (block.fixed) {
           // Track existing fixed block ID and content for reuse
-          existingFixedBlockIds.set(slotId, { blockId, block });
+          addFixedBlock(existingFixedBlockIds, slotId, { blockId, block });
         } else {
           // User content block: the page's, taken WHOLE into its slot
           // (docs/frontend-guide/templates.md "How the Merge Works", step 2) — its
@@ -3905,7 +3920,14 @@ export function collectContentFromTree(
         }
       }
     } else if (!block.templateId && !block.slotId) {
-      // Standalone block (no template markers) - track position
+      // In a region of this instance's own block, a block with no template marks is
+      // the page's content of that region's slot, taken whole, as at the page's
+      // own level. Elsewhere it is standalone page content: track its position.
+      if (regionSlotId) {
+        if (!pendingContent.has(regionSlotId)) pendingContent.set(regionSlotId, []);
+        pendingContent.get(regionSlotId).push({ blockId, block });
+        return;
+      }
       standaloneBlocks.push({ blockId, block });
     }
     // Recurse into block for nested containers
@@ -3955,26 +3977,6 @@ export function collectContentFromTree(
 }
 
 /**
- * Fill ONE region's ordered template blocks — the SAME logic for a blocks_layout
- * region and an object_list array (they are one concept: an ordered list of blocks,
- * differing only in storage). Drops orphans (no templateId — never invents one), keeps
- * fixed blocks (preserving the template id, or the page's id+value when the page
- * overrode an editable one), replaces slot placeholders with the page's content from
- * the shared ctx (consumed so it isn't reused), and recurses into nested containers.
- * Returns filled [{ id, block }] in order.
- */
-/**
- * THE single policy for a template child's block id. Deterministic by default
- * (`${instanceId}::${tplChildId}` — stable across a server render and the
- * client hydration, and instance-scoped so two instances of one template
- * never collide); a caller-provided generator wins only where the caller
- * genuinely needs one-off ids (e.g. snippet insertion into a page).
- */
-function mintChildBlockId(instanceId, tplChildId, uuidGenerator) {
-  return uuidGenerator ? uuidGenerator() : `${instanceId}::${tplChildId}`;
-}
-
-/**
  * The fields an EDITABLE block carries back from the page.
  *
  * A fixed block that is not readOnly belongs to the page: the author can change
@@ -4004,6 +4006,8 @@ const TEMPLATE_OWNED_FIELDS = new Set([
   'blocks',
   'blocks_layout',
   'nextSlotId',
+  'prevSlotId',
+  'childSlotIds',
   'fieldPlaceholders',
 ]);
 
@@ -4015,139 +4019,221 @@ function editedFieldsOf(block) {
   return out;
 }
 
-function fillRegionEntries(entries, templateState, options) {
-  const { instanceId, templateId } = templateState;
-  const ctx = templateState.instances?.[instanceId];
-  const { uuidGenerator, firstInsert } = options;
-  const out = [];
-  for (let idx = 0; idx < entries.length; idx++) {
-    const { id: tplChildId, block: child } = entries[idx];
-    if (!child || !child.templateId) continue; // orphan / missing → drop
+// The target's fixed blocks, by slot, in document order. Two fixed blocks may share a
+// slot name (a slider's slides), so each slot holds a queue: the template's Nth block
+// in a slot is the target's Nth.
+function addFixedBlock(existingFixedBlockIds, slotId, entry) {
+  if (!existingFixedBlockIds.has(slotId)) existingFixedBlockIds.set(slotId, []);
+  existingFixedBlockIds.get(slotId).push(entry);
+}
 
-    if (child.fixed) {
-      const editable = !child.readOnly && !!child.slotId;
-      const existingFixed = editable
-        ? ctx?.existingFixedBlockIds?.get(child.slotId)
-        : undefined;
-      // Instance-scope the id so two instances of the same template don't reuse the
-      // template's child id and collide in the blockPathMap (snippet insertion already
-      // re-ids nested blocks; the forced-layout apply must too). Kept DETERMINISTIC
-      // (`${instanceId}::${tplChildId}`, not uuidGenerator) so the id is stable across
-      // re-renders and preserves the template child id as a suffix. Editable fixed blocks
-      // reuse the page's own (already-unique) id when the page overrode them.
-      const outId = existingFixed?.blockId || `${instanceId}::${tplChildId}`;
-      // Look ahead for the next non-fixed slot in this region (add-path hint).
-      let nextSlotId = undefined;
-      for (let i = idx + 1; i < entries.length; i++) {
-        const nb = entries[i].block;
-        if (nb && !nb.fixed && nb.slotId) {
-          nextSlotId = nb.slotId;
-          break;
-        }
-        if (nb?.fixed) break;
-      }
-      const stamped = {
-        ...child,
-        templateInstanceId: instanceId,
-        ...(existingFixed?.block ? editedFieldsOf(existingFixed.block) : {}),
-        ...(nextSlotId && { nextSlotId }),
-      };
-      if (firstInsert && editable) {
-        const placeholders = extractFieldPlaceholders(child);
-        if (Object.keys(placeholders).length > 0)
-          stamped.fieldPlaceholders = placeholders;
-      }
-      fillContainerInto(stamped, child, templateState, options);
-      out.push({ id: outId, block: stamped });
-    } else if (child.slotId) {
-      const slotId = child.slotId;
-      const userContent = ctx?.pendingContent?.get(slotId);
-      if (userContent && userContent.length > 0) {
-        ctx.pendingContent.delete(slotId);
-        for (let u = 0; u < userContent.length; u++) {
-          const { blockId, block } = userContent[u];
-          // A nested template reference (a snippet, a template-owned form,
-          // a page built on a multi-block template) keeps its own marks and is
-          // EXPANDED here, in the same pass, by this same routine: the admin
-          // merges once and the editor frame does not expand again, so left as
-          // a reference it showed no content while editing. A run of blocks of
-          // ONE nested instance is expanded together — one at a time, each saw
-          // a single block of its template, and lost the fixed blocks between
-          // its slots. The shared state's current template/instance are the
-          // layout's, so they are restored after.
-          const nested =
-            block.templateId &&
-            block.templateInstanceId &&
-            !templateIdsMatch(block.templateId, templateId);
-          if (nested) {
-            const run = { [blockId]: block };
-            const runIds = [blockId];
-            while (
-              u + 1 < userContent.length &&
-              userContent[u + 1].block.templateInstanceId === block.templateInstanceId
-            ) {
-              u += 1;
-              run[userContent[u].blockId] = userContent[u].block;
-              runIds.push(userContent[u].blockId);
-            }
-            const outer = {
-              instanceId: templateState.instanceId,
-              templateId: templateState.templateId,
-            };
-            const expanded = expandTemplatesSync(runIds, {
-              ...options,
-              blocks: run,
-              templateState,
-              allowedLayouts: undefined,
-              filterInstanceId: undefined,
-              idField: undefined,
-            });
-            templateState.instanceId = outer.instanceId;
-            templateState.templateId = outer.templateId;
-            for (const { '@uid': id, ...expandedBlock } of expanded) {
-              out.push({ id, block: expandedBlock });
-            }
-            continue;
-          }
-          out.push({
-            id: blockId,
-            block: nested
-              ? block
-              : {
-                  ...block,
-                  templateId,
-                  templateInstanceId: instanceId,
-                  slotId,
-                },
-          });
-        }
-      } else {
-        // No page content matches this slot. Emit the slot itself instead of dropping it —
-        // a slot whose slotId matches no page content is a slot DEFINITION (e.g. one the
-        // author just added to the template), not a filled slot, so it must survive and be
-        // captured by the reverse merge. Emit the DEFINITION only — strip any nested content
-        // (a slot's contents are per-page user content, never template content; a fixed
-        // block placed inside a slot is malformed and must not ride along). Field
-        // placeholders only matter on first insert.
-        const nid = mintChildBlockId(instanceId, tplChildId, uuidGenerator);
-        const {
-          blocks: _slotBlocks,
-          blocks_layout: _slotLayout,
-          ...childDef
-        } = child;
-        const nb = { ...childDef, templateInstanceId: instanceId };
-        if (firstInsert) {
-          const placeholders = extractFieldPlaceholders(child);
-          if (Object.keys(placeholders).length > 0)
-            nb.fieldPlaceholders = placeholders;
-        }
-        out.push({ id: nid, block: nb });
-      }
-    }
+function takeFixedBlock(existingFixedBlockIds, slotId) {
+  return slotId ? existingFixedBlockIds?.get(slotId)?.shift() : undefined;
+}
+
+/**
+ * THE single policy for the uid of a template block new to the target: a UUID
+ * derived from its instance and the template's block id. A real uid, unique to
+ * the instance, and the same each time it is minted: a page that hasn't stored a
+ * template block yet gets the same uid for it on every load (an agent reads it in
+ * one call and edits it in the next), and a server render and the client
+ * hydration agree on it.
+ */
+function mintChildBlockId(instanceId, tplChildId) {
+  return deterministicUUID(`${instanceId}::${tplChildId}`);
+}
+
+// The block, and its descendants that `own` picks, marked as `instanceId`'s.
+function markInstance(block, own, instanceId, idFieldMap) {
+  if (!own(block)) return block;
+  const out = { ...block, templateInstanceId: instanceId, ...(block.blocks && { blocks: { ...block.blocks } }) };
+  for (const field of getChildFields(block, idFieldMap, { templateChildren: true })) {
+    setChildBlockEntries(
+      out,
+      field,
+      getChildBlockEntries(block, field).map(({ id, block: child }) => ({
+        id,
+        block: markInstance(child, own, instanceId, idFieldMap),
+      })),
+    );
   }
   return out;
 }
 
+// The names of a template's slots, fixed ones included, at every depth.
+function templateSlotIds(template, idFieldMap) {
+  const slots = new Set();
+  const visit = (container) => {
+    for (const field of getChildFields(container, idFieldMap, { templateChildren: true })) {
+      for (const { block } of getChildBlockEntries(container, field)) {
+        if (!block?.templateId) continue;
+        slots.add(block.slotId || 'default');
+        visit(block);
+      }
+    }
+  };
+  visit(template);
+  return slots;
+}
+
+/**
+ * Fill ONE region of a template: the page's regions and every region inside a block,
+ * blocks_layout and object_list alike, go through here. The rules
+ * (docs/frontend-guide/templates.md "How the Merge Works") are the same wherever a
+ * region sits, and in both directions: a page merged with its template, and a page's
+ * instance merged into its template ("Change on all pages").
+ *
+ * - A fixed block takes the id the target already has for it (the next one in its
+ *   slot), else a new one for this instance. An editable one keeps the target's fields.
+ * - A slot is filled with the target's content for it, taken whole; a slot the target
+ *   has nothing for is the template's slot block. One slot is one run, however many
+ *   of the source's blocks it holds.
+ * - Content whose slot the template doesn't have goes to the slot chosen for it
+ *   (ctx.leftoverSlotId), else it is dropped.
+ *
+ * Each rule is checked in every kind of region and both directions by
+ * packages/volto-hydra/src/utils/mergeTemplates.rules.test.js: a new case is a row there.
+ */
+function fillRegionEntries(entries, templateState, options) {
+  const { instanceId, templateId } = templateState;
+  const ctx = templateState.instances?.[instanceId];
+  const { firstInsert } = options;
+  const out = [];
+  const slotOf = (block) => (block && !block.fixed ? block.slotId || 'default' : null);
+  for (let idx = 0; idx < entries.length; idx++) {
+    const { id: tplChildId, block: child } = entries[idx];
+    if (!child || !child.templateId) continue; // not the template's: malformed, dropped
+
+    if (child.fixed) {
+      const editable = !child.readOnly && !!child.slotId;
+      const existingFixed = takeFixedBlock(ctx?.existingFixedBlockIds, child.slotId);
+      const outId = existingFixed?.blockId || mintChildBlockId(instanceId, tplChildId);
+      if (child.blocks && isBlocksMap(child.blocks) && !hasNestedBlocksLayout(child)) {
+        throw new Error(
+          `expandTemplatesSync: template block "${tplChildId}" has nested ` +
+            `\`blocks\` but no \`blocks_layout\` dict listing them by region.`,
+        );
+      }
+      // Hints for the editor's add rules: the slot after this block and before it,
+      // up to the next fixed block, so an empty slot can still be joined.
+      let nextSlotId;
+      for (let i = idx + 1; i < entries.length && !entries[i].block?.fixed; i++) {
+        nextSlotId = slotOf(entries[i].block);
+        if (nextSlotId) break;
+      }
+      let prevSlotId;
+      for (let i = idx - 1; i >= 0 && !entries[i].block?.fixed; i--) {
+        prevSlotId = slotOf(entries[i].block);
+        if (prevSlotId) break;
+      }
+      // And a container's first slot in each of its regions (blockSync reads
+      // childSlotIds[field]: the shared 'blocks' dict, or the object_list field).
+      let childSlotIds;
+      for (const field of getChildFields(child, null, { templateChildren: true })) {
+        const key = field.isObjectList ? field.region : 'blocks';
+        const first = getChildBlockEntries(child, field).find(({ block }) => block && !block.fixed && block.slotId);
+        if (first) {
+          if (!childSlotIds) childSlotIds = {};
+          if (!childSlotIds[key]) childSlotIds[key] = first.block.slotId;
+        }
+      }
+      const stamped = {
+        ...child,
+        templateInstanceId: instanceId,
+        ...(editable && existingFixed?.block ? editedFieldsOf(existingFixed.block) : {}),
+        ...(nextSlotId && { nextSlotId }),
+        ...(prevSlotId && { prevSlotId }),
+        ...(childSlotIds && { childSlotIds }),
+      };
+      if (firstInsert && editable) {
+        const placeholders = extractFieldPlaceholders(child);
+        if (Object.keys(placeholders).length > 0) stamped.fieldPlaceholders = placeholders;
+      }
+      fillContainerInto(stamped, child, templateState, options);
+      out.push({ id: outId, block: stamped });
+      continue;
+    }
+
+    const slotId = slotOf(child);
+    if (ctx.emittedSlotIds.has(slotId)) continue; // the rest of this slot's run
+    ctx.emittedSlotIds.add(slotId);
+    const leftovers =
+      slotId === ctx.leftoverSlotId
+        ? ctx.leftovers.splice(0).map((entry) => ({ ...entry, orphaned: true }))
+        : [];
+    const content = [...leftovers, ...(ctx.pendingContent.get(slotId) || [])];
+    ctx.pendingContent.delete(slotId);
+
+    if (content.length === 0) {
+      // The target has nothing for this slot: the template's slot block, without
+      // what it holds (a slot's contents are a page's, never the template's).
+      const { blocks: _slotBlocks, blocks_layout: _slotLayout, ...childDef } = child;
+      const nb = { ...childDef, slotId, templateInstanceId: instanceId };
+      if (firstInsert) {
+        const placeholders = extractFieldPlaceholders(child);
+        if (Object.keys(placeholders).length > 0) nb.fieldPlaceholders = placeholders;
+      }
+      out.push({ id: mintChildBlockId(instanceId, tplChildId), block: nb });
+      continue;
+    }
+
+    for (let u = 0; u < content.length; u++) {
+      const { blockId, block, orphaned } = content[u];
+      // A nested template reference (a snippet, a template-owned form, a page built
+      // on a multi-block template) keeps its own marks and is EXPANDED here, in the
+      // same pass: the admin merges once and the editor frame does not expand again.
+      // Not the layout this one replaces: what it held is the page's content.
+      // A run of blocks of ONE nested instance is expanded together, or each would
+      // see a single block of its template and lose the fixed blocks between its
+      // slots. The shared state's current template/instance are restored after.
+      const nested =
+        block.templateId &&
+        block.templateInstanceId &&
+        !templateIdsMatch(block.templateId, templateId) &&
+        !(ctx.previousTemplateId && templateIdsMatch(block.templateId, ctx.previousTemplateId));
+      if (nested) {
+        const run = { [blockId]: block };
+        const runIds = [blockId];
+        while (
+          u + 1 < content.length &&
+          content[u + 1].block.templateInstanceId === block.templateInstanceId
+        ) {
+          u += 1;
+          run[content[u].blockId] = content[u].block;
+          runIds.push(content[u].blockId);
+        }
+        const outer = {
+          instanceId: templateState.instanceId,
+          templateId: templateState.templateId,
+        };
+        const expanded = expandTemplatesSync(runIds, {
+          ...options,
+          blocks: run,
+          templateState,
+          allowedLayouts: undefined,
+          idField: undefined,
+        });
+        templateState.instanceId = outer.instanceId;
+        templateState.templateId = outer.templateId;
+        for (const { '@uid': id, ...expandedBlock } of expanded) {
+          out.push({ id, block: expandedBlock });
+        }
+        continue;
+      }
+      out.push({
+        id: blockId,
+        block: {
+          ...block,
+          templateId,
+          templateInstanceId: instanceId,
+          slotId,
+          ...(orphaned && { _orphaned: true }),
+        },
+      });
+    }
+  }
+  return out;
+}
 /**
  * Fully expand a container's child regions IN PLACE onto `stamped` at APPLY time.
  * Storage-agnostic: enumerate every child field (getChildFields), read each (
@@ -4420,6 +4506,9 @@ export async function loadTemplates(
  * frontend AND the admin — re-enters every container. Read docs/frontend-guide/
  * templates.md "Expand every container" before changing how this is called.
  *
+ * The merge's rules are docs/frontend-guide/templates.md "How the Merge Works":
+ * change that section, this code and packages/volto-hydra/src/utils/mergeTemplates.rules.test.js together.
+ *
  * @param {Array} inputItems - Input items (block IDs or block objects)
  * @param {Object} options - Configuration options
  * @param {Object} options.blocks - Blocks dict for ID lookup
@@ -4648,17 +4737,17 @@ function objectListItemId(item, idField) {
 // caller passes that container's children through here too. Every renderer — each
 // frontend AND the admin — re-enters every container. Read docs/frontend-guide/
 // templates.md "Expand every container" before changing how this is called.
+//
+// The merge's rules are docs/frontend-guide/templates.md "How the Merge Works":
+// change that section, this code and packages/volto-hydra/src/utils/mergeTemplates.rules.test.js together.
 export function expandTemplatesSync(inputItems, options = {}) {
   const {
     blocks: blocksDict,
     templateState,
     templates,
     allowedLayouts,
-    uuidGenerator,
-    filterInstanceId,
     loadTemplate,
     idField, // For object_list arrays: field name used as item ID (e.g. '@id', 'key')
-    firstInsert, // When true, copy slot block defaults as fieldPlaceholders
     idFieldMap, // { blockType: { field: idField } } — caller-resolved, so the merge never walks schemas
     editMode: editModeOverride, // explicit edit-mode signal for SSR frontends that have no window.name
   } = options;
@@ -4780,11 +4869,10 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // forced layout — dropping every instance but the first. The split is only wrong for a
   // genuine forced single-layout SWITCH (the user picks one layout to re-home the whole
   // page), which passes exactly one allowedLayout; a menu list (length ≠ 1) is a
-  // re-render and must re-recognize the existing instances. Reverse merge (filterInstanceId)
-  // still re-homes into one instance, so it's excluded. allowedLayouts is dropped in the
-  // per-run recursion so each already-applied run re-applies its own template.
+  // re-render and must re-recognize the existing instances. allowedLayouts is dropped in
+  // the per-run recursion so each already-applied run re-applies its own template.
   const forcedSingleLayout = allowedLayouts?.length === 1;
-  if (!filterInstanceId && !forcedSingleLayout) {
+  if (!forcedSingleLayout) {
     const seenInstances = new Set();
     for (const id of layout) {
       const b = blocks[id];
@@ -4818,14 +4906,12 @@ export function expandTemplatesSync(inputItems, options = {}) {
 
   // Determine templateId and instanceId for this call
   let templateId = null;
-  let existingInstanceId = filterInstanceId || null;
+  let existingInstanceId = null;
   for (const blockId of layout) {
     const block = blocks[blockId];
     if (block?.templateId) {
       templateId = block.templateId;
-      if (!filterInstanceId) {
-        existingInstanceId = block.templateInstanceId;
-      }
+      existingInstanceId = block.templateInstanceId;
       break;
     }
   }
@@ -4861,15 +4947,11 @@ export function expandTemplatesSync(inputItems, options = {}) {
       !allowedLayouts.some((l) => templateIdsMatch(l, templateId))
     ) {
       templateId = allowedLayouts[0];
-      if (!filterInstanceId) {
-        existingInstanceId = null;
-      }
+      existingInstanceId = null;
     } else if (!templateId) {
       // No template found — apply the forced layout
       templateId = allowedLayouts[0];
-      if (!filterInstanceId) {
-        existingInstanceId = null;
-      }
+      existingInstanceId = null;
     }
   }
 
@@ -4900,13 +4982,13 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // the template's own blocks — the same ids AND the same content, because it is the same
   // document — is the template document itself, opened or viewed as a page. (Ids alone
   // aren't enough: a page can be saved with the template's ids and stale content, which
-  // must be re-applied.) Merging it against itself re-keys its nested blocks (`${instanceId}::childId`):
+  // must be re-applied.) Merging it against itself re-keys its nested blocks (uids minted from its instance):
   // ids the admin, which never merges a document against its own template
   // (skipOwnTemplate), doesn't know. Leave it as it is. Register its instance, so its
   // containers' re-entries are recognised as expanded; and remember the definition, so
   // this render doesn't force the same template into another region of its own page
   // (the admin drops a document's own template from the forced layouts, too).
-  if (!filterInstanceId && !removingTemplate) {
+  if (!removingTemplate) {
     const ownTemplate = templates?.[templateId];
     const templateBlockIds = layout.filter((id) => blocks[id]?.templateId);
     // At any depth, through the container API, blocks_layout and object_list alike:
@@ -4947,19 +5029,15 @@ export function expandTemplatesSync(inputItems, options = {}) {
   }
 
   // Get or generate instanceId.
-  // A merge keeps the TARGET's instance id and strips the SOURCE's. `existingInstanceId`
-  // doubles as the SOURCE-content filter (= filterInstanceId when merging INTO a
-  // template), so it must NOT be stamped onto the result — that id belongs to the
-  // source page's instance, not the template. When merging into a template, the
-  // result (target) gets its own fresh id; the source filter still uses
-  // existingInstanceId below. (Forward apply has no filterInstanceId, so the
-  // target's own id — reused from the page or generated — is used as before.)
+  // A merge keeps the TARGET's instance id and strips the SOURCE's, in both directions:
+  // a page keeps its instance's id when its template is applied, and a template keeps
+  // its own when a page's instance is merged into it ("Change on all pages").
   // For forced layouts (no existing instanceId), mint one — but re-expanding the SAME
-  // input in one pass must reuse it so generated block ids (`${instanceId}::tplId`)
+  // input in one pass must reuse it so the block uids minted from it (mintChildBlockId)
   // stay stable (idempotency, e.g. a React/StrictMode double render). Key that by a
   // DATA id (the first block id, a string), NOT the dict object — so it survives a Vue
   // proxy / clone / postMessage copy, unlike the WeakMap it replaces.
-  let instanceId = filterInstanceId ? null : existingInstanceId;
+  let instanceId = existingInstanceId;
   if (!instanceId) {
     const idemKey = layout[0];
     if (idemKey && templateState.generatedInstanceIds?.[idemKey]) {
@@ -4967,7 +5045,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
     } else {
       // Derive the id deterministically from the region's first block id so the
       // server render and the client hydration mint the SAME instance id (and so
-      // the same `${instanceId}::tplChildId` block uids) — a random id differs
+      // the same block uids, mintChildBlockId) — a random id differs
       // between the two passes and causes a hydration mismatch. An EMPTY forced
       // layout has no first block id, but the forced template id itself is a
       // stable seed (one region, one forced template): without it, every block
@@ -4986,10 +5064,13 @@ export function expandTemplatesSync(inputItems, options = {}) {
         templateState.forcedSeedCounts[allowedLayouts[0]] = nth + 1;
         forcedSeed = `${allowedLayouts[0]}#${nth}`;
       }
+      // A caller that knows where this is (the admin: the page and its field)
+      // gives `templateState.scope`, so the same seed on another page differs.
+      const scoped = (seed) => (templateState.scope ? `${templateState.scope}|${seed}` : seed);
       instanceId = idemKey
-        ? deterministicUUID(idemKey)
+        ? deterministicUUID(scoped(idemKey))
         : forcedSeed
-          ? deterministicUUID(forcedSeed)
+          ? deterministicUUID(scoped(forcedSeed))
           : generateUUID();
       if (idemKey) {
         if (!templateState.generatedInstanceIds)
@@ -5026,6 +5107,9 @@ export function expandTemplatesSync(inputItems, options = {}) {
       leadingStandaloneBlocks: [],
       trailingStandaloneBlocks: [],
       newTemplateIds: new Set(),
+      // The layout this one replaces, when the page switches layouts.
+      previousTemplateId:
+        previousTemplateId && !templateIdsMatch(previousTemplateId, templateId) ? previousTemplateId : null,
     };
     templateState.instances[instanceId] = ctx;
 
@@ -5111,17 +5195,25 @@ export function expandTemplatesSync(inputItems, options = {}) {
             continue;
           }
           if (block.slotId) {
-            ctx.existingFixedBlockIds.set(block.slotId, { blockId, block });
+            addFixedBlock(ctx.existingFixedBlockIds, block.slotId, { blockId, block });
           }
           continue;
         }
-        // The page's own editable fixed block for THIS layout, with no instance
-        // yet — a forced layout's first application to the page. It takes over
-        // the layout's fixed block in its slot (id and edits), as one from a
-        // previous layout does above; as pending content a fixed slot never
-        // reads it, and it was dropped.
-        if (block.fixed && !block.readOnly && block.slotId) {
-          ctx.existingFixedBlockIds.set(block.slotId, { blockId, block });
+        // A block of THIS template with no instance id: a page's, before a forced
+        // layout's first application to it, or a template definition's, when a page's
+        // instance is merged into it. It is this instance's, at every depth, and is
+        // collected as any instance's blocks are: its fixed blocks by slot, to keep
+        // their ids (an editable one its edits), its slots' content whole.
+        if (block.templateId && templateIdsMatch(block.templateId, templateId) && !block.templateInstanceId) {
+          const own = (b) =>
+            b?.templateId && templateIdsMatch(b.templateId, templateId) && !b.templateInstanceId;
+          collectContentFromTree(
+            { blocks: { [blockId]: markInstance(block, own, instanceId, idFieldMap) }, blocks_layout: { items: [blockId] } },
+            instanceId,
+            ctx.pendingContent,
+            [],
+            ctx.existingFixedBlockIds,
+          );
           continue;
         }
         if (block.slotId) {
@@ -5161,28 +5253,11 @@ export function expandTemplatesSync(inputItems, options = {}) {
     ctx.template = template;
   }
 
-  const {
-    template,
-    emittedSlotIds,
-    pendingContent,
-    leadingStandaloneBlocks,
-    trailingStandaloneBlocks,
-    existingFixedBlockIds,
-  } = ctx;
+  const { template, pendingContent, leadingStandaloneBlocks, trailingStandaloneBlocks } = ctx;
 
   // Process template (same as async version from here).
-  // In the REVERSE merge `template` is the edited page (loaded via loadTemplate),
-  // whose instance blocks can live in any region — a branded footer in
-  // `blocks_layout.footer`, not just `items`. Walk every region via the shared
-  // region API, or reverse-merging a non-items forced layout harvests nothing
-  // and returns an empty template. (Forward templates only have `items`, so this
-  // is a no-op there.) Only the merged instance's own blocks belong to it: the
-  // page's other regions hold OTHER templates' instances (a forced layout in
-  // `items`, an announcement), and walking them as this template's would save
-  // them into it.
-  const templateLayout = allRegionIds(template.blocks_layout).filter(
-    (id) => !filterInstanceId || template.blocks?.[id]?.templateInstanceId === filterInstanceId,
-  );
+  // Every region of the template, not just `items`.
+  const templateLayout = allRegionIds(template.blocks_layout);
   let firstFixedIndex = -1;
   let lastFixedIndex = -1;
   const slotPositions = {};
@@ -5204,148 +5279,29 @@ export function expandTemplatesSync(inputItems, options = {}) {
     }
   }
 
+  // The page's region is a region like any other (fillRegionEntries). Content whose
+  // slot this template doesn't have goes to its default slot, else the bottom slot
+  // outside the last fixed block, else the top one; else it is dropped. Content in a
+  // fixed block's slot is that block's copy: the fixed block replaces it.
+  const slots = templateSlotIds(template, idFieldMap);
+  ctx.leftovers = [];
+  for (const [slotId, content] of pendingContent) {
+    if (!slots.has(slotId)) {
+      ctx.leftovers.push(...content);
+      pendingContent.delete(slotId);
+    }
+  }
+  const positioned = (where) => Object.keys(slotPositions).find((slot) => slotPositions[slot] === where);
+  ctx.leftoverSlotId = slots.has('default')
+    ? 'default'
+    : positioned('bottom') ?? positioned('top') ?? null;
+
   for (const { blockId, block } of leadingStandaloneBlocks) {
     addItem(block, blockId);
   }
-
-  let defaultInsertIndex = -1;
-  let bottomSlotInsertIndex = -1;
-  let topSlotInsertIndex = -1;
-
-  for (const tplBlockId of templateLayout) {
-    const tplBlock = template.blocks?.[tplBlockId];
-    if (!tplBlock) continue;
-
-    if (tplBlock.fixed) {
-      const slotId = tplBlock.slotId;
-      const existing = slotId && existingFixedBlockIds?.get(slotId);
-      const blockId =
-        existing?.blockId || mintChildBlockId(instanceId, tplBlockId, uuidGenerator);
-
-      let blockContent = tplBlock;
-      if (!tplBlock.readOnly && existing?.block) {
-        blockContent = { ...tplBlock, ...editedFieldsOf(existing.block) };
-      }
-
-      // Look ahead in template layout for the next non-fixed slot at this level.
-      // This preserves slot info even when all slot blocks are deleted.
-      const tplIdx = templateLayout.indexOf(tplBlockId);
-      let nextSlotId = undefined;
-      for (let i = tplIdx + 1; i < templateLayout.length; i++) {
-        const nextTplBlock = template.blocks?.[templateLayout[i]];
-        if (nextTplBlock && !nextTplBlock.fixed && nextTplBlock.slotId) {
-          nextSlotId = nextTplBlock.slotId;
-          break;
-        }
-        if (nextTplBlock?.fixed) break; // Stop at next fixed block
-      }
-
-      // For container blocks, filter nested blocks to only those with
-      // template markers (slotId or templateId). Blocks without these are
-      // template-internal details that should not be synced to pages. A
-      // container's children are ordered by the named regions in its
-      // `blocks_layout` dict (#234); filter each region and preserve them all.
-      const isContainer = hasNestedBlocksLayout(tplBlock);
-      if (tplBlock.blocks && isBlocksMap(tplBlock.blocks) && !isContainer) {
-        throw new Error(
-          `expandTemplatesSync: template block "${tplBlockId}" has nested ` +
-            `\`blocks\` but no \`blocks_layout\` dict listing them by region.`,
-        );
-      }
-      // childSlotIds hint: first non-fixed slot per field (add-path anchor). getChildFields
-      // covers blocks_layout regions AND object_list array fields, so an object_list slot
-      // container (a slider's `slides`) gets an anchor too — not just blocks_layout containers.
-      // Keyed by the consumer's `field`: the shared 'blocks' dict for blocks_layout, or the
-      // object_list field name (e.g. 'slides') — blockSync reads childSlotIds[field].
-      let childSlotIds = undefined;
-      for (const field of getChildFields(tplBlock, null, { templateChildren: true })) {
-        const key = field.isObjectList
-          ? field.region
-          : 'blocks';
-        for (const { block: child } of getChildBlockEntries(tplBlock, field)) {
-          if (child && !child.fixed && child.slotId) {
-            if (!childSlotIds) childSlotIds = {};
-            if (!childSlotIds[key]) childSlotIds[key] = child.slotId;
-            break;
-          }
-        }
-      }
-
-      // Emit the container, then fully expand its child regions IN PLACE — every
-      // blocks_layout region AND object_list array field, one path (fillContainerInto).
-      // Re-entry recognizes the children by minted instanceId and passes them through.
-      const emitted = {
-        ...blockContent,
-        templateId: templateId,
-        templateInstanceId: instanceId,
-        ...(nextSlotId && { nextSlotId }),
-        ...(childSlotIds && { childSlotIds }),
-      };
-      fillContainerInto(emitted, tplBlock, templateState, options);
-      addItem(emitted, blockId);
-    } else {
-      const slotId = tplBlock.slotId || 'default';
-      const insertIndex = items.length;
-
-      if (slotId === 'default') {
-        defaultInsertIndex = insertIndex;
-      }
-      const position = slotPositions[slotId];
-      if (position === 'bottom' && bottomSlotInsertIndex === -1) {
-        bottomSlotInsertIndex = insertIndex;
-      } else if (position === 'top' && topSlotInsertIndex === -1) {
-        topSlotInsertIndex = insertIndex;
-      }
-
-      if (!emittedSlotIds.has(slotId)) {
-        emittedSlotIds.add(slotId);
-        const content = pendingContent.get(slotId) || [];
-        for (const { blockId, block } of content) {
-          addItem(
-            {
-              ...block,
-              templateId: templateId,
-              templateInstanceId: instanceId,
-              slotId: slotId,
-            },
-            blockId,
-          );
-        }
-        pendingContent.delete(slotId);
-      }
-    }
-  }
-
-  const remainingContent = [];
-  for (const [slotId, content] of pendingContent) {
-    if (!emittedSlotIds.has(slotId)) {
-      emittedSlotIds.add(slotId);
-      for (const { blockId, block } of content) {
-        remainingContent.push({
-          ...block,
-          templateId: templateId,
-          templateInstanceId: instanceId,
-          slotId: 'default',
-          _orphaned: true,
-          '@uid': blockId,
-        });
-      }
-    }
-  }
-
-  if (remainingContent.length > 0) {
-    let insertIndex = -1;
-    if (defaultInsertIndex >= 0) {
-      insertIndex = defaultInsertIndex;
-    } else if (bottomSlotInsertIndex >= 0) {
-      insertIndex = bottomSlotInsertIndex;
-    } else if (topSlotInsertIndex >= 0) {
-      insertIndex = topSlotInsertIndex;
-    }
-
-    if (insertIndex >= 0) {
-      items.splice(insertIndex, 0, ...remainingContent);
-    }
+  const templateEntries = templateLayout.map((id) => ({ id, block: template.blocks?.[id] }));
+  for (const { id, block } of fillRegionEntries(templateEntries, templateState, options)) {
+    addItem(block, id);
   }
 
   for (const { blockId, block } of trailingStandaloneBlocks) {

@@ -70,27 +70,28 @@ const integer = (envName: string, raw: string): number => {
  */
 const OFFSET = {
   mockApi: 0,
-  mockDrupal: 1,
-  wordpress: 2,
-  strapi: 3,
-  testFrontend: 4,
-  plonSeeded: 5,
-  mockParent: 6,
-  voltoSsr: 7,
-  voltoWebpack: 8,
-  nuxt: 9,
-  reactDoc: 10,
-  svelteDoc: 11,
-  vueDoc: 12,
-  nextjs: 13,
-  f7: 14,
-  astroDoc: 15,
-  vanillaDoc: 16,
-  svelteQs: 17,
-  astroQs: 18,
-  // The contract suite's own servers. Its CMSes are seeded to different states
-  // from the journey's, so they are separate instances on separate ports — the
-  // reason the journey's WordPress was never the contract's.
+  testFrontend: 1,
+  mockParent: 2,
+  voltoSsr: 3,
+  voltoWebpack: 4,
+  nuxt: 5,
+  reactDoc: 6,
+  svelteDoc: 7,
+  vueDoc: 8,
+  nextjs: 9,
+  f7: 10,
+  astroDoc: 11,
+  vanillaDoc: 12,
+  svelteQs: 13,
+  astroQs: 14,
+  // The three-CMS journey's real backends.
+  mockDrupal: 15,
+  wordpress: 16,
+  strapi: 17,
+  plonSeeded: 18,
+  // The contract suite's own CMSes. Separate instances from the journey's, on
+  // separate ports, because the two suites seed the same paths to different
+  // states — sharing one would make each suite's fixtures the other's flake.
   contractPlone: 19,
   contractWordpress: 20,
   contractStrapi: 21,
@@ -102,11 +103,7 @@ export type PortName = keyof typeof OFFSET;
 /** Every variable this module reads, so a launcher can export the whole block. */
 export const PORT_ENV: Readonly<Record<PortName, string>> = {
   mockApi: 'HYDRA_MOCK_API_PORT',
-  mockDrupal: 'HYDRA_MOCK_DRUPAL_PORT',
-  wordpress: 'HYDRA_WORDPRESS_PORT',
-  strapi: 'HYDRA_STRAPI_PORT',
   testFrontend: 'HYDRA_TEST_FRONTEND_PORT',
-  plonSeeded: 'HYDRA_PLONE_SEED_PORT',
   mockParent: 'HYDRA_MOCK_PARENT_PORT',
   voltoSsr: 'HYDRA_VOLTO_SSR_PORT',
   voltoWebpack: 'HYDRA_VOLTO_WEBPACK_PORT',
@@ -120,6 +117,10 @@ export const PORT_ENV: Readonly<Record<PortName, string>> = {
   vanillaDoc: 'HYDRA_VANILLA_DOC_PORT',
   svelteQs: 'HYDRA_SVELTE_QS_PORT',
   astroQs: 'HYDRA_ASTRO_QS_PORT',
+  mockDrupal: 'HYDRA_MOCK_DRUPAL_PORT',
+  wordpress: 'HYDRA_WORDPRESS_PORT',
+  strapi: 'HYDRA_STRAPI_PORT',
+  plonSeeded: 'HYDRA_PLONE_SEED_PORT',
   contractPlone: 'HYDRA_CONTRACT_PLONE_PORT',
   contractWordpress: 'HYDRA_CONTRACT_WORDPRESS_PORT',
   contractStrapi: 'HYDRA_CONTRACT_STRAPI_PORT',
@@ -154,26 +155,8 @@ export const allPorts = (): Record<PortName, number> =>
 export const PORTS = {
   /** Mock Plone REST API (started by `pnpm start:mock-api`). */
   mockApi: port('mockApi'),
-  /** Mock Drupal JSON:API, for the three-CMS journey. */
-  mockDrupal: port('mockDrupal'),
-  /** WordPress Playground, for the three-CMS journey. */
-  wordpress: port('wordpress'),
-  /**
-   * Strapi, for the journey.
-   *
-   * A DIFFERENT port from the contract suite's Strapi (1337, in
-   * tests-adapters/global-setup.ts), exactly as the journey's WordPress is a
-   * different port from the contract suite's: the two suites seed the same
-   * paths to different states, so sharing an instance would make each one's
-   * fixtures the other's flake.
-   */
-  strapi: port('strapi'),
   /** Test frontend: HTML + bridge fixture served by Vite (`pnpm start:test-frontend`). */
   testFrontend: port('testFrontend'),
-  // A Plone mock serving the CANONICAL seed, for journey specs that need the
-  // same fixtures as WordPress and Drupal. Separate from the docs-content mock
-  // on mockApi, which the other Plone journey project keeps using.
-  plonSeeded: port('plonSeeded'),
   /** Mock-parent test surface for bridge isolation tests. */
   mockParent: port('mockParent'),
   /** Volto admin SSR server (`pnpm start:test`, PORT). */
@@ -200,15 +183,25 @@ export const PORTS = {
   svelteQs: port('svelteQs'),
   /** Quick Start: dedicated Astro starter (docs/quickstart/astro). */
   astroQs: port('astroQs'),
+  /** Mock Drupal JSON:API, for the three-CMS journey. */
+  mockDrupal: port('mockDrupal'),
+  /** WordPress Playground, for the three-CMS journey. */
+  wordpress: port('wordpress'),
   /**
-   * The contract suite's own CMSes, seeded from tests-adapters/fixtures/seed.json.
+   * Strapi, for the journey.
    *
-   * Separate instances from the journey's, on separate ports, because the two
-   * suites seed the same paths to different states — sharing one would make
-   * each suite's fixtures the other's flake. They used to be written into
-   * tests-adapters as `const PORT = 8899` and friends, which is the same
-   * hazard the rest of this file exists to remove: two checkouts, one Strapi.
+   * A DIFFERENT instance from the contract suite's, exactly as the journey's
+   * WordPress is: the two suites seed the same paths to different states, so
+   * sharing one would make each suite's fixtures the other's flake.
    */
+  strapi: port('strapi'),
+  /**
+   * A Plone mock serving the CANONICAL seed, for journey specs that need the
+   * same fixtures as WordPress and Drupal. Separate from the docs-content mock
+   * on mockApi, which the other Plone journey project keeps using.
+   */
+  plonSeeded: port('plonSeeded'),
+  /** The contract suite's own CMSes, seeded from tests-adapters/fixtures/seed.json. */
   contractPlone: port('contractPlone'),
   contractWordpress: port('contractWordpress'),
   contractStrapi: port('contractStrapi'),

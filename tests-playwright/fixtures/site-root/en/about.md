@@ -5,7 +5,6 @@ id: about
 title: About us
 description: About us
 review_state: published
-is_folderish: false
 language: en
 subjects:
   - design

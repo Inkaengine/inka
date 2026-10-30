@@ -43,42 +43,6 @@ import {
 import Api from '@plone/volto/helpers/Api/Api';
 
 /**
- * Every block of one template instance, wherever it sits — the page's top level, a
- * footer region, or inside a container at any depth — and the order each region
- * holds them in, keyed by the region's path. Read through the helpers' container
- * accessors (blocks_layout regions and object_list fields alike), never from
- * formData.blocks alone: an instance inside a container is not there (CLAUDE.md,
- * "Block Access"; docs/architecture.md, "Merging templates").
- *
- * @param {Object} formData - the page
- * @param {string} instanceId
- * @param {Object} idFieldMap - { blockType: { field: idField } }
- * @returns {{ blocks: Object, regions: Object, layouts: Object }} the instance's
- *   blocks, the order of its blocks in each region, and each region's full order
- */
-function instanceContent(formData, instanceId, idFieldMap) {
-  const blocks = {};
-  const regions = {};
-  const layouts = {};
-  const visit = (container, path) => {
-    for (const field of getChildFields(container, idFieldMap, { allObjectLists: true })) {
-      const entries = getChildBlockEntries(container, field);
-      layouts[`${path}/${field.region}`] = entries.map((entry) => entry.id);
-      const own = entries
-        .filter((entry) => entry.block?.templateInstanceId === instanceId)
-        .map((entry) => entry.id);
-      if (own.length) regions[`${path}/${field.region}`] = own;
-      for (const { id, block } of entries) {
-        if (block?.templateInstanceId === instanceId) blocks[id] = block;
-        else if (block) visit(block, `${path}/${id}`);
-      }
-    }
-  };
-  visit(formData, '');
-  return { blocks, regions, layouts };
-}
-
-/**
  * The page with one template instance put back as it was in `snapshot` (Reset
  * changes), wherever the instance sits; everything else stays as currently edited.
  * In each region the instance's current blocks are replaced, at its first position,
@@ -382,7 +346,7 @@ import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlo
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { adoptTemplate, canContainAll, getBlockAddability, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage } from '../../utils/mergeTemplates.mjs';
+import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '../../utils/mergeTemplates.mjs';
 import {
   applySchemaDefaultsToFormData,
   previewSchemaDefaultConversions,
@@ -1815,20 +1779,7 @@ const Iframe = (props) => {
 
     if (templateId && templateCacheRef.current[templateId]) {
       const template = templateCacheRef.current[templateId];
-      // Capture edits to the instance's fixed+readOnly blocks into the template,
-      // merged against the instance alone, in its own order: the merge reads a
-      // page's top-level regions, and a nested instance is not in them.
-      const instancePage = {
-        ...formData,
-        blocks: instance.blocks,
-        blocks_layout: { items: Object.values(instance.regions).flat() },
-      };
-      mergeTemplatesIntoPage(template, {
-        loadTemplate: async () => instancePage,
-        filterInstanceId: prevInstanceId,
-        uuidGenerator: uuid,
-        idFieldMap,
-      })
+      mergeInstanceIntoTemplate(template, formData, prevInstanceId, { idFieldMap, uuidGenerator: uuid })
         .then(async ({ merged: updatedTemplate }) => {
           templateCacheRef.current[templateId] = updatedTemplate;
           // "Change on all pages": persist the template document immediately.

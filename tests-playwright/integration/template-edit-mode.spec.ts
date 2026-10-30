@@ -435,7 +435,7 @@ test.describe('Template Edit Mode - Save', () => {
 
     // Capture every content-shaped write (PATCH updates a template, POST creates
     // one); body carries blocks_layout for a template/page write.
-    const writes: Array<{ method: string; url: string }> = [];
+    const writes: Array<{ method: string; url: string; body: any }> = [];
     page.on('request', (req) => {
       const m = req.method();
       if (m !== 'PATCH' && m !== 'POST') return;
@@ -443,7 +443,7 @@ test.describe('Template Edit Mode - Save', () => {
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
       if (!body || !body.blocks_layout) return;
-      writes.push({ method: m, url: req.url() });
+      writes.push({ method: m, url: req.url(), body });
     });
 
     // Unlock the template, make a change (delete the footer block), then lock with
@@ -466,6 +466,13 @@ test.describe('Template Edit Mode - Save', () => {
         timeout: 5000,
       })
       .toBeGreaterThanOrEqual(1);
+
+    // The template keeps its own slot: the page's content in it is the page's, and a
+    // template saved without its slot leaves every page using it nowhere to show its own.
+    const saved = writes.find((w) => !pageEnds(w.url))!.body;
+    const slots = saved.blocks_layout.items.map((id: string) => saved.blocks[id]);
+    expect(slots.filter((b: any) => !b.fixed).map((b: any) => b.slotId)).toEqual(['primary']);
+    expect(JSON.stringify(saved.blocks)).not.toContain('User content - different from template default');
   });
 
   // TDD: templateCacheRef (View.jsx:995) is a useRef that's never reset — it
@@ -1497,8 +1504,7 @@ test.describe('Template Edit Mode - Object List Items', () => {
   // Carousel slides: only the first slide is visible by default.
   // Use carousel next button (data-block-selector="+1") to navigate to subsequent slides.
   const SLIDER_BLOCK_ID = 'template-slider';
-  // Forced-layout nested template blocks are instance-scoped (`${instanceId}::tpl-slide-1`)
-  // so two instances don't collide; resolve the actual rendered id from this suffix.
+  // The page stores its slides under these ids; resolve the rendered id from the suffix.
   const SLIDE_1_SUFFIX = 'tpl-slide-1';
   const SLIDE_2_SUFFIX = 'tpl-slide-2';
 

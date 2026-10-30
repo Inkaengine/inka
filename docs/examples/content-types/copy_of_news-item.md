@@ -19,7 +19,6 @@ image:
   size: 2231807
   width: 5184
 image_caption: null
-is_folderish: true
 language: "##DEFAULT##"
 layout: newsitem_view
 review_state: published
