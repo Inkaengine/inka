@@ -22,10 +22,13 @@ const fixturesPath = resolve(__dirname, '../../tests-playwright/fixtures')
 // Content-Security-Policy, because these were computed whether or not any
 // local server existed.
 //
-// NUXT_TEST_BACKEND is what says "this is a test build" (the same flag
-// EDIT_ADMIN reads below), and then the ports must be given.
+// A test build names a backend (NUXT_TEST_BACKEND) and no admin, the same rule
+// EDIT_ADMIN reads below, and then the ports must be given. A backend alone is
+// not enough: a deploy names one too (inka.sh's builder sets it to the live
+// API), and with it NUXT_ADMIN_URL — read as a test build, it refused to build.
+const isTestBuild = Boolean(process.env.NUXT_TEST_BACKEND && !process.env.NUXT_ADMIN_URL);
 const localOrigin = (name: string): string | null => {
-  if (!process.env.NUXT_TEST_BACKEND) return null;
+  if (!isTestBuild) return null;
   const port = process.env[name];
   if (!port) {
     throw new Error(
@@ -52,7 +55,7 @@ const PUBLIC_BACKEND_HOST = new URL(PUBLIC_BACKEND).host;
 // test build that names only a backend means the local admin. Ignoring
 // NUXT_ADMIN_URL here shipped inka.sh/edit/ waiting for localhost:3001.
 const EDIT_ADMIN = process.env.NUXT_ADMIN_URL
-  || (process.env.NUXT_TEST_BACKEND ? ADMIN_ORIGIN! : 'https://admin.inka.sh');
+  || (isTestBuild ? ADMIN_ORIGIN! : 'https://admin.inka.sh');
 // What the edit build may fetch from: the API it is built against and its
 // admin (the public defaults and the local test servers too). A CSP naming
 // only api.inka.sh blocked a build against any other API: no content, and a
