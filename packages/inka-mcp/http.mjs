@@ -64,6 +64,8 @@ async function formFields(req) {
 // an address: letters, digits and '-' only, so a made-up code can't send an
 // exchange anywhere but to another instance.
 const INSTANCE_NAME = /^[A-Za-z0-9-]{1,64}$/;
+// A name only if it is a string: RegExp#test reads undefined as "undefined".
+const isInstanceName = (name) => typeof name === 'string' && INSTANCE_NAME.test(name);
 
 /** Where {instance} goes in `template`, or an error naming `what`. */
 function instanceTemplate(what, template) {
@@ -132,7 +134,7 @@ export function forwardTo(peerUrl) {
  */
 export function hostedServer({ adminUrl, publicUrl, secret, codes, route, poolSize, pageIdleMs, frontendUrl }) {
   if (!codes) throw new Error('hostedServer: `codes` is required, where sign-in codes wait (codes.mjs; codesFrom reads INKA_MCP_CODES)');
-  if (route && !INSTANCE_NAME.test(route.instance)) {
+  if (route && !isInstanceName(route.instance)) {
     throw new Error(`a route's instance is its name: letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
   const base = new URL(publicUrl);
@@ -174,7 +176,7 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, route, poolSi
         next();
         return;
       }
-      if (!INSTANCE_NAME.test(owner)) {
+      if (!isInstanceName(owner)) {
         res.status(400).json({ error: 'invalid_grant', error_description: 'not a code from this server, or already used' });
         return;
       }
@@ -261,7 +263,7 @@ export async function codesFrom(env, secret, { makeStore, route } = {}) {
   }
   if (kind !== 'memory') throw new Error(`INKA_MCP_CODES is memory, sealed or stored, not ${JSON.stringify(kind)}`);
   if (!route) return { codes: localCodes({ instance: null, now: Date.now }) };
-  if (!INSTANCE_NAME.test(route.instance)) {
+  if (!isInstanceName(route.instance)) {
     throw new Error(`a route's instance is its name: letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
   return { codes: localCodes({ instance: route.instance, now: Date.now }), route };

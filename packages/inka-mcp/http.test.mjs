@@ -170,6 +170,11 @@ describe('INKA_MCP_CODES', () => {
     expect((await codes.issue(data)).startsWith('m-1~')).toBe(true);
   });
 
+  it("a route needs its instance's name: a platform variable that isn't set is refused", async () => {
+    await expect(codesFrom({ INKA_MCP_CODES: 'memory' }, secret, { route: { instance: undefined, send: forwardTo('http://{instance}') } }))
+      .rejects.toThrow(/letters, digits and '-'/);
+  });
+
   it("a route's instance is a plain name", async () => {
     await expect(codesFrom({ INKA_MCP_CODES: 'memory' }, secret, { route: { instance: 'evil.example/x', send: forwardTo('http://{instance}') } }))
       .rejects.toThrow(/letters, digits and '-'/);
