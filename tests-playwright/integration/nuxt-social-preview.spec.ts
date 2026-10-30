@@ -4,13 +4,13 @@
  * public site, the site's card as the image when the page has none of its own,
  * and the Inka mark as its icons.
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 
 const meta = (page, attr: string, name: string) =>
   page.locator(`head meta[${attr}="${name}"]`).getAttribute('content');
 
-test('a page without an image of its own shares with its title and the site card', async ({ page }) => {
-  await page.goto(`${URLS.nuxt}/_test_data/accordion-test-page`);
+test('a page without an image of its own shares with its title and the site card', async ({ page, urls }) => {
+  await page.goto(`${urls.nuxt}/_test_data/accordion-test-page`);
   await expect(page).toHaveTitle('Accordion Test Page');
 
   expect(await meta(page, 'property', 'og:title')).toBe('Accordion Test Page');
@@ -23,22 +23,22 @@ test('a page without an image of its own shares with its title and the site card
   expect(await meta(page, 'name', 'twitter:image')).toBe('https://inka.sh/og-image.png');
 
   // The card is served by the front end.
-  const card = await page.request.get(`${URLS.nuxt}/og-image.png`);
+  const card = await page.request.get(`${urls.nuxt}/og-image.png`);
   expect(card.headers()['content-type']).toBe('image/png');
 });
 
-test('a page with a preview image shares that image', async ({ page }) => {
-  const content = await (await fetch(`${URLS.mockApi}/_test_data/test-page`, { headers: { Accept: 'application/json' } })).json();
+test('a page with a preview image shares that image', async ({ page, urls }) => {
+  const content = await (await fetch(`${urls.mockApi}/_test_data/test-page`, { headers: { Accept: 'application/json' } })).json();
   expect(content.preview_image?.download).toBeTruthy();
 
-  await page.goto(`${URLS.nuxt}/_test_data/test-page`);
+  await page.goto(`${urls.nuxt}/_test_data/test-page`);
   await expect(page).toHaveTitle('Test Page');
   expect(await meta(page, 'property', 'og:image')).toBe(content.preview_image.download);
   expect(await meta(page, 'name', 'twitter:image')).toBe(content.preview_image.download);
 });
 
-test('a page links the Inka icons, and the front end serves them', async ({ page }) => {
-  await page.goto(`${URLS.nuxt}/_test_data/accordion-test-page`);
+test('a page links the Inka icons, and the front end serves them', async ({ page, urls }) => {
+  await page.goto(`${urls.nuxt}/_test_data/accordion-test-page`);
   // Servers name .ico differently (image/x-icon, image/vnd.microsoft.icon).
   const icons = {
     'link[rel="icon"][type="image/svg+xml"]': /^image\/svg\+xml/,
@@ -47,7 +47,7 @@ test('a page links the Inka icons, and the front end serves them', async ({ page
   };
   for (const [selector, type] of Object.entries(icons)) {
     const href = await page.locator(`head ${selector}`).getAttribute('href');
-    const response = await page.request.get(new URL(href, URLS.nuxt).href);
+    const response = await page.request.get(new URL(href, urls.nuxt).href);
     expect(response.ok(), href).toBe(true);
     expect(response.headers()['content-type'], href).toMatch(type);
   }

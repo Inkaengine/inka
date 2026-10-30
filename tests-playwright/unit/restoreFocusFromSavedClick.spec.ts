@@ -8,15 +8,15 @@
  * when a sidebar edit to one field of a block (a question's options) re-rendered
  * the block while a click in another of its fields (its label) was saved.
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.describe('Bridge.restoreFocusFromSavedClick()', () => {
   let helper: AdminUIHelper;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, urls }) => {
     helper = new AdminUIHelper(page);
-    await page.goto(`${URLS.testFrontend}/mock-parent.html`);
+    await page.goto(`${urls.testFrontend}/mock-parent.html`);
     await helper.waitForIframeReady();
     await helper.waitForIframeBlockHandle('mock-block-1');
   });

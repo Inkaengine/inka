@@ -1,5 +1,4 @@
-import { test, expect } from '@playwright/test';
-import { URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 
 /**
  * The INIT handshake has to survive an INIT that does not get through.
@@ -16,7 +15,7 @@ import { URLS } from '../fixtures';
  * the parent swallows the FIRST INIT and lets everything after it through. A
  * bridge that retries connects anyway. A bridge that posts once never does.
  */
-test('connects even when the first INIT is lost', async ({ page }) => {
+test('connects even when the first INIT is lost', async ({ page, urls }) => {
   await page.addInitScript(() => {
     // Capture phase, installed before mock-parent's own listener, so
     // stopImmediatePropagation drops the message before the parent sees it.
@@ -33,7 +32,7 @@ test('connects even when the first INIT is lost', async ({ page }) => {
   });
 
   await page.goto(
-    `${URLS.testFrontend}/mock-parent.html?frontend=${encodeURIComponent(URLS.testFrontend)}`,
+    `${urls.testFrontend}/mock-parent.html?frontend=${encodeURIComponent(urls.testFrontend)}`,
   );
 
   const frame = page.frameLocator('#previewIframe');

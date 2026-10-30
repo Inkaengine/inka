@@ -3,15 +3,15 @@
  * Tests finding text nodes in children while skipping Vue artifact nodes
  */
 
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.describe('findTextNodeInChild() - Vue empty text node handling', () => {
   let helper: AdminUIHelper;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, urls }) => {
     helper = new AdminUIHelper(page);
-    await page.goto(`${URLS.testFrontend}/mock-parent.html`);
+    await page.goto(`${urls.testFrontend}/mock-parent.html`);
     await helper.waitForIframeReady();
     await helper.waitForIframeBlockHandle('mock-block-1');
   });

@@ -4,7 +4,7 @@
  * keystroke before the admin ever sees it — rejecting them admin-side is too
  * late, so the bridge checks the rules that ride on its blockPathMap entry.
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 const BLOCK = 'mock-block-1';
@@ -75,9 +75,9 @@ async function withRules(
 test.describe('slate style gating in the bridge', () => {
   let helper: AdminUIHelper;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, urls }) => {
     helper = new AdminUIHelper(page);
-    await page.goto(`${URLS.testFrontend}/mock-parent.html`);
+    await page.goto(`${urls.testFrontend}/mock-parent.html`);
     await helper.waitForIframeReady();
     await helper.waitForIframeBlockHandle(BLOCK);
   });

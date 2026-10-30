@@ -1386,7 +1386,7 @@ test.describe('Empty Block Behavior', () => {
   });
 
   test('empty blocks are stripped on save and restored on re-edit', async ({
-    page,
+    page, urls,
   }) => {
     const helper = new AdminUIHelper(page);
 
@@ -1424,7 +1424,7 @@ test.describe('Empty Block Behavior', () => {
     const cookies = await page.context().cookies();
     const authCookie = cookies.find((c: { name: string }) => c.name === 'auth_token');
     const token = authCookie!.value;
-    const response = await page.request.get(`${URLS.mockApi}/container-test-page`, {
+    const response = await page.request.get(`${urls.mockApi}/container-test-page`, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',

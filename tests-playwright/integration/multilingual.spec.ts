@@ -1,4 +1,4 @@
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 /**
@@ -71,7 +71,7 @@ test.describe('Multilingual editing', () => {
   });
 
   test('an existing page can be linked as a translation, and unlinked again', async ({
-    page,
+    page, urls,
   }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -99,7 +99,7 @@ test.describe('Multilingual editing', () => {
     const token = helper.authToken;
     const translations = async (path: string) =>
       (
-        await page.request.get(`${URLS.mockApi}${path}/@translations`, {
+        await page.request.get(`${urls.mockApi}${path}/@translations`, {
           headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         })
       ).json();
@@ -128,7 +128,7 @@ test.describe('Multilingual editing', () => {
   });
 
   test('a language-independent field is inherited, not asked for again', async ({
-    page,
+    page, urls,
   }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -172,7 +172,7 @@ test.describe('Multilingual editing', () => {
 
     // And the value came across without anyone typing it.
     const german = await (
-      await page.request.get(`${URLS.mockApi}/de/dienstleistungen`, {
+      await page.request.get(`${urls.mockApi}/de/dienstleistungen`, {
         headers: {
           Authorization: `Bearer ${helper.authToken}`,
           Accept: 'application/json',
@@ -183,7 +183,7 @@ test.describe('Multilingual editing', () => {
   });
 
   test('translating a page creates it linked, and lands in the editor', async ({
-    page,
+    page, urls,
   }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -208,7 +208,7 @@ test.describe('Multilingual editing', () => {
 
     const token = helper.authToken;
     const read = async (path: string) =>
-      (await page.request.get(`${URLS.mockApi}${path}`, {
+      (await page.request.get(`${urls.mockApi}${path}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       })).json();
 
@@ -246,7 +246,7 @@ test.describe('Multilingual editing', () => {
   });
 
   test('a saved translation renders, and leaves the original alone', async ({
-    page,
+    page, urls,
   }) => {
     // The test above proves the copy is CORRECT in the API. It never looks at
     // the page, so a copy that saved cleanly and rendered as nothing — a block
@@ -302,7 +302,7 @@ test.describe('Multilingual editing', () => {
     // And the page it was translated FROM is untouched — same blocks, same
     // title. Copying by reference would have shown up here.
     const english = await (
-      await page.request.get(`${URLS.mockApi}/en/services`, {
+      await page.request.get(`${urls.mockApi}/en/services`, {
         headers: {
           Authorization: `Bearer ${helper.authToken}`,
           Accept: 'application/json',
@@ -418,7 +418,7 @@ test.describe('Multilingual editing', () => {
   });
 
   test('selecting a block shows the same block in the other language', async ({
-    page,
+    page, urls,
   }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -445,7 +445,7 @@ test.describe('Multilingual editing', () => {
     // this page its own way, and the test is about the pairing.
     const token = helper.authToken;
     const german = await (
-      await page.request.get(`${URLS.mockApi}/de/dienstleistungen`, {
+      await page.request.get(`${urls.mockApi}/de/dienstleistungen`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       })
     ).json();
@@ -642,7 +642,7 @@ test.describe('Multilingual editing', () => {
   });
 
   test('translating the copy saves, and the original keeps its own words', async ({
-    page,
+    page, urls,
   }) => {
     // Creating a translation is half the job: the copy arrives in the language
     // it came from, and the point is to type over it. Nothing so far edits a
@@ -666,7 +666,7 @@ test.describe('Multilingual editing', () => {
 
     const read = async (path: string) =>
       (
-        await page.request.get(`${URLS.mockApi}${path}`, {
+        await page.request.get(`${urls.mockApi}${path}`, {
           headers: {
             Authorization: `Bearer ${helper.authToken}`,
             Accept: 'application/json',
@@ -714,7 +714,7 @@ test.describe('Multilingual editing', () => {
     expect(JSON.stringify(english.blocks)).not.toContain('Was wir machen');
   });
 
-  test('a folder can be translated too, and lands on its view', async ({ page }) => {
+  test('a folder can be translated too, and lands on its view', async ({ page, urls }) => {
     // A site is not only pages. plone.app.multilingual translates whatever the
     // type is, through the same create — `translation_of` and `language` — and
     // everything above this test happens to be a Document. A folder has no
@@ -745,7 +745,7 @@ test.describe('Multilingual editing', () => {
 
     const read = async (path: string) =>
       (
-        await page.request.get(`${URLS.mockApi}${path}`, {
+        await page.request.get(`${urls.mockApi}${path}`, {
           headers: {
             Authorization: `Bearer ${helper.authToken}`,
             Accept: 'application/json',
@@ -764,7 +764,7 @@ test.describe('Multilingual editing', () => {
     expect(german.language?.token ?? german.language).toBe('de');
   });
 
-  test('an image can be translated, and gets a file of its own', async ({ page }) => {
+  test('an image can be translated, and gets a file of its own', async ({ page, urls }) => {
     // A folder has nothing to upload; an image is the other shape of
     // non-Document — a type whose whole point is a binary, where translating
     // means a DIFFERENT file (German screenshot, German poster), not a copy of
@@ -806,7 +806,7 @@ test.describe('Multilingual editing', () => {
     await expect(page).toHaveURL(/\/de\/[^/?#]+$/);
 
     const group = await (
-      await page.request.get(`${URLS.mockApi}/en/logo.jpg/@translations`, {
+      await page.request.get(`${urls.mockApi}/en/logo.jpg/@translations`, {
         headers: {
           Authorization: `Bearer ${helper.authToken}`,
           Accept: 'application/json',
@@ -820,7 +820,7 @@ test.describe('Multilingual editing', () => {
   });
 
   test('a container says when the ORIGINAL has changed since it was translated', async ({
-    page,
+    page, urls,
   }) => {
     // The other half of the same question. `untranslated` finds a copy nobody
     // has touched, and goes quiet the moment German is typed — after that,
@@ -854,7 +854,7 @@ test.describe('Multilingual editing', () => {
     // Translate the two copied teasers, so neither is "untranslated" any more
     // and only the fingerprint can answer.
     const german = await (
-      await page.request.get(`${URLS.mockApi}/de/dienstleistungen`, { headers: auth })
+      await page.request.get(`${urls.mockApi}/de/dienstleistungen`, { headers: auth })
     ).json();
     const germanGrid: any = Object.values(german.blocks).find(
       (b: any) => b['@type'] === 'gridBlock',
@@ -872,14 +872,14 @@ test.describe('Multilingual editing', () => {
       germanGrid.blocks[uid].title = `Deutscher Titel ${i + 1}`;
       germanGrid.blocks[uid].description = `Deutsche Beschreibung ${i + 1}`;
     }
-    await page.request.patch(`${URLS.mockApi}/de/dienstleistungen`, {
+    await page.request.patch(`${urls.mockApi}/de/dienstleistungen`, {
       headers: auth,
       data: { blocks: german.blocks },
     });
 
     // Now the ENGLISH changes: someone rewrites one teaser.
     const english = await (
-      await page.request.get(`${URLS.mockApi}/en/services`, { headers: auth })
+      await page.request.get(`${urls.mockApi}/en/services`, { headers: auth })
     ).json();
     const englishGrid: any = Object.values(english.blocks).find(
       (b: any) => b['@type'] === 'gridBlock',
@@ -887,13 +887,13 @@ test.describe('Multilingual editing', () => {
     const [firstEnglishTeaser] = englishGrid.blocks_layout.items as string[];
     englishGrid.blocks[firstEnglishTeaser].description =
       'We design in English, but differently now.';
-    await page.request.patch(`${URLS.mockApi}/en/services`, {
+    await page.request.patch(`${urls.mockApi}/en/services`, {
       headers: auth,
       data: { blocks: english.blocks },
     });
     // One English teaser changed, the other did not.
     const englishAfter = await (
-      await page.request.get(`${URLS.mockApi}/en/services`, { headers: auth })
+      await page.request.get(`${urls.mockApi}/en/services`, { headers: auth })
     ).json();
     const gridAfter: any = Object.values(englishAfter.blocks).find(
       (b: any) => b['@type'] === 'gridBlock',
@@ -935,7 +935,7 @@ test.describe('Multilingual editing', () => {
   });
 
   test('bringing a block up to date moves its fingerprint forward', async ({
-    page,
+    page, urls,
   }) => {
     // The half that makes the markers usable. A stale marker nobody can clear
     // is worse than none: translators learn to ignore it, and the ones that
@@ -961,7 +961,7 @@ test.describe('Multilingual editing', () => {
       'Content-Type': 'application/json',
     };
     const read = async (path: string) =>
-      (await page.request.get(`${URLS.mockApi}${path}`, { headers: auth })).json();
+      (await page.request.get(`${urls.mockApi}${path}`, { headers: auth })).json();
     const slateOf = (doc: any) => {
       const id = Object.keys(doc.blocks).find(
         (key) =>
@@ -987,7 +987,7 @@ test.describe('Multilingual editing', () => {
     english.blocks[englishSlate!].value = [
       { type: 'p', children: [{ text: 'What we do, said differently.' }] },
     ];
-    await page.request.patch(`${URLS.mockApi}/en/services`, {
+    await page.request.patch(`${urls.mockApi}/en/services`, {
       headers: auth,
       data: { blocks: english.blocks },
     });

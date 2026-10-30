@@ -7,7 +7,7 @@
  * - paste rich text
  * - paste multi-paragraph rich text
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.describe('Inline Editing - Clipboard', () => {
@@ -197,7 +197,7 @@ test.describe('Inline Editing - Clipboard', () => {
     }).toPass({ timeout: 5000 });
   });
 
-  test('pasting HTML with image into container creates image block', async ({ page }) => {
+  test('pasting HTML with image into container creates image block', async ({ page, urls }) => {
     // Pasting HTML that contains text and an <img> tag into a block inside a
     // container (columns) should split into: text in original block, image
     // block after it, remaining text in another block — all within the same column.
@@ -228,7 +228,7 @@ test.describe('Inline Editing - Clipboard', () => {
       const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
       Object.defineProperty(event, 'clipboardData', { value: dt });
       el.dispatchEvent(event);
-    }, URLS.mockApi);
+    }, urls.mockApi);
 
     // Should create 2 new blocks (image + "World" text) in the same column
     await helper.waitForBlockCountToBe(initialBlocks + 2, 10000);

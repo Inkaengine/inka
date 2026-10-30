@@ -11,12 +11,12 @@
  * A navItem's `label` is required and inline-editable, and a new one starts
  * empty: the exact case.
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.describe('save validation', () => {
   test('a required field typed on the canvas and saved at once is not refused', async ({
-    page,
+    page, urls,
   }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -68,7 +68,7 @@ test.describe('save validation', () => {
     )?.value;
     expect(token, 'the admin is logged in and holds a token').toBeTruthy();
     const res = await page.request.get(
-      `${URLS.mockApi}/_test_data/context-navigation-test-page`,
+      `${urls.mockApi}/_test_data/context-navigation-test-page`,
       {
         headers: {
           Accept: 'application/json',

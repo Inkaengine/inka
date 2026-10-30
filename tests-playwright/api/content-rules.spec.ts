@@ -1,4 +1,5 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect } from '../fixtures';
+import { type APIRequestContext } from '@playwright/test';
 import { URLS } from '../fixtures';
 
 /**
@@ -48,10 +49,10 @@ async function addRule(request: APIRequestContext, headers: Record<string, strin
 }
 
 test.describe('@controlpanels/content-rules', () => {
-  test('the events a rule can trigger on are a vocabulary', async ({ request }) => {
+  test('the events a rule can trigger on are a vocabulary', async ({ request, urls }) => {
     const headers = await signIn(request);
     const vocab = await (
-      await request.get(`${URLS.mockApi}/@vocabularies/plone.contentrules.events`, { headers })
+      await request.get(`${urls.mockApi}/@vocabularies/plone.contentrules.events`, { headers })
     ).json();
     expect(vocab.items.map((t: { token: string }) => t.token)).toEqual(
       expect.arrayContaining(['Object added to this container', 'Workflow state changed']),
@@ -69,11 +70,11 @@ test.describe('@controlpanels/content-rules', () => {
     expect(rule['@id']).toMatch(/@controlpanels\/content-rules\/[^/]+$/);
   });
 
-  test('a rule offers conditions and actions it can be given, each with a form', async ({ request }) => {
+  test('a rule offers conditions and actions it can be given, each with a form', async ({ request, urls }) => {
     const headers = await signIn(request);
     const { id } = await addRule(request, headers);
     const rule = await (
-      await request.get(`${URLS.mockApi}/@controlpanels/content-rules/${id}`, { headers })
+      await request.get(`${urls.mockApi}/@controlpanels/content-rules/${id}`, { headers })
     ).json();
     expect(rule.event).toBe('Workflow state changed');
     expect(rule.conditions).toEqual([]);
@@ -92,10 +93,10 @@ test.describe('@controlpanels/content-rules', () => {
     );
   });
 
-  test('a condition and an action added to a rule are listed back with a summary', async ({ request }) => {
+  test('a condition and an action added to a rule are listed back with a summary', async ({ request, urls }) => {
     const headers = await signIn(request);
     const { id } = await addRule(request, headers);
-    const base = `${URLS.mockApi}/@controlpanels/content-rules/${id}`;
+    const base = `${urls.mockApi}/@controlpanels/content-rules/${id}`;
     expect(
       (
         await request.post(`${base}/condition`, {
@@ -136,25 +137,25 @@ test.describe('@controlpanels/content-rules', () => {
     expect(condition['@schema'].properties.wf_states).toBeTruthy();
   });
 
-  test('a rule can be deleted', async ({ request }) => {
+  test('a rule can be deleted', async ({ request, urls }) => {
     const headers = await signIn(request);
     const { id } = await addRule(request, headers);
-    const del = await request.delete(`${URLS.mockApi}/@controlpanels/content-rules/${id}`, {
+    const del = await request.delete(`${urls.mockApi}/@controlpanels/content-rules/${id}`, {
       headers,
     });
     expect(del.ok()).toBe(true);
     const listing = await (
-      await request.get(`${URLS.mockApi}/@controlpanels/content-rules`, { headers })
+      await request.get(`${urls.mockApi}/@controlpanels/content-rules`, { headers })
     ).json();
     expect(listing.items[0].map((r: { id: string }) => r.id)).not.toContain(id);
   });
 
-  test('rules added in one session are not seen by another', async ({ request }) => {
+  test('rules added in one session are not seen by another', async ({ request, urls }) => {
     const mine = await signIn(request);
     await addRule(request, mine);
     const theirs = await signIn(request);
     const listing = await (
-      await request.get(`${URLS.mockApi}/@controlpanels/content-rules`, { headers: theirs })
+      await request.get(`${urls.mockApi}/@controlpanels/content-rules`, { headers: theirs })
     ).json();
     expect(listing.items[0].map((r: { title: string }) => r.title)).not.toContain(
       'Tell reviewers',
@@ -163,12 +164,12 @@ test.describe('@controlpanels/content-rules', () => {
 });
 
 test.describe('@content-rules on content', () => {
-  test('a rule assigned to a folder is listed there and marked assigned', async ({ request }) => {
+  test('a rule assigned to a folder is listed there and marked assigned', async ({ request, urls }) => {
     const headers = await signIn(request);
     const { id } = await addRule(request, headers);
 
     const before = await (
-      await request.get(`${URLS.mockApi}${FOLDER}/@content-rules`, { headers })
+      await request.get(`${urls.mockApi}${FOLDER}/@content-rules`, { headers })
     ).json();
     expect(
       before['content-rules'].assignable_rules.map((r: { id: string }) => r.id),
@@ -176,13 +177,13 @@ test.describe('@content-rules on content', () => {
     ).toContain(id);
     expect(before['content-rules'].assigned_rules).toEqual([]);
 
-    const assign = await request.post(`${URLS.mockApi}${FOLDER}/@content-rules/${id}`, {
+    const assign = await request.post(`${urls.mockApi}${FOLDER}/@content-rules/${id}`, {
       headers,
     });
     expect((await assign.json()).message).toBe(`Successfully assigned the rule ${id}`);
 
     const after = await (
-      await request.get(`${URLS.mockApi}${FOLDER}/@content-rules`, { headers })
+      await request.get(`${urls.mockApi}${FOLDER}/@content-rules`, { headers })
     ).json();
     const assigned = after['content-rules'].assigned_rules;
     expect(assigned).toEqual([
@@ -200,15 +201,15 @@ test.describe('@content-rules on content', () => {
     ).not.toContain(id);
 
     const listing = await (
-      await request.get(`${URLS.mockApi}/@controlpanels/content-rules`, { headers })
+      await request.get(`${urls.mockApi}/@controlpanels/content-rules`, { headers })
     ).json();
     expect(listing.items[0].find((r: { id: string }) => r.id === id).assigned).toBe(true);
   });
 
-  test('an assignment can apply to subfolders, be disabled, and be removed', async ({ request }) => {
+  test('an assignment can apply to subfolders, be disabled, and be removed', async ({ request, urls }) => {
     const headers = await signIn(request);
     const { id } = await addRule(request, headers);
-    const url = `${URLS.mockApi}${FOLDER}/@content-rules`;
+    const url = `${urls.mockApi}${FOLDER}/@content-rules`;
     await request.post(`${url}/${id}`, { headers });
 
     const read = async () =>

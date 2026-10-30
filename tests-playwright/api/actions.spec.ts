@@ -1,4 +1,5 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect } from '../fixtures';
+import { type APIRequestContext } from '@playwright/test';
 import { URLS } from '../fixtures';
 
 /**
@@ -22,7 +23,7 @@ async function actionsFor(request: APIRequestContext, path: string) {
 const ids = (list: { id: string }[]) => list.map((a) => a.id);
 
 test.describe('@actions', () => {
-  test('a folderish item offers Rules, after the editing actions', async ({ request }) => {
+  test('a folderish item offers Rules, after the editing actions', async ({ request, urls }) => {
     const { object } = await actionsFor(request, FOLDERISH);
     expect(ids(object)).toEqual([
       'view',
@@ -34,7 +35,7 @@ test.describe('@actions', () => {
     ]);
     const rules = object.find((a: { id: string }) => a.id === 'contentrules');
     expect(rules.title).toBe('Rules');
-    expect(rules.url).toBe(`${URLS.mockApi}${FOLDERISH}/@@manage-content-rules`);
+    expect(rules.url).toBe(`${urls.mockApi}${FOLDERISH}/@@manage-content-rules`);
   });
 
   test('an item that is not folderish cannot hold rules', async ({ request }) => {
@@ -53,14 +54,14 @@ test.describe('@actions', () => {
   });
 
   test('a signed-in Manager has the personal actions, and the site its footer actions', async ({
-    request,
+    request, urls,
   }) => {
     const actions = await actionsFor(request, FOLDERISH);
     expect(ids(actions.user)).toEqual(['preferences', 'dashboard', 'plone_setup', 'logout']);
     const setup = actions.user.find((a: { id: string }) => a.id === 'plone_setup');
     expect(setup).toMatchObject({
       title: 'Site Setup',
-      url: `${URLS.mockApi}/@@overview-controlpanel`,
+      url: `${urls.mockApi}/@@overview-controlpanel`,
     });
     // plone.volto hides Accessibility; Site Map and Contact stay.
     expect(ids(actions.site_actions)).toEqual(['sitemap', 'contact']);

@@ -30,7 +30,7 @@
  * The heading touch (type+delete) returns the value to its original text but
  * marks the block dirty.
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 // navigateToEdit prepends helper.contentPrefix ("/_test_data"), so the
@@ -52,7 +52,7 @@ test.describe('ImageWidget sibling preservation', () => {
   // TODO(follow-up): track Nuxt comment-schema-vs-Redux race as its own issue.
   test.describe.configure({ retries: process.env.CI ? 5 : 0 });
 
-  test('PATCH on save preserves image_field and image_scales siblings (image unchanged)', async ({ page }) => {
+  test('PATCH on save preserves image_field and image_scales siblings (image unchanged)', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
 
     // Capture every PATCH the admin sends to the API. The hydra bridge
@@ -63,7 +63,7 @@ test.describe('ImageWidget sibling preservation', () => {
       // Filter on the API this run is actually using. A literal 8888 here
       // matched nothing once the port was overridden, so the filter dropped
       // every request and the test kept passing while measuring nothing.
-      if (!req.url().startsWith(URLS.mockApi)) return;
+      if (!req.url().startsWith(urls.mockApi)) return;
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
       if (!body) return;

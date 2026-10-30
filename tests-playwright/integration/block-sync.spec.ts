@@ -6,7 +6,7 @@
  * - FieldMappingWidget: mapping source fields to target block fields
  * - Block sync: inheriting non-mapped fields from referenced type
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.describe('Block Sync - Listing Block Item Type', () => {
@@ -1684,13 +1684,13 @@ test.describe('fieldRules - a rule that refuses a value', () => {
     await expect(page).toHaveURL(/\/edit(\?|$)/);
   });
 
-  test('a bad value inside a container does not save', async ({ page }) => {
+  test('a bad value inside a container does not save', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     // Broken on purpose, so it is made here, in this login's session — never a
     // committed fixture the content check would have to excuse.
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
-    const created = await page.request.post(`${URLS.mockApi}/_test_data`, {
+    const created = await page.request.post(`${urls.mockApi}/_test_data`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
       data: {
         "@type": "Document",

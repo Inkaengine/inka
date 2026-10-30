@@ -93,10 +93,10 @@ test.describe('docs/examples/* screenshots', () => {
   test.setTimeout(90_000);
 
   for (const { slug, blockType } of EXAMPLES) {
-    test(`${slug} — ${blockType} block selected`, async ({ page }) => {
+    test(`${slug} — ${blockType} block selected`, async ({ page, urls }) => {
       // contentPrefix='' so navigateToEdit hits /docs/examples/<slug>/edit
       // directly (not /_test_data/...).
-      const helper = new AdminUIHelper(page, URLS.voltoSsr, '');
+      const helper = new AdminUIHelper(page, urls.voltoSsr, '');
       await helper.login();
       await helper.navigateToEdit(`/docs/examples/${slug}`);
 

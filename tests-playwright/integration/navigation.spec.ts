@@ -1,4 +1,4 @@
-import { test, expect, PORTS, URLS } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { TEST_DATA_PREFIX } from '../helpers/test-paths';
 
@@ -96,10 +96,10 @@ test.describe('Navigation and URL Handling', () => {
     });
   }
 
-  test('Switching to hash-based frontend stays in edit mode', async ({ page }) => {
+  test('Switching to hash-based frontend stays in edit mode', async ({ page, urls, ports }) => {
     // Requires F7 running on its dedicated port
-    const response = await page.request.get(URLS.f7).catch(() => null);
-    test.skip(!response?.ok(), `F7 not running on port ${PORTS.f7}`);
+    const response = await page.request.get(urls.f7).catch(() => null);
+    test.skip(!response?.ok(), `F7 not running on port ${ports.f7}`);
 
     // Reproduces production bug: F7 uses hash-bang routing (#!/path).
     // When switching to F7, the iframe should stay in edit mode and render content.
@@ -123,7 +123,7 @@ test.describe('Navigation and URL Handling', () => {
 
     // Add F7 hash-based URL
     const input = modal.locator('.frontend-settings-url-input');
-    await input.fill(`${URLS.f7}/#!`);
+    await input.fill(`${urls.f7}/#!`);
     await modal.locator('.frontend-settings-add-btn').click();
 
     // Close modal
@@ -131,7 +131,7 @@ test.describe('Navigation and URL Handling', () => {
     await expect(modal).not.toBeVisible({ timeout: 5000 });
 
     // Select the F7 URL in the switcher panel
-    const f7Item = panel.locator('.frontend-switcher-url-item', { hasText: `localhost:${PORTS.f7}/#!` });
+    const f7Item = panel.locator('.frontend-switcher-url-item', { hasText: `localhost:${ports.f7}/#!` });
     await expect(f7Item).toBeVisible();
     await f7Item.click();
 
@@ -301,14 +301,14 @@ test.describe('Navigation and URL Handling', () => {
     await expect(page).not.toHaveURL(/\/edit$/);
   });
 
-  test('Root page has top-level navigation in iframe', async ({ page }, testInfo) => {
+  test('Root page has top-level navigation in iframe', async ({ page, urls }, testInfo) => {
 
     const helper = new AdminUIHelper(page);
 
     await helper.login();
 
     // Navigate to root in edit mode
-    await page.goto(`${URLS.voltoSsr}/edit`);
+    await page.goto(`${urls.voltoSsr}/edit`);
 
     // Wait for iframe element to be visible
     await page.locator('#previewIframe').waitFor({ state: 'visible', timeout: 10000 });
@@ -449,7 +449,7 @@ test.describe('Navigation and URL Handling', () => {
     expect(loadCount, `Iframe loaded ${loadCount} times, should be 2 (not 3+ from admin reload)`).toBeLessThan(3);
   });
 
-  test('Changing frontend URL via switcher reloads iframe', async ({ page }, testInfo) => {
+  test('Changing frontend URL via switcher reloads iframe', async ({ page, urls, ports }, testInfo) => {
     // Skip on Nuxt - this test changes frontend URL which would conflict
     test.skip(testInfo.project.name.includes('nuxt'), 'Mock frontend test only');
 
@@ -470,7 +470,7 @@ test.describe('Navigation and URL Handling', () => {
     // locally; what this test cares about is the path-based URL on that frontend.
     const before = new URL(srcBefore!);
     expect(['localhost', '127.0.0.1']).toContain(before.hostname);
-    expect(before.port).toBe(String(PORTS.testFrontend));
+    expect(before.port).toBe(String(ports.testFrontend));
     expect(before.pathname).toBe(`${TEST_DATA_PREFIX}/test-page`);
     expect(srcBefore).not.toContain('#');
 
@@ -486,7 +486,7 @@ test.describe('Navigation and URL Handling', () => {
 
     // Add hash-based frontend URL
     const urlInput = modal.locator('.frontend-settings-url-input');
-    await urlInput.fill(`${URLS.testFrontend}/#/`);
+    await urlInput.fill(`${urls.testFrontend}/#/`);
     await modal.locator('.frontend-settings-add-btn').click();
 
     // Close the settings modal
@@ -498,7 +498,7 @@ test.describe('Navigation and URL Handling', () => {
       await page.locator('#toolbar-frontend-switcher').click();
       await expect(panel).toBeVisible({ timeout: 5000 });
     }
-    const hashUrlItem = panel.locator('.frontend-switcher-url-item', { hasText: `${new URL(URLS.testFrontend).host}/#/` });
+    const hashUrlItem = panel.locator('.frontend-switcher-url-item', { hasText: `${new URL(urls.testFrontend).host}/#/` });
     await expect(hashUrlItem).toBeVisible({ timeout: 5000 });
     await hashUrlItem.click();
 
@@ -654,10 +654,10 @@ test.describe('Navigation and URL Handling', () => {
     await helper.waitForBlockSelectedInAdmin(blockId);
   });
 
-  test('Frontend switcher button visible in view mode', async ({ page }) => {
+  test('Frontend switcher button visible in view mode', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
-    await page.goto(`${URLS.voltoSsr}/test-page`);
+    await page.goto(`${urls.voltoSsr}/test-page`);
     // Wait for the thing under test, not for network silence. With the
     // backend inversion on, CMS traffic moves from the admin page into the
     // iframe, so 'networkidle' is no longer reachable — while the page itself

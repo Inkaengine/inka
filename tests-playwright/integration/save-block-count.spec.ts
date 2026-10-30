@@ -16,7 +16,7 @@
  * explicitly rather than the count alone, because a stale copy is only
  * recognisable by the text it carries.
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 const PAGE = '/test-page';
@@ -25,7 +25,7 @@ const TYPED = 'Edited once, saved once';
 
 test.describe('saving an edit', () => {
   test('editing a block and saving does not add a second copy of it', async ({
-    page,
+    page, urls,
   }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -38,7 +38,7 @@ test.describe('saving an edit', () => {
     expect(token, 'the admin is logged in and holds a token').toBeTruthy();
 
     const readPage = async () => {
-      const res = await page.request.get(`${URLS.mockApi}/_test_data${PAGE}`, {
+      const res = await page.request.get(`${urls.mockApi}/_test_data${PAGE}`, {
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
       });
       expect(res.ok()).toBeTruthy();

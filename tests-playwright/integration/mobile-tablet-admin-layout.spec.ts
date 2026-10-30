@@ -21,7 +21,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 // When CAPTURE_MOBILE_SCREENSHOTS=1, the four "snapshot" tests at the
@@ -712,24 +712,24 @@ test.describe('Admin layout — mobile (≤767px)', () => {
   // (the rules key off the viewport, not body.view-*), so exercise them in VIEW mode,
   // where the button is a first-class part of the designed bottom toolbar.
   test('frontend switcher panel renders as a bottom sheet', async ({
-    page,
+    page, urls,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     const helper = new AdminUIHelper(page);
     await helper.login();
-    await page.goto(`${URLS.voltoSsr}/test-page`);
+    await page.goto(`${urls.voltoSsr}/test-page`);
 
     await page.locator('#toolbar-frontend-switcher').click();
     await isBottomSheet(page, '.frontend-switcher-panel');
   });
 
   test('frontend settings modal renders as a bottom sheet', async ({
-    page,
+    page, urls,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     const helper = new AdminUIHelper(page);
     await helper.login();
-    await page.goto(`${URLS.voltoSsr}/test-page`);
+    await page.goto(`${urls.voltoSsr}/test-page`);
 
     await page.locator('#toolbar-frontend-switcher').click();
     await page
@@ -740,7 +740,7 @@ test.describe('Admin layout — mobile (≤767px)', () => {
 
   test('sidebar starts collapsed on mobile EVEN IF a desktop sidebar_expanded=true cookie exists', async ({
     page,
-    context,
+    context, urls,
   }) => {
     // Reproduces the user-reported regression: a previous desktop
     // session left sidebar_expanded=true; visiting on mobile would
@@ -750,7 +750,7 @@ test.describe('Admin layout — mobile (≤767px)', () => {
       {
         name: 'sidebar_expanded',
         value: 'true',
-        url: URLS.voltoSsr,
+        url: urls.voltoSsr,
       },
     ]);
     await page.setViewportSize({ width: 375, height: 812 });
@@ -824,14 +824,14 @@ test.describe('Admin layout — mobile (≤767px)', () => {
   });
 
   test('view mode: the bottom toolbar does not overflow — Edit stays on screen', async ({
-    page,
+    page, urls,
   }) => {
     // scrollWidth 422 > clientWidth 412: the primary action (Edit) hangs 10px
     // off the right edge and the bar silently becomes horizontally scrollable.
     await page.setViewportSize({ width: 412, height: 915 });
     const helper = new AdminUIHelper(page);
     await helper.login();
-    await page.goto(`${URLS.voltoSsr}/test-page`);
+    await page.goto(`${urls.voltoSsr}/test-page`);
     const bar = page.locator('#toolbar-body');
     await expect(bar).toBeVisible();
 

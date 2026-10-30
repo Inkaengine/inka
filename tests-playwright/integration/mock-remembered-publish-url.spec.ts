@@ -11,31 +11,31 @@
  * Both addresses serve the test frontend, as different origins, so the old one
  * would load too: the test tells them apart by the iframe's address.
  */
-import { test, expect, PORTS, URLS } from '../fixtures';
+import { test, expect, PORTS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 const EDIT = `http://localhost:${PORTS.testFrontend}`;
 const PUBLISH = `http://127.0.0.1:${PORTS.testFrontend}`;
 
 test.describe('a remembered publish URL', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, urls, ports }) => {
     await page.context().addCookies([
       {
-        name: `saved_urls_${PORTS.voltoSsr}`,
+        name: `saved_urls_${ports.voltoSsr}`,
         value: `Site|${EDIT}|${PUBLISH}`,
-        url: URLS.voltoSsr,
+        url: urls.voltoSsr,
       },
       {
         // What the editor last had open, before the frontend got its own
         // editing address.
-        name: `iframe_url_${PORTS.voltoSsr}`,
+        name: `iframe_url_${ports.voltoSsr}`,
         value: PUBLISH,
-        url: URLS.voltoSsr,
+        url: urls.voltoSsr,
       },
     ]);
   });
 
-  test("opens that frontend's edit URL, and remembers it", async ({ page }) => {
+  test("opens that frontend's edit URL, and remembers it", async ({ page, urls, ports }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/test-page');
@@ -46,8 +46,8 @@ test.describe('a remembered publish URL', () => {
       helper.getIframe().locator('[data-block-uid]').first(),
     ).toBeVisible();
 
-    const remembered = (await page.context().cookies(URLS.voltoSsr)).find(
-      (c) => c.name === `iframe_url_${PORTS.voltoSsr}`,
+    const remembered = (await page.context().cookies(urls.voltoSsr)).find(
+      (c) => c.name === `iframe_url_${ports.voltoSsr}`,
     );
     // js-cookie writes it URL-encoded.
     expect(decodeURIComponent(remembered?.value ?? '')).toBe(EDIT);

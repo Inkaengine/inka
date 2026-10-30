@@ -7,11 +7,11 @@
  * every page `no-store`, including the ones Volto marks itself (its not-found
  * page asks for `no-cache`, its error page for `public, max-age=60`).
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 
 test.describe('the editor\'s pages and a shared cache', () => {
-  test('a page is no-store', async ({ request }) => {
-    const res = await request.get(`${URLS.voltoSsr}/test-page`);
+  test('a page is no-store', async ({ request, urls }) => {
+    const res = await request.get(`${urls.voltoSsr}/test-page`);
     expect(res.status()).toBe(200);
     expect(await res.text()).toContain('<!doctype html>');
     expect(res.headers()['cache-control']).toBe('no-store');
@@ -35,8 +35,8 @@ test.describe('the editor\'s pages and a shared cache', () => {
    * server-rendered the status was how the test reached that page; now it is
    * simply the shell.
    */
-  test('a path with nothing behind it is no-store too', async ({ request }) => {
-    const res = await request.get(`${URLS.voltoSsr}/no-such-page-anywhere`);
+  test('a path with nothing behind it is no-store too', async ({ request, urls }) => {
+    const res = await request.get(`${urls.voltoSsr}/no-such-page-anywhere`);
     expect(res.status()).toBe(200);
     expect(res.headers()['cache-control']).toBe('no-store');
   });

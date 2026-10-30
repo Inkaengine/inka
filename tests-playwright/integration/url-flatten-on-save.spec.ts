@@ -24,7 +24,7 @@
  * exactly one of the two pastes would survive. Both pass only when
  * publicURL follows the active frontend.
  */
-import { test, expect, PORTS, URLS } from '../fixtures';
+import { test, expect, PORTS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 const FRONTEND_A_EDIT = `http://localhost:${PORTS.testFrontend}`;
@@ -33,29 +33,29 @@ const FRONTEND_B_EDIT = `http://127.0.0.1:${PORTS.testFrontend}`;
 const FRONTEND_B_PUBLISH = 'http://www.published-b.example.test';
 
 test.describe('publicURL follows the active iframe frontend', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, urls, ports }) => {
     // Register both frontends BEFORE Volto loads. iframe_url cookie pins
     // A as the active one on initial render; applyConfig + middleware
     // then derive settings.publicURL = A.publishUrl.
     await page.context().addCookies([
       {
-        name: `saved_urls_${PORTS.voltoSsr}`,
+        name: `saved_urls_${ports.voltoSsr}`,
         value: [
           `A|${FRONTEND_A_EDIT}|${FRONTEND_A_PUBLISH}`,
           `B|${FRONTEND_B_EDIT}|${FRONTEND_B_PUBLISH}`,
         ].join(','),
-        url: URLS.voltoSsr,
+        url: urls.voltoSsr,
       },
       {
-        name: `iframe_url_${PORTS.voltoSsr}`,
+        name: `iframe_url_${ports.voltoSsr}`,
         value: FRONTEND_A_EDIT,
-        url: URLS.voltoSsr,
+        url: urls.voltoSsr,
       },
     ]);
   });
 
   test('paste-and-save uses the active frontend on load, then follows a UI switch', async ({
-    page,
+    page, urls,
   }) => {
     const helper = new AdminUIHelper(page);
 
@@ -103,7 +103,7 @@ test.describe('publicURL follows the active iframe frontend', () => {
     expect(
       slateA,
       'first save should store the apiPath-prefixed flattened path',
-    ).toContain(`${URLS.mockApi}/_test_data/another-page`);
+    ).toContain(`${urls.mockApi}/_test_data/another-page`);
 
     // ---- Step 2: switch to B in the toolbar, then paste B's publishUrl.
     await helper.navigateToEdit('/test-page');
@@ -139,6 +139,6 @@ test.describe('publicURL follows the active iframe frontend', () => {
     expect(
       slateB,
       'post-switch save should store the apiPath-prefixed flattened path',
-    ).toContain(`${URLS.mockApi}/_test_data/another-page`);
+    ).toContain(`${urls.mockApi}/_test_data/another-page`);
   });
 });

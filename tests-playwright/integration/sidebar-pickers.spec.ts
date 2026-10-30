@@ -199,7 +199,7 @@ test.describe('Sidebar pickers', () => {
   });
 
   test('valueField: what is STORED is the named field, not the block id', async ({
-    page,
+    page, urls,
   }) => {
     // The previous version of this test asserted the sidebar still displayed
     // the label — which a widget keeping its own state passes. What matters is
@@ -233,7 +233,7 @@ test.describe('Sidebar pickers', () => {
     const token = cookies.find((c) => c.name === 'auth_token')?.value;
     expect(token, 'the admin is logged in and holds a token').toBeTruthy();
     const saved = await page.request.get(
-      `${URLS.mockApi}/_test_data/form-test-page`,
+      `${urls.mockApi}/_test_data/form-test-page`,
       {
         headers: {
           Accept: 'application/json',

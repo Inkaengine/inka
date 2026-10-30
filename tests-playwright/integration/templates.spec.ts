@@ -7,7 +7,7 @@
  * 3. Fixed template blocks cannot be edited or deleted
  * 4. Placeholder content remains fully editable
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.describe('Templates', () => {
@@ -69,13 +69,13 @@ test.describe('Templates', () => {
   // session, never as a committed fixture the content check would have to
   // excuse: a template whose grid holds one marked and one unmarked cell, and a
   // page that uses it.
-  test('nested blocks without template fields are NOT synced from template', async ({ page }) => {
+  test('nested blocks without template fields are NOT synced from template', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
 
     await helper.login();
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
     const create = (parent: string, data: object) =>
-      page.request.post(`${URLS.mockApi}${parent}`, {
+      page.request.post(`${urls.mockApi}${parent}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
         data,
       });

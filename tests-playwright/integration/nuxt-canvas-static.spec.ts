@@ -13,7 +13,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 
 import { extname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { AddressInfo } from 'node:net';
-import { test, expect, PORTS, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 const STARTER = new URL('../../examples/nuxt-blog-starter/', import.meta.url).pathname;
@@ -61,12 +61,12 @@ test.describe('the deployed canvas (static, hash-routed)', () => {
     if (site) rmSync(site, { recursive: true, force: true });
   });
 
-  test('a page below the root loads in the canvas and connects', async ({ page, context }) => {
+  test('a page below the root loads in the canvas and connects', async ({ page, context, ports }) => {
     // Without a route on the server, a path-routed canvas 404s here.
     const deep = await fetch(canvas.replace('#/', '_test_data/test-page'));
     expect(deep.status).toBe(404);
 
-    await context.addCookies([{ name: `iframe_url_${PORTS.voltoSsr}`, value: canvas, domain: 'localhost', path: '/' }]);
+    await context.addCookies([{ name: `iframe_url_${ports.voltoSsr}`, value: canvas, domain: 'localhost', path: '/' }]);
 
     // Nothing the admin asks of the canvas may be missing from it. A static
     // build serves the files it has and 404s the rest, so a page the admin

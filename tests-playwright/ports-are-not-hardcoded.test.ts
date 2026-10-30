@@ -29,6 +29,16 @@
  * forbid a port appearing in a string: it is that doing so has to be a sentence
  * someone wrote down, rather than a plausible-looking default the next reader
  * copies.
+ *
+ * This replaces tests-playwright/fixtures/test-ports-not-hardcoded.test.cjs,
+ * whose coverage is folded in: the workflow YAML, package.json test scripts,
+ * the example frontends' own configs and `--port 3009` style flags — which is
+ * how astro once served a port the harness was not waiting on.
+ *
+ * That guard could only flag numbers that appeared in the workflow's env block,
+ * so it was blind to any literal outside the current block: 8899, 1337, 8793
+ * and 8791 sat in tests-adapters for as long as they did because no check knew
+ * to look for them. This one does not care what the number is.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -46,7 +56,8 @@ const REPO = path.resolve(__dirname, '..');
  * literal while the harness waited on its configured port — astro served 3009
  * and nothing was there to answer.
  */
-const SCANNED = /\.(ts|tsx|js|jsx|cjs|mjs|vue|svelte|astro)$|(^|\/)package\.json$/;
+const SCANNED =
+  /\.(ts|tsx|js|jsx|cjs|mjs|vue|svelte|astro|ya?ml)$|(^|\/)package\.json$/;
 
 const SKIPPED = [
   // The Volto fork. Upstream's code, upstream's ports.
@@ -85,6 +96,11 @@ const ALLOWED: Record<string, string> = {
   'tests-playwright/fixtures/nuxt-starter-config.test.cjs':
     'pins the env it passes IN, to assert what nuxt.config derives from it',
 
+  // The one place a port number is meant to be written: where CI says where
+  // this run's block starts. Everything else derives from it.
+  '.github/workflows/test.yaml':
+    'HYDRA_PORT_BASE: the single declaration every other port comes from',
+
   // Not ours to choose. The health check must agree with the port RAZZLE is
   // serving on, and when PORT is unset that is razzle's own default — so
   // reading it with razzle's default is the accurate thing, and requiring
@@ -109,6 +125,44 @@ const ALLOWED: Record<string, string> = {
  * with the original — but a port inside a string IS an address we care about,
  * so string contents are kept, and only comments go.
  */
+/**
+ * A workflow or any other YAML: `#` to end of line is a comment, and `//` is
+ * not — `http://localhost:8888` must survive, which is exactly what the
+ * JavaScript tokenizer below would eat.
+ *
+ * Quotes are honoured so a `#` inside a quoted string stays. Crude next to a
+ * YAML parser, and enough: the question is only whether a port literal on this
+ * line is real.
+ */
+export function yamlCode(source: string): string {
+  return source
+    .split('\n')
+    .map((line) => {
+      let quote: string | null = null;
+      for (let i = 0; i < line.length; i += 1) {
+        const c = line[i];
+        if (quote) {
+          if (c === quote) quote = null;
+          continue;
+        }
+        if (c === '"' || c === "'") {
+          quote = c;
+          continue;
+        }
+        if (c === '#') return line.slice(0, i);
+      }
+      return line;
+    })
+    .join('\n');
+}
+
+/** JSON has no comments, so there is nothing to strip. */
+export function codeOf(file: string, source: string): string {
+  if (/\.ya?ml$/.test(file)) return yamlCode(source);
+  if (/(^|\/)package\.json$/.test(file)) return source;
+  return code(source);
+}
+
 export function code(source: string): string {
   let out = '';
   let i = 0;
@@ -206,7 +260,7 @@ function offenders(): string[] {
   const found: string[] = [];
   for (const file of files) {
     const source = readFileSync(path.join(REPO, file), 'utf8');
-    const scanned = code(source);
+    const scanned = codeOf(file, source);
     const lines = scanned.split('\n');
     lines.forEach((line, index) => {
       const where = `${file}:${index + 1}`;

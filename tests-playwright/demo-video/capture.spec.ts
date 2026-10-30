@@ -75,7 +75,7 @@ test.beforeAll(async () => {
   }
 });
 
-test('hydra-demo — homepage hero loop', async ({ page }) => {
+test('hydra-demo — homepage hero loop', async ({ page, ports }) => {
   test.setTimeout(240_000);
   const helper = new AdminUIHelper(page);
   await helper.login();
@@ -172,7 +172,7 @@ test('hydra-demo — homepage hero loop', async ({ page }) => {
   await f7Item.click();
   await expect(async () => {
     const src = await page.locator('#previewIframe').getAttribute('src');
-    expect(src).toContain(`localhost:${PORTS.f7}`);
+    expect(src).toContain(`localhost:${ports.f7}`);
   }).toPass({ timeout: 5_000 });
   // The F7 frontend has drawn the same content, so the swap is captured and not
   // just the URL change — then the closing caption holds for its words.

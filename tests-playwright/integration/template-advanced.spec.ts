@@ -9,7 +9,7 @@
  *
  * TODO: Add test where the same template is inserted twice on a page
  */
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.describe('Fixed Editable Blocks', () => {
@@ -80,7 +80,7 @@ test.describe('Fixed Editable Blocks', () => {
   // content, save, and confirm (a) the edit persists on the INSTANCE after
   // reload and (b) the shared TEMPLATE document is never written. An instance
   // edit must stay instance-local.
-  test('editing a fixed-but-editable block persists on the instance without saving the template', async ({ page }) => {
+  test('editing a fixed-but-editable block persists on the instance without saving the template', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     const iframe = helper.getIframe();
 
@@ -108,7 +108,7 @@ test.describe('Fixed Editable Blocks', () => {
       // Filter on the API this run is actually using. A literal 8888 here
       // matched nothing once the port was overridden, so the filter dropped
       // every request and the test kept passing while measuring nothing.
-      if (!req.url().startsWith(URLS.mockApi)) return;
+      if (!req.url().startsWith(urls.mockApi)) return;
       writes.push({ method: m, url: req.url() });
     });
 

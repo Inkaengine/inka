@@ -12,17 +12,17 @@
  *   - return null when neither API is available
  */
 
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.describe('Bridge.caretRangeFromPoint()', () => {
   let helper: AdminUIHelper;
 
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, urls }) => {
     helper = new AdminUIHelper(page);
     // MOCK_PARENT_URL and FRONTEND_URL let the test run against a non-default
     // mock-api + frontend (e.g. when port 8889 is taken by another hydra checkout).
-    const mockParent = process.env.MOCK_PARENT_URL || `${URLS.testFrontend}/mock-parent.html`;
+    const mockParent = process.env.MOCK_PARENT_URL || `${urls.testFrontend}/mock-parent.html`;
     const frontend = process.env.FRONTEND_URL || '';
     const url = frontend
       ? `${mockParent}?frontend=${encodeURIComponent(frontend)}`

@@ -19,7 +19,7 @@
  *
  * Works against any Plone API — mock or remote.
  */
-import { test as base, expect, URLS } from '../fixtures';
+import { test as base, expect } from '../fixtures';
 import { AdminUIHelper, previewFrame } from '../helpers/AdminUIHelper';
 import { verifyBlockRendering, revealBlock } from '../helpers/BlockVerificationHelper';
 import { drainFieldCoverage } from '../helpers/field-coverage';
@@ -248,12 +248,12 @@ test.describe('Block sanity (auto-discovered)', () => {
     // nothing — that is the frontend's edit-only placeholder.) Every listing
     // example, with its query swapped for one that matches no content.
     if (block.isListing) {
-      test(`${label} with no results still shows something to click while editing${src}`, async ({ page, helper }, testInfo) => {
+      test(`${label} with no results still shows something to click while editing${src}`, async ({ page, helper, urls }, testInfo) => {
         test.skip(!belongsHere(testInfo.project.name), `discovered via ${block.frontend}`);
         const frontendUrl = process.env.FRONTEND_URL || getFrontendUrl(testInfo.project.name);
         const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
-        const apiOrigin = process.env.DISCOVER_BLOCKS_API || URLS.mockApi;
-        const mockParentUrl = process.env.MOCK_PARENT_URL || `${URLS.testFrontend}/mock-parent.html`;
+        const apiOrigin = process.env.DISCOVER_BLOCKS_API || urls.mockApi;
+        const mockParentUrl = process.env.MOCK_PARENT_URL || `${urls.testFrontend}/mock-parent.html`;
         await page.goto(`${mockParentUrl}?api_path=${encodeURIComponent(`${apiOrigin}${block.pagePath}`)}${frontend}`);
         await helper.waitForIframeReady();
         await helper.waitForBridgeConnected();
@@ -304,15 +304,15 @@ test.describe('Block sanity (auto-discovered)', () => {
       });
     }
 
-    test(`${label} block renders and has edit annotations${src}`, async ({ page, helper }, testInfo) => {
+    test(`${label} block renders and has edit annotations${src}`, async ({ page, helper, urls }, testInfo) => {
       test.skip(!belongsHere(testInfo.project.name), `discovered via ${block.frontend}`);
       const frontendUrl = process.env.FRONTEND_URL || getFrontendUrl(testInfo.project.name);
       const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
 
       // Use api_path to load the full page content from the API
       // The mock-parent fetches the page JSON and sends it via the bridge protocol
-      const apiOrigin = process.env.DISCOVER_BLOCKS_API || URLS.mockApi;
-      const mockParentUrl = process.env.MOCK_PARENT_URL || `${URLS.testFrontend}/mock-parent.html`;
+      const apiOrigin = process.env.DISCOVER_BLOCKS_API || urls.mockApi;
+      const mockParentUrl = process.env.MOCK_PARENT_URL || `${urls.testFrontend}/mock-parent.html`;
       const apiPath = `${apiOrigin}${block.pagePath}`;
       await page.goto(
         `${mockParentUrl}?api_path=${encodeURIComponent(apiPath)}${frontend}`,
@@ -536,11 +536,11 @@ test.describe('Template slots', () => {
   ].sort();
 
   for (const pagePath of pagesWithTemplates) {
-    test(`${pagePath} obeys the template slot rules`, async ({ page, helper }, testInfo) => {
+    test(`${pagePath} obeys the template slot rules`, async ({ page, helper, urls }, testInfo) => {
       const frontendUrl = process.env.FRONTEND_URL || getFrontendUrl(testInfo.project.name);
       const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
-      const apiOrigin = process.env.DISCOVER_BLOCKS_API || URLS.mockApi;
-      const mockParentUrl = process.env.MOCK_PARENT_URL || `${URLS.testFrontend}/mock-parent.html`;
+      const apiOrigin = process.env.DISCOVER_BLOCKS_API || urls.mockApi;
+      const mockParentUrl = process.env.MOCK_PARENT_URL || `${urls.testFrontend}/mock-parent.html`;
       await page.goto(
         `${mockParentUrl}?api_path=${encodeURIComponent(`${apiOrigin}${pagePath}`)}${frontend}`,
       );

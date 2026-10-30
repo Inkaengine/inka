@@ -1,4 +1,4 @@
-import { test, expect, URLS } from '../fixtures';
+import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 /**
@@ -23,7 +23,7 @@ test.describe('History and compare', () => {
     await expect(rows.filter({ hasText: 'Edited' })).toHaveCount(2, { timeout: 15_000 });
   });
 
-  test('compare renders each version in its own frontend iframe', async ({ page }) => {
+  test('compare renders each version in its own frontend iframe', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     // Arrive the way users do — from the page (this also persists the
@@ -59,7 +59,7 @@ test.describe('History and compare', () => {
     // current page's last block must be absent from BOTH panes — the decisive
     // proof each pane shows pushed version content, not the SSR page.
     const current = await (
-      await page.request.get(`${URLS.mockApi}/++api++/_test_data/history-test-page`)
+      await page.request.get(`${urls.mockApi}/++api++/_test_data/history-test-page`)
     ).json();
     const lastUid = current.blocks_layout.items[current.blocks_layout.items.length - 1];
     for (const n of [0, 1]) {

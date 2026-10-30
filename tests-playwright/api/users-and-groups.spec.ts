@@ -1,4 +1,5 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect } from '../fixtures';
+import { type APIRequestContext } from '@playwright/test';
 import { URLS } from '../fixtures';
 
 /**
@@ -26,9 +27,9 @@ async function signIn(request: APIRequestContext): Promise<Record<string, string
 }
 
 test.describe('@users', () => {
-  test('lists the site users, the signed-in admin among them', async ({ request }) => {
+  test('lists the site users, the signed-in admin among them', async ({ request, urls }) => {
     const headers = await signIn(request);
-    const res = await request.get(`${URLS.mockApi}/@users`, { headers });
+    const res = await request.get(`${urls.mockApi}/@users`, { headers });
     expect(res.ok()).toBe(true);
     const body = await res.json();
     // A batch, as plone.restapi records it (users.resp) — not a bare list.
@@ -46,9 +47,9 @@ test.describe('@users', () => {
     ).toBeGreaterThan(1);
   });
 
-  test('a query narrows the list to matching users', async ({ request }) => {
+  test('a query narrows the list to matching users', async ({ request, urls }) => {
     const headers = await signIn(request);
-    const res = await request.get(`${URLS.mockApi}/@users?query=editor`, { headers });
+    const res = await request.get(`${urls.mockApi}/@users?query=editor`, { headers });
     const body = await res.json();
     expect(body.items_total, 'a query answers a batch').toBe(body.items.length);
     expect(body.items.length).toBeGreaterThan(0);
@@ -60,9 +61,9 @@ test.describe('@users', () => {
     }
   });
 
-  test('adding a user lists it, with the roles and groups it was given', async ({ request }) => {
+  test('adding a user lists it, with the roles and groups it was given', async ({ request, urls }) => {
     const headers = await signIn(request);
-    const created = await request.post(`${URLS.mockApi}/@users`, {
+    const created = await request.post(`${urls.mockApi}/@users`, {
       headers,
       data: {
         username: 'jsmith',
@@ -77,72 +78,72 @@ test.describe('@users', () => {
     expect(created.headers().location).toMatch(/@users\/jsmith$/);
     expect((await created.json()).id).toBe('jsmith');
 
-    const user = await (await request.get(`${URLS.mockApi}/@users/jsmith`, { headers })).json();
+    const user = await (await request.get(`${urls.mockApi}/@users/jsmith`, { headers })).json();
     expect(user.fullname).toBe('Jo Smith');
     expect(user.email).toBe('jo@example.com');
     // Given roles, a new user has exactly those (users_created.resp).
     expect(user.roles).toEqual(['Editor']);
     expect(user.groups.items.map((g: { id: string }) => g.id)).toContain('Reviewers');
 
-    const listed = await (await request.get(`${URLS.mockApi}/@users`, { headers })).json();
+    const listed = await (await request.get(`${urls.mockApi}/@users`, { headers })).json();
     expect(listed.items.map((u: { id: string }) => u.id)).toContain('jsmith');
   });
 
-  test('a user created without roles is a Member', async ({ request }) => {
+  test('a user created without roles is a Member', async ({ request, urls }) => {
     const headers = await signIn(request);
-    await request.post(`${URLS.mockApi}/@users`, {
+    await request.post(`${urls.mockApi}/@users`, {
       headers,
       data: { username: 'plain', email: 'plain@example.com', password: 'x' },
     });
-    const user = await (await request.get(`${URLS.mockApi}/@users/plain`, { headers })).json();
+    const user = await (await request.get(`${urls.mockApi}/@users/plain`, { headers })).json();
     expect(user.roles).toEqual(['Member']);
   });
 
-  test('a user added in one session is not seen by another', async ({ request }) => {
+  test('a user added in one session is not seen by another', async ({ request, urls }) => {
     const mine = await signIn(request);
-    await request.post(`${URLS.mockApi}/@users`, {
+    await request.post(`${urls.mockApi}/@users`, {
       headers: mine,
       data: { username: 'only-mine', email: 'mine@example.com', password: 'x' },
     });
     const theirs = await signIn(request);
-    const listed = await (await request.get(`${URLS.mockApi}/@users`, { headers: theirs })).json();
+    const listed = await (await request.get(`${urls.mockApi}/@users`, { headers: theirs })).json();
     expect(listed.items.map((u: { id: string }) => u.id)).not.toContain('only-mine');
   });
 
-  test('adding a user who exists is refused', async ({ request }) => {
+  test('adding a user who exists is refused', async ({ request, urls }) => {
     const headers = await signIn(request);
-    const res = await request.post(`${URLS.mockApi}/@users`, {
+    const res = await request.post(`${urls.mockApi}/@users`, {
       headers,
       data: { username: 'admin', email: 'a@example.com', password: 'x' },
     });
     expect(res.status()).toBe(400);
   });
 
-  test('whoever signed in is a user of their own session', async ({ request }) => {
+  test('whoever signed in is a user of their own session', async ({ request, urls }) => {
     // The admin fetches @users/<login> straight after signing in, and @login
     // here accepts any name — a demo account signs in as `demo`.
-    const res = await request.post(`${URLS.mockApi}/@login`, {
+    const res = await request.post(`${urls.mockApi}/@login`, {
       data: { login: 'demo', password: 'demo' },
     });
     const { token } = await res.json();
-    const me = await request.get(`${URLS.mockApi}/@users/demo`, {
+    const me = await request.get(`${urls.mockApi}/@users/demo`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     expect(me.status()).toBe(200);
     expect((await me.json()).roles).toContain('Manager');
   });
 
-  test('an unknown user is not found', async ({ request }) => {
+  test('an unknown user is not found', async ({ request, urls }) => {
     const headers = await signIn(request);
-    const res = await request.get(`${URLS.mockApi}/@users/nobody-here`, { headers });
+    const res = await request.get(`${urls.mockApi}/@users/nobody-here`, { headers });
     expect(res.status()).toBe(404);
   });
 });
 
 test.describe('@groups, @roles, @userschema', () => {
-  test('groups carry Plone fields, and more than one exists', async ({ request }) => {
+  test('groups carry Plone fields, and more than one exists', async ({ request, urls }) => {
     const headers = await signIn(request);
-    const groups = await (await request.get(`${URLS.mockApi}/@groups`, { headers })).json();
+    const groups = await (await request.get(`${urls.mockApi}/@groups`, { headers })).json();
     expect(groups.length).toBeGreaterThan(1);
     const reviewers = groups.find((g: { id: string }) => g.id === 'Reviewers');
     expect(reviewers).toMatchObject({ groupname: 'Reviewers', title: 'Reviewers' });
@@ -151,18 +152,18 @@ test.describe('@groups, @roles, @userschema', () => {
     expect(reviewers.members.items).toContain('reviewer');
   });
 
-  test('roles are the assignable Plone roles', async ({ request }) => {
+  test('roles are the assignable Plone roles', async ({ request, urls }) => {
     const headers = await signIn(request);
-    const roles = await (await request.get(`${URLS.mockApi}/@roles`, { headers })).json();
+    const roles = await (await request.get(`${urls.mockApi}/@roles`, { headers })).json();
     expect(roles.map((r: { id: string }) => r.id)).toEqual(
       expect.arrayContaining(['Contributor', 'Editor', 'Reviewer', 'Site Administrator', 'Manager']),
     );
     expect(roles[0]).toMatchObject({ '@type': 'role' });
   });
 
-  test('the user schema is a form schema with email required', async ({ request }) => {
+  test('the user schema is a form schema with email required', async ({ request, urls }) => {
     const headers = await signIn(request);
-    const schema = await (await request.get(`${URLS.mockApi}/@userschema`, { headers })).json();
+    const schema = await (await request.get(`${urls.mockApi}/@userschema`, { headers })).json();
     expect(schema.fieldsets[0].fields).toEqual(expect.arrayContaining(['fullname', 'email']));
     expect(schema.properties.email.title).toBeTruthy();
     expect(schema.required).toContain('email');
@@ -170,29 +171,29 @@ test.describe('@groups, @roles, @userschema', () => {
 });
 
 test.describe('@controlpanels', () => {
-  test('the listing offers users and content rules panels', async ({ request }) => {
+  test('the listing offers users and content rules panels', async ({ request, urls }) => {
     const headers = await signIn(request);
-    const panels = await (await request.get(`${URLS.mockApi}/@controlpanels`, { headers })).json();
+    const panels = await (await request.get(`${urls.mockApi}/@controlpanels`, { headers })).json();
     const ids = panels.map((p: { '@id': string }) => String(p['@id']).split('/').pop());
     expect(ids).toEqual(expect.arrayContaining(['usergroup', 'content-rules']));
     for (const p of panels) expect(p.group, `${p['@id']} has a group`).toBeTruthy();
   });
 
-  test('usergroup settings say the site lists its users', async ({ request }) => {
+  test('usergroup settings say the site lists its users', async ({ request, urls }) => {
     const headers = await signIn(request);
     const panel = await (
-      await request.get(`${URLS.mockApi}/@controlpanels/usergroup`, { headers })
+      await request.get(`${urls.mockApi}/@controlpanels/usergroup`, { headers })
     ).json();
     // many_users true makes the panel show a search box and list nobody.
     expect(panel.data.many_users).toBe(false);
     expect(panel.data.many_groups).toBe(false);
   });
 
-  test('security settings say the login is a user name, not an email', async ({ request }) => {
+  test('security settings say the login is a user name, not an email', async ({ request, urls }) => {
     // The Users panel reads this to decide whether "Add user" asks for a user
     // name; it logged a 404 on every open while the mock lacked it.
     const headers = await signIn(request);
-    const res = await request.get(`${URLS.mockApi}/@controlpanels/security`, { headers });
+    const res = await request.get(`${urls.mockApi}/@controlpanels/security`, { headers });
     expect(res.status()).toBe(200);
     expect((await res.json()).data.use_email_as_login).toBe(false);
   });

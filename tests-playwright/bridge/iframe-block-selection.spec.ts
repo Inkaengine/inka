@@ -114,10 +114,10 @@ test.describe('a block whose body is an iframe', () => {
   // Runs against each project's OWN frontend: the mock renderer, nextjs and f7
   // all render a video block as an iframe, so the shape under test is real in
   // every one of them.
-  test.beforeEach(async ({ page, helper }, testInfo) => {
+  test.beforeEach(async ({ page, helper, urls }, testInfo) => {
     await stubYouTube(page);
     await page.goto(
-      parentUrl(getFrontendUrl(testInfo.project.name) || URLS.testFrontend, PAGE),
+      parentUrl(getFrontendUrl(testInfo.project.name) || urls.testFrontend, PAGE),
     );
     await helper
       .getIframe()
@@ -187,8 +187,8 @@ test.describe('a block whose embed is inside a shadow root', () => {
   // frontends render maps as a bare iframe — a legitimate way to write the
   // block, and already covered by the video case above. Pinning runs this
   // everywhere rather than skipping it somewhere.
-  test.beforeEach(async ({ page, helper }) => {
-    await page.goto(parentUrl(URLS.testFrontend, PAGE));
+  test.beforeEach(async ({ page, helper, urls }) => {
+    await page.goto(parentUrl(urls.testFrontend, PAGE));
     await helper
       .getIframe()
       .locator(`[data-block-uid="${SHADOW_BLOCK}"] map-embed`)
