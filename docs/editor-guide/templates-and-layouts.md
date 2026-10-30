@@ -14,7 +14,6 @@ effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 expires: null
 id: templates-and-layouts
-is_folderish: false
 language: "##DEFAULT##"
 layout: document_view
 preview_caption: null

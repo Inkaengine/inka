@@ -10,7 +10,6 @@ description: The rules your front end sets are applied while people edit, from
 effective: 2025-01-01T00:00:00
 exclude_from_nav: false
 review_state: published
-is_folderish: true
 layout: document_view
 title: Rules and checks
 id: compliance

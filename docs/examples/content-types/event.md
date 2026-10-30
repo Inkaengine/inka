@@ -17,7 +17,6 @@ event_url: http://www.musterevents.com
 exclude_from_nav: false
 expires: null
 id: event
-is_folderish: true
 language: "##DEFAULT##"
 layout: event_view
 location: Musterhausener Landstrasse 134 Standort E123 67111 Musterhausen

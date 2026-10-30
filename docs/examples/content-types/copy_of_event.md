@@ -17,7 +17,6 @@ event_url: null
 exclude_from_nav: false
 expires: null
 id: copy_of_event
-is_folderish: true
 language: "##DEFAULT##"
 layout: event_view
 location: null
