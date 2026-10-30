@@ -48,8 +48,9 @@ describe('poolSize', () => {
     expect(poolSize({ memory: 64 * 1024 * MB, atMost: 3 })).toEqual({ size: 3, fits: expect.any(Number) });
   });
 
-  it('a 1 GB machine fits two pages', () => {
+  it('a 1 GB machine fits two pages, as its VM shows it (about 965 MB) too', () => {
     expect(poolSize({ memory: 1024 * MB, atMost: 10 }).size).toBe(2);
+    expect(poolSize({ memory: 965 * MB, atMost: 10 }).size).toBe(2);
   });
 
   it('refuses a machine without room for one page', () => {

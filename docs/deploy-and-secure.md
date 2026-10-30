@@ -51,7 +51,7 @@ Settings, as environment variables:
 - `INKA_ADMIN_URL`: the Inka editor it drives.
 - `INKA_MCP_PUBLIC_URL`: where assistants reach it. Set the editor's `RAZZLE_INKA_MCP_URL` to the same address, so the editor's connect page sends sign-ins there.
 - `INKA_MCP_SECRET`: 32 random bytes, base64. It seals every token the server hands out, so keep it secret, and give every instance the same one.
-- `INKA_MCP_POOL_SIZE`: at most how many editor pages it keeps open, so how many calls run at once. It keeps as many as fit in its memory (the container's limit, or the machine's), up to this: about 350 MB for the browser and the server, and 320 MB for each page. A 1 GB machine holds two. It says how many it chose when it starts.
+- `INKA_MCP_POOL_SIZE`: at most how many editor pages it keeps open, so how many calls run at once. It keeps as many as fit in its memory (the container's limit, or the machine's), up to this: about 250 MB for the system, the browser and the server, and 300 MB for each page. A 1 GB machine holds two. It says how many it chose when it starts.
 - `INKA_MCP_PAGE_IDLE_SECONDS`: how long a page may sit unused before it is loaded afresh, in case the editor has been redeployed.
 - `INKA_MCP_CODES`: where a sign-in waits for the assistant to collect it: `memory` (one instance), `sealed` (any instance, nothing held) or `stored`.
 - `PORT`: the port it listens on.

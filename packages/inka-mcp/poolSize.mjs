@@ -3,21 +3,23 @@
  * memory beside the browser and the server itself, and no more than
  * INKA_MCP_POOL_SIZE.
  *
- * Measured with Playwright's Chromium, opening the editor (signed in, its front
- * end's iframe loaded) in one more browser context at a time and summing the
- * browser's processes: ~200 MB for the browser alone, the Node server ~140 MB,
- * and each editor page 250–315 MB (the steps vary as memory is shared and
- * compressed). The figures below are the larger ones, so a pool that fits
- * doesn't run its machine out of memory.
+ * Measured on the hosted server itself (Linux, a 1 GB Fly machine, which shows
+ * 965 MB): with one editor page loaded and parked the machine used 428 MB, and
+ * while that page rendered page after page (the editor and a visitor's preview
+ * open at once) at most 528 MB, everything included: the system, the Node
+ * server (~150 MB) and the browser. The figures below are rounded up from
+ * those, so a pool that fits doesn't run its machine out of memory. (The same
+ * measurement on macOS reads far higher, 250–315 MB a page; its memory is
+ * counted differently, so it isn't what a Linux machine needs.)
  */
 import { readFileSync } from 'node:fs';
 import { totalmem } from 'node:os';
 
 const MB = 1024 * 1024;
 /** One editor page at its largest: a browser context with the editor and its front end open. */
-export const PAGE_BYTES = 320 * MB;
+export const PAGE_BYTES = 300 * MB;
 /** The browser with no pages, and the server. */
-export const BASE_BYTES = 350 * MB;
+export const BASE_BYTES = 250 * MB;
 
 // Where a container's memory limit is written: cgroup v2, then v1.
 const CGROUP_LIMITS = ['/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes'];
