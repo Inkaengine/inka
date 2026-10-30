@@ -4,6 +4,13 @@ import path from 'node:path';
 import { PloneAdapter } from '@volto-hydra/hydra-adapters-plone';
 import { createPublicReader } from '@volto-hydra/hydra-adapters-plone/public';
 import type { Target } from './index';
+import { PORTS } from '../../tests-playwright/ports';
+// Ports come from tests-playwright/ports.ts, like every other server this repo
+// starts: one HYDRA_PORT_BASE names the whole block. They were written here as
+// literals — 8899, 8790, 1337 — which are shared with every other hydra
+// checkout on the machine, so a stale server from one run made this suite
+// SKIP (it refuses to reuse a port it did not start) and a skipped contract
+// proves nothing.
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -13,7 +20,7 @@ const REPO_ROOT = path.resolve(
 // Deliberately not 8888: a developer's mock API is usually already on that
 // port, and silently reusing it would make the suite depend on whatever
 // content that instance happens to be serving.
-const PORT = 8899;
+const PORT = PORTS.contractPlone;
 const BASE = `http://localhost:${PORT}`;
 
 let proc: ChildProcess | null = null;

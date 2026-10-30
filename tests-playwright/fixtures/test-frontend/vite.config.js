@@ -13,17 +13,26 @@ import path from 'path';
 // and an override moved the server while the browser kept fetching 8888 —
 // ERR_CONNECTION_REFUSED on every test. A fixture should be told which API it is
 // talking to, not assert one.
-const envPort = (name, fallback) => {
+// No fallback argument, deliberately: a default is the version of this bug
+// that passes. See tests-playwright/fixtures/env-port.cjs, which says it at
+// length; this config is ESM and loaded by vite before that module would be
+// resolvable, so the few lines live here too.
+const envPort = (name) => {
   const raw = process.env[name];
-  if (!raw) return fallback;
+  if (!raw) {
+    throw new Error(
+      `${name} is not set. Test ports have no defaults — the fixture must be ` +
+        `told which API it is talking to, not assert one.`,
+    );
+  }
   const n = Number(raw);
   if (!Number.isInteger(n) || n <= 0) {
     throw new Error(`Invalid ${name}: ${raw} (must be a positive integer)`);
   }
   return n;
 };
-const TEST_FRONTEND_PORT = envPort('HYDRA_TEST_FRONTEND_PORT', 8889);
-const MOCK_API_ORIGIN = `http://localhost:${envPort('HYDRA_MOCK_API_PORT', 8888)}`;
+const TEST_FRONTEND_PORT = envPort('HYDRA_TEST_FRONTEND_PORT');
+const MOCK_API_ORIGIN = `http://localhost:${envPort('HYDRA_MOCK_API_PORT')}`;
 
 export default defineConfig({
   root: __dirname,

@@ -27,31 +27,137 @@
  * historical site URLs in saved content, not infrastructure config.
  */
 
-const port = (envName: string): number => {
-  const v = process.env[envName];
-  if (!v) {
-    throw new Error(
-      `${envName} is not set. Test ports have no defaults — binding hydra's ` +
-        `historical numbers is what lets one checkout take over another's ` +
-        `servers.\n` +
-        `  From a consuming repo:  make hydra-test ARGS="<spec> --project=admin-mock"\n` +
-        `  In this repo:           the package.json scripts and CI set them`,
-    );
-  }
-  const n = Number(v);
-  if (!Number.isFinite(n) || n <= 0) {
-    throw new Error(`Invalid ${envName}: ${v} (must be a positive integer)`);
+/**
+ * ONE number names the whole block: HYDRA_PORT_BASE.
+ *
+ * Removing the defaults fixed the collisions and left a different problem —
+ * nineteen variables that every launcher had to set, and so nineteen chances
+ * to set one of them differently. The package.json scripts, three CI jobs and
+ * a consuming repo's Makefile each carried their own copy of the list, which
+ * is how a checkout ends up with its mock API on one block and its frontends
+ * on another, or with a suite talking to a server that another checkout
+ * started.
+ *
+ * So a run says where its block starts, once, and every port is that plus a
+ * fixed offset. `HYDRA_PORT_BASE=8980` is the whole configuration.
+ *
+ * A single port may still be given explicitly, and then it wins. That is for
+ * pointing one service at something already running — a seeded Plone kept up
+ * between runs — not for configuring a suite; and it is what keeps a consuming
+ * repo that still exports the whole list working unchanged.
+ *
+ * There is still no default. A port with neither a base nor a value of its own
+ * is a hard failure, because the historical numbers are shared with every
+ * other hydra checkout on this machine.
+ */
+const BASE = 'HYDRA_PORT_BASE';
+
+const integer = (envName: string, raw: string): number => {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error(`Invalid ${envName}: ${raw} (must be a positive integer)`);
   }
   return n;
 };
 
+/**
+ * Offsets within the block. The NAMES are the contract; these numbers only
+ * have to be distinct and stable.
+ *
+ * `voltoWebpack` must stay one above `voltoSsr`: razzle derives its
+ * webpack-dev-server port by incrementing PORT, so that pair is adjacent
+ * whether we like it or not. A test below holds it there.
+ */
+const OFFSET = {
+  mockApi: 0,
+  mockDrupal: 1,
+  wordpress: 2,
+  strapi: 3,
+  testFrontend: 4,
+  plonSeeded: 5,
+  mockParent: 6,
+  voltoSsr: 7,
+  voltoWebpack: 8,
+  nuxt: 9,
+  reactDoc: 10,
+  svelteDoc: 11,
+  vueDoc: 12,
+  nextjs: 13,
+  f7: 14,
+  astroDoc: 15,
+  vanillaDoc: 16,
+  svelteQs: 17,
+  astroQs: 18,
+  // The contract suite's own servers. Its CMSes are seeded to different states
+  // from the journey's, so they are separate instances on separate ports — the
+  // reason the journey's WordPress was never the contract's.
+  contractPlone: 19,
+  contractWordpress: 20,
+  contractStrapi: 21,
+  contractDrupal: 22,
+} as const;
+
+export type PortName = keyof typeof OFFSET;
+
+/** Every variable this module reads, so a launcher can export the whole block. */
+export const PORT_ENV: Readonly<Record<PortName, string>> = {
+  mockApi: 'HYDRA_MOCK_API_PORT',
+  mockDrupal: 'HYDRA_MOCK_DRUPAL_PORT',
+  wordpress: 'HYDRA_WORDPRESS_PORT',
+  strapi: 'HYDRA_STRAPI_PORT',
+  testFrontend: 'HYDRA_TEST_FRONTEND_PORT',
+  plonSeeded: 'HYDRA_PLONE_SEED_PORT',
+  mockParent: 'HYDRA_MOCK_PARENT_PORT',
+  voltoSsr: 'HYDRA_VOLTO_SSR_PORT',
+  voltoWebpack: 'HYDRA_VOLTO_WEBPACK_PORT',
+  nuxt: 'HYDRA_NUXT_PORT',
+  reactDoc: 'HYDRA_REACT_DOC_PORT',
+  svelteDoc: 'HYDRA_SVELTE_DOC_PORT',
+  vueDoc: 'HYDRA_VUE_DOC_PORT',
+  nextjs: 'HYDRA_NEXTJS_PORT',
+  f7: 'HYDRA_F7_PORT',
+  astroDoc: 'HYDRA_ASTRO_DOC_PORT',
+  vanillaDoc: 'HYDRA_VANILLA_DOC_PORT',
+  svelteQs: 'HYDRA_SVELTE_QS_PORT',
+  astroQs: 'HYDRA_ASTRO_QS_PORT',
+  contractPlone: 'HYDRA_CONTRACT_PLONE_PORT',
+  contractWordpress: 'HYDRA_CONTRACT_WORDPRESS_PORT',
+  contractStrapi: 'HYDRA_CONTRACT_STRAPI_PORT',
+  contractDrupal: 'HYDRA_CONTRACT_DRUPAL_PORT',
+} as const;
+
+const port = (which: PortName): number => {
+  const envName = PORT_ENV[which];
+  const explicit = process.env[envName];
+  if (explicit) return integer(envName, explicit);
+
+  const base = process.env[BASE];
+  if (!base) {
+    throw new Error(
+      `Neither ${BASE} nor ${envName} is set. Test ports have no defaults — ` +
+        `binding hydra's historical numbers is what lets one checkout take ` +
+        `over another's servers.\n` +
+        `  Set the block once:     ${BASE}=8980\n` +
+        `  From a consuming repo:  make hydra-test ARGS="<spec> --project=admin-mock"\n` +
+        `  One service elsewhere:  ${envName}=<port> overrides just that one`,
+    );
+  }
+  return integer(BASE, base) + OFFSET[which];
+};
+
+/** Every port in the block, by name. Used by launchers to export the lot. */
+export const allPorts = (): Record<PortName, number> =>
+  Object.fromEntries(
+    (Object.keys(OFFSET) as PortName[]).map((name) => [name, port(name)]),
+  ) as Record<PortName, number>;
+
 export const PORTS = {
   /** Mock Plone REST API (started by `pnpm start:mock-api`). */
-  mockApi: port('HYDRA_MOCK_API_PORT'),
+  mockApi: port('mockApi'),
   /** Mock Drupal JSON:API, for the three-CMS journey. */
-  mockDrupal: port('HYDRA_MOCK_DRUPAL_PORT'),
+  mockDrupal: port('mockDrupal'),
   /** WordPress Playground, for the three-CMS journey. */
-  wordpress: port('HYDRA_WORDPRESS_PORT'),
+  wordpress: port('wordpress'),
   /**
    * Strapi, for the journey.
    *
@@ -61,39 +167,52 @@ export const PORTS = {
    * paths to different states, so sharing an instance would make each one's
    * fixtures the other's flake.
    */
-  strapi: port('HYDRA_STRAPI_PORT'),
+  strapi: port('strapi'),
   /** Test frontend: HTML + bridge fixture served by Vite (`pnpm start:test-frontend`). */
-  testFrontend: port('HYDRA_TEST_FRONTEND_PORT'),
+  testFrontend: port('testFrontend'),
   // A Plone mock serving the CANONICAL seed, for journey specs that need the
   // same fixtures as WordPress and Drupal. Separate from the docs-content mock
   // on mockApi, which the other Plone journey project keeps using.
-  plonSeeded: port('HYDRA_PLONE_SEED_PORT'),
+  plonSeeded: port('plonSeeded'),
   /** Mock-parent test surface for bridge isolation tests. */
-  mockParent: port('HYDRA_MOCK_PARENT_PORT'),
+  mockParent: port('mockParent'),
   /** Volto admin SSR server (`pnpm start:test`, PORT). */
-  voltoSsr: port('HYDRA_VOLTO_SSR_PORT'),
+  voltoSsr: port('voltoSsr'),
   /** Razzle webpack-dev-server (auto-incremented from voltoSsr). */
-  voltoWebpack: port('HYDRA_VOLTO_WEBPACK_PORT'),
+  voltoWebpack: port('voltoWebpack'),
   /** Nuxt example frontend (`pnpm start:nuxt:test`). */
-  nuxt: port('HYDRA_NUXT_PORT'),
+  nuxt: port('nuxt'),
   /** Doc-example: React (`pnpm start:react:test`). */
-  reactDoc: port('HYDRA_REACT_DOC_PORT'),
+  reactDoc: port('reactDoc'),
   /** Doc-example: Svelte (`pnpm start:svelte:test`). */
-  svelteDoc: port('HYDRA_SVELTE_DOC_PORT'),
+  svelteDoc: port('svelteDoc'),
   /** Doc-example: Vue (no dedicated start script; see docs/examples/test-vue). */
-  vueDoc: port('HYDRA_VUE_DOC_PORT'),
+  vueDoc: port('vueDoc'),
   /** Next.js example frontend. */
-  nextjs: port('HYDRA_NEXTJS_PORT'),
+  nextjs: port('nextjs'),
   /** Vue F7 example frontend (hash-routed). */
-  f7: port('HYDRA_F7_PORT'),
+  f7: port('f7'),
   /** Doc-example: Astro (SSR, Node adapter). */
-  astroDoc: port('HYDRA_ASTRO_DOC_PORT'),
+  astroDoc: port('astroDoc'),
   /** Quick Start: vanilla HTML/JS starter (docs/quickstart/vanilla). */
-  vanillaDoc: port('HYDRA_VANILLA_DOC_PORT'),
+  vanillaDoc: port('vanillaDoc'),
   /** Quick Start: dedicated Svelte 5 starter (docs/quickstart/svelte). */
-  svelteQs: port('HYDRA_SVELTE_QS_PORT'),
+  svelteQs: port('svelteQs'),
   /** Quick Start: dedicated Astro starter (docs/quickstart/astro). */
-  astroQs: port('HYDRA_ASTRO_QS_PORT'),
+  astroQs: port('astroQs'),
+  /**
+   * The contract suite's own CMSes, seeded from tests-adapters/fixtures/seed.json.
+   *
+   * Separate instances from the journey's, on separate ports, because the two
+   * suites seed the same paths to different states — sharing one would make
+   * each suite's fixtures the other's flake. They used to be written into
+   * tests-adapters as `const PORT = 8899` and friends, which is the same
+   * hazard the rest of this file exists to remove: two checkouts, one Strapi.
+   */
+  contractPlone: port('contractPlone'),
+  contractWordpress: port('contractWordpress'),
+  contractStrapi: port('contractStrapi'),
+  contractDrupal: port('contractDrupal'),
 } as const;
 
 /**

@@ -1,8 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
+import { URLS } from './tests-playwright/ports';
 
 /**
  * Playwright config for mock parent tests (no Volto needed)
  * These tests only use the mock API server and test frontend
+ *
+ * Ports come from ports.ts, like the main config's. They were written here as
+ * the historical number instead — one shared with every other hydra checkout
+ * on the machine — so this config and the suite it starts could disagree about
+ * where the mock API is, and nothing said so.
  */
 export default defineConfig({
   testDir: './tests-playwright',
@@ -14,7 +20,7 @@ export default defineConfig({
   reporter: [['html', { open: 'never' }]],
 
   use: {
-    baseURL: 'http://localhost:8888',
+    baseURL: URLS.mockApi,
     trace: 'on-first-retry',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -34,7 +40,7 @@ export default defineConfig({
   // Only start the mock API server (no Volto)
   webServer: {
     command: 'node tests-playwright/fixtures/mock-api-server.cjs',
-    url: 'http://localhost:8888/health',
+    url: `${URLS.mockApi}/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 30000,
     stdout: 'pipe',

@@ -2,12 +2,19 @@ import { WordPressAdapter, serializeBlocks } from '@volto-hydra/hydra-adapters-w
 import { createPublicReader } from '@volto-hydra/hydra-adapters-wordpress/public';
 import type { Target } from './index';
 import { seedFixture, VOCABULARIES } from '../fixtures/seed-documents';
+import { PORTS } from '../../tests-playwright/ports';
+// Ports come from tests-playwright/ports.ts, like every other server this repo
+// starts: one HYDRA_PORT_BASE names the whole block. They were written here as
+// literals — 8899, 8790, 1337 — which are shared with every other hydra
+// checkout on the machine, so a stale server from one run made this suite
+// SKIP (it refuses to reuse a port it did not start) and a skipped contract
+// proves nothing.
 // WordPress's own query vocabulary, as this adapter advertises it:
 // `parent` + `parent.is` for the hierarchy, `title` among its
 // sortable_indexes. Plone's names mean nothing here and are refused.
 const seed = seedFixture(VOCABULARIES.wordpress);
 
-const PORT = 8790;
+const PORT = PORTS.contractWordpress;
 const BASE = `http://127.0.0.1:${PORT}`;
 
 let nonce: string | null = null;

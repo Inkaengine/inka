@@ -5,6 +5,10 @@ import { DrupalAdapter } from '@volto-hydra/hydra-adapters-drupal';
 import { createPublicReader } from '@volto-hydra/hydra-adapters-drupal/public';
 import type { Target } from './index';
 import { seedFixture, VOCABULARIES } from '../fixtures/seed-documents';
+import { PORTS } from '../../tests-playwright/ports';
+// Ports come from tests-playwright/ports.ts, like every other server this repo
+// starts: one HYDRA_PORT_BASE names the whole block. A literal here is shared
+// with every other hydra checkout on the machine.
 // Drupal's path index is `menu_parent` — its hierarchy lives in menu links.
 // Drupal's own query vocabulary, as this adapter advertises it.
 const seed = seedFixture(VOCABULARIES.drupal);
@@ -14,7 +18,7 @@ const REPO_ROOT = path.resolve(
   '../..',
 );
 
-const PORT = 8793;
+const PORT = PORTS.contractDrupal;
 const BASE = `http://127.0.0.1:${PORT}`;
 
 let proc: ChildProcess | null = null;

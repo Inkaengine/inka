@@ -27,7 +27,12 @@ const path = require('path');
 const crypto = require('crypto');
 
 const app = express();
-const PORT = process.env.PORT || 8791;
+const { requiredPort } = require('../../tests-playwright/fixtures/env-port.cjs');
+
+// Told which port to bind, never assuming one: 8791 was a default nobody had
+// to set, so this mock came up there whatever the run had been configured to
+// use — and whatever another checkout was already serving.
+const PORT = requiredPort('PORT');
 const BASE = () => `http://127.0.0.1:${PORT}`;
 
 const SEED_PATH =

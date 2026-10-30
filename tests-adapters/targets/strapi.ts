@@ -2,8 +2,15 @@ import { StrapiAdapter } from '@volto-hydra/hydra-adapters-strapi';
 import type { Target } from './index';
 import { seedStrapi } from '../fixtures/seed-strapi';
 import { readFileSync } from 'node:fs';
+import { PORTS } from '../../tests-playwright/ports';
+// Ports come from tests-playwright/ports.ts, like every other server this repo
+// starts: one HYDRA_PORT_BASE names the whole block. They were written here as
+// literals — 8899, 8790, 1337 — which are shared with every other hydra
+// checkout on the machine, so a stale server from one run made this suite
+// SKIP (it refuses to reuse a port it did not start) and a skipped contract
+// proves nothing.
 
-const PORT = 1337;
+const PORT = PORTS.contractStrapi;
 const BASE = `http://127.0.0.1:${PORT}`;
 const APP = process.env.STRAPI_APP ?? 'tests-adapters/fixtures/strapi-app/app';
 
