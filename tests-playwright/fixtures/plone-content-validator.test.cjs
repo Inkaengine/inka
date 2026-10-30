@@ -721,6 +721,33 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.match(e, /field "variation" holds "carousel", which is not one of its choices/);
   });
 
+  it('FAILS on a schema that declares widget:richtext', () => {
+    // Plone rich text is not supported anywhere here: rich text is slate, so
+    // it round-trips through the editing bridge. discover-blocks has said so
+    // for a while; this validator instead described the `{data: '<html>'}`
+    // shape as the CORRECT one for such a field, which is the opposite rule.
+    const e = shapeErrors({ body: { widget: 'richtext' } }, { body: { data: '<p>x</p>', 'content-type': 'text/html' } });
+    assert.match(e, /field "body": Plone rich text is not supported/);
+  });
+
+  it('FAILS on a value still in the rich-text shape, whatever the schema says', () => {
+    // Catches content the slate migration has not reached, even once the
+    // schema has been flipped to `widget: 'slate'`.
+    const e = shapeErrors({ body: { widget: 'slate' } }, { body: { data: '<p>x</p>', 'content-type': 'text/html' } });
+    assert.match(e, /field "body": Plone rich text is not supported/);
+  });
+
+  it('exempts a field whose BACKEND expects html, when it says so', () => {
+    // A form block's mail_header goes into an email, not onto a page, and
+    // collective.volto.formsupport expects HTML. Declared, so the exception is
+    // deliberate and carries its reason -- not a field-name list in here.
+    const e = shapeErrors(
+      { mail_header: { widget: 'richtext', backendExpectsHtml: true } },
+      { mail_header: { data: '<p>Hello</p>', 'content-type': 'text/html' } },
+    );
+    assert.doesNotMatch(e, /Plone rich text is not supported/);
+  });
+
   it('FAILS on an object_browser field holding a bare string', () => {
     // The widget saves a list of picked references. A bare path is a value no
     // editor session produced -- whatever wrote it bypassed the widget -- and

@@ -677,6 +677,10 @@ function imageDimensions(file) {
     });
   }
 
+  // The Plone rich-text serialisation: `{data: '<html>', content-type, encoding}`.
+  const looksLikeRichText = (v) =>
+    !!v && typeof v === 'object' && !Array.isArray(v) && typeof v.data === 'string';
+
   // The tokens a vocabulary field allows, however it is declared: `choices`
   // (Choice), `items.choices` (a List of Choice, which is how plone.restapi
   // serialises a multi-select), `actions` (ButtonsWidget) or `enum`.
@@ -740,7 +744,24 @@ function imageDimensions(file) {
       for (const [field, def] of Object.entries(schema.properties)) {
         const v = block[field];
         if (v == null) continue;
-        if (REFERENCE_WIDGETS.has(def.widget)) {
+        if (def.backendExpectsHtml) {
+          // A field whose consumer is not a renderer. A form block's
+          // mail_header/mail_footer are pasted into an EMAIL, and the backend
+          // (collective.volto.formsupport) expects HTML, so the stored value
+          // is the one shape it can use. The field should still become slate,
+          // with the HTML produced at send time rather than stored -- this
+          // says the exception is deliberate and names what is keeping it.
+        } else if (def.widget === 'richtext' || looksLikeRichText(v)) {
+          // Plone rich text is not supported: rich text here is slate, so it
+          // round-trips through the editing bridge. discover-blocks has
+          // rejected it from both sides for a while; this pass used to describe
+          // `{data: '<html>'}` as the CORRECT shape for such a field, which is
+          // the opposite rule, so a form block's mail_header could keep an HTML
+          // body and be told it was right. Flagged from either side: the schema
+          // declaring the widget, or a value still in that shape after the
+          // schema has been flipped to slate.
+          errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}": Plone rich text is not supported — declare \`widget: 'slate'\` (an array of slate nodes) and store slate, not {data: '<html>'}`);
+        } else if (REFERENCE_WIDGETS.has(def.widget)) {
           // An object_browser or image field holds what its WIDGET saves, and
           // the widget saves one thing: a list of picked references. There is
           // no second legitimate spelling -- across this site's content all 150
@@ -772,8 +793,6 @@ function imageDimensions(file) {
           // held two paragraphs while the page drew one, passing every gate.
           // A slate field is a slate field.
           errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" has ${v.length} top-level nodes (expected 1 — put the rest in their own blocks)`);
-        } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
-          errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
         } else if (vocabularyTokens(def)) {
           // What the editor already refuses, said out loud. isValidValue
           // (schemaValidation.mjs) nulls a value outside the vocabulary when

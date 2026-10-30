@@ -1360,13 +1360,25 @@ export const sharedBlocksConfig = {
                 },
                 mail_header: {
                     title: 'Text at the beginning of the email',
+                    // Not a rendered field: this goes into an EMAIL, and
+                    // collective.volto.formsupport expects HTML. Rich text is
+                    // slate everywhere that reaches a page; this should become
+                    // slate too, with the HTML produced at send time rather
+                    // than stored. Declared so the exception is deliberate.
                     widget: 'richtext',
+                    backendExpectsHtml: true,
                     type: 'string',
                     description: "If field isn't filled in, a default text will be used",
                 },
                 mail_footer: {
                     title: 'Text at the end of the email',
+                    // Not a rendered field: this goes into an EMAIL, and
+                    // collective.volto.formsupport expects HTML. Rich text is
+                    // slate everywhere that reaches a page; this should become
+                    // slate too, with the HTML produced at send time rather
+                    // than stored. Declared so the exception is deliberate.
                     widget: 'richtext',
+                    backendExpectsHtml: true,
                     type: 'string',
                     description: "If field isn't filled in, a default text will be used",
                 },
