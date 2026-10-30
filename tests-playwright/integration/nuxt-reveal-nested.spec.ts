@@ -1,6 +1,5 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { PORTS, URLS } from '../ports';
 
 // Point the admin iframe at the Nuxt frontend: its accordion collapses panels
 // and renders nested blocks, which is what this case needs — the mock renders
@@ -10,11 +9,11 @@ import { PORTS, URLS } from '../ports';
 // checked-in storage state only works on the default 3001. Set it for whatever
 // port this run uses, or the admin silently falls back to the mock frontend and
 // the test passes against the wrong renderer.
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context, urls, ports }) => {
   await context.addCookies([
     {
-      name: `iframe_url_${PORTS.voltoSsr}`,
-      value: URLS.nuxt,
+      name: `iframe_url_${ports.voltoSsr}`,
+      value: urls.nuxt,
       domain: 'localhost',
       path: '/',
     },

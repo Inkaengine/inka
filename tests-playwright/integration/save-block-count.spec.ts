@@ -18,7 +18,6 @@
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 const PAGE = '/test-page';
 const BLOCK = 'block-1-uuid';
@@ -26,7 +25,7 @@ const TYPED = 'Edited once, saved once';
 
 test.describe('saving an edit', () => {
   test('editing a block and saving does not add a second copy of it', async ({
-    page,
+    page, urls,
   }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -39,7 +38,7 @@ test.describe('saving an edit', () => {
     expect(token, 'the admin is logged in and holds a token').toBeTruthy();
 
     const readPage = async () => {
-      const res = await page.request.get(`${URLS.mockApi}/_test_data${PAGE}`, {
+      const res = await page.request.get(`${urls.mockApi}/_test_data${PAGE}`, {
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
       });
       expect(res.ok()).toBeTruthy();

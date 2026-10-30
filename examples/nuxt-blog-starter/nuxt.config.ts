@@ -7,14 +7,38 @@ const hydraJsPath = resolve(__dirname, '../../packages/hydra-js')
 const helpersPath = resolve(__dirname, '../../packages/helpers')
 const fixturesPath = resolve(__dirname, '../../tests-playwright/fixtures')
 
-// The mock API and admin origins the test/edit profiles talk to. package.json's
-// dev:test already takes these ports from HYDRA_MOCK_API_PORT /
-// HYDRA_VOLTO_SSR_PORT, but the CSP below hardcoded 8888/3001 — so running the
-// example on any other port block (as a parent repo must, to avoid binding
-// hydra's defaults) had every API fetch blocked by CSP: no content, and a null
-// deref in onEditChange that reads as "the frontend never rendered".
-const MOCK_API_ORIGIN = `http://localhost:${process.env.HYDRA_MOCK_API_PORT || 8888}`;
-const ADMIN_ORIGIN = `http://localhost:${process.env.HYDRA_VOLTO_SSR_PORT || 3001}`;
+// The mock API and admin origins the test profile talks to. package.json's
+// dev:test takes these ports from HYDRA_MOCK_API_PORT / HYDRA_VOLTO_SSR_PORT,
+// but the CSP below hardcoded 8888/3001 — so running the example on any other
+// port block (as a parent repo must, to avoid binding hydra's defaults) had
+// every API fetch blocked by CSP: no content, and a null deref in
+// onEditChange that reads as "the frontend never rendered".
+//
+// Only a TEST build has these at all, which is why they are read here rather
+// than defaulted. The fallback that used to sit here was both the hazard this
+// file already describes — a default nobody has to set, so a run on another
+// block silently keeps 8888 — and a small embarrassment in the other
+// direction: a PUBLIC canvas deploy advertised `localhost:8888` in its own
+// Content-Security-Policy, because these were computed whether or not any
+// local server existed.
+//
+// NUXT_TEST_BACKEND is what says "this is a test build" (the same flag
+// EDIT_ADMIN reads below), and then the ports must be given.
+const localOrigin = (name: string): string | null => {
+  if (!process.env.NUXT_TEST_BACKEND) return null;
+  const port = process.env[name];
+  if (!port) {
+    throw new Error(
+      `${name} is not set. A test build of this example talks to hydra's ` +
+        `local servers, and their ports have no defaults — binding hydra's ` +
+        `historical numbers is what lets one checkout take over another's. ` +
+        `Set HYDRA_PORT_BASE (see tests-playwright/ports.ts) or this one port.`,
+    );
+  }
+  return `http://localhost:${port}`;
+};
+const MOCK_API_ORIGIN = localOrigin('HYDRA_MOCK_API_PORT');
+const ADMIN_ORIGIN = localOrigin('HYDRA_VOLTO_SSR_PORT');
 
 // The PUBLIC deploy's backend (the builder sets NUXT_TEST_BACKEND). The image
 // provider (ipxStatic) fetches source images from here at BUILD time, so it must
@@ -28,7 +52,7 @@ const PUBLIC_BACKEND_HOST = new URL(PUBLIC_BACKEND).host;
 // test build that names only a backend means the local admin. Ignoring
 // NUXT_ADMIN_URL here shipped inka.sh/edit/ waiting for localhost:3001.
 const EDIT_ADMIN = process.env.NUXT_ADMIN_URL
-  || (process.env.NUXT_TEST_BACKEND ? ADMIN_ORIGIN : 'https://admin.inka.sh');
+  || (process.env.NUXT_TEST_BACKEND ? ADMIN_ORIGIN! : 'https://admin.inka.sh');
 // What the edit build may fetch from: the API it is built against and its
 // admin (the public defaults and the local test servers too). A CSP naming
 // only api.inka.sh blocked a build against any other API: no content, and a
@@ -37,8 +61,9 @@ const EDIT_SOURCES = [...new Set([
   "'self'", 'data:',
   'https://admin.inka.sh', 'https://api.inka.sh',
   new URL(PUBLIC_BACKEND).origin, new URL(EDIT_ADMIN).origin,
+  // Absent from a public build: there is no local admin or mock API to allow.
   ADMIN_ORIGIN, MOCK_API_ORIGIN,
-])];
+].filter(Boolean))];
 
 export default defineNuxtConfig({
   nitro: {

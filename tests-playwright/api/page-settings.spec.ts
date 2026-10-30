@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { URLS } from '../ports';
+import { URLS } from '../fixtures';
 
 /**
  * The two settings an author reaches for that are not on the canvas: keeping a

@@ -10,8 +10,11 @@ const express = require('express');
 const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 3002;
-const API_URL = process.env.API_URL || 'http://localhost:8888';
+const { requiredPort, requiredOrigin } = require('./env-port.cjs');
+
+const PORT = requiredPort('PORT');
+// Told which API it talks to, never assuming: see env-port.cjs.
+const API_URL = process.env.API_URL || requiredOrigin('HYDRA_MOCK_API_PORT');
 const FRONTEND_DIR = path.join(__dirname, 'test-frontend');
 
 // Enable CORS and allow iframe embedding

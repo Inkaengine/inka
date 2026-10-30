@@ -14,7 +14,6 @@
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 // Content strings to find fixed template blocks (they have random UUIDs after merge)
 const TEMPLATE_HEADER_CONTENT = 'Template Header - From Template';
@@ -115,7 +114,7 @@ test.describe('Template Creation', () => {
   // The folder path comes from the sidebar's 'folder' field, NOT from a
   // hard-coded '/templates/' prefix in the bridge (so consumers can host
   // templates anywhere in the content tree).
-  test('saving a page after Make Template POSTs a new template document', async ({ page }) => {
+  test('saving a page after Make Template POSTs a new template document', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/test-page');
@@ -126,7 +125,7 @@ test.describe('Template Creation', () => {
     const contentPosts: Array<{ url: string; body: any }> = [];
     page.on('request', (req) => {
       if (req.method() !== 'POST') return;
-      if (!req.url().startsWith(URLS.mockApi)) return;
+      if (!req.url().startsWith(urls.mockApi)) return;
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
       if (!body || !body['@type']) return;
@@ -169,7 +168,7 @@ test.describe('Template Creation', () => {
   // field while editing. Setting it must (1) create the document at that id, (2)
   // rewrite the page's block references to the new id (so they don't dangle at the
   // placeholder), and (3) make the template load correctly when opened elsewhere.
-  test('changing a new template’s short name sets its id, rewrites references, and loads on its own page', async ({ page }) => {
+  test('changing a new template’s short name sets its id, rewrites references, and loads on its own page', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/test-page');
@@ -178,7 +177,7 @@ test.describe('Template Creation', () => {
     const docPosts: Array<{ url: string; body: any }> = [];
     const pagePatches: any[] = [];
     page.on('request', (req) => {
-      if (!req.url().startsWith(URLS.mockApi)) return;
+      if (!req.url().startsWith(urls.mockApi)) return;
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
       if (req.method() === 'POST' && body?.['@type'] === 'Document') docPosts.push({ url: req.url(), body });
@@ -429,7 +428,7 @@ test.describe('Template Creation', () => {
 test.describe('Template Edit Mode - Save', () => {
   // v2: templates commit when you LOCK them (Change on all pages), not with the
   // page. Locking a CHANGED template writes the template document.
-  test('locking a template (Change on all pages) saves the template document', async ({ page }) => {
+  test('locking a template (Change on all pages) saves the template document', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -440,7 +439,7 @@ test.describe('Template Edit Mode - Save', () => {
     page.on('request', (req) => {
       const m = req.method();
       if (m !== 'PATCH' && m !== 'POST') return;
-      if (!req.url().startsWith(URLS.mockApi)) return;
+      if (!req.url().startsWith(urls.mockApi)) return;
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
       if (!body || !body.blocks_layout) return;
@@ -481,7 +480,7 @@ test.describe('Template Edit Mode - Save', () => {
   // verbatim instead of re-fetched. Entering template edit mode must invalidate
   // that cache (re-fetch the template) so edits + the save operate on the current
   // backend copy, and other pages sharing the template load the fresh copy.
-  test('entering template edit mode re-fetches the template (invalidates the cache)', async ({ page }) => {
+  test('entering template edit mode re-fetches the template (invalidates the cache)', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -494,7 +493,7 @@ test.describe('Template Edit Mode - Save', () => {
     page.on('request', (req) => {
       if (req.method() !== 'GET') return;
       const u = req.url();
-      if (u.startsWith(URLS.mockApi) && /test-layout/.test(u)) templateGets.push(u);
+      if (u.startsWith(urls.mockApi) && /test-layout/.test(u)) templateGets.push(u);
     });
 
     // Unlock the template (enters edit mode).
@@ -2142,7 +2141,7 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     await expect(sidebar).toBeVisible({ timeout: 5000 });
   });
 
-  test('a template unlocks AND saves from the toolbar lock toggle — consistent spot, no sidebar', async ({ page }) => {
+  test('a template unlocks AND saves from the toolbar lock toggle — consistent spot, no sidebar', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -2151,7 +2150,7 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     const templateWrites: string[] = [];
     page.on('request', (req) => {
       if (req.method() !== 'PATCH' && req.method() !== 'POST') return;
-      if (!req.url().startsWith(URLS.mockApi)) return;
+      if (!req.url().startsWith(urls.mockApi)) return;
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
       if (!body?.blocks_layout) return;
@@ -2323,7 +2322,7 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     await helper.waitForBlockEditable(headerBlockId);
   });
 
-  test('locking an unchanged template does not prompt — no modal, no save', async ({ page }) => {
+  test('locking an unchanged template does not prompt — no modal, no save', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -2332,7 +2331,7 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     const templateWrites: string[] = [];
     page.on('request', (req) => {
       if (req.method() !== 'PATCH' && req.method() !== 'POST') return;
-      if (!req.url().startsWith(URLS.mockApi)) return;
+      if (!req.url().startsWith(urls.mockApi)) return;
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
       if (!body?.blocks_layout) return;
@@ -2398,7 +2397,7 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     await expect(iframe.locator(`[data-block-uid="${PAGE_BOTTOM}"]`)).toHaveCount(0);
   });
 
-  test('Change on all pages saves the template document at LOCK time', async ({ page }) => {
+  test('Change on all pages saves the template document at LOCK time', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/two-template-page');
@@ -2408,7 +2407,7 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     page.on('request', (req) => {
       const m = req.method();
       if (m !== 'PATCH' && m !== 'POST') return;
-      if (!req.url().startsWith(URLS.mockApi)) return;
+      if (!req.url().startsWith(urls.mockApi)) return;
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
       if (!body || !body.blocks_layout) return;

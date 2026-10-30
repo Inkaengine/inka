@@ -25,7 +25,6 @@
 import { test as base, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { getFrontendUrl } from './fixtures';
-import { URLS } from '../ports';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -74,11 +73,11 @@ const test = base.extend<{ helper: AdminUIHelper }>({
 test.describe('Empty container region renders (auto-discovered)', () => {
   for (const c of cases) {
     const what = c.field === '*' ? `every ${c.parentType} region` : `${c.parentType}.${c.field}`;
-    test(`${what} renders a placeholder when its region is empty`, async ({ page, helper }, testInfo) => {
+    test(`${what} renders a placeholder when its region is empty`, async ({ page, helper, urls }, testInfo) => {
       const frontendUrl = process.env.FRONTEND_URL || getFrontendUrl(testInfo.project.name);
       const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
-      const apiOrigin = process.env.DISCOVER_BLOCKS_API || URLS.mockApi;
-      const mockParentUrl = process.env.MOCK_PARENT_URL || `${URLS.testFrontend}/mock-parent.html`;
+      const apiOrigin = process.env.DISCOVER_BLOCKS_API || urls.mockApi;
+      const mockParentUrl = process.env.MOCK_PARENT_URL || `${urls.testFrontend}/mock-parent.html`;
       await page.goto(`${mockParentUrl}?api_path=${encodeURIComponent(`${apiOrigin}${c.pagePath}`)}${frontend}`);
       await helper.waitForIframeReady();
       await helper.waitForBridgeConnected();
