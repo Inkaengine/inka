@@ -5,7 +5,6 @@
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 import { freshPage, tokenFor, whileEditing } from '../helpers/otherUser';
 import { agentOn, waitForAgent, discardEdits, createPage, siteOn, openAdmin } from '../../packages/inka-mcp/adminDriver.mjs';
 import {
@@ -16,7 +15,7 @@ import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs
 const mintId = () => crypto.randomUUID();
 
 test.describe('MCP tools', () => {
-  test('get_page, a dry run, then a real edit', async ({ page }) => {
+  test('get_page, a dry run, then a real edit', async ({ page, urls }) => {
     // Loads the editor twice (the discard is a full reload) and saves.
     test.setTimeout(90000);
     const helper = new AdminUIHelper(page);
@@ -48,7 +47,7 @@ test.describe('MCP tools', () => {
     const done = await editPage(agent, { ops, expectedVersion: reread.version, mintId });
     expect(done.version).not.toBe(reread.version);
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
-    const stored = await (await page.request.get(`${URLS.mockApi}/_test_data/test-page`, {
+    const stored = await (await page.request.get(`${urls.mockApi}/_test_data/test-page`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).json();
     expect(stored.blocks_layout.items[1]).toBe(done.ids['from-mcp']);
@@ -82,7 +81,7 @@ test.describe('MCP tools', () => {
     expect(Object.keys(described.types['accordion:panels'].fields)).toContain('title');
   });
 
-  test('a dry run previewed as a visitor sees it, saving nothing', async ({ page }) => {
+  test('a dry run previewed as a visitor sees it, saving nothing', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/test-page');
@@ -102,7 +101,7 @@ test.describe('MCP tools', () => {
 
     // The view-mode frame is a visitor's: no editor, and the saved page is untouched.
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
-    const stored = await (await fetch(`${URLS.mockApi}/_test_data/test-page`, {
+    const stored = await (await fetch(`${urls.mockApi}/_test_data/test-page`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).json();
     expect(stored.blocks_layout.items).toEqual(read.blocks.map((b) => b['@uid']));
@@ -149,7 +148,7 @@ test.describe('MCP tools', () => {
     await expect(search(agent, {})).rejects.toThrow(/needs "text" or "types"/);
   });
 
-  test('create_page: through the add form, then its first blocks, saved', async ({ page }) => {
+  test('create_page: through the add form, then its first blocks, saved', async ({ page, urls }) => {
     test.setTimeout(90000);
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -163,7 +162,7 @@ test.describe('MCP tools', () => {
     expect(made.path).toBe(path);
 
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
-    const stored = await (await fetch(`${URLS.mockApi}${path}`, {
+    const stored = await (await fetch(`${urls.mockApi}${path}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).json();
     expect(stored.title).toBe('Made by the MCP');
@@ -181,7 +180,7 @@ test.describe('MCP tools', () => {
       .rejects.toThrow(/add form refused it/);
   });
 
-  test('move_page, rename_page and delete_page, version-checked', async ({ page }) => {
+  test('move_page, rename_page and delete_page, version-checked', async ({ page, urls }) => {
     test.setTimeout(90000);
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -189,7 +188,7 @@ test.describe('MCP tools', () => {
     await page.waitForFunction(() => !!(window as any).__inkaSite);
     const site = siteOn(page);
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
-    const status = async (path: string) => (await fetch(`${URLS.mockApi}${path}`, {
+    const status = async (path: string) => (await fetch(`${urls.mockApi}${path}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).status;
     const versionOf = async (path: string) => (await site.status(path)).version;
@@ -204,7 +203,7 @@ test.describe('MCP tools', () => {
     // Rename it: a new short name and title.
     const renamed = await renamePage(site, { path: moved.path, id: 'moved-page', title: 'Moved page', expectedVersion: await versionOf(moved.path) });
     expect(renamed.path).toBe('/_test_data/accordion-test-page/moved-page');
-    const stored = await (await fetch(`${URLS.mockApi}${renamed.path}`, {
+    const stored = await (await fetch(`${urls.mockApi}${renamed.path}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).json();
     expect(stored.title).toBe('Moved page');
@@ -263,7 +262,7 @@ test.describe('MCP tools', () => {
     }
   });
 
-  test("a save the CMS refuses says why: here, another user's lock", async ({ page }) => {
+  test("a save the CMS refuses says why: here, another user's lock", async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     // A page of its own: the lock is seen by every session, and other tests save the fixtures.
@@ -274,7 +273,7 @@ test.describe('MCP tools', () => {
     const { version } = await agent.getPage();
     await agent.insert({ refId: 'para', block: { '@type': 'slate' } });
     // jane takes the page over (Volto's "unlock" of the editor's lock, then her own).
-    await fetch(`${URLS.mockApi}${own}/@lock`, {
+    await fetch(`${urls.mockApi}${own}/@lock`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenFor('jane')}` },
       body: JSON.stringify({ force: true }),

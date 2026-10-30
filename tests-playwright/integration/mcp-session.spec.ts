@@ -7,7 +7,6 @@
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '../fixtures';
 import { TEST_AUTH_TOKEN } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 import { freshPage, whileEditing } from '../helpers/otherUser';
 import { headlessAdmin } from '../../packages/inka-mcp/server.mjs';
 import { getPage, editPage, search, movePage } from '../../packages/inka-mcp/tools.mjs';
@@ -20,16 +19,16 @@ test.describe('MCP headless admin session', () => {
   let token: string;
   let admin: ReturnType<typeof headlessAdmin>;
 
-  test.beforeEach(() => {
+  test.beforeEach(({ urls }) => {
     token = `${TEST_AUTH_TOKEN}-${randomUUID()}`;
-    admin = headlessAdmin({ adminUrl: URLS.voltoSsr, auth: { token: async () => token } });
+    admin = headlessAdmin({ adminUrl: urls.voltoSsr, auth: { token: async () => token } });
   });
 
   test.afterEach(async () => {
     await admin.close();
   });
 
-  const stored = async (path: string) => (await fetch(`${URLS.mockApi}${path}`, {
+  const stored = async (mockApi: string, path: string) => (await fetch(`${mockApi}${path}`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
   })).json();
 
@@ -42,15 +41,15 @@ test.describe('MCP headless admin session', () => {
     expect(admin.adminLoads).toBe(1);
   });
 
-  test('an editor call lets go of its page: no lock left behind', async () => {
+  test('an editor call lets go of its page: no lock left behind', async ({ urls }) => {
     test.setTimeout(60000);
     // A page of its own: locks are seen by every session, and other tests edit the fixtures.
     const own = await freshPage(token);
     await admin.withEditor(own, async (agent) => {
       await getPage(agent);
-      expect((await stored(own)).lock.locked).toBe(true);
+      expect((await stored(urls.mockApi, own)).lock.locked).toBe(true);
     });
-    expect((await stored(own)).lock.locked).toBe(false);
+    expect((await stored(urls.mockApi, own)).lock.locked).toBe(false);
   });
 
   test("a dry run's changes are gone by the next call", async () => {

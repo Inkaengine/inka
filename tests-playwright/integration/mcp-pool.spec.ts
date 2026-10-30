@@ -4,7 +4,6 @@
  * page is kept for their next call; users at once each act as themselves.
  */
 import { test, expect } from '../fixtures';
-import { URLS } from '../ports';
 import { tokenFor } from '../helpers/otherUser';
 import { adminPool, browserSlots } from '../../packages/inka-mcp/adminPool.mjs';
 import { pagePool } from '../../packages/inka-mcp/pagePool.mjs';
@@ -17,9 +16,9 @@ const PAGE = '/_test_data/line-breaks-page';
 const userFor = (id: string) => ({ id, token: tokenFor(id) });
 
 test.describe('MCP admin pages, shared by users', () => {
-  test('a page handed to another user keeps nothing of the one before', async () => {
+  test('a page handed to another user keeps nothing of the one before', async ({ urls }) => {
     test.setTimeout(90000);
-    const slots = browserSlots({ adminUrl: URLS.voltoSsr });
+    const slots = browserSlots({ adminUrl: urls.voltoSsr });
     const pool = pagePool({ size: 1, slots });
     const [alice, bob] = [userFor('alice'), userFor('bob')];
     try {
@@ -46,9 +45,9 @@ test.describe('MCP admin pages, shared by users', () => {
     }
   });
 
-  test("a user's page is kept for their next call", async () => {
+  test("a user's page is kept for their next call", async ({ urls }) => {
     test.setTimeout(90000);
-    const pool = adminPool({ adminUrl: URLS.voltoSsr, size: 2 });
+    const pool = adminPool({ adminUrl: urls.voltoSsr, size: 2 });
     const alice = pool.forUser(async () => userFor('alice-kept'));
     try {
       await alice.withEditor(PAGE, getPage);
@@ -60,9 +59,9 @@ test.describe('MCP admin pages, shared by users', () => {
     }
   });
 
-  test('users at once each act as themselves: one sees the other editing', async () => {
+  test('users at once each act as themselves: one sees the other editing', async ({ urls }) => {
     test.setTimeout(90000);
-    const pool = adminPool({ adminUrl: URLS.voltoSsr, size: 2 });
+    const pool = adminPool({ adminUrl: urls.voltoSsr, size: 2 });
     const alice = pool.forUser(async () => userFor('alice'));
     const bob = pool.forUser(async () => userFor('bob'));
     try {

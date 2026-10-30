@@ -8,7 +8,6 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { test, expect } from '../fixtures';
 import { TEST_AUTH_TOKEN } from '../helpers/AdminUIHelper';
 import { connect, CALL } from '../helpers/mcpClient';
-import { URLS } from '../ports';
 
 const PAGE = '/_test_data/test-page';
 
@@ -174,7 +173,7 @@ test.describe('MCP server', () => {
     expect(listed.items[0].path).toMatch(/^\/_test_data\//);
   });
 
-  test('reads, dry-runs, saves, and refuses a stale version', async () => {
+  test('reads, dry-runs, saves, and refuses a stale version', async ({ urls }) => {
     // Every call opens the editor afresh — that is what keeps the server stateless.
     test.setTimeout(180000);
     const read = (await call('get_page', { path: PAGE })).json();
@@ -192,7 +191,7 @@ test.describe('MCP server', () => {
     // The preview: the draft as a visitor sees it, as a screenshot and its text.
     expect(dry.renderedText).toContain('From the MCP server');
     // Without INKA_FRONTEND_URL, the admin's own default front end.
-    expect(dry.renderedOn).not.toBe(URLS.nuxt);
+    expect(dry.renderedOn).not.toBe(urls.nuxt);
     expect(image).toMatchObject({ type: 'image', mimeType: 'image/png' });
     // MCP_PREVIEW_PNG=<file> keeps the screenshot to look at.
     if (process.env.MCP_PREVIEW_PNG) writeFileSync(process.env.MCP_PREVIEW_PNG, Buffer.from(image.data, 'base64'));
@@ -203,7 +202,7 @@ test.describe('MCP server', () => {
     // Saved for real.
     const saved = (await call('edit_blocks', { path: PAGE, expectedVersion: read.version, ops })).json();
     // Plain fetch: the `request` fixture would carry a frontend project's storageState.
-    const stored = await (await fetch(`${URLS.mockApi}${PAGE}`, {
+    const stored = await (await fetch(`${urls.mockApi}${PAGE}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).json();
     expect(stored.blocks_layout.items[1]).toBe(saved.ids.new);

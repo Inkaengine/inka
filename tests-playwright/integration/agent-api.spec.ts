@@ -12,7 +12,6 @@
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 const slate = (text: string) => [{ type: 'p', children: [{ text }] }];
 
@@ -39,7 +38,7 @@ const layout = (page: any): Promise<string[]> =>
   agent(page, (a) => a.getPage().formData.blocks_layout.items);
 
 test.describe('Agent API', () => {
-  test('reads the page, edits it through the editor, and saves with a version check', async ({ page }) => {
+  test('reads the page, edits it through the editor, and saves with a version check', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/test-page');
@@ -77,7 +76,7 @@ test.describe('Agent API', () => {
     await expect(page).not.toHaveURL(/\/edit(\?|$)/, { timeout: 15000 });
 
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
-    const stored = await (await page.request.get(`${URLS.mockApi}/_test_data/test-page`, {
+    const stored = await (await page.request.get(`${urls.mockApi}/_test_data/test-page`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).json();
     expect(stored.blocks_layout.items).toContain(newId);
@@ -85,7 +84,7 @@ test.describe('Agent API', () => {
     expect(JSON.stringify(stored.blocks['block-3-uuid'].value)).toContain('Updated by the agent');
   });
 
-  test('refuses to save when someone else saved the page since it was read', async ({ page }) => {
+  test('refuses to save when someone else saved the page since it was read', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/test-page');
@@ -95,7 +94,7 @@ test.describe('Agent API', () => {
 
     // Someone else saves the page meanwhile.
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
-    const res = await page.request.patch(`${URLS.mockApi}/_test_data/test-page`, {
+    const res = await page.request.patch(`${urls.mockApi}/_test_data/test-page`, {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       data: { title: 'Changed by someone else' },
     });
@@ -156,7 +155,7 @@ test.describe('Agent API', () => {
     expect(await ids()).toEqual(first);
   });
 
-  test('changes a template as a person does: unlock, edit, lock with "Change on all pages"', async ({ page }) => {
+  test('changes a template as a person does: unlock, edit, lock with "Change on all pages"', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -169,7 +168,7 @@ test.describe('Agent API', () => {
 
     // The template document itself now has it, so every page using it does.
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
-    const template = await (await page.request.get(`${URLS.mockApi}/_test_data/templates/test-layout`, {
+    const template = await (await page.request.get(`${urls.mockApi}/_test_data/templates/test-layout`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).json();
     const header = Object.values(template.blocks as Record<string, any>).find((b) => b.slotId === 'header');

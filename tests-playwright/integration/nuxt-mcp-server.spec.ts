@@ -6,13 +6,12 @@ import { randomUUID } from 'node:crypto';
 import { test, expect } from '../fixtures';
 import { TEST_AUTH_TOKEN } from '../helpers/AdminUIHelper';
 import { connect, CALL } from '../helpers/mcpClient';
-import { URLS } from '../ports';
 
 const PAGE = '/_test_data/test-page';
 
-test('INKA_FRONTEND_URL: the editor, and so the preview, use that front end', async () => {
+test('INKA_FRONTEND_URL: the editor, and so the preview, use that front end', async ({ urls }) => {
   test.setTimeout(180000);
-  const client = await connect({ INKA_TOKEN: `${TEST_AUTH_TOKEN}-${randomUUID()}`, INKA_FRONTEND_URL: URLS.nuxt });
+  const client = await connect({ INKA_TOKEN: `${TEST_AUTH_TOKEN}-${randomUUID()}`, INKA_FRONTEND_URL: urls.nuxt });
   try {
     const read = JSON.parse((await client.callTool({ name: 'get_page', arguments: { path: PAGE } }, undefined, CALL)).content[0].text);
     const ops = [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@type': 'slate', value: 'Previewed on *Nuxt*' }] }];
@@ -21,7 +20,7 @@ test('INKA_FRONTEND_URL: the editor, and so the preview, use that front end', as
     }, undefined, CALL);
     expect(result.isError, (result.content as any[])[0].text).toBeFalsy();
     const dry = JSON.parse((result.content as any[])[0].text);
-    expect(dry.renderedOn).toBe(URLS.nuxt);
+    expect(dry.renderedOn).toBe(urls.nuxt);
     // The edit is in the page, then in the render.
     expect(JSON.stringify(dry.page)).toContain('Previewed on *Nuxt*');
     expect(dry.renderedText).toContain('Previewed on Nuxt');

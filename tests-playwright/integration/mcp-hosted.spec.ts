@@ -12,7 +12,6 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 import { hostedServer } from '../../packages/inka-mcp/http.mjs';
 import { localCodes } from '../../packages/inka-mcp/codes.mjs';
 
@@ -43,7 +42,7 @@ function clientAuth(redirectUrl: string, openBrowser: (url: URL) => Promise<void
 }
 
 test.describe('hosted MCP server', () => {
-  test('a client signs in through the site, and its calls run as that person', async ({ page }) => {
+  test('a client signs in through the site, and its calls run as that person', async ({ page, urls }) => {
     test.setTimeout(120000);
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -60,7 +59,7 @@ test.describe('hosted MCP server', () => {
     let hosted: ReturnType<typeof hostedServer>;
     const mcp = await listen((req, res) => hosted.app(req, res));
     hosted = hostedServer({
-      adminUrl: URLS.voltoSsr,
+      adminUrl: urls.voltoSsr,
       publicUrl: mcp.url,
       secret: randomBytes(32).toString('base64'),
       codes: localCodes({ instance: null, now: Date.now }),
@@ -97,10 +96,10 @@ test.describe('hosted MCP server', () => {
     }
   });
 
-  test('without a token, the server says how to sign in', async () => {
+  test('without a token, the server says how to sign in', async ({ urls }) => {
     let hosted: ReturnType<typeof hostedServer>;
     const mcp = await listen((req, res) => hosted.app(req, res));
-    hosted = hostedServer({ adminUrl: URLS.voltoSsr, publicUrl: mcp.url, secret: randomBytes(32).toString('base64'), codes: localCodes({ instance: null, now: Date.now }), poolSize: 1 });
+    hosted = hostedServer({ adminUrl: urls.voltoSsr, publicUrl: mcp.url, secret: randomBytes(32).toString('base64'), codes: localCodes({ instance: null, now: Date.now }), poolSize: 1 });
     try {
       const res = await fetch(`${mcp.url}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       expect(res.status).toBe(401);

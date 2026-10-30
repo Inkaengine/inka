@@ -86,6 +86,8 @@ const ALLOWED: Record<string, string> = {
   // Unit tests whose SUBJECT is a URL. The literals are inputs and expected
   // outputs, not servers: no port is bound and none is read from the
   // environment, so pinning them is what makes the assertion readable.
+  'packages/volto-hydra/src/components/ConnectAgent/agentRedirect.test.js':
+    "which agent addresses the connect page sends a sign-in to: a local agent's loopback listener urls in, allowed or refused out",
   'packages/volto-hydra/src/utils/iframeUrl.test.js':
     'URL composition cases: frontend urls in, proxy/canvas urls out',
   'packages/volto-hydra/src/utils/linkItem.test.js':

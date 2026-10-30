@@ -11,7 +11,6 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 const PAGE = '/template-test-page';
 const STORED = `/_test_data${PAGE}`;
@@ -28,9 +27,9 @@ const refusal = (page: Page, fn: (a: any, arg: any) => Promise<unknown>, arg?: a
     [fn.toString(), arg]);
 
 /** A stored document as this page's session has it. */
-async function stored(page: Page, path: string) {
+async function stored(mockApi: string, page: Page, path: string) {
   const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
-  const res = await page.request.get(`${URLS.mockApi}${path}`, {
+  const res = await page.request.get(`${mockApi}${path}`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
   });
   expect(res.ok(), `GET ${path}`).toBeTruthy();
@@ -56,7 +55,7 @@ async function editing(page: Page) {
 }
 
 test.describe('Agent API parity with the editor', () => {
-  test('adding a block after a slot block', async ({ page, browser }) => {
+  test('adding a block after a slot block', async ({ page, browser, urls }) => {
     const person = await editing(page);
     await person.addBlockOnCanvas('user-content-2', 'slate');
     await person.saveContent();
@@ -67,10 +66,10 @@ test.describe('Agent API parity with the editor', () => {
     await agent(agentPage, (a) => a.insert({ refId: 'user-content-2', action: 'after', block: { '@type': 'slate' } }));
     await agent(agentPage, (a, v) => a.save({ expectedVersion: v }), version);
 
-    expect(shape(await stored(agentPage, STORED))).toEqual(shape(await stored(page, STORED)));
+    expect(shape(await stored(urls.mockApi, agentPage, STORED))).toEqual(shape(await stored(urls.mockApi, page, STORED)));
   });
 
-  test("removing a slot's block", async ({ page, browser }) => {
+  test("removing a slot's block", async ({ page, browser, urls }) => {
     const person = await editing(page);
     await person.clickBlockInIframe('user-content-2');
     await person.waitForBlockSelectedInAdmin('user-content-2');
@@ -83,10 +82,10 @@ test.describe('Agent API parity with the editor', () => {
     await agent(agentPage, (a) => a.remove('user-content-2'));
     await agent(agentPage, (a, v) => a.save({ expectedVersion: v }), version);
 
-    expect(shape(await stored(agentPage, STORED))).toEqual(shape(await stored(page, STORED)));
+    expect(shape(await stored(urls.mockApi, agentPage, STORED))).toEqual(shape(await stored(urls.mockApi, page, STORED)));
   });
 
-  test("changing the page's summary: the sidebar's page fields, and an update on the page block", async ({ page, browser }) => {
+  test("changing the page's summary: the sidebar's page fields, and an update on the page block", async ({ page, browser, urls }) => {
     const summary = 'Where our templates are tried out';
     const person = await editing(page);
     const field = page.locator('#sidebar-metadata .field-wrapper-description textarea');
@@ -100,7 +99,7 @@ test.describe('Agent API parity with the editor', () => {
     await agent(agentPage, (a, s) => a.update({ id: '_page', fields: { description: s } }), summary);
     await agent(agentPage, (a, v) => a.save({ expectedVersion: v }), version);
 
-    const [byPerson, byAgent] = [await stored(page, STORED), await stored(agentPage, STORED)];
+    const [byPerson, byAgent] = [await stored(urls.mockApi, page, STORED), await stored(urls.mockApi, agentPage, STORED)];
     expect(byPerson.description).toBe(summary);
     expect(byAgent.description).toBe(byPerson.description);
     expect(shape(byAgent)).toEqual(shape(byPerson));
@@ -119,7 +118,7 @@ test.describe('Agent API parity with the editor', () => {
     expect(await refusal(page, (a) => a.update({ id: 'template-header', fields: {} }))).toMatch(/is locked/);
   });
 
-  test('"Change on all pages", then save the page: the page keeps its own content in the slot', async ({ page, browser }) => {
+  test('"Change on all pages", then save the page: the page keeps its own content in the slot', async ({ page, browser, urls }) => {
     // An agent changed a template's heading with changeTemplates and saved the
     // page; the page's own blocks in the template's slot were gone, and every
     // save after reset the slot to empty again.
@@ -127,7 +126,7 @@ test.describe('Agent API parity with the editor', () => {
     const slotOf = (doc: any) => shape(doc).filter((b: any) => b.slot === 'primary').map((b: any) => b.text);
     // The template keeps a place for each page's own content: without its
     // primary slot, no page using it can show what it put there.
-    const templateSlots = async (p: Page) => shape(await stored(p, TEMPLATE)).map((b: any) => b.slot);
+    const templateSlots = async (p: Page) => shape(await stored(urls.mockApi, p, TEMPLATE)).map((b: any) => b.slot);
 
     const person = await editing(page);
     await person.unlockTemplate('template-header');
@@ -138,7 +137,7 @@ test.describe('Agent API parity with the editor', () => {
     await header.pressSequentially('Header for every page');
     await person.lockTemplate('template-header', 'commit');
     await person.saveContent();
-    expect(slotOf(await stored(page, STORED)), 'the page by a person').toEqual(slotText);
+    expect(slotOf(await stored(urls.mockApi, page, STORED)), 'the page by a person').toEqual(slotText);
     expect(await templateSlots(page), 'the template by a person').toContain('primary');
 
     const agentPage = await browser.newPage();
@@ -148,11 +147,11 @@ test.describe('Agent API parity with the editor', () => {
     await agent(agentPage, (a) => a.update({ id: 'template-header', fields: { value: [{ type: 'h1', children: [{ text: 'Header for every page' }] }] } }));
     await agent(agentPage, (a) => a.lockTemplates());
     await agent(agentPage, (a, v) => a.save({ expectedVersion: v }), version);
-    expect(slotOf(await stored(agentPage, STORED)), 'the page by the agent').toEqual(slotText);
+    expect(slotOf(await stored(urls.mockApi, agentPage, STORED)), 'the page by the agent').toEqual(slotText);
     expect(await templateSlots(agentPage), 'the template by the agent').toEqual(await templateSlots(page));
   });
 
-  test('"Change on all pages": unlock, remove the footer, lock', async ({ page, browser }) => {
+  test('"Change on all pages": unlock, remove the footer, lock', async ({ page, browser, urls }) => {
     const person = await editing(page);
     const { blockId: footer } = await person.waitForBlockByContent('Template Footer - From Template');
     await person.unlockTemplate('template-header');
@@ -160,7 +159,7 @@ test.describe('Agent API parity with the editor', () => {
     await person.waitForBlockSelectedInAdmin(footer);
     await page.evaluate((id) => document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: [id] } })), footer);
     await person.lockTemplate('template-header', 'commit');
-    await expect.poll(async () => shape(await stored(page, TEMPLATE)).some((b: any) => b.slot === 'footer')).toBe(false);
+    await expect.poll(async () => shape(await stored(urls.mockApi, page, TEMPLATE)).some((b: any) => b.slot === 'footer')).toBe(false);
 
     const agentPage = await browser.newPage();
     await editing(agentPage);
@@ -170,6 +169,6 @@ test.describe('Agent API parity with the editor', () => {
     await agent(agentPage, (a, id) => a.remove(id), agentFooter);
     expect(await agent(agentPage, (a) => a.lockTemplates())).toEqual([TEMPLATE]);
 
-    expect(shape(await stored(agentPage, TEMPLATE))).toEqual(shape(await stored(page, TEMPLATE)));
+    expect(shape(await stored(urls.mockApi, agentPage, TEMPLATE))).toEqual(shape(await stored(urls.mockApi, page, TEMPLATE)));
   });
 });
