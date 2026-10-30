@@ -1,6 +1,5 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 /**
  * Issue #296 — "empty means absent" for optional block fields.
@@ -178,10 +177,10 @@ test.describe('Required images — shown while empty, like a revealed field (#29
     expect(loaded.ok, `the shown image must load, src=${loaded.src}`).toBe(true);
   });
 
-  test('an empty image block renders nothing on the published page', async ({ page }, testInfo) => {
-    const frontend = testInfo.project.name.includes('nuxt') ? URLS.nuxt : URLS.testFrontend;
+  test('an empty image block renders nothing on the published page', async ({ page, urls }, testInfo) => {
+    const frontend = testInfo.project.name.includes('nuxt') ? urls.nuxt : urls.testFrontend;
     const path = '/_test_data/optional-fields-page';
-    const original = await (await page.request.get(`${URLS.mockApi}/++api++${path}`)).json();
+    const original = await (await page.request.get(`${urls.mockApi}/++api++${path}`)).json();
     const filled = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='300'%3E%3Crect width='100%25' height='100%25' fill='%23a05050'/%3E%3C/svg%3E";
     const page_ = {
       ...original,
@@ -190,7 +189,7 @@ test.describe('Required images — shown while empty, like a revealed field (#29
     };
     // Answer the frontend's own fetch of this page (with or without ++api++).
     await page.route(
-      (url) => url.origin === URLS.mockApi && url.pathname.replace(/^\/\+\+api\+\+/, '').replace(/\/$/, '') === path,
+      (url) => url.origin === urls.mockApi && url.pathname.replace(/^\/\+\+api\+\+/, '').replace(/\/$/, '') === path,
       (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(page_) }),
     );
     await page.goto(`${frontend}${path}`);

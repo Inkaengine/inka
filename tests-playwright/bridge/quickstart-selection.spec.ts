@@ -14,11 +14,10 @@
  * mock-parent.html (no Volto): `?content=card` feeds it the card fixture, and
  * `?frontend=` frames the quickstart app in the edit iframe.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { getFrontendUrl } from './fixtures';
 import { requireEnvironment, unreachable } from '../helpers/preconditions';
-import { URLS } from '../ports';
 
 // The quickstart frontends this spec runs on, each with the route its app serves
 // the snippet at (undefined = mock-parent's default path). vanilla is a dedicated

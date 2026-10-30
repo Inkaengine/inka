@@ -1,5 +1,4 @@
-import { test, expect } from '@playwright/test';
-import { URLS } from '../ports';
+import { test, expect } from '../fixtures';
 
 /**
  * The endpoints the admin's Publishing and Sharing views read.
@@ -18,8 +17,8 @@ import { URLS } from '../ports';
 const PAGE = '/test-page';
 
 test.describe('@workflow', () => {
-  test('publishing writes the trail in Plone shape, keyed by workflow id', async ({ request }) => {
-    const before = await request.get(`${URLS.mockApi}${PAGE}/@workflow`);
+  test('publishing writes the trail in Plone shape, keyed by workflow id', async ({ request, urls }) => {
+    const before = await request.get(`${urls.mockApi}${PAGE}/@workflow`);
     expect(before.ok(), 'the workflow endpoint answers').toBe(true);
     const state = (await before.json()).state?.id;
     expect(state, 'a page has a review state').toBeTruthy();
@@ -29,13 +28,13 @@ test.describe('@workflow', () => {
     if (!transition) test.skip(true, 'no transition available from this state');
     const id = String(transition['@id']).split('/').pop();
 
-    const posted = await request.post(`${URLS.mockApi}${PAGE}/@workflow/${id}`, { data: {} });
+    const posted = await request.post(`${urls.mockApi}${PAGE}/@workflow/${id}`, { data: {} });
     expect(posted.ok(), `POST @workflow/${id} succeeds`).toBe(true);
 
     // The trail is a DICT keyed by workflow id, as Plone writes it. Content
     // exported from a real site arrives carrying `workflow_history: {}`, and
     // reading that as a list is what threw.
-    const after = await request.get(`${URLS.mockApi}${PAGE}`, {
+    const after = await request.get(`${urls.mockApi}${PAGE}`, {
       headers: { Accept: 'application/json' },
     });
     const history = (await after.json()).workflow_history;
@@ -46,18 +45,18 @@ test.describe('@workflow', () => {
     expect(entries.length, 'the transition was recorded').toBeGreaterThan(0);
   });
 
-  test('@history reads the trail back without dying on it', async ({ request }) => {
+  test('@history reads the trail back without dying on it', async ({ request, urls }) => {
     // The other half of the same bug: @history mapped over workflow_history and
     // threw the moment anything had published.
-    const res = await request.get(`${URLS.mockApi}${PAGE}/@history`);
+    const res = await request.get(`${urls.mockApi}${PAGE}/@history`);
     expect(res.status(), '@history is servable').toBe(200);
     expect(Array.isArray(await res.json()), '@history is a list of entries').toBe(true);
   });
 });
 
 test.describe('@sharing', () => {
-  test('offers more than one group, so a matrix can show anything', async ({ request }) => {
-    const res = await request.get(`${URLS.mockApi}${PAGE}/@sharing`);
+  test('offers more than one group, so a matrix can show anything', async ({ request, urls }) => {
+    const res = await request.get(`${urls.mockApi}${PAGE}/@sharing`);
     expect(res.ok()).toBe(true);
     const body = await res.json();
 
@@ -70,11 +69,11 @@ test.describe('@sharing', () => {
     expect(body.available_roles.length, 'and roles to grant').toBeGreaterThan(0);
   });
 
-  test('a globally-held role is marked as such, not as a plain tick', async ({ request }) => {
+  test('a globally-held role is marked as such, not as a plain tick', async ({ request, urls }) => {
     // Plone marks a role held globally with the string 'global' rather than
     // `true`; the UI renders it as an inherited tick you cannot clear here. It
     // is the second thing the view has to be able to draw.
-    const res = await request.get(`${URLS.mockApi}${PAGE}/@sharing`);
+    const res = await request.get(`${urls.mockApi}${PAGE}/@sharing`);
     const roleValues = (await res.json()).entries.flatMap((e: { roles: Record<string, unknown> }) =>
       Object.values(e.roles),
     );

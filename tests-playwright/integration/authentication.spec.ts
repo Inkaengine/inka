@@ -1,11 +1,10 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { URLS } from '../ports';
 
 test.describe('Authentication and Access Control', () => {
-  test('Login form accepts admin/admin and redirects to dashboard', async ({ page }) => {
+  test('Login form accepts admin/admin and redirects to dashboard', async ({ page, urls }) => {
     // Go to login page
-    await page.goto(`${URLS.voltoSsr}/login`);
+    await page.goto(`${urls.voltoSsr}/login`);
 
     // Wait for the login form to be visible
     const usernameField = page.getByLabel('Login Name');
@@ -43,7 +42,7 @@ test.describe('Authentication and Access Control', () => {
     expect(page.url()).not.toContain('/login');
   });
 
-  test('a demo link signs in as the demo editor, with no password, and opens the page for editing', async ({ page }) => {
+  test('a demo link signs in as the demo editor, with no password, and opens the page for editing', async ({ page, urls }) => {
     // A public demo site's "try editing" button: /login?demo&return_url=<page>/edit
     // presses the site's demo sign-in (plone.demoeditor's @login-demo, listed by
     // GET @login) for the visitor, who never sees the login form; no password
@@ -54,7 +53,7 @@ test.describe('Authentication and Access Control', () => {
     // other tests' admin would find it being edited by someone else.
     const PAGE = `${helper.contentPrefix}/skip-logic-page`;
     const signIn = page.waitForRequest((req) => req.url().includes('@login-demo') && req.method() === 'POST');
-    await page.goto(`${URLS.voltoSsr}/login?demo&return_url=${encodeURIComponent(`${PAGE}/edit`)}`);
+    await page.goto(`${urls.voltoSsr}/login?demo&return_url=${encodeURIComponent(`${PAGE}/edit`)}`);
     expect((await signIn).postData() ?? '').not.toContain('password');
     await page.waitForURL(/\/skip-logic-page\/edit$/, { timeout: 15000 });
     await expect(page.getByLabel('Login Name')).toHaveCount(0);
@@ -63,8 +62,8 @@ test.describe('Authentication and Access Control', () => {
     await expect(page.locator('#toolbar-save, #toolbar button.save')).toBeVisible({ timeout: 10000 });
   });
 
-  test("the login page offers the site's demo sign-in as a button", async ({ page }) => {
-    await page.goto(`${URLS.voltoSsr}/login`);
+  test("the login page offers the site's demo sign-in as a button", async ({ page, urls }) => {
+    await page.goto(`${urls.voltoSsr}/login`);
     const demo = page.getByRole('button', { name: 'Try it as a demo editor' });
     await expect(demo).toBeVisible({ timeout: 15000 });
     await demo.click();
@@ -262,14 +261,14 @@ test.describe('Authentication and Access Control', () => {
     }
   });
 
-  test('Session persists across page navigation', async ({ page }) => {
+  test('Session persists across page navigation', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
 
     await helper.login();
     await helper.navigateToEdit('/test-page');
 
     // Navigate away and back
-    await page.goto(`${URLS.voltoSsr}/contents`);
+    await page.goto(`${urls.voltoSsr}/contents`);
     await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
 
     // Navigate back to edit

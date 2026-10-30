@@ -15,7 +15,6 @@ import { tmpdir } from 'node:os';
 import type { AddressInfo } from 'node:net';
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { PORTS, URLS } from '../ports';
 
 const STARTER = new URL('../../examples/nuxt-blog-starter/', import.meta.url).pathname;
 const TYPES: Record<string, string> = {
@@ -62,12 +61,12 @@ test.describe('the deployed canvas (static, hash-routed)', () => {
     if (site) rmSync(site, { recursive: true, force: true });
   });
 
-  test('a page below the root loads in the canvas and connects', async ({ page, context }) => {
+  test('a page below the root loads in the canvas and connects', async ({ page, context, ports }) => {
     // Without a route on the server, a path-routed canvas 404s here.
     const deep = await fetch(canvas.replace('#/', '_test_data/test-page'));
     expect(deep.status).toBe(404);
 
-    await context.addCookies([{ name: `iframe_url_${PORTS.voltoSsr}`, value: canvas, domain: 'localhost', path: '/' }]);
+    await context.addCookies([{ name: `iframe_url_${ports.voltoSsr}`, value: canvas, domain: 'localhost', path: '/' }]);
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/test-page');

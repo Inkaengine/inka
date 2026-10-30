@@ -11,11 +11,10 @@
  * so it can never silently drift as content changes. This file is only the
  * curated-fixture smoke test.
  */
-import { test as base, expect } from '../fixtures';
+import { test as base, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { verifyBlockRendering } from '../helpers/BlockVerificationHelper';
 import { getFrontendUrl } from './fixtures';
-import { URLS } from '../ports';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';

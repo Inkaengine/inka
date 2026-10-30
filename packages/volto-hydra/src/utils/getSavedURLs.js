@@ -75,7 +75,14 @@ export const getURlsFromEnv = () => {
     (typeof window !== 'undefined' &&
       window.env &&
       window.env['RAZZLE_DEFAULT_IFRAME_URL']) ||
-    'http://localhost:3002';
+    // Nothing, when nobody configured a frontend.
+    //
+    // This used to fall back to a hydra TEST port, which made a deployed admin
+    // claim a frontend at localhost:3002 — an address that exists on a
+    // developer's laptop and nowhere else. Every caller already handles an
+    // empty list (`getURlsFromEnv()[0]?.url`), and "no frontend configured" is
+    // the truth in that case.
+    '';
   return parseList(presetUrlsString);
 };
 

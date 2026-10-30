@@ -5,7 +5,6 @@
  * the selection outline is updated to match the new dimensions.
  */
 import { test, expect } from './fixtures';
-import { URLS } from '../ports';
 
 test.describe('Block Resize Detection', () => {
   test('ResizeObserver updates overlay when block size changes', async ({ helper, page }) => {
@@ -41,7 +40,7 @@ test.describe('Block Resize Detection', () => {
     ).toBe(true);
   });
 
-  test('ResizeObserver still works after FORM_DATA re-render', async ({ helper, page }) => {
+  test('ResizeObserver still works after FORM_DATA re-render', async ({ helper, page, urls }) => {
     // This test verifies that after a FORM_DATA message causes a re-render,
     // the ResizeObserver is re-attached to the new DOM element.
     //
@@ -98,7 +97,7 @@ test.describe('Block Resize Detection', () => {
           blockPathMap: (window as any).mockParent.buildBlockPathMap(),
         }, '*');
       }
-    }, URLS.mockApi);
+    }, urls.mockApi);
 
     // Wait for re-render to complete
     await page.waitForTimeout(300);
