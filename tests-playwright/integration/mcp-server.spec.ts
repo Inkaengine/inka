@@ -196,6 +196,18 @@ test.describe('MCP server', () => {
     expect(listed.items[0].path).toMatch(/^\/_test_data\//);
   });
 
+  test('refuses a change the content validator would refuse, saying why, and saves nothing', async () => {
+    // The validator the content in this repo goes through: an agent's change
+    // is checked with it before it is previewed or saved.
+    test.setTimeout(120000);
+    const read = (await call('get_page', { path: PAGE })).json();
+    const ops = [{ op: 'add', after: read.blocks[0]['@uid'], blocks: [{ '@type': 'teaser', href: [{ '@id': '/_test_data/no-such-page' }] }] }];
+    const refused = await call('edit_blocks', { path: PAGE, expectedVersion: read.version, ops, dryRun: true });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/path not in content: \/_test_data\/no-such-page/);
+    expect((await call('get_page', { path: PAGE })).json().version).toBe(read.version);
+  });
+
   test('reads, dry-runs, saves, and refuses a stale version', async ({ urls }) => {
     // Every call opens the editor afresh — that is what keeps the server stateless.
     test.setTimeout(180000);

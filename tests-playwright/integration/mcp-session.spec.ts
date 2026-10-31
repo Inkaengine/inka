@@ -10,6 +10,7 @@ import { mintToken } from '../fixtures/mock-tokens.cjs';
 import { freshPage, whileEditing } from '../helpers/otherUser';
 import { headlessAdmin } from '../../packages/inka-mcp/server.mjs';
 import { getPage, editPage, search, movePage } from '../../packages/inka-mcp/tools.mjs';
+import { draftCheck } from '../../packages/inka-mcp/checkDraft.mjs';
 
 const PAGE = '/_test_data/test-page';
 const OTHER = '/_test_data/accordion-test-page';
@@ -78,7 +79,7 @@ test.describe('MCP headless admin session', () => {
   test("a dry run's changes are gone by the next call", async () => {
     test.setTimeout(60000);
     const before = await admin.withEditor(PAGE, getPage);
-    await admin.withEditor(PAGE, (agent) => editPage(agent, {
+    await admin.withEditor(PAGE, (agent, { site }) => editPage(agent, { check: draftCheck(agent, site),
       ops: [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@type': 'slate', value: 'Not kept' }] }],
       expectedVersion: before.version, dryRun: true, mintId: randomUUID,
     }));
@@ -101,9 +102,9 @@ test.describe('MCP headless admin session', () => {
 
       const ops = [{ op: 'add', after: 'para', blocks: [{ '@type': 'slate', value: 'Not now' }] }];
       // A dry run saves nothing, so it may go ahead, and says who holds the page.
-      const dry = await admin.withEditor(own, (agent) => editPage(agent, { ops, expectedVersion: read.version, dryRun: true, mintId: randomUUID }));
+      const dry = await admin.withEditor(own, (agent, { site }) => editPage(agent, { check: draftCheck(agent, site), ops, expectedVersion: read.version, dryRun: true, mintId: randomUUID }));
       expect(dry.lockedBy.user).toBe('jane');
-      await expect(admin.withEditor(own, (agent) => editPage(agent, { ops, expectedVersion: read.version, mintId: randomUUID })))
+      await expect(admin.withEditor(own, (agent, { site }) => editPage(agent, { check: draftCheck(agent, site), ops, expectedVersion: read.version, mintId: randomUUID })))
         .rejects.toThrow(/being edited by jane since/);
       await expect(admin.withSite((site) => movePage(site, { path: own, target: '/_test_data/container-test-page', expectedVersion: read.version })))
         .rejects.toThrow(/being edited by jane since/);

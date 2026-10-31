@@ -11,6 +11,7 @@ import {
   getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
 } from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
+import { draftCheck } from '../../packages/inka-mcp/checkDraft.mjs';
 
 const mintId = () => crypto.randomUUID();
 
@@ -33,7 +34,7 @@ test.describe('MCP tools', () => {
 
     // A dry run shows the result without saving.
     const ops = [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@uid': 'from-mcp', '@type': 'slate', value: 'Added *by the MCP*' }] }];
-    const dry = await editPage(agent, { ops, expectedVersion: read.version, dryRun: true, mintId });
+    const dry = await editPage(agent, { check: draftCheck(agent, siteOn(page)), ops, expectedVersion: read.version, dryRun: true, mintId });
     const added = dry.page.blocks.find((b) => b['@uid'] === dry.ids['from-mcp']);
     expect(added?.value.md).toBe('Added *by the MCP*');
     await expect(helper.getIframe().locator(`[data-block-uid="${dry.ids['from-mcp']}"]`)).toContainText('Added by the MCP');
@@ -44,7 +45,7 @@ test.describe('MCP tools', () => {
     expect(reread.blocks.map((b) => b['@uid'])).toEqual(read.blocks.map((b) => b['@uid']));
 
     // For real: saved against the version read.
-    const done = await editPage(agent, { ops, expectedVersion: reread.version, mintId });
+    const done = await editPage(agent, { check: draftCheck(agent, siteOn(page)), ops, expectedVersion: reread.version, mintId });
     expect(done.version).not.toBe(reread.version);
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
     const stored = await (await page.request.get(`${urls.mockApi}/_test_data/test-page`, {
@@ -59,7 +60,7 @@ test.describe('MCP tools', () => {
     await helper.navigateToEdit('/test-page');
     await waitForAgent(page);
     const agent = agentOn(page);
-    await expect(editPage(agent, { ops: [], expectedVersion: 'an-old-version', mintId }))
+    await expect(editPage(agent, { check: draftCheck(agent, siteOn(page)), ops: [], expectedVersion: 'an-old-version', mintId }))
       .rejects.toThrow(/changed since it was read/);
   });
 
@@ -92,7 +93,7 @@ test.describe('MCP tools', () => {
     expect(new URL(frontendUrl).searchParams.has('_edit')).toBe(false);
 
     const ops = [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@type': 'slate', value: 'Previewed *draft* text' }] }];
-    const dry = await editPage(agent, {
+    const dry = await editPage(agent, { check: draftCheck(agent, siteOn(page)),
       ops, expectedVersion: read.version, dryRun: true, mintId,
       render: (draft) => previewDraft(page.context(), { frontendUrl, path: '/_test_data/test-page', draft, maxChars: 100_000 }),
     });
@@ -115,7 +116,7 @@ test.describe('MCP tools', () => {
     await waitForAgent(page);
     const agent = agentOn(page);
     const read = await getPage(agent);
-    await expect(editPage(agent, { ops: [], expectedVersion: read.version, mintId, render: async () => ({}) }))
+    await expect(editPage(agent, { check: draftCheck(agent, siteOn(page)), ops: [], expectedVersion: read.version, mintId, render: async () => ({}) }))
       .rejects.toThrow(/for a dry run/);
   });
 

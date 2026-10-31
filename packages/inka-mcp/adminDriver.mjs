@@ -214,6 +214,7 @@ export function siteOn(page) {
   return {
     search: (query) => call('search', query),
     get: (path) => call('get', path),
+    exists: (path) => call('exists', path),
     status: (path) => call('status', path),
     move: (op) => call('move', op),
     rename: (op) => call('rename', op),
