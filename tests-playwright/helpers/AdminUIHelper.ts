@@ -6,14 +6,9 @@ import { TEST_DATA_PREFIX } from './test-paths';
 import { showCaption, clearCaption } from './caption';
 import { glance, holdOn, pacingUnitMs, readFor } from './demoPacing';
 import { URLS } from '../ports';
-import { randomUUID } from 'node:crypto';
 import { selectablePoint } from './selectablePoint';
+import { mintToken } from '../fixtures/mock-tokens.cjs';
 
-// Base test JWT — the mock API only checks for the "Bearer " prefix, never
-// validates. sub=admin, exp=4102444800 (2100-01-01). Each AdminUIHelper
-// appends a unique suffix (see `authToken`) so every test gets its own
-// mock-api session — the mock keys session content by the Bearer token.
-export const TEST_AUTH_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6NDEwMjQ0NDgwMH0.fake-signature';
 
 export class AdminUIHelper {
   // Per-test auth token. The mock API keys its session content store by
@@ -21,7 +16,8 @@ export class AdminUIHelper {
   // test into one session — saves in one test then leak into others
   // running in parallel. A unique token per AdminUIHelper instance (one
   // per test) gives each test its own isolated mock-api session.
-  readonly authToken = `${TEST_AUTH_TOKEN}-${randomUUID()}`;
+  // Minted as the mock site's own (mock-tokens.cjs): it accepts no other.
+  readonly authToken = mintToken('admin');
 
   // Demo pacing (./demoPacing): one glance in ms from DEMO_PACING, so recorded
   // demos linger where a step would flash by. 0 without DEMO_PACING: functional

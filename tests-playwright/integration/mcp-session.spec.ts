@@ -6,7 +6,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '../fixtures';
-import { TEST_AUTH_TOKEN } from '../helpers/AdminUIHelper';
+import { mintToken } from '../fixtures/mock-tokens.cjs';
 import { freshPage, whileEditing } from '../helpers/otherUser';
 import { headlessAdmin } from '../../packages/inka-mcp/server.mjs';
 import { getPage, editPage, search, movePage } from '../../packages/inka-mcp/tools.mjs';
@@ -20,7 +20,7 @@ test.describe('MCP headless admin session', () => {
   let admin: ReturnType<typeof headlessAdmin>;
 
   test.beforeEach(({ urls }) => {
-    token = `${TEST_AUTH_TOKEN}-${randomUUID()}`;
+    token = mintToken('admin');
     admin = headlessAdmin({ adminUrl: urls.voltoSsr, auth: { token: async () => token } });
   });
 

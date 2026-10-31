@@ -8,11 +8,11 @@
 import { randomUUID } from 'node:crypto';
 import { expect } from '@playwright/test';
 import { URLS } from '../ports';
+import { mintToken } from '../fixtures/mock-tokens.cjs';
 
-/** A token for `user`, as the mock reads one (its `sub`). */
+/** A token for `user`, one the mock site issued (mock-tokens.cjs). */
 export function tokenFor(user: string): string {
-  const part = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  return `${part({ alg: 'HS256', typ: 'JWT' })}.${part({ sub: user, exp: 4102444800 })}.fake-signature-${randomUUID()}`;
+  return mintToken(user);
 }
 
 /** A page of the test's own, in the session of `token`: a title and one paragraph (`para`). */

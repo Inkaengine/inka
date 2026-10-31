@@ -15,6 +15,7 @@ const { imageSize, scaledSize, pngOfSize } = require('./scaled-image.cjs');
 const os = require('os');
 const { execFileSync } = require('child_process');
 const principalsAndRules = require('./mock-principals-and-rules.cjs');
+const { mintToken, verifyToken } = require('./mock-tokens.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
@@ -195,13 +196,29 @@ const sessionDeletions = {};
 // Format: { '/path': lock }
 const locks = {};
 
-/** The user a request is made as: its token's `sub`, as Plone's JWT names it. */
+/**
+ * Tokens the site no longer accepts (POST @mock-revoke-token): what a reset
+ * site does to every token it had issued, here for one test's token only, so
+ * the tests running beside it keep theirs.
+ */
+const revokedTokens = new Set();
+
+/**
+ * The user a token is for — its `sub`, as Plone's JWT names it — if the site
+ * accepts it: signed by the site (mock-tokens.cjs), unexpired and not revoked.
+ * Else null: Plone does not refuse a token it won't accept, it treats the
+ * request as anonymous.
+ */
+function tokenSubject(token) {
+  if (revokedTokens.has(token)) return null;
+  return verifyToken(token)?.sub ?? null;
+}
+
+/** The user a request is made as, or null for anonymous (see tokenSubject). */
 function requestUser(req) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith('Bearer ')) return null;
-  const payload = auth.slice(7).split('.')[1];
-  if (!payload) return null;
-  return JSON.parse(Buffer.from(payload, 'base64url').toString()).sub ?? null;
+  return tokenSubject(auth.slice(7));
 }
 
 /** The lock on `path`, if it has not lapsed (a lock lasts its `timeout` seconds). */
@@ -272,7 +289,7 @@ const uidPositionMap = {};
 /**
  * Get session ID from request header.
  * Uses the Bearer auth token as the session identifier. AdminUIHelper
- * gives each test a unique token (TEST_AUTH_TOKEN + a uuid), so every
+ * gives each test a token of its own (mintToken), so every
  * test gets an isolated session and its saves don't leak into others.
  * Admin (Volto) and Nuxt SSR both forward the same Authorization header,
  * so they share that one test's session.
@@ -305,40 +322,6 @@ function setSessionContent(sessionId, urlPath, content) {
     sessionContent[sessionId] = {};
   }
   sessionContent[sessionId][urlPath] = content;
-}
-
-/**
- * Generate a fresh JWT token with 24-hour expiration from now.
- * Called on each login/renew to ensure token is always valid.
- */
-let tokenCounter = 0;
-
-/**
- * Mint a session token.
- *
- * The `jti` is not decoration: every mutation in this mock is scoped to the
- * caller's token (see getSessionId), and the payload used to be `{sub, exp}`
- * with `exp` at SECOND granularity — so two logins in the same second produced
- * a byte-identical token and silently shared one session. Two tests that each
- * moved the same page then interfered with each other, passing or failing on
- * where the second boundary happened to fall.
- */
-/** The user a token (a JWT) is for: its `sub`, or null if it is not a JWT. */
-function tokenSubject(token) {
-  const payload = token.split('.')[1];
-  if (!payload) return null;
-  return JSON.parse(Buffer.from(payload, 'base64url').toString()).sub ?? null;
-}
-
-function generateAuthToken(username = 'admin') {
-  const header = Buffer.from(JSON.stringify({"alg":"HS256","typ":"JWT"})).toString('base64').replace(/=/g, '');
-  tokenCounter += 1;
-  const payload = Buffer.from(JSON.stringify({
-    "sub": username,
-    "exp": Math.floor(Date.now()/1000) + 86400,  // 24 hours from NOW
-    "jti": `${Date.now()}-${tokenCounter}`
-  })).toString('base64').replace(/=/g, '');
-  return `${header}.${payload}.fake-signature`;
 }
 
 /**
@@ -452,31 +435,35 @@ if (process.env.DEBUG) {
  * @param {Object} req - Express request object
  * @returns {boolean} True if authenticated
  */
-/**
- * A token the mock always rejects, so tests can reproduce a mid-session expiry
- * without tearing the server down. Nothing else issues this value.
- */
-const REVOKED_TOKEN = 'EXPIRED_TOKEN';
-
-function isRevoked(req) {
-  const authHeader = req.headers.authorization;
-  return authHeader === `Bearer ${REVOKED_TOKEN}`;
-}
-
 function isAuthenticated(req) {
-  const authHeader = req.headers.authorization;
-  return authHeader && authHeader.startsWith('Bearer ') && !isRevoked(req);
+  return requestUser(req) !== null;
 }
 
-// Reject a revoked session before any route sees the request, exactly as a
-// CMS with an expired cookie would.
+/**
+ * The addable types need a signed-in user, in Plone: @types is Unauthorized to
+ * anonymous (and so to a token the site no longer accepts). So is the `types`
+ * expansion the editor asks for on its first read, refusing the whole read
+ * (see the content GET: only once the page is found, as Plone looks it up
+ * first).
+ */
+const UNAUTHORIZED = { type: 'Unauthorized', message: 'Unauthorized()' };
 app.use((req, res, next) => {
-  if (isRevoked(req)) {
-    return res.status(401).json({
-      error: { type: 'Unauthorized', message: 'Session expired' },
-    });
-  }
+  if (/\/@types(\/|$)/.test(req.path) && !isAuthenticated(req)) return res.status(401).json(UNAUTHORIZED);
   next();
+});
+
+/**
+ * POST /@mock-revoke-token (test only): stop accepting the request's token, as
+ * a site reset (a deploy) stops accepting every token it had issued. Requests
+ * with it are anonymous from then on; signing in again gets one that works.
+ */
+app.post('/@mock-revoke-token', (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) {
+    return res.status(400).json({ type: 'BadRequest', message: 'No token to revoke.' });
+  }
+  revokedTokens.add(auth.slice(7));
+  res.status(204).end();
 });
 
 /**
@@ -2907,7 +2894,7 @@ app.post('/@login-renew', (req, res) => {
   if (!user) {
     return res.status(401).json({ error: { type: 'Unauthorized', message: 'No valid token to renew.' } });
   }
-  const renewed = generateAuthToken(user);
+  const renewed = mintToken(user);
   migrateSession(previous, renewed);
   res.json({
     token: renewed,
@@ -2943,7 +2930,7 @@ app.get('/@login', (req, res) => {
  * Sign in as the demo editor, with no password (plone.demoeditor).
  */
 app.post('/@login-demo', (req, res) => {
-  res.json({ token: generateAuthToken('demo') });
+  res.json({ token: mintToken('demo') });
 });
 
 /**
@@ -2959,7 +2946,7 @@ app.post('/@login', (req, res) => {
 
   if (login && password) {
     // Generate fresh token with new expiration
-    const token = generateAuthToken(login);
+    const token = mintToken(login);
     const response = {
       token,
       user: {
@@ -6544,6 +6531,7 @@ app.get('*', (req, res, next) => {
   if (content) {
     // Filter actions based on authentication
     const authenticated = isAuthenticated(req);
+    if (!authenticated && parseExpand(req).includes('types')) return res.status(401).json(UNAUTHORIZED);
     // Plone refuses an anonymous reader content the public may not view: under
     // simple_publication_workflow, `private` (where a new page starts) and
     // `pending`. Serving it anyway let a frontend that fetched WITHOUT the

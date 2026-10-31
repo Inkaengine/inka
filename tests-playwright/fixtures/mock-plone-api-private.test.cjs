@@ -14,6 +14,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { mintToken } = require('./mock-tokens.cjs');
 
 const MODULE = path.join(__dirname, 'mock-plone-api.cjs');
 
@@ -81,7 +82,7 @@ describe('mock API: unpublished content is not for anonymous readers', () => {
 
   it('serves every page to a logged-in reader', () => {
     assert.deepEqual(
-      statuses(['/private', '/pending', '/published'], { Authorization: 'Bearer some-editor' }),
+      statuses(['/private', '/pending', '/published'], { Authorization: `Bearer ${mintToken('editor')}` }),
       { '/private': 200, '/pending': 200, '/published': 200 },
     );
   });

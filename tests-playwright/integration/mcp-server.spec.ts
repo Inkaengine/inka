@@ -2,11 +2,10 @@
  * The MCP server end to end: an MCP client starts it over stdio, as an agent's
  * host would, and it drives its own headless admin against the mock API.
  */
-import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { test, expect } from '../fixtures';
-import { TEST_AUTH_TOKEN } from '../helpers/AdminUIHelper';
+import { mintToken } from '../fixtures/mock-tokens.cjs';
 import { connect, CALL } from '../helpers/mcpClient';
 
 const PAGE = '/_test_data/test-page';
@@ -34,7 +33,7 @@ function widthOf({ data, mimeType }: { data: string; mimeType: string }): number
 test.describe('MCP server', () => {
   let client: Client;
   // The mock keys its state by token, so this test has the page to itself.
-  const token = `${TEST_AUTH_TOKEN}-${randomUUID()}`;
+  const token = mintToken('admin');
 
   test.beforeEach(async () => {
     client = await connect({ INKA_TOKEN: token });
