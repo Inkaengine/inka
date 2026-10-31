@@ -7,6 +7,13 @@
  * Works for a front end that fetches its content in the browser. One that
  * renders on its server never makes that fetch here, and that is an error, not
  * a quiet render of the saved page.
+ *
+ * A draft the front end doesn't render is an error too (RenderFailed), not a
+ * picture of the failure: the page load answered an error status, the page
+ * threw, or it shows none of the blocks the front end marks (data-block-uid,
+ * which the editor needs too). A front end that catches a render error shows
+ * its own error page, and an agent handed a screenshot of it as a preview goes
+ * on as if the change worked.
  */
 
 import { fitImage } from './fitImage.mjs';
@@ -18,6 +25,11 @@ const VIEWPORTS = {
 const SERVED_MS = 15000;
 const QUIET_MS = 500;
 const SETTLE_MS = 30000;
+/** How much of a failed page's text an error carries: enough for its message. */
+const SHOWN_CHARS = 600;
+
+/** The front end did not render the draft. */
+export class RenderFailed extends Error {}
 
 /** The front end's view-mode URL for the page, from the admin's edit frame. */
 export async function frontendUrlOf(adminPage) {
@@ -49,6 +61,8 @@ export async function previewDraft(context, { frontendUrl, path, draft, viewport
   try {
     await page.setViewportSize(size);
     const activity = watchActivity(page);
+    const thrown = [];
+    page.on('pageerror', (error) => thrown.push(error.message));
     let served = 0;
     await page.route(
       (url) => isContentFetch(url.href, path),
@@ -61,7 +75,8 @@ export async function previewDraft(context, { frontendUrl, path, draft, viewport
         return route.fulfill({ response, json: { ...saved, ...draft } });
       },
     );
-    await page.goto(frontendUrl, { waitUntil: 'load' });
+    const loaded = await page.goto(frontendUrl, { waitUntil: 'load' });
+    if (loaded.status() >= 400) throw await renderFailed(page, `its page answered ${loaded.status()}`, thrown);
     const t0 = Date.now();
     while (served === 0) {
       if (Date.now() - t0 > SERVED_MS) {
@@ -73,6 +88,11 @@ export async function previewDraft(context, { frontendUrl, path, draft, viewport
       await page.waitForTimeout(100);
     }
     await activity.settled();
+    const hasBlocks = (draft.blocks_layout?.items ?? []).length > 0;
+    if (hasBlocks && await page.locator('[data-block-uid]').count() === 0) {
+      throw await renderFailed(page, 'it shows none of its blocks', thrown);
+    }
+    if (thrown.length) throw await renderFailed(page, 'the page threw', thrown);
     if (focus) {
       const block = page.locator(`[data-block-uid="${focus}"]`);
       if (await block.count() === 0) throw new Error(`preview: the front end rendered no element for block ${focus}`);
@@ -83,6 +103,13 @@ export async function previewDraft(context, { frontendUrl, path, draft, viewport
   } finally {
     await page.close();
   }
+}
+
+/** RenderFailed, saying why, what the page threw, and what it showed. */
+async function renderFailed(page, why, thrown) {
+  const shown = (await page.evaluate(() => document.body?.innerText ?? '')).trim().replace(/\s+/g, ' ').slice(0, SHOWN_CHARS);
+  const errors = thrown.length ? ` It threw: ${thrown.join('; ')}.` : '';
+  return new RenderFailed(`the front end did not render the draft: ${why}.${errors} The page showed: "${shown}"`);
 }
 
 async function picture(context, png, maxChars, text) {
