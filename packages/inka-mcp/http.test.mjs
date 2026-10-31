@@ -1,11 +1,10 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, afterAll, vi } from 'vitest';
 import { createServer, request } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { hostedServer, codesFrom, replayBy, forwardTo } from './http.mjs';
 import { sealer } from './sealed.mjs';
 import { localCodes, sealedCodes } from './codes.mjs';
 
-const ADMIN = 'https://admin.example.org';
 
 /**
  * An HTTP request with Node's own client, never following a redirect (the
@@ -34,6 +33,29 @@ const plone = (user) => {
   const part = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   return `${part({ alg: 'HS256' })}.${part({ sub: user, exp: Math.floor(Date.now() / 1000) + 12 * 3600 })}.sig`;
 };
+
+// The suite's setup (Volto's) stubs the global fetch for the admin's
+// component tests; these run a real server, which renews the sign-in through
+// the admin below with a real one.
+vi.unstubAllGlobals();
+
+/**
+ * The admin, as far as signing in needs it: the server renews the token the
+ * connect page sends (@login-renew), and this renews any, for the same user.
+ */
+const admin = createServer((req, res) => {
+  if (req.method !== 'POST' || req.url !== '/++api++/@login-renew') {
+    res.statusCode = 404;
+    res.end();
+    return;
+  }
+  const { sub } = JSON.parse(Buffer.from(req.headers.authorization.split('.')[1], 'base64url').toString());
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({ token: plone(sub) }));
+});
+await new Promise((listening) => { admin.listen(0, '127.0.0.1', listening); });
+const ADMIN = `http://127.0.0.1:${admin.address().port}`;
+afterAll(() => new Promise((closed) => { admin.close(closed); }));
 
 const running = [];
 afterEach(async () => {

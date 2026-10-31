@@ -104,15 +104,39 @@ describe('oauthProvider', () => {
     const { provider, renewed } = setup();
     const { client, tokens } = await signedIn(provider);
     const fresh = await provider.exchangeRefreshToken(client, tokens.refresh_token);
-    expect(renewed).toHaveLength(1);
+    // Once as the person signed in, and once for the refresh.
+    expect(renewed).toHaveLength(2);
     const before = (await provider.verifyAccessToken(tokens.access_token)).extra.plone;
     expect((await provider.verifyAccessToken(fresh.access_token)).extra.plone).not.toBe(before);
   });
 
   it('a refresh Plone refuses means signing in again', async () => {
-    const { provider } = setup({ renew: async () => { throw new SignedOut('the CMS no longer accepts the token'); } });
+    // Accepted as the person signed in, refused by the time of the refresh.
+    let calls = 0;
+    const { provider } = setup({
+      renew: async (token) => {
+        calls += 1;
+        if (calls > 1) throw new SignedOut('the CMS no longer accepts the token');
+        return token;
+      },
+    });
     const { client, tokens } = await signedIn(provider);
     await expect(provider.exchangeRefreshToken(client, tokens.refresh_token)).rejects.toThrow(/sign in again/);
+  });
+
+  it('refuses a sign-in with a token the site no longer accepts, saying to sign in again', async () => {
+    // The admin's connect page handed on a token the site had stopped
+    // accepting (a deploy reset it), and every call made with it failed.
+    const { provider } = setup({ renew: async () => { throw new SignedOut('the CMS no longer accepts the token'); } });
+    await expect(codeFor(provider)).rejects.toThrow(/no longer accepts.*sign in/);
+  });
+
+  it('signs in with the token renewed: the one the site accepts now', async () => {
+    const renewedToken = plone('jane', 24);
+    const { provider, renewed } = setup({ renew: async () => renewedToken });
+    const { tokens } = await signedIn(provider);
+    expect(renewed).toEqual([expect.stringMatching(/\.sig$/)]);
+    expect((await provider.verifyAccessToken(tokens.access_token)).extra.plone).toBe(renewedToken);
   });
 
   it('stops taking an access token once the site has refused the sign-in in it', async () => {
@@ -134,7 +158,8 @@ describe('oauthProvider', () => {
   });
 
   it("ends an access token before the Plone token in it does", async () => {
-    const { provider } = setup();
+    // A site that renews a token for no longer than it had left.
+    const { provider } = setup({ renew: async (token) => token });
     const client = await provider.clientsStore.registerClient({ redirect_uris: [CLIENT_CB] });
     let to;
     await provider.authorize(client, { redirectUri: CLIENT_CB, codeChallenge: 'c', state: 's' }, { redirect: (url) => { to = new URL(url); } });
