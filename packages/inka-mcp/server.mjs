@@ -29,6 +29,7 @@ import { adminPool } from './adminPool.mjs';
 import { subjectOf } from './tokenStore.mjs';
 import { signIn, renewDelay, watchSignOut } from './signIn.mjs';
 import { SCREENSHOT_VIEW, screenshotViewHtml } from './screenshotView.mjs';
+import { localPictures, PictureGone } from './codes.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
 } from './tools.mjs';
@@ -124,15 +125,29 @@ const asImage = ({ image, mimeType }) => ({ type: 'image', data: image, mimeType
 /** Shown to the person as well as the model, by a client that shows MCP Apps. */
 const SHOWS_PICTURES = { ui: { resourceUri: SCREENSHOT_VIEW } };
 
+/** For the view only: a client lists it to the view, never to the model. */
+const FOR_THE_VIEW = { ui: { resourceUri: SCREENSHOT_VIEW, visibility: ['app'] } };
+
 const SCREENSHOT_VIEW_HTML = screenshotViewHtml();
 
 /**
  * The MCP server's tools. `adminFor(extra)` is the admin to work in for a
  * request: the one signed-in user's (stdio), or the requesting user's, from
- * their access token (http.mjs).
+ * their access token (http.mjs). `pictures` keeps each picture a tool takes,
+ * for the screenshot view to fetch (codes.mjs), or is null to keep none;
+ * `userOf(extra)` is the request's user, whose pictures they are.
+ *
+ * A picture goes in the tool's result, for the model; a client that shows
+ * views (Claude) hands the view that result without it, so the result also
+ * names it (`pictures`, ids), and the view asks for each with `picture`.
  */
-export function createServer(adminFor) {
+export function createServer(adminFor, { pictures, userOf }) {
+  if (pictures === undefined) throw new Error('createServer: `pictures` is required (codes.mjs), or null to keep none');
   const server = new McpServer({ name: 'inka', version: '0.0.1' }, { instructions: INSTRUCTIONS });
+  /** The ids `rendered` pictures are kept under, for the request's user (none when nothing is kept). */
+  const keep = async (extra, rendered) => (pictures === null ? [] : Promise.all(rendered.map(({ image, mimeType }) => (
+    pictures.issue({ user: userOf(extra), mimeType, data: image })
+  ))));
 
   server.registerTool('get_page', {
     title: 'Read a page',
@@ -156,9 +171,10 @@ export function createServer(adminFor) {
       blocks, mintId: randomUUID, render: (draft) => render(draft, viewport, { maxChars: IMAGE_CHARS }),
     }));
     const { text, renderedOn, cropped } = rendered;
+    const kept = await keep(extra, [rendered]);
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, cropped, renderedText: text, saved: false }, null, 2) },
+        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, cropped, renderedText: text, saved: false, pictures: kept }, null, 2) },
         asImage(rendered),
       ],
     };
@@ -178,9 +194,10 @@ export function createServer(adminFor) {
       path, async (agent, { render }) => render(await agent.getDraft(), viewport, { maxChars: IMAGE_CHARS }),
     );
     const { text, renderedOn, cropped } = rendered;
+    const kept = await keep(extra, [rendered]);
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, cropped, renderedText: text }, null, 2) },
+        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
         asImage(rendered),
       ],
     };
@@ -265,13 +282,14 @@ export function createServer(adminFor) {
     if (!preview) return asResult(described);
     // Each example's picture follows the text, in the examples' order.
     const images = described.examples.map(({ rendered }) => asImage(rendered));
+    const kept = await keep(extra, described.examples.map(({ rendered }) => rendered));
     for (const example of described.examples) {
       const { text, renderedOn, cropped } = example.rendered;
       example.rendered = { renderedOn, cropped, text };
     }
     return {
       content: [
-        { type: 'text', text: JSON.stringify(described, null, 2) },
+        { type: 'text', text: JSON.stringify({ ...described, pictures: kept }, null, 2) },
         ...images,
       ],
     };
@@ -311,13 +329,31 @@ export function createServer(adminFor) {
     if (!result.rendered) return asResult(result);
     const { rendered, ...rest } = result;
     const { text, renderedOn, cropped } = rendered;
+    const kept = await keep(extra, [rendered]);
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ ...rest, renderedOn, cropped, renderedText: text }, null, 2) },
+        { type: 'text', text: JSON.stringify({ ...rest, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
         asImage(rendered),
       ],
     };
   });
+
+  if (pictures !== null) {
+    registerAppTool(server, 'picture', {
+      title: 'A picture, for the screenshot view',
+      annotations: SAVES_NOTHING,
+      _meta: FOR_THE_VIEW,
+      description: 'One of the pictures a tool took (its result names them, "pictures"), as data: for the screenshot view, which a client hands the result without them.',
+      inputSchema: { id: z.string().describe('A picture id from a result\'s "pictures"') },
+    }, async ({ id }, extra) => {
+      const held = await pictures.peek(id);
+      if (held.user !== userOf(extra)) throw new PictureGone('not a picture this server took');
+      return {
+        content: [{ type: 'text', text: `the picture ${id}` }],
+        structuredContent: { mimeType: held.mimeType, data: held.data },
+      };
+    });
+  }
 
   registerAppResource(server, 'Screenshot', SCREENSHOT_VIEW, {
     description: 'Shows the person the pictures a tool took of the site\'s pages',
@@ -332,7 +368,8 @@ async function main(env) {
   // Signing in waits for the first call, so the agent's host isn't kept
   // waiting at startup while a person signs in.
   const admin = headlessAdmin({ adminUrl, auth: signIn(env, { adminUrl }), frontendUrl: env.INKA_FRONTEND_URL });
-  const server = createServer(() => admin);
+  // One person, one process: every picture is theirs.
+  const server = createServer(() => admin, { pictures: localPictures({ instance: null, now: Date.now }), userOf: () => 'this-session' });
   server.server.onclose = () => admin.close();
   await server.connect(new StdioServerTransport());
 }
