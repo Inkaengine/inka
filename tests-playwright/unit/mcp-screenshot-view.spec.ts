@@ -60,6 +60,10 @@ async function hostWith(page: Page, result: object, { answers = true, input = { 
     await loaded;
     if (!answers) return;
     const bridge = new AppBridge(null, { name: 'test host', version: '0' }, { serverTools: {}, logging: {} });
+    // The client sizes the view's frame by what the view reports (a view that
+    // reports no height is a frame no one sees).
+    (window as any).sizes = [];
+    bridge.onsizechange = (size: object) => (window as any).sizes.push(size);
     bridge.oninitialized = async () => {
       await bridge.sendToolInput({ arguments: input });
       await bridge.sendToolResult(result);
@@ -92,6 +96,8 @@ test.describe('screenshot view', () => {
     await expect(view.locator('#status')).toBeHidden();
     // Nothing the sandbox or its CSP refused.
     expect(view.reported).toEqual([]);
+    // Sized to show them: the last size it reported holds both pictures.
+    await expect.poll(async () => (await page.evaluate(() => (window as any).sizes)).at(-1)?.height ?? 0).toBeGreaterThan(200);
   });
 
   // On Claude's Android app the view showed an empty panel, and nothing said
