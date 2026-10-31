@@ -13,7 +13,9 @@
  *                        its connect page will send sign-ins here
  *   INKA_MCP_SECRET      the sealing key: 32 random bytes, base64
  *   INKA_MCP_CODES       where sign-in codes wait between sign-in and the client's
- *                        exchange (codes.mjs): `memory` (one instance, or several
+ *                        exchange, and where the pictures a client's view fetches
+ *                        are kept (codes.mjs; sealed keeps no pictures): `memory`
+ *                        (one instance, or several
  *                        with a route, below), `sealed` (any instance, nothing
  *                        held), or `stored` (a store of the deployment's own that
  *                        every instance reaches: start the server from an entry
@@ -32,7 +34,8 @@
  * entry of its own: `await main(process.env, { makeStore, route })`.
  *   makeStore(env)  the store for INKA_MCP_CODES=stored (codes.mjs storedCodes)
  *   route           with `memory` on several instances, how an exchange that
- *                   reaches another instance gets to the one holding its code:
+ *                   reaches another instance gets to the one holding its code,
+ *                   and a view's ask for a picture to the one holding it:
  *                   { instance: this instance's name (letters, digits, '-'),
  *                     send(owner, req, res): answer the exchange for `owner` }.
  *                   Sticky sessions can't do this: the exchange comes from the
@@ -52,7 +55,9 @@ import { createServer } from './server.mjs';
 import { adminPool } from './adminPool.mjs';
 import { oauthProvider } from './oauth.mjs';
 import { sealer } from './sealed.mjs';
-import { localCodes, storedCodes, sealedCodes, instanceOfCode } from './codes.mjs';
+import {
+  localCodes, storedCodes, sealedCodes, localPictures, storedPictures, instanceOfCode,
+} from './codes.mjs';
 import { renewThrough, watchSignOut } from './signIn.mjs';
 import { memoryLimit, poolSize as poolSizeFor } from './poolSize.mjs';
 
@@ -88,29 +93,35 @@ export function replayBy(header, value) {
 }
 
 /**
- * A route's send: pass the exchange on to the instance, at `peerUrl` with
- * {instance} replaced (e.g. http://{instance}.internal:8080), and hand back
- * its answer. A request already passed on is not passed on again.
+ * A route's send: pass the request (a code exchange, or a view's ask for a
+ * picture) on to the instance, at `peerUrl` with {instance} replaced (e.g.
+ * http://{instance}.internal:8080), and hand back its answer. A request
+ * already passed on is not passed on again.
  */
 export function forwardTo(peerUrl) {
   instanceTemplate('a peer URL', peerUrl);
   const base = peerUrl.replace(/\/$/, '');
   return async (owner, req, res) => {
+    const asJson = req.path === '/mcp';
     if (req.headers['x-inka-mcp-forwarded']) {
-      res.status(400).json({ error: 'invalid_grant', error_description: 'not a code from this server, or already used' });
+      res.status(400).json(asJson
+        ? { jsonrpc: '2.0', error: { code: -32602, message: 'not a picture this server took' }, id: req.body?.id ?? null }
+        : { error: 'invalid_grant', error_description: 'not a code from this server, or already used' });
       return;
     }
-    const target = new URL(`${base.replaceAll('{instance}', owner)}/token`);
-    const body = new URLSearchParams(req.body).toString();
+    const target = new URL(`${base.replaceAll('{instance}', owner)}${req.path}`);
+    const body = asJson ? JSON.stringify(req.body) : new URLSearchParams(req.body).toString();
     const answer = await new Promise((resolve, reject) => {
       const send = target.protocol === 'https:' ? httpsRequest : httpRequest;
       const out = send(target, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': asJson ? 'application/json' : 'application/x-www-form-urlencoded',
           'Content-Length': Buffer.byteLength(body),
           'X-Inka-MCP-Forwarded': '1',
           ...(req.headers.authorization && { Authorization: req.headers.authorization }),
+          ...(req.headers.accept && { Accept: req.headers.accept }),
+          ...(req.headers['mcp-protocol-version'] && { 'MCP-Protocol-Version': req.headers['mcp-protocol-version'] }),
         },
       }, (back) => {
         const chunks = [];
@@ -132,11 +143,13 @@ export function forwardTo(peerUrl) {
 /**
  * The server as an Express app (from the MCP SDK), and `close()` for its
  * browser. `publicUrl` is where clients reach it. `codes`: where sign-in
- * codes wait (codes.mjs). `route`: for local codes on several instances,
- * { instance, send } (see the configuration above).
+ * codes wait, and `pictures` where the pictures a view fetches are kept, or
+ * null to keep none (codes.mjs). `route`: for local codes and pictures on
+ * several instances, { instance, send } (see the configuration above).
  */
-export function hostedServer({ adminUrl, publicUrl, secret, codes, route, poolSize, pageIdleMs, frontendUrl }) {
+export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, route, poolSize, pageIdleMs, frontendUrl }) {
   if (!codes) throw new Error('hostedServer: `codes` is required, where sign-in codes wait (codes.mjs; codesFrom reads INKA_MCP_CODES)');
+  if (pictures === undefined) throw new Error('hostedServer: `pictures` is required, where pictures are kept, or null for none (codesFrom gives both)');
   if (route && !isInstanceName(route.instance)) {
     throw new Error(`a route's instance is its name: letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
@@ -169,8 +182,22 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, route, poolSi
     res.on('finish', () => console.log(`http: ${req.method} ${req.path} ${res.statusCode}`));
     next();
   });
-  // A code exchange whose code another instance holds goes to that instance.
+  // A code exchange whose code another instance holds goes to that instance,
+  // and so does a view's ask for a picture another instance holds.
   if (route) {
+    app.post('/mcp', async (req, res, next) => {
+      const { method, params } = req.body ?? {};
+      const owner = method === 'tools/call' && params?.name === 'picture' ? instanceOfCode(params.arguments?.id) : null;
+      if (owner === null || owner === route.instance) {
+        next();
+        return;
+      }
+      if (!isInstanceName(owner)) {
+        res.status(400).json({ jsonrpc: '2.0', error: { code: -32602, message: 'not a picture this server took' }, id: req.body.id ?? null });
+        return;
+      }
+      await route.send(owner, req, res);
+    });
     app.post('/token', async (req, res, next) => {
       // Read here; the SDK's own parser then finds the body read and keeps this.
       req.body = await formFields(req);
@@ -225,7 +252,7 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, route, poolSi
     const server = createServer(({ authInfo: { extra: { user, plone } } }) => watchSignOut(
       pool.forUser(async () => ({ id: user, token: plone })),
       () => provider.signedOut(plone),
-    ));
+    ), { pictures, userOf: ({ authInfo }) => authInfo.extra.user });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {
       transport.close();
@@ -260,19 +287,24 @@ export async function codesFrom(env, secret, { makeStore, route } = {}) {
   if (route && kind !== 'memory') {
     throw new Error(`a route routes codes held in memory; INKA_MCP_CODES is ${kind}, which any instance can take`);
   }
-  if (kind === 'sealed') return { codes: sealedCodes({ box: sealer(secret) }) };
+  if (kind === 'sealed') return { codes: sealedCodes({ box: sealer(secret) }), pictures: null };
   if (kind === 'stored') {
     if (!makeStore) {
       throw new Error('INKA_MCP_CODES=stored needs your store: start the server from your own entry, with `await main(process.env, { makeStore })`');
     }
-    return { codes: storedCodes({ store: await makeStore(env), now: Date.now }) };
+    const store = await makeStore(env);
+    return { codes: storedCodes({ store, now: Date.now }), pictures: storedPictures({ store, now: Date.now }) };
   }
   if (kind !== 'memory') throw new Error(`INKA_MCP_CODES is memory, sealed or stored, not ${JSON.stringify(kind)}`);
-  if (!route) return { codes: localCodes({ instance: null, now: Date.now }) };
+  if (!route) return { codes: localCodes({ instance: null, now: Date.now }), pictures: localPictures({ instance: null, now: Date.now }) };
   if (!isInstanceName(route.instance)) {
     throw new Error(`a route's instance is its name: letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
-  return { codes: localCodes({ instance: route.instance, now: Date.now }), route };
+  return {
+    codes: localCodes({ instance: route.instance, now: Date.now }),
+    pictures: localPictures({ instance: route.instance, now: Date.now }),
+    route,
+  };
 }
 
 /**

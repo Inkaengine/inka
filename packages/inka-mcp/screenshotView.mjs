@@ -3,7 +3,9 @@
  * model. A picture in a tool result goes to the model only; a client that
  * shows MCP Apps (claude.ai, Claude Desktop) draws this page in the
  * conversation under the tool call, and hands it the call's result. It shows
- * the result's pictures, and nothing for a call without any.
+ * the result's pictures, and nothing for a call without any. A client may hand
+ * it the result without them (Claude does): the result names them too
+ * (`pictures`, ids), and the view asks the server for each (`picture`).
  *
  * The client's sandbox loads nothing from another origin unless the resource
  * declares it, so the page carries everything: the ext-apps client, inlined.
@@ -34,21 +36,51 @@ const SHOW = `{
   const say = (text) => { status.textContent = text; status.hidden = !text; };
   window.addEventListener('error', (event) => say('The view failed: ' + event.message));
   say('Connecting to the conversation…');
-  const show = (result) => {
+  let app;
+  const draw = (pictures) => shots.replaceChildren(...pictures.map(({ mimeType, data }) => {
+    const img = document.createElement('img');
+    img.src = 'data:' + mimeType + ';base64,' + data;
+    img.alt = 'The page as a visitor sees it';
+    return img;
+  }));
+  /** The ids of the pictures the result names: its text is the tool's JSON. */
+  const named = (result) => {
+    const text = result.content.find((part) => part.type === 'text');
+    if (!text) return [];
+    try {
+      return JSON.parse(text.text).pictures ?? [];
+    } catch (error) {
+      if (error instanceof SyntaxError) return [];
+      throw error;
+    }
+  };
+  const show = async (result) => {
     const pictures = result.content.filter((part) => part.type === 'image');
-    shots.replaceChildren(...pictures.map((part) => {
-      const img = document.createElement('img');
-      img.src = 'data:' + part.mimeType + ';base64,' + part.data;
-      img.alt = 'The page as a visitor sees it';
-      return img;
-    }));
-    say(pictures.length ? '' : 'No picture in this result (it held: ' + result.content.map((part) => part.type).join(', ') + ').');
+    if (pictures.length) {
+      draw(pictures);
+      say('');
+      return;
+    }
+    const ids = named(result);
+    if (!ids.length) {
+      say('No picture in this result (it held: ' + result.content.map((part) => part.type).join(', ') + ').');
+      return;
+    }
+    say('Fetching the picture…');
+    const fetched = await Promise.all(ids.map((id) => app.callServerTool({ name: 'picture', arguments: { id } })));
+    const refused = fetched.find((answer) => answer.isError);
+    if (refused) {
+      say('The picture could not be had: ' + refused.content.map((part) => part.text).join(' '));
+      return;
+    }
+    draw(fetched.map((answer) => answer.structuredContent));
+    say('');
   };
   // Ask to connect until the client answers. A client that starts listening
   // after the view has asked never hears it (the frame on claude.ai stayed
   // 0px tall, on Claude's Android app an empty panel), and the SDK asks once.
   for (let attempt = 1; ; attempt++) {
-    const app = new App({ name: 'Inka screenshot', version: '0.0.1' });
+    app = new App({ name: 'Inka screenshot', version: '0.0.1' });
     app.ontoolresult = show;
     let abandoned = false;
     const answered = app.connect().then(() => true, (error) => {

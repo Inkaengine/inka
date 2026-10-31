@@ -13,7 +13,7 @@ import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { hostedServer } from '../../packages/inka-mcp/http.mjs';
-import { localCodes } from '../../packages/inka-mcp/codes.mjs';
+import { localCodes, localPictures } from '../../packages/inka-mcp/codes.mjs';
 
 /** Listen on a free loopback port; the server and its address. */
 async function listen(handler: Parameters<typeof httpListener>[0] | ReturnType<typeof hostedServer>['app']) {
@@ -63,6 +63,7 @@ test.describe('hosted MCP server', () => {
       publicUrl: mcp.url,
       secret: randomBytes(32).toString('base64'),
       codes: localCodes({ instance: null, now: Date.now }),
+      pictures: localPictures({ instance: null, now: Date.now }),
       poolSize: 1,
     });
 
@@ -99,7 +100,7 @@ test.describe('hosted MCP server', () => {
   test('without a token, the server says how to sign in', async ({ urls }) => {
     let hosted: ReturnType<typeof hostedServer>;
     const mcp = await listen((req, res) => hosted.app(req, res));
-    hosted = hostedServer({ adminUrl: urls.voltoSsr, publicUrl: mcp.url, secret: randomBytes(32).toString('base64'), codes: localCodes({ instance: null, now: Date.now }), poolSize: 1 });
+    hosted = hostedServer({ adminUrl: urls.voltoSsr, publicUrl: mcp.url, secret: randomBytes(32).toString('base64'), codes: localCodes({ instance: null, now: Date.now }), pictures: null, poolSize: 1 });
     try {
       const res = await fetch(`${mcp.url}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       expect(res.status).toBe(401);

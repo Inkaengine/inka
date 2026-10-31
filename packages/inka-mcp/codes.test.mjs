@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { InvalidGrantError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { sealer } from './sealed.mjs';
-import { localCodes, storedCodes, sealedCodes, CodeElsewhere, instanceOfCode } from './codes.mjs';
+import {
+  localCodes, storedCodes, sealedCodes, CodeElsewhere, instanceOfCode, localPictures, storedPictures, PictureGone,
+} from './codes.mjs';
 
 const DATA = { client: 'c-hash', redirect: 'r-hash', code_challenge: 'x'.repeat(43), plone: 'a.b.c' };
 
@@ -95,5 +97,64 @@ describe('sealed codes', () => {
     const codes = sealedCodes({ box: sealer(randomBytes(32).toString('base64')) });
     const code = await codes.issue({ ...DATA, client: 'k'.repeat(22), redirect: 'r'.repeat(22), plone: ploneToken });
     expect(code.length).toBeLessThan(400);
+  });
+});
+
+// The pictures a client's view fetches (server.mjs: the `picture` tool) are
+// held the way codes are: a client that shows views (Claude) hands a view the
+// tool's result without its pictures, so the view asks for them by id, maybe
+// on another instance. Sealed, nothing is held anywhere, and a picture is too
+// big to travel in its id: there is no sealed picture store.
+const PICTURE = { user: 'jane', mimeType: 'image/png', data: 'iVBORw0KGgo' };
+
+const PICTURE_KINDS = {
+  local: (clock) => ['one', 'two'].map((instance) => localPictures({ instance, now: () => clock.now })),
+  stored: (clock) => {
+    const store = fakeStore(clock);
+    return [storedPictures({ store, now: () => clock.now }), storedPictures({ store, now: () => clock.now })];
+  },
+};
+
+for (const [kind, make] of Object.entries(PICTURE_KINDS)) {
+  describe(`${kind} pictures`, () => {
+    it('gives a picture back as often as it is asked for, for ten minutes', async () => {
+      const clock = { now: 1_000_000 };
+      const [pictures] = make(clock);
+      const id = await pictures.issue(PICTURE);
+      expect(await pictures.peek(id)).toEqual(PICTURE);
+      clock.now += 9 * 60_000;
+      expect(await pictures.peek(id)).toEqual(PICTURE);
+      clock.now += 2 * 60_000;
+      await expect(pictures.peek(id)).rejects.toThrow(PictureGone);
+    });
+
+    it('refuses an id it never issued', async () => {
+      const [pictures] = make({ now: 1_000_000 });
+      await expect(pictures.peek('made-up')).rejects.toThrow(PictureGone);
+    });
+  });
+}
+
+describe('pictures on several instances', () => {
+  it('a stored picture is had on any instance', async () => {
+    const [one, two] = PICTURE_KINDS.stored({ now: 1_000_000 });
+    expect(await two.peek(await one.issue(PICTURE))).toEqual(PICTURE);
+  });
+
+  it('a local picture names its instance, and another instance says where it is', async () => {
+    const [one, two] = PICTURE_KINDS.local({ now: 1_000_000 });
+    const id = await one.issue(PICTURE);
+    expect(instanceOfCode(id)).toBe('one');
+    const elsewhere = await two.peek(id).catch((error) => error);
+    expect(elsewhere).toBeInstanceOf(CodeElsewhere);
+    expect(elsewhere.instance).toBe('one');
+  });
+
+  it('a stored picture is kept apart from the codes in the same store', async () => {
+    const clock = { now: 1_000_000 };
+    const store = fakeStore(clock);
+    const pictures = storedPictures({ store, now: () => clock.now });
+    const codes = storedCodes({ store, now: () => clock.now });
+    await expect(codes.take(await pictures.issue(PICTURE))).rejects.toThrow(InvalidGrantError);
   });
 });

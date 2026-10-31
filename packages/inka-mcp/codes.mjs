@@ -18,6 +18,13 @@
  * Each has issue(data) -> code, peek(code) -> data, take(code) -> data (the
  * exchange: good once where the store can tell). A code that is unknown,
  * used or lapsed is an InvalidGrantError.
+ *
+ * The pictures a client's view fetches (server.mjs, the `picture` tool) are
+ * held the same way, local or stored, for ten minutes and as often as asked
+ * (peek): a client may hand the view a tool's result without its pictures, and
+ * the view's fetch, like an exchange, can reach any instance. There are no
+ * sealed pictures: nothing is held, and a picture is too big for its id. One
+ * that is unknown or lapsed is PictureGone.
  */
 import { randomBytes } from 'node:crypto';
 import { InvalidGrantError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
@@ -40,12 +47,40 @@ export function instanceOfCode(code) {
   return at > 0 ? decodeURIComponent(String(code).slice(0, at)) : null;
 }
 
+const PICTURE_MS = 10 * 60 * 1000;
+
 const newId = () => randomBytes(24).toString('base64url');
-const unknown = () => new InvalidGrantError('not a code from this server, or already used');
-const lapsed = () => new InvalidGrantError('the code has lapsed; sign in again');
+
+/** What a code store holds: for a minute, and an unknown or lapsed code is an InvalidGrantError. */
+const CODES = {
+  kind: 'code',
+  ttlMs: CODE_MS,
+  unknown: () => new InvalidGrantError('not a code from this server, or already used'),
+  lapsed: () => new InvalidGrantError('the code has lapsed; sign in again'),
+};
+
+/** A picture a view asked for that this server no longer has, or never had. */
+export class PictureGone extends Error {}
+
+/** What a picture store holds: for ten minutes, and an unknown or lapsed picture is PictureGone. */
+const PICTURES = {
+  kind: 'picture',
+  ttlMs: PICTURE_MS,
+  unknown: () => new PictureGone('not a picture this server took'),
+  lapsed: () => new PictureGone('the picture is no longer kept: take it again'),
+};
 
 /** Codes in this instance's memory. `instance`: its name, or null when it is the only one. */
 export function localCodes({ instance, now }) {
+  return localHeld({ instance, now, ...CODES });
+}
+
+/** Pictures in this instance's memory, as localCodes. */
+export function localPictures({ instance, now }) {
+  return localHeld({ instance, now, ...PICTURES });
+}
+
+function localHeld({ instance, now, ttlMs, unknown, lapsed }) {
   const held = new Map();
   const find = (code, { use }) => {
     const owner = instanceOfCode(code);
@@ -63,7 +98,7 @@ export function localCodes({ instance, now }) {
     async issue(data) {
       for (const [code, entry] of held) if (entry.until <= now()) held.delete(code);
       const code = instance === null ? newId() : `${encodeURIComponent(instance)}${SEPARATOR}${newId()}`;
-      held.set(code, { data, until: now() + CODE_MS });
+      held.set(code, { data, until: now() + ttlMs });
       return code;
     },
     async peek(code) { return find(code, { use: false }); },
@@ -78,7 +113,16 @@ export function localCodes({ instance, now }) {
  * it doesn't hold. Values are strings.
  */
 export function storedCodes({ store, now }) {
-  const key = (code) => `inka-mcp:code:${code}`;
+  return storedHeld({ store, now, ...CODES });
+}
+
+/** Pictures in the deployment's store, as storedCodes, kept apart from its codes. */
+export function storedPictures({ store, now }) {
+  return storedHeld({ store, now, ...PICTURES });
+}
+
+function storedHeld({ store, now, kind, ttlMs, unknown, lapsed }) {
+  const key = (code) => `inka-mcp:${kind}:${code}`;
   const read = (stored) => {
     if (stored === null) throw unknown();
     const { data, until } = JSON.parse(stored);
@@ -88,7 +132,7 @@ export function storedCodes({ store, now }) {
   return {
     async issue(data) {
       const code = newId();
-      await store.put(key(code), JSON.stringify({ data, until: now() + CODE_MS }), CODE_MS);
+      await store.put(key(code), JSON.stringify({ data, until: now() + ttlMs }), ttlMs);
       return code;
     },
     async peek(code) { return read(await store.get(key(code))); },
@@ -149,8 +193,8 @@ export function sealedCodes({ box }) {
       return unpack(box.openBytes('code', code));
     } catch (error) {
       if (!(error instanceof Unsealable)) throw error;
-      if (/expired/.test(error.message)) throw lapsed();
-      throw unknown();
+      if (/expired/.test(error.message)) throw CODES.lapsed();
+      throw CODES.unknown();
     }
   };
   return {
