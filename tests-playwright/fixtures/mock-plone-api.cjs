@@ -440,16 +440,15 @@ function isAuthenticated(req) {
 }
 
 /**
- * The addable types need a signed-in user, in Plone: @types, and the `types`
- * expansion the editor asks for on its first read, are Unauthorized to
- * anonymous (and so to a token the site no longer accepts), refusing the whole
- * request.
+ * The addable types need a signed-in user, in Plone: @types is Unauthorized to
+ * anonymous (and so to a token the site no longer accepts). So is the `types`
+ * expansion the editor asks for on its first read, refusing the whole read
+ * (see the content GET: only once the page is found, as Plone looks it up
+ * first).
  */
+const UNAUTHORIZED = { type: 'Unauthorized', message: 'Unauthorized()' };
 app.use((req, res, next) => {
-  const asksForTypes = /\/@types(\/|$)/.test(req.path) || parseExpand(req).includes('types');
-  if (asksForTypes && !isAuthenticated(req)) {
-    return res.status(401).json({ type: 'Unauthorized', message: 'Unauthorized()' });
-  }
+  if (/\/@types(\/|$)/.test(req.path) && !isAuthenticated(req)) return res.status(401).json(UNAUTHORIZED);
   next();
 });
 
@@ -6532,6 +6531,7 @@ app.get('*', (req, res, next) => {
   if (content) {
     // Filter actions based on authentication
     const authenticated = isAuthenticated(req);
+    if (!authenticated && parseExpand(req).includes('types')) return res.status(401).json(UNAUTHORIZED);
     // Plone refuses an anonymous reader content the public may not view: under
     // simple_publication_workflow, `private` (where a new page starts) and
     // `pending`. Serving it anyway let a frontend that fetched WITHOUT the
