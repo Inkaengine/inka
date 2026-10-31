@@ -42,11 +42,12 @@ describe('describeBlock', () => {
 
   it("renders each of the front end's examples on its own, when asked", async () => {
     const drafts = [];
-    const render = async (draft, uid) => { drafts.push({ draft, uid }); return { image: `png-${drafts.length}`, text: `text-${drafts.length}` }; };
+    // Each told how many there are, to share the room for pictures between them.
+    const render = async (draft, uid, of) => { drafts.push({ draft, uid, of }); return { image: `png-${drafts.length}`, text: `text-${drafts.length}` }; };
     const d = await describeBlock(agent, noSite, { type: 'columns', render });
     expect(drafts).toEqual([
-      { uid: 'example', draft: { blocks: { example: { '@type': 'columns', blocks: {}, blocks_layout: { items: [] } } }, blocks_layout: { items: ['example'] } } },
-      { uid: 'example', draft: { blocks: { example: { '@type': 'columns' } }, blocks_layout: { items: ['example'] } } },
+      { uid: 'example', of: 2, draft: { blocks: { example: { '@type': 'columns', blocks: {}, blocks_layout: { items: [] } } }, blocks_layout: { items: ['example'] } } },
+      { uid: 'example', of: 2, draft: { blocks: { example: { '@type': 'columns' } }, blocks_layout: { items: ['example'] } } },
     ]);
     expect(d.examples.map((e) => e.rendered)).toEqual([{ image: 'png-1', text: 'text-1' }, { image: 'png-2', text: 'text-2' }]);
   });

@@ -94,10 +94,11 @@ test.describe('MCP tools', () => {
     const ops = [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@type': 'slate', value: 'Previewed *draft* text' }] }];
     const dry = await editPage(agent, {
       ops, expectedVersion: read.version, dryRun: true, mintId,
-      render: (draft) => previewDraft(page.context(), { frontendUrl, path: '/_test_data/test-page', draft }),
+      render: (draft) => previewDraft(page.context(), { frontendUrl, path: '/_test_data/test-page', draft, maxChars: 100_000 }),
     });
     expect(dry.rendered.text).toContain('Previewed draft text');
-    expect(Buffer.from(dry.rendered.image, 'base64').subarray(1, 4).toString()).toBe('PNG');
+    expect(dry.rendered.mimeType).toMatch(/^image\/(png|jpeg)$/);
+    expect(dry.rendered.image.length).toBeLessThanOrEqual(100_000);
 
     // The view-mode frame is a visitor's: no editor, and the saved page is untouched.
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
@@ -248,7 +249,7 @@ test.describe('MCP tools', () => {
 
     const callout = await describeBlock(agent, site, {
       type: 'callout',
-      render: (draft, uid) => previewDraft(page.context(), { frontendUrl, path: '/_test_data/test-page', draft, focus: uid }),
+      render: (draft, uid) => previewDraft(page.context(), { frontendUrl, path: '/_test_data/test-page', draft, focus: uid, maxChars: 50_000 }),
     });
     expect(callout.guidance).toMatch(/aside/);
     // Declared by the front end as stored blocks, given in the agent format.
@@ -256,7 +257,7 @@ test.describe('MCP tools', () => {
     expect(tip.block.blocks[0].value.md).toBeTruthy();
     // Each rendered alone: the picture and text are the block's, not the page's.
     for (const example of callout.examples) {
-      expect(Buffer.from(example.rendered.image, 'base64').subarray(1, 4).toString()).toBe('PNG');
+      expect(example.rendered.mimeType).toMatch(/^image\/(png|jpeg)$/);
       expect(example.rendered.text).toContain(example.block.blocks[0].value.md.replace(/[*_`]/g, ''));
       expect(example.rendered.text).not.toContain('Test Page');
     }

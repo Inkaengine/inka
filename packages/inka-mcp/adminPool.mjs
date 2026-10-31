@@ -71,10 +71,10 @@ export function adminPool({ adminUrl, frontendUrl, size, waitMs, maxIdleMs }) {
               // The site-wide API is on every admin page, the editor's included.
               site: siteOn(page),
               // Render a draft of this page as a visitor sees it, in its own page
-              // (with `focus`, just that block of it).
-              render: async (draft, viewport, focus) => {
+              // (with `focus`, just that block of it), its picture in `maxChars`.
+              render: async (draft, viewport, { maxChars, focus }) => {
                 const renderedOn = await frontendUrlOf(page);
-                const rendered = await previewDraft(page.context(), { frontendUrl: renderedOn, path, draft, viewport, focus });
+                const rendered = await previewDraft(page.context(), { frontendUrl: renderedOn, path, draft, viewport, focus, maxChars });
                 return { ...rendered, renderedOn: new URL(renderedOn).origin };
               },
             });

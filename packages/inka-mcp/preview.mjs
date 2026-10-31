@@ -9,6 +9,8 @@
  * a quiet render of the saved page.
  */
 
+import { fitImage } from './fitImage.mjs';
+
 const VIEWPORTS = {
   desktop: { width: 1280, height: 800 },
   mobile: { width: 390, height: 844 },
@@ -34,11 +36,13 @@ function isContentFetch(url, path) {
 
 /**
  * Render `draft` (stored page data) in view mode at `frontendUrl`.
- * Returns `{ image, text }`: a PNG of the whole page (base64) and its visible
- * text — or, with `focus`, of just that block (the element the front end marks
- * with its uid).
+ * Returns `{ image, mimeType, cropped, text }`: a picture of the whole page
+ * (base64, made to fit in `maxChars`: see fitImage.mjs) and its visible text —
+ * or, with `focus`, of just that block (the element the front end marks with
+ * its uid).
  */
-export async function previewDraft(context, { frontendUrl, path, draft, viewport = 'desktop', focus }) {
+export async function previewDraft(context, { frontendUrl, path, draft, viewport = 'desktop', focus, maxChars }) {
+  if (!maxChars) throw new Error('preview: maxChars is not set: a picture must fit in the result that carries it');
   const size = VIEWPORTS[viewport];
   if (!size) throw new Error(`preview: no viewport "${viewport}" (${Object.keys(VIEWPORTS).join(', ')})`);
   const page = await context.newPage();
@@ -73,13 +77,17 @@ export async function previewDraft(context, { frontendUrl, path, draft, viewport
       const block = page.locator(`[data-block-uid="${focus}"]`);
       if (await block.count() === 0) throw new Error(`preview: the front end rendered no element for block ${focus}`);
       const first = block.first();
-      return { image: (await first.screenshot()).toString('base64'), text: await first.innerText() };
+      return picture(context, await first.screenshot(), maxChars, await first.innerText());
     }
-    const image = (await page.screenshot({ fullPage: true })).toString('base64');
-    return { image, text: await page.evaluate(() => document.body.innerText) };
+    return picture(context, await page.screenshot({ fullPage: true }), maxChars, await page.evaluate(() => document.body.innerText));
   } finally {
     await page.close();
   }
+}
+
+async function picture(context, png, maxChars, text) {
+  const { data, mimeType, cropped } = await fitImage(context, png, maxChars);
+  return { image: data, mimeType, cropped, text };
 }
 
 /**

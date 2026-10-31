@@ -11,6 +11,26 @@ import { connect, CALL } from '../helpers/mcpClient';
 
 const PAGE = '/_test_data/test-page';
 
+/**
+ * A result the conversation keeps: claude.ai writes one of more than about
+ * 150,000 characters to a file, and then no one sees its picture.
+ */
+const KEPT_IN_CONVERSATION = 150_000;
+const PICTURE = { type: 'image', mimeType: expect.stringMatching(/^image\/(png|jpeg)$/) };
+
+/** A PNG's or JPEG's width, from its header. */
+function widthOf({ data, mimeType }: { data: string; mimeType: string }): number {
+  const bytes = Buffer.from(data, 'base64');
+  if (mimeType === 'image/png') return bytes.readUInt32BE(16);
+  // JPEG: walk the segments to the frame header (SOF0-SOF2).
+  for (let at = 2; at < bytes.length;) {
+    const marker = bytes[at + 1];
+    if (marker >= 0xc0 && marker <= 0xc2) return bytes.readUInt16BE(at + 7);
+    at += 2 + bytes.readUInt16BE(at + 2);
+  }
+  throw new Error('no frame header in the JPEG');
+}
+
 test.describe('MCP server', () => {
   let client: Client;
   // The mock keys its state by token, so this test has the page to itself.
@@ -65,7 +85,8 @@ test.describe('MCP server', () => {
     const [text, image] = result.content as any[];
     expect(result.isError, text.text).toBeFalsy();
     expect(JSON.parse(text.text).renderedText).toContain('An alternative opening');
-    expect(image).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(image).toMatchObject(PICTURE);
+    expect(JSON.stringify(result).length).toBeLessThan(KEPT_IN_CONVERSATION);
     const after = (await call('get_page', { path: PAGE })).json();
     expect(after.version).toBe(before.version);
     expect(after.blocks.map((b: any) => b['@uid'])).toEqual(before.blocks.map((b: any) => b['@uid']));
@@ -81,9 +102,10 @@ test.describe('MCP server', () => {
     const viewed = JSON.parse(text.text);
     expect(viewed).toMatchObject({ path: PAGE, viewport: 'mobile' });
     expect(viewed.renderedText).toContain('This is a test paragraph');
-    expect(image).toMatchObject({ type: 'image', mimeType: 'image/png' });
-    // Mobile width: the picture is the phone's, not the desktop's.
-    expect(Buffer.from(image.data, 'base64').readUInt32BE(16)).toBe(390);
+    expect(image).toMatchObject(PICTURE);
+    expect(JSON.stringify(result).length).toBeLessThan(KEPT_IN_CONVERSATION);
+    // Mobile width: the picture is the phone's (or smaller, to fit), not the desktop's.
+    expect(widthOf(image)).toBeLessThanOrEqual(390);
   });
 
   test('describe_block with preview: a picture of each example, after the text', async () => {
@@ -94,9 +116,10 @@ test.describe('MCP server', () => {
     const [text, ...images] = result.content as any[];
     expect(result.isError, text.text).toBeFalsy();
     const described = JSON.parse(text.text);
-    expect(images.map((i) => i.mimeType)).toEqual(described.examples.map(() => 'image/png'));
+    expect(images).toEqual(described.examples.map(() => expect.objectContaining(PICTURE)));
+    expect(JSON.stringify(result).length).toBeLessThan(KEPT_IN_CONVERSATION);
     // The pictures are not repeated in the text.
-    expect(described.examples[0].rendered).toEqual({ renderedOn: expect.any(String), text: expect.any(String) });
+    expect(described.examples[0].rendered).toEqual({ renderedOn: expect.any(String), cropped: null, text: expect.any(String) });
   });
 
   test("templates: a locked block is refused, naming its template; with changeTemplates the template, and every page using it, changes", async () => {
@@ -192,7 +215,8 @@ test.describe('MCP server', () => {
     expect(dry.renderedText).toContain('From the MCP server');
     // Without INKA_FRONTEND_URL, the admin's own default front end.
     expect(dry.renderedOn).not.toBe(urls.nuxt);
-    expect(image).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(image).toMatchObject(PICTURE);
+    expect(JSON.stringify(dryCall).length).toBeLessThan(KEPT_IN_CONVERSATION);
     // MCP_PREVIEW_PNG=<file> keeps the screenshot to look at.
     if (process.env.MCP_PREVIEW_PNG) writeFileSync(process.env.MCP_PREVIEW_PNG, Buffer.from(image.data, 'base64'));
     const after = (await call('get_page', { path: PAGE })).json();

@@ -125,8 +125,9 @@ function findBlock(node, type) {
  * of that type from a page on the site, in the agent format, and where it is.
  * A type no page uses yet has no site example, and says so.
  *
- * With `render(draft, uid)`, each example its front end declares is also
- * rendered on its own — a page holding only that block — as `rendered`.
+ * With `render(draft, uid, of)`, each example its front end declares is also
+ * rendered on its own — a page holding only that block — as `rendered`; `of`
+ * is how many there are, so their pictures can share one result.
  */
 export async function describeBlock(agent, site, { type, render }) {
   const schemas = await agent.getBlockSchemas();
@@ -136,7 +137,7 @@ export async function describeBlock(agent, site, { type, render }) {
     if (!declared?.length) throw new Error(`the front end declares no examples of ${type} to render`);
     for (const [i, { block }] of declared.entries()) {
       const draft = { blocks: { [EXAMPLE_UID]: block }, blocks_layout: { items: [EXAMPLE_UID] } };
-      described.examples[i].rendered = await render(draft, EXAMPLE_UID);
+      described.examples[i].rendered = await render(draft, EXAMPLE_UID, declared.length);
     }
   }
   const pages = await site.search({ blockTypes: [type], limit: 5 });
