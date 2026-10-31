@@ -24,9 +24,11 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { adminPool } from './adminPool.mjs';
 import { subjectOf } from './tokenStore.mjs';
 import { signIn, renewDelay } from './signIn.mjs';
+import { SCREENSHOT_VIEW, screenshotViewHtml } from './screenshotView.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
 } from './tools.mjs';
@@ -95,7 +97,7 @@ export function headlessAdmin({ adminUrl, auth, frontendUrl }) {
 const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based CMS). The person you are working for edits the site in Inka's editor; they will say what they want changed, not how the site is built.
 
 - A page is a block of its content type (a Page is "Document"): its own fields (title, summary and the rest of its content type's fields) and its regions, which hold its blocks. Blocks have types (Text, Image, Hero, …; list_block_types gives each type's title, fields and regions), and some hold blocks of their own. In the editor, blocks are known by those titles and fields by their labels; ids and JSON are never shown.
-- The site's own front end draws every page. view_page shows a page as visitors see it; preview_layout (a whole proposed layout) and edit_blocks with dryRun and preview (a change to the page) show the result the same way. None of them saves anything.
+- The site's own front end draws every page. view_page shows a page as visitors see it; preview_layout (a whole proposed layout) and edit_blocks with dryRun and preview (a change to the page) show the result the same way. None of them saves anything. In clients that show them, the person sees these pictures too. A long page's picture may show only its top ("cropped" says how much); its text ("renderedText") is all there.
 - Some blocks come from a template that many pages share (they carry "templateId"; "readOnly" ones are locked, as the editor shows them). A change to one is a change to the template, and so to every page that uses it: edit_blocks with changeTemplates. In the editor, unlocking a template warns of the same.
 - Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page) changes the site itself: visitors of a published page see the change straight away; there is no separate publishing step.
 - search finds pages by their title, their summary and the text of their Text blocks. Text in other blocks' fields (a hero's heading, a teaser's title) may not be searched.`;
@@ -107,6 +109,21 @@ const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based
 const SAVES_NOTHING = { readOnlyHint: true };
 
 const asResult = (value) => ({ content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] });
+
+/**
+ * The room a result's pictures take, in base64 characters. claude.ai keeps a
+ * tool result of more than about 150,000 characters out of the conversation
+ * (it writes it to a file), and then neither the model nor the person sees the
+ * picture; this leaves the rest for the page's text. See fitImage.mjs.
+ */
+const IMAGE_CHARS = 100_000;
+
+const asImage = ({ image, mimeType }) => ({ type: 'image', data: image, mimeType });
+
+/** Shown to the person as well as the model, by a client that shows MCP Apps. */
+const SHOWS_PICTURES = { ui: { resourceUri: SCREENSHOT_VIEW } };
+
+const SCREENSHOT_VIEW_HTML = screenshotViewHtml();
 
 /**
  * The MCP server's tools. `adminFor(extra)` is the admin to work in for a
@@ -123,9 +140,10 @@ export function createServer(adminFor) {
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, getPage)));
 
-  server.registerTool('preview_layout', {
+  registerAppTool(server, 'preview_layout', {
     title: 'Try a layout',
     annotations: SAVES_NOTHING,
+    _meta: SHOWS_PICTURES,
     description: 'Render a whole proposed layout for a page as a visitor would see it, without saving anything: the page with "blocks" (in the get_page format; containers hold their child blocks in lists) in place of its own. Returns a screenshot and the rendered text. To change part of the current page, use edit_blocks with dryRun and preview instead.',
     inputSchema: {
       path: z.string().describe('The page path, e.g. /about'),
@@ -133,33 +151,36 @@ export function createServer(adminFor) {
       viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
     },
   }, async ({ path, blocks, viewport = 'desktop' }, extra) => {
-    const { image, text, renderedOn } = await adminFor(extra).withEditor(path, (agent, { render }) => previewLayout(agent, {
-      blocks, mintId: randomUUID, render: (draft) => render(draft, viewport),
+    const rendered = await adminFor(extra).withEditor(path, (agent, { render }) => previewLayout(agent, {
+      blocks, mintId: randomUUID, render: (draft) => render(draft, viewport, { maxChars: IMAGE_CHARS }),
     }));
+    const { text, renderedOn, cropped } = rendered;
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, renderedText: text, saved: false }, null, 2) },
-        { type: 'image', data: image, mimeType: 'image/png' },
+        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, cropped, renderedText: text, saved: false }, null, 2) },
+        asImage(rendered),
       ],
     };
   });
 
-  server.registerTool('view_page', {
+  registerAppTool(server, 'view_page', {
     title: 'See a page',
     annotations: SAVES_NOTHING,
+    _meta: SHOWS_PICTURES,
     description: 'See a page as a visitor sees it: a screenshot rendered by the site\'s own front end, and the page\'s visible text. get_page gives the blocks, not how they render. To see a change before saving it, use edit_blocks with dryRun and preview.',
     inputSchema: {
       path: z.string().describe('The page path, e.g. /about'),
       viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
     },
   }, async ({ path, viewport = 'desktop' }, extra) => {
-    const { image, text, renderedOn } = await adminFor(extra).withEditor(
-      path, async (agent, { render }) => render(await agent.getDraft(), viewport),
+    const rendered = await adminFor(extra).withEditor(
+      path, async (agent, { render }) => render(await agent.getDraft(), viewport, { maxChars: IMAGE_CHARS }),
     );
+    const { text, renderedOn, cropped } = rendered;
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, renderedText: text }, null, 2) },
-        { type: 'image', data: image, mimeType: 'image/png' },
+        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, cropped, renderedText: text }, null, 2) },
+        asImage(rendered),
       ],
     };
   });
@@ -225,9 +246,10 @@ export function createServer(adminFor) {
     inputSchema: { path: z.string().describe('The page path, e.g. /about') },
   }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, listBlockTypes)));
 
-  server.registerTool('describe_block', {
+  registerAppTool(server, 'describe_block', {
     title: 'Describe a block type',
     annotations: SAVES_NOTHING,
+    _meta: SHOWS_PICTURES,
     description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it.',
     inputSchema: {
       path: z.string().describe('The page you will add it to, e.g. /about'),
@@ -236,19 +258,20 @@ export function createServer(adminFor) {
     },
   }, async ({ path, type, preview }, extra) => {
     const described = await adminFor(extra).withEditor(path, (agent, { site, render }) => describeBlock(agent, site, {
-      type, render: preview && ((draft, uid) => render(draft, preview, uid)),
+      // The examples share the room for pictures.
+      type, render: preview && ((draft, uid, of) => render(draft, preview, { focus: uid, maxChars: Math.floor(IMAGE_CHARS / of) })),
     }));
     if (!preview) return asResult(described);
     // Each example's picture follows the text, in the examples' order.
-    const images = described.examples.map(({ rendered }) => rendered.image);
+    const images = described.examples.map(({ rendered }) => asImage(rendered));
     for (const example of described.examples) {
-      const { image: _image, text, renderedOn } = example.rendered;
-      example.rendered = { renderedOn, text };
+      const { text, renderedOn, cropped } = example.rendered;
+      example.rendered = { renderedOn, cropped, text };
     }
     return {
       content: [
         { type: 'text', text: JSON.stringify(described, null, 2) },
-        ...images.map((data) => ({ type: 'image', data, mimeType: 'image/png' })),
+        ...images,
       ],
     };
   });
@@ -266,8 +289,9 @@ export function createServer(adminFor) {
     await adminFor(extra).withNewPage({ parent, type, title }, (agent) => fillNewPage(agent, { blocks, mintId: randomUUID })),
   ));
 
-  server.registerTool('edit_blocks', {
+  registerAppTool(server, 'edit_blocks', {
     title: 'Edit a page',
+    _meta: SHOWS_PICTURES,
     description: `Change a page's blocks, or its own fields (an "update" on "_page"). With dryRun the changes are applied but not saved, and the resulting page is returned; resubmit without dryRun to save. With dryRun, "preview" also renders the result as a visitor would see it — a screenshot and the page's text. A save is refused if the page has changed since expectedVersion — read it again and reapply.\n\n${OPS_HELP}`,
     inputSchema: {
       path: z.string().describe('The page path, e.g. /about'),
@@ -281,17 +305,22 @@ export function createServer(adminFor) {
   }, async ({ path, expectedVersion, ops, dryRun, preview, changeTemplates }, extra) => {
     const result = await adminFor(extra).withEditor(path, (agent, { render }) => editPage(agent, {
       ops, expectedVersion, dryRun, changeTemplates, mintId: randomUUID,
-      render: preview && ((draft) => render(draft, preview)),
+      render: preview && ((draft) => render(draft, preview, { maxChars: IMAGE_CHARS })),
     }));
     if (!result.rendered) return asResult(result);
-    const { rendered: { image, text, renderedOn }, ...rest } = result;
+    const { rendered, ...rest } = result;
+    const { text, renderedOn, cropped } = rendered;
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ ...rest, renderedOn, renderedText: text }, null, 2) },
-        { type: 'image', data: image, mimeType: 'image/png' },
+        { type: 'text', text: JSON.stringify({ ...rest, renderedOn, cropped, renderedText: text }, null, 2) },
+        asImage(rendered),
       ],
     };
   });
+
+  registerAppResource(server, 'Screenshot', SCREENSHOT_VIEW, {
+    description: 'Shows the person the pictures a tool took of the site\'s pages',
+  }, async () => ({ contents: [{ uri: SCREENSHOT_VIEW, mimeType: RESOURCE_MIME_TYPE, text: SCREENSHOT_VIEW_HTML }] }));
 
   return server;
 }
