@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, afterEach, afterAll, vi } from 'vitest';
 import { createServer, request } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { hostedServer, codesFrom, replayBy, forwardTo } from './http.mjs';
@@ -33,6 +33,11 @@ const plone = (user) => {
   const part = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   return `${part({ alg: 'HS256' })}.${part({ sub: user, exp: Math.floor(Date.now() / 1000) + 12 * 3600 })}.sig`;
 };
+
+// The suite's setup (Volto's) stubs the global fetch for the admin's
+// component tests; these run a real server, which renews the sign-in through
+// the admin below with a real one.
+vi.unstubAllGlobals();
 
 /**
  * The admin, as far as signing in needs it: the server renews the token the
