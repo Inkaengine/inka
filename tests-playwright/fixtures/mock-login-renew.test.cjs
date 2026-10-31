@@ -5,6 +5,7 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { app } = require('./mock-api-server.cjs');
+const { mintToken } = require('./mock-tokens.cjs');
 
 let server;
 let baseUrl;
@@ -22,8 +23,7 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-const part = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-const tokenFor = (user) => `${part({ alg: 'HS256', typ: 'JWT' })}.${part({ sub: user, exp: 4102444800 })}.fake-signature-${Math.random()}`;
+const tokenFor = mintToken;
 const subjectOf = (token) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).sub;
 
 const renew = (headers) => fetch(`${baseUrl}/@login-renew`, { method: 'POST', headers: { Accept: 'application/json', ...headers } });

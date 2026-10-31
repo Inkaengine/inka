@@ -6,6 +6,7 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { app } = require('./mock-api-server.cjs');
+const { mintToken } = require('./mock-tokens.cjs');
 
 let server;
 let baseUrl;
@@ -25,11 +26,8 @@ after(async () => {
 
 const PAGE = '/_test_data/test-page';
 
-/** A token for `user`, shaped as the mock's tests make them (a unique tail keeps sessions apart). */
-function tokenFor(user) {
-  const part = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  return `${part({ alg: 'HS256', typ: 'JWT' })}.${part({ sub: user, exp: 4102444800 })}.fake-signature-${user}-${Math.random()}`;
-}
+/** A token for `user`, one the mock site issued (each its own session). */
+const tokenFor = mintToken;
 
 async function call(method, path, token, body) {
   const res = await fetch(`${baseUrl}${path}`, {

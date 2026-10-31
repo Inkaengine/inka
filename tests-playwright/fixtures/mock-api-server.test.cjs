@@ -1,4 +1,5 @@
 const { describe, it, before, after } = require('node:test');
+const { mintToken } = require('./mock-tokens.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -550,8 +551,9 @@ describe('@types schemas', () => {
     // and nothing on screen to say why.
     const types = ['Document', 'Folder', 'Event', 'News Item'];
     for (const type of types) {
+      // A type's schema is for a signed-in user, as in Plone.
       const res = await fetch(`${baseUrl}/@types/${encodeURIComponent(type)}`, {
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', Authorization: `Bearer ${mintToken('admin')}` },
       });
       assert.equal(res.status, 200, `${type} has a schema`);
       const schema = await res.json();

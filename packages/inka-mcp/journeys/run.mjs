@@ -35,13 +35,14 @@ import { runClaude } from './claude.mjs';
 import { agentTurn, asText, asRagas } from './conversation.mjs';
 import { nextFromPerson } from './person.mjs';
 import { judge } from './judge.mjs';
+import mockTokens from '../../../tests-playwright/fixtures/mock-tokens.cjs';
+
+const { mintToken } = mockTokens;
 
 const SERVER = fileURLToPath(new URL('../server.mjs', import.meta.url));
 const RUN_LIMIT_MS = 20 * 60 * 1000;
 /** Agent turns in a conversation before it is cut off. */
 const MAX_TURNS = 6;
-// The token shape the mock API and the test helpers use; the mock keys its state by token.
-const TOKEN_PREFIX = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6NDEwMjQ0NDgwMH0.fake-signature';
 /** What a chat app tells its assistant; Claude Code's own prompt is about writing code. */
 const CHAT_SYSTEM = 'You are Claude, an AI assistant. The person is chatting with you in the Claude app, '
   + 'and has connected their website to it so you can help them with it.';
@@ -115,7 +116,8 @@ async function stackUp() {
 
 async function runOnce(task, n) {
   await stackUp();
-  const token = `${TOKEN_PREFIX}-${randomUUID()}`;
+  // One the mock site issued; it keys its state by token, so each run has its own.
+  const token = mintToken('admin');
   const cms = apiFor(token);
   if (task.setup) await task.setup(cms);
   const dir = mkdtempSync(join(tmpdir(), 'inka-journey-'));

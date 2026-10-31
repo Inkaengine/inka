@@ -1,4 +1,8 @@
 import { test, expect } from '../fixtures';
+import { mintToken } from '../fixtures/mock-tokens.cjs';
+
+// The types are for a signed-in user, as in Plone.
+const signedIn = () => ({ headers: { Authorization: `Bearer ${mintToken('admin')}` } });
 
 /**
  * The site root has a content type, and it is editable.
@@ -18,7 +22,7 @@ import { test, expect } from '../fixtures';
  */
 test.describe('the site root content type', () => {
   test('is served, with the fields an author edits', async ({ request, urls }) => {
-    const res = await request.get(`${urls.mockApi}/@types/Plone%20Site`);
+    const res = await request.get(`${urls.mockApi}/@types/Plone%20Site`, signedIn());
     expect(res.status(), 'the site root type is a type this mock knows').toBe(200);
 
     const schema = await res.json();
@@ -29,7 +33,7 @@ test.describe('the site root content type', () => {
   });
 
   test('carries none of the dexterity behaviours it does not have', async ({ request, urls }) => {
-    const res = await request.get(`${urls.mockApi}/@types/Plone%20Site`);
+    const res = await request.get(`${urls.mockApi}/@types/Plone%20Site`, signedIn());
     const schema = await res.json();
 
     expect(
@@ -45,7 +49,7 @@ test.describe('the site root content type', () => {
   test('is still not addable', async ({ request, urls }) => {
     // Real Plone lists what you may ADD here; you cannot add a site root inside
     // a site. Having a schema for a type must not put it in that list.
-    const res = await request.get(`${urls.mockApi}/@types`);
+    const res = await request.get(`${urls.mockApi}/@types`, signedIn());
     const ids = (await res.json()).map((t: { '@id': string }) => t['@id'].split('/').pop());
     expect(ids).not.toContain('Plone Site');
   });

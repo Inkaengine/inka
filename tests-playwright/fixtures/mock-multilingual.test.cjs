@@ -1,6 +1,7 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { app } = require('./mock-api-server.cjs');
+const { mintToken } = require('./mock-tokens.cjs');
 
 /**
  * The multilingual API, as plone.app.multilingual serves it.
@@ -333,7 +334,7 @@ describe('language-independent fields', () => {
     // copy the value from the original instead of asking for a translation of
     // it, and to show the field as inherited. Tags are the classic case: the
     // same tag means the same thing in every language.
-    const { status, data } = await json('/@types/Document');
+    const { status, data } = await json('/@types/Document', { token: mintToken('admin') });
     assert.equal(status, 200);
     assert.equal(
       data.properties.subjects?.multilingual_options?.language_independent,
