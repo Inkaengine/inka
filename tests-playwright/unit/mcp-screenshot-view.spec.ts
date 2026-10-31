@@ -161,9 +161,17 @@ test.describe('screenshot view', () => {
     await expect(view.locator('#status')).toHaveText('The picture could not be had: the picture is no longer kept: take it again');
   });
 
-  test('says what a result without a picture held', async ({ page }) => {
+  // Under a call that took no picture (an edit saved without a preview), the
+  // panel said "No picture in this result": there was nothing to say.
+  test('shows nothing for a call that took no picture', async ({ page }) => {
     const view = await hostWith(page, { content: [{ type: 'text', text: '{"saved":true}' }] });
-    await expect(view.locator('#status')).toHaveText('No picture in this result (it held: text).');
+    await page.waitForFunction(() => (window as any).resultSent);
+    await expect(view.locator('#status')).toBeHidden();
     await expect(view.locator('img')).toHaveCount(0);
+  });
+
+  test('says so when the server keeps no pictures for it', async ({ page }) => {
+    const view = await hostWith(page, { content: [{ type: 'text', text: JSON.stringify({ path: '/', pictures: [] }) }] });
+    await expect(view.locator('#status')).toHaveText('This site\'s MCP server keeps no pictures for this view; the assistant still sees them.');
   });
 });

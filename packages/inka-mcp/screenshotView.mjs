@@ -43,14 +43,17 @@ const SHOW = `{
     img.alt = 'The page as a visitor sees it';
     return img;
   }));
-  /** The ids of the pictures the result names: its text is the tool's JSON. */
+  /**
+   * The ids of the pictures the result names (its text is the tool's JSON):
+   * null for a call that took none, [] when the server keeps none.
+   */
   const named = (result) => {
     const text = result.content.find((part) => part.type === 'text');
-    if (!text) return [];
+    if (!text) return null;
     try {
-      return JSON.parse(text.text).pictures ?? [];
+      return JSON.parse(text.text).pictures ?? null;
     } catch (error) {
-      if (error instanceof SyntaxError) return [];
+      if (error instanceof SyntaxError) return null;
       throw error;
     }
   };
@@ -62,8 +65,13 @@ const SHOW = `{
       return;
     }
     const ids = named(result);
+    if (ids === null) {
+      // A call that took no picture: nothing to show, and the panel stays shut.
+      say('');
+      return;
+    }
     if (!ids.length) {
-      say('No picture in this result (it held: ' + result.content.map((part) => part.type).join(', ') + ').');
+      say("This site's MCP server keeps no pictures for this view; the assistant still sees them.");
       return;
     }
     say('Fetching the picture…');
