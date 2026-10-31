@@ -57,6 +57,12 @@ describe('signing in, as Plone', () => {
     assert.equal((await get(EDITOR_ROOT, await signIn())).status, 200);
   });
 
+  it('looks a page up before the expansion: no page is 404, signed in or not', async () => {
+    // As Plone answered the admin's read of /connect-agent (a route, not a
+    // page) with a token it no longer accepted.
+    assert.equal((await get('/no-such-page?expand=breadcrumbs,types')).status, 404);
+  });
+
   it('reads a token it did not sign as anonymous: public reads answer, the rest is 401', async () => {
     const token = forged('admin');
     assert.equal((await get('/', token)).status, 200);
