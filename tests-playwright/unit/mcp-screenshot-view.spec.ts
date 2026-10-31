@@ -42,7 +42,9 @@ const VIEW = 'https://sandbox.test/view.html';
  * view's first word to it is lost). What the view's frame reports (CSP
  * refusals, errors) is collected in `reported`.
  */
-async function hostWith(page: Page, result: object, { answers = true, listensLate = false, input = { path: '/' } } = {}) {
+async function hostWith(page: Page, result: object, {
+  answers = true, listensLate = false, input = { path: '/' }, server = {} as Record<string, object>,
+} = {}) {
   const reported: string[] = [];
   page.on('console', (message) => {
     // The one refusal expected: zod (in the SDK's client) tries an eval once,
@@ -59,7 +61,7 @@ async function hostWith(page: Page, result: object, { answers = true, listensLat
   }));
   await page.goto(`${HOST}/`);
   await page.addScriptTag({ content: await hostSide });
-  await page.evaluate(async ({ view, result, answers, listensLate, input }) => {
+  await page.evaluate(async ({ view, result, answers, listensLate, input, server }) => {
     const frame = document.getElementById('view') as HTMLIFrameElement;
     const { AppBridge, PostMessageTransport } = (window as any).extApps;
     const loaded = new Promise((done) => { frame.onload = done; });
@@ -77,6 +79,15 @@ async function hostWith(page: Page, result: object, { answers = true, listensLat
     // reports no height is a frame no one sees).
     (window as any).sizes = [];
     bridge.onsizechange = (size: object) => (window as any).sizes.push(size);
+    // The MCP server, for the view's own calls: `server` answers the `picture`
+    // tool, by id, as the server does (an error for one it doesn't hold).
+    bridge.oncalltool = async ({ name, arguments: args }: { name: string, arguments: { id: string } }) => {
+      if (name !== 'picture') throw new Error(`the view called ${name}`);
+      const held = server[args.id];
+      return held
+        ? { content: [{ type: 'text', text: `the picture ${args.id}` }], structuredContent: held }
+        : { content: [{ type: 'text', text: 'the picture is no longer kept: take it again' }], isError: true };
+    };
     bridge.oninitialized = async () => {
       await bridge.sendToolInput({ arguments: input });
       await bridge.sendToolResult(result);
@@ -84,7 +95,7 @@ async function hostWith(page: Page, result: object, { answers = true, listensLat
     };
     await bridge.connect(new PostMessageTransport(frame.contentWindow, frame.contentWindow));
     if (!listensLate) await load();
-  }, { view: VIEW, result, answers, listensLate, input });
+  }, { view: VIEW, result, answers, listensLate, input, server });
   return Object.assign(page.frameLocator('#view'), { reported });
 }
 
@@ -129,6 +140,25 @@ test.describe('screenshot view', () => {
   test('says so while it waits for the client', async ({ page }) => {
     const view = await hostWith(page, { content: [] }, { answers: false });
     await expect(view.locator('#status')).toHaveText('Connecting to the conversation…');
+  });
+
+  // Claude hands the view a tool's result without its pictures: the view asks
+  // the server for each one the result names.
+  test("fetches the pictures a result names, when the client hands it the result without them", async ({ page }) => {
+    const [red, blue] = [await picture(page, 'red'), await picture(page, 'blue')];
+    const view = await hostWith(page, { content: [{ type: 'text', text: JSON.stringify({ path: '/', pictures: ['p-red', 'p-blue'] }) }] }, {
+      server: { 'p-red': { mimeType: red.mimeType, data: red.data }, 'p-blue': { mimeType: blue.mimeType, data: blue.data } },
+    });
+    const images = view.locator('img');
+    await expect(images).toHaveCount(2);
+    await expect(images.nth(0)).toHaveAttribute('src', `data:image/png;base64,${red.data}`);
+    await expect(images.nth(1)).toHaveAttribute('src', `data:image/png;base64,${blue.data}`);
+    await expect(view.locator('#status')).toBeHidden();
+  });
+
+  test('says so when a picture the result names is no longer kept', async ({ page }) => {
+    const view = await hostWith(page, { content: [{ type: 'text', text: JSON.stringify({ path: '/', pictures: ['p-gone'] }) }] });
+    await expect(view.locator('#status')).toHaveText('The picture could not be had: the picture is no longer kept: take it again');
   });
 
   test('says what a result without a picture held', async ({ page }) => {
