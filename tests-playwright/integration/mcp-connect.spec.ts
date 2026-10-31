@@ -76,6 +76,23 @@ test.describe('connect-agent', () => {
     expect(returnUrl).toBe(url.slice(helper.adminUrl.length));
   });
 
+  test('a sign-in the site no longer accepts: sign in again first, then back to the same page', async ({ page, urls }) => {
+    // A deploy reset the site, which stopped accepting the tokens it had
+    // issued. The page offered Allow on the dead one, and handed it to the
+    // agent, whose every call then failed.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const revoked = await fetch(`${urls.mockApi}/@mock-revoke-token`, {
+      method: 'POST', headers: { Authorization: `Bearer ${helper.authToken}` },
+    });
+    expect(revoked.status).toBe(204);
+    const url = connectPage(helper.adminUrl, 'http://127.0.0.1:9/callback');
+    await page.goto(url);
+    await page.waitForURL(/\/login\?/);
+    expect(new URL(page.url()).searchParams.get('return_url')).toBe(url.slice(helper.adminUrl.length));
+    await expect(page.getByRole('button', { name: 'Allow' })).toHaveCount(0);
+  });
+
   for (const [what, redirectUri] of [
     ['another site', 'https://example.org/callback'],
     ['https on loopback', 'https://127.0.0.1:9/callback'],

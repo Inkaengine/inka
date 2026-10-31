@@ -119,14 +119,23 @@ export function oauthProvider({ box, codes, adminUrl, callbackUrl, renew, log })
         return back.href;
       }
       if (!token) throw new InvalidGrantError('the connect page sent no token');
-      subjectOf(token);
+      // Renewed, which asks the site whether it still accepts the token: a
+      // page can hand on one it no longer does (a deploy reset the site), and
+      // every call made with it would fail. Renewed, it also lasts its full time.
+      let accepted;
+      try {
+        accepted = await renew(token);
+      } catch (error) {
+        if (!(error instanceof SignedOut)) throw error;
+        throw new InvalidGrantError(`the site no longer accepts ${subjectOf(token)}'s sign-in (${error.message}); sign in to the site again`);
+      }
       back.searchParams.set('code', await codes.issue({
         client: binding(pending.client_id),
         redirect: binding(pending.redirect_uri),
         code_challenge: pending.code_challenge,
-        plone: token,
+        plone: accepted,
       }));
-      log(`sign-in allowed for ${subjectOf(token)}; sending the browser to ${back.origin}${back.pathname}`);
+      log(`sign-in allowed for ${subjectOf(accepted)}; sending the browser to ${back.origin}${back.pathname}`);
       return back.href;
     },
 
