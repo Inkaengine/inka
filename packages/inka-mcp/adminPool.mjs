@@ -10,7 +10,8 @@
  */
 import { chromium } from 'playwright';
 import { pagePool } from './pagePool.mjs';
-import { openAdmin, openForEdit, createPage, park, agentOn, siteOn } from './adminDriver.mjs';
+import { openAdmin, openForEdit, createPage, park, agentOn, siteOn, EditorRefused } from './adminDriver.mjs';
+import { renewThrough, SignedOut } from './signIn.mjs';
 import { frontendUrlOf, previewDraft } from './preview.mjs';
 
 /** The browser work behind the pool's slots (see pagePool's `slots`). */
@@ -52,6 +53,21 @@ export function browserSlots({ adminUrl, frontendUrl, onAdminLoad = () => {} }) 
 }
 
 /**
+ * Why the site refused `user` the editor of `path` (EditorRefused), as an error
+ * to throw: SignedOut if it no longer accepts their token (`renew` it to ask),
+ * which has them asked to sign in again; else they may not edit the page.
+ */
+export async function refusalOf(renew, user, path) {
+  try {
+    await renew(user.token);
+  } catch (error) {
+    if (!(error instanceof SignedOut)) throw error;
+    return new SignedOut(`the site no longer accepts ${user.id}'s sign-in (${error.message}): sign in again`);
+  }
+  return new Error(`${user.id} may not edit ${path}`);
+}
+
+/**
  * The admin for the MCP tools: `size` pages shared by every user.
  * `forUser(currentUser)` gives the tools' view of it for one user, where
  * `currentUser()` resolves to { id, token } (the token as renewed now).
@@ -60,13 +76,21 @@ export function adminPool({ adminUrl, frontendUrl, size, waitMs, maxIdleMs }) {
   let adminLoads = 0;
   const slots = browserSlots({ adminUrl, frontendUrl, onAdminLoad: () => { adminLoads++; } });
   const pool = pagePool({ size, slots, waitMs, maxIdleMs });
-  const as = async (currentUser, work) => pool.use(await currentUser(), (slot) => work(slot.page));
+  const as = async (currentUser, work) => {
+    const user = await currentUser();
+    return pool.use(user, (slot) => work(slot.page, user));
+  };
   return {
     forUser(currentUser) {
       return {
         withEditor(path, work) {
-          return as(currentUser, async (page) => {
-            await openForEdit(page, { path });
+          return as(currentUser, async (page, user) => {
+            try {
+              await openForEdit(page, { path });
+            } catch (error) {
+              if (!(error instanceof EditorRefused)) throw error;
+              throw await refusalOf((token) => renewThrough(adminUrl, token), user, path);
+            }
             return work(agentOn(page), {
               // The site-wide API is on every admin page, the editor's included.
               site: siteOn(page),

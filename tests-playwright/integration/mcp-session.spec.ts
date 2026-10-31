@@ -49,6 +49,21 @@ test.describe('MCP headless admin session', () => {
     expect((await admin.withEditor(PAGE, getPage)).path).toBe(PAGE);
   });
 
+  test('a sign-in the site no longer accepts says so, at once: sign in again', async ({ urls }) => {
+    // A deploy reset the site, which stopped accepting the tokens it had
+    // issued: the editor's first read was refused (401) and the call waited
+    // out its minute for an editor that could not open.
+    test.setTimeout(60000);
+    expect((await admin.withEditor(PAGE, getPage)).path).toBe(PAGE);
+    const revoked = await fetch(`${urls.mockApi}/@mock-revoke-token`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(revoked.status).toBe(204);
+    const started = Date.now();
+    await expect(admin.withEditor(PAGE, getPage)).rejects.toThrow(/sign in again/);
+    expect(Date.now() - started, 'refused without waiting out the editor').toBeLessThan(15000);
+  });
+
   test('an editor call lets go of its page: no lock left behind', async ({ urls }) => {
     test.setTimeout(60000);
     // A page of its own: locks are seen by every session, and other tests edit the fixtures.

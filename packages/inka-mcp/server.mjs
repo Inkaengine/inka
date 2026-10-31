@@ -27,7 +27,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { adminPool } from './adminPool.mjs';
 import { subjectOf } from './tokenStore.mjs';
-import { signIn, renewDelay } from './signIn.mjs';
+import { signIn, renewDelay, watchSignOut } from './signIn.mjs';
 import { SCREENSHOT_VIEW, screenshotViewHtml } from './screenshotView.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
@@ -71,7 +71,8 @@ export function headlessAdmin({ adminUrl, auth, frontendUrl }) {
     return { id: subjectOf(token), token };
   };
   return {
-    ...pool.forUser(currentUser),
+    // Signed out (a tool found the site refusing the token): the next call signs in again.
+    ...watchSignOut(pool.forUser(currentUser), () => { token = null; }),
     /** How many times the admin was loaded in full (once, unless it was lost). */
     get adminLoads() {
       return pool.stats.adminLoads;
