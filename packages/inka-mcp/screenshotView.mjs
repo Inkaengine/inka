@@ -34,8 +34,7 @@ const SHOW = `{
   const say = (text) => { status.textContent = text; status.hidden = !text; };
   window.addEventListener('error', (event) => say('The view failed: ' + event.message));
   say('Connecting to the conversation…');
-  const app = new App({ name: 'Inka screenshot', version: '0.0.1' });
-  app.ontoolresult = (result) => {
+  const show = (result) => {
     const pictures = result.content.filter((part) => part.type === 'image');
     shots.replaceChildren(...pictures.map((part) => {
       const img = document.createElement('img');
@@ -45,12 +44,24 @@ const SHOW = `{
     }));
     say(pictures.length ? '' : 'No picture in this result (it held: ' + result.content.map((part) => part.type).join(', ') + ').');
   };
-  try {
-    await app.connect();
-    if (!shots.children.length && status.textContent === 'Connecting to the conversation…') say('Waiting for the result…');
-  } catch (error) {
-    say('The view could not connect to the conversation: ' + error.message);
+  // Ask to connect until the client answers. A client that starts listening
+  // after the view has asked never hears it (the frame on claude.ai stayed
+  // 0px tall, on Claude's Android app an empty panel), and the SDK asks once.
+  for (let attempt = 1; ; attempt++) {
+    const app = new App({ name: 'Inka screenshot', version: '0.0.1' });
+    app.ontoolresult = show;
+    let abandoned = false;
+    const answered = app.connect().then(() => true, (error) => {
+      if (abandoned) return false;
+      say('The view could not connect to the conversation: ' + error.message);
+      throw error;
+    });
+    const unanswered = new Promise((done) => { setTimeout(() => done(false), Math.min(500 * attempt, 3000)); });
+    if (await Promise.race([answered, unanswered])) break;
+    abandoned = true;
+    await app.close();
   }
+  if (!shots.children.length && status.textContent === 'Connecting to the conversation…') say('Waiting for the result…');
 }`;
 
 /** The view's HTML. */

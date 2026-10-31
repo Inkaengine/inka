@@ -37,12 +37,19 @@ const VIEW = 'https://sandbox.test/view.html';
  * A host page framing the view as a client does — in a sandbox (scripts, no
  * shared origin), served with the spec's CSP — which hands it the call's
  * `input` and then `result` once the view is ready; with `answers: false`, it
- * never connects. What the view's frame reports (CSP refusals, errors) is
- * collected in `reported`.
+ * never connects. It listens before it loads the view, unless `listensLate`:
+ * then only once the view has loaded, and a moment more, as a client may (the
+ * view's first word to it is lost). What the view's frame reports (CSP
+ * refusals, errors) is collected in `reported`.
  */
-async function hostWith(page: Page, result: object, { answers = true, input = { path: '/' } } = {}) {
+async function hostWith(page: Page, result: object, { answers = true, listensLate = false, input = { path: '/' } } = {}) {
   const reported: string[] = [];
-  page.on('console', (message) => { if (message.type() === 'error') reported.push(message.text()); });
+  page.on('console', (message) => {
+    // The one refusal expected: zod (in the SDK's client) tries an eval once,
+    // to see whether it may, and goes on without when it may not. Firefox
+    // reports the refusal; Chromium doesn't.
+    if (message.type() === 'error' && !/blocked a JavaScript eval/.test(message.text())) reported.push(message.text());
+  });
   page.on('pageerror', (error) => reported.push(error.message));
   await page.route(VIEW, (route) => route.fulfill({
     contentType: 'text/html', headers: { 'Content-Security-Policy': SPEC_CSP }, body: screenshotViewHtml(),
@@ -52,13 +59,19 @@ async function hostWith(page: Page, result: object, { answers = true, input = { 
   }));
   await page.goto(`${HOST}/`);
   await page.addScriptTag({ content: await hostSide });
-  await page.evaluate(async ({ view, result, answers, input }) => {
+  await page.evaluate(async ({ view, result, answers, listensLate, input }) => {
     const frame = document.getElementById('view') as HTMLIFrameElement;
     const { AppBridge, PostMessageTransport } = (window as any).extApps;
     const loaded = new Promise((done) => { frame.onload = done; });
-    frame.src = view;
-    await loaded;
-    if (!answers) return;
+    const load = () => { frame.src = view; return loaded; };
+    if (!answers) {
+      await load();
+      return;
+    }
+    if (listensLate) {
+      await load();
+      await new Promise((later) => { setTimeout(later, 1000); });
+    }
     const bridge = new AppBridge(null, { name: 'test host', version: '0' }, { serverTools: {}, logging: {} });
     // The client sizes the view's frame by what the view reports (a view that
     // reports no height is a frame no one sees).
@@ -70,7 +83,8 @@ async function hostWith(page: Page, result: object, { answers = true, input = { 
       (window as any).resultSent = true;
     };
     await bridge.connect(new PostMessageTransport(frame.contentWindow, frame.contentWindow));
-  }, { view: VIEW, result, answers, input });
+    if (!listensLate) await load();
+  }, { view: VIEW, result, answers, listensLate, input });
   return Object.assign(page.frameLocator('#view'), { reported });
 }
 
@@ -98,6 +112,16 @@ test.describe('screenshot view', () => {
     expect(view.reported).toEqual([]);
     // Sized to show them: the last size it reported holds both pictures.
     await expect.poll(async () => (await page.evaluate(() => (window as any).sizes)).at(-1)?.height ?? 0).toBeGreaterThan(200);
+  });
+
+  // On claude.ai the view's frame stayed 0px tall, and on Claude's Android app
+  // an empty panel: a client that starts listening after the view has asked
+  // to connect never hears it, and the view, asking once, waited for ever.
+  test('connects to a client that starts listening only after the view has loaded', async ({ page }) => {
+    const red = await picture(page, 'red');
+    const view = await hostWith(page, { content: [red] }, { listensLate: true });
+    await expect(view.locator('img')).toHaveCount(1);
+    expect(view.reported).toEqual([]);
   });
 
   // On Claude's Android app the view showed an empty panel, and nothing said
