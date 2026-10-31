@@ -112,7 +112,7 @@ export function adminPool({ adminUrl, frontendUrl, size, waitMs, maxIdleMs }) {
         withNewPage({ parent, type, title }, work) {
           return as(currentUser, async (page) => {
             await createPage(page, { parent, type, title });
-            return work(agentOn(page));
+            return work(agentOn(page), { site: siteOn(page) });
           });
         },
       };

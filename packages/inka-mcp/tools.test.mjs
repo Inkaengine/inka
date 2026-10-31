@@ -16,6 +16,11 @@ const schemas = {
 };
 const agent = { getBlockSchemas: async () => schemas };
 
+/** A change the validator accepts (checkDraft.test.mjs tests the check itself). */
+const passes = async () => {};
+/** A change the validator refuses. */
+const refuses = async () => { throw new Error('the change would leave the page invalid: block s has no id'); };
+
 describe('describeBlock', () => {
   it('takes its example from a page using the type, nested blocks included', async () => {
     const page = {
@@ -81,7 +86,7 @@ describe('a page someone else is editing', () => {
   });
 
   it('edit_blocks refuses to save, naming who and since when', async () => {
-    await expect(editPage(lockedAgent, { ops: [], expectedVersion: 'v1' }))
+    await expect(editPage(lockedAgent, { ops: [], expectedVersion: 'v1', check: passes }))
       .rejects.toThrow(/\/news is being edited by Jane Doe since 2026-10-27T10:42:00\+00:00/);
   });
 
@@ -100,6 +105,7 @@ describe('a page someone else is editing', () => {
 describe('previewLayout', () => {
   const page = { title: 'News', modified: 'v1', blocks: { t: { '@type': 'title' } }, blocks_layout: { items: ['t'] } };
   const layoutAgent = {
+    getPage: async () => ({ path: '/news', formData: page }),
     getDraft: async () => page,
     getBlockSchemas: async () => ({
       page: schemas.page,
@@ -115,6 +121,7 @@ describe('previewLayout', () => {
       blocks: [{ '@type': 'teaser', href: [{ '@id': '/events' }] }, { '@type': 'slate', value: 'A *new* intro' }],
       render: async (draft) => { drafted = draft; return { image: 'png', text: 'A new intro' }; },
       mintId,
+      check: passes,
     });
     expect(rendered).toEqual({ image: 'png', text: 'A new intro' });
     expect(drafted.title).toBe('News');
@@ -127,8 +134,16 @@ describe('previewLayout', () => {
   });
 
   it('refuses a block type the page has no config for', async () => {
-    await expect(previewLayout(layoutAgent, { blocks: [{ '@type': 'ghost' }], render: async () => ({}), mintId }))
+    await expect(previewLayout(layoutAgent, { blocks: [{ '@type': 'ghost' }], render: async () => ({}), mintId, check: passes }))
       .rejects.toThrow(/no block type "ghost"/);
+  });
+
+  it('renders nothing of a layout the validator refuses', async () => {
+    let rendered = false;
+    await expect(previewLayout(layoutAgent, {
+      blocks: [{ '@type': 'teaser' }], render: async () => { rendered = true; return {}; }, mintId, check: refuses,
+    })).rejects.toThrow(/would leave the page invalid/);
+    expect(rendered).toBe(false);
   });
 });
 
@@ -158,27 +173,41 @@ describe('editPage changing a template', () => {
       update: async ({ id }) => { did.push(`update ${id}`); },
       lockTemplates: async () => { did.push('lock'); return ['/templates/news-layout']; },
       save: async () => { did.push('save'); return { version: 'v2' }; },
+      getDraft: async () => formData,
     };
   };
   const ops = [{ op: 'update', id: 'head', set: { value: { md: 'New' } } }];
 
   it('unlocks the templates its operations touch, then locks them ("Change on all pages") before saving the page', async () => {
     const agent = recording();
-    const result = await editPage(agent, { ops, expectedVersion: 'v1', changeTemplates: true });
+    const result = await editPage(agent, { ops, expectedVersion: 'v1', changeTemplates: true, check: passes });
     expect(agent.did).toEqual(['unlock head', 'update head', 'lock', 'save']);
     expect(result.templatesChanged).toEqual(['/templates/news-layout']);
   });
 
   it('leaves templates alone unless asked', async () => {
     const agent = recording();
-    await editPage(agent, { ops, expectedVersion: 'v1' });
+    await editPage(agent, { ops, expectedVersion: 'v1', check: passes });
     expect(agent.did).toEqual(['update head', 'save']);
+  });
+
+  it('a change the validator refuses is neither previewed nor saved, nor any template', async () => {
+    const agent = recording();
+    let rendered = false;
+    await expect(editPage(agent, { ops, expectedVersion: 'v1', changeTemplates: true, check: refuses }))
+      .rejects.toThrow(/would leave the page invalid/);
+    await expect(editPage(agent, {
+      ops, expectedVersion: 'v1', dryRun: true, check: refuses, render: async () => { rendered = true; return {}; },
+    })).rejects.toThrow(/would leave the page invalid/);
+    expect(agent.did).not.toContain('save');
+    expect(agent.did).not.toContain('lock');
+    expect(rendered).toBe(false);
   });
 
   it('a dry run unlocks to show the change, and saves no template', async () => {
     const agent = recording();
     agent.getDraft = async () => formData;
-    await editPage(agent, { ops, expectedVersion: 'v1', changeTemplates: true, dryRun: true });
+    await editPage(agent, { ops, expectedVersion: 'v1', changeTemplates: true, dryRun: true, check: passes });
     expect(agent.did).toEqual(['unlock head', 'update head']);
   });
 });
@@ -237,7 +266,8 @@ describe('what the results say of the site', () => {
       getPage: async () => ({ path: '/news', version: 'v1', formData, blockPathMap: {}, lockedBy: null }),
       getBlockSchemas: async () => ({ page: { regions: [], contentType: 'Document' }, types: {} }),
       save: async () => ({ version: 'v2' }),
+      getDraft: async () => formData,
     };
-    expect(await editPage(agent, { ops: [], expectedVersion: 'v1' })).toMatchObject({ version: 'v2', reviewState: 'published' });
+    expect(await editPage(agent, { ops: [], expectedVersion: 'v1', check: passes })).toMatchObject({ version: 'v2', reviewState: 'published' });
   });
 });

@@ -30,6 +30,7 @@ import { subjectOf } from './tokenStore.mjs';
 import { signIn, renewDelay, watchSignOut } from './signIn.mjs';
 import { SCREENSHOT_VIEW, screenshotViewHtml } from './screenshotView.mjs';
 import { localPictures, PictureGone } from './codes.mjs';
+import { draftCheck } from './checkDraft.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
 } from './tools.mjs';
@@ -167,8 +168,8 @@ export function createServer(adminFor, { pictures, userOf }) {
       viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
     },
   }, async ({ path, blocks, viewport = 'desktop' }, extra) => {
-    const rendered = await adminFor(extra).withEditor(path, (agent, { render }) => previewLayout(agent, {
-      blocks, mintId: randomUUID, render: (draft) => render(draft, viewport, { maxChars: IMAGE_CHARS }),
+    const rendered = await adminFor(extra).withEditor(path, (agent, { site, render }) => previewLayout(agent, {
+      blocks, mintId: randomUUID, check: draftCheck(agent, site), render: (draft) => render(draft, viewport, { maxChars: IMAGE_CHARS }),
     }));
     const { text, renderedOn, cropped } = rendered;
     const kept = await keep(extra, [rendered]);
@@ -305,7 +306,7 @@ export function createServer(adminFor, { pictures, userOf }) {
       blocks: z.array(z.object({ '@type': z.string() }).passthrough()).optional().describe('Blocks to start with'),
     },
   }, async ({ parent, title, type = 'Document', blocks }, extra) => asResult(
-    await adminFor(extra).withNewPage({ parent, type, title }, (agent) => fillNewPage(agent, { blocks, mintId: randomUUID })),
+    await adminFor(extra).withNewPage({ parent, type, title }, (agent, { site }) => fillNewPage(agent, { blocks, mintId: randomUUID, check: draftCheck(agent, site) })),
   ));
 
   registerAppTool(server, 'edit_blocks', {
@@ -322,8 +323,8 @@ export function createServer(adminFor, { pictures, userOf }) {
         + 'The template is changed, so the change appears on every page that uses it.'),
     },
   }, async ({ path, expectedVersion, ops, dryRun, preview, changeTemplates }, extra) => {
-    const result = await adminFor(extra).withEditor(path, (agent, { render }) => editPage(agent, {
-      ops, expectedVersion, dryRun, changeTemplates, mintId: randomUUID,
+    const result = await adminFor(extra).withEditor(path, (agent, { site, render }) => editPage(agent, {
+      ops, expectedVersion, dryRun, changeTemplates, mintId: randomUUID, check: draftCheck(agent, site),
       render: preview && ((draft) => render(draft, preview, { maxChars: IMAGE_CHARS })),
     }));
     if (!result.rendered) return asResult(result);

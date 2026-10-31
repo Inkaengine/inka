@@ -32,13 +32,14 @@ export async function getPage(agent) {
  * A page just created (open in its editor), given its first blocks: they go
  * after the blocks the page starts with (its title), and the page is saved.
  * Returns { path, version, ids } — ids maps each new block's own @uid.
+ * `check` refuses blocks that would leave the page invalid, as editPage's does.
  */
-export async function fillNewPage(agent, { blocks, mintId }) {
+export async function fillNewPage(agent, { blocks, mintId, check }) {
   const created = await getPage(agent);
   if (!blocks?.length) return { path: created.path, version: created.version, ids: {} };
   const last = created.blocks.at(-1)['@uid'];
   const { version, ids } = await editPage(agent, {
-    ops: [{ op: 'add', after: last, blocks }], expectedVersion: created.version, mintId,
+    ops: [{ op: 'add', after: last, blocks }], expectedVersion: created.version, mintId, check,
   });
   return { path: created.path, version, ids };
 }
@@ -157,9 +158,12 @@ const EXAMPLE_UID = 'example';
  * renders the draft as a visitor would see it, and its result is `rendered`.
  * With `changeTemplates`, the operations may change a template's locked
  * blocks: each template is saved before the page (`templatesChanged`), and so
- * changes on every page that uses it.
+ * changes on every page that uses it. `check({ path, saved, draft })` refuses a
+ * change that would leave the page invalid (checkDraft.mjs), before anything
+ * is rendered or saved.
  */
-export async function editPage(agent, { ops, expectedVersion, dryRun = false, changeTemplates = false, mintId, render }) {
+export async function editPage(agent, { ops, expectedVersion, dryRun = false, changeTemplates = false, mintId, render, check }) {
+  if (!check) throw new Error('editPage: `check` is required (checkDraft.mjs draftCheck)');
   if (render && !dryRun) throw new Error('a preview is for a dry run: add dryRun');
   if (!expectedVersion) throw new Error('edit_blocks needs the expectedVersion get_page returned');
   const { path, version: loaded, lockedBy, formData } = await agent.getPage();
@@ -171,6 +175,7 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
   }
   const blocksConfig = (await agent.getBlockSchemas()).types;
   const { results, ids } = await editBlocks(agent, ops, { blocksConfig, mintId, changeTemplates });
+  await check({ path, saved: formData, draft: await agent.getDraft() });
   if (dryRun) {
     const dry = { dryRun: true, results, ids, ...(lockedBy && { lockedBy }), page: await getPage(agent) };
     if (render) dry.rendered = await render(await agent.getDraft());
@@ -187,15 +192,19 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
  * A whole proposed layout for the page, rendered as a visitor would see it
  * and not saved: the page as it is, with `blocks` (agent format, as get_page
  * gives them) in place of its own. For trying alternatives before suggesting
- * one; `render(draft)` renders a draft of the page.
+ * one; `render(draft)` renders a draft of the page. `check` refuses a layout
+ * that would leave the page invalid, as editPage's does.
  */
-export async function previewLayout(agent, { blocks, render, mintId }) {
+export async function previewLayout(agent, { blocks, render, mintId, check }) {
+  if (!check) throw new Error('previewLayout: `check` is required (checkDraft.mjs draftCheck)');
   const blocksConfig = (await agent.getBlockSchemas()).types;
   for (const block of blocks) {
     if (!blocksConfig[block['@type']]) {
       throw new Error(`no block type "${block['@type']}" (list_block_types lists what this page can hold)`);
     }
   }
-  const page = await agent.getDraft();
-  return render({ ...page, ...toStoredBlocks(blocks, { blocksConfig, mintId }) });
+  const { path, formData } = await agent.getPage();
+  const proposed = { ...(await agent.getDraft()), ...toStoredBlocks(blocks, { blocksConfig, mintId }) };
+  await check({ path, saved: formData, draft: proposed });
+  return render(proposed);
 }

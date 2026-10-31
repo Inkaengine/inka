@@ -394,8 +394,14 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
 
 /**
  * Graph integrity. Mirrors test-content.py.
+ *
+ * `elsewhere`: the items given are part of a site, not all of it (the MCP
+ * checks a page's draft, one page of a live site). A reference to a path or
+ * UID not among them is then not reported broken but handed back, in
+ * `elsewhere` ({ kind: 'path' | 'uid', value, message }), for the caller to
+ * look up on the site, reporting `message` for each it doesn't find.
  */
-function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idFieldMap = null } = {}) {
+function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idFieldMap = null, elsewhere = false } = {}) {
   // Block types the caller supplied schemas for but which have none. Their
   // fields and references cannot be checked against anything, so the count is
   // surfaced rather than silently meaning "nothing wrong".
@@ -406,6 +412,7 @@ function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idField
   const warnings = [];
   // See validate(): a bytes-less generated blob is a warning under this flag.
   const missingBlob = (msg) => (allowMissingBlobs ? warnings : errors).push(msg);
+  const deferred = [];
   const stats = {
     items: 0,
     imagesOk: 0, imagesBroken: 0, imagesPlaceholder: 0,
@@ -466,6 +473,15 @@ function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idField
   }
   stats.items = uidMap.size;
 
+  // Whether a UID or path is known: among the items given, or (`elsewhere`)
+  // deferred to the caller with the message to report if the site lacks it.
+  const defer = (kind, value, message) => {
+    deferred.push({ kind, value, message });
+    return true;
+  };
+  const knownUid = (uid, message) => uidMap.has(uid) || (elsewhere && defer('uid', uid, message));
+  const knownPath = (p, message) => pathMap.has(p) || (elsewhere && defer('path', p, message));
+
   // Pass 2a: resolveuid references
   // The UID alphabet the mock resolves (`[a-z0-9][-a-z0-9]*`): Plone's own are
   // hex, test fixtures use readable ones like `test-image-1-uid`.
@@ -477,7 +493,7 @@ function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idField
     let m;
     while ((m = resolveuidRe.exec(text)) !== null) {
       const uid = m[1];
-      if (uidMap.has(uid)) {
+      if (knownUid(uid, `  ${rel}: broken resolveuid/${uid}`)) {
         stats.resolveuidOk += 1;
       } else {
         stats.resolveuidBroken += 1;
@@ -600,9 +616,9 @@ function imageDimensions(file) {
   // Classify a reference. Returns null when verified/recognized, or a reason
   // string when it is a failure. NOTHING is silently accepted — an unrecognized
   // form returns a reason so it fails loudly.
-  function refFailure(ref) {
+  function refFailure(ref, where) {
     const ru = ref.match(/resolveuid\/([a-z0-9][-a-z0-9]*)/);
-    if (ru) return uidMap.has(ru[1]) ? null : `broken resolveuid/${ru[1]}`;
+    if (ru) return knownUid(ru[1], `${where}: broken resolveuid/${ru[1]}`) ? null : `broken resolveuid/${ru[1]}`;
     if (/^https?:\/\//.test(ref)) return null;             // external — well-formed, unverifiable offline
     if (/^(mailto:|tel:|data:)/.test(ref)) return null;    // known schemes
     if (ref.startsWith('#')) return null;                  // in-page anchor
@@ -625,7 +641,7 @@ function imageDimensions(file) {
       // `/` is the site itself: every site has one, whether or not this content
       // carries a site-root item (a frontend's fixtures mounted alone do not).
       if (base === '/') return null;
-      return pathMap.has(base) ? null : `path not in content: ${base}`;
+      return knownPath(base, `${where}: path not in content: ${base}`) ? null : `path not in content: ${base}`;
     }
     // Plone action / browser-view URLs relative to the current context (they
     // don't match the absolute-path branch above). These are UI actions, not
@@ -705,10 +721,11 @@ function imageDimensions(file) {
         if (REFERENCE_WIDGETS.has(def.widget)) {
           // Every reference the field holds, in whichever shape it stores it.
           for (const ref of refStrings(v)) {
-            const reason = refFailure(ref);
+            const where = `  ${rel}: block ${bid} (${block['@type']}) ${field}`;
+            const reason = refFailure(ref, where);
             if (reason) {
               stats.linksBroken += 1;
-              errors.push(`  ${rel}: block ${bid} (${block['@type']}) ${field}: ${reason}`);
+              errors.push(`${where}: ${reason}`);
             } else {
               stats.linksOk += 1;
             }
@@ -779,10 +796,11 @@ function imageDimensions(file) {
       errors.push(`  ${rel}: block ${bid} (slate) value has ${block.value.length} top-level nodes (expected 1; run normalizeSlateValue)`);
     }
     for (const url of slateLinkUrls(block.value)) {
-      const reason = refFailure(url);
+      const where = `  ${rel}: block ${bid} (${block['@type']}) slate link`;
+      const reason = refFailure(url, where);
       if (reason) {
         stats.linksBroken += 1;
-        errors.push(`  ${rel}: block ${bid} (${block['@type']}) slate link: ${reason}`);
+        errors.push(`${where}: ${reason}`);
       } else {
         stats.linksOk += 1;
       }
@@ -802,10 +820,11 @@ function imageDimensions(file) {
         if (field === '@id' || field === 'templateId') continue; // identity, not a link
         for (const ref of refStrings(v)) {
           if (!looksLikeReference(ref)) continue;
-          const reason = refFailure(ref);
+          const where = `  ${rel}: block ${bid} (${block['@type']}) ${field}`;
+          const reason = refFailure(ref, where);
           if (reason) {
             stats.linksBroken += 1;
-            errors.push(`  ${rel}: block ${bid} (${block['@type']}) ${field}: ${reason}`);
+            errors.push(`${where}: ${reason}`);
           } else {
             stats.linksOk += 1;
           }
@@ -1259,7 +1278,7 @@ function imageDimensions(file) {
         `references were NOT checked: ${[...unschemad].sort().join(', ')}`,
     );
   }
-  return { errors, warnings, stats };
+  return { errors, warnings, stats, ...(elsewhere && { elsewhere: deferred }) };
 }
 
 
