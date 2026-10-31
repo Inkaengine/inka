@@ -82,6 +82,27 @@ describe('agent page format', () => {
     expect(panel.blocks[panel.blocks_layout.items[0]].value[0].children[0].text).toBe('A');
   });
 
+  // An agent added a slider whose slides had no ids, and the front end's
+  // template merge refused the page (a 500 in the preview): every item of a
+  // list of objects needs the id its field names.
+  it('gives each new item of a list of objects the id its field names, and keeps one it has', () => {
+    let n = 0;
+    const mintId = () => `new-${++n}`;
+    const block = toStoredBlock({
+      '@type': 'slider',
+      slides: [{ '@type': 'image', url: '/a.png' }, { '@type': 'slide', '@id': 'kept', title: 'B' }],
+    }, { blocksConfig: sharedBlocksConfig, mintId });
+    expect(block.slides.map((slide) => slide['@id'])).toEqual(['new-1', 'kept']);
+  });
+
+  it('mints the id field a list names, when it is not @id', () => {
+    const blocksConfig = {
+      faq: { blockSchema: { properties: { questions: { widget: 'object_list', idField: 'key' } } } },
+    };
+    const block = toStoredBlock({ '@type': 'faq', questions: [{ q: 'Why?' }] }, { blocksConfig, mintId: () => 'k-1' });
+    expect(block.questions).toEqual([{ q: 'Why?', key: 'k-1' }]);
+  });
+
   it('refuses something that is not a block', () => {
     expect(() => toStoredBlocks([{ title: 'no type' }], config)).toThrow(/needs "@type"/);
   });

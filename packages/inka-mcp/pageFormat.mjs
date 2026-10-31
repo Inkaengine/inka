@@ -17,6 +17,7 @@
  * the one the edit_blocks operations address blocks in.
  */
 import { slateToMd, mdToSlate, plaintextOf } from '../../lib/slate-md.mjs';
+import { isObjectListRegion } from '../hydra-js/regionWidgets.js';
 
 /** A Slate value: an array of element nodes with `children`. */
 const isSlate = (v) => Array.isArray(v) && v.length > 0
@@ -45,6 +46,12 @@ export function schemaFacts(blocksConfig) {
   return {
     isRegion: (type, field) => field === 'blocks' || props(type)[field]?.widget === 'blocks_layout',
     isRich: (type, field) => props(type)[field]?.widget === 'slate',
+    // The field each item of a list of objects is known by (the editor's rule,
+    // regionWidgets.js), or null for a field that is no such list.
+    objectListIdField: (type, field) => {
+      const def = props(type)[field];
+      return isObjectListRegion(def) ? def.idField || '@id' : null;
+    },
   };
 }
 
@@ -154,6 +161,15 @@ function restoreFields(obj, type, facts, mintId) {
       const r = restoreList(v, facts, mintId);
       Object.assign(blocks, r.blocks);
       layout[k === 'blocks' ? 'items' : k] = r.items;
+    } else if (Array.isArray(v) && type && facts.objectListIdField(type, k)) {
+      // Each item needs its id: the front end's template merge refuses an
+      // item without one (an agent's new slides were a 500 in the preview).
+      const idField = facts.objectListIdField(type, k);
+      out[k] = v.map((item) => {
+        const restored = restoreValue(item, facts, mintId, true);
+        if (restored && typeof restored === 'object' && !(idField in restored)) restored[idField] = mintId();
+        return restored;
+      });
     } else if (type && facts.isRich(type, k) && typeof v === 'string') {
       out[k] = mdToSlate(v);
     } else {
