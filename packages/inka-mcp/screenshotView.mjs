@@ -26,18 +26,31 @@ function appClient() {
   return `${bundle.slice(0, exportList.index)}\nconst App = ${app[0]};`;
 }
 
+// Every step it doesn't get past is said on the page: an empty panel (as
+// Claude's Android app first showed) can't tell anyone what went wrong.
 const SHOW = `{
   const shots = document.getElementById('shots');
+  const status = document.getElementById('status');
+  const say = (text) => { status.textContent = text; status.hidden = !text; };
+  window.addEventListener('error', (event) => say('The view failed: ' + event.message));
+  say('Connecting to the conversation…');
   const app = new App({ name: 'Inka screenshot', version: '0.0.1' });
-  app.ontoolresult = ({ content }) => {
-    shots.replaceChildren(...content.filter((part) => part.type === 'image').map((part) => {
+  app.ontoolresult = (result) => {
+    const pictures = result.content.filter((part) => part.type === 'image');
+    shots.replaceChildren(...pictures.map((part) => {
       const img = document.createElement('img');
       img.src = 'data:' + part.mimeType + ';base64,' + part.data;
       img.alt = 'The page as a visitor sees it';
       return img;
     }));
+    say(pictures.length ? '' : 'No picture in this result (it held: ' + result.content.map((part) => part.type).join(', ') + ').');
   };
-  await app.connect();
+  try {
+    await app.connect();
+    if (!shots.children.length && status.textContent === 'Connecting to the conversation…') say('Waiting for the result…');
+  } catch (error) {
+    say('The view could not connect to the conversation: ' + error.message);
+  }
 }`;
 
 /** The view's HTML. */
@@ -48,8 +61,9 @@ export function screenshotViewHtml() {
   body { margin: 0; }
   img { display: block; width: 100%; height: auto; border-radius: 8px; }
   img + img { margin-top: 8px; }
+  #status { margin: 0; padding: 8px 0; font: 13px/1.4 system-ui, sans-serif; color: #888; }
 </style></head>
-<body><div id="shots"></div>
+<body><p id="status" hidden></p><div id="shots"></div>
 <script type="module">
 ${appClient()}
 ${SHOW}
