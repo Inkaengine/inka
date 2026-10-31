@@ -33,15 +33,27 @@ async function goTo(page, path) {
 }
 
 /**
+ * The site refused (401) a read the editor needs: its first read expands the
+ * addable types, which Plone refuses anyone it doesn't take as signed in. Who
+ * holds the session decides what that means (adminPool.mjs): a sign-in the
+ * site no longer accepts, or a user it does who may not edit the page.
+ */
+export class EditorRefused extends Error {}
+
+/**
  * Open a page's editor in the loaded admin and wait until it can be edited. A
  * page the site doesn't have is refused as soon as the site says so (the
- * editor's read of it answers 404), not after waiting out the editor.
+ * editor's read of it answers 404), and so is an editor the site won't serve
+ * (a read answers 401: EditorRefused), not after waiting out the editor.
  */
 export async function openForEdit(page, { path }) {
   const target = path.replace(/\/$/, '') || '/';
   let missing = false;
+  let refused = false;
   const onResponse = (response) => {
-    if (response.status() === 404 && response.request().method() === 'GET' && apiPathOf(response.url()) === target) missing = true;
+    if (response.request().method() !== 'GET') return;
+    if (response.status() === 404 && apiPathOf(response.url()) === target) missing = true;
+    if (response.status() === 401 && isApi(response.url())) refused = true;
   };
   page.on('response', onResponse);
   try {
@@ -49,6 +61,7 @@ export async function openForEdit(page, { path }) {
     const deadline = Date.now() + READY_MS;
     for (;;) {
       if (missing) throw new Error(`no page at ${target}`);
+      if (refused) throw new EditorRefused(`the site refused the editor of ${target}`);
       if (await page.evaluate((p) => !!window.__inkaAgent?.loaded() && window.__inkaAgent.getPage().path === p, target)) break;
       if (Date.now() > deadline) throw new Error(`the editor did not open ${target} within ${READY_MS / 1000}s`);
       await page.waitForTimeout(100);
@@ -78,6 +91,7 @@ export async function park(page) {
 
 const heldLocks = new WeakMap();
 // The page an admin API request is about: its path without /++api++ (or a trailing @lock).
+const isApi = (url) => new URL(url).pathname.startsWith('/++api++');
 const apiPathOf = (url) => new URL(url).pathname.replace(/^\/\+\+api\+\+/, '').replace(/\/@lock$/, '') || '/';
 
 /** Note each lock an editor in `page` takes (POST @lock) and lets go (DELETE @lock). */

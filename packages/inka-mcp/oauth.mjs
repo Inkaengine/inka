@@ -58,6 +58,9 @@ export function oauthProvider({ box, codes, adminUrl, callbackUrl, renew, log })
   const codeForClient = (data, client) => {
     if (data.client !== binding(client.client_id)) throw new InvalidGrantError('this was issued to another client');
   };
+  /** Plone tokens the site has refused (see signedOut). */
+  const refused = new Set();
+
   /** Access and refresh tokens holding `ploneToken`, for `client`. */
   const tokensFor = (client, ploneToken) => {
     const ploneLeft = expiresAt(ploneToken).getTime() - Date.now();
@@ -179,8 +182,21 @@ export function oauthProvider({ box, codes, adminUrl, callbackUrl, renew, log })
       }
     },
 
+    /**
+     * The site refused `ploneToken` (a tool found it signed out: a deploy reset
+     * the site). Its access tokens are refused from now on, so the client
+     * refreshes, and the refresh, which the site refuses too, has it ask the
+     * person to sign in again. Kept in memory: after a restart, the next tool
+     * call finds it again.
+     */
+    signedOut(ploneToken) {
+      refused.add(ploneToken);
+      log(`the site refused ${subjectOf(ploneToken)}'s sign-in; their access tokens are refused until they sign in again`);
+    },
+
     async verifyAccessToken(token) {
       const data = open('access', token, InvalidTokenError);
+      if (refused.has(data.plone)) throw new InvalidTokenError('the site signed this out; sign in again');
       return {
         token,
         clientId: data.client_id,

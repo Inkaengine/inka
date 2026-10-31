@@ -139,6 +139,17 @@ describe('oauthProvider', () => {
     expect((await provider.verifyAccessToken(tokens.access_token)).extra.plone).toBe(renewedToken);
   });
 
+  it('stops taking an access token once the site has refused the sign-in in it', async () => {
+    // A tool found the site no longer accepts the Plone token (a deploy reset
+    // it). Refusing the access token (401) is what makes the client refresh,
+    // and the refresh, refused too, what makes it ask the person to sign in.
+    const { provider } = setup();
+    const { tokens } = await signedIn(provider);
+    const { extra } = await provider.verifyAccessToken(tokens.access_token);
+    provider.signedOut(extra.plone);
+    await expect(provider.verifyAccessToken(tokens.access_token)).rejects.toThrow(/sign in again/);
+  });
+
   it('refuses an access token it did not make, or a refresh token as an access token', async () => {
     const { provider } = setup();
     const { tokens } = await signedIn(provider);

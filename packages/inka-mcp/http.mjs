@@ -53,7 +53,7 @@ import { adminPool } from './adminPool.mjs';
 import { oauthProvider } from './oauth.mjs';
 import { sealer } from './sealed.mjs';
 import { localCodes, storedCodes, sealedCodes, instanceOfCode } from './codes.mjs';
-import { renewThrough } from './signIn.mjs';
+import { renewThrough, watchSignOut } from './signIn.mjs';
 import { memoryLimit, poolSize as poolSizeFor } from './poolSize.mjs';
 
 /** A form post's fields (the connect page posts application/x-www-form-urlencoded). */
@@ -220,9 +220,12 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, route, poolSi
   });
   // Each request on its own (stateless): the tools act as the request's user.
   app.post('/mcp', signedIn, async (req, res) => {
-    const server = createServer((extra) => pool.forUser(async () => ({
-      id: extra.authInfo.extra.user, token: extra.authInfo.extra.plone,
-    })));
+    // A sign-in a tool finds the site refusing is refused here from then on
+    // (provider.signedOut), so the client is asked to sign in again.
+    const server = createServer(({ authInfo: { extra: { user, plone } } }) => watchSignOut(
+      pool.forUser(async () => ({ id: user, token: plone })),
+      () => provider.signedOut(plone),
+    ));
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {
       transport.close();
