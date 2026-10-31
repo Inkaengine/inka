@@ -32,13 +32,14 @@ export async function getPage(agent) {
  * A page just created (open in its editor), given its first blocks: they go
  * after the blocks the page starts with (its title), and the page is saved.
  * Returns { path, version, ids } — ids maps each new block's own @uid.
+ * `check` refuses blocks that would leave the page invalid, as editPage's does.
  */
-export async function fillNewPage(agent, { blocks, mintId }) {
+export async function fillNewPage(agent, { blocks, mintId, check }) {
   const created = await getPage(agent);
   if (!blocks?.length) return { path: created.path, version: created.version, ids: {} };
   const last = created.blocks.at(-1)['@uid'];
   const { version, ids } = await editPage(agent, {
-    ops: [{ op: 'add', after: last, blocks }], expectedVersion: created.version, mintId,
+    ops: [{ op: 'add', after: last, blocks }], expectedVersion: created.version, mintId, check,
   });
   return { path: created.path, version, ids };
 }

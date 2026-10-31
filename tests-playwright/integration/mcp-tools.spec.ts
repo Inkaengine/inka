@@ -160,7 +160,7 @@ test.describe('MCP tools', () => {
     expect(path).toMatch(/^\/_test_data\/made-by-the-mcp/);
 
     const blocks = [{ '@uid': 'intro', '@type': 'slate', value: 'Written *by an agent*' }];
-    const made = await fillNewPage(agentOn(page), { blocks, mintId });
+    const made = await fillNewPage(agentOn(page), { blocks, mintId, check: draftCheck(agentOn(page), siteOn(page)) });
     expect(made.path).toBe(path);
 
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;

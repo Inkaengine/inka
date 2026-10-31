@@ -306,7 +306,7 @@ export function createServer(adminFor, { pictures, userOf }) {
       blocks: z.array(z.object({ '@type': z.string() }).passthrough()).optional().describe('Blocks to start with'),
     },
   }, async ({ parent, title, type = 'Document', blocks }, extra) => asResult(
-    await adminFor(extra).withNewPage({ parent, type, title }, (agent) => fillNewPage(agent, { blocks, mintId: randomUUID })),
+    await adminFor(extra).withNewPage({ parent, type, title }, (agent, { site }) => fillNewPage(agent, { blocks, mintId: randomUUID, check: draftCheck(agent, site) })),
   ));
 
   registerAppTool(server, 'edit_blocks', {
