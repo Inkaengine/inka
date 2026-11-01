@@ -2122,13 +2122,29 @@ test.describe('Multi-Block Selection', () => {
     await iframe.locator('[data-block-uid="block-3-uuid"]').click({ modifiers: ['ControlOrMeta'] });
     await helper.waitForMultiSelectOutlines(2);
 
-    // Scroll iframe down — outlines should disappear during scroll
+    // Scroll iframe down — outlines should disappear during scroll. They are
+    // back 150ms after the scroll stops, sooner than a poll may look, so the
+    // admin page notes the moment there are none.
+    await page.evaluate(() => {
+      (window as any).__outlinesHidden = new Promise<boolean>((resolve) => {
+        const none = () => document.querySelectorAll('.volto-hydra-block-outline').length === 0;
+        const observer = new MutationObserver(() => {
+          if (!none()) return;
+          observer.disconnect();
+          resolve(true);
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        setTimeout(() => {
+          observer.disconnect();
+          resolve(none());
+        }, 5000);
+      });
+    });
     await iframe.locator('body').evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await expect(page.locator('.volto-hydra-block-outline')).toHaveCount(0, { timeout: 1000 });
+    expect(await page.evaluate(() => (window as any).__outlinesHidden), 'outlines hidden while the page scrolls').toBe(true);
 
     // Scroll back to top
     await iframe.locator('body').evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(500);
 
     // Outlines should reappear correctly positioned on each block
     await expect(async () => {
