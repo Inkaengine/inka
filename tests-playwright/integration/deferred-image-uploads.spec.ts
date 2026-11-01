@@ -72,10 +72,16 @@ test.describe('Images held until save', () => {
     const saved = JSON.stringify(saves.at(-1)!.postDataJSON());
     expect(saved, 'the page names the uploaded image').toMatch(/uploaded-image-\d+/);
     expect(saved, 'and no reference is left in it').not.toContain('inka-pending:');
-    // The saved page, rendered. The mock keeps an upload's bytes per signed-in
-    // session, which an <img> request does not carry, so this checks where it
-    // points, as the drop-time upload specs do.
-    await expect(helper.getIframe().locator('img[src*="uploaded-image-"]')).toHaveCount(1);
+    // Saved: the page as the site now has it. Read from the API, signed in:
+    // the mock keeps a save per session, which a front end's own reads (and an
+    // <img> request) do not carry.
+    const stored = await page.request.get(saves.at(-1)!.url(), {
+      headers: { Authorization: `Bearer ${helper.authToken}` },
+    });
+    const storedImage = JSON.stringify((await stored.json()).blocks.image);
+    expect(storedImage).toMatch(/uploaded-image-\d+/);
+    expect(storedImage).toContain('"image_scales"');
+    expect(storedImage).not.toContain('inka-pending:');
   });
 
   test('the page sent on each edit carries the reference, not the picture', async ({ page }) => {
@@ -115,6 +121,8 @@ test.describe('Images held until save', () => {
     await expect(overlay).toBeVisible();
     await overlay.locator('button[aria-label="Open object browser"]').click();
     const objectBrowser = await helper.waitForObjectBrowser();
+    // Listed with the page's own children, once they have loaded.
+    await expect(page.locator('.object-listing li').filter({ hasText: /held\.png/ })).toBeVisible({ timeout: 10000 });
     await helper.objectBrowserSelectItem(objectBrowser, /held\.png/);
     await helper.submitAddLinkFormIfOpen(overlay);
 
