@@ -268,6 +268,15 @@ onMounted(() => {
                 // frontends that run block-sanity declare them.
                 voltoConfig: {
                     settings: {
+                        // New images are held in the editor and uploaded on Save:
+                        // this front end renders a data: URL as it is (imageProps)
+                        // and its edit CSP allows data:. Declared when the build
+                        // is told to (NUXT_PUBLIC_DEFER_IMAGE_UPLOADS), and on one
+                        // fixture page, so the other specs keep uploads at drop
+                        // time.
+                        ...(runtimeConfig.public.deferImageUploads || /\/deferred-images-page(\/|$)/.test(route.path)
+                            ? { deferImageUploads: true }
+                            : {}),
                         slate: {
                             styleMenu: {
                                 blockStyles: [{ cssClass: 'lead', label: 'Lead' }],

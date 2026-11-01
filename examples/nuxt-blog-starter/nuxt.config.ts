@@ -174,6 +174,10 @@ export default defineNuxtConfig({
           // Override API URL for test builds (NUXT_TEST_BACKEND env var)
           backendBaseUrl: process.env.NUXT_TEST_BACKEND || 'https://api.inka.sh',
           adminUrl: EDIT_ADMIN,
+          // The editor holds new images until Save ([...slug].vue) when the
+          // build is told to. A deployment's canvas sets it; the tests, which
+          // run this same env, keep uploads at drop time.
+          deferImageUploads: process.env.NUXT_PUBLIC_DEFER_IMAGE_UPLOADS === 'true',
         }
       },
       image: {

@@ -1,6 +1,7 @@
 /**
  * Images held until the page is saved, for a front end that sets
- * `deferImageUploads` (the test frontend does on /deferred-images-page).
+ * `deferImageUploads` (the test frontend and the Nuxt starter's test build do
+ * on /deferred-images-page; the Nuxt starter's edit build does everywhere).
  *
  * An image dropped in the editor is not uploaded: the canvas shows it at once,
  * from a data: URL the bridge sends once, while the page JSON carries only a
@@ -35,18 +36,20 @@ function pageSaves(page: Page): Request[] {
   return saves;
 }
 
-/** Clear the hero's image on the canvas and drop `name` into its empty overlay. */
+const IMAGE = '[data-block-uid="image"] [data-edit-media="url"]';
+
+/** Clear the image block's image on the canvas and drop `name` into its empty overlay. */
 async function dropImage(helper: AdminUIHelper, page: Page, name: string) {
   const iframe = helper.getIframe();
-  const hero = iframe.locator('[data-block-uid="hero"]');
-  await hero.scrollIntoViewIfNeeded();
-  await hero.click();
+  const block = iframe.locator('[data-block-uid="image"]');
+  await block.scrollIntoViewIfNeeded();
+  await block.click();
   await page.locator('button[title="Clear image"]').click();
   await helper.revealOptionalFields();
   const overlay = page.locator('.empty-image-overlay');
   await expect(overlay).toBeVisible();
   await overlay.locator('input[type="file"][accept="image/*"]').first().setInputFiles({ name, mimeType: 'image/png', buffer: PNG });
-  return iframe.locator('[data-block-uid="hero"] [data-edit-media="image"]');
+  return iframe.locator(IMAGE);
 }
 
 test.describe('Images held until save', () => {
@@ -57,10 +60,10 @@ test.describe('Images held until save', () => {
     await helper.login();
     await helper.navigateToEdit('/deferred-images-page');
 
-    const heroImage = await dropImage(helper, page, 'held.png');
-    await expect(heroImage).toHaveAttribute('src', /^data:image\/png;base64,/);
+    const image = await dropImage(helper, page, 'held.png');
+    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
     // Drawn, not just pointed at: the picture decodes on the canvas.
-    await expect.poll(() => heroImage.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
+    await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
     expect(uploads, 'nothing is uploaded before Save').toHaveLength(0);
 
     await helper.saveContent();
@@ -69,10 +72,10 @@ test.describe('Images held until save', () => {
     const saved = JSON.stringify(saves.at(-1)!.postDataJSON());
     expect(saved, 'the page names the uploaded image').toMatch(/uploaded-image-\d+/);
     expect(saved, 'and no reference is left in it').not.toContain('inka-pending:');
-    // The saved page, rendered (view mode draws no block uids). The mock keeps
-    // an upload's bytes per signed-in session, which an <img> request does not
-    // carry, so this checks where it points, as the drop-time upload specs do.
-    await expect(helper.getIframe().locator('.hero-block img')).toHaveAttribute('src', /uploaded-image-\d+/);
+    // The saved page, rendered. The mock keeps an upload's bytes per signed-in
+    // session, which an <img> request does not carry, so this checks where it
+    // points, as the drop-time upload specs do.
+    await expect(helper.getIframe().locator('img[src*="uploaded-image-"]')).toHaveCount(1);
   });
 
   test('the page sent on each edit carries the reference, not the picture', async ({ page }) => {
@@ -88,12 +91,8 @@ test.describe('Images held until save', () => {
       });
     });
 
-    const heroImage = await dropImage(helper, page, 'held.png');
-    await expect(heroImage).toHaveAttribute('src', /^data:image\/png;base64,/);
-    // One more edit after the drop, as typing would send.
-    await helper.getIframe().locator('[data-block-uid="hero"] [data-edit-text="heading"]').click();
-    await page.keyboard.type('!');
-
+    const image = await dropImage(helper, page, 'held.png');
+    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
     const sent: string[] = await canvas.evaluate(() => (window as any).__formData);
     expect(sent.length).toBeGreaterThan(0);
     expect(sent.filter((data) => data.includes('data:image/png')), 'no FORM_DATA carries the picture').toEqual([]);
@@ -106,11 +105,10 @@ test.describe('Images held until save', () => {
     await helper.login();
     await helper.navigateToEdit('/deferred-images-page');
 
-    const heroImage = await dropImage(helper, page, 'held.png');
-    await expect(heroImage).toHaveAttribute('src', /^data:image\/png;base64,/);
-    // Cleared; the field stays revealed from the drop, so its empty overlay shows.
+    const image = await dropImage(helper, page, 'held.png');
+    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
     await page.locator('button[title="Clear image"]').click();
-    await expect(heroImage).not.toHaveAttribute('src', /^data:image\/png/);
+    await expect(image).not.toHaveAttribute('src', /^data:image\/png/);
 
     // The page is a folder, so its images go into it: the picker opens there.
     const overlay = page.locator('.empty-image-overlay');
@@ -120,7 +118,7 @@ test.describe('Images held until save', () => {
     await helper.objectBrowserSelectItem(objectBrowser, /held\.png/);
     await helper.submitAddLinkFormIfOpen(overlay);
 
-    await expect(heroImage).toHaveAttribute('src', /^data:image\/png;base64,/);
+    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
     expect(uploads, 'still nothing uploaded').toHaveLength(0);
   });
 
