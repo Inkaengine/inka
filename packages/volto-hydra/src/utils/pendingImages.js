@@ -20,6 +20,23 @@ export const PENDING_PREFIX = 'inka-pending:';
 /** A held image could not be uploaded, so the page was not saved. */
 export class UploadFailed extends Error {}
 
+/** The folder an image would be uploaded into does not take images from this user. */
+export class ImagesNotAllowed extends Error {}
+
+/**
+ * Check, before holding an image, that `folder` takes images from the
+ * signed-in user, so the editor hears it when the image is dropped, not only
+ * when the page is saved. `typesIn(folder)` resolves to the folder's @types:
+ * every type, each marked `addable` for this user there. The server's own
+ * limits (its upload size) are still only met on Save.
+ */
+export async function checkImagesAllowed(folder, typesIn) {
+  const image = (await typesIn(folder)).find((type) => type.id === 'Image');
+  if (!image?.addable) {
+    throw new ImagesNotAllowed(`You can’t add images to ${folder}, so this one can’t be saved there.`);
+  }
+}
+
 const held = new Map();
 const listeners = new Set();
 

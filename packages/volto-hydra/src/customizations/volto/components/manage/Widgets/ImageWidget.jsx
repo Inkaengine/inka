@@ -54,7 +54,14 @@ import clearSVG from '@plone/volto/icons/clear.svg';
 
 // Import AddLinkForm for consistent UI
 import AddLinkForm from '../AnchorPlugin/components/LinkButton/AddLinkForm';
-import { holdImage, isPendingImage, previewUrl } from '../../../../../utils/pendingImages';
+import Api from '@plone/volto/helpers/Api/Api';
+import {
+  checkImagesAllowed,
+  holdImage,
+  ImagesNotAllowed,
+  isPendingImage,
+  previewUrl,
+} from '../../../../../utils/pendingImages';
 
 const Dropzone = loadable(() => import('react-dropzone'));
 
@@ -240,11 +247,27 @@ const UnconnectedImageInput = (props) => {
       // A front end that defers uploads (settings.deferImageUploads) gets the
       // image held until the page is saved: the field names it by reference,
       // and Save uploads it (pendingImages.js). Nothing is created now, so a
-      // cancelled edit leaves nothing behind.
+      // cancelled edit leaves nothing behind. Whether the folder takes images
+      // from this user is asked now, so a refusal comes at the drop.
       if (config.settings.deferImageUploads) {
-        setUploading(false);
-        onChange(id, holdImage(file, flattenToAppURL(uploadUrl)));
-        onClose?.();
+        const folder = flattenToAppURL(uploadUrl);
+        checkImagesAllowed(folder, (path) => new Api().get(`${path}/@types`))
+          .then(() => {
+            setUploading(false);
+            onChange(id, holdImage(file, folder));
+            onClose?.();
+          })
+          .catch((error) => {
+            setUploading(false);
+            if (!(error instanceof ImagesNotAllowed)) throw error;
+            toast.error(
+              <Toast
+                error
+                title={intl.formatMessage(messages.Error)}
+                content={error.message}
+              />,
+            );
+          });
         return;
       }
       readAsDataURL(file).then((fileData) => {

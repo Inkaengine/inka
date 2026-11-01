@@ -135,13 +135,29 @@ test.describe('Images held until save', () => {
     expect(uploads, 'still nothing uploaded').toHaveLength(0);
   });
 
+  test('a folder that takes no images refuses one when it is dropped, not on Save', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const uploads = imageUploads(page);
+    await helper.login();
+    await helper.navigateToEdit('/deferred-images-page/pages-only');
+
+    const image = await dropImage(helper, page, 'held.png');
+    await expect(page.locator('.Toastify__toast--error')).toContainText(
+      'You can’t add images to /_test_data/deferred-images-page/pages-only, so this one can’t be saved there.',
+    );
+    await expect(image).not.toHaveAttribute('src', /^blob:/);
+    expect(uploads).toHaveLength(0);
+  });
+
   test('a failed upload refuses the save, and the page is not saved', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     const saves = pageSaves(page);
     await helper.login();
     await helper.navigateToEdit('/deferred-images-page');
 
-    await dropImage(helper, page, 'trigger-error.png');
+    const image = await dropImage(helper, page, 'trigger-error.png');
+    // Held once the folder is known to take images: then the page can be saved.
+    await expect(image).toHaveAttribute('src', /^blob:/);
     await page.locator('#toolbar-save').click();
     await expect(page.locator('.Toastify__toast--error')).toContainText('trigger-error.png could not be uploaded, so the page was not saved');
     await expect(page).toHaveURL(/\/edit$/);
@@ -154,7 +170,8 @@ test.describe('Images held until save', () => {
     await helper.login();
     await helper.navigateToEdit('/deferred-images-page');
 
-    await dropImage(helper, page, 'held.png');
+    const image = await dropImage(helper, page, 'held.png');
+    await expect(image).toHaveAttribute('src', /^blob:/);
     await page.locator('#toolbar button.cancel').click();
     await page.waitForURL((url) => !url.pathname.endsWith('/edit'));
     expect(uploads).toHaveLength(0);

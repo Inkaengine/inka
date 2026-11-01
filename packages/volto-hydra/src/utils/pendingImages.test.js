@@ -13,6 +13,8 @@ import {
   releaseImages,
   uploadPendingImages,
   UploadFailed,
+  checkImagesAllowed,
+  ImagesNotAllowed,
 } from './pendingImages';
 
 /** A dropped file, as the browser hands it over. */
@@ -45,6 +47,14 @@ describe('pending images', () => {
       '@id': ref, '@type': 'Image', id: ref, getURL: ref, title: 'shot.png', is_folderish: false,
     }]);
     expect(heldImagesIn('/elsewhere')).toEqual([]);
+  });
+
+  it('before holding an image, checks the folder takes images from this user', async () => {
+    const typesIn = (types) => async () => types.map(([id, addable]) => ({ '@id': `http://site/@types/${id}`, id, addable }));
+    await expect(checkImagesAllowed('/news', typesIn([['Document', true], ['Image', true]]))).resolves.toBeUndefined();
+    const refused = checkImagesAllowed('/news', typesIn([['Document', true], ['Image', false]]));
+    await expect(refused).rejects.toThrow(ImagesNotAllowed);
+    await expect(refused).rejects.toThrow('You can’t add images to /news, so this one can’t be saved there.');
   });
 
   it('on save, uploads each image the page uses and puts the image in its place', async () => {
