@@ -1990,21 +1990,50 @@ export class AdminUIHelper {
     // Get the expected text content (visible text, trimmed, strip ZWS/BOM)
     const expectedText = await editor.evaluate((el) => (el.textContent || '').replace(/[\uFEFF\u200B]/g, '').trim());
 
-    // Use platform-appropriate keyboard shortcut (Cmd+A on Mac, Ctrl+A elsewhere)
-    await editor.press('ControlOrMeta+a');
+    // An editor (Slate, the bridge) learns of a new selection from the
+    // selectionchange event, which the browser dispatches as a task of its own
+    // AFTER the selection has changed. A key pressed in between acts on the
+    // editor's old selection: in CI a Backspace came 1ms after the DOM showed
+    // all selected, and deleted one character at the old caret. So wait for a
+    // selectionchange that saw the whole text, not for the DOM alone.
+    //
+    // And a select-all can be undone: Volto's sidebar editor re-renders on
+    // timers of its own after a click (100ms, 200ms), writing its older caret
+    // back. So until the whole text is still selected after its event, select
+    // again.
+    await expect(async () => {
+      await editor.evaluate((el, expected) => {
+        const doc = el.ownerDocument;
+        const allSelected = () =>
+          (doc.getSelection()?.toString() || '').replace(/[\uFEFF\u200B]/g, '').trim() === expected;
+        (doc.defaultView as any).__selectedAll = new Promise<void>((resolve) => {
+          // Already all selected: its selectionchange came long ago, and Ctrl+A
+          // changes nothing, so there will be no other.
+          if (allSelected()) return resolve();
+          const seen = () => {
+            if (!allSelected()) return;
+            doc.removeEventListener('selectionchange', seen);
+            resolve();
+          };
+          doc.addEventListener('selectionchange', seen);
+        });
+      }, expectedText);
 
-    // Wait for selection to match the editor's text content
-    await expect
-      .poll(
-        async () => {
-          return editor.evaluate(() => {
-            const sel = window.getSelection();
-            return (sel?.toString() || '').replace(/[\uFEFF\u200B]/g, '').trim();
-          });
-        },
-        { timeout: 5000 }
-      )
-      .toBe(expectedText);
+      // Use platform-appropriate keyboard shortcut (Cmd+A on Mac, Ctrl+A elsewhere)
+      await editor.press('ControlOrMeta+a');
+
+      const held = await editor.evaluate((el, expected) => {
+        const win = el.ownerDocument.defaultView as any;
+        const timedOut = new Promise((resolve) => setTimeout(() => resolve(false), 500));
+        return Promise.race([win.__selectedAll.then(() => true), timedOut]).then((seen) =>
+          // Still selected a frame later: not put back by a re-render.
+          new Promise((resolve) => win.requestAnimationFrame(() => resolve(
+            seen && (win.getSelection()?.toString() || '').replace(/[\uFEFF\u200B]/g, '').trim() === expected,
+          ))),
+        );
+      }, expectedText);
+      expect(held, 'the editor saw the whole text selected, and it stayed so').toBe(true);
+    }).toPass({ timeout: 5000 });
   }
 
   /**
