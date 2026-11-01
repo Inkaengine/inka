@@ -301,6 +301,10 @@ const isValidNodeId = (id) => id && /^\d+(\.\d+)*$/.test(id);
 // How many nested closed containers a reveal will open before giving up.
 const MAX_REVEAL_DEPTH = 5;
 
+// How long after a key or pointer press a selection still counts as the
+// author's doing: a click's selection, focus and caret all land within it.
+const AUTHOR_INPUT_MS = 1000;
+
 // What counts as the control a reveal handle activates — see
 // Bridge.activationTarget. A link needs an href to be one; a bare <a> is text.
 const CONTROL_TAGS = new Set([
@@ -4058,6 +4062,7 @@ export class Bridge {
       this.sendMessageToParent({
         type: 'BLOCK_SELECTED',
         src,
+        userInput: this.isAuthorInputRecent(),
         blockUid: null,
         rect: null,
       }, this.adminOrigin);
@@ -4153,6 +4158,8 @@ export class Bridge {
     const message = {
       type: 'BLOCK_SELECTED',
       src,
+      // Caused by the author's own key or pointer, not the bridge settling.
+      userInput: this.isAuthorInputRecent(),
       blockUid,
       // Where the block IS (outline) stays tight to its own elements. A
       // stand-in — a tab's label on the button that reveals it — is somewhere
@@ -4605,6 +4612,7 @@ export class Bridge {
         this.setupScrollHandler();
         this.setupResizeHandler();
         this.setupMouseActivityReporter();
+        this.trackAuthorInput();
         this.setupStructuralObserver();
 
         // Add beforeunload warning to prevent accidental navigation
@@ -11857,6 +11865,26 @@ export class Bridge {
     };
 
     window.addEventListener('resize', handleResize);
+  }
+
+  /**
+   * Note when the author last pressed a key or pointed in this page. The
+   * bridge also selects and focuses on its own — the block the editor opened
+   * with, once the page settles — and the admin, which can't see input inside
+   * the frame, needs to tell the two apart: focus the bridge gave itself is not
+   * the author choosing this pane (userInput on BLOCK_SELECTED).
+   */
+  trackAuthorInput() {
+    const noted = (e) => {
+      if (e.isTrusted) this._lastAuthorInputAt = Date.now();
+    };
+    document.addEventListener('keydown', noted, true);
+    document.addEventListener('pointerdown', noted, true);
+  }
+
+  /** Did the author press a key or point in this page just now? */
+  isAuthorInputRecent() {
+    return this._lastAuthorInputAt !== undefined && Date.now() - this._lastAuthorInputAt < AUTHOR_INPUT_MS;
   }
 
   /**

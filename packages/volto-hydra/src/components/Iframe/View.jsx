@@ -3645,9 +3645,16 @@ const Iframe = (props) => {
           //
           // Evidence of working in this pane instead: it has focus, or it is
           // announcing a DIFFERENT block from the one already selected.
+          //
+          // Focus counts only when the author's own key or pointer moved it
+          // (userInput). The bridge focuses a field itself when it settles on
+          // the block the editor opened with, and on a slow load that comes
+          // after a click in the other language's pane: the iframe has focus
+          // then, but nobody is working in it.
           const editPaneHasFocus =
             typeof document !== 'undefined' &&
-            document.activeElement?.id === 'previewIframe';
+            document.activeElement?.id === 'previewIframe' &&
+            event.data.userInput;
           const isRepeatOfCurrentSelection =
             event.data.blockUid === selectedBlock ||
             event.data.src === 'scrollHandler' ||
