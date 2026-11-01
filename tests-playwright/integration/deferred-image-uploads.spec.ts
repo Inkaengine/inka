@@ -123,8 +123,11 @@ test.describe('Images held until save', () => {
     await expect(overlay).toBeVisible();
     await overlay.locator('button[aria-label="Open object browser"]').click();
     const objectBrowser = await helper.waitForObjectBrowser();
-    // Listed with the page's own children, once they have loaded.
-    await expect(page.locator('.object-listing li').filter({ hasText: /held\.png/ })).toBeVisible({ timeout: 10000 });
+    // Listed with the page's own children, once they have loaded, and on
+    // screen: the browser slides in, and a click mid-slide lands off-screen.
+    const held = page.locator('.object-listing li').filter({ hasText: /held\.png/ });
+    await expect(held).toBeVisible({ timeout: 10000 });
+    await expect(held).toBeInViewport();
     await helper.objectBrowserSelectItem(objectBrowser, /held\.png/);
     await helper.submitAddLinkFormIfOpen(overlay);
 
