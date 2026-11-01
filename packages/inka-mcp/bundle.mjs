@@ -11,15 +11,11 @@
  * route) bundles that instead: node packages/inka-mcp/bundle.mjs <entry> <outfile>
  */
 import { build } from 'esbuild';
-import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 
 const here = (path) => fileURLToPath(new URL(path, import.meta.url));
-
-const [entry, outfile] = process.argv.length > 2
-  ? [resolve(process.argv[2]), resolve(process.argv[3] ?? '')]
-  : [here('./start.mjs'), here('./dist/inka-mcp-http.mjs')];
-if (process.argv.length > 2 && !process.argv[3]) throw new Error('bundle.mjs <entry> <outfile>: name the file to write');
 
 /**
  * The screenshot view's ext-apps client is read from node_modules when run
@@ -36,18 +32,29 @@ const inlineAppClient = {
   },
 };
 
-await build({
-  entryPoints: [entry],
-  outfile,
-  bundle: true,
-  platform: 'node',
-  target: 'node22',
-  format: 'esm',
-  external: ['playwright'],
-  plugins: [inlineAppClient],
-  // Bundled CommonJS (express, inside the SDK) still calls require() for
-  // Node's own modules; an ES module has no require of its own.
-  banner: { js: "import { createRequire as __inkaRequire } from 'node:module'; const require = __inkaRequire(import.meta.url);" },
-  logLevel: 'warning',
-});
-console.log(`bundled ${outfile}`);
+/** esbuild's options for bundling `entry` into `outfile` (bundle.test.mjs asks what they take in). */
+export function bundling(entry, outfile) {
+  return {
+    entryPoints: [entry],
+    outfile,
+    bundle: true,
+    platform: 'node',
+    target: 'node22',
+    format: 'esm',
+    external: ['playwright'],
+    plugins: [inlineAppClient],
+    // Bundled CommonJS (express, inside the SDK) still calls require() for
+    // Node's own modules; an ES module has no require of its own.
+    banner: { js: "import { createRequire as __inkaRequire } from 'node:module'; const require = __inkaRequire(import.meta.url);" },
+    logLevel: 'warning',
+  };
+}
+
+if (import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  const [entry, outfile] = process.argv.length > 2
+    ? [resolve(process.argv[2]), resolve(process.argv[3] ?? '')]
+    : [here('./start.mjs'), here('./dist/inka-mcp-http.mjs')];
+  if (process.argv.length > 2 && !process.argv[3]) throw new Error('bundle.mjs <entry> <outfile>: name the file to write');
+  await build(bundling(entry, outfile));
+  console.log(`bundled ${outfile}`);
+}

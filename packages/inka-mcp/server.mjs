@@ -1,35 +1,24 @@
-#!/usr/bin/env node
 /**
- * The Inka MCP server (stdio). Agents read and edit pages through a headless
- * Inka admin, loaded once: each tool call moves it to the page's editor, works
- * through the admin's agent API, and leaves the editor. Nothing is held
+ * The Inka MCP server's tools (createServer). Agents read and edit pages
+ * through a headless Inka admin: each tool call moves it to the page's editor,
+ * works through the admin's agent API, and leaves the editor. Nothing is held
  * between calls — a dry run is dropped and the page's lock let go when the
  * editor is left.
  *
- * Configuration (environment):
- *   INKA_ADMIN_URL  the admin, e.g. https://admin.example.org
- *   INKA_FRONTEND_URL  optional: the front end the editor (and so a preview)
- *                      uses; without it, the admin's own default
- * Signing in (signIn.mjs): with neither of the below, the first call opens
- * the person's browser at the admin, they sign in as they always do and
- * allow the agent, and the token is kept (INKA_TOKEN_STORE, by default
- * ~/.config/inka-mcp/tokens.json) and renewed from then on.
- *   INKA_TOKEN      a token to use instead, or
- *   INKA_USER + INKA_PASSWORD + INKA_API_URL  to log in to a plain account
- * The agent can do what that CMS user can do, nothing more.
+ * Nothing here starts a server: stdio.mjs runs these tools for one person over
+ * stdio, http.mjs for many over HTTP. The hosted server is bundled into one
+ * file, where a module that started itself when it was the program being run
+ * would start there too.
  */
-import { realpathSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { adminPool } from './adminPool.mjs';
 import { subjectOf } from './tokenStore.mjs';
-import { signIn, renewDelay, watchSignOut } from './signIn.mjs';
+import { renewDelay, watchSignOut } from './signIn.mjs';
 import { SCREENSHOT_VIEW, screenshotViewHtml } from './screenshotView.mjs';
-import { localPictures, PictureGone } from './codes.mjs';
+import { PictureGone } from './codes.mjs';
 import { draftCheck } from './checkDraft.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
@@ -361,20 +350,4 @@ export function createServer(adminFor, { pictures, userOf }) {
   }, async () => ({ contents: [{ uri: SCREENSHOT_VIEW, mimeType: RESOURCE_MIME_TYPE, text: SCREENSHOT_VIEW_HTML }] }));
 
   return server;
-}
-
-async function main(env) {
-  if (!env.INKA_ADMIN_URL) throw new Error('inka-mcp: INKA_ADMIN_URL is not set');
-  const adminUrl = env.INKA_ADMIN_URL.replace(/\/$/, '');
-  // Signing in waits for the first call, so the agent's host isn't kept
-  // waiting at startup while a person signs in.
-  const admin = headlessAdmin({ adminUrl, auth: signIn(env, { adminUrl }), frontendUrl: env.INKA_FRONTEND_URL });
-  // One person, one process: every picture is theirs.
-  const server = createServer(() => admin, { pictures: localPictures({ instance: null, now: Date.now }), userOf: () => 'this-session' });
-  server.server.onclose = () => admin.close();
-  await server.connect(new StdioServerTransport());
-}
-
-if (import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
-  await main(process.env);
 }

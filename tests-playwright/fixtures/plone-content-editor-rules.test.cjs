@@ -21,7 +21,7 @@
  */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { checkEditorRules } = require('./plone-content-validator.cjs');
+const { checkEditorRules } = require('../../lib/plone-content-validator.cjs');
 
 const SCHEMAS = {
   _page: {
@@ -311,7 +311,7 @@ describe('checkEditorRules()', () => {
  * page checked.
  */
 describe('checkChooserGroups()', () => {
-  const { checkChooserGroups } = require('./plone-content-validator.cjs');
+  const { checkChooserGroups } = require('../../lib/plone-content-validator.cjs');
 
   it('passes a block that names a group the chooser orders', () => {
     const r = checkChooserGroups({ hero: { group: 'common', blockSchema: {} } });

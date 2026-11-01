@@ -39,7 +39,7 @@ import mockTokens from '../../../tests-playwright/fixtures/mock-tokens.cjs';
 
 const { mintToken } = mockTokens;
 
-const SERVER = fileURLToPath(new URL('../server.mjs', import.meta.url));
+const SERVER = fileURLToPath(new URL('../stdio.mjs', import.meta.url));
 const RUN_LIMIT_MS = 20 * 60 * 1000;
 /** Agent turns in a conversation before it is cut off. */
 const MAX_TURNS = 6;

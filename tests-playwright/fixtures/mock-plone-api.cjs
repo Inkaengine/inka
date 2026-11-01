@@ -2594,7 +2594,7 @@ function loadMarkdownMount(mount) {
  * export-shape check, since they are what gets imported into a real Plone.
  */
 function validateServedContent() {
-  const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+  const { validate, checkIntegrity } = require('../../lib/plone-content-validator.cjs');
   // ALLOW_MISSING_BLOBS=true: a blob whose bytes are not on disk is a warning,
   // not an error — what `plone-content --allow-missing-blobs` does. For a pull
   // request whose content references a file CI makes only after the merge (a
@@ -2620,7 +2620,7 @@ function validateServedContent() {
   keep(checkIntegrity(source, { schemasFor: hydraSchemasForOwnContent, allowMissingBlobs }));
   for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   if (siteSchemas) {
-    const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+    const { checkBlockSchemas, fieldMapFromSchemas } = require('../../lib/plone-content-validator.cjs');
     const { buildIdFieldMap } = require('../../packages/hydra-js/buildBlockPathMap.js');
     // Without the idFieldMap the container API sees only object_lists whose
     // items carry templateId, so a slider's slides go unchecked.
@@ -2663,7 +2663,7 @@ function isHydraOwned(urlPath) {
 let siteSchemas = null;
 async function loadSiteSchemas() {
   if (!process.env.CONTENT_SCHEMAS) return;
-  const { loadSchemas } = require('./plone-content-validator.cjs');
+  const { loadSchemas } = require('../../lib/plone-content-validator.cjs');
   siteSchemas = await loadSchemas(process.env.CONTENT_SCHEMAS);
 }
 
@@ -2724,7 +2724,7 @@ async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
   if (!mounts.length) return;
   const { readTree } = await import('../../lib/markdown-mount.mjs');
-  const { checkIntegrity } = require('./plone-content-validator.cjs');
+  const { checkIntegrity } = require('../../lib/plone-content-validator.cjs');
   // readTree takes a type -> blockSchema function; only checkIntegrity takes
   // the whole config. Two different contracts, so both are supplied.
   mdRuntime = {
@@ -3661,7 +3661,7 @@ app.post('/@export', async (req, res) => {
       return res.status(409).json({ error: 'no content to export' });
     }
     // Never ship a tree the importer would choke on.
-    const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+    const { validate, checkIntegrity } = require('../../lib/plone-content-validator.cjs');
     const contentDir = path.join(staging, 'content');
     const v = validate(contentDir, { allowMissingBlobs });
     const c = checkIntegrity(contentDir, { schemasFor: () => hydraBlocksConfig, allowMissingBlobs });

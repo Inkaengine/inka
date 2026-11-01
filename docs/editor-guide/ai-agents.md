@@ -60,7 +60,7 @@ A developer can run the MCP server locally instead of using a hosted one. From a
 ### Shell
 
 ```shell
-claude mcp add inka --env INKA_ADMIN_URL=https://admin.example.org -- node /path/to/inka/packages/inka-mcp/server.mjs
+claude mcp add inka --env INKA_ADMIN_URL=https://admin.example.org -- node /path/to/inka/packages/inka-mcp/stdio.mjs
 ```
 
 The first call opens your browser to sign in, as above. The sign-in is kept in `~/.config/inka-mcp/tokens.json`, readable only by you, so you aren't asked again until it runs out.
