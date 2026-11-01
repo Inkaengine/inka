@@ -685,10 +685,14 @@ const UNDECLARED_EXEMPT = new Set([
   // Not sidebar-authored — a consumer (in-page nav) reads them; exempt like the
   // other serialisation/runtime fields above.
   '_linkableAnchors',
-  // hydra's own bookkeeping for copy-from-target (CUSTOM_FIELDS_KEY in
-  // utils/copyFromTarget.js): the list of fields an author has overridden, written
-  // by the editor at runtime. Declaring it as a schema property would offer the
-  // bookkeeping itself as an editable field.
+  // hydra's own bookkeeping for copy-from-target (PULL_FROM_KEY in
+  // utils/copyFromTargetMapping.js): which of the block's fields each link owns,
+  // so a pull never touches anything else. Declaring it as a schema property
+  // would offer the bookkeeping itself as an editable field.
+  '_pullFrom',
+  // Its predecessor, which recorded the inverse (the fields an author had
+  // overridden, with absence meaning "pulled"). Still exempt so content written
+  // before inka#595 validates: the key is ignored at runtime, not an error.
   '_customFields',
   // collective.volto.formsupport regenerates `validationSettings` on every GET
   // of a form block — it is the catalogue of settable validators the sidebar

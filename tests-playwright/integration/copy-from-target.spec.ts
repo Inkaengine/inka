@@ -1,12 +1,14 @@
 /**
- * Copy-from-target: per-field LINKED ⇄ CUSTOM toggle.
+ * Copy-from-target: the per-field toggle between "owned by the link" and "the
+ * author's".
  *
  * The `button` block declares fieldMappings['@target']: { Title: 'title' }; its
- * href carries the target snapshot. A mapped field is LINKED by default (tracks
- * the target, pulled on select) unless listed in the block's `_customFields`.
+ * href carries the target snapshot. A field is pulled only when the block SAYS
+ * a link owns it, in `_pullFrom` ({ linkField: [field, ...] }) — absence means
+ * the author's, whoever wrote it (inka#595).
  *
- * Fixtures: btn-linked (no _customFields → title tracks target 'Target Title');
- * btn-custom (_customFields: ['title'] → keeps 'My own label').
+ * Fixtures: btn-linked (`_pullFrom: {href: ['title']}` → title tracks the
+ * target's 'Target Title'); btn-custom (no record → keeps 'My own label').
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
@@ -43,7 +45,7 @@ test.describe('Copy-from-target — linked/custom toggle', () => {
     await expect(iframe.locator('[data-block-uid="btn-linked"]')).toContainText('Target Title', {
       timeout: 8000,
     });
-    // btn-custom is _customFields:['title'] → NOT pulled, keeps its own label.
+    // btn-custom names no source → NOT pulled, keeps its own label.
     await expect(iframe.locator('[data-block-uid="btn-custom"]')).toContainText('My own label');
 
     // hero-onload has a FULL saved snapshot (the shape a real pick stores: title,

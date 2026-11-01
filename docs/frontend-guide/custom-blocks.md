@@ -814,7 +814,9 @@ checkboxFacet: { fieldMappings: { selectFacet: { /* ... */ }, daterangeFacet: { 
 
 ### Copy from a linked content item: `@target`
 
-`@target` maps a **linked** content item's attributes onto this block's own fields — the generic version of the Volto teaser's "copy from target" button. It maps *source content attributes* (`title`, `description`, `image`, …) to *this block's fields*. The item is whichever the block's **link field** points at (the `object_browser mode: 'link'` field — its stored snapshot is the source), so you don't name a URL field separately: "the url is the link in the mapping".
+`@target` maps a **linked** content item's attributes onto this block's own fields — the generic version of the Volto teaser's "copy from target" button. It maps *source content attributes* (`title`, `description`, `image`, …) to *this block's fields*.
+
+The item is whichever the block's **source link field** points at, and that field is **declared, never guessed**: `'@source': 'href'` in an explicit `@target`, or — for a `@default` mapping — the field the target's `'@id'` is mapped to, which already says where the link lands. A block with several link fields and no declaration is an error: picking the first one in schema order is not a rule, and in a real site config it picked a hero's *video file* over its button link, and a button's `url: 'Link (legacy)'` over the `href` the author picks with.
 
 ### Javascript
 
@@ -833,10 +835,41 @@ button: {
 },
 ```
 
-It is **on by default** for a block with a link field and a `fieldMappings['@default']`: the `@default` mapping doubles as the `@target` one (`@id` aside, since that is the link itself). Declare `@target` to map differently; either way there is no per-block enhancer wiring. A field a block-type conversion fills is **custom** from the start, so converting a block keeps what it held. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected). Every mapped field is one of two states:
+It is **available by default** for a block with a link field and a `fieldMappings['@default']`: the `@default` mapping doubles as the `@target` one (`@id` aside, since that is the link itself). Declare `@target` to map differently; either way there is no per-block enhancer wiring. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected).
 
-- **Linked** (default, toggle ticked) — the field *pulls from the linked item*. Its value is filled from the target's snapshot when the page opens for editing and re-pulled when you change the link, so it always mirrors the linked content.
-- **Custom** (toggle unticked) — your own value, ignored by the target. A field becomes custom the moment you edit it, or when you untick the toggle; re-ticking re-pulls the target value. Custom fields are recorded in the block's `_customFields` array (absence ⇒ linked), so the state persists with the block.
+**A block SAYS which of its fields a link owns, in `_pullFrom`:**
+
+### Javascript
+
+```javascript
+{
+    "@type": "teaser",
+    "href": [{ "@id": "/about", "title": "About us" }],
+    "title": "Design",
+    "_pullFrom": { "href": ["description"] }
+}
+```
+
+read as "pull `description` from `href`". So `description` tracks the linked item and `title` is this block's own, whoever wrote it.
+
+- **Owned by the link** (toggle ticked) — listed in `_pullFrom`. Filled from the target's snapshot when the page opens for editing and re-pulled when the link changes, so it mirrors the linked content.
+- **The author's** (toggle unticked) — everything else, *including a block that says nothing at all*. Editing an owned field claims it: the field drops out of the list, keeping what you typed. Unticking the toggle does the same without changing the value; re-ticking hands it back and re-pulls.
+
+**Nothing is pulled unless the block says so.** The record used to be the inverse — `_customFields` listed the exceptions, so a field absent from it was pulled — and absence is what every writer that is not the editor's own form produces. `plone.exportimport`, the restapi and `edit_blocks` over MCP all write a title and no record, so an authored title was replaced by the linked item's on the next page open ([inka#595](https://github.com/Inkaengine/inka/issues/595)). The editor can carry meaning in code and in a sidebar label; an agent has neither channel, so what decides whether an author's words survive is a value on the block.
+
+Two consequences worth knowing:
+
+- **An empty list is not absence.** `{"href": []}` means "the source is `href` and it owns nothing" — the state after unticking every toggle — and it is what lets the sidebar still offer re-linking. Absence means nobody has decided yet, and *picking a link* decides: a fresh pick hands the link the mapped fields that are still **empty**, so it never overwrites words already written (Volto's own guard on its teaser, kept).
+- **A block-type conversion drops the record.** It names the source type's field names, which mean nothing on the destination, and the fields the conversion just filled are the author's.
+- **There is one source per block, and it is the mapping's.** Nothing can choose another: the toggle is per *destination* field, and every path asks the mapping. The record is keyed by link field so it says which link it means, but a key naming a different link is bad data rather than a second source, and it raises an error instead of pulling from a link nobody mapped.
+
+An agent sees this too: `describe_block` marks each owned field with `pullsFrom: '<link field>'`, so a field whose value a link can replace says so without reading any code, and `_pullFrom` is a list of strings an agent can edit directly.
+
+#### Upgrading from `_customFields`
+
+A block that relied on the old default — mapped fields with no record, mirroring the link — **stops mirroring**. Its stored values stay exactly as they are; nothing is lost, and nothing is overwritten. To hand a field back to the link, re-tick its toggle, or list it under the source link in `_pullFrom`.
+
+An old `_customFields` array is simply ignored. It was already the state "these are the author's", and that is now what every unlisted field means, so a block carrying one behaves the same with or without it.
 
 ### Container ⇄ value (region-crossing paths)
 

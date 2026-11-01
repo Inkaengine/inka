@@ -1,4 +1,17 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+
+// agentApi reads a block's pull destinations (copyFromTargetMapping → blockSync
+// → ../context), and HydraSchemaContext.js is JSX inside a .js file, which
+// vitest/vite can't transform. Stub it — the same convention as blockSync.test.js
+// and copyFromTarget.test.js.
+vi.mock('../../context', () => ({
+  getHydraSchemaContext: () => ({}),
+  setHydraSchemaContext: () => {},
+  getLiveBlockData: () => null,
+  HydraSchemaProvider: ({ children }) => children,
+  useHydraSchemaContext: () => ({}),
+}));
+
 import { registerAgentApi } from './agentApi';
 
 describe('agent API before the editor has its page', () => {

@@ -80,7 +80,7 @@ import {
   applySchemaDefaultsToBlock,
   applySchemaDefaultsToBlockWithContext,
 } from './schemaValidation.mjs';
-import { getTargetMapping, withFieldCustom } from './copyFromTargetMapping';
+import { PULL_FROM_KEY } from './copyFromTargetMapping';
 
 // Conversion-graph logic lives in conversionValidation.mjs so it stays free of
 // the React context barrel (a Playwright gate imports it directly).
@@ -2458,16 +2458,15 @@ export function convertBlockType(blockData, newType, blocksConfig, typeFieldName
     ...convertedFields,
     [typeFieldName]: finalType,
   };
-  // A field copy-from-target would pull from the link, that the conversion
-  // filled from the source block, is the author's: custom, so the linked
-  // item's value does not replace it the next time the block is edited.
-  const targetMapping = getTargetMapping(blocksConfig?.[finalType]);
-  if (targetMapping) {
-    for (const dest of new Set(Object.values(targetMapping).map(getMappingTarget))) {
-      if (dest && result[dest] !== undefined && result[dest] !== '') {
-        result = withFieldCustom(result, dest);
-      }
-    }
+  // A converted block is a new block: it does not inherit the source's
+  // `_pullFrom`. The record names the SOURCE type's own field names, which mean
+  // nothing on the destination, and the fields the conversion just filled are
+  // the author's — the link's values must not replace them. Dropping it leaves
+  // every field unowned, which is the safe state; picking a link again hands
+  // over whatever is still empty.
+  if (result[PULL_FROM_KEY] !== undefined) {
+    result = { ...result };
+    delete result[PULL_FROM_KEY];
   }
   return result;
 }

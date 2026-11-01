@@ -36,15 +36,42 @@ import { stripFixedInsideSlots } from '@volto-hydra/helpers';
 import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
 import { getPageAllowedBlocksFromRestricted } from '../../../../hydra-js/buildBlockPathMap.js';
 import { lockedBy } from '../AgentSite/lockedBy';
+import {
+  getTargetMapping,
+  getSourceField,
+  targetDestinations,
+} from '../../utils/copyFromTargetMapping';
 
 // The schema facts an agent needs, as plain data (see plain()).
 const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'choices', 'default', 'maxLength', 'allowedBlocks'];
 
-function schemaFacts(schema) {
+/**
+ * Which of a block type's fields a LINK owns, and which link: `{ title: 'href' }`.
+ *
+ * An agent has neither of the channels that make this visible to a person — the
+ * sidebar's link toggle and the code behind it — so a field whose value a link
+ * can replace has to SAY so here. Without it an agent writes a teaser's title,
+ * the next page open pulls the target's over it, and nothing in the surface
+ * explained that it would (inka#595).
+ */
+function pullDestinations(blockConfig) {
+  const mapping = getTargetMapping(blockConfig);
+  if (!mapping) return {};
+  const sourceField = getSourceField(blockConfig);
+  if (!sourceField) return {};
+  const out = {};
+  for (const dest of targetDestinations(mapping)) out[dest] = sourceField;
+  return out;
+}
+
+function schemaFacts(schema, pullsFrom = {}) {
   return {
     required: schema?.required ?? [],
     properties: Object.fromEntries(
-      Object.entries(schema?.properties ?? {}).map(([field, def]) => [field, fieldFacts(def)]),
+      Object.entries(schema?.properties ?? {}).map(([field, def]) => [
+        field,
+        { ...fieldFacts(def), ...(pullsFrom[field] && { pullsFrom: pullsFrom[field] }) },
+      ]),
     ),
   };
 }
@@ -68,6 +95,10 @@ function plain(v) {
 }
 
 function fieldFacts(def) {
+  // A pull destination's widget is swapped to the copy-from-target wrapper,
+  // which is admin machinery. Report the field's REAL widget; `pullsFrom` is
+  // what tells an agent the field is owned by a link.
+  if (def?.widget === 'copyFromTargetField' && def.baseWidget) def = def.baseWidget;
   const out = {};
   for (const key of FIELD_FACTS) {
     const value = plain(def?.[key]);
@@ -222,7 +253,7 @@ export function registerAgentApi(live) {
           // and examples of it filled in (stored blocks).
           ...(blocksConfig[type].guidance !== undefined && { guidance: plainOrThrow(blocksConfig[type].guidance, type, 'guidance') }),
           ...(blocksConfig[type].examples !== undefined && { examples: plainOrThrow(blocksConfig[type].examples, type, 'examples') }),
-          blockSchema: schemaFacts(schema),
+          blockSchema: schemaFacts(schema, pullDestinations(blocksConfig[type])),
           regions: getContainerRegionDescriptors(type, blocksConfig, intl).map((d) => {
             const fieldDef = fieldAt(schema, d.regionPath ?? [], d.region);
             const rc = d.isObjectList
