@@ -13,14 +13,12 @@ vi.mock('../context', () => ({
 
 import {
   getTargetMapping,
-  getUrlField,
+  getSourceField,
   applyCopyFromTargetToSchema,
   getTargetValueForField,
-  isFieldCustom,
   isFieldLinked,
-  withFieldCustom,
-  withFieldLinked,
-  markEditedLinkedFieldsCustom,
+  isFieldPulled,
+  PULL_FROM_KEY,
   installCopyFromTargetEnhancers,
   getTargetId,
   pullLinkedFields,
@@ -179,48 +177,19 @@ describe('live target — divergence/sync against the CURRENT target, not the sn
 
 });
 
-describe('linked vs custom per-field state (_customFields)', () => {
-  const withTarget = { href: [targetSnapshot], title: 'Big News' };
-
-  it('a mapped field with a target is LINKED by default (not in _customFields)', () => {
-    expect(isFieldCustom('title', withTarget)).toBe(false);
-    expect(isFieldLinked('title', teaserConfig, withTarget)).toBe(true);
-  });
-
-  it('a field listed in _customFields is custom, not linked', () => {
-    const data = { ...withTarget, _customFields: ['title'] };
-    expect(isFieldCustom('title', data)).toBe(true);
-    expect(isFieldLinked('title', teaserConfig, data)).toBe(false);
-    // other mapped fields stay linked
-    expect(isFieldLinked('description', teaserConfig, data)).toBe(true);
-  });
-
-  it('nothing is linked when no target is selected', () => {
-    expect(isFieldLinked('title', teaserConfig, { href: [] })).toBe(false);
-  });
-
-  it('withFieldCustom / withFieldLinked update _customFields immutably', () => {
-    const a = withFieldCustom(withTarget, 'title');
-    expect(a._customFields).toEqual(['title']);
-    expect(withTarget._customFields).toBeUndefined(); // original untouched
-
-    const b = withFieldCustom(a, 'description');
-    expect(new Set(b._customFields)).toEqual(new Set(['title', 'description']));
-
-    const c = withFieldLinked(b, 'title');
-    expect(c._customFields).toEqual(['description']);
-
-    const d = withFieldLinked(c, 'description');
-    expect(d._customFields).toBeUndefined(); // key removed when empty
-  });
-});
+// Linked-vs-owned state, the `_pullFrom` record and unpullEditedFields are
+// covered in pullFrom.test.js, which is the spec for inka#595.
 
 describe('pullLinkedFields — atomic multi-field pull on link change', () => {
   it('fills EVERY linked mapped field in one write (no per-field clobber)', () => {
     // Setting the link on an empty multi-field block must pull title, description,
     // head_title AND the image together — the regression guard for the race where
     // per-field pulls clobbered all but the last-written field.
-    const block = { '@type': 'teaser', href: [targetSnapshot] };
+    const block = {
+      '@type': 'teaser',
+      href: [targetSnapshot],
+      [PULL_FROM_KEY]: { href: ['title', 'description', 'head_title', 'preview_image'] },
+    };
     const out = pullLinkedFields(teaserConfig, block);
     expect(out.title).toBe('Big News');
     expect(out.description).toBe('It happened');
@@ -228,67 +197,22 @@ describe('pullLinkedFields — atomic multi-field pull on link change', () => {
     expect(out.preview_image?.[0]?.['@id']).toBe('/news/big');
   });
 
-  it('skips custom fields and leaves already-synced fields untouched', () => {
+  it("skips fields the link doesn't own and leaves already-synced ones untouched", () => {
     const block = {
       '@type': 'teaser',
       href: [targetSnapshot],
       title: 'Big News', // already at target
-      description: 'my own words',
-      _customFields: ['description'], // custom → not pulled
+      description: 'my own words', // unlisted → the author's
+      [PULL_FROM_KEY]: { href: ['title', 'head_title'] },
     };
     const out = pullLinkedFields(teaserConfig, block);
-    expect(out.description).toBe('my own words'); // custom kept
-    expect(out.head_title).toBe('Breaking'); // linked, pulled
+    expect(out.description).toBe('my own words');
+    expect(out.head_title).toBe('Breaking'); // owned, pulled
   });
 
   it('is a no-op with no target selected', () => {
     const block = { '@type': 'teaser', href: [] };
     expect(pullLinkedFields(teaserConfig, block)).toBe(block);
-  });
-});
-
-describe('markEditedLinkedFieldsCustom — inline edit turns a linked field custom (value-compare)', () => {
-  const cfg = { teaser: teaserConfig };
-  const linkedBlock = () => ({ '@type': 'teaser', href: [targetSnapshot], title: 'Big News' });
-
-  it('flips a linked field whose value changed (typed on canvas)', () => {
-    const current = { blocks: { t1: linkedBlock() } };
-    const incoming = { blocks: { t1: { ...linkedBlock(), title: 'Typed on canvas' } } };
-    const out = markEditedLinkedFieldsCustom(incoming, current, cfg);
-    expect(out.blocks.t1.title).toBe('Typed on canvas'); // value kept
-    expect(out.blocks.t1._customFields).toContain('title'); // flipped custom
-  });
-
-  it('does NOT flip an unchanged linked field', () => {
-    const current = { blocks: { t1: linkedBlock() } };
-    const incoming = { blocks: { t1: linkedBlock() } };
-    const out = markEditedLinkedFieldsCustom(incoming, current, cfg);
-    expect(out).toBe(incoming); // untouched reference (cheap no-op)
-    expect(out.blocks.t1._customFields).toBeUndefined();
-  });
-
-  it('does NOT flip when the value changed TO the target (the pull, not an edit)', () => {
-    // A stale value being pulled up to the target must stay LINKED, not flip.
-    const current = { blocks: { t1: { '@type': 'teaser', href: [targetSnapshot], title: 'stale' } } };
-    const incoming = { blocks: { t1: { '@type': 'teaser', href: [targetSnapshot], title: 'Big News' } } };
-    const out = markEditedLinkedFieldsCustom(incoming, current, cfg);
-    expect(out.blocks.t1._customFields).toBeUndefined(); // pull → still linked
-  });
-
-  it('does NOT flip a field that was NOT linked pre-edit (no target → typing before a link)', () => {
-    // No href yet → not linked → typing the title must not turn it custom, so a
-    // later link still pulls it.
-    const current = { blocks: { t1: { '@type': 'teaser', title: '' } } };
-    const incoming = { blocks: { t1: { '@type': 'teaser', title: 'Typed before link' } } };
-    const out = markEditedLinkedFieldsCustom(incoming, current, cfg);
-    expect(out.blocks.t1._customFields).toBeUndefined();
-  });
-
-  it('flips linked fields inside nested container blocks', () => {
-    const current = { blocks: { grid: { '@type': 'grid', blocks: { t1: linkedBlock() } } } };
-    const incoming = { blocks: { grid: { '@type': 'grid', blocks: { t1: { ...linkedBlock(), title: 'Edited' } } } } };
-    const out = markEditedLinkedFieldsCustom(incoming, current, cfg);
-    expect(out.blocks.grid.blocks.t1._customFields).toContain('title');
   });
 });
 
@@ -479,14 +403,15 @@ describe('copy-from-target — on by default via @default (link-bearing blocks)'
         properties: { ...linkCard.blockSchema.properties, heading: { title: intl.formatMessage({ defaultMessage: 'Heading' }) } },
       }),
     };
-    expect(getUrlField(fnCard)).toBe('href');
+    expect(getSourceField(fnCard)).toBe('href');
     expect(getTargetMapping(fnCard)).toEqual({ title: 'heading', description: 'summary', image: 'picture' });
   });
 
-  it('a field a block-type conversion filled is custom, not pulled over', () => {
+  it('a block-type conversion drops the record, so nothing it filled is pulled over', () => {
     // Converting a hero to a link card writes the hero's heading into the
     // card's heading. That is the author's text; the link's title must not
-    // replace it the next time the card is edited.
+    // replace it the next time the page is opened. The source's own record is
+    // dropped: it names the HERO's field names, which mean nothing here.
     const blocksConfig = {
       linkcard: linkCard,
       hero: {
@@ -496,14 +421,18 @@ describe('copy-from-target — on by default via @default (link-bearing blocks)'
       },
     };
     const out = convertBlockType(
-      { '@type': 'hero', headline: 'Welcome', link: [{ '@id': '/target', Title: 'Target Page' }] },
+      {
+        '@type': 'hero',
+        headline: 'Welcome',
+        link: [{ '@id': '/target', Title: 'Target Page' }],
+        [PULL_FROM_KEY]: { link: ['headline'] },
+      },
       'linkcard',
       blocksConfig,
     );
     expect(out.heading).toBe('Welcome');
-    expect(isFieldCustom('heading', out)).toBe(true);
-    // A destination the conversion left empty stays linked.
-    expect(isFieldCustom('summary', out)).toBe(false);
+    expect(out[PULL_FROM_KEY]).toBeUndefined();
+    expect(isFieldPulled('heading', out)).toBe(false);
   });
 
   it('an explicit @target still wins over @default', () => {
