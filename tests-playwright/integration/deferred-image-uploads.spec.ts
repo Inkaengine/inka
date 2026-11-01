@@ -72,6 +72,8 @@ test.describe('Images held until save', () => {
     const saved = JSON.stringify(saves.at(-1)!.postDataJSON());
     expect(saved, 'the page names the uploaded image').toMatch(/uploaded-image-\d+/);
     expect(saved, 'and no reference is left in it').not.toContain('inka-pending:');
+    // The image is its own Image item; the page holds only a link to it.
+    expect(saved, 'and no picture data is saved in the page').not.toMatch(/data:image|blob:|base64/);
     // Saved: the page as the site now has it. Read from the API, signed in:
     // the mock keeps a save per session, which a front end's own reads (and an
     // <img> request) do not carry.
