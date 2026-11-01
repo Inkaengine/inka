@@ -19,6 +19,7 @@ import config from '@plone/volto/registry';
 
 import rightArrowSVG from '@plone/volto/icons/right-key.svg';
 import homeSVG from '@plone/volto/icons/home.svg';
+import { heldImage, isPendingImage } from '../../../../../utils/pendingImages';
 
 const messages = defineMessages({
   browse: {
@@ -105,7 +106,11 @@ const ObjectBrowserNav = ({
               >
                 {item['@type'] === 'Image' ? (
                   <Image
-                    src={`${item['@id']}/@@images/image/preview`}
+                    src={
+                      isPendingImage(item['@id'])
+                        ? heldImage(item['@id']).dataUrl
+                        : `${item['@id']}/@@images/image/preview`
+                    }
                     alt={item.title}
                     style={{
                       width: 143,

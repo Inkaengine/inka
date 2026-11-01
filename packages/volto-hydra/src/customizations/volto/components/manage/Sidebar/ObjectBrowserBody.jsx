@@ -19,6 +19,7 @@ import { validateFileUploadSize } from '@plone/volto/helpers/FormValidation/Form
 import { buildAnchorTree } from '@volto-hydra/hydra-js';
 import { collectAnchorsFromContent } from '../../../../../utils/linkableAnchors';
 import { buildUploadPayload } from '../../../../../utils/uploadPayload';
+import { holdImage, heldImagesIn } from '../../../../../utils/pendingImages';
 import Icon from '@plone/volto/components/theme/Icon/Icon';
 import { flattenToAppURL, isInternalURL } from '@plone/volto/helpers/Url/Url';
 import config from '@plone/volto/registry';
@@ -440,6 +441,16 @@ class ObjectBrowserBody extends Component {
     });
   };
 
+  // The current folder's listing, with the images held for it until the page
+  // is saved (pendingImages.js) first: they will be Images here once saved.
+  listing = () => {
+    const results =
+      this.props.searchSubrequests[`${this.props.block}-${this.props.mode}`];
+    const held = heldImagesIn(flattenToAppURL(this.state.currentFolder));
+    if (!held.length || !results) return results;
+    return { ...results, items: [...held, ...(results.items || [])] };
+  };
+
   // Re-run the search that populates the current folder listing.
   refreshListing = () => {
     this.props.searchContent(
@@ -462,6 +473,16 @@ class ObjectBrowserBody extends Component {
     if (!validateFileUploadSize(file, this.props.intl.formatMessage)) return;
     this.setState({ uploading: true });
     readAsDataURL(file).then((dataUrl) => {
+      // A front end that defers uploads (settings.deferImageUploads) gets the
+      // image held until the page is saved, listed in this folder meanwhile
+      // (heldImagesIn), and picked as an uploaded one would be.
+      if (config.settings.deferImageUploads && file.type.startsWith('image/')) {
+        const folder = flattenToAppURL(this.state.currentFolder);
+        const ref = holdImage({ name: file.name, type: file.type, dataUrl, folder });
+        this.setState({ uploading: false });
+        this.handleSelectItem(heldImagesIn(folder).find((item) => item['@id'] === ref));
+        return;
+      }
       const payload = buildUploadPayload(file, dataUrl);
       this.props
         .createContent(
@@ -905,11 +926,7 @@ class ObjectBrowserBody extends Component {
                 </Segment>
               ) : (
               <ObjectBrowserNav
-                currentSearchResults={
-                  this.props.searchSubrequests[
-                    `${this.props.block}-${this.props.mode}`
-                  ]
-                }
+                currentSearchResults={this.listing()}
           selected={
             this.props.mode === 'multiple'
               ? this.props.data

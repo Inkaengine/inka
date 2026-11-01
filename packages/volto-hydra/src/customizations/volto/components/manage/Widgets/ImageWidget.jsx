@@ -54,6 +54,7 @@ import clearSVG from '@plone/volto/icons/clear.svg';
 
 // Import AddLinkForm for consistent UI
 import AddLinkForm from '../AnchorPlugin/components/LinkButton/AddLinkForm';
+import { holdImage, heldImage, isPendingImage } from '../../../../../utils/pendingImages';
 
 const Dropzone = loadable(() => import('react-dropzone'));
 
@@ -250,6 +251,24 @@ const UnconnectedImageInput = (props) => {
           );
           return;
         }
+        // A front end that defers uploads (settings.deferImageUploads) gets the
+        // image held until the page is saved: the field names it by reference,
+        // and Save uploads it (pendingImages.js). Nothing is created now, so a
+        // cancelled edit leaves nothing behind.
+        if (config.settings.deferImageUploads) {
+          setUploading(false);
+          onChange(
+            id,
+            holdImage({
+              name: file.name,
+              type: file.type,
+              dataUrl: fileData,
+              folder: flattenToAppURL(uploadUrl),
+            }),
+          );
+          onClose?.();
+          return;
+        }
         dispatch(
           createContent(
             uploadUrl,
@@ -276,6 +295,10 @@ const UnconnectedImageInput = (props) => {
       dispatch,
       props.block,
       requestId,
+      accept,
+      id,
+      onChange,
+      onClose,
     ],
   );
 
@@ -411,12 +434,17 @@ const UnconnectedImageInput = (props) => {
           <Image
             className={props.className}
             src={
-              isInternalURL(imageValue)
-                ? `${flattenToAppURL(imageValue)}/@@images/image/${imageSize}`
-                : imageValue
+              isPendingImage(imageValue)
+                ? heldImage(imageValue).dataUrl
+                : isInternalURL(imageValue)
+                  ? `${flattenToAppURL(imageValue)}/@@images/image/${imageSize}`
+                  : imageValue
             }
             alt=""
           />
+        )}
+        {isPendingImage(imageValue) && (
+          <div className="image-upload-widget-pending">Saved with the page</div>
         )}
       </div>
     );

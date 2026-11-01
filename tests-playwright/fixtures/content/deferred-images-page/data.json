@@ -1,0 +1,48 @@
+{
+  "@id": "http://localhost:8888/deferred-images-page",
+  "@type": "Document",
+  "UID": "deferred-images-page-uid",
+  "id": "deferred-images-page",
+  "title": "Upload On Save Page",
+  "description": "Its front end defers image uploads (settings.deferImageUploads): an image dropped in the editor is held, previewed on the canvas, and uploaded only when the page is saved.",
+  "review_state": "published",
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "hero": {
+      "@type": "hero",
+      "heading": "Welcome Hero",
+      "subheading": "This is the hero subtitle",
+      "buttonText": "Click Me",
+      "buttonLink": [
+        {
+          "@id": "/_test_data/target-page",
+          "title": "Target Page"
+        }
+      ],
+      "image": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='400'%3E%3Crect width='100%25' height='100%25' fill='%234a90d9'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='24'%3EHero Image%3C/text%3E%3C/svg%3E",
+      "description": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Rich text description"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "hero"
+    ]
+  }
+}
