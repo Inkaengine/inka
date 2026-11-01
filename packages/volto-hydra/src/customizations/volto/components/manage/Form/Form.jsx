@@ -56,6 +56,13 @@ import {
 import Api from '@plone/volto/helpers/Api/Api';
 import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
 import {
+  releaseImages,
+  uploadPendingImages,
+  UploadFailed,
+} from '../../../../../utils/pendingImages';
+import { buildUploadPayload } from '../../../../../utils/uploadPayload';
+import { readAsDataURL } from 'promise-file-reader';
+import {
   buildIdFieldMap,
   getBlockTypeSchema,
   getBlockById,
@@ -526,6 +533,8 @@ class Form extends Component {
    */
   componentWillUnmount() {
     this.unmounted = true;
+    // Saved or cancelled: the images held for this edit are done with.
+    releaseImages();
     if (this.handleSaveShortcut) {
       document.removeEventListener('keydown', this.handleSaveShortcut);
     }
@@ -614,6 +623,24 @@ class Form extends Component {
       }
     }
     this.props.onCancel(event);
+  }
+
+  /**
+   * Upload each image held for this edit that `formData` uses
+   * (pendingImages.js), into the folder it was held for; resolves to
+   * `formData` naming the uploaded images.
+   */
+  uploadHeldImages(formData) {
+    const api = new Api();
+    return uploadPendingImages(formData, {
+      // The file becomes text only now, for the upload (Plone takes it as
+      // base64 in JSON).
+      upload: async (image) =>
+        api.post(image.folder, {
+          data: buildUploadPayload(image.file, await readAsDataURL(image.file)),
+        }),
+      remove: (url) => api.del(flattenToAppURL(url)),
+    });
   }
 
   /**
@@ -825,6 +852,16 @@ class Form extends Component {
       // restyling one is no evidence anyone read the English that changed, and
       // clearing the marker on that loses the drift it exists to catch.
       pageFormData = await this.restampTranslation(pageFormData);
+      // Images held until save (a front end that sets deferImageUploads):
+      // uploaded now, beside the page as ImageWidget would have at drop time,
+      // and put in place of their references. A failed upload refuses the save.
+      try {
+        pageFormData = await this.uploadHeldImages(pageFormData);
+      } catch (error) {
+        if (!(error instanceof UploadFailed)) throw error;
+        toast.error(<Toast error title="Can't save yet" content={error.message} />);
+        return;
+      }
       if (this.props.isEditForm) {
         this.props.onSubmit(this.getOnlyFormModifiedValues(pageFormData));
       } else {

@@ -1,5 +1,12 @@
 
 
+/**
+ * A URL that is the image itself, used as it is: a data: URL, or a blob: URL
+ * (an image the editor holds until Save, deferImageUploads). A Plone scale
+ * path appended to one names nothing.
+ */
+const isWholeImage = (url) => /^(data|blob):/.test(url);
+
 // Plone's default `plone.allowed_sizes` registry (scale name -> max width). plone.scale
 // generates these on demand at `<@id>/@@images/<field>/<name>`. An image block ships
 // only a `url` (a brain summary, no embedded scale URLs), so the block CONSTRUCTS its
@@ -115,7 +122,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
         || /svg/i.test(imgMeta?.['content-type'] || '')
         || /\.svg($|[?#])/i.test(image_url);
 
-    if (isSvg && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.startsWith('data:')) {
+    if (isSvg && !image_url.includes('@@images') && !image_url.includes('@@download') && !isWholeImage(image_url)) {
         // Serve the SVG via @@download/<field>/<filename>, NOT @@images/<field>.
         // Both return the original with image/svg+xml from Plone, but @@download
         // ends in the real filename (…/architecture.svg) while @@images/<field>
@@ -187,7 +194,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
         sizes = DEFAULT_SIZES;
         image_url = `${image_url}/@@images/${block?.image_field}/great`;
     }
-    else if ((block['@type'] == "image" || block['@type'] == "Image") && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.includes('@@display-file') && !image_url.startsWith('data:')) {
+    else if ((block['@type'] == "image" || block['@type'] == "Image") && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.includes('@@display-file') && !isWholeImage(image_url)) {
         // Image block / Plone Image reference with only a base path (no embedded
         // scales). Construct the scale URLs from PLONE_SCALES rather than requesting
         // the bare `<base>/@@images/image` original: the original is large + slow (a
@@ -202,7 +209,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
         sizes = DEFAULT_SIZES;
         image_url = `${image_url}/@@images/${fld}/great`;
     }
-    else if (!image_url.startsWith('data:') && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.includes('@@display-file') && !/\.[a-zA-Z]+$/.test(image_url)) {
+    else if (!isWholeImage(image_url) && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.includes('@@display-file') && !/\.[a-zA-Z]+$/.test(image_url)) {
         image_url = "";
     }
     // `${['hidden', 'duration-700', 'ease-linear', 'bg-center',  ] + (block?.preview_image? ['bg-cover', imageProps(block.preview_image[0]).bg]:['bg-gray-700', 'bg-blend-multiply', 'bg-no-repeat'])}`

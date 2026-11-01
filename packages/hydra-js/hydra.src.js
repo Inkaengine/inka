@@ -4825,6 +4825,19 @@ export class Bridge {
         };
         window.removeEventListener('message', receiveInitialData);
         window.addEventListener('message', receiveInitialData);
+        // A held image (holdPendingImage): the admin sends its file, as a Blob,
+        // before the INITIAL_DATA or FORM_DATA that first names it, so it is
+        // here for that render. A Blob crosses postMessage as a handle to the
+        // admin's bytes, and a blob: URL made here is this page's own, so the
+        // front end can load it. Sent again after a reload; one URL per ref.
+        if (!this._pendingImageListener) {
+          this._pendingImageListener = (e) => {
+            if (e.origin !== this.adminOrigin || e.data?.type !== 'PENDING_IMAGE') return;
+            if (this.pendingImages.has(e.data.ref)) return;
+            this.holdPendingImage(e.data.ref, URL.createObjectURL(e.data.blob));
+          };
+          window.addEventListener('message', this._pendingImageListener);
+        }
         // Add a single document-level focus listener to track field changes
         // This avoids adding duplicate listeners and works for all blocks
         if (!this.fieldFocusListenerAdded) {
@@ -12644,8 +12657,45 @@ export class Bridge {
     // (not this.formData) to tell "field is empty, so no element is CORRECT" from
     // "field has content but the renderer produced no element" — including a
     // revealed sentinel, whose element failing to appear means reveal did nothing.
-    this._lastRenderedData = projected || formData;
+    this._lastRenderedData = this._withPendingImages(projected || formData);
     return this._lastRenderedData;
+  }
+
+  /**
+   * Images the admin holds until the page is saved (a front end that sets
+   * `deferImageUploads`), by the reference the page names each by
+   * (`inka-pending:<id>`), as a blob: URL of the file the admin sent once
+   * (PENDING_IMAGE). Every FORM_DATA carries only the reference.
+   */
+  get pendingImages() {
+    if (!this._pendingImages) this._pendingImages = new Map();
+    return this._pendingImages;
+  }
+
+  holdPendingImage(ref, dataUrl) {
+    this.pendingImages.set(ref, dataUrl);
+  }
+
+  /**
+   * `data` with each held image's reference replaced by its blob: URL, for the
+   * renderer: the front end, having opted in, renders a complete URL as it is.
+   * State keeps the reference. Cloned only when something is swapped.
+   */
+  _withPendingImages(data) {
+    if (!this._pendingImages?.size || !data) return data;
+    const swap = (value) => {
+      if (typeof value === 'string') return this._pendingImages.get(value) ?? value;
+      if (!value || typeof value !== 'object') return value;
+      let copy = null;
+      for (const [key, item] of Object.entries(value)) {
+        const swapped = swap(item);
+        if (swapped === item) continue;
+        if (!copy) copy = Array.isArray(value) ? [...value] : { ...value };
+        copy[key] = swapped;
+      }
+      return copy || value;
+    };
+    return swap(data);
   }
 
   _executeRender(callbackFn, afterRenderOptions = {}) {

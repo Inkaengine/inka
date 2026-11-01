@@ -4612,15 +4612,19 @@ export class AdminUIHelper {
    * same guarantee the drag auto-scroll needs.
    */
   async waitForPositionStable(element: Locator): Promise<void> {
-    let lastY: number | null = null;
+    let last: { x: number; y: number } | null = null;
     await expect(async () => {
       const rect = await element.boundingBox();
       expect(rect).not.toBeNull(); // Element must be visible
-      const currentY = rect!.y;
-      if (lastY !== null) {
-        expect(Math.abs(currentY - lastY)).toBeLessThan(5);
+      const current = { x: rect!.x, y: rect!.y };
+      const previous = last;
+      last = current;
+      if (previous !== null) {
+        // Both axes: a panel sliding in from the side moves only x.
+        expect(Math.abs(current.x - previous.x)).toBeLessThan(5);
+        expect(Math.abs(current.y - previous.y)).toBeLessThan(5);
       }
-      lastY = currentY;
+      expect(previous).not.toBeNull();
     }).toPass({ timeout: 2000, intervals: [50, 100, 200] });
   }
 
@@ -6253,6 +6257,10 @@ export class AdminUIHelper {
     }
 
     await item.first().waitFor({ state: 'visible', timeout: 10000 });
+    // The browser slides in from the side, and the click below is forced, so
+    // Playwright won't wait for the row to stop moving: a click mid-slide lands
+    // where the row was, beside it, and selects nothing.
+    await this.waitForPositionStable(item.first());
 
     // Use the radio/checkbox selection control if available (shadowed OB),
     // otherwise fall back to clicking the row directly.

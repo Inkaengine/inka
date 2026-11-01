@@ -19,6 +19,15 @@ import { validateFileUploadSize } from '@plone/volto/helpers/FormValidation/Form
 import { buildAnchorTree } from '@volto-hydra/hydra-js';
 import { collectAnchorsFromContent } from '../../../../../utils/linkableAnchors';
 import { buildUploadPayload } from '../../../../../utils/uploadPayload';
+import Api from '@plone/volto/helpers/Api/Api';
+import { toast } from 'react-toastify';
+import Toast from '@plone/volto/components/manage/Toast/Toast';
+import {
+  checkImagesAllowed,
+  heldImagesIn,
+  holdImage,
+  ImagesNotAllowed,
+} from '../../../../../utils/pendingImages';
 import Icon from '@plone/volto/components/theme/Icon/Icon';
 import { flattenToAppURL, isInternalURL } from '@plone/volto/helpers/Url/Url';
 import config from '@plone/volto/registry';
@@ -440,6 +449,16 @@ class ObjectBrowserBody extends Component {
     });
   };
 
+  // The current folder's listing, with the images held for it until the page
+  // is saved (pendingImages.js) first: they will be Images here once saved.
+  listing = () => {
+    const results =
+      this.props.searchSubrequests[`${this.props.block}-${this.props.mode}`];
+    const held = heldImagesIn(flattenToAppURL(this.state.currentFolder));
+    if (!held.length || !results) return results;
+    return { ...results, items: [...held, ...(results.items || [])] };
+  };
+
   // Re-run the search that populates the current folder listing.
   refreshListing = () => {
     this.props.searchContent(
@@ -460,6 +479,24 @@ class ObjectBrowserBody extends Component {
   handleUpload = (file) => {
     if (!file) return;
     if (!validateFileUploadSize(file, this.props.intl.formatMessage)) return;
+    // A front end that defers uploads (settings.deferImageUploads) gets the
+    // image held until the page is saved, listed in this folder meanwhile
+    // (heldImagesIn), and picked as an uploaded one would be.
+    if (config.settings.deferImageUploads && file.type.startsWith('image/')) {
+      const folder = flattenToAppURL(this.state.currentFolder);
+      checkImagesAllowed(folder, (path) => new Api().get(`${path}/@types`))
+        .then(() => {
+          const ref = holdImage(file, folder);
+          this.handleSelectItem(
+            heldImagesIn(folder).find((item) => item['@id'] === ref),
+          );
+        })
+        .catch((error) => {
+          if (!(error instanceof ImagesNotAllowed)) throw error;
+          toast.error(<Toast error title="Can't add this image" content={error.message} />);
+        });
+      return;
+    }
     this.setState({ uploading: true });
     readAsDataURL(file).then((dataUrl) => {
       const payload = buildUploadPayload(file, dataUrl);
@@ -905,11 +942,7 @@ class ObjectBrowserBody extends Component {
                 </Segment>
               ) : (
               <ObjectBrowserNav
-                currentSearchResults={
-                  this.props.searchSubrequests[
-                    `${this.props.block}-${this.props.mode}`
-                  ]
-                }
+                currentSearchResults={this.listing()}
           selected={
             this.props.mode === 'multiple'
               ? this.props.data
