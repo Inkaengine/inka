@@ -60,8 +60,10 @@ const EDIT_ADMIN = process.env.NUXT_ADMIN_URL
 // admin (the public defaults and the local test servers too). A CSP naming
 // only api.inka.sh blocked a build against any other API: no content, and a
 // 500 ("Template … not found in pre-loaded templates").
+// blob: is an image the editor holds until Save (deferImageUploads), which
+// the bridge hands the page as a blob: URL of its own.
 const EDIT_SOURCES = [...new Set([
-  "'self'", 'data:',
+  "'self'", 'data:', 'blob:',
   'https://admin.inka.sh', 'https://api.inka.sh',
   new URL(PUBLIC_BACKEND).origin, new URL(EDIT_ADMIN).origin,
   // Absent from a public build: there is no local admin or mock API to allow.

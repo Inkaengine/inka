@@ -3,11 +3,11 @@ import { Bridge } from './hydra.src.js';
 /**
  * An image the admin holds until the page is saved (a front end that sets
  * `deferImageUploads`). The page names it by a short reference, and the admin
- * sends its picture once, as a data: URL (PENDING_IMAGE). The renderer is
- * handed the picture in place of the reference; hydra's own state, and every
- * FORM_DATA, keep the reference, so a keystroke costs what it did.
+ * sends its file once (PENDING_IMAGE), which hydra holds as a blob: URL. The
+ * renderer is handed that URL in place of the reference; hydra's own state,
+ * and every FORM_DATA, keep the reference, so a keystroke costs what it did.
  */
-const PICTURE = 'data:image/png;base64,iVBORw0KGgo=';
+const PICTURE = 'blob:http://frontend.test/0b6f7c1e-9d4a-4c55-8a51-2f0f5b1d7e21';
 const SCHEMA = { properties: { url: { widget: 'image' }, heading: { type: 'string' } } };
 
 function bridgeWith(block) {

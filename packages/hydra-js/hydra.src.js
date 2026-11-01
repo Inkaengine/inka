@@ -4825,13 +4825,16 @@ export class Bridge {
         };
         window.removeEventListener('message', receiveInitialData);
         window.addEventListener('message', receiveInitialData);
-        // A held image's picture (holdPendingImage). The admin sends it before
-        // the INITIAL_DATA or FORM_DATA that first names it, so it is here for
-        // that render.
+        // A held image (holdPendingImage): the admin sends its file, as a Blob,
+        // before the INITIAL_DATA or FORM_DATA that first names it, so it is
+        // here for that render. A Blob crosses postMessage as a handle to the
+        // admin's bytes, and a blob: URL made here is this page's own, so the
+        // front end can load it. Sent again after a reload; one URL per ref.
         if (!this._pendingImageListener) {
           this._pendingImageListener = (e) => {
             if (e.origin !== this.adminOrigin || e.data?.type !== 'PENDING_IMAGE') return;
-            this.holdPendingImage(e.data.ref, e.data.dataUrl);
+            if (this.pendingImages.has(e.data.ref)) return;
+            this.holdPendingImage(e.data.ref, URL.createObjectURL(e.data.blob));
           };
           window.addEventListener('message', this._pendingImageListener);
         }
@@ -12661,8 +12664,8 @@ export class Bridge {
   /**
    * Images the admin holds until the page is saved (a front end that sets
    * `deferImageUploads`), by the reference the page names each by
-   * (`inka-pending:<id>`): the admin sends each picture once, as a data: URL
-   * (PENDING_IMAGE), and every FORM_DATA carries only the reference.
+   * (`inka-pending:<id>`), as a blob: URL of the file the admin sent once
+   * (PENDING_IMAGE). Every FORM_DATA carries only the reference.
    */
   get pendingImages() {
     if (!this._pendingImages) this._pendingImages = new Map();
@@ -12674,7 +12677,7 @@ export class Bridge {
   }
 
   /**
-   * `data` with each held image's reference replaced by its picture, for the
+   * `data` with each held image's reference replaced by its blob: URL, for the
    * renderer: the front end, having opted in, renders a complete URL as it is.
    * State keeps the reference. Cloned only when something is swapped.
    */

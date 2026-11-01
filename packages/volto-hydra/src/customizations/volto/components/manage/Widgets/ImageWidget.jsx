@@ -54,7 +54,7 @@ import clearSVG from '@plone/volto/icons/clear.svg';
 
 // Import AddLinkForm for consistent UI
 import AddLinkForm from '../AnchorPlugin/components/LinkButton/AddLinkForm';
-import { holdImage, heldImage, isPendingImage } from '../../../../../utils/pendingImages';
+import { holdImage, isPendingImage, previewUrl } from '../../../../../utils/pendingImages';
 
 const Dropzone = loadable(() => import('react-dropzone'));
 
@@ -237,6 +237,16 @@ const UnconnectedImageInput = (props) => {
         setUploading(false);
         return;
       }
+      // A front end that defers uploads (settings.deferImageUploads) gets the
+      // image held until the page is saved: the field names it by reference,
+      // and Save uploads it (pendingImages.js). Nothing is created now, so a
+      // cancelled edit leaves nothing behind.
+      if (config.settings.deferImageUploads) {
+        setUploading(false);
+        onChange(id, holdImage(file, flattenToAppURL(uploadUrl)));
+        onClose?.();
+        return;
+      }
       readAsDataURL(file).then((fileData) => {
         const fields = fileData.match(/^data:(.*);(.*),(.*)$/);
         if (!fields) {
@@ -249,24 +259,6 @@ const UnconnectedImageInput = (props) => {
               content={intl.formatMessage(messages.imageUploadErrorMessage)}
             />,
           );
-          return;
-        }
-        // A front end that defers uploads (settings.deferImageUploads) gets the
-        // image held until the page is saved: the field names it by reference,
-        // and Save uploads it (pendingImages.js). Nothing is created now, so a
-        // cancelled edit leaves nothing behind.
-        if (config.settings.deferImageUploads) {
-          setUploading(false);
-          onChange(
-            id,
-            holdImage({
-              name: file.name,
-              type: file.type,
-              dataUrl: fileData,
-              folder: flattenToAppURL(uploadUrl),
-            }),
-          );
-          onClose?.();
           return;
         }
         dispatch(
@@ -435,7 +427,7 @@ const UnconnectedImageInput = (props) => {
             className={props.className}
             src={
               isPendingImage(imageValue)
-                ? heldImage(imageValue).dataUrl
+                ? previewUrl(imageValue)
                 : isInternalURL(imageValue)
                   ? `${flattenToAppURL(imageValue)}/@@images/image/${imageSize}`
                   : imageValue

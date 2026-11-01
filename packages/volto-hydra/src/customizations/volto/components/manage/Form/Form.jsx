@@ -61,6 +61,7 @@ import {
   UploadFailed,
 } from '../../../../../utils/pendingImages';
 import { buildUploadPayload } from '../../../../../utils/uploadPayload';
+import { readAsDataURL } from 'promise-file-reader';
 import {
   buildIdFieldMap,
   getBlockTypeSchema,
@@ -632,9 +633,11 @@ class Form extends Component {
   uploadHeldImages(formData) {
     const api = new Api();
     return uploadPendingImages(formData, {
-      upload: (image) =>
+      // The file becomes text only now, for the upload (Plone takes it as
+      // base64 in JSON).
+      upload: async (image) =>
         api.post(image.folder, {
-          data: buildUploadPayload({ name: image.name, type: image.type }, image.dataUrl),
+          data: buildUploadPayload(image.file, await readAsDataURL(image.file)),
         }),
       remove: (url) => api.del(flattenToAppURL(url)),
     });

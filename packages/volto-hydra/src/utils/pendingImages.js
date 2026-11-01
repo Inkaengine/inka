@@ -2,9 +2,12 @@
  * Images held until the page is saved, for a front end that sets
  * `deferImageUploads` (voltoConfig.settings). An image dropped or picked in
  * the editor is not uploaded: it is held here, and the page names it by a
- * short reference (`inka-pending:<id>`). The canvas gets its picture once
- * (View.jsx sends PENDING_IMAGE; hydra.js swaps it in for the renderer), so
- * the page JSON, which crosses the bridge on every edit, stays small.
+ * short reference (`inka-pending:<id>`). The file itself is held, as the
+ * browser handed it over: its bytes live once, in the browser, and are made
+ * into text only for the upload. The canvas is sent the file once (View.jsx
+ * sends PENDING_IMAGE; a Blob crosses postMessage as a handle, not a copy) and
+ * hydra.js swaps a blob: URL of it in for the renderer, so the page JSON,
+ * which crosses the bridge on every edit, stays small.
  *
  * On Save (Form.jsx) each held image the page still uses is uploaded, as
  * ImageWidget would have at drop time, and its reference replaced by the
@@ -21,13 +24,12 @@ const held = new Map();
 const listeners = new Set();
 
 /**
- * Hold an image: `{ name, type, dataUrl, folder }` (the file's name and type,
- * the file read as a data: URL, which is also what the upload sends, and the
- * folder path it will be uploaded into). Returns the reference the page names
- * it by.
+ * Hold `file` (a dropped or picked File) for upload into `folder` (a path).
+ * Returns the reference the page names it by.
  */
-export function holdImage(image) {
+export function holdImage(file, folder) {
   const ref = `${PENDING_PREFIX}${uuid()}`;
+  const image = { file, folder };
   held.set(ref, image);
   for (const listener of listeners) listener(ref, image);
   return ref;
@@ -52,7 +54,7 @@ export function heldImagesIn(folder) {
       '@type': 'Image',
       id: ref,
       getURL: ref,
-      title: image.name,
+      title: image.file.name,
       is_folderish: false,
     }));
 }
@@ -69,8 +71,21 @@ export function onImageHeld(listener) {
   return () => listeners.delete(listener);
 }
 
+/**
+ * A URL the admin's own pages can show a held image by (the widget's preview,
+ * the object browser's thumbnail): a blob: URL of the file, made once.
+ */
+export function previewUrl(ref) {
+  const image = heldImage(ref);
+  if (!image.previewUrl) image.previewUrl = URL.createObjectURL(image.file);
+  return image.previewUrl;
+}
+
 /** Let every held image go (saved, or the edit left). */
 export function releaseImages() {
+  for (const image of held.values()) {
+    if (image.previewUrl) URL.revokeObjectURL(image.previewUrl);
+  }
   held.clear();
 }
 
@@ -110,7 +125,8 @@ function withUploaded(data, uploaded) {
 
 /**
  * Upload each held image `formData` uses, and return it with the images in
- * place of the references. `upload(image)` creates one and resolves to the
+ * place of the references. `upload(image)` (`{ file, folder }`) creates one
+ * and resolves to the
  * created content (`{ '@id', image }`); `remove(url)` deletes one. If an
  * upload fails, the images this save created are removed and it throws:
  * nothing is half saved.
@@ -125,7 +141,7 @@ export async function uploadPendingImages(formData, { upload, remove }) {
       uploaded.set(ref, await upload(image));
     } catch (error) {
       for (const content of uploaded.values()) await remove(content['@id']);
-      throw new UploadFailed(`${image.name} could not be uploaded, so the page was not saved: ${error.message}`, { cause: error });
+      throw new UploadFailed(`${image.file.name} could not be uploaded, so the page was not saved: ${error.message}`, { cause: error });
     }
   }
   return withUploaded(formData, uploaded);

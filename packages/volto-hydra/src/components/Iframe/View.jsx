@@ -756,13 +756,14 @@ function recurseUpdateVoltoConfig(newConfig) {
 let persistedIframe = { frontendUrl: null, path: null, isEdit: null, src: null };
 
 /**
- * Send a canvas the picture of each image held until the page is saved
- * (pendingImages.js), before the data that names them: hydra.js swaps each
- * in for its reference when it hands the page to the front end.
+ * Send a canvas each image held until the page is saved (pendingImages.js),
+ * before the data that names them: the file goes as a Blob, a handle to the
+ * same bytes rather than a copy, and hydra.js swaps a blob: URL of it in for
+ * its reference when it hands the page to the front end.
  */
 function sendHeldImages(target, origin) {
   for (const [ref, image] of heldImages()) {
-    target.postMessage({ type: 'PENDING_IMAGE', ref, dataUrl: image.dataUrl }, origin);
+    target.postMessage({ type: 'PENDING_IMAGE', ref, blob: image.file }, origin);
   }
 }
 
@@ -4869,7 +4870,7 @@ const Iframe = (props) => {
       onImageHeld((ref, image) => {
         if (!iframeOriginRef.current) return;
         document.getElementById('previewIframe')?.contentWindow?.postMessage(
-          { type: 'PENDING_IMAGE', ref, dataUrl: image.dataUrl },
+          { type: 'PENDING_IMAGE', ref, blob: image.file },
           iframeOriginRef.current,
         );
       }),

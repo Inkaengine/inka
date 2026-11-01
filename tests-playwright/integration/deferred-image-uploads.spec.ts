@@ -4,8 +4,8 @@
  * on /deferred-images-page; the Nuxt starter's edit build does everywhere).
  *
  * An image dropped in the editor is not uploaded: the canvas shows it at once,
- * from a data: URL the bridge sends once, while the page JSON carries only a
- * short reference. Save uploads it and saves the page naming the uploaded
+ * from a blob: URL of the file the bridge sends once, while the page JSON
+ * carries only a short reference. Save uploads it and saves the page naming the uploaded
  * image; a failed upload refuses the save; Cancel leaves nothing on the site.
  */
 import type { Page, Request } from '@playwright/test';
@@ -61,7 +61,7 @@ test.describe('Images held until save', () => {
     await helper.navigateToEdit('/deferred-images-page');
 
     const image = await dropImage(helper, page, 'held.png');
-    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
+    await expect(image).toHaveAttribute('src', /^blob:/);
     // Drawn, not just pointed at: the picture decodes on the canvas.
     await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
     expect(uploads, 'nothing is uploaded before Save').toHaveLength(0);
@@ -98,10 +98,10 @@ test.describe('Images held until save', () => {
     });
 
     const image = await dropImage(helper, page, 'held.png');
-    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
+    await expect(image).toHaveAttribute('src', /^blob:/);
     const sent: string[] = await canvas.evaluate(() => (window as any).__formData);
     expect(sent.length).toBeGreaterThan(0);
-    expect(sent.filter((data) => data.includes('data:image/png')), 'no FORM_DATA carries the picture').toEqual([]);
+    expect(sent.filter((data) => /data:image|blob:/.test(data)), 'no FORM_DATA carries the picture').toEqual([]);
     expect(sent.at(-1)).toMatch(/"inka-pending:[^"]+"/);
   });
 
@@ -112,9 +112,9 @@ test.describe('Images held until save', () => {
     await helper.navigateToEdit('/deferred-images-page');
 
     const image = await dropImage(helper, page, 'held.png');
-    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
+    await expect(image).toHaveAttribute('src', /^blob:/);
     await page.locator('button[title="Clear image"]').click();
-    await expect(image).not.toHaveAttribute('src', /^data:image\/png/);
+    await expect(image).not.toHaveAttribute('src', /^blob:/);
 
     // The page is a folder, so its images go into it: the picker opens there.
     const overlay = page.locator('.empty-image-overlay');
@@ -126,7 +126,7 @@ test.describe('Images held until save', () => {
     await helper.objectBrowserSelectItem(objectBrowser, /held\.png/);
     await helper.submitAddLinkFormIfOpen(overlay);
 
-    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
+    await expect(image).toHaveAttribute('src', /^blob:/);
     expect(uploads, 'still nothing uploaded').toHaveLength(0);
   });
 

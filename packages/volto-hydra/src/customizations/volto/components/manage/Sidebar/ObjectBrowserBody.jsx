@@ -471,18 +471,17 @@ class ObjectBrowserBody extends Component {
   handleUpload = (file) => {
     if (!file) return;
     if (!validateFileUploadSize(file, this.props.intl.formatMessage)) return;
+    // A front end that defers uploads (settings.deferImageUploads) gets the
+    // image held until the page is saved, listed in this folder meanwhile
+    // (heldImagesIn), and picked as an uploaded one would be.
+    if (config.settings.deferImageUploads && file.type.startsWith('image/')) {
+      const folder = flattenToAppURL(this.state.currentFolder);
+      const ref = holdImage(file, folder);
+      this.handleSelectItem(heldImagesIn(folder).find((item) => item['@id'] === ref));
+      return;
+    }
     this.setState({ uploading: true });
     readAsDataURL(file).then((dataUrl) => {
-      // A front end that defers uploads (settings.deferImageUploads) gets the
-      // image held until the page is saved, listed in this folder meanwhile
-      // (heldImagesIn), and picked as an uploaded one would be.
-      if (config.settings.deferImageUploads && file.type.startsWith('image/')) {
-        const folder = flattenToAppURL(this.state.currentFolder);
-        const ref = holdImage({ name: file.name, type: file.type, dataUrl, folder });
-        this.setState({ uploading: false });
-        this.handleSelectItem(heldImagesIn(folder).find((item) => item['@id'] === ref));
-        return;
-      }
       const payload = buildUploadPayload(file, dataUrl);
       this.props
         .createContent(

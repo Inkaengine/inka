@@ -222,14 +222,15 @@ initBridge({
 });
 ```
 
-Opting in is a promise: **in edit mode, your front end renders an image value that is a complete URL as it is**, a `data:` URL included, with no `image_scales` beside it. The shared `getImageUrl` (`@volto-hydra/helpers`) already does; so does any code that only builds a URL for a value starting with `/`. If your edit mode sets a Content Security Policy, its `img-src` must allow `data:`.
+Opting in is a promise: **in edit mode, your front end renders an image value that is a complete URL as it is**, a `blob:` URL included, with no `image_scales` beside it. The shared `getImageUrl` (`@volto-hydra/helpers`) already does; so does any code that only builds a URL for a value starting with `/`. If your edit mode sets a Content Security Policy, its `img-src` must allow `blob:`.
 
 What changes:
 
-- A held image shows on the canvas at once. Its picture crosses the bridge once; the page data your `onEditChange` callback receives holds it as a `data:` URL, while the page the editor keeps (and sends on every edit) names it by a short reference.
+- A held image shows on the canvas at once. The editor keeps the file itself and sends it to the canvas once, as a `Blob` (a handle to the same bytes, not a copy); the page data your `onEditChange` callback receives holds a `blob:` URL of it, while the page the editor keeps (and sends on every edit) names it by a short reference.
 - **Save** uploads each held image the page still uses, then saves the page naming the uploaded images, with their `image_scales`, exactly as an upload at drop time would have left it. If an upload fails, the page is not saved, and images that save had already uploaded are removed.
 - **Cancel** uploads nothing.
 - Until it is saved, a held image has no `image_scales`, so a field rule that reads them (an SVG or aspect-ratio rule) has nothing to read yet.
+- Held images live in the editor's memory: reloading the editor loses them.
 
 ## Defining a custom block
 
