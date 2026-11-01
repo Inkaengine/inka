@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = require('../../lib/plone-content-validator.cjs');
 
 /**
  * Build a minimal plone.exportimport content tree under a temp dir.
