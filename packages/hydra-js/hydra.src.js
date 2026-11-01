@@ -8502,6 +8502,8 @@ export class Bridge {
    * render draws the same text again in its own node ("FreshFresh"). So before
    * a character goes in, the caret moves to the end of the frontend's node and
    * the bridge's node goes — the same cleanup _insertTextAtCursor does after.
+   * Every bare one of the bridge's in the line goes, not only the caret's: a
+   * clear's re-render can leave two, and the browser may type into the other.
    */
   adoptFrontendCaretTarget() {
     const sel = window.getSelection();
@@ -8518,9 +8520,11 @@ export class Bridge {
     // format the author just toggled off at the caret, and it stays put.
     const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
     let target = null;
+    const bridgeNodes = [];
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       if (this.stripZeroWidthSpaces(n.data) !== '') return;
-      if (!target && n !== bridgeNode && /^\u200B+$/.test(n.data)) target = n;
+      if (n.parentElement === line && /^\uFEFF+$/.test(n.data)) bridgeNodes.push(n);
+      else if (!target && /^\u200B+$/.test(n.data)) target = n;
     }
     if (!target) return;
     const range = document.createRange();
@@ -8528,7 +8532,7 @@ export class Bridge {
     range.collapse(true);
     sel.removeAllRanges();
     sel.addRange(range);
-    bridgeNode.remove();
+    for (const node of bridgeNodes) node.remove();
   }
 
   /**
