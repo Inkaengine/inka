@@ -1814,12 +1814,14 @@ function extractFieldPlaceholders(block) {
     'slotId',
     'fixed',
     'readOnly',
-    'readOnly',
     'fieldPlaceholders',
     'fieldMappings',
     'blocks',
     'blocks_layout',
+    // The slot hints, all three: a slot name is machinery, not placeholder text
+    // an author would recognise in an empty field.
     'nextSlotId',
+    'prevSlotId',
     'childSlotIds',
   ]);
   const placeholders = {};
@@ -3826,7 +3828,9 @@ export function collectContentFromTree(
  *     added to the template later has to take hold on pages already using it.
  *   - blocks / blocks_layout: a container's children are re-derived per region
  *     by fillContainerInto, region by region.
- *   - nextSlotId / fieldPlaceholders: hints recomputed on every apply.
+ *   - nextSlotId / prevSlotId / childSlotIds / fieldPlaceholders: hints
+ *     recomputed on every apply — an absent one is DELETED, so a hint captured
+ *     into a template from an older layout cannot outlive it.
  */
 const TEMPLATE_OWNED_FIELDS = new Set([
   'templateId',
@@ -3972,10 +3976,22 @@ function fillRegionEntries(entries, templateState, options) {
         ...child,
         templateInstanceId: instanceId,
         ...(editable && existingFixed?.block ? editedFieldsOf(existingFixed.block) : {}),
-        ...(nextSlotId && { nextSlotId }),
-        ...(prevSlotId && { prevSlotId }),
-        ...(childSlotIds && { childSlotIds }),
       };
+      // The hints are RECOMPUTED here, never inherited: they name the slots
+      // beside this block in the template as it is NOW. Templates are content,
+      // so a template can be captured from an already-merged page and its own
+      // blocks then carry the hints of that older layout. Spread through, a
+      // block keeps claiming a slot that has since moved or gone, and the
+      // editor seeds an empty placeholder into a slot that is not there — so an
+      // absent hint has to DELETE, not merely skip.
+      for (const [hint, value] of [
+        ['nextSlotId', nextSlotId],
+        ['prevSlotId', prevSlotId],
+        ['childSlotIds', childSlotIds],
+      ]) {
+        if (value) stamped[hint] = value;
+        else delete stamped[hint];
+      }
       if (firstInsert && editable) {
         const placeholders = extractFieldPlaceholders(child);
         if (Object.keys(placeholders).length > 0) stamped.fieldPlaceholders = placeholders;
@@ -5148,6 +5164,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
       delete item.fixed;
       delete item.readOnly;
       delete item.nextSlotId;
+      delete item.prevSlotId;
       delete item.childSlotIds;
       delete item._orphaned;
     }

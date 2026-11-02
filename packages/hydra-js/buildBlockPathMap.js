@@ -515,9 +515,16 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
     const isFixed = item.fixed === true;
     const atStart = index === 0;
     const atEnd = index === count - 1;
+    // A fixed block's slot hints name an empty template slot beside it, which is
+    // still addable: `nextSlotId` the slot after it, `prevSlotId` the slot
+    // before (a bottom-anchored layout — slots above a fixed footer). Without
+    // the leading mirror, a layout whose region starts with its fixed anchor
+    // offers no "+" before it and the empty slot above is unreachable.
     const hasNextPlaceholder = item.nextSlotId != null;
+    const hasPrevPlaceholder = item.prevSlotId != null;
     return {
-      canInsertBefore: !(isFixed && (atStart || prevIsFixed)),
+      canInsertBefore:
+        !(isFixed && (atStart || prevIsFixed)) || hasPrevPlaceholder,
       canInsertAfter: !(isFixed && (atEnd || nextIsFixed)) || hasNextPlaceholder,
     };
   }
