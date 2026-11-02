@@ -406,6 +406,55 @@ describe('preview_image_link (volto.preview_image_link behaviour)', () => {
   });
 });
 
+describe('image_scales ladder', () => {
+  // An Image's synthesised summary must offer the SAME rungs real Plone does,
+  // `plone.allowed_sizes`: every box smaller than the source, scaled to fit.
+  //
+  // It used to offer two, `preview` and `large`, each `Math.min`-ed against the
+  // source -- so for anything narrower than 400px BOTH came back at the
+  // original width, and the summary advertised three names for one size. A
+  // 149px logo painted into a 45px carousel box had no finer rung to pick, and
+  // block-sanity's over-download check reported exactly that: "no offered scale
+  // is finer: the smallest is 149px". The ladder was the defect, not the site's
+  // configuration. Two sibling generators in the same file (getLeadImageScales,
+  // generateScalesForField) already built it correctly.
+  //
+  // Asserted as the EXACT rung set, not "more than none": the old
+  // `Object.keys(scales).length > 0` passed on the two-rung version, which is
+  // how this survived.
+  it('offers every allowed_sizes rung below the source, scaled to fit', async () => {
+    const res = await fetch(`${baseUrl}/_test_data/preview-image-link`, {
+      headers: { Accept: 'application/json' },
+    });
+    assert.equal(res.status, 200);
+    const meta = (await res.json()).preview_image_link.image_scales.image[0];
+
+    // The source is 400x300, so `preview` (400) and everything above it is NOT
+    // smaller than the source and is left out, exactly as Plone leaves it out.
+    assert.deepEqual(Object.keys(meta.scales).sort(), ['icon', 'mini', 'thumb', 'tile']);
+    assert.deepEqual(
+      Object.fromEntries(Object.entries(meta.scales).map(([n, s]) => [n, [s.width, s.height]])),
+      { icon: [32, 24], tile: [64, 48], thumb: [128, 96], mini: [200, 150] },
+      'each rung fits the box and keeps the 4:3 aspect',
+    );
+    for (const [name, scale] of Object.entries(meta.scales)) {
+      assert.equal(scale.download, `@@images/image/${name}`, `${name} download is relative`);
+    }
+  });
+
+  // The summary used to hardcode `image/jpeg` and `<id>.jpg` whatever the file
+  // was, so a PNG logo was advertised as a JPEG under a filename that does not
+  // exist. A consumer picking a format from the summary was told a fiction.
+  it('reports the image file it actually has, not a hardcoded jpeg', async () => {
+    const res = await fetch(`${baseUrl}/_test_data/preview-image-link`, {
+      headers: { Accept: 'application/json' },
+    });
+    const meta = (await res.json()).preview_image_link.image_scales.image[0];
+    assert.equal(meta['content-type'], 'image/svg+xml');
+    assert.equal(meta.filename, 'test-image-1.svg');
+  });
+});
+
 describe('image blocks', () => {
   // Real Plone's serializer adds `image_scales` to an image block whose `url`
   // points at an Image object. Our content export stores only the resolveuid
@@ -817,7 +866,14 @@ describe('folder items carry the image fields', () => {
     const [original] = image.image_scales.image;
     assert.equal(original.width, 400);
     assert.equal(original.height, 300);
-    assert.ok(original.scales.preview.download, 'a preview scale to show in a listing');
+    // `thumb` (128), not `preview` (400): the source IS 400 wide, and real Plone
+    // leaves out every rung at or above the source rather than listing it at the
+    // original size. Checked on demo.plone.org: a 36x36 SVG carries ONE rung
+    // (icon 32), a 1126x633 image carries eight and stops below great (1200).
+    // This line asked for `preview` and passed only because the generator used
+    // to emit `preview` and `large` unconditionally, whatever the source.
+    assert.ok(original.scales.thumb.download, 'a small scale to show in a listing');
+    assert.equal(original.scales.preview, undefined, 'no rung at or above the source');
   });
 
   it('a page with no image has an empty field and no scales', async () => {
