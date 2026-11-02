@@ -776,13 +776,7 @@ test.describe('Inline Editing - Basic', () => {
     await expect(sidebarEditor).toHaveText(newText, { timeout: 5000 });
 
     await sidebarEditor.click();
-    await sidebarEditor.press('ControlOrMeta+a'); // Select all
-
-    // Verify text is selected
-    await expect(async () => {
-      const selectedText = await sidebarEditor.evaluate(() => window.getSelection()?.toString());
-      expect(selectedText).toBe(newText);
-    }).toPass({ timeout: 5000 });
+    await helper.selectAllTextInEditor(sidebarEditor);
 
     // Wait for the sidebar's floating toolbar to appear and click bold
     const sidebarToolbar = await helper.waitForSidebarSlateToolbar();

@@ -6,7 +6,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { URLS } from '../ports';
 
-const SERVER = new URL('../../packages/inka-mcp/server.mjs', import.meta.url).pathname;
+const SERVER = new URL('../../packages/inka-mcp/stdio.mjs', import.meta.url).pathname;
 
 // A call loads an editor (and a preview loads the front end too); the SDK's
 // default 60s per request is less than that under a loaded test machine.

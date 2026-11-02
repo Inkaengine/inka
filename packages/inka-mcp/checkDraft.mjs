@@ -11,7 +11,7 @@
  * brings is refused: a problem the page already had is not the agent's to fix
  * before it may change anything else.
  */
-import validator from '../../tests-playwright/fixtures/plone-content-validator.cjs';
+import validator from '../../lib/plone-content-validator.cjs';
 import { buildIdFieldMap } from '../hydra-js/buildBlockPathMap.js';
 
 const { checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = validator;

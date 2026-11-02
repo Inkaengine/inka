@@ -11,7 +11,7 @@
   },
   "license": "MIT",
   "bin": {
-    "inka-mcp": "./server.mjs",
+    "inka-mcp": "./stdio.mjs",
     "inka-mcp-http": "./start.mjs"
   },
   "dependencies": {

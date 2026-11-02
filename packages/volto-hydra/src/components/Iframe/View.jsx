@@ -340,6 +340,8 @@ import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
 import { getBlockTypeSchema } from '../../utils/blockPath';
 import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
+import { heldImages, onImageHeld } from '../../utils/pendingImages';
+import { withImageMetadata } from '../../utils/imageMetadata';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { adoptTemplate, canContainAll, getBlockAddability, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '../../utils/mergeTemplates.mjs';
@@ -753,6 +755,18 @@ function recurseUpdateVoltoConfig(newConfig) {
 // Module-level state to track iframe's current state across component remounts
 // This prevents unnecessary iframe reloads when React Router remounts the View component
 let persistedIframe = { frontendUrl: null, path: null, isEdit: null, src: null };
+
+/**
+ * Send a canvas each image held until the page is saved (pendingImages.js),
+ * before the data that names them: the file goes as a Blob, a handle to the
+ * same bytes rather than a copy, and hydra.js swaps a blob: URL of it in for
+ * its reference when it hands the page to the front end.
+ */
+function sendHeldImages(target, origin) {
+  for (const [ref, image] of heldImages()) {
+    target.postMessage({ type: 'PENDING_IMAGE', ref, blob: image.file }, origin);
+  }
+}
 
 const Iframe = (props) => {
   if (typeof window !== 'undefined' && window._formatT0) {
@@ -2794,6 +2808,7 @@ const Iframe = (props) => {
               intl,
             );
             const toolbarButtons = config.settings.slate?.toolbarButtons || [];
+            sendHeldImages(event.source, event.origin);
             event.source.postMessage(
               {
                 type: 'INITIAL_DATA',
@@ -3645,9 +3660,16 @@ const Iframe = (props) => {
           //
           // Evidence of working in this pane instead: it has focus, or it is
           // announcing a DIFFERENT block from the one already selected.
+          //
+          // Focus counts only when the author's own key or pointer moved it
+          // (userInput). The bridge focuses a field itself when it settles on
+          // the block the editor opened with, and on a slow load that comes
+          // after a click in the other language's pane: the iframe has focus
+          // then, but nobody is working in it.
           const editPaneHasFocus =
             typeof document !== 'undefined' &&
-            document.activeElement?.id === 'previewIframe';
+            document.activeElement?.id === 'previewIframe' &&
+            event.data.userInput;
           const isRepeatOfCurrentSelection =
             event.data.blockUid === selectedBlock ||
             event.data.src === 'scrollHandler' ||
@@ -4614,6 +4636,7 @@ const Iframe = (props) => {
           // save by stripEmptyBlocks, so they never persist.
           onChangeFormData(formDataToSend);
 
+          sendHeldImages(source, origin);
           source.postMessage({
             type: 'INITIAL_DATA',
             data: formDataToSend,
@@ -4713,6 +4736,7 @@ const Iframe = (props) => {
         }
 
         // Send INITIAL_DATA
+        sendHeldImages(source, origin);
         source.postMessage({
           type: 'INITIAL_DATA',
           data: formDataToSend,
@@ -4845,6 +4869,21 @@ const Iframe = (props) => {
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [properties, iframeSyncState.toolbarRequestDone, templateSyncTrigger]);
+
+  // Each image held from now on goes to the canvas once, ahead of the
+  // FORM_DATA that names it (postMessage keeps their order). A canvas not yet
+  // loaded gets them all with its INITIAL_DATA (sendHeldImages).
+  useEffect(
+    () =>
+      onImageHeld((ref, image) => {
+        if (!iframeOriginRef.current) return;
+        document.getElementById('previewIframe')?.contentWindow?.postMessage(
+          { type: 'PENDING_IMAGE', ref, blob: image.file },
+          iframeOriginRef.current,
+        );
+      }),
+    [],
+  );
 
   const sidebarFocusEventListenerRef = useRef(null);
 
@@ -6379,10 +6418,7 @@ const Iframe = (props) => {
                 // fields custom, then push FORM_DATA. Shared by pick / typed / fetched.
                 const applyLinkValue = (value, extraMeta) => {
                   let updatedBlock = setFieldValue(block, fieldName, value);
-                  const meta = extraMeta || metadata;
-                  if (meta?.image_scales) {
-                    updatedBlock = { ...updatedBlock, image_field: meta.image_field, image_scales: meta.image_scales };
-                  }
+                  updatedBlock = withImageMetadata(updatedBlock, value, extraMeta || metadata);
                   // No pull here — storing the link (full snapshot) is enough; the
                   // copy-from-target widget's reactive pull fills the mapped fields.
                   let up = updateBlockById(properties, iframeSyncState.blockPathMap, selectedBlock, updatedBlock);

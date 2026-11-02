@@ -29,6 +29,7 @@ import {
   withFieldLinked,
   pullLinkedFields,
 } from '../../utils/copyFromTarget';
+import { withImageMetadata } from '../../utils/imageMetadata';
 
 // No live @search: the pick stores the full item metadata (metadata_fields:'_all')
 // into the link snapshot, so every mapped field pulls straight from that snapshot.
@@ -121,11 +122,13 @@ const CopyFromTargetField = (props) => {
   // flip re-renders mid-type and moves the cursor. It's the same rule the inline
   // and image/link paths apply by value-compare; the widget just already knows the
   // field. A custom field edits normally.
-  const onFieldChange = (id, value) => {
+  // An image widget hands over the image's metadata as well (`itemInfo`); it
+  // goes on with the value, so it lands beside the field.
+  const onFieldChange = (id, value, itemInfo) => {
     if (linked) {
-      updateBlock({ ...withFieldCustom(blockData, props.id), [props.id]: value });
+      updateBlock(withImageMetadata({ ...withFieldCustom(blockData, props.id), [props.id]: value }, value, itemInfo));
     } else {
-      props.onChange?.(id, value);
+      props.onChange?.(id, value, itemInfo);
     }
   };
 

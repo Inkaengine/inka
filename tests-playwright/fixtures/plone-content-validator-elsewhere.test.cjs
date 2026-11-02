@@ -6,7 +6,7 @@
 // up on the site, instead of being reported broken.
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { checkIntegrity } = require('./plone-content-validator.cjs');
+const { checkIntegrity } = require('../../lib/plone-content-validator.cjs');
 
 const page = (blocks) => ({
   rel: '/news',

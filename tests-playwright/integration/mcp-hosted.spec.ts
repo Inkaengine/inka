@@ -82,9 +82,9 @@ test.describe('hosted MCP server', () => {
       await client.connect(new StreamableHTTPClientTransport(new URL('/mcp', mcp.url), { authProvider: auth }));
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name)).toContain('get_page');
-      const read = await client.callTool({ name: 'get_page', arguments: { path: '/_test_data/line-breaks-page' } }, undefined, { timeout: 90000 });
+      const read = await client.callTool({ name: 'get_page', arguments: { path: '/_test_data/test-page' } }, undefined, { timeout: 90000 });
       expect(read.isError, (read.content as any[])[0].text).toBeFalsy();
-      expect(JSON.parse((read.content as any[])[0].text).path).toBe('/_test_data/line-breaks-page');
+      expect(JSON.parse((read.content as any[])[0].text).path).toBe('/_test_data/test-page');
 
       // The client holds sealed tokens, not the person's Plone token.
       const signedInAs = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
