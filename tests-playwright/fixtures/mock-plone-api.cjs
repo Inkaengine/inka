@@ -4996,7 +4996,10 @@ app.get('/rss-stub', (req, res) => {
  * Add button reads this to populate the type-picker menu — without it the
  * button is hidden (Toolbar.jsx requires types.length > 0).
  *
- * Returns just Document for now; extend if a test needs Folder/News Item.
+ * Document, Folder, Image and File, as an ordinary Plone folder lists them.
+ * A container whose data sets `locally_allowed_types` lists only those, as
+ * Plone's type constraints (@constraintypes) narrow what it may hold: the
+ * editor asks this before it holds an image for upload into a folder.
  */
 // `id` and `immediately_addable` are in Plone's @types entries (verified against
 // plone/server-dev:6) and were missing here — the same shape
@@ -5018,14 +5021,38 @@ function listAddableTypes() {
       immediately_addable: true,
       title: 'Folder',
     },
+    {
+      '@id': `http://localhost:${PORT}/@types/Image`,
+      id: 'Image',
+      addable: true,
+      immediately_addable: true,
+      title: 'Image',
+    },
+    {
+      '@id': `http://localhost:${PORT}/@types/File`,
+      id: 'File',
+      addable: true,
+      immediately_addable: true,
+      title: 'File',
+    },
   ];
+}
+
+/** What the container at `path` lists: every type, or the ones it allows. */
+function addableTypesIn(path, sessionId) {
+  const allowed = getContent(path, sessionId)?.locally_allowed_types;
+  return listAddableTypes().map((type) =>
+    allowed && !allowed.includes(type.id)
+      ? { ...type, addable: false, immediately_addable: false }
+      : type,
+  );
 }
 
 app.get('/@types', (req, res) => {
   res.json(listAddableTypes());
 });
 app.get('*/@types', (req, res) => {
-  res.json(listAddableTypes());
+  res.json(addableTypesIn(req.path.replace(/\/@types$/, '') || '/', getSessionId(req)));
 });
 
 /**

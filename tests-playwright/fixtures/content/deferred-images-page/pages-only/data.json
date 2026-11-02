@@ -1,0 +1,28 @@
+{
+  "@id": "/_test_data/deferred-images-page/pages-only",
+  "@type": "Document",
+  "UID": "deferred-images-pages-only-uid",
+  "id": "pages-only",
+  "title": "Pages Only",
+  "description": "Takes pages only (locally_allowed_types): an image dropped here is refused when it is dropped, not when the page is saved.",
+  "review_state": "published",
+  "locally_allowed_types": [
+    "Document"
+  ],
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "image": {
+      "@type": "image",
+      "url": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='100%25' height='100%25' fill='%2377aadd'/%3E%3Ctext x='50%25' y='50%25' fill='white' text-anchor='middle' font-size='24'%3ETest Image%3C/text%3E%3C/svg%3E",
+      "alt": "Test image"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "image"
+    ]
+  }
+}

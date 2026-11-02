@@ -6289,6 +6289,10 @@ export class AdminUIHelper {
     }
 
     await item.first().waitFor({ state: 'visible', timeout: 10000 });
+    // The browser slides in from the side, and the click below is forced, so
+    // Playwright won't wait for the row to stop moving: a click mid-slide lands
+    // where the row was, beside it, and selects nothing.
+    await this.waitForPositionStable(item.first());
 
     // Use the radio/checkbox selection control if available (shadowed OB),
     // otherwise fall back to clicking the row directly.
