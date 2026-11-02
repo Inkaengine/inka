@@ -87,6 +87,21 @@ describe('a forced layout takes over the page', () => {
     expect(region(out[0], 'heading')).toHaveLength(1);
   });
 
+  test("a page block marked for a slot the layout doesn't have goes in default, inside the layout", () => {
+    // The layout's default slot is inside its frame, not at its top level.
+    // These blocks were dropped: the leftover search looked for a default slot
+    // at the top level only.
+    const blocks = {
+      first: { '@type': 'slate', slotId: 'example', value: [] },
+      second: { '@type': 'slate', slotId: 'example', value: [] },
+      body: { '@type': 'slate', value: [] },
+    };
+    const out = expand(blocks, ['first', 'second', 'body']);
+
+    expect(out).toHaveLength(1);
+    expect(region(out[0], 'main').map((b) => b.id).sort()).toEqual(['body', 'first', 'second']);
+  });
+
   test('the same page expands the same way twice', () => {
     const blocks = {
       'page-title': { '@type': 'title', templateId: LAYOUT, slotId: 'heading', fixed: true },
