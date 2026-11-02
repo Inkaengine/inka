@@ -7,6 +7,15 @@
  */
 const isWholeImage = (url) => /^(data|blob):/.test(url);
 
+/**
+ * A scale's URL. A catalog brain's `download` is relative to the item
+ * (`@@images/...`); an image field as the content API serves it — which is what
+ * an upload stores in `image_scales` — has absolute ones, used as they are.
+ * Joined onto the item regardless, an uploaded image's src and srcset named
+ * nothing.
+ */
+const scaleUrl = (base, download) => /^https?:\/\//.test(download) ? download : `${base}/${download}`;
+
 // Plone's default `plone.allowed_sizes` registry (scale name -> max width). plone.scale
 // generates these on demand at `<@id>/@@images/<field>/<name>`. An image block ships
 // only a `url` (a brain summary, no embedded scale URLs), so the block CONSTRUCTS its
@@ -81,7 +90,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
             const field = urlValue.image_field;
             const scales = urlValue.image_scales[field];
             if (scales?.[0]?.download) {
-                image_url = `${urlValue['@id'] || ''}/${scales[0].download}`;
+                image_url = scaleUrl(urlValue['@id'] || '', scales[0].download);
             }
         } else if (!urlValue?.image_scales || !urlValue?.image_field) {
             // No image data — return null (listing placeholder handled by isInListing in template)
@@ -147,7 +156,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
             // PLONE_SCALES builders below always had this right; only the two
             // paths that read real scale metadata were reversed, which is the
             // path an image block takes.
-            return `${image_url}/${scale.download} ${scale.width}w`;
+            return `${scaleUrl(image_url, scale.download)} ${scale.width}w`;
         }).join(", ");
         sizes = Object.keys(meta.scales || {}).map((name) => {
             const scale = meta.scales[name];
@@ -162,11 +171,11 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
         // HASHED `image-<w>-<hash>.jpeg` — a unique file that never collides.)
         const isHashed = /@@images\/[^/]+-\d+-[0-9a-f]+\./.test(meta.download || '');
         if (isHashed) {
-            image_url = `${image_url}/${meta.download}`;
+            image_url = scaleUrl(image_url, meta.download);
         } else if (scaleEntries.length) {
             // Largest available scale as the src.
             const biggest = scaleEntries.reduce((a, b) => (b.width > a.width ? b : a));
-            image_url = `${image_url}/${biggest.download}`;
+            image_url = scaleUrl(image_url, biggest.download);
         } else {
             image_url = `${image_url}/@@images/${field}/great`;
         }
@@ -179,7 +188,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
             // PLONE_SCALES builders below always had this right; only the two
             // paths that read real scale metadata were reversed, which is the
             // path an image block takes.
-            return `${image_url}/${scale.download} ${scale.width}w`;
+            return `${scaleUrl(image_url, scale.download)} ${scale.width}w`;
         }).join(", ");
         image_url = block.download;
     } 
