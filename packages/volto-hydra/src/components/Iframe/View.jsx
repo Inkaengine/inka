@@ -364,13 +364,16 @@ import {
   convertBlockType,
   reshapeContainerBlock,
   validateFieldMappings,
+  validateFieldRulesPlacement,
   reportDisallowedSlateNodes,
   completeFrontendSchema,
 } from '../../utils/blockSync';
 import {
   installCopyFromTargetEnhancers,
-  markEditedLinkedFieldsCustom,
-  getUrlField,
+  unpullEditedFields,
+  linkFields,
+  getSourceField,
+  linkPickedFields,
   pullLinkedFields,
   pullAllLinkedFields,
 } from '../../utils/copyFromTarget';
@@ -2986,13 +2989,13 @@ const Iframe = (props) => {
 
           if (isNewEdit) {
             // New edit from iframe - update everything.
-            // Copy-from-target: turn any LINKED field edited inline CUSTOM, by the
-            // same value-compare used for image/link edits — the inline message
-            // carries the whole formData with no clue which field changed. Applied
-            // synchronously (part of THIS update) so it doesn't re-render mid-type
-            // and move the cursor.
+            // Copy-from-target: a field edited inline is CLAIMED by the author and
+            // leaves `_pullFrom`, by the same value-compare used for image/link
+            // edits — the inline message carries the whole formData with no clue
+            // which field changed. Applied synchronously (part of THIS update) so
+            // it doesn't re-render mid-type and move the cursor.
             inlineEditCounterRef.current += 1;
-            let editedData = markEditedLinkedFieldsCustom(
+            let editedData = unpullEditedFields(
               event.data.data,
               properties,
               config.blocks.blocksConfig,
@@ -3975,6 +3978,8 @@ const Iframe = (props) => {
               completeFrontendSchema(blockConfig?.blockSchema);
               // Validate fieldMappings: warn about invalid @default keys
               validateFieldMappings(blockType, blockConfig);
+              // And fieldRules written in a schema, where nothing reads them.
+              validateFieldRulesPlacement(blockType, blockConfig);
             });
             // Each frontend entry applied to the admin's own (mergeFrontendBlock —
             // the mock parent applies the same rule): a key the frontend sends
@@ -6411,7 +6416,10 @@ const Iframe = (props) => {
                 if (!block) return;
 
                 const blockCfg = config.blocks.blocksConfig[block['@type']];
-                const isUrlField = blockCfg && getUrlField(blockCfg) === fieldName;
+                // Any link-typed field stores a snapshot and resolves a typed URL;
+                // only the DECLARED source hands fields over to the link below.
+                const isUrlField = blockCfg && linkFields(blockCfg).includes(fieldName);
+                const isSourceField = blockCfg && getSourceField(blockCfg) === fieldName;
 
                 // Store a link `value` (object_browser array shape) and its metadata,
                 // pull every linked field from the (now full) snapshot, flip edited
@@ -6419,10 +6427,16 @@ const Iframe = (props) => {
                 const applyLinkValue = (value, extraMeta) => {
                   let updatedBlock = setFieldValue(block, fieldName, value);
                   updatedBlock = withImageMetadata(updatedBlock, value, extraMeta || metadata);
+                  // A fresh pick hands this link the mapped fields that are still
+                  // EMPTY, which is what makes them track it (nothing is pulled
+                  // unless the block says so). Same helper the sidebar uses.
+                  if (isSourceField) {
+                    updatedBlock = linkPickedFields(blockCfg, updatedBlock);
+                  }
                   // No pull here — storing the link (full snapshot) is enough; the
-                  // copy-from-target widget's reactive pull fills the mapped fields.
+                  // copy-from-target widget's reactive pull fills the fields it owns.
                   let up = updateBlockById(properties, iframeSyncState.blockPathMap, selectedBlock, updatedBlock);
-                  up = markEditedLinkedFieldsCustom(up, properties, config.blocks.blocksConfig);
+                  up = unpullEditedFields(up, properties, config.blocks.blocksConfig);
                   finalizeLink(up);
                 };
 
