@@ -105,7 +105,7 @@ Opened for editing, a document whose top-level blocks hold slots but name no tem
 
 A frontend that forces a page layout (`allowedLayouts`) must not force it on a definition: the editor shows a definition as itself, never inside a layout. Ask `isUnlabelledDefinition(doc)` from the helpers, the same test the editor and the content validator use, and leave `allowedLayouts` out of the page's expansion when it says yes.
 
-A document read this way must actually be a template. If no page's blocks name it, and the site offers it as no layout or template (`allowedLayouts` / `allowedTemplates`), the content validator reports it: its blocks carry slots of no template, usually a `slotId` copied from elsewhere.
+A document read this way must actually be a template. If no page's blocks name it, and the site offers it as no layout or template (`allowedLayouts` / `allowedTemplates`), the content validator reports it when it is given the site's schemas (without them it cannot see a layout forced across a region, which no page names): its blocks carry slots of no template, usually a `slotId` copied from elsewhere.
 
 ## Editing a template (central control)
 
