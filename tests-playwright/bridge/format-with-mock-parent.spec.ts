@@ -490,8 +490,8 @@ test.describe('Inline Editing with Mock Parent', () => {
     // Each FORM_DATA re-renders the iframe DOM. If a keystroke arrives during
     // the re-render window, it could be lost.
     //
-    // We simulate this by scheduling FORM_DATA messages with known partial texts
-    // from the parent during typing. Uses postMessage (cross-origin safe).
+    // We simulate this by sending FORM_DATA with known partial texts from the
+    // parent between keystrokes. Uses postMessage (cross-origin safe).
 
     const iframe = helper.getIframe();
     const editable = await helper.getEditorLocator('mock-block-1', 'value');
@@ -502,44 +502,31 @@ test.describe('Inline Editing with Mock Parent', () => {
     await page.keyboard.type('Hello');
     await page.waitForTimeout(300);
 
-    // Schedule FORM_DATA messages with progressive partial texts during typing.
-    // Each message simulates the sidebar having received and echoed back the
-    // user's text at that point. Sent every 15ms to overlap with keystroke timing.
-    await page.evaluate(() => {
-      const iframeEl = document.getElementById('previewIframe') as HTMLIFrameElement;
-      const partials = ['Hello', 'Hello ', 'Hello w', 'Hello wo', 'Hello wor'];
-      let i = 0;
-      (window as any).__echoInterval = setInterval(() => {
-        if (i >= partials.length) {
-          clearInterval((window as any).__echoInterval);
-          (window as any).__echoInterval = null; // signal "scheduler done" for waitForFunction below
-          return;
-        }
+    // A lagging echo: after each key, FORM_DATA with the text as it was one key
+    // before — the sidebar echoing back what it had — so every stale echo lands
+    // against the next keystroke. (A timer sending them every 15ms raced the
+    // keyboard instead: on a slow runner all five had arrived before the first
+    // key, the page really was "Hello wor", and " world" went in after it.)
+    const sendEcho = (text: string) =>
+      page.evaluate((partial) => {
+        const iframeEl = document.getElementById('previewIframe') as HTMLIFrameElement;
         const formData = JSON.parse(JSON.stringify(window.mockParent.getFormData()));
-        formData.blocks['mock-block-1'].value = [
-          { type: 'p', children: [{ text: partials[i] }] },
-        ];
+        formData.blocks['mock-block-1'].value = [{ type: 'p', children: [{ text: partial }] }];
         iframeEl.contentWindow!.postMessage({
           type: 'FORM_DATA',
           data: formData,
           blockPathMap: window.mockParent.buildBlockPathMap(),
-
         }, '*');
-        i++;
-      }, 15);
-    });
+      }, text);
 
-    // Now type more text — scheduled FORM_DATA arrives during typing
     await page.keyboard.press('End');
-    await page.keyboard.type(' world', { delay: 10 });
-
-    // Wait for the echo scheduler to finish posting (real condition,
-    // not a fixed sleep). After this the bridge may still be processing
-    // queued FORM_DATA — the stable gate below handles that.
-    await page.waitForFunction(
-      () => !(window as any).__echoInterval,
-      { timeout: 3000 },
-    );
+    let typed = 'Hello';
+    for (const key of ' world') {
+      const before = typed;
+      await page.keyboard.type(key);
+      typed += key;
+      await sendEcho(before);
+    }
 
     // Stable-for-N-consecutive-polls gate: text must equal "Hello world"
     // for 3 polls in a row (~300ms of stability). Folds the "wait for
@@ -557,14 +544,6 @@ test.describe('Inline Editing with Mock Parent', () => {
       else { stable = 0; prev = text; }
       return stable >= 3;
     }, { timeout: 5000, intervals: [100, 150, 200] }).toBe(true);
-
-    // Cleanup
-    await page.evaluate(() => {
-      if ((window as any).__echoInterval) {
-        clearInterval((window as any).__echoInterval);
-        delete (window as any).__echoInterval;
-      }
-    });
   });
 
   test('typing after framework re-render is captured (observer survives DOM replacement)', async ({ helper, page }) => {

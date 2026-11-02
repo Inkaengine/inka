@@ -1990,21 +1990,50 @@ export class AdminUIHelper {
     // Get the expected text content (visible text, trimmed, strip ZWS/BOM)
     const expectedText = await editor.evaluate((el) => (el.textContent || '').replace(/[\uFEFF\u200B]/g, '').trim());
 
-    // Use platform-appropriate keyboard shortcut (Cmd+A on Mac, Ctrl+A elsewhere)
-    await editor.press('ControlOrMeta+a');
+    // An editor (Slate, the bridge) learns of a new selection from the
+    // selectionchange event, which the browser dispatches as a task of its own
+    // AFTER the selection has changed. A key pressed in between acts on the
+    // editor's old selection: in CI a Backspace came 1ms after the DOM showed
+    // all selected, and deleted one character at the old caret. So wait for a
+    // selectionchange that saw the whole text, not for the DOM alone.
+    //
+    // And a select-all can be undone: Volto's sidebar editor re-renders on
+    // timers of its own after a click (100ms, 200ms), writing its older caret
+    // back. So until the whole text is still selected after its event, select
+    // again.
+    await expect(async () => {
+      await editor.evaluate((el, expected) => {
+        const doc = el.ownerDocument;
+        const allSelected = () =>
+          (doc.getSelection()?.toString() || '').replace(/[\uFEFF\u200B]/g, '').trim() === expected;
+        (doc.defaultView as any).__selectedAll = new Promise<void>((resolve) => {
+          // Already all selected: its selectionchange came long ago, and Ctrl+A
+          // changes nothing, so there will be no other.
+          if (allSelected()) return resolve();
+          const seen = () => {
+            if (!allSelected()) return;
+            doc.removeEventListener('selectionchange', seen);
+            resolve();
+          };
+          doc.addEventListener('selectionchange', seen);
+        });
+      }, expectedText);
 
-    // Wait for selection to match the editor's text content
-    await expect
-      .poll(
-        async () => {
-          return editor.evaluate(() => {
-            const sel = window.getSelection();
-            return (sel?.toString() || '').replace(/[\uFEFF\u200B]/g, '').trim();
-          });
-        },
-        { timeout: 5000 }
-      )
-      .toBe(expectedText);
+      // Use platform-appropriate keyboard shortcut (Cmd+A on Mac, Ctrl+A elsewhere)
+      await editor.press('ControlOrMeta+a');
+
+      const held = await editor.evaluate((el, expected) => {
+        const win = el.ownerDocument.defaultView as any;
+        const timedOut = new Promise((resolve) => setTimeout(() => resolve(false), 500));
+        return Promise.race([win.__selectedAll.then(() => true), timedOut]).then((seen) =>
+          // Still selected a frame later: not put back by a re-render.
+          new Promise((resolve) => win.requestAnimationFrame(() => resolve(
+            seen && (win.getSelection()?.toString() || '').replace(/[\uFEFF\u200B]/g, '').trim() === expected,
+          ))),
+        );
+      }, expectedText);
+      expect(held, 'the editor saw the whole text selected, and it stayed so').toBe(true);
+    }).toPass({ timeout: 5000 });
   }
 
   /**
@@ -4612,15 +4641,19 @@ export class AdminUIHelper {
    * same guarantee the drag auto-scroll needs.
    */
   async waitForPositionStable(element: Locator): Promise<void> {
-    let lastY: number | null = null;
+    let last: { x: number; y: number } | null = null;
     await expect(async () => {
       const rect = await element.boundingBox();
       expect(rect).not.toBeNull(); // Element must be visible
-      const currentY = rect!.y;
-      if (lastY !== null) {
-        expect(Math.abs(currentY - lastY)).toBeLessThan(5);
+      const current = { x: rect!.x, y: rect!.y };
+      const previous = last;
+      last = current;
+      if (previous !== null) {
+        // Both axes: a panel sliding in from the side moves only x.
+        expect(Math.abs(current.x - previous.x)).toBeLessThan(5);
+        expect(Math.abs(current.y - previous.y)).toBeLessThan(5);
       }
-      lastY = currentY;
+      expect(previous).not.toBeNull();
     }).toPass({ timeout: 2000, intervals: [50, 100, 200] });
   }
 
@@ -4689,24 +4722,7 @@ export class AdminUIHelper {
         console.log(`[SCROLL] Target in range! targetY=${targetY.toFixed(0)}`);
         // CRITICAL: Move cursor to safe zone BEFORE returning, to stop auto-scroll.
         await this.moveToSafeZone();
-        await this.waitForPositionStable(targetElement);
-
-        // Re-verify target is still visible after momentum settles.
-        // moveToSafeZone moves cursor from scroll edge to center, which can trigger
-        // additional scrolling as the cursor passes through the auto-scroll zone.
-        // If the target drifted off-screen, use scrollIntoViewIfNeeded to correct it
-        // rather than re-entering the auto-scroll loop (which would oscillate).
-        const settledRect = await this.getCombinedBoundingBox(targetElement);
-        const freshIframeRect = await iframeEl.boundingBox();
-        if (!freshIframeRect) throw new Error('Could not get iframe bounding box');
-        const settledY = freshIframeRect.y + settledRect.y + settledRect.height / 2;
-        if (settledY < 0 || settledY > viewportSize.height) {
-          console.log(`[SCROLL] Target drifted off-screen after settling! settledY=${settledY.toFixed(0)}, using scrollIntoView to correct`);
-          await targetElement.scrollIntoViewIfNeeded();
-          await this.waitForPositionStable(targetElement);
-        }
-
-        return await this.getDropPositionInPageCoords(targetBlock, insertAfter);
+        return await this.settledDropPosition(targetBlock, targetElement, insertAfter);
       }
 
       // Check if we've hit the scroll limit (target stopped moving)
@@ -4716,20 +4732,7 @@ export class AdminUIHelper {
         if (stuckCount >= 3 && isVisibleInViewport) {
           console.log(`[SCROLL] Accepting position after scroll limit reached. targetY=${targetY.toFixed(0)}`);
           await this.moveToSafeZone();
-          await this.waitForPositionStable(targetElement);
-
-          // Re-verify after momentum settles
-          const settledRect2 = await this.getCombinedBoundingBox(targetElement);
-          const freshIframeRect2 = await iframeEl.boundingBox();
-          if (!freshIframeRect2) throw new Error('Could not get iframe bounding box');
-          const settledY2 = freshIframeRect2.y + settledRect2.y + settledRect2.height / 2;
-          if (settledY2 < 0 || settledY2 > viewportSize.height) {
-            console.log(`[SCROLL] Target drifted off-screen after scroll limit! settledY=${settledY2.toFixed(0)}, using scrollIntoView to correct`);
-            await targetElement.scrollIntoViewIfNeeded();
-            await this.waitForPositionStable(targetElement);
-          }
-
-          return await this.getDropPositionInPageCoords(targetBlock, insertAfter);
+          return await this.settledDropPosition(targetBlock, targetElement, insertAfter);
         }
       } else {
         stuckCount = 0;
@@ -4761,6 +4764,37 @@ export class AdminUIHelper {
   }
 
   /**
+   * Where to drop on the target, once it has stopped moving and the drop point
+   * is clear of the bridge's own auto-scroll zone.
+   *
+   * A target can end up near an edge: scrolled into view only just (the fast
+   * path), or drifted on after auto-scroll as the cursor crossed the zone on
+   * its way to the safe zone. A drop point inside the zone (80px from an edge in
+   * hydra.js) starts the page scrolling again the moment the cursor gets there,
+   * and the drop lands on whatever has moved under it. So a target whose drop
+   * point is near an edge is centred, rather than re-entering the auto-scroll
+   * loop (which would oscillate).
+   */
+  private async settledDropPosition(
+    targetBlock: Locator,
+    targetElement: Locator,
+    insertAfter: boolean,
+  ): Promise<{ x: number; y: number }> {
+    const clearOfEdge = 100;
+    await this.waitForPositionStable(targetElement);
+    const iframeRect = await this.page.locator('#previewIframe').boundingBox();
+    if (!iframeRect) throw new Error('Could not get iframe bounding box');
+    const drop = await this.getDropPositionInPageCoords(targetBlock, insertAfter);
+    if (drop.y > iframeRect.y + clearOfEdge && drop.y < iframeRect.y + iframeRect.height - clearOfEdge) {
+      return drop;
+    }
+    console.log(`[SCROLL] Drop point y=${drop.y.toFixed(0)} is near the iframe's edge after settling; centring the target`);
+    await targetElement.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await this.waitForPositionStable(targetElement);
+    return await this.getDropPositionInPageCoords(targetBlock, insertAfter);
+  }
+
+  /**
    * Fast scroll directly to target using scrollIntoView.
    * Use this for most tests; use autoScrollToTarget with testAutoScroll=true to test auto-scroll.
    */
@@ -4770,15 +4804,17 @@ export class AdminUIHelper {
   ): Promise<{ x: number; y: number }> {
     const targetElement = insertAfter ? targetBlock.last() : targetBlock.first();
 
-    // Scroll target into view and wait for position to stabilize
+    // Scroll target into view. Visible is not enough: one left near an edge
+    // (scrollIntoViewIfNeeded doesn't move what is already in view) has its
+    // drop point in the auto-scroll zone, and the page scrolls away under the
+    // cursor; settledDropPosition centres it.
     await targetElement.scrollIntoViewIfNeeded();
-    await this.waitForPositionStable(targetElement);
+    const dropPos = await this.settledDropPosition(targetBlock, targetElement, insertAfter);
 
     // Verify drag is still active
     await this.verifyDragShadowVisible();
 
-    // Get drop position in page coordinates and move mouse there
-    const dropPos = await this.getDropPositionInPageCoords(targetBlock, insertAfter);
+    // Move the mouse to the drop position
     await this.page.mouse.move(dropPos.x, dropPos.y, { steps: 5 });
     await this.nextFrame();
 
