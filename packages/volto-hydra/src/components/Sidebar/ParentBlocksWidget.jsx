@@ -26,7 +26,7 @@ import {
 } from './templateSettingsSchema';
 import { useIntl } from 'react-intl';
 import { useLocation } from 'react-router-dom';
-import { set, cloneDeep, isEqual } from 'lodash';
+import { set, get, toPath, cloneDeep, isEqual } from 'lodash';
 import config from '@plone/volto/registry';
 import { BlockDataForm } from '@plone/volto/components/manage/Form';
 import { Icon } from '@plone/volto/components';
@@ -45,6 +45,7 @@ import { isObjectListRegion, isRegionField } from '../../../../hydra-js/regionWi
 import { isBlockReadonly } from '@volto-hydra/helpers';
 import { flattenToAppURL } from '@plone/volto/helpers';
 import { LinkedText } from '../../utils/linkedText';
+import { withImageMetadata } from '../../utils/imageMetadata';
 
 /**
  * Get the display title for a block type
@@ -600,7 +601,7 @@ const ParentBlockSection = ({
             <BlockDataForm
               errors={blocksErrors?.[blockId] ? { [blockId]: blocksErrors[blockId] } : {}}
               schema={formSchema}
-              onChangeField={(fieldId, value) => {
+              onChangeField={(fieldId, value, itemInfo) => {
                 // Belt and braces: the widgets are disabled, and a change that
                 // reaches here anyway (a widget that ignores `isDisabled`) is
                 // not written to a block the page may not edit.
@@ -608,7 +609,12 @@ const ParentBlockSection = ({
                 // Use lodash set for nested paths like 'itemDefaults.overwrite'
                 const newBlockData = cloneDeep(blockData);
                 set(newBlockData, fieldId, value);
-                onChangeBlock(blockId, newBlockData);
+                // An image widget hands over the image's metadata as well; it
+                // goes beside the field, as the canvas's image editor puts it.
+                const holderPath = toPath(fieldId).slice(0, -1);
+                const holder = holderPath.length ? get(newBlockData, holderPath) : newBlockData;
+                const withMetadata = withImageMetadata(holder, value, itemInfo);
+                onChangeBlock(blockId, holderPath.length ? set(newBlockData, holderPath, withMetadata) : withMetadata);
               }}
               onChangeBlock={(id, data) => {
                 onChangeBlock(id, data);

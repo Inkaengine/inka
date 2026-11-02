@@ -14,6 +14,12 @@
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
+// A 1x1 red PNG.
+const PNG = Buffer.from(
+  '89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415408d763f8ffff3f0005fe02fe0000000049454e44ae426082',
+  'hex',
+);
+
 test.describe('Inline image editing', () => {
   test('can select an image from toolbar object browser', async ({ page }) => {
     const helper = new AdminUIHelper(page);
@@ -893,6 +899,44 @@ test.describe('Sidebar image upload and drag-drop', () => {
 
     // Verify the image appears in iframe with new URL
     await expect(heroImage).toHaveAttribute('src', /777x777/, { timeout: 5000 });
+  });
+
+  test('an image uploaded in the sidebar keeps its scales, and the canvas asks for them', async ({ page }) => {
+    // The upload hands the field its scales beside the URL (image_field and
+    // image_scales, as Volto's image block stores them). The sidebar dropped
+    // them, so the canvas got a bare URL — the image's page, not a picture.
+    // And a scale's download, as the content API gives it, is absolute: joined
+    // onto the image's URL it named nothing.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const iframe = helper.getIframe();
+    const block = iframe.locator('[data-block-uid="block-2-uuid"]');
+    await block.scrollIntoViewIfNeeded();
+    await block.click();
+    const sidebar = page.locator('[aria-label="Sidebar"]');
+    await sidebar.locator('button[aria-label="Clear image"]').click();
+    const input = sidebar.locator('input[type="file"][accept="image/*"]').first();
+    await expect(input).toBeAttached({ timeout: 5000 });
+    await input.setInputFiles({ name: 'scaled.png', mimeType: 'image/png', buffer: PNG });
+
+    const image = block.locator('[data-edit-media="url"]');
+    await expect(image).toHaveAttribute('src', /uploaded-image-\d+/, { timeout: 10000 });
+    const uploaded = (await image.getAttribute('src'))!.match(/^.*\/uploaded-image-\d+/)![0];
+    const scale = new RegExp(`^${uploaded}/@@images/image(/\\w+)?$`);
+    expect(await image.getAttribute('src'), 'src is a picture of it').toMatch(scale);
+    const srcset = (await image.getAttribute('srcset')) ?? '';
+    const candidates = srcset.split(', ').filter(Boolean).map((c) => c.split(' ')[0]);
+    expect(candidates.length, 'its scales are offered').toBeGreaterThan(1);
+    for (const url of [await image.getAttribute('src'), ...candidates]) {
+      expect(url).toMatch(scale);
+      // The editor's session has it (an <img> is anonymous: see the
+      // private-media issue), so ask as the editor.
+      const response = await page.request.get(url!, { headers: { Authorization: `Bearer ${helper.authToken}` } });
+      expect(response.status(), url!).toBe(200);
+      expect(response.headers()['content-type']).toMatch(/^image\//);
+    }
   });
 
   test('sidebar shows drag-drop zone when image is empty', async ({ page }) => {

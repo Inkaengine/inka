@@ -340,7 +340,8 @@ import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
 import { getBlockTypeSchema } from '../../utils/blockPath';
 import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
-import { heldImages, onImageHeld, isPendingImage } from '../../utils/pendingImages';
+import { heldImages, onImageHeld } from '../../utils/pendingImages';
+import { withImageMetadata } from '../../utils/imageMetadata';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { adoptTemplate, canContainAll, getBlockAddability, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '../../utils/mergeTemplates.mjs';
@@ -6417,15 +6418,7 @@ const Iframe = (props) => {
                 // fields custom, then push FORM_DATA. Shared by pick / typed / fetched.
                 const applyLinkValue = (value, extraMeta) => {
                   let updatedBlock = setFieldValue(block, fieldName, value);
-                  const meta = extraMeta || metadata;
-                  if (meta?.image_scales) {
-                    updatedBlock = { ...updatedBlock, image_field: meta.image_field, image_scales: meta.image_scales };
-                  } else if (isPendingImage(Array.isArray(value) ? value[0]?.['@id'] : value)) {
-                    // An image held until save has no scales yet; the replaced
-                    // image's would draw in its place. Save sets its own.
-                    const { image_field, image_scales, ...rest } = updatedBlock;
-                    updatedBlock = rest;
-                  }
+                  updatedBlock = withImageMetadata(updatedBlock, value, extraMeta || metadata);
                   // No pull here — storing the link (full snapshot) is enough; the
                   // copy-from-target widget's reactive pull fills the mapped fields.
                   let up = updateBlockById(properties, iframeSyncState.blockPathMap, selectedBlock, updatedBlock);
