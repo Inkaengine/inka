@@ -864,7 +864,7 @@ checkboxFacet: { fieldMappings: { selectFacet: { /* ... */ }, daterangeFacet: { 
 
 `@target` maps a **linked** content item's attributes onto this block's own fields — the generic version of the Volto teaser's "copy from target" button. It maps *source content attributes* (`title`, `description`, `image`, …) to *this block's fields*.
 
-The item is whichever the block's **source link field** points at, and that field is **declared, never guessed**: `'@source': 'href'` in an explicit `@target`, or — for a `@default` mapping — the field the target's `'@id'` is mapped to, which already says where the link lands. A block with several link fields and no declaration is an error: picking the first one in schema order is not a rule, and in a real site config it picked a hero's *video file* over its button link, and a button's `url: 'Link (legacy)'` over the `href` the author picks with.
+The item is whichever the block's **source link field** points at, and that field is **declared, never guessed**: `'@source': 'href'` in an explicit `@target`, or — for a `@default` mapping — the field the target's `'@id'` is mapped to, which already says where the link lands. Only a mapping pulls, so a block with none has no source to declare (a video's address and poster image are both links, and neither is pulled from). A block that maps fields, has several link fields and declares none of them is an error: picking the first one in schema order is not a rule, and in a real site config it picked a hero's *video file* over its button link, and a button's `url: 'Link (legacy)'` over the `href` the author picks with.
 
 ### Javascript
 
