@@ -904,7 +904,7 @@ test.describe('Sidebar image upload and drag-drop', () => {
   test('an image uploaded in the sidebar keeps its scales, and the canvas asks for them', async ({ page }) => {
     // The upload hands the field its scales beside the URL (image_field and
     // image_scales, as Volto's image block stores them). The sidebar dropped
-    // them, so the canvas got a bare URL — the image's page, not a picture.
+    // them, so the front end got a bare URL — the image's page, not a picture.
     // And a scale's download, as the content API gives it, is absolute: joined
     // onto the image's URL it named nothing.
     const helper = new AdminUIHelper(page);
@@ -912,6 +912,12 @@ test.describe('Sidebar image upload and drag-drop', () => {
     await helper.navigateToEdit('/test-page');
 
     const iframe = helper.getIframe();
+    // The block as the canvas is sent it.
+    await iframe.locator('body').evaluate(() => {
+      window.addEventListener('message', (e) => {
+        if (e.data?.type === 'FORM_DATA') (window as any).__sentImage = e.data.data?.blocks?.['block-2-uuid'];
+      });
+    });
     const block = iframe.locator('[data-block-uid="block-2-uuid"]');
     await block.scrollIntoViewIfNeeded();
     await block.click();
@@ -921,21 +927,24 @@ test.describe('Sidebar image upload and drag-drop', () => {
     await expect(input).toBeAttached({ timeout: 5000 });
     await input.setInputFiles({ name: 'scaled.png', mimeType: 'image/png', buffer: PNG });
 
+    await expect.poll(() => iframe.locator('body').evaluate(() => (window as any).__sentImage?.url), { timeout: 10000 })
+      .toMatch(/\/uploaded-image-\d+$/);
+    const sent = await iframe.locator('body').evaluate(() => (window as any).__sentImage);
+    const uploaded = sent.url.match(/uploaded-image-\d+/)[0];
+    expect(sent.image_field).toBe('image');
+    expect(sent.image_scales?.image?.[0]?.scales, 'its scales are sent with it').toBeTruthy();
+
+    // Drawn from those scales: a src, and every URL names the image once — the
+    // front end may route it through its own image server (Nuxt's ipx), but a
+    // URL naming it twice, or the bare page, is no picture.
     const image = block.locator('[data-edit-media="url"]');
-    await expect(image).toHaveAttribute('src', /uploaded-image-\d+/, { timeout: 10000 });
-    const uploaded = (await image.getAttribute('src'))!.match(/^.*\/uploaded-image-\d+/)![0];
-    const scale = new RegExp(`^${uploaded}/@@images/image(/\\w+)?$`);
-    expect(await image.getAttribute('src'), 'src is a picture of it').toMatch(scale);
-    const srcset = (await image.getAttribute('srcset')) ?? '';
-    const candidates = srcset.split(', ').filter(Boolean).map((c) => c.split(' ')[0]);
-    expect(candidates.length, 'its scales are offered').toBeGreaterThan(1);
-    for (const url of [await image.getAttribute('src'), ...candidates]) {
-      expect(url).toMatch(scale);
-      // The editor's session has it (an <img> is anonymous: see the
-      // private-media issue), so ask as the editor.
-      const response = await page.request.get(url!, { headers: { Authorization: `Bearer ${helper.authToken}` } });
-      expect(response.status(), url!).toBe(200);
-      expect(response.headers()['content-type']).toMatch(/^image\//);
+    await expect(image).toHaveAttribute('srcset', new RegExp(uploaded), { timeout: 10000 });
+    const src = await image.getAttribute('src');
+    const candidates = (await image.getAttribute('srcset'))!.split(', ').map((c) => c.split(' ')[0]);
+    for (const url of [src, ...candidates]) {
+      expect(url, 'a URL of the image').toContain(uploaded);
+      expect(url!.split(uploaded).length - 1, `${url} names it once`).toBe(1);
+      expect(url, `${url} is a picture, not its page`).toMatch(new RegExp(`${uploaded}/@@images/`));
     }
   });
 

@@ -158,10 +158,10 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
             // path an image block takes.
             return `${scaleUrl(image_url, scale.download)} ${scale.width}w`;
         }).join(", ");
-        sizes = Object.keys(meta.scales || {}).map((name) => {
-            const scale = meta.scales[name];
-            return `${name}:${scale.width}px`;
-        }).join(" ");
+        // Breakpoints, as every other branch gives NuxtImg. Scale names
+        // (`preview:400px`) are no screen it knows, so it dropped every variant
+        // and rendered the image with no src.
+        sizes = DEFAULT_SIZES;
         // src must be a SCALE download (`@@images/<field>/<name>`), NOT the bare
         // top-level `meta.download` (`@@images/image`). The srcset above uses the
         // scale form, which needs `image` to be a DIRECTORY; a bare `image` src is a
