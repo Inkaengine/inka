@@ -539,7 +539,7 @@ describe('plone-content-validator checkIntegrity()', () => {
     });
 
     it('is not reported when a page uses it as its template, by path or by UID', () => {
-      for (const ref of ['/dev/header', 'http://localhost:8080/dev/header', 'resolveuid/stray-uid']) {
+      for (const ref of ['/dev/header', 'https://site.example/dev/header', 'resolveuid/stray-uid']) {
         assert.deepEqual(
           unused([{ rel: '/dev/header', data: stray }, { rel: '/p', data: user(ref) }], site()),
           [],
