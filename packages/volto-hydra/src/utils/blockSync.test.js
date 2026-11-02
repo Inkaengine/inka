@@ -1,4 +1,4 @@
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // HydraSchemaContext.js is JSX inside a .js file (the admin build uses babel; vitest
 // uses esbuild and can't parse it). The slotId-inheritance path doesn't touch the
@@ -18,6 +18,7 @@ import {
   createSchemaEnhancerFromRecipe,
   getConversionMap,
   validateFieldMappings,
+  validateFieldRulesPlacement,
   getBlockTypeChoices,
   hideParentOwnedFields,
   completeFrontendSchema,
@@ -1584,5 +1585,58 @@ describe('hideParentOwnedFields — a schema without fieldsets', () => {
       const s = schema();
       expect(hideParentOwnedFields()({ schema: s })).toBe(s);
     });
+  });
+});
+
+describe('fieldRules written in the wrong place is said out loud', () => {
+  // The live site wrote `fieldRules` inside `blockSchema`, where nothing reads
+  // it — `enhancerParts` and the admin's recipe conversion both look at
+  // `schemaEnhancer` only. Its button block therefore showed `searchPath` and
+  // `searchQuery` in link mode, and `href` in search mode, with the rules that
+  // say otherwise sitting right there in the config. A misplaced rule must not
+  // be silently ignored, for the same reason validateFieldMappings warns about
+  // a misplaced `@default` key.
+  let warnings;
+  beforeEach(() => {
+    warnings = [];
+    vi.spyOn(console, 'warn').mockImplementation((m) => warnings.push(m));
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  test('names the block and says where the rules belong', () => {
+    validateFieldRulesPlacement('button', {
+      blockSchema: { properties: { href: {} }, fieldRules: { href: false } },
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/button/);
+    expect(warnings[0]).toMatch(/blockSchema/);
+    expect(warnings[0]).toMatch(/schemaEnhancer/);
+  });
+
+  test('says nothing when the rules are on the enhancer, where they belong', () => {
+    validateFieldRulesPlacement('button', {
+      blockSchema: { properties: { href: {} } },
+      schemaEnhancer: { fieldRules: { href: false } },
+    });
+    expect(warnings).toEqual([]);
+  });
+
+  test('says nothing for a block with no rules, or a schema that is a function', () => {
+    validateFieldRulesPlacement('plain', { blockSchema: { properties: {} } });
+    validateFieldRulesPlacement('dynamic', { blockSchema: () => ({ properties: {} }) });
+    validateFieldRulesPlacement('bare', {});
+    expect(warnings).toEqual([]);
+  });
+
+  test('catches it in an inner item schema too, where a rule is just as dead', () => {
+    validateFieldRulesPlacement('form', {
+      blockSchema: {
+        properties: {
+          subblocks: { schema: { properties: {}, fieldRules: { label: false } } },
+        },
+      },
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/subblocks/);
   });
 });

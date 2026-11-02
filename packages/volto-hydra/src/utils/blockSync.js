@@ -2103,6 +2103,43 @@ export function validateFieldMappings(blockType, blockConfig) {
 
 
 /**
+ * Warn when `fieldRules` is written inside a schema instead of on the block's
+ * `schemaEnhancer`, where it is the only place anything reads it.
+ *
+ * Nothing consumes a schema's own `fieldRules` key: the admin converts recipes
+ * found on `schemaEnhancer` (View.jsx) and `enhancerParts` (buildBlockPathMap)
+ * does the same offline. A rule written in a schema is therefore dead, and
+ * silently so — the live site's button block showed its search fields in link
+ * mode, and its link field in search mode, with the rules that say otherwise
+ * sitting in the config the whole time.
+ *
+ * Checked on every INIT beside validateFieldMappings, and inner item schemas
+ * too (an object_list item's schema is a schema like any other).
+ */
+export function validateFieldRulesPlacement(blockType, blockConfig) {
+  const where = [];
+  const visit = (schema, path) => {
+    // A schema may be a FUNCTION of the block's data; there is no object to
+    // inspect until it is called, and a rule inside one is not this check's
+    // business.
+    if (!schema || typeof schema !== 'object') return;
+    if (schema.fieldRules) where.push(path);
+    for (const [field, def] of Object.entries(schema.properties || {})) {
+      visit(def?.schema, `${path}.properties.${field}.schema`);
+    }
+  };
+  visit(blockConfig?.blockSchema, 'blockSchema');
+  visit(blockConfig?.schema, 'schema');
+  if (where.length === 0) return;
+  console.warn(
+    `[HYDRA] Block type "${blockType}" declares fieldRules inside its schema ` +
+      `(${where.join(', ')}), where nothing reads them — the rules have no ` +
+      `effect. fieldRules belong on the block's schemaEnhancer: ` +
+      `schemaEnhancer: { fieldRules: { … } }.`,
+  );
+}
+
+/**
  * Static map { sourceType: [reachableTypes] } over the fieldMappings conversion
  * graph — the full reachable set, UNFILTERED by any container's allowedBlocks
  * (the target filters at check time). Built once and shipped to the iframe so it

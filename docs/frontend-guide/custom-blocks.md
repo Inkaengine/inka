@@ -526,6 +526,8 @@ const bridge = initBridge({
 });
 ```
 
+`fieldRules` goes on the **`schemaEnhancer`**, as above — never inside `blockSchema`. Nothing reads a schema's own `fieldRules` key, so rules written there are dead, and they look right sitting next to `properties` and `required`. A real site lost its button's mode-dependent fields this way: the search fields showed in link mode and the link field in search mode, with the rules that say otherwise in the config the whole time. Hydra now warns on INIT naming the block and the schema it found them in.
+
 **\`fieldRules\`** — add, remove, or conditionally modify field definitions. The value for each rule key can be:
 
 - `false` — always hide the field
@@ -598,6 +600,28 @@ A warning can point to the guidance it comes from with a markdown link in its me
 Use a warning when the value may well be right and the author should simply know: artwork a little off the 48×48 grid is still the right artwork, and refusing to save over it would be hostile. Use an error when the value cannot work at all — a raster where the design system inlines an SVG.
 
 Both actions compose with `set`, and both work in a switch (`[rule, rule, …]`), where the first matching entry wins — so a rule can refuse one case and merely advise on another.
+
+### What an agent is told about the rules
+
+An author meets a rule through the editor: the field appears, the widget goes red, the advice shows beside it. An agent has none of that, and it cannot read the config either, so `describe_block` states the part of the rules that the schema alone cannot show.
+
+The schema an agent reads is resolved **once, against no data**, so an unconditional rule is already in it: a field hidden by `false` is absent, and a bare `set` is part of the definition. Those are not repeated. What is reported is everything conditional, keyed exactly as the rule was declared (a dotted path stays a dotted path):
+
+### Json
+
+```json
+"fieldRules": {
+    "advancedOptions": { "shownWhen": [{ "mode": "advanced" }] },
+    "maxItems": { "errors": [{ "when": { "maxItems": { "lt": 1 } }, "message": "Too few." }] },
+    "image": { "warnings": [{ "when": { "image": { "regex": "\\.png$" } }, "message": "Prefer an SVG." }] }
+}
+```
+
+- **`shownWhen`** — the conditions under which the field is there at all, any one of them being enough (a switch takes the first that matches). Without this an agent cannot know the field exists: resolved against no data, a conditionally shown field is simply missing from the schema.
+- **`errors`** — the save is **refused** while one of these holds.
+- **`warnings`** — said, not refused: the page still saves.
+
+A conditional `set` on its own is not reported. It re-titles or re-widgets a field that is there either way, which changes nothing about what an agent may write.
 
 ### Links in advice
 

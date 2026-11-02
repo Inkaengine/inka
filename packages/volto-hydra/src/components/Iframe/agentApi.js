@@ -35,6 +35,10 @@ import {
 import { stripFixedInsideSlots } from '@volto-hydra/helpers';
 import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
 import { getPageAllowedBlocksFromRestricted } from '../../../../hydra-js/buildBlockPathMap.js';
+import {
+  collectFieldRules,
+  describeFieldRules,
+} from '../../../../hydra-js/fieldRules.js';
 import { lockedBy } from '../AgentSite/lockedBy';
 import {
   getTargetMapping,
@@ -254,6 +258,23 @@ export function registerAgentApi(live) {
           ...(blocksConfig[type].guidance !== undefined && { guidance: plainOrThrow(blocksConfig[type].guidance, type, 'guidance') }),
           ...(blocksConfig[type].examples !== undefined && { examples: plainOrThrow(blocksConfig[type].examples, type, 'examples') }),
           blockSchema: schemaFacts(schema, pullDestinations(blocksConfig[type])),
+          // The schema above is resolved ONCE, against no data, so a rule that
+          // depends on the data cannot show in it: a field that appears only
+          // when another is set is simply missing, and a rule that refuses or
+          // advises on a value is invisible until it fires. The editor carries
+          // that in code and in UI labels, which an agent has no access to
+          // (inka#595), so the conditional part is said here.
+          // A condition or message that cannot cross postMessage throws rather
+          // than vanishing: a rule an agent is not told about is one it will
+          // trip over.
+          ...(() => {
+            const rules = describeFieldRules(
+              collectFieldRules(blocksConfig[type].schemaEnhancer),
+            );
+            return Object.keys(rules).length > 0
+              ? { fieldRules: plainOrThrow(rules, type, 'fieldRules') }
+              : {};
+          })(),
           regions: getContainerRegionDescriptors(type, blocksConfig, intl).map((d) => {
             const fieldDef = fieldAt(schema, d.regionPath ?? [], d.region);
             const rc = d.isObjectList

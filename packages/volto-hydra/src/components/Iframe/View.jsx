@@ -362,6 +362,7 @@ import {
   convertBlockType,
   reshapeContainerBlock,
   validateFieldMappings,
+  validateFieldRulesPlacement,
   reportDisallowedSlateNodes,
   completeFrontendSchema,
 } from '../../utils/blockSync';
@@ -3955,6 +3956,8 @@ const Iframe = (props) => {
               completeFrontendSchema(blockConfig?.blockSchema);
               // Validate fieldMappings: warn about invalid @default keys
               validateFieldMappings(blockType, blockConfig);
+              // And fieldRules written in a schema, where nothing reads them.
+              validateFieldRulesPlacement(blockType, blockConfig);
             });
             // Each frontend entry applied to the admin's own (mergeFrontendBlock —
             // the mock parent applies the same rule): a key the frontend sends
