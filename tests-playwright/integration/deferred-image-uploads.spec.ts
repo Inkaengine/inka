@@ -86,6 +86,19 @@ test.describe('Images held until save', () => {
     expect(storedImage).not.toContain('inka-pending:');
   });
 
+  test('the sidebar shows the held image too, saying it is saved with the page', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/deferred-images-page');
+
+    await dropImage(helper, page, 'held.png');
+    const widget = page.locator('.image-upload-widget-image').filter({ has: page.locator('.image-upload-widget-pending') });
+    await expect(widget.locator('.image-upload-widget-pending')).toHaveText('Saved with the page');
+    const preview = widget.locator('img');
+    await expect(preview).toHaveAttribute('src', /^blob:/);
+    await expect.poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1);
+  });
+
   test('the page sent on each edit carries the reference, not the picture', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
