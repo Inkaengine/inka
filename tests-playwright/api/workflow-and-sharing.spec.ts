@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures';
+import { mintToken } from '../fixtures/mock-tokens.cjs';
 
 /**
  * The endpoints the admin's Publishing and Sharing views read.
@@ -16,9 +17,17 @@ import { test, expect } from '../fixtures';
  */
 const PAGE = '/test-page';
 
+// Signed in, as the admin is when it publishes: an anonymous request may not
+// read a page a transition has made private, and its session is shared by every
+// anonymous request, so each run left the page in the state the next began
+// from. Its first transition alternated between retract and publish, and the
+// test between failing and passing.
+const signedIn = () => ({ headers: { Authorization: `Bearer ${mintToken('admin')}` } });
+
 test.describe('@workflow', () => {
   test('publishing writes the trail in Plone shape, keyed by workflow id', async ({ request, urls }) => {
-    const before = await request.get(`${urls.mockApi}${PAGE}/@workflow`);
+    const auth = signedIn();
+    const before = await request.get(`${urls.mockApi}${PAGE}/@workflow`, auth);
     expect(before.ok(), 'the workflow endpoint answers').toBe(true);
     const state = (await before.json()).state?.id;
     expect(state, 'a page has a review state').toBeTruthy();
@@ -28,14 +37,14 @@ test.describe('@workflow', () => {
     if (!transition) test.skip(true, 'no transition available from this state');
     const id = String(transition['@id']).split('/').pop();
 
-    const posted = await request.post(`${urls.mockApi}${PAGE}/@workflow/${id}`, { data: {} });
+    const posted = await request.post(`${urls.mockApi}${PAGE}/@workflow/${id}`, { ...auth, data: {} });
     expect(posted.ok(), `POST @workflow/${id} succeeds`).toBe(true);
 
     // The trail is a DICT keyed by workflow id, as Plone writes it. Content
     // exported from a real site arrives carrying `workflow_history: {}`, and
     // reading that as a list is what threw.
     const after = await request.get(`${urls.mockApi}${PAGE}`, {
-      headers: { Accept: 'application/json' },
+      headers: { ...auth.headers, Accept: 'application/json' },
     });
     const history = (await after.json()).workflow_history;
     expect(Array.isArray(history), 'workflow_history is not a bare list').toBe(false);

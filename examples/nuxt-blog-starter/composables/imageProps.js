@@ -1,5 +1,21 @@
 
 
+/**
+ * A URL that is the image itself, used as it is: a data: URL, or a blob: URL
+ * (an image the editor holds until Save, deferImageUploads). A Plone scale
+ * path appended to one names nothing.
+ */
+const isWholeImage = (url) => /^(data|blob):/.test(url);
+
+/**
+ * A scale's URL. A catalog brain's `download` is relative to the item
+ * (`@@images/...`); an image field as the content API serves it — which is what
+ * an upload stores in `image_scales` — has absolute ones, used as they are.
+ * Joined onto the item regardless, an uploaded image's src and srcset named
+ * nothing.
+ */
+const scaleUrl = (base, download) => /^https?:\/\//.test(download) ? download : `${base}/${download}`;
+
 // Plone's default `plone.allowed_sizes` registry (scale name -> max width). plone.scale
 // generates these on demand at `<@id>/@@images/<field>/<name>`. An image block ships
 // only a `url` (a brain summary, no embedded scale URLs), so the block CONSTRUCTS its
@@ -74,7 +90,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
             const field = urlValue.image_field;
             const scales = urlValue.image_scales[field];
             if (scales?.[0]?.download) {
-                image_url = `${urlValue['@id'] || ''}/${scales[0].download}`;
+                image_url = scaleUrl(urlValue['@id'] || '', scales[0].download);
             }
         } else if (!urlValue?.image_scales || !urlValue?.image_field) {
             // No image data — return null (listing placeholder handled by isInListing in template)
@@ -115,7 +131,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
         || /svg/i.test(imgMeta?.['content-type'] || '')
         || /\.svg($|[?#])/i.test(image_url);
 
-    if (isSvg && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.startsWith('data:')) {
+    if (isSvg && !image_url.includes('@@images') && !image_url.includes('@@download') && !isWholeImage(image_url)) {
         // Serve the SVG via @@download/<field>/<filename>, NOT @@images/<field>.
         // Both return the original with image/svg+xml from Plone, but @@download
         // ends in the real filename (…/architecture.svg) while @@images/<field>
@@ -140,12 +156,12 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
             // PLONE_SCALES builders below always had this right; only the two
             // paths that read real scale metadata were reversed, which is the
             // path an image block takes.
-            return `${image_url}/${scale.download} ${scale.width}w`;
+            return `${scaleUrl(image_url, scale.download)} ${scale.width}w`;
         }).join(", ");
-        sizes = Object.keys(meta.scales || {}).map((name) => {
-            const scale = meta.scales[name];
-            return `${name}:${scale.width}px`;
-        }).join(" ");
+        // Breakpoints, as every other branch gives NuxtImg. Scale names
+        // (`preview:400px`) are no screen it knows, so it dropped every variant
+        // and rendered the image with no src.
+        sizes = DEFAULT_SIZES;
         // src must be a SCALE download (`@@images/<field>/<name>`), NOT the bare
         // top-level `meta.download` (`@@images/image`). The srcset above uses the
         // scale form, which needs `image` to be a DIRECTORY; a bare `image` src is a
@@ -155,11 +171,11 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
         // HASHED `image-<w>-<hash>.jpeg` — a unique file that never collides.)
         const isHashed = /@@images\/[^/]+-\d+-[0-9a-f]+\./.test(meta.download || '');
         if (isHashed) {
-            image_url = `${image_url}/${meta.download}`;
+            image_url = scaleUrl(image_url, meta.download);
         } else if (scaleEntries.length) {
             // Largest available scale as the src.
             const biggest = scaleEntries.reduce((a, b) => (b.width > a.width ? b : a));
-            image_url = `${image_url}/${biggest.download}`;
+            image_url = scaleUrl(image_url, biggest.download);
         } else {
             image_url = `${image_url}/@@images/${field}/great`;
         }
@@ -172,7 +188,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
             // PLONE_SCALES builders below always had this right; only the two
             // paths that read real scale metadata were reversed, which is the
             // path an image block takes.
-            return `${image_url}/${scale.download} ${scale.width}w`;
+            return `${scaleUrl(image_url, scale.download)} ${scale.width}w`;
         }).join(", ");
         image_url = block.download;
     } 
@@ -187,7 +203,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
         sizes = DEFAULT_SIZES;
         image_url = `${image_url}/@@images/${block?.image_field}/great`;
     }
-    else if ((block['@type'] == "image" || block['@type'] == "Image") && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.includes('@@display-file') && !image_url.startsWith('data:')) {
+    else if ((block['@type'] == "image" || block['@type'] == "Image") && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.includes('@@display-file') && !isWholeImage(image_url)) {
         // Image block / Plone Image reference with only a base path (no embedded
         // scales). Construct the scale URLs from PLONE_SCALES rather than requesting
         // the bare `<base>/@@images/image` original: the original is large + slow (a
@@ -202,7 +218,7 @@ export default function imageProps(block, bgStyles=false, imageField='image') {
         sizes = DEFAULT_SIZES;
         image_url = `${image_url}/@@images/${fld}/great`;
     }
-    else if (!image_url.startsWith('data:') && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.includes('@@display-file') && !/\.[a-zA-Z]+$/.test(image_url)) {
+    else if (!isWholeImage(image_url) && !image_url.includes('@@images') && !image_url.includes('@@download') && !image_url.includes('@@display-file') && !/\.[a-zA-Z]+$/.test(image_url)) {
         image_url = "";
     }
     // `${['hidden', 'duration-700', 'ease-linear', 'bg-center',  ] + (block?.preview_image? ['bg-cover', imageProps(block.preview_image[0]).bg]:['bg-gray-700', 'bg-blend-multiply', 'bg-no-repeat'])}`

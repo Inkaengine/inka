@@ -415,6 +415,48 @@ test.describe('Multilingual editing', () => {
     await expect(german.locator('[contenteditable="true"]')).toHaveCount(0);
   });
 
+  test('the page being edited taking focus itself does not take the sidebar from the other language', async ({
+    page,
+  }) => {
+    // The editor focuses a field of its own when it settles on the block it
+    // opened with, which on a slow load can come after a click in the other
+    // language's pane. Focus the bridge gives itself is not the person working
+    // in that pane, and must not take the sidebar back.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/about/edit`);
+    const edited = helper.getIframe();
+    // The editor has settled on its opening block: its field is editable.
+    await expect(edited.locator('[contenteditable="true"]').first()).toBeAttached({ timeout: 20000 });
+    const compare = page.locator('.compare-languages');
+    await expect(compare).toBeVisible({ timeout: 20000 });
+    await compare.getByRole('button', { name: 'de' }).click();
+
+    const german = page.frameLocator('#translationSourceIframe');
+    const block = german.locator('[data-block-uid]').filter({ hasText: 'Über uns' }).last();
+    await expect(german.locator('[data-node-id]').first()).toBeAttached({ timeout: 20000 });
+    await block.click();
+    const fields = page.locator('.compare-language-fields');
+    await expect(fields).toBeVisible({ timeout: 15000 });
+
+    // What the editor's settling does: select its opening block, focusing
+    // its field, from script.
+    const announced = page.waitForEvent('console', (msg) =>
+      /BLOCK_SELECTED received: title-1 src: selectionChangeListener/.test(msg.text()),
+    );
+    await edited.locator('body').evaluate(() => {
+      const bridge = (window as any).__hydraBridge;
+      bridge.selectedBlockUid = null;
+      bridge.selectBlock('title-1');
+    });
+    await announced;
+
+    await expect(fields).toBeVisible();
+    await expect(fields).toContainText(/\(de\)/);
+  });
+
   test('selecting a block shows the same block in the other language', async ({
     page, urls,
   }) => {

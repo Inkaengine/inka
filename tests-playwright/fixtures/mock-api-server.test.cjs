@@ -495,7 +495,7 @@ describe('/@export (tree export, json | markdown)', { skip: HAVE_ASSETS ? false 
         assert.ok(fs.existsSync(path.join(dir, 'content', blob)), `blob present: ${blob}`);
       }
       // And it passes the same validator the mounts are checked with.
-      const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+      const { validate, checkIntegrity } = require('../../lib/plone-content-validator.cjs');
       const contentDir = path.join(dir, 'content');
       assert.deepEqual(validate(contentDir).errors, [], 'validate: no errors');
       assert.deepEqual(checkIntegrity(contentDir).errors, [], 'checkIntegrity: no errors');

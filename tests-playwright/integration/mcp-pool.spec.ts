@@ -10,12 +10,16 @@ import { pagePool } from '../../packages/inka-mcp/pagePool.mjs';
 import { getPage } from '../../packages/inka-mcp/tools.mjs';
 import { subjectOf } from '../../packages/inka-mcp/tokenStore.mjs';
 
-// A fixture page no other spec uses: one test here holds its lock.
+// A fixture page no other spec opens (its editor locks it). Two tests here open its editor, so lock
+// it, and one asserts nobody else holds it: they take turns (the config runs
+// tests in parallel, which had the kept-page test's lock seen by the other).
 const PAGE = '/_test_data/line-breaks-page';
 
 const userFor = (id: string) => ({ id, token: tokenFor(id) });
 
 test.describe('MCP admin pages, shared by users', () => {
+  test.describe.configure({ mode: 'default' });
+
   test('a page handed to another user keeps nothing of the one before', async ({ urls }) => {
     test.setTimeout(90000);
     const slots = browserSlots({ adminUrl: urls.voltoSsr });

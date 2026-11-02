@@ -581,6 +581,11 @@
                     // frontend adds it. Offered on this page only, so every other
                     // spec keeps the toolbar it was written against.
                     const offerClearFormatting = /\/clear-formatting-page(\/|$)/.test(pagePath);
+                    // This frontend renders a complete image URL as it is (renderer.js
+                    // getImageUrl), a data: URL included, so it can take images held
+                    // until save. Declared on one page, so every other spec keeps
+                    // uploads at drop time.
+                    const deferImageUploads = /\/deferred-images-page(\/|$)/.test(pagePath);
                     // A hero with a plain list of tags (`subBlocks: false`): edited
                     // in the sidebar, not a region of sub-blocks.
                     const plainListField = /\/object-list-plain-page(\/|$)/.test(pagePath);
@@ -762,6 +767,7 @@
                         },
                         voltoConfig: {
                             settings: {
+                                ...(deferImageUploads ? { deferImageUploads: true } : {}),
                                 slate: {
                                     // A design system's own styles, declared for the
                                     // WHOLE frontend rather than one fixture page.
