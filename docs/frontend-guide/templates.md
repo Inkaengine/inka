@@ -103,6 +103,10 @@ A template either names itself or it doesn't. In one that does, an unlabelled ne
 
 Opened for editing, a document whose top-level blocks hold slots but name no template is a definition: it comes up as itself, with the unlock toggle, like one that names itself. Saving it from the editor stores its path on those blocks, which stays valid if it moves.
 
+A frontend that forces a page layout (`allowedLayouts`) must not force it on a definition: the editor shows a definition as itself, never inside a layout. Ask `isUnlabelledDefinition(doc)` from the helpers, the same test the editor and the content validator use, and leave `allowedLayouts` out of the page's expansion when it says yes.
+
+A document read this way must actually be a template. If no page's blocks name it, and the site offers it as no layout or template (`allowedLayouts` / `allowedTemplates`), the content validator reports it: its blocks carry slots of no template, usually a `slotId` copied from elsewhere.
+
 ## Editing a template (central control)
 
 The point of a template is that its locked parts are authored **once** and update **everywhere**. Templates are stored as their own normal content documents; a page only *references* one — its blocks carry the `templateId`. On render the merge injects the template's `fixed` / `fixed+readOnly` blocks and fills the slots with the page's own content.

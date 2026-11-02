@@ -3891,6 +3891,24 @@ function markInstance(block, own, instanceId, idFieldMap) {
   return out;
 }
 
+/**
+ * Whether a document is a template definition that does not name itself: its
+ * top-level blocks hold slots, and none of them names a template
+ * (docs/frontend-guide/templates.md, "A template is the id it was referenced
+ * by"). The editor opens one as itself, the content validator checks it as a
+ * template, and a frontend never forces a page layout on it.
+ *
+ * @param {Object} doc - A content item, with its blocks and blocks_layout
+ * @param {Object} [idFieldMap] - { blockType: { field: idField } }, for object_list regions
+ * @returns {boolean}
+ */
+export function isUnlabelledDefinition(doc, idFieldMap = null) {
+  const top = getChildFields(doc, idFieldMap, { allObjectLists: true }).flatMap((field) =>
+    getChildBlockEntries(doc, field).map(({ block }) => block),
+  );
+  return top.some((block) => block?.slotId) && !top.some((block) => block?.templateId);
+}
+
 // The names of a template's slots, fixed ones included, at every depth.
 function templateSlotIds(template, idFieldMap) {
   const slots = new Set();

@@ -508,6 +508,60 @@ describe('plone-content-validator redirects.json paths', () => {
 });
 
 describe('plone-content-validator checkIntegrity()', () => {
+  // A document whose top-level blocks hold slots but name no template is read
+  // as a template definition. That is only true if something uses it as one;
+  // otherwise it is a page whose blocks carry slots of no template, which the
+  // merge drops when a layout is forced on the page.
+  describe('slots on a document nothing uses as a template', () => {
+    const stray = {
+      '@id': '/dev/header', '@type': 'Document', id: 'header', UID: 'stray-uid',
+      blocks: { h: { '@type': 'slate', slotId: 'example' } },
+      blocks_layout: { items: ['h'] },
+    };
+    const user = (templateId) => ({
+      '@id': '/p', '@type': 'Document', id: 'p', UID: 'page-uid',
+      blocks: { f: { '@type': 'slate', templateId, slotId: 'example', fixed: false } },
+      blocks_layout: { items: ['f'] },
+    });
+    const unused = (items, options) =>
+      checkIntegrity(items, options).errors.filter((e) => e.includes('nothing uses it as a template'));
+    const pageSchema = (allowed) => ({
+      _page: { blockSchema: { properties: { items: { widget: 'blocks_layout', ...allowed } } } },
+    });
+
+    it('is reported, naming the document and its slot', () => {
+      const errs = unused([{ rel: '/dev/header', data: stray }]);
+      assert.equal(errs.length, 1, errs.join('\n'));
+      assert.ok(errs[0].includes('/dev/header') && errs[0].includes('"example"'), errs[0]);
+    });
+
+    it('is not reported when a page uses it as its template, by path or by UID', () => {
+      for (const ref of ['/dev/header', 'http://localhost:8080/dev/header', 'resolveuid/stray-uid']) {
+        assert.deepEqual(
+          unused([{ rel: '/dev/header', data: stray }, { rel: '/p', data: user(ref) }]),
+          [],
+          ref,
+        );
+      }
+    });
+
+    it('is not reported when the site names it a layout or a template', () => {
+      for (const allowed of [{ allowedLayouts: [null, '/dev/header'] }, { allowedTemplates: ['/dev/header'] }]) {
+        const schemas = pageSchema(allowed);
+        assert.deepEqual(
+          unused([{ rel: '/dev/header', data: stray }], { schemasFor: () => schemas }),
+          [],
+          JSON.stringify(allowed),
+        );
+      }
+    });
+
+    it('is not judged when the items are only part of the site', () => {
+      // `elsewhere`: a page that uses it may be among the ones not given.
+      assert.deepEqual(unused([{ rel: '/dev/header', data: stray }], { elsewhere: true }), []);
+    });
+  });
+
   // A template definition need not name itself: its blocks hold slots and no
   // templateId, and where it lives already says what it is.
   describe('a definition that does not name itself', () => {
