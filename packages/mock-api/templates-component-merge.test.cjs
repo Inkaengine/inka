@@ -25,8 +25,8 @@ before(async () => {
   // The object_list id fields, derived from the block schemas the way a frontend does it —
   // the endpoint carries templates only. Same registry the frontends register from.
   const { buildIdFieldMap } = await import('../../packages/hydra-js/buildBlockPathMap.js');
-  const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
-  const { coreBlocksConfig } = await import('./core-block-schemas.js');
+  const { sharedBlocksConfig } = await import('../../tests-playwright/fixtures/shared-block-schemas.js');
+  const { coreBlocksConfig } = await import('../../tests-playwright/fixtures/core-block-schemas.js');
   idFieldMap = buildIdFieldMap({ ...coreBlocksConfig, ...sharedBlocksConfig });
   await new Promise((resolve) => {
     server = app.listen(0, () => {

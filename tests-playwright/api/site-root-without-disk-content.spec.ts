@@ -60,7 +60,7 @@ test.describe('a mount with no site root on disk', () => {
 
     const port = await freePort();
     base = `http://localhost:${port}`;
-    proc = spawn(process.execPath, [fileURLToPath(new URL('../fixtures/mock-api-server.cjs', import.meta.url))], {
+    proc = spawn(process.execPath, [fileURLToPath(new URL('../../packages/mock-api/mock-api-server.cjs', import.meta.url))], {
       env: { ...process.env, PORT: String(port), CONTENT_MOUNTS: `/:${dir}` },
       stdio: 'ignore',
     });

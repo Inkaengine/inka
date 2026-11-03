@@ -12,8 +12,8 @@ const path = require('node:path');
 const abs = (p) => path.resolve(__dirname, p);
 process.env.CONTENT_MOUNTS = [
   '/docs:' + abs('../../docs'),
-  '/_test_data:' + abs('content'),
-  '/:' + abs('site-root'),
+  '/_test_data:' + abs('../../tests-playwright/fixtures/content'),
+  '/:' + abs('../../tests-playwright/fixtures/site-root'),
 ].join(',');
 
 const { describe, it, before, after } = require('node:test');

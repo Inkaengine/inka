@@ -1110,7 +1110,7 @@ describe('@@download', () => {
   // no scale (that is @@images'), so there is nothing to scale it to.
   it("serves an image's original bytes", async () => {
     const original = fs.readFileSync(
-      path.join(__dirname, 'content', 'penguin1.jpg', 'image', 'penguin1.jpg'),
+      path.join(__dirname, '../../tests-playwright/fixtures/content', 'penguin1.jpg', 'image', 'penguin1.jpg'),
     );
     const res = await fetch(`${baseUrl}/_test_data/images/penguin1.jpg/@@download/image`);
     assert.equal(res.status, 200);

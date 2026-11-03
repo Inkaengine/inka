@@ -50,8 +50,8 @@ function parseContentMounts() {
     //   /            the test site root — home, search page, layout templates
     return [
       { mountPath: '/docs', dirPath: path.join(__dirname, '../../docs') },
-      { mountPath: '/_test_data', dirPath: path.join(__dirname, 'content') },
-      { mountPath: '/', dirPath: path.join(__dirname, 'site-root') },
+      { mountPath: '/_test_data', dirPath: path.join(__dirname, '../../tests-playwright/fixtures/content') },
+      { mountPath: '/', dirPath: path.join(__dirname, '../../tests-playwright/fixtures/site-root') },
     ];
   }
 
@@ -2728,7 +2728,7 @@ async function initMarkdownMounts() {
  *  not via markdown-mount, so a JSON-only consumer needs no markdown toolchain. */
 let hydraBlocksConfig = null;
 async function loadBlockSchemas() {
-  const { sharedBlocksConfig } = await import('./shared-block-schemas.js');
+  const { sharedBlocksConfig } = await import('../../tests-playwright/fixtures/shared-block-schemas.js');
   hydraBlocksConfig = sharedBlocksConfig;
 }
 

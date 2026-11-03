@@ -59,7 +59,7 @@ pnpm test:e2e:debug
 
 **Terminal 1** - Start Mock API:
 ```bash
-node tests-playwright/fixtures/mock-api-server.cjs
+node packages/mock-api/mock-api-server.cjs
 ```
 
 **Terminal 2** - Start Volto Dev Server:
@@ -112,7 +112,7 @@ When servers aren't already running, Playwright automatically starts both server
 
 1. **Mock Plone API** (`http://localhost:8888`)
    - Serves mock content, schemas, and authentication
-   - Loads data from `tests-playwright/fixtures/api/`
+   - Loads data from `packages/mock-api/api/`
 
 2. **Volto Admin UI** (`http://localhost:3001`)
    - Configured to use mock API via `RAZZLE_API_PATH`
@@ -244,10 +244,9 @@ test('custom interaction', async ({ page }) => {
 ```
 tests-playwright/
 ├── fixtures/
-│   ├── api/                      # Mock API data
-│   │   ├── content.json         # Sample page with blocks
-│   │   └── schema-document.json # Document schema
-│   └── mock-api-server.cjs       # Express mock server
+│   ├── content/                 # Test content, mounted at /_test_data
+│   ├── site-root/               # The test site root, mounted at /
+│   └── test-frontend/           # The test frontend
 ├── helpers/
 │   └── AdminUIHelper.ts         # Volto UI helper methods
 ├── integration/
@@ -257,6 +256,9 @@ tests-playwright/
 ├── tsconfig.json                # TypeScript config
 └── README.md                    # This file
 ```
+
+The mock API server itself is `packages/mock-api/` (`mock-api-server.cjs`,
+with its content-type schemas in `api/`).
 
 ## Mock API Endpoints
 
@@ -350,7 +352,7 @@ Key settings:
     screenshot: 'only-on-failure',
   },
   webServer: [
-    { command: 'node tests-playwright/fixtures/mock-api-server.cjs', port: 8888 },
+    { command: 'node packages/mock-api/mock-api-server.cjs', port: 8888 },
     { command: 'RAZZLE_API_PATH=http://localhost:8888 pnpm start', port: 3001 },
   ],
 }
@@ -433,7 +435,7 @@ cat tests-playwright/fixtures/api/content.json
 
 Check mock server is loading it:
 ```bash
-DEBUG=1 node tests-playwright/fixtures/mock-api-server.cjs
+DEBUG=1 node packages/mock-api/mock-api-server.cjs
 ```
 
 ### Volto Can't Connect to Mock API

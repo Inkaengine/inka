@@ -35,7 +35,7 @@ import { runClaude } from './claude.mjs';
 import { agentTurn, asText, asRagas } from './conversation.mjs';
 import { nextFromPerson } from './person.mjs';
 import { judge } from './judge.mjs';
-import mockTokens from '../../../tests-playwright/fixtures/mock-tokens.cjs';
+import mockTokens from '../../mock-api/mock-tokens.cjs';
 
 const { mintToken } = mockTokens;
 

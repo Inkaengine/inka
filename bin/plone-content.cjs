@@ -52,7 +52,7 @@ if (argv[0] === 'served') {
   // Loading the mock runs the check; it rejects `ready` with the problems
   // already listed on stderr. Exit explicitly: its content watchers would
   // otherwise keep the process alive.
-  const { ready } = require(path.join(__dirname, '..', 'tests-playwright', 'fixtures', 'mock-plone-api.cjs'));
+  const { ready } = require(path.join(__dirname, '..', 'packages', 'mock-api', 'mock-plone-api.cjs'));
   ready.then(
     () => { console.log('[content-check] served content is valid'); process.exit(0); },
     (err) => { console.error(`[content-check] ${err.message}`); process.exit(1); },

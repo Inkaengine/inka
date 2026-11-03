@@ -7,7 +7,7 @@ import { showCaption, clearCaption } from './caption';
 import { glance, holdOn, pacingUnitMs, readFor } from './demoPacing';
 import { URLS } from '../ports';
 import { selectablePoint } from './selectablePoint';
-import { mintToken } from '../fixtures/mock-tokens.cjs';
+import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
 
 
 export class AdminUIHelper {

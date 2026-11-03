@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Mock Plone API server — REST endpoints, content from disk.
  * Test frontend lives in tests-playwright/fixtures/test-frontend/ and is

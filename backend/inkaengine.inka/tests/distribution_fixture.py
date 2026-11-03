@@ -28,7 +28,7 @@ import urllib.request
 
 # backend/inkaengine.inka/tests/ -> backend/inkaengine.inka -> backend -> <inka repo>
 INKA_ROOT = Path(__file__).resolve().parents[3]
-MOCK_SERVER = INKA_ROOT / "tests-playwright" / "fixtures" / "mock-api-server.cjs"
+MOCK_SERVER = INKA_ROOT / "packages" / "mock-api" / "mock-api-server.cjs"
 # Only the /inka-templates tree is needed here. The export also carries images, the search page
 # and the site root; importing those into the test portal would be slower and would couple
 # these tests to fixtures they do not read.

@@ -93,7 +93,7 @@ jobs:
         working-directory: inka
         run: |
           PORT=$HYDRA_MOCK_API_PORT CONTENT_MOUNTS="/:$GITHUB_WORKSPACE/site/content" \
-            node tests-playwright/fixtures/mock-api-server.cjs &
+            node packages/mock-api/mock-api-server.cjs &
           HYDRA_TEST_FRONTEND_PORT=$PARENT_PORT \
             npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
       - name: Start your front end against the mock API

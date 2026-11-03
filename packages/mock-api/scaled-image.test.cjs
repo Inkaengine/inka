@@ -1,5 +1,5 @@
 /**
- * Run: node --test tests-playwright/fixtures/scaled-image.test.cjs
+ * Run: node --test packages/mock-api/scaled-image.test.cjs
  *
  * The round trip matters more than any single function: a PNG we generate must
  * be readable by the same header parser, because the whole point is that a

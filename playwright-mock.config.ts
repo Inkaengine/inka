@@ -39,7 +39,7 @@ export default defineConfig({
 
   // Only start the mock API server (no Volto)
   webServer: {
-    command: 'node tests-playwright/fixtures/mock-api-server.cjs',
+    command: 'node packages/mock-api/mock-api-server.cjs',
     url: `${URLS.mockApi}/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 30000,

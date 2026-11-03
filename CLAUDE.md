@@ -83,7 +83,7 @@ pnpm exec playwright show-report
 ## Test Architecture
 
 The Playwright tests use:
-- **Mock API server** (`tests-playwright/fixtures/mock-api-server.cjs`) - Serves both mock Plone API and test frontend on port 8888
+- **Mock API server** (`packages/mock-api/mock-api-server.cjs`) - Serves both mock Plone API and test frontend on port 8888
 - **Test frontend** (`tests-playwright/fixtures/test-frontend/`) - Simple HTML/JS frontend that loads the real Hydra bridge
 - **Real Hydra bridge** (`packages/hydra-js/hydra.js`) - Production bridge code for iframe-Admin UI communication
 - **Admin UI** - Runs on port 3001 (auto-started by Playwright via `webServer` config)

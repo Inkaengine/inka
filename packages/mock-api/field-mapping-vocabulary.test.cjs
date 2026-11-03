@@ -17,7 +17,7 @@ const { app } = require('./mock-api-server.cjs');
 const {
   collectFieldMappingIssues,
   loadMappingVocabularies,
-} = require('../helpers/discover-blocks.cjs');
+} = require('../../tests-playwright/helpers/discover-blocks.cjs');
 
 let server;
 let baseUrl;
