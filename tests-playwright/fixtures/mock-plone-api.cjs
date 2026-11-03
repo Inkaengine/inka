@@ -6540,6 +6540,14 @@ app.post('*/@lock', (req, res) => {
   const contentPath = req.path.replace(/\/@lock$/, '') || '/';
   const user = requestUser(req);
   if (!user) return res.status(401).json({ error: { type: 'Unauthorized', message: 'Locking needs a logged-in user.' } });
+  // There has to be something to lock. Plone traverses to the object first, so
+  // a lock on a path it does not have is a 404 — without this the mock invented
+  // a lock on nothing and the adapter's own error path went untested.
+  if (getContent(contentPath, getSessionId(req)) === null) {
+    return res.status(404).json({
+      error: { type: 'NotFound', message: `No such resource: ${contentPath}` },
+    });
+  }
   // Plone's lock() leaves another user's lock as it is, and answers with it.
   if (!lockedAgainst(req, contentPath)) {
     // plone.restapi's lock_info: `time` in epoch seconds, `created` the same

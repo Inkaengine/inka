@@ -145,6 +145,10 @@ export interface Target {
  */
 const TARGETS: Record<string, () => Promise<{ default: Target }>> = {
   plone: () => import('./plone'),
+  // The same contract against a REAL Plone (6.2.2, plone.restapi, the addon),
+  // because the `plone` target above runs against our own mock and two halves
+  // written by the same hands agree by construction. See plone-real.ts.
+  'plone-real': () => import('./plone-real'),
   wordpress: () => import('./wordpress'),
   drupal: () => import('./drupal'),
   strapi: () => import('./strapi'),

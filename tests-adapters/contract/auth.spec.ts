@@ -37,8 +37,16 @@ describe('session expiry', () => {
     const events: string[] = [];
     await target.expireSession((event: string) => events.push(event));
 
+    // The DRAFT, not the published post.
+    //
+    // A dead session is an ANONYMOUS one — Plone does not refuse a token it
+    // will not accept, it treats the request as unauthenticated — and a
+    // published document is readable anonymously, so reading one proves
+    // nothing about the session. This asked for /news/first-post and passed
+    // only because the mock used to refuse an unknown token outright; against
+    // a real Plone it resolved, as it should.
     await expect(
-      target.adapter.dispatch('content.get', { path: '/news/first-post' }),
+      target.adapter.dispatch('content.get', { path: '/news/draft-post' }),
     ).rejects.toMatchObject({ code: 'UNAUTHORIZED', status: 401 });
 
     // BaseAdapter retries once — a session refreshed in another tab is the

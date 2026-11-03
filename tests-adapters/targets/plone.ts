@@ -5,6 +5,7 @@ import { PloneAdapter } from '@volto-hydra/hydra-adapters-plone';
 import { createPublicReader } from '@volto-hydra/hydra-adapters-plone/public';
 import type { Target } from './index';
 import { PORTS } from '../../tests-playwright/ports';
+import { mintToken } from '../../tests-playwright/fixtures/mock-tokens.cjs';
 // Ports come from tests-playwright/ports.ts, like every other server this repo
 // starts: one HYDRA_PORT_BASE names the whole block. They were written here as
 // literals — 8899, 8790, 1337 — which are shared with every other hydra
@@ -28,19 +29,19 @@ let sessionCounter = 0;
 
 const adapter = new PloneAdapter({ cmsBaseUrl: BASE });
 
-function b64url(obj: unknown): string {
-  return Buffer.from(JSON.stringify(obj)).toString('base64').replace(/=/g, '');
-}
-
-function mintToken(sub: string, jti: number): string {
-  const header = b64url({ alg: 'HS256', typ: 'JWT' });
-  const payload = b64url({
-    sub,
-    jti,
-    exp: Math.floor(Date.now() / 1000) + 86_400,
-  });
-  return `${header}.${payload}.contract-signature`;
-}
+/**
+ * The mock's OWN minter, not a copy.
+ *
+ * These tokens were hand-rolled here with the literal signature
+ * "contract-signature", which the mock accepted while it never checked one. It
+ * verifies now (mock-tokens.cjs signs with the site's key), so every request
+ * the contract made came back UNAUTHORIZED — 37 failures across every spec that
+ * reads anything, none of them about the adapter.
+ *
+ * Each call returns a distinct token (its jti is a uuid), which is what
+ * isolates a test file's session in the mock: getSessionId keys on the whole
+ * token.
+ */
 
 async function waitForHealth(timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -207,11 +208,7 @@ const target: Target = {
 
   async seed() {
     sessionCounter += 1;
-    // A JWT-shaped token, because that is what Plone issues and what the
-    // adapter reads `sub` out of. The unique jti also makes each test file's
-    // token a distinct string, which is what isolates its session in the mock
-    // (getSessionId keys on the whole token).
-    adapter.authToken = mintToken('admin', sessionCounter);
+    adapter.authToken = mintToken('admin');
     await adapter.init({ cmsBaseUrl: BASE, emit: () => {} });
   },
 };
