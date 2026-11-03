@@ -494,40 +494,26 @@ function filterActionsForAuth(content, authenticated) {
 }
 
 /**
- * Generate image_scales for Image content types
- * Used by object browser to display thumbnails
+ * Generate image_scales for Image content types.
+ * Used by object browser thumbnails, relation summaries and image blocks.
+ *
+ * An Image's `image` field is the same shape as a lead image's, and the summary
+ * real Plone builds from it is the same summary -- so this is getLeadImageScales
+ * on the `image` field, not a second implementation.
+ *
+ * It WAS a second implementation, and a wrong one: two rungs (`preview` and
+ * `large`), each `Math.min`-ed against the source rather than scaled to fit, so
+ * for any image narrower than 400px both came back at the original width and
+ * the summary advertised three names for one size. A 149px logo in a 45px
+ * carousel box had nothing finer to pick, which is what block-sanity's
+ * over-download check reported. It also hardcoded `image/jpeg` and `<id>.jpg`,
+ * so a PNG was advertised as a JPEG under a filename that did not exist.
  */
-function getImageScales(content, baseUrl) {
+function getImageScales(content) {
   if (content['@type'] !== 'Image' || !content.image) {
     return null;
   }
-
-  const { width, height } = content.image;
-  const contentPath = content['@id'].replace(baseUrl, '');
-
-  return {
-    image: [
-      {
-        'content-type': 'image/jpeg',
-        download: `@@images/image`,
-        filename: `${content.id || 'image'}.jpg`,
-        width: width,
-        height: height,
-        scales: {
-          preview: {
-            download: `@@images/image/preview`,
-            width: Math.min(width, 400),
-            height: Math.min(height, 400),
-          },
-          large: {
-            download: `@@images/image/large`,
-            width: Math.min(width, 800),
-            height: Math.min(height, 800),
-          },
-        },
-      }
-    ]
-  };
+  return getLeadImageScales(content, 'image');
 }
 
 /**
@@ -794,7 +780,7 @@ function catalogImageFields(content, baseUrl, hasPreviewImage = hasServablePrevi
   if (content['@type'] === 'Image') {
     return {
       image_field: 'image',
-      image_scales: getImageScales(content, baseUrl) || getPlaceholderImageScales(content.title),
+      image_scales: getImageScales(content) || getPlaceholderImageScales(content.title),
     };
   }
   if (content.image && (content.image.blob_path || content.image.width)) {
@@ -2118,7 +2104,7 @@ function summarizeRelations(content, baseUrl) {
       image_field: null,
     };
     if (raw['@type'] === 'Image') {
-      const scales = getImageScales(enrichContent(raw, contentPath, baseUrl), baseUrl);
+      const scales = getImageScales(enrichContent(raw, contentPath, baseUrl));
       // A relation to a non-image simply has no image_scales — that, not
       // image_field, is how a consumer tells the two apart.
       if (scales) summary.image_scales = scales;
@@ -2155,7 +2141,7 @@ function enrichImageBrains(obj, baseUrl) {
     const rawContent = loadRawContentFromDisk(contentPath);
     if (rawContent) {
       const enrichedImage = enrichContent(rawContent, contentPath, baseUrl);
-      const scales = getImageScales(enrichedImage, baseUrl);
+      const scales = getImageScales(enrichedImage);
       if (scales) {
         obj = { ...obj, image_scales: scales };
       }
@@ -2180,7 +2166,7 @@ function enrichImageBrains(obj, baseUrl) {
       const rawContent = loadRawContentFromDisk(contentPath);
       if (rawContent) {
         const enrichedImage = enrichContent(rawContent, contentPath, baseUrl);
-        const scales = getImageScales(enrichedImage, baseUrl);
+        const scales = getImageScales(enrichedImage);
         if (scales) {
           obj = { ...obj, image_scales: scales };
         }
