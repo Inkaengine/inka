@@ -50,6 +50,9 @@ const DECLARED = {
   // Mock-only, and named so nobody mistakes it for an API.
   '@mock-site-features':
     'test-only: control plane for per-session site features',
+  '@mock-revoke-token':
+    'test-only: what a reset site does to every token it issued, done here for '
+    + "one test's token so the tests beside it keep theirs",
 };
 
 /**

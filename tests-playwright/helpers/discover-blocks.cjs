@@ -662,50 +662,9 @@ function collectSlateIssues(blockData, pagePath, blockId, out, blockType, inTabl
  *  - `widget: 'slate'` — value is a non-empty array of slate nodes (deep
  *    structural checks stay in collectSlateIssues)
  */
-// Fields present in block data that are not schema properties but are never
-// authored/editable content: structural, serialisation, and Volto slot runtime.
-// The template trio (templateId/templateInstanceId/slotId) is written by the
-// template machinery to bind a block to its template instance and slot; it is
-// not sidebar-editable, so it must not be reported as an undeclared field.
-const UNDECLARED_EXEMPT = new Set([
-  'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'value',
-  'styles', 'override', 'block',
-  'fixed', 'slotId', 'templateId', 'templateInstanceId', 'readOnly',
-  // Written by the merge beside slotId when a fixed slot separates two groups
-  // (apply-templates stamps it); hydra's bookkeeping, never sidebar-authored.
-  'nextSlotId',
-  // codeExample selector directives (single-source example pages): `source`
-  // names a block/@type on the page and `format` (json|schema) says what to
-  // show; resolved to `tabs` at load/build, not sidebar-authored schema fields.
-  'source', 'format',
-  // Deep-link anchors hydra harvests + persists on the owning block (#273/#281).
-  // Not sidebar-authored — a consumer (in-page nav) reads them; exempt like the
-  // other serialisation/runtime fields above.
-  '_linkableAnchors',
-  // hydra's own bookkeeping for copy-from-target (CUSTOM_FIELDS_KEY in
-  // utils/copyFromTarget.js): the list of fields an author has overridden, written
-  // by the editor at runtime. Declaring it as a schema property would offer the
-  // bookkeeping itself as an editable field.
-  '_customFields',
-  // collective.volto.formsupport regenerates `validationSettings` on every GET
-  // of a form block — it is the catalogue of settable validators the sidebar
-  // builds its "Rule settings" widget FROM, so it is a property of the response,
-  // not of what is stored. The undeclared-field check asks "is a stored field
-  // missing from the schema", and for this one the premise does not hold:
-  // declaring it would offer the catalogue itself as an editable field.
-  'validationSettings',
-  // Which field of the referenced content holds the image. Written by the
-  // serialiser alongside `image_scales` (already exempt above), not authored.
-  'image_field',
-  // volto-form-block stamps this to invalidate its cached render. A timestamp
-  // (e.g. 1710238630312) is not something an author writes in the sidebar.
-  'lastChange',
-  // Marks a template member as one the template requires, alongside
-  // fixed/slotId/templateId. Not a field: declaring it as one filled the
-  // sidebar for a metadata block that has no fields of its own, hiding the
-  // content item's fields it exists to project.
-  'required',
-]);
+// UNDECLARED_EXEMPT: the fields block data may carry that no schema declares.
+// It lives with the validator (lib/plone-content-validator.cjs), which ships.
+const { UNDECLARED_EXEMPT } = require('../../lib/plone-content-validator.cjs');
 
 // Slate STYLES a person can actually choose from the editor's style menu
 // (Volto's `settings.slate.styleMenu`, stored as a node's `styleName`). Any
@@ -1871,7 +1830,7 @@ async function discoverBlocks(
   // One failing test per affected page, so a broken resolveuid or a
   // blocks_layout entry pointing at a deleted block fails by name.
   {
-    const { checkIntegrity } = require('../fixtures/plone-content-validator.cjs');
+    const { checkIntegrity } = require('../../lib/plone-content-validator.cjs');
     // Discovery only FETCHES page-like items, but references point at every
     // content type (an image block's url names an Image object). Register the
     // rest of the @search result as stubs — path + UID into the maps, no
@@ -2008,7 +1967,6 @@ module.exports = {
   // Exported so the content validator asks the same question this does — a
   // second list of "fields that are not schema fields" would drift, and the
   // drift would show up as a validator shouting about `slotId` on every block.
-  UNDECLARED_EXEMPT,
   collectFieldMappingIssues,
   loadMappingVocabularies,
   collectSlateIssues,

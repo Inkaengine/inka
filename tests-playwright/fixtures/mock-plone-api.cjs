@@ -15,6 +15,7 @@ const { imageSize, scaledSize, pngOfSize } = require('./scaled-image.cjs');
 const os = require('os');
 const { execFileSync } = require('child_process');
 const principalsAndRules = require('./mock-principals-and-rules.cjs');
+const { mintToken, verifyToken } = require('./mock-tokens.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
@@ -188,6 +189,53 @@ const sessionBlobs = {};
 // only. Format: { sessionId: Set<'/path'> }
 const sessionDeletions = {};
 
+// Locks taken with @lock, as Plone keeps them: one per page, seen by every
+// user, naming who holds it. An editor locks the page it opens and unlocks it
+// when it leaves; until then another user's save is refused. Content is kept
+// per session, but a lock is the page's, so it is not.
+// Format: { '/path': lock }
+const locks = {};
+
+/**
+ * Tokens the site no longer accepts (POST @mock-revoke-token): what a reset
+ * site does to every token it had issued, here for one test's token only, so
+ * the tests running beside it keep theirs.
+ */
+const revokedTokens = new Set();
+
+/**
+ * The user a token is for — its `sub`, as Plone's JWT names it — if the site
+ * accepts it: signed by the site (mock-tokens.cjs), unexpired and not revoked.
+ * Else null: Plone does not refuse a token it won't accept, it treats the
+ * request as anonymous.
+ */
+function tokenSubject(token) {
+  if (revokedTokens.has(token)) return null;
+  return verifyToken(token)?.sub ?? null;
+}
+
+/** The user a request is made as, or null for anonymous (see tokenSubject). */
+function requestUser(req) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) return null;
+  return tokenSubject(auth.slice(7));
+}
+
+/** The lock on `path`, if it has not lapsed (a lock lasts its `timeout` seconds). */
+function lockOn(path) {
+  const lock = locks[path];
+  if (lock && (lock.time + lock.timeout) * 1000 <= Date.now()) delete locks[path];
+  return locks[path];
+}
+
+/** Is `path` locked by someone other than the user making `req`? */
+function lockedAgainst(req, path) {
+  const lock = lockOn(path);
+  return !!lock && lock.creator !== requestUser(req);
+}
+
+const UNLOCKED = { locked: false, stealable: true };
+
 // Explicit child ordering per container, set by @order. Absent means "use the
 // natural order", which is what every existing test relies on.
 const sessionOrder = {};
@@ -241,7 +289,7 @@ const uidPositionMap = {};
 /**
  * Get session ID from request header.
  * Uses the Bearer auth token as the session identifier. AdminUIHelper
- * gives each test a unique token (TEST_AUTH_TOKEN + a uuid), so every
+ * gives each test a token of its own (mintToken), so every
  * test gets an isolated session and its saves don't leak into others.
  * Admin (Volto) and Nuxt SSR both forward the same Authorization header,
  * so they share that one test's session.
@@ -290,85 +338,6 @@ function setSessionContent(sessionId, urlPath, content) {
     sessionContent[sessionId] = {};
   }
   sessionContent[sessionId][urlPath] = content;
-}
-
-/**
- * Generate a fresh JWT token with 24-hour expiration from now.
- * Called on each login/renew to ensure token is always valid.
- */
-let tokenCounter = 0;
-
-/**
- * Who is calling, from the token's `sub`.
- *
- * Locks belong to a person, not a session id: Volto only warns "locked by
- * someone else" when the lock's creator differs from the logged-in user, so a
- * lock recorded against an opaque session hash would read as another editor's.
- */
-function currentUser(req) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) return null;
-  const [, payload] = header.slice(7).split('.');
-  if (!payload) return null;
-  // Not verified — this is a mock, and the signature is the string
-  // "fake-signature". Malformed base64 means no user, not a crash.
-  try {
-    return JSON.parse(Buffer.from(payload, 'base64').toString('utf-8')).sub ?? null;
-  } catch (error) {
-    if (error instanceof SyntaxError) return null;
-    throw error;
-  }
-}
-
-/**
- * Locks, per session and path.
- *
- * plone.locking's model, as plone.restapi exposes it: a lock has a creator, a
- * token the holder must present to write, a timeout, and `stealable` saying
- * whether another user may break it. Content carries {locked, stealable} at all
- * times — that is how Volto's Edit route knows locking EXISTS at all
- * (`content?.lock !== undefined`), and why leaving it out meant no edit in this
- * mock ever took one.
- */
-const sessionLocks = {};
-
-function lockInfoFor(sessionId, cleanPath) {
-  const held = sessionLocks[sessionId]?.[cleanPath];
-  // The unlocked shape is exactly two keys — see plone.restapi's lock_get.resp.
-  if (!held) return { locked: false, stealable: true };
-  return {
-    locked: true,
-    stealable: true,
-    creator: held.creator,
-    creator_name: held.creator,
-    creator_url: `${API_ORIGIN}/author/${held.creator}`,
-    created: held.created,
-    name: 'plone.locking.stealable',
-    time: held.time,
-    timeout: held.timeout,
-    token: held.token,
-  };
-}
-
-/**
- * Mint a session token.
- *
- * The `jti` is not decoration: every mutation in this mock is scoped to the
- * caller's token (see getSessionId), and the payload used to be `{sub, exp}`
- * with `exp` at SECOND granularity — so two logins in the same second produced
- * a byte-identical token and silently shared one session. Two tests that each
- * moved the same page then interfered with each other, passing or failing on
- * where the second boundary happened to fall.
- */
-function generateAuthToken(username = 'admin') {
-  const header = Buffer.from(JSON.stringify({"alg":"HS256","typ":"JWT"})).toString('base64').replace(/=/g, '');
-  tokenCounter += 1;
-  const payload = Buffer.from(JSON.stringify({
-    "sub": username,
-    "exp": Math.floor(Date.now()/1000) + 86400,  // 24 hours from NOW
-    "jti": `${Date.now()}-${tokenCounter}`
-  })).toString('base64').replace(/=/g, '');
-  return `${header}.${payload}.fake-signature`;
 }
 
 /**
@@ -482,31 +451,35 @@ if (process.env.DEBUG) {
  * @param {Object} req - Express request object
  * @returns {boolean} True if authenticated
  */
-/**
- * A token the mock always rejects, so tests can reproduce a mid-session expiry
- * without tearing the server down. Nothing else issues this value.
- */
-const REVOKED_TOKEN = 'EXPIRED_TOKEN';
-
-function isRevoked(req) {
-  const authHeader = req.headers.authorization;
-  return authHeader === `Bearer ${REVOKED_TOKEN}`;
-}
-
 function isAuthenticated(req) {
-  const authHeader = req.headers.authorization;
-  return authHeader && authHeader.startsWith('Bearer ') && !isRevoked(req);
+  return requestUser(req) !== null;
 }
 
-// Reject a revoked session before any route sees the request, exactly as a
-// CMS with an expired cookie would.
+/**
+ * The addable types need a signed-in user, in Plone: @types is Unauthorized to
+ * anonymous (and so to a token the site no longer accepts). So is the `types`
+ * expansion the editor asks for on its first read, refusing the whole read
+ * (see the content GET: only once the page is found, as Plone looks it up
+ * first).
+ */
+const UNAUTHORIZED = { type: 'Unauthorized', message: 'Unauthorized()' };
 app.use((req, res, next) => {
-  if (isRevoked(req)) {
-    return res.status(401).json({
-      error: { type: 'Unauthorized', message: 'Session expired' },
-    });
-  }
+  if (/\/@types(\/|$)/.test(req.path) && !isAuthenticated(req)) return res.status(401).json(UNAUTHORIZED);
   next();
+});
+
+/**
+ * POST /@mock-revoke-token (test only): stop accepting the request's token, as
+ * a site reset (a deploy) stops accepting every token it had issued. Requests
+ * with it are anonymous from then on; signing in again gets one that works.
+ */
+app.post('/@mock-revoke-token', (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) {
+    return res.status(400).json({ type: 'BadRequest', message: 'No token to revoke.' });
+  }
+  revokedTokens.add(auth.slice(7));
+  res.status(204).end();
 });
 
 /**
@@ -537,40 +510,26 @@ function filterActionsForAuth(content, authenticated) {
 }
 
 /**
- * Generate image_scales for Image content types
- * Used by object browser to display thumbnails
+ * Generate image_scales for Image content types.
+ * Used by object browser thumbnails, relation summaries and image blocks.
+ *
+ * An Image's `image` field is the same shape as a lead image's, and the summary
+ * real Plone builds from it is the same summary -- so this is getLeadImageScales
+ * on the `image` field, not a second implementation.
+ *
+ * It WAS a second implementation, and a wrong one: two rungs (`preview` and
+ * `large`), each `Math.min`-ed against the source rather than scaled to fit, so
+ * for any image narrower than 400px both came back at the original width and
+ * the summary advertised three names for one size. A 149px logo in a 45px
+ * carousel box had nothing finer to pick, which is what block-sanity's
+ * over-download check reported. It also hardcoded `image/jpeg` and `<id>.jpg`,
+ * so a PNG was advertised as a JPEG under a filename that did not exist.
  */
-function getImageScales(content, baseUrl) {
+function getImageScales(content) {
   if (content['@type'] !== 'Image' || !content.image) {
     return null;
   }
-
-  const { width, height } = content.image;
-  const contentPath = content['@id'].replace(baseUrl, '');
-
-  return {
-    image: [
-      {
-        'content-type': 'image/jpeg',
-        download: `@@images/image`,
-        filename: `${content.id || 'image'}.jpg`,
-        width: width,
-        height: height,
-        scales: {
-          preview: {
-            download: `@@images/image/preview`,
-            width: Math.min(width, 400),
-            height: Math.min(height, 400),
-          },
-          large: {
-            download: `@@images/image/large`,
-            width: Math.min(width, 800),
-            height: Math.min(height, 800),
-          },
-        },
-      }
-    ]
-  };
+  return getLeadImageScales(content, 'image');
 }
 
 /**
@@ -777,7 +736,7 @@ function matchRawSearch(searchTerm, item) {
     .some(matchesAlternative);
 }
 
-function matchSearchableText(searchTerm, item) {
+function matchSearchableText(searchTerm, item, blocksText = '') {
   const term = (searchTerm || '').replace(/\*+$/g, '').trim().toLowerCase();
   if (!term) return true;
   const parts = term.split(/\s+/).filter(Boolean);
@@ -786,6 +745,7 @@ function matchSearchableText(searchTerm, item) {
     ...(item.title || '').toLowerCase().split(/\W+/),
     ...(item.description || '').toLowerCase().split(/\W+/),
     ...(item.id || '').toLowerCase().split(/\W+/),
+    ...blocksText.toLowerCase().split(/\W+/),
   ].filter(Boolean);
   return parts.every((p) => haystackTokens.some((tok) => tok.startsWith(p)));
 }
@@ -811,6 +771,24 @@ function typeTitleOf(typeName) {
   }
   typeTitleCache.set(typeName, title);
   return title;
+}
+
+/**
+ * The text of a page's blocks, as plone.restapi's blocks indexer adds it to
+ * SearchableText: every Text (slate) value, in containers too. (Other block
+ * types are indexed only where a site registers an indexer for them.)
+ */
+function blocksSearchableText(blocks) {
+  const texts = [];
+  const isSlate = (v) => Array.isArray(v) && v.length > 0 && v.every((n) => n && typeof n === 'object' && Array.isArray(n.children));
+  const slateText = (nodes) => nodes.map((n) => (typeof n.text === 'string' ? n.text : '') + slateText(n.children || [])).join(' ');
+  const walk = (v) => {
+    if (isSlate(v)) texts.push(slateText(v));
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  };
+  walk(blocks);
+  return texts.join(' ');
 }
 
 /**
@@ -847,7 +825,7 @@ function catalogImageFields(content, baseUrl, hasPreviewImage = hasServablePrevi
   if (content['@type'] === 'Image') {
     return {
       image_field: 'image',
-      image_scales: getImageScales(content, baseUrl) || getPlaceholderImageScales(content.title),
+      image_scales: getImageScales(content) || getPlaceholderImageScales(content.title),
     };
   }
   if (content.image && (content.image.blob_path || content.image.width)) {
@@ -866,11 +844,26 @@ function catalogImageFields(content, baseUrl, hasPreviewImage = hasServablePrevi
 }
 
 /**
- * Format a content item for search results
- * Includes image_field and image_scales matching real Plone API structure
- * Includes is_folderish for folder navigation in object browser
- * Includes hasPreviewImage for teaser blocks to show target's preview image
+ * Every block @type on a page, nested blocks included (plone.volto's
+ * block_types indexer): the entries of a `blocks` dict at any depth — not any
+ * object with an @type (a link's `{"@type": "Document"}` is not a block).
  */
+function blockTypesOf(content) {
+  const types = new Set();
+  const visit = (node) => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== 'object') return;
+    if (node.blocks && typeof node.blocks === 'object' && !Array.isArray(node.blocks)) {
+      for (const block of Object.values(node.blocks)) {
+        if (typeof block?.['@type'] === 'string') types.add(block['@type']);
+      }
+    }
+    Object.values(node).forEach(visit);
+  };
+  visit(content);
+  return [...types];
+}
+
 /**
  * What a summary may carry, as plone.restapi 10.0.4 decides it.
  *
@@ -936,6 +929,12 @@ function applyMetadataFields(item, req) {
   return out;
 }
 
+/**
+ * Format a content item for search results
+ * Includes image_field and image_scales matching real Plone API structure
+ * Includes is_folderish for folder navigation in object browser
+ * Includes hasPreviewImage for teaser blocks to show target's preview image
+ */
 function formatSearchItem(content, baseUrl) {
   const hasPreviewImage = hasServablePreviewImage(content);
 
@@ -2175,7 +2174,7 @@ function summarizeRelations(content, baseUrl) {
       image_field: null,
     };
     if (raw['@type'] === 'Image') {
-      const scales = getImageScales(enrichContent(raw, contentPath, baseUrl), baseUrl);
+      const scales = getImageScales(enrichContent(raw, contentPath, baseUrl));
       // A relation to a non-image simply has no image_scales — that, not
       // image_field, is how a consumer tells the two apart.
       if (scales) summary.image_scales = scales;
@@ -2212,7 +2211,7 @@ function enrichImageBrains(obj, baseUrl) {
     const rawContent = loadRawContentFromDisk(contentPath);
     if (rawContent) {
       const enrichedImage = enrichContent(rawContent, contentPath, baseUrl);
-      const scales = getImageScales(enrichedImage, baseUrl);
+      const scales = getImageScales(enrichedImage);
       if (scales) {
         obj = { ...obj, image_scales: scales };
       }
@@ -2237,7 +2236,7 @@ function enrichImageBrains(obj, baseUrl) {
       const rawContent = loadRawContentFromDisk(contentPath);
       if (rawContent) {
         const enrichedImage = enrichContent(rawContent, contentPath, baseUrl);
-        const scales = getImageScales(enrichedImage, baseUrl);
+        const scales = getImageScales(enrichedImage);
         if (scales) {
           obj = { ...obj, image_scales: scales };
         }
@@ -2480,16 +2479,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     // every request, which a listing's order depends on.
     'created': transformed.created || mockDateFor(cleanPath, 0),
     'modified': transformed.modified || mockDateFor(cleanPath, 7),
-    // The ACTUAL lock, not a fixed "nobody holds this".
-    //
-    // Volto's Edit route locks on entry (it does so whenever content.lock
-    // exists, which is why this key matters), unlocks on unmount if
-    // content.lock.locked, and sends content.lock.token as a Lock-Token header
-    // on every write. With a constant {locked:false} here, POST @lock wrote to
-    // nowhere a reader could see: the unlock never fired and the token never
-    // travelled. A fixture may still set `lock` itself, to model a document
-    // someone ELSE is holding.
-    'lock': transformed.lock || lockInfoFor(sessionId, cleanPath),
+    'lock': lockOn(cleanPath) || transformed.lock || UNLOCKED,
     'parent': parent,
     // Plone serialises `language` as a vocabulary term, never the bare code a
     // fixture writes — and Volto reads `content.language.token` throughout its
@@ -2698,7 +2688,7 @@ function loadMarkdownMount(mount) {
  * export-shape check, since they are what gets imported into a real Plone.
  */
 function validateServedContent() {
-  const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+  const { validate, checkIntegrity } = require('../../lib/plone-content-validator.cjs');
   // ALLOW_MISSING_BLOBS=true: a blob whose bytes are not on disk is a warning,
   // not an error — what `plone-content --allow-missing-blobs` does. For a pull
   // request whose content references a file CI makes only after the merge (a
@@ -2724,7 +2714,7 @@ function validateServedContent() {
   keep(checkIntegrity(source, { schemasFor: hydraSchemasForOwnContent, allowMissingBlobs }));
   for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   if (siteSchemas) {
-    const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+    const { checkBlockSchemas, fieldMapFromSchemas } = require('../../lib/plone-content-validator.cjs');
     const { buildIdFieldMap } = require('../../packages/hydra-js/buildBlockPathMap.js');
     // Without the idFieldMap the container API sees only object_lists whose
     // items carry templateId, so a slider's slides go unchecked.
@@ -2767,7 +2757,7 @@ function isHydraOwned(urlPath) {
 let siteSchemas = null;
 async function loadSiteSchemas() {
   if (!process.env.CONTENT_SCHEMAS) return;
-  const { loadSchemas } = require('./plone-content-validator.cjs');
+  const { loadSchemas } = require('../../lib/plone-content-validator.cjs');
   siteSchemas = await loadSchemas(process.env.CONTENT_SCHEMAS);
 }
 
@@ -2828,7 +2818,7 @@ async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
   if (!mounts.length) return;
   const { readTree } = await import('../../lib/markdown-mount.mjs');
-  const { checkIntegrity } = require('./plone-content-validator.cjs');
+  const { checkIntegrity } = require('../../lib/plone-content-validator.cjs');
   // readTree takes a type -> blockSchema function; only checkIntegrity takes
   // the whole config. Two different contracts, so both are supplied.
   mdRuntime = {
@@ -2992,17 +2982,22 @@ app.post('/@login-renew', (req, res) => {
     console.log('Token renewal requested');
   }
 
-  // Fresh token, same session. See migrateSession.
+  // A fresh token for the user the old one is for, in the same session (see
+  // migrateSession), as Plone renews it; without one, Plone refuses.
   const previous = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  const renewed = generateAuthToken('admin');
+  const user = previous ? tokenSubject(previous) : null;
+  if (!user) {
+    return res.status(401).json({ error: { type: 'Unauthorized', message: 'No valid token to renew.' } });
+  }
+  const renewed = mintToken(user);
   migrateSession(previous, renewed);
   res.json({
     token: renewed,
     user: {
-      '@id': `${API_ORIGIN}/@users/admin`,
-      id: 'admin',
-      fullname: 'Admin User',
-      email: 'admin@example.com',
+      '@id': `${API_ORIGIN}/@users/${user}`,
+      id: user,
+      fullname: user === 'admin' ? 'Admin User' : user,
+      email: `${user}@example.com`,
       roles: ['Manager', 'Authenticated'],
     },
   });
@@ -3030,7 +3025,7 @@ app.get('/@login', (req, res) => {
  * Sign in as the demo editor, with no password (plone.demoeditor).
  */
 app.post('/@login-demo', (req, res) => {
-  res.json({ token: generateAuthToken('demo') });
+  res.json({ token: mintToken('demo') });
 });
 
 /**
@@ -3046,7 +3041,7 @@ app.post('/@login', (req, res) => {
 
   if (login && password) {
     // Generate fresh token with new expiration
-    const token = generateAuthToken(login);
+    const token = mintToken(login);
     // A login that succeeds means the CMS HAS this account, so @users has to
     // agree: it answers 404 for an id it does not know, and every test that logs
     // in under its own name would otherwise be unable to identify itself. This
@@ -3791,7 +3786,7 @@ app.post('/@export', async (req, res) => {
       return res.status(409).json({ error: 'no content to export' });
     }
     // Never ship a tree the importer would choke on.
-    const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+    const { validate, checkIntegrity } = require('../../lib/plone-content-validator.cjs');
     const contentDir = path.join(staging, 'content');
     const v = validate(contentDir, { allowMissingBlobs });
     const c = checkIntegrity(contentDir, { schemasFor: () => hydraBlocksConfig, allowMissingBlobs });
@@ -5219,7 +5214,10 @@ app.get('/rss-stub', (req, res) => {
  * Add button reads this to populate the type-picker menu — without it the
  * button is hidden (Toolbar.jsx requires types.length > 0).
  *
- * Returns just Document for now; extend if a test needs Folder/News Item.
+ * Document, Folder, Image and File, as an ordinary Plone folder lists them.
+ * A container whose data sets `locally_allowed_types` lists only those, as
+ * Plone's type constraints (@constraintypes) narrow what it may hold: the
+ * editor asks this before it holds an image for upload into a folder.
  */
 // `id` and `immediately_addable` are in Plone's @types entries (verified against
 // plone/server-dev:6) and were missing here — the same shape
@@ -5255,14 +5253,38 @@ function listAddableTypes() {
       immediately_addable: true,
       title: 'Folder',
     },
+    {
+      '@id': `http://localhost:${PORT}/@types/Image`,
+      id: 'Image',
+      addable: true,
+      immediately_addable: true,
+      title: 'Image',
+    },
+    {
+      '@id': `http://localhost:${PORT}/@types/File`,
+      id: 'File',
+      addable: true,
+      immediately_addable: true,
+      title: 'File',
+    },
   ];
+}
+
+/** What the container at `path` lists: every type, or the ones it allows. */
+function addableTypesIn(path, sessionId) {
+  const allowed = getContent(path, sessionId)?.locally_allowed_types;
+  return listAddableTypes().map((type) =>
+    allowed && !allowed.includes(type.id)
+      ? { ...type, addable: false, immediately_addable: false }
+      : type,
+  );
 }
 
 app.get('/@types', (req, res) => {
   res.json(listAddableTypes());
 });
 app.get('*/@types', (req, res) => {
-  res.json(listAddableTypes());
+  res.json(addableTypesIn(req.path.replace(/\/@types$/, '') || '/', getSessionId(req)));
 });
 
 /**
@@ -5852,13 +5874,19 @@ app.get('*/@search', (req, res) => {
   // SearchableText and ANDs the parts — matchSearchableText replicates that on
   // title/description/id. The Title index is ZCTextIndex: whole words, with
   // optional right-truncation (`sea*`) — replicated on the title only.
-  if (searchableText || titleQuery) {
-    items = Object.keys(contentDirMap)
+  // block_types: plone.volto's KeywordIndex of every block's @type on a page,
+  // container children included.
+  const blockTypes = req.query.block_types === undefined ? null : [req.query.block_types].flat();
+  if (searchableText || titleQuery || blockTypes) {
+    // The site as this session has it, as Plone's catalog does: its own new
+    // and edited pages included, by the text in their blocks too.
+    items = allContentPaths(getSessionId(req))
       .filter((itemPath) => itemPath !== '/')
-      .map((itemPath) => formatSearchItem(loadContentFromDisk(itemPath), baseUrl));
-    if (searchableText) {
-      items = items.filter((item) => matchSearchableText(searchableText, item));
-    }
+      .map((itemPath) => getContent(itemPath, getSessionId(req)))
+      .filter((content) => content != null)
+      .filter((content) => !blockTypes || blockTypesOf(content).some((t) => blockTypes.includes(t)))
+      .filter((content) => !searchableText || matchSearchableText(searchableText, content, blocksSearchableText(content.blocks)))
+      .map((content) => formatSearchItem(content, baseUrl));
     if (titleQuery) {
       const terms = String(titleQuery)
         .toLowerCase()
@@ -6508,81 +6536,45 @@ app.delete('*/@form-data', (req, res) => {
  * write-only, and a test could not tell a lock that was taken from one that was
  * quietly dropped.
  */
-app.get('*/@lock', (req, res) => {
-  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
-  const sessionId = getSessionId(req);
-  if (getContent(cleanPath, sessionId) === null) {
-    return res.status(404).json({
-      error: { type: 'NotFound', message: `No such resource: ${cleanPath}` },
-    });
-  }
-  return res.json(lockInfoFor(sessionId, cleanPath));
-});
-
-/**
- * POST /:path/@lock — take the lock.
- *
- * Answers the full record, including the `token` the holder then sends back as
- * a Lock-Token header on every write (Volto's Edit does exactly that). It used
- * to answer a fixed object with creator 'admin' and no token at all, so the
- * token round trip — the part that actually protects anything — was untested.
- */
 app.post('*/@lock', (req, res) => {
-  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
-  const sessionId = getSessionId(req);
-  if (getContent(cleanPath, sessionId) === null) {
-    return res.status(404).json({
-      error: { type: 'NotFound', message: `No such resource: ${cleanPath}` },
-    });
+  const contentPath = req.path.replace(/\/@lock$/, '') || '/';
+  const user = requestUser(req);
+  if (!user) return res.status(401).json({ error: { type: 'Unauthorized', message: 'Locking needs a logged-in user.' } });
+  // Plone's lock() leaves another user's lock as it is, and answers with it.
+  if (!lockedAgainst(req, contentPath)) {
+    // plone.restapi's lock_info: `time` in epoch seconds, `created` the same
+    // to the second as ISO (with its Z), and the holder's name (their id here).
+    const time = Date.now() / 1000;
+    // Re-locking your own page REFRESHES it and keeps the token. Volto locks on
+    // every entry into edit and sends content.lock.token as a Lock-Token header
+    // on every write, so minting a new one here would invalidate the header an
+    // already-open editor is still sending — a save refused for a lock the
+    // saver holds.
+    const held = lockOn(contentPath);
+    locks[contentPath] = {
+      locked: true,
+      stealable: true,
+      creator: user,
+      creator_name: user,
+      creator_url: `${req.protocol}://${req.get('host')}/author/${user}`,
+      time,
+      created: new Date(Math.floor(time) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      token: held?.token ?? `mock-lock-${Math.random().toString(36).slice(2)}`,
+      timeout: req.body?.timeout ?? 600
+    };
   }
-  const creator = currentUser(req) ?? 'anonymous';
-  if (!sessionLocks[sessionId]) sessionLocks[sessionId] = {};
-  const existing = sessionLocks[sessionId][cleanPath];
-  // Re-locking your own document refreshes it rather than failing: Plone's
-  // lockable.lock() on an already-held lock by the same creator is a no-op, and
-  // Volto locks again on every entry into edit.
-  sessionLocks[sessionId][cleanPath] = {
-    creator,
-    created: existing?.created ?? new Date().toISOString(),
-    time: Date.now() / 1000,
-    timeout: Number(req.body?.timeout ?? 600),
-    token: existing?.token ?? `${Math.random().toString(36).slice(2)}-${Date.now()}`,
-  };
-  return res.json(lockInfoFor(sessionId, cleanPath));
+  res.json(lockOn(contentPath));
 });
 
 /**
- * PATCH /:path/@lock — refresh a lock you already hold.
- *
- * Volto's long edits call this to keep the lock alive. Refusing to refresh a
- * lock nobody holds, rather than inventing one, because a refresh that silently
- * CREATES a lock would hide a client that lost its own.
- */
-app.patch('*/@lock', (req, res) => {
-  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
-  const sessionId = getSessionId(req);
-  const held = sessionLocks[sessionId]?.[cleanPath];
-  if (!held) {
-    return res.status(404).json({
-      error: { type: 'NotFound', message: `Not locked: ${cleanPath}` },
-    });
-  }
-  held.time = Date.now() / 1000;
-  held.timeout = Number(req.body?.timeout ?? held.timeout);
-  return res.json(lockInfoFor(sessionId, cleanPath));
-});
-
-/**
- * DELETE /:path/@lock — release it.
- *
- * Answers lock_info for the now-unlocked object, which is what plone.restapi's
- * unlock service returns — not the bare {locked:false} this used to send.
+ * DELETE /:path/@lock
+ * Unlock content after editing. Only the holder unlocks, unless `force`
+ * (Volto's "unlock" of a lock someone else left) says to.
  */
 app.delete('*/@lock', (req, res) => {
-  const cleanPath = req.path.replace(/\/@lock$/, '') || '/';
-  const sessionId = getSessionId(req);
-  if (sessionLocks[sessionId]) delete sessionLocks[sessionId][cleanPath];
-  return res.json(lockInfoFor(sessionId, cleanPath));
+  const contentPath = req.path.replace(/\/@lock$/, '') || '/';
+  if (!lockedAgainst(req, contentPath) || req.body?.force) delete locks[contentPath];
+  res.json(lockOn(contentPath) || UNLOCKED);
 });
 
 /**
@@ -6689,7 +6681,6 @@ app.get('*/@@images/*', (req, res) => {
   // picture does not matter here, the size does. SVG is excluded because it has
   // no raster size, which is also why real Plone serves it unscaled.
   //
-
 
   // Bytes uploaded in this session take precedence: they have no directory on
   // disk, so contentDirMap will never find them.
@@ -6925,6 +6916,7 @@ app.get('*', (req, res, next) => {
   if (content) {
     // Filter actions based on authentication
     const authenticated = isAuthenticated(req);
+    if (!authenticated && parseExpand(req).includes('types')) return res.status(401).json(UNAUTHORIZED);
     // Plone refuses an anonymous reader content the public may not view: under
     // simple_publication_workflow, `private` (where a new page starts) and
     // `pending`. Serving it anyway let a frontend that fetched WITHOUT the
@@ -7017,6 +7009,11 @@ app.patch('*', (req, res) => {
   const logMsg = `[PATCH] ${cleanPath} sessionId: ${sessionId}\n`;
   fs.appendFileSync('/tmp/mock-api-patch.log', logMsg);
   console.log(logMsg);
+
+  // Plone refuses to change a page another user holds the lock on.
+  if (lockedAgainst(req, cleanPath.replace(/\/$/, '') || '/')) {
+    return res.status(403).json({ error: { type: 'Forbidden', message: 'Resource is locked.' } });
+  }
 
   // Reload content from disk to pick up changes during development
   const content = getContent(cleanPath, sessionId);

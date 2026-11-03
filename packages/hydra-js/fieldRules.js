@@ -889,3 +889,155 @@ function evaluateOperators(surface, operators) {
 
   return true;
 }
+
+/**
+ * Every fieldRules map in an enhancer chain, merged in declaration order.
+ *
+ * A composed enhancer's own `config` is the parts' configs merged, so a chain
+ * with two fieldRules parts keeps only the LAST one's map there — the parts
+ * have to be walked. blockSync composes a frontend recipe with the admin's own
+ * enhancer exactly this way, and rules declared in either are real.
+ */
+export function collectFieldRules(enhancer) {
+  // Recipe form. The admin converts a frontend recipe into a function before it
+  // reaches blocksConfig (View.jsx), but getResolvedSchema also accepts a raw
+  // recipe, and reading only functions would silently report no rules for one.
+  if (Array.isArray(enhancer)) {
+    return Object.assign({}, ...enhancer.map(collectFieldRules));
+  }
+  if (enhancer && typeof enhancer === 'object') {
+    const rules = enhancer.fieldRules;
+    return rules && typeof rules === 'object' ? { ...rules } : {};
+  }
+
+  if (typeof enhancer !== 'function') return {};
+  const parts = Array.isArray(enhancer._parts) ? enhancer._parts : [enhancer];
+  const out = {};
+  for (const part of parts) {
+    const rules = part?.config?.fieldRules;
+    if (rules && typeof rules === 'object') Object.assign(out, rules);
+  }
+  return out;
+}
+
+/**
+ * A `when` with its undefined operands removed, or null when nothing is left to
+ * constrain — in which case the branch matches unconditionally.
+ *
+ * An `undefined` operand is NO COMPARISON, not "is unset": `{ mode: undefined }`
+ * becomes `{ is: undefined }`, nothing is compared, and the condition is true
+ * whatever the field holds. It also cannot be reported as written, because
+ * JSON.stringify turns `{ when: { mode: undefined } }` into `{ "when": {} }` —
+ * which would read as "no condition" by luck rather than by rule. Dropping it
+ * says the same thing deliberately.
+ *
+ * The live site relies on this: a button block shows its link field unless the
+ * mode is a search, written as a branch per mode with `{ linkMode: undefined }`
+ * for "not chosen yet". That branch matches always, so the field is in fact
+ * never hidden.
+ */
+function constrainingWhen(when) {
+  if (!when || typeof when !== 'object') return null;
+  const out = {};
+  for (const [fieldPath, expected] of Object.entries(when)) {
+    if (expected === undefined) continue;
+    if (expected && typeof expected === 'object' && !Array.isArray(expected)) {
+      const operators = Object.fromEntries(
+        Object.entries(expected).filter(([, operand]) => operand !== undefined),
+      );
+      if (Object.keys(operators).length === 0) continue;
+      out[fieldPath] = operators;
+      continue;
+    }
+    out[fieldPath] = expected;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** The constraining `when` of a branch, or nothing when it matches always. */
+function branchCondition(branch) {
+  const when =
+    branch && typeof branch === 'object' && 'when' in branch
+      ? constrainingWhen(branch.when)
+      : null;
+  return when ? { when } : {};
+}
+
+/** Whether a branch only matches when the data says so. */
+function isConditional(branch) {
+  return !!(
+    branch &&
+    typeof branch === 'object' &&
+    'when' in branch &&
+    constrainingWhen(branch.when)
+  );
+}
+
+/**
+ * What an agent needs told about a block's fieldRules, keyed as declared (a
+ * dotted path stays a dotted path).
+ *
+ * Only the CONDITIONAL is reported. The schema an agent reads is resolved once,
+ * against no data, so an unconditional rule is already in it: a field hidden by
+ * `false` is absent, and a bare `set` is part of the definition. What the schema
+ * cannot show is a field that appears only when the data says so — it is simply
+ * missing, and an agent has no way to learn it exists — or a rule that will
+ * refuse the save or advise against a value.
+ *
+ * Per key, any of:
+ *   - `shownWhen`: the conditions under which the field is there at all. Any one
+ *     of them showing it, since a switch takes the first that matches.
+ *   - `errors`: `[{ when?, message }]` — the save is REFUSED while one holds.
+ *   - `warnings`: `[{ when?, message }]` — said, not refused; the page saves.
+ *
+ * A conditional `set` alone is not reported: it re-titles or re-widgets a field
+ * that is there either way, which changes nothing about what an agent may write.
+ */
+export function describeFieldRules(rulesConfig) {
+  const out = {};
+  for (const [key, rule] of Object.entries(rulesConfig || {})) {
+    const errors = [];
+    const warnings = [];
+    let shownWhen;
+
+    // A switch hides only through a bare `false` entry: inside an array `else`
+    // is never consulted (evaluateFieldRule), and no match at all keeps the
+    // field as it is.
+    if (Array.isArray(rule)) {
+      const hides = rule.includes(false);
+      const branches = rule.filter((branch) => branch !== false);
+      if (hides) {
+        const conditions = branches
+          .filter(isConditional)
+          .map((branch) => constrainingWhen(branch.when));
+        // A branch with no condition always matches, so the trailing `false` is
+        // unreachable and the field is never hidden.
+        if (conditions.length === branches.length) shownWhen = conditions;
+      }
+      for (const branch of branches) {
+        if ('error' in (branch || {}))
+          errors.push({ ...branchCondition(branch), message: branch.error });
+        if ('warning' in (branch || {}))
+          warnings.push({ ...branchCondition(branch), message: branch.warning });
+      }
+    } else if (rule && typeof rule === 'object') {
+      // `else: false` is the single-rule hide. An `else` holding a definition
+      // leaves the field visible.
+      if (isConditional(rule) && rule.else === false)
+        shownWhen = [constrainingWhen(rule.when)];
+      if ('error' in rule) errors.push({ ...branchCondition(rule), message: rule.error });
+      if ('warning' in rule)
+        warnings.push({ ...branchCondition(rule), message: rule.warning });
+    }
+    // `rule === false` says the field is always hidden, so it is not in the
+    // schema and there is nothing an agent could do with it.
+
+    const described = {
+      ...(shownWhen && { shownWhen }),
+      ...(errors.length && { errors }),
+      ...(warnings.length && { warnings }),
+    };
+    if (Object.keys(described).length > 0) out[key] = described;
+  }
+  return out;
+}

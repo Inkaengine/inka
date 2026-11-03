@@ -171,6 +171,8 @@ export default defineConfig({
             // per-package jest configs that no CI step ever invoked, so they
             // never ran there.
             'packages/hydra-adapters-*/**/*.test.js',
+            // The MCP server: the agent page format and the tools.
+            'packages/inka-mcp/**/*.{test,spec}.mjs',
           ],
           // hydra-js has its own jest harness; covered by
           // `cd packages/hydra-js && pnpm test` in CI.

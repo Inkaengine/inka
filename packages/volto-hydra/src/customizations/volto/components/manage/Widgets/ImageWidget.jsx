@@ -54,6 +54,14 @@ import clearSVG from '@plone/volto/icons/clear.svg';
 
 // Import AddLinkForm for consistent UI
 import AddLinkForm from '../AnchorPlugin/components/LinkButton/AddLinkForm';
+import Api from '@plone/volto/helpers/Api/Api';
+import {
+  checkImagesAllowed,
+  holdImage,
+  ImagesNotAllowed,
+  isPendingImage,
+  previewUrl,
+} from '../../../../../utils/pendingImages';
 
 /**
  * The src for an image value, WITHOUT assuming how the CMS names scales.
@@ -69,6 +77,9 @@ import AddLinkForm from '../AnchorPlugin/components/LinkButton/AddLinkForm';
  */
 function imageSrc(value, size) {
   if (!value) return value;
+  // Still being uploaded: the only thing that exists is the preview the admin
+  // is holding. First, because the rest of this addresses a server.
+  if (isPendingImage(value)) return previewUrl(value);
   if (/^https?:\/\//.test(value)) return value;
   return `${flattenToAppURL(value)}/@@images/image/${size}`;
 }
@@ -254,6 +265,32 @@ const UnconnectedImageInput = (props) => {
         setUploading(false);
         return;
       }
+      // A front end that defers uploads (settings.deferImageUploads) gets the
+      // image held until the page is saved: the field names it by reference,
+      // and Save uploads it (pendingImages.js). Nothing is created now, so a
+      // cancelled edit leaves nothing behind. Whether the folder takes images
+      // from this user is asked now, so a refusal comes at the drop.
+      if (config.settings.deferImageUploads) {
+        const folder = flattenToAppURL(uploadUrl);
+        checkImagesAllowed(folder, (path) => new Api().get(`${path}/@types`))
+          .then(() => {
+            setUploading(false);
+            onChange(id, holdImage(file, folder));
+            onClose?.();
+          })
+          .catch((error) => {
+            setUploading(false);
+            if (!(error instanceof ImagesNotAllowed)) throw error;
+            toast.error(
+              <Toast
+                error
+                title={intl.formatMessage(messages.Error)}
+                content={error.message}
+              />,
+            );
+          });
+        return;
+      }
       readAsDataURL(file).then((fileData) => {
         const fields = fileData.match(/^data:(.*);(.*),(.*)$/);
         if (!fields) {
@@ -294,6 +331,10 @@ const UnconnectedImageInput = (props) => {
       dispatch,
       props.block,
       requestId,
+      accept,
+      id,
+      onChange,
+      onClose,
     ],
   );
 
@@ -431,6 +472,9 @@ const UnconnectedImageInput = (props) => {
             src={imageSrc(imageValue, imageSize)}
             alt=""
           />
+        )}
+        {isPendingImage(imageValue) && (
+          <div className="image-upload-widget-pending">Saved with the page</div>
         )}
       </div>
     );

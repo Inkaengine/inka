@@ -173,15 +173,18 @@ function getImageUrl(value) {
             // successfully" for a listing thumbnail that is fine on the API.
             const rawId = value['@id'] || '';
             const baseUrl = /^https?:\/\//.test(rawId) ? rawId : `${apiOrigin}${rawId}`;
-            return `${baseUrl}/${scales[0].download}`;
+            return scaleUrl(baseUrl, scales[0].download);
         }
     }
 
     // Extract @id from array or object format
     let url = Array.isArray(value) ? value[0]?.['@id'] : value?.['@id'] || value;
     if (typeof url !== 'string') return '';
-    // Add @@images/image suffix for Plone paths that don't already have a scale/download URL
-    if (url.startsWith('/') && !url.includes('@@images') && !url.includes('@@download')) {
+    // Add @@images/image suffix for Plone paths that don't already have a scale/download URL.
+    // An image's absolute URL on the API — as an upload or a pick stores it —
+    // is its page too, not a picture.
+    const onApi = url.startsWith('/') || (apiOrigin && url.startsWith(`${apiOrigin}/`));
+    if (onApi && !url.includes('@@images') && !url.includes('@@download')) {
         url = `${url}/@@images/image`;
     }
     // Prepend API origin so images load from the API server, not the frontend
@@ -189,6 +192,15 @@ function getImageUrl(value) {
         url = `${apiOrigin}${url}`;
     }
     return url;
+}
+
+/**
+ * A scale's URL. A catalog brain's `download` is relative to the item
+ * (`@@images/...`); an image field as the content API serves it — which is what
+ * an upload stores in `image_scales` — has absolute ones, used as they are.
+ */
+function scaleUrl(baseUrl, download) {
+    return /^https?:\/\//.test(download) ? download : `${baseUrl}/${download}`;
 }
 
 /**
@@ -238,7 +250,7 @@ function getImageSrcset(value, block) {
     if (byWidth.size < 2) return '';   // no genuine choice to offer
     return [...byWidth.entries()]
         .sort((a, b) => a[0] - b[0])
-        .map(([w, download]) => `${baseUrl}/${download} ${w}w`)
+        .map(([w, download]) => `${scaleUrl(baseUrl, download)} ${w}w`)
         .join(', ');
 }
 

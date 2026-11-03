@@ -128,6 +128,8 @@ Per-block options (most are passed through to Volto's block config):
 - **\`title\`** — display name in the BlockChooser. **Required for a new block type** — nothing makes one up from the key; a block without one fails to register with an error naming it.
 - **\`icon\`** — icon shown in the BlockChooser (data URL or SVG component).
 - **\`description\`** — what the block is for, kept short: the sidebar shows it at the top of the block's settings, and the BlockChooser as the block button's tooltip. It may link to the block's guidance with a markdown link, `[text](url)` (see [Links in advice](#links-in-advice)).
+- **\`guidance\`** — how to use the block, for an AI agent: when it suits, and how to fill it in. See [Describing a block to AI agents](#describing-a-block-to-ai-agents).
+- **\`examples\`** — the block filled in, as stored blocks, for an AI agent. See [Describing a block to AI agents](#describing-a-block-to-ai-agents).
 - **\`group\`** — chooser group (e.g. `'common'`). **Required for a new block type**, like `title`.
 - **\`restricted\`** — `true` hides the block from the chooser; can also be a function for conditional restrictions.
 - **\`mostUsed\`** — pin to the top of the chooser.
@@ -207,6 +209,30 @@ To keep the admin's edit component for one block — a picker or upload UI a sch
 
 The `Bridge` instance. Most front ends don't need it: pass callbacks such as `onEditChange` to `initBridge` instead. `getAccessToken()` and `getAuthHeaders()` are separate exports of the bridge; see [Advanced › Authentication](./advanced.md#authentication).
 
+## Uploading images on Save (`deferImageUploads`)
+
+By default an image dropped or picked in the editor is uploaded straight away, as an Image item beside the page; a cancelled edit leaves it behind. A front end can instead have new images held until the page is saved:
+
+### Js
+
+```js
+initBridge({
+  // ...
+  voltoConfig: { settings: { deferImageUploads: true } },
+});
+```
+
+Opting in is a promise: **in edit mode, your front end renders an image value that is a complete URL as it is**, a `blob:` URL included, with no `image_scales` beside it. The shared `getImageUrl` (`@volto-hydra/helpers`) already does; so does any code that only builds a URL for a value starting with `/`. If your edit mode sets a Content Security Policy, its `img-src` must allow `blob:`.
+
+What changes:
+
+- A held image shows on the canvas at once. The editor keeps the file itself and sends it to the canvas once, as a `Blob` (a handle to the same bytes, not a copy); the page data your `onEditChange` callback receives holds a `blob:` URL of it, while the page the editor keeps (and sends on every edit) names it by a short reference.
+- **Save** uploads each held image the page still uses, then saves the page naming the uploaded images, with their `image_scales`, exactly as an upload at drop time would have left it. If an upload fails, the page is not saved, and images that save had already uploaded are removed.
+- **Cancel** uploads nothing.
+- A dropped image is checked against the folder it will be uploaded into: if the editor may not add images there, it is refused when it is dropped. The server's own limits, such as its upload size, are met on Save.
+- Until it is saved, a held image has no `image_scales`, so a field rule that reads them (an SVG or aspect-ratio rule) has nothing to read yet.
+- Held images live in the editor's memory: reloading the editor loses them.
+
 ## Defining a custom block
 
 ### Javascript
@@ -276,6 +302,42 @@ Child block types (like `slide` above) must be defined at the top level of `bloc
 **A \`widget: 'slate'\` field holds one top-level node.** A slate field — like `description` on the `slide` above — stores a single paragraph, heading, or list, not a document of several. Pasting or typing multiple paragraphs into it flattens them back into one node; only the built-in `slate` *block* splits multi-node content into separate blocks. Design slate fields for single-node content, and use a `blocks_layout`/`object_list` of `slate` blocks when you need several. See [Visual Editing › One top-level node per slate field](./visual-editing.md#one-top-level-node-per-slate-field).
 
 **Worked example:** [Heading Block](../examples/heading.md) — roughly the smallest custom block there is: one field, one annotation.
+
+## Describing a block to AI agents
+
+An AI agent [working on the site](../editor-guide/ai-agents.md) learns each block type from the block's own registration, in this order of detail:
+
+- **\`title\`** and **\`description\`** — what the block is, as the chooser shows it.
+- **The schema** — each field's `title` and `description`, which fields are required, and the block's variations.
+- **\`guidance\`** — how to use it: when it suits, what each variation is for, how much to put in it. Plain text, written for someone who has never seen the site.
+- **\`examples\`** — the block filled in, as stored blocks, each with a `title`. An agent reads them in its own format, and can ask to see each one rendered by your front end.
+- **A page that uses it** — the agent is also shown a real block of that type from the site, when one exists.
+
+Guidance and examples matter most for a block whose purpose isn't obvious from its fields, or one with variations that look alike. A site can't be relied on to already hold an example of every block, so declare them with the block:
+
+### Javascript
+
+```javascript
+callout: {
+    title: 'Callout',
+    group: 'common',
+    guidance: 'For an aside, a gotcha or a warning inside a page, set apart from the text around it. '
+        + 'The level (its variation) says how much it matters: note for background, tip for a helpful aside, '
+        + 'warning for something that can bite, important for a must-know. Keep the body short.',
+    examples: [
+        {
+            title: 'A tip',
+            block: {
+                '@type': 'callout', variation: 'tip',
+                blocks: { 'tip-text': { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Save often.' }] }] } },
+                blocks_layout: { items: ['tip-text'] },
+            },
+        },
+    ],
+},
+```
+
+Both must be plain data (strings, numbers, lists and objects), since they travel to the agent as they are.
 
 ## Inline-editable fields: annotation and schema must agree
 
@@ -488,6 +550,8 @@ const bridge = initBridge({
 });
 ```
 
+`fieldRules` goes on the **`schemaEnhancer`**, as above — never inside `blockSchema`. Nothing reads a schema's own `fieldRules` key, so rules written there are dead, and they look right sitting next to `properties` and `required`. A real site lost its button's mode-dependent fields this way: the search fields showed in link mode and the link field in search mode, with the rules that say otherwise in the config the whole time. Hydra now warns on INIT naming the block and the schema it found them in.
+
 **\`fieldRules\`** — add, remove, or conditionally modify field definitions. The value for each rule key can be:
 
 - `false` — always hide the field
@@ -560,6 +624,28 @@ A warning can point to the guidance it comes from with a markdown link in its me
 Use a warning when the value may well be right and the author should simply know: artwork a little off the 48×48 grid is still the right artwork, and refusing to save over it would be hostile. Use an error when the value cannot work at all — a raster where the design system inlines an SVG.
 
 Both actions compose with `set`, and both work in a switch (`[rule, rule, …]`), where the first matching entry wins — so a rule can refuse one case and merely advise on another.
+
+### What an agent is told about the rules
+
+An author meets a rule through the editor: the field appears, the widget goes red, the advice shows beside it. An agent has none of that, and it cannot read the config either, so `describe_block` states the part of the rules that the schema alone cannot show.
+
+The schema an agent reads is resolved **once, against no data**, so an unconditional rule is already in it: a field hidden by `false` is absent, and a bare `set` is part of the definition. Those are not repeated. What is reported is everything conditional, keyed exactly as the rule was declared (a dotted path stays a dotted path):
+
+### Json
+
+```json
+"fieldRules": {
+    "advancedOptions": { "shownWhen": [{ "mode": "advanced" }] },
+    "maxItems": { "errors": [{ "when": { "maxItems": { "lt": 1 } }, "message": "Too few." }] },
+    "image": { "warnings": [{ "when": { "image": { "regex": "\\.png$" } }, "message": "Prefer an SVG." }] }
+}
+```
+
+- **`shownWhen`** — the conditions under which the field is there at all, any one of them being enough (a switch takes the first that matches). Without this an agent cannot know the field exists: resolved against no data, a conditionally shown field is simply missing from the schema.
+- **`errors`** — the save is **refused** while one of these holds.
+- **`warnings`** — said, not refused: the page still saves.
+
+A conditional `set` on its own is not reported. It re-titles or re-widgets a field that is there either way, which changes nothing about what an agent may write.
 
 ### Links in advice
 
@@ -776,7 +862,9 @@ checkboxFacet: { fieldMappings: { selectFacet: { /* ... */ }, daterangeFacet: { 
 
 ### Copy from a linked content item: `@target`
 
-`@target` maps a **linked** content item's attributes onto this block's own fields — the generic version of the Volto teaser's "copy from target" button. It maps *source content attributes* (`title`, `description`, `image`, …) to *this block's fields*. The item is whichever the block's **link field** points at (the `object_browser mode: 'link'` field — its stored snapshot is the source), so you don't name a URL field separately: "the url is the link in the mapping".
+`@target` maps a **linked** content item's attributes onto this block's own fields — the generic version of the Volto teaser's "copy from target" button. It maps *source content attributes* (`title`, `description`, `image`, …) to *this block's fields*.
+
+The item is whichever the block's **source link field** points at, and that field is **declared, never guessed**: `'@source': 'href'` in an explicit `@target`, or — for a `@default` mapping — the field the target's `'@id'` is mapped to, which already says where the link lands. A block with several link fields and no declaration is an error: picking the first one in schema order is not a rule, and in a real site config it picked a hero's *video file* over its button link, and a button's `url: 'Link (legacy)'` over the `href` the author picks with.
 
 ### Javascript
 
@@ -795,10 +883,41 @@ button: {
 },
 ```
 
-It is **on by default** for a block with a link field and a `fieldMappings['@default']`: the `@default` mapping doubles as the `@target` one (`@id` aside, since that is the link itself). Declare `@target` to map differently; either way there is no per-block enhancer wiring. A field a block-type conversion fills is **custom** from the start, so converting a block keeps what it held. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected). Every mapped field is one of two states:
+It is **available by default** for a block with a link field and a `fieldMappings['@default']`: the `@default` mapping doubles as the `@target` one (`@id` aside, since that is the link itself). Declare `@target` to map differently; either way there is no per-block enhancer wiring. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected).
 
-- **Linked** (default, toggle ticked) — the field *pulls from the linked item*. Its value is filled from the target's snapshot when the page opens for editing and re-pulled when you change the link, so it always mirrors the linked content.
-- **Custom** (toggle unticked) — your own value, ignored by the target. A field becomes custom the moment you edit it, or when you untick the toggle; re-ticking re-pulls the target value. Custom fields are recorded in the block's `_customFields` array (absence ⇒ linked), so the state persists with the block.
+**A block SAYS which of its fields a link owns, in `_pullFrom`:**
+
+### Javascript
+
+```javascript
+{
+    "@type": "teaser",
+    "href": [{ "@id": "/about", "title": "About us" }],
+    "title": "Design",
+    "_pullFrom": { "href": ["description"] }
+}
+```
+
+read as "pull `description` from `href`". So `description` tracks the linked item and `title` is this block's own, whoever wrote it.
+
+- **Owned by the link** (toggle ticked) — listed in `_pullFrom`. Filled from the target's snapshot when the page opens for editing and re-pulled when the link changes, so it mirrors the linked content.
+- **The author's** (toggle unticked) — everything else, *including a block that says nothing at all*. Editing an owned field claims it: the field drops out of the list, keeping what you typed. Unticking the toggle does the same without changing the value; re-ticking hands it back and re-pulls.
+
+**Nothing is pulled unless the block says so.** The record used to be the inverse — `_customFields` listed the exceptions, so a field absent from it was pulled — and absence is what every writer that is not the editor's own form produces. `plone.exportimport`, the restapi and `edit_blocks` over MCP all write a title and no record, so an authored title was replaced by the linked item's on the next page open ([inka#595](https://github.com/Inkaengine/inka/issues/595)). The editor can carry meaning in code and in a sidebar label; an agent has neither channel, so what decides whether an author's words survive is a value on the block.
+
+Two consequences worth knowing:
+
+- **An empty list is not absence.** `{"href": []}` means "the source is `href` and it owns nothing" — the state after unticking every toggle — and it is what lets the sidebar still offer re-linking. Absence means nobody has decided yet, and *picking a link* decides: a fresh pick hands the link the mapped fields that are still **empty**, so it never overwrites words already written (Volto's own guard on its teaser, kept).
+- **A block-type conversion drops the record.** It names the source type's field names, which mean nothing on the destination, and the fields the conversion just filled are the author's.
+- **There is one source per block, and it is the mapping's.** Nothing can choose another: the toggle is per *destination* field, and every path asks the mapping. The record is keyed by link field so it says which link it means, but a key naming a different link is bad data rather than a second source, and it raises an error instead of pulling from a link nobody mapped.
+
+An agent sees this too: `describe_block` marks each owned field with `pullsFrom: '<link field>'`, so a field whose value a link can replace says so without reading any code, and `_pullFrom` is a list of strings an agent can edit directly.
+
+#### Upgrading from `_customFields`
+
+A block that relied on the old default — mapped fields with no record, mirroring the link — **stops mirroring**. Its stored values stay exactly as they are; nothing is lost, and nothing is overwritten. To hand a field back to the link, re-tick its toggle, or list it under the source link in `_pullFrom`.
+
+An old `_customFields` array is simply ignored. It was already the state "these are the author's", and that is now what every unlisted field means, so a block carrying one behaves the same with or without it.
 
 ### Container ⇄ value (region-crossing paths)
 

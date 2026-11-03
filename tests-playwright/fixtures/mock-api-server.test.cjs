@@ -1,4 +1,5 @@
 const { describe, it, before, after } = require('node:test');
+const { mintToken } = require('./mock-tokens.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -243,6 +244,16 @@ describe('@search', () => {
     assert.equal(new URL(data.items[0]['@id']).pathname, '/_test_data/test-page');
   });
 
+  it('block_types finds the pages using a block type, nested ones included', async () => {
+    // plone.volto's block_types index: every block's @type, containers' children too.
+    const accordions = await search('block_types=accordion');
+    const paths = accordions.items.map((i) => new URL(i['@id']).pathname);
+    assert.ok(paths.includes('/_test_data/accordion-test-page'), 'a top-level accordion');
+    for (const item of accordions.items) assert.notEqual(new URL(item['@id']).pathname, '/_test_data/another-page');
+    const columns = await search('block_types=column');
+    assert.ok(columns.items.some((i) => new URL(i['@id']).pathname === '/_test_data/container-test-page'), 'a column inside columns');
+  });
+
   it('pages a listing by b_start / b_size, items_total staying the whole', async () => {
     const all = await search('path.depth=1&path.query=/_test_data');
     const page1 = await search('path.depth=1&path.query=/_test_data&b_size=5');
@@ -395,6 +406,55 @@ describe('preview_image_link (volto.preview_image_link behaviour)', () => {
   });
 });
 
+describe('image_scales ladder', () => {
+  // An Image's synthesised summary must offer the SAME rungs real Plone does,
+  // `plone.allowed_sizes`: every box smaller than the source, scaled to fit.
+  //
+  // It used to offer two, `preview` and `large`, each `Math.min`-ed against the
+  // source -- so for anything narrower than 400px BOTH came back at the
+  // original width, and the summary advertised three names for one size. A
+  // 149px logo painted into a 45px carousel box had no finer rung to pick, and
+  // block-sanity's over-download check reported exactly that: "no offered scale
+  // is finer: the smallest is 149px". The ladder was the defect, not the site's
+  // configuration. Two sibling generators in the same file (getLeadImageScales,
+  // generateScalesForField) already built it correctly.
+  //
+  // Asserted as the EXACT rung set, not "more than none": the old
+  // `Object.keys(scales).length > 0` passed on the two-rung version, which is
+  // how this survived.
+  it('offers every allowed_sizes rung below the source, scaled to fit', async () => {
+    const res = await fetch(`${baseUrl}/_test_data/preview-image-link`, {
+      headers: { Accept: 'application/json' },
+    });
+    assert.equal(res.status, 200);
+    const meta = (await res.json()).preview_image_link.image_scales.image[0];
+
+    // The source is 400x300, so `preview` (400) and everything above it is NOT
+    // smaller than the source and is left out, exactly as Plone leaves it out.
+    assert.deepEqual(Object.keys(meta.scales).sort(), ['icon', 'mini', 'thumb', 'tile']);
+    assert.deepEqual(
+      Object.fromEntries(Object.entries(meta.scales).map(([n, s]) => [n, [s.width, s.height]])),
+      { icon: [32, 24], tile: [64, 48], thumb: [128, 96], mini: [200, 150] },
+      'each rung fits the box and keeps the 4:3 aspect',
+    );
+    for (const [name, scale] of Object.entries(meta.scales)) {
+      assert.equal(scale.download, `@@images/image/${name}`, `${name} download is relative`);
+    }
+  });
+
+  // The summary used to hardcode `image/jpeg` and `<id>.jpg` whatever the file
+  // was, so a PNG logo was advertised as a JPEG under a filename that does not
+  // exist. A consumer picking a format from the summary was told a fiction.
+  it('reports the image file it actually has, not a hardcoded jpeg', async () => {
+    const res = await fetch(`${baseUrl}/_test_data/preview-image-link`, {
+      headers: { Accept: 'application/json' },
+    });
+    const meta = (await res.json()).preview_image_link.image_scales.image[0];
+    assert.equal(meta['content-type'], 'image/svg+xml');
+    assert.equal(meta.filename, 'test-image-1.svg');
+  });
+});
+
 describe('image blocks', () => {
   // Real Plone's serializer adds `image_scales` to an image block whose `url`
   // points at an Image object. Our content export stores only the resolveuid
@@ -484,7 +544,7 @@ describe('/@export (tree export, json | markdown)', { skip: HAVE_ASSETS ? false 
         assert.ok(fs.existsSync(path.join(dir, 'content', blob)), `blob present: ${blob}`);
       }
       // And it passes the same validator the mounts are checked with.
-      const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+      const { validate, checkIntegrity } = require('../../lib/plone-content-validator.cjs');
       const contentDir = path.join(dir, 'content');
       assert.deepEqual(validate(contentDir).errors, [], 'validate: no errors');
       assert.deepEqual(checkIntegrity(contentDir).errors, [], 'checkIntegrity: no errors');
@@ -540,8 +600,9 @@ describe('@types schemas', () => {
     // and nothing on screen to say why.
     const types = ['Document', 'Folder', 'Event', 'News Item'];
     for (const type of types) {
+      // A type's schema is for a signed-in user, as in Plone.
       const res = await fetch(`${baseUrl}/@types/${encodeURIComponent(type)}`, {
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', Authorization: `Bearer ${mintToken('admin')}` },
       });
       assert.equal(res.status, 200, `${type} has a schema`);
       const schema = await res.json();
@@ -859,25 +920,26 @@ describe('locking', () => {
     Accept: 'application/json',
     Authorization: `Bearer ${tokenFor(user)}`,
   });
-  // Same minting the mock does, so getSessionId and currentUser agree.
-  function tokenFor(user) {
-    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
-      .toString('base64')
-      .replace(/=/g, '');
-    const payload = Buffer.from(
-      JSON.stringify({ sub: user, exp: 4102444800, jti: `lock-${user}` }),
-    )
-      .toString('base64')
-      .replace(/=/g, '');
-    return `${header}.${payload}.fake-signature`;
-  }
+  // The mock's OWN minter, not a hand-rolled copy. These tokens used to be
+  // built here with the literal signature "fake-signature", which the mock
+  // accepted when it never checked one. It verifies now, so every lock request
+  // came back 401 — and two of these tests passed anyway, because comparing
+  // one absent token to another absent token succeeds. Minting the real thing
+  // is what makes them mean something.
+  const tokenFor = (user) => mintToken(user);
 
   const PATH = '/_test_data/test-page';
 
   it('reports nobody holding it, in two keys', async () => {
-    const res = await fetch(`${baseUrl}${PATH}/@lock`, { headers: headers('nobody') });
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { locked: false, stealable: true });
+    // Read from the CONTENT, which is where Volto reads it: `content.lock` is
+    // what its Edit route consults to decide whether locking exists at all and
+    // whether to unlock on the way out. There is no GET @lock — nothing asks
+    // for one (the adapter POSTs and DELETEs), and plone.restapi's unlocked
+    // shape is exactly these two keys.
+    const content = await (
+      await fetch(`${baseUrl}${PATH}`, { headers: headers('nobody') })
+    ).json();
+    assert.deepEqual(content.lock, { locked: false, stealable: true });
   });
 
   it('takes a lock, with a token, and reads it back', async () => {
@@ -888,14 +950,8 @@ describe('locking', () => {
     assert.equal(taken.creator, 'admin', 'the lock belongs to whoever asked');
     assert.ok(taken.token, 'a lock without a token protects nothing');
 
-    // Readable afterwards — the part that did not exist.
-    const read = await (
-      await fetch(`${baseUrl}${PATH}/@lock`, { headers: headers('admin') })
-    ).json();
-    assert.equal(read.token, taken.token);
-
     // And the CONTENT says so, which is what Volto reads to decide whether to
-    // unlock when the editor closes.
+    // unlock when the editor closes — and is how the lock is read back.
     const content = await (
       await fetch(`${baseUrl}${PATH}`, { headers: headers('admin') })
     ).json();
@@ -931,14 +987,27 @@ describe('locking', () => {
     assert.deepEqual(released, { locked: false, stealable: true });
   });
 
-  it('is per session: one editor cannot see the other holding it', async () => {
-    // Each token is its own world in this mock, which is what lets tests run in
-    // parallel. Locks have to follow that or one test's lock would fail another.
+  it("is the page's, so another editor sees it and can take it over", async () => {
+    // Content in this mock is per session; a lock is NOT, because in Plone a
+    // lock belongs to the object and every user sees it — that is the whole
+    // point of one. An editor who finds a page locked is told who holds it, and
+    // Volto's "unlock" sends force to take it over.
     await fetch(`${baseUrl}${PATH}/@lock`, { method: 'POST', headers: headers('admin') });
-    const other = await (
-      await fetch(`${baseUrl}${PATH}/@lock`, { headers: headers('editor') })
+
+    const seen = await (
+      await fetch(`${baseUrl}${PATH}`, { headers: headers('editor') })
     ).json();
-    assert.equal(other.locked, false);
+    assert.equal(seen.lock.locked, true, 'the other editor sees the lock');
+    assert.equal(seen.lock.creator, 'admin', 'and who is holding it');
+
+    const freed = await (
+      await fetch(`${baseUrl}${PATH}/@lock`, {
+        method: 'DELETE',
+        headers: headers('editor'),
+        body: JSON.stringify({ force: true }),
+      })
+    ).json();
+    assert.deepEqual(freed, { locked: false, stealable: true }, 'force takes it over');
   });
 });
 
@@ -1056,7 +1125,14 @@ describe('folder items carry the image fields', () => {
     const [original] = image.image_scales.image;
     assert.equal(original.width, 400);
     assert.equal(original.height, 300);
-    assert.ok(original.scales.preview.download, 'a preview scale to show in a listing');
+    // `thumb` (128), not `preview` (400): the source IS 400 wide, and real Plone
+    // leaves out every rung at or above the source rather than listing it at the
+    // original size. Checked on demo.plone.org: a 36x36 SVG carries ONE rung
+    // (icon 32), a 1126x633 image carries eight and stops below great (1200).
+    // This line asked for `preview` and passed only because the generator used
+    // to emit `preview` and `large` unconditionally, whatever the source.
+    assert.ok(original.scales.thumb.download, 'a small scale to show in a listing');
+    assert.equal(original.scales.preview, undefined, 'no rung at or above the source');
   });
 
   it('a page with no image has an empty field and no scales', async () => {

@@ -302,6 +302,10 @@ const isValidNodeId = (id) => id && /^\d+(\.\d+)*$/.test(id);
 // How many nested closed containers a reveal will open before giving up.
 const MAX_REVEAL_DEPTH = 5;
 
+// How long after a key or pointer press a selection still counts as the
+// author's doing: a click's selection, focus and caret all land within it.
+const AUTHOR_INPUT_MS = 1000;
+
 // What counts as the control a reveal handle activates — see
 // Bridge.activationTarget. A link needs an href to be one; a bare <a> is text.
 const CONTROL_TAGS = new Set([
@@ -4139,6 +4143,7 @@ export class Bridge {
       this.sendMessageToParent({
         type: 'BLOCK_SELECTED',
         src,
+        userInput: this.isAuthorInputRecent(),
         blockUid: null,
         rect: null,
       }, this.adminOrigin);
@@ -4234,6 +4239,8 @@ export class Bridge {
     const message = {
       type: 'BLOCK_SELECTED',
       src,
+      // Caused by the author's own key or pointer, not the bridge settling.
+      userInput: this.isAuthorInputRecent(),
       blockUid,
       // Where the block IS (outline) stays tight to its own elements. A
       // stand-in — a tab's label on the button that reveals it — is somewhere
@@ -4696,6 +4703,7 @@ export class Bridge {
         this.setupScrollHandler();
         this.setupResizeHandler();
         this.setupMouseActivityReporter();
+        this.trackAuthorInput();
         this.setupStructuralObserver();
 
         // Add beforeunload warning to prevent accidental navigation
@@ -4916,6 +4924,19 @@ export class Bridge {
         };
         window.removeEventListener('message', receiveInitialData);
         window.addEventListener('message', receiveInitialData);
+        // A held image (holdPendingImage): the admin sends its file, as a Blob,
+        // before the INITIAL_DATA or FORM_DATA that first names it, so it is
+        // here for that render. A Blob crosses postMessage as a handle to the
+        // admin's bytes, and a blob: URL made here is this page's own, so the
+        // front end can load it. Sent again after a reload; one URL per ref.
+        if (!this._pendingImageListener) {
+          this._pendingImageListener = (e) => {
+            if (e.origin !== this.adminOrigin || e.data?.type !== 'PENDING_IMAGE') return;
+            if (this.pendingImages.has(e.data.ref)) return;
+            this.holdPendingImage(e.data.ref, URL.createObjectURL(e.data.blob));
+          };
+          window.addEventListener('message', this._pendingImageListener);
+        }
         // Add a single document-level focus listener to track field changes
         // This avoids adding duplicate listeners and works for all blocks
         if (!this.fieldFocusListenerAdded) {
@@ -8585,6 +8606,8 @@ export class Bridge {
    * render draws the same text again in its own node ("FreshFresh"). So before
    * a character goes in, the caret moves to the end of the frontend's node and
    * the bridge's node goes — the same cleanup _insertTextAtCursor does after.
+   * Every bare one of the bridge's in the line goes, not only the caret's: a
+   * clear's re-render can leave two, and the browser may type into the other.
    */
   adoptFrontendCaretTarget() {
     const sel = window.getSelection();
@@ -8601,9 +8624,11 @@ export class Bridge {
     // format the author just toggled off at the caret, and it stays put.
     const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
     let target = null;
+    const bridgeNodes = [];
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       if (this.stripZeroWidthSpaces(n.data) !== '') return;
-      if (!target && n !== bridgeNode && /^\u200B+$/.test(n.data)) target = n;
+      if (n.parentElement === line && /^\uFEFF+$/.test(n.data)) bridgeNodes.push(n);
+      else if (!target && /^\u200B+$/.test(n.data)) target = n;
     }
     if (!target) return;
     const range = document.createRange();
@@ -8611,7 +8636,7 @@ export class Bridge {
     range.collapse(true);
     sel.removeAllRanges();
     sel.addRange(range);
-    bridgeNode.remove();
+    for (const node of bridgeNodes) node.remove();
   }
 
   /**
@@ -11951,6 +11976,26 @@ export class Bridge {
   }
 
   /**
+   * Note when the author last pressed a key or pointed in this page. The
+   * bridge also selects and focuses on its own — the block the editor opened
+   * with, once the page settles — and the admin, which can't see input inside
+   * the frame, needs to tell the two apart: focus the bridge gave itself is not
+   * the author choosing this pane (userInput on BLOCK_SELECTED).
+   */
+  trackAuthorInput() {
+    const noted = (e) => {
+      if (e.isTrusted) this._lastAuthorInputAt = Date.now();
+    };
+    document.addEventListener('keydown', noted, true);
+    document.addEventListener('pointerdown', noted, true);
+  }
+
+  /** Did the author press a key or point in this page just now? */
+  isAuthorInputRecent() {
+    return this._lastAuthorInputAt !== undefined && Date.now() - this._lastAuthorInputAt < AUTHOR_INPUT_MS;
+  }
+
+  /**
    * Sends throttled MOUSE_ACTIVITY messages to admin on mouse use.
    * The admin uses this to show the toolbar (which starts hidden).
    * Listens for both mousemove and mousedown (click without prior movement).
@@ -12735,8 +12780,45 @@ export class Bridge {
     // (not this.formData) to tell "field is empty, so no element is CORRECT" from
     // "field has content but the renderer produced no element" — including a
     // revealed sentinel, whose element failing to appear means reveal did nothing.
-    this._lastRenderedData = projected || formData;
+    this._lastRenderedData = this._withPendingImages(projected || formData);
     return this._lastRenderedData;
+  }
+
+  /**
+   * Images the admin holds until the page is saved (a front end that sets
+   * `deferImageUploads`), by the reference the page names each by
+   * (`inka-pending:<id>`), as a blob: URL of the file the admin sent once
+   * (PENDING_IMAGE). Every FORM_DATA carries only the reference.
+   */
+  get pendingImages() {
+    if (!this._pendingImages) this._pendingImages = new Map();
+    return this._pendingImages;
+  }
+
+  holdPendingImage(ref, dataUrl) {
+    this.pendingImages.set(ref, dataUrl);
+  }
+
+  /**
+   * `data` with each held image's reference replaced by its blob: URL, for the
+   * renderer: the front end, having opted in, renders a complete URL as it is.
+   * State keeps the reference. Cloned only when something is swapped.
+   */
+  _withPendingImages(data) {
+    if (!this._pendingImages?.size || !data) return data;
+    const swap = (value) => {
+      if (typeof value === 'string') return this._pendingImages.get(value) ?? value;
+      if (!value || typeof value !== 'object') return value;
+      let copy = null;
+      for (const [key, item] of Object.entries(value)) {
+        const swapped = swap(item);
+        if (swapped === item) continue;
+        if (!copy) copy = Array.isArray(value) ? [...value] : { ...value };
+        copy[key] = swapped;
+      }
+      return copy || value;
+    };
+    return swap(data);
   }
 
   _executeRender(callbackFn, afterRenderOptions = {}) {

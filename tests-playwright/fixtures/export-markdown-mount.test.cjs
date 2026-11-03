@@ -72,7 +72,7 @@ describe('/@export json from a markdown mount', { skip: HAVE_ASSETS ? false : 'g
       assert.ok(meta._blob_files_.includes(lead), 'content-item leadimage bytes exported');
 
       // Passes the same validator the JSON export is gated on.
-      const { validate, checkIntegrity } = require('./plone-content-validator.cjs');
+      const { validate, checkIntegrity } = require('../../lib/plone-content-validator.cjs');
       assert.deepEqual(validate(content).errors, [], 'validate: no errors');
       assert.deepEqual(checkIntegrity(content).errors, [], 'checkIntegrity: no errors');
     } finally {

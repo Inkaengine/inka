@@ -11,6 +11,7 @@ import {
   getChildFields,
   getChildBlockEntries,
   setChildBlockEntries,
+  isUnlabelledDefinition,
 } from '@volto-hydra/helpers';
 
 /**
@@ -103,14 +104,8 @@ function stampDefinitionInstanceIds(block, isOwnTemplate) {
   return next;
 }
 
-function adoptUnlabelledDefinition(page) {
-  const topLevel = Object.values(page?.blocks_layout || {})
-    .flatMap((ids) => (Array.isArray(ids) ? ids : []))
-    .map((id) => page.blocks?.[id])
-    .filter(Boolean);
-  const isDefinition =
-    topLevel.some((block) => block.slotId) && !topLevel.some((block) => block.templateId);
-  if (!isDefinition || !page['@id']) return { ...page };
+function adoptUnlabelledDefinition(page, idFieldMap) {
+  if (!isUnlabelledDefinition(page, idFieldMap) || !page['@id']) return { ...page };
   return { ...adoptTemplate(page, new URL(page['@id'], 'http://x').pathname) };
 }
 
@@ -129,7 +124,7 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
   // blocks hold slots but name no template IS a template definition. Label its own
   // blocks with its path (adoptTemplate — the same rule a template applied to a page
   // follows), so it comes up exactly as a definition that names itself does.
-  let result = skipOwnTemplate ? adoptUnlabelledDefinition(page) : { ...page };
+  let result = skipOwnTemplate ? adoptUnlabelledDefinition(page, idFieldMap) : { ...page };
   const allNewTemplateIds = new Set();
 
   // Options every expand call shares, top level and every re-entry.

@@ -252,30 +252,30 @@ test.describe('Page Metadata Editing', () => {
     const outline = page.locator('.volto-hydra-block-outline');
     await expect(outline).toBeVisible({ timeout: 5000 });
 
-    // How far the outline's top is from the image's top, in page coordinates.
-    // Tracking means this stays ~0. Polled rather than read once: the outline
-    // appears before the admin has finished laying out around the selection
-    // (sidebar opening), so a single early read measures a layout shift, not
-    // the outline's tracking.
-    const offset = async () => {
-      const o = await outline.boundingBox();
-      const i = await previewImage.boundingBox();
-      if (!o || !i) return Number.POSITIVE_INFINITY;
-      return Math.abs(o.y - i.y);
+    // Where the outline sits relative to the image, once both have settled
+    // (selecting can scroll the image into view).
+    const placing = async () => {
+      const [outlineBox, imageBox] = [await outline.boundingBox(), await previewImage.boundingBox()];
+      expect(outlineBox).toBeTruthy();
+      expect(imageBox).toBeTruthy();
+      return { offset: outlineBox!.y - imageBox!.y, imageY: imageBox!.y };
     };
-    await expect.poll(offset, { timeout: 5000 }).toBeLessThan(10);
-    const imageYBefore = (await previewImage.boundingBox())!.y;
+    await helper.waitForPositionStable(outline);
+    await helper.waitForPositionStable(previewImage);
+    const before = await placing();
 
     // Scroll down in the iframe
     await iframe.locator('body').evaluate((body) => {
       body.ownerDocument.defaultView?.scrollBy(0, 100);
     });
 
-    // The image really moved, and the outline followed it.
-    await expect
-      .poll(async () => imageYBefore - (await previewImage.boundingBox())!.y, { timeout: 5000 })
-      .toBeGreaterThan(50);
-    await expect.poll(offset, { timeout: 5000 }).toBeLessThan(10);
+    // The image moves up with the scroll, and the outline follows it: hidden
+    // while the page scrolls, it comes back where the image now is.
+    await expect(async () => {
+      const after = await placing();
+      expect(before.imageY - after.imageY).toBeGreaterThan(50);
+      expect(Math.abs(after.offset - before.offset)).toBeLessThan(10);
+    }).toPass({ timeout: 5000 });
   });
 
   // Regression for PRETAGOVSITE-K.

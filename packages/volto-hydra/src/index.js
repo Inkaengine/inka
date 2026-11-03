@@ -43,6 +43,8 @@ import FrontendSwitcherPanel from './components/Toolbar/FrontendSwitcherPanel';
 import NativeActionsPlug from './components/Toolbar/NativeActionsPlug';
 import NativeActionsPanel from './components/Toolbar/NativeActionsPanel';
 import MobileSubmenuClose from './components/Toolbar/MobileSubmenuClose';
+import AgentSite from './components/AgentSite/AgentSite';
+import ConnectAgent from './components/ConnectAgent/ConnectAgent';
 import rememberedFrontendUrl from './utils/getRememberedFrontendUrl';
 import getSavedURLs, { getURlsFromEnv } from './utils/getSavedURLs';
 import getCurrentFrontendPublicUrl from './utils/getCurrentFrontendPublicUrl';
@@ -339,6 +341,14 @@ config.settings.additionalToolbarComponents = {
     { match: '/', component: NativeActionsPlug },
     { match: '/', component: SidebarToggleToolbarPlug },
     { match: '/', component: MobileSubmenuClose },
+    // window.__inkaSite, the site-wide agent API (an MCP server drives it).
+    { match: '/', component: AgentSite },
+  ];
+  // Where a person allows an agent on their computer (the MCP server) to act
+  // as them: it signs in through the browser, as command-line tools do.
+  config.addonRoutes = [
+    ...(config.addonRoutes || []),
+    { path: '/connect-agent', component: ConnectAgent, exact: true },
   ];
 
   // Array-aware url widget. A `widget: 'url'` field's value is the object-browser

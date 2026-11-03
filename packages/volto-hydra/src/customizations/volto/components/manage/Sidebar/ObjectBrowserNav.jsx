@@ -19,6 +19,7 @@ import config from '@plone/volto/registry';
 
 import rightArrowSVG from '@plone/volto/icons/right-key.svg';
 import homeSVG from '@plone/volto/icons/home.svg';
+import { isPendingImage, previewUrl } from '../../../../../utils/pendingImages';
 
 /**
  * A thumbnail URL that does not assume Plone.
@@ -33,9 +34,13 @@ import homeSVG from '@plone/volto/icons/home.svg';
  * which is the one case where it is the right guess.
  */
 function thumbnailSrc(item) {
+  const id = item?.['@id'] ?? '';
+  // An image still being uploaded has no url on ANY cms yet — only the
+  // preview the admin is holding locally. First, because every branch below
+  // addresses a server that does not have it.
+  if (isPendingImage(id)) return previewUrl(id);
   const direct = item?.image?.download ?? item?.url;
   if (direct) return direct;
-  const id = item?.['@id'] ?? '';
   if (/^https?:\/\//.test(id)) return id;
   return `${id}/@@images/image/preview`;
 }

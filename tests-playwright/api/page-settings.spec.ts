@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { URLS } from '../fixtures';
+import { mintToken } from '../fixtures/mock-tokens.cjs';
 
 /**
  * The two settings an author reaches for that are not on the canvas: keeping a
@@ -17,7 +18,10 @@ const MOCK_API = URLS.mockApi;
 
 test.describe('page settings', () => {
   test('the content type declares them, in a settings fieldset', async ({ request }) => {
-    const res = await request.get(`${MOCK_API}/++api++/@types/Document`);
+    // A type's schema is for a signed-in user, as in Plone.
+    const res = await request.get(`${MOCK_API}/++api++/@types/Document`, {
+      headers: { Authorization: `Bearer ${mintToken('admin')}` },
+    });
     expect(res.ok()).toBeTruthy();
     const schema = await res.json();
 

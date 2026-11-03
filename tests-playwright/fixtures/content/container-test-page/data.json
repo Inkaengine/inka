@@ -118,7 +118,6 @@
         "grid-cell-1": {
           "@type": "teaser",
           "title": "Grid Teaser 1",
-          "_customFields": ["title"],
           "description": "First grid teaser",
           "href": [
             {
@@ -131,7 +130,6 @@
         "grid-cell-2": {
           "@type": "teaser",
           "title": "Grid Teaser 2",
-          "_customFields": ["title"],
           "description": "Second grid teaser",
           "href": [
             {
@@ -155,7 +153,6 @@
         "grid-cell-3": {
           "@type": "teaser",
           "title": "Grid Teaser 3",
-          "_customFields": ["title"],
           "description": "Third grid teaser",
           "href": [
             {
@@ -168,7 +165,6 @@
         "grid-cell-4": {
           "@type": "teaser",
           "title": "Grid Teaser 4",
-          "_customFields": ["title"],
           "description": "Fourth grid teaser",
           "href": [
             {
