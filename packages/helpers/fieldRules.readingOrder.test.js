@@ -13,7 +13,7 @@
  * parent's data lists them, each region's blocks in order, a container before
  * the blocks inside it.
  */
-import { describe, test, expect } from '@jest/globals';
+import { describe, test, expect } from 'vitest';
 
 import { evaluateWhenCondition } from './fieldRules.js';
 import { buildBlockPathMap } from './buildBlockPathMap.js';

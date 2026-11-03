@@ -19,7 +19,7 @@
 // as plain node, with no install — and a bare specifier needs node_modules to
 // resolve, so it failed there with ERR_MODULE_NOT_FOUND while passing anywhere
 // the workspace happened to be linked. A relative path needs nothing installed.
-import { getBlockType } from '../helpers/index.js';
+import { getBlockType } from './index.js';
 import { foldSlateStyleRules } from './slateStyles.js';
 import { isObjectListRegion } from './regionWidgets.js';
 import { createFieldRulesEnhancer } from './fieldRules.js';

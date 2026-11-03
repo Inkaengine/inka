@@ -27,7 +27,7 @@ import {
   getChildBlockEntries,
   isSlateFieldType,
   slateNodesText,
-} from '../helpers/index.js';
+} from './index.js';
 import { isObjectListRegion } from './regionWidgets.js';
 
 // Same value as PAGE_BLOCK_UID in hydra.js — defined locally to avoid

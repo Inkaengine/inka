@@ -12,7 +12,7 @@
  * before it may change anything else.
  */
 import validator from '../../lib/plone-content-validator.cjs';
-import { buildIdFieldMap } from '../hydra-js/buildBlockPathMap.js';
+import { buildIdFieldMap } from '../helpers/buildBlockPathMap.js';
 
 const { checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = validator;
 

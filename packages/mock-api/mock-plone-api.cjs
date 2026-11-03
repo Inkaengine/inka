@@ -2607,7 +2607,7 @@ function validateServedContent() {
   for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   if (siteSchemas) {
     const { checkBlockSchemas, fieldMapFromSchemas } = require('../../lib/plone-content-validator.cjs');
-    const { buildIdFieldMap } = require('../../packages/hydra-js/buildBlockPathMap.js');
+    const { buildIdFieldMap } = require('../../packages/helpers/buildBlockPathMap.js');
     // Without the idFieldMap the container API sees only object_lists whose
     // items carry templateId, so a slider's slides go unchecked.
     const idFieldMap = buildIdFieldMap(siteSchemas, { formatMessage: (m) => m?.defaultMessage || '' });

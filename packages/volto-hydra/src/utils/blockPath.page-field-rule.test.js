@@ -26,7 +26,7 @@ import {
   createSchemaEnhancerFromRecipe,
   resolveEffectiveBlockSchema,
 } from './blockSync.js';
-import { buildBlockPathMap } from '../../../hydra-js/buildBlockPathMap.js';
+import { buildBlockPathMap } from '../../../helpers/buildBlockPathMap.js';
 
 const intl = { formatMessage: (m) => m?.defaultMessage || m?.id || '' };
 

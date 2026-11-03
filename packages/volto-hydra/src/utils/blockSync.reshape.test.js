@@ -10,7 +10,7 @@ vi.mock('../context/index.js', () => ({
 }));
 
 import { convertBlockType, reshapeContainerBlock } from './blockSync.js';
-import { buildBlockPathMap } from '../../../hydra-js/buildBlockPathMap.js';
+import { buildBlockPathMap } from '../../../helpers/buildBlockPathMap.js';
 
 // -----------------------------------------------------------------------------
 // Container↔container "reshape" conversion.

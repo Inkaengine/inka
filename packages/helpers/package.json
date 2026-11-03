@@ -5,7 +5,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./buildBlockPathMap.js": "./buildBlockPathMap.js",
+    "./fieldRules.js": "./fieldRules.js",
+    "./regionWidgets.js": "./regionWidgets.js",
+    "./slateStyles.js": "./slateStyles.js"
   },
   "keywords": [],
   "author": "",

@@ -9,7 +9,7 @@ import {
   isInlineStyleActive,
   toggleStyle,
 } from '@plone/volto-slate/editor/plugins/StyleMenu/utils';
-import { isStyleAllowed } from '../../../../hydra-js/slateStyles.js';
+import { isStyleAllowed } from '../../../../helpers/slateStyles.js';
 import { iconOf } from '../../utils/blockFormats';
 
 /**

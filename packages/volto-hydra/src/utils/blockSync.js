@@ -18,7 +18,7 @@
  * one of two sources, both first-class (NOT a fallback chain):
  *
  *   1. **`args.blockId` / `args.blockPathMap`** — passed explicitly by
- *      `buildBlockPathMap` pass 2 in `packages/hydra-js/buildBlockPathMap.js`.
+ *      `buildBlockPathMap` pass 2 in `packages/helpers/buildBlockPathMap.js`.
  *      That code runs the enhancer outside any React tree to populate
  *      `pathMap._schemas` with fully-enhanced schemas.
  *
@@ -38,16 +38,16 @@
  * branch can be removed — until then, both branches are load-bearing.
  */
 import { getInjectedBlocksConfig, getSlateStyleGlobals, getSlateVocabulary } from './injectedVoltoConfig.js';
-import { normalizeSlateFields, undefinedSlateTypes } from '../../../hydra-js/slateStyles.js';
+import { normalizeSlateFields, undefinedSlateTypes } from '../../../helpers/slateStyles.js';
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
   deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
-import { addableSiblingTypes, buildBlockPathMap, buildIdFieldMap } from '../../../hydra-js/buildBlockPathMap.js';
-import { isObjectListRegion } from '../../../hydra-js/regionWidgets.js';
+import { addableSiblingTypes, buildBlockPathMap, buildIdFieldMap } from '../../../helpers/buildBlockPathMap.js';
+import { isObjectListRegion } from '../../../helpers/regionWidgets.js';
 import {
   createFieldRulesEnhancer,
   evaluateFieldRule,
   setFieldRulesContextProvider,
-} from '../../../hydra-js/fieldRules.js';
+} from '../../../helpers/fieldRules.js';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
   convertFieldValue,

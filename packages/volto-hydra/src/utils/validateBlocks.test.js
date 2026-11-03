@@ -20,7 +20,7 @@ vi.mock('../context', () => ({
   HydraSchemaProvider: ({ children }) => children,
 }));
 
-import { createFieldRulesEnhancer } from '../../../hydra-js/fieldRules.js';
+import { createFieldRulesEnhancer } from '../../../helpers/fieldRules.js';
 
 import { validateBlocksAgainstSchemas } from './validateBlocks';
 

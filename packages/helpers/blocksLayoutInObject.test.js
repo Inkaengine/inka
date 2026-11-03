@@ -1,4 +1,4 @@
-import { getChildBlockEntries, setChildBlockEntries } from '@volto-hydra/helpers';
+import { getChildBlockEntries, setChildBlockEntries } from './index.js';
 import { buildBlockPathMap } from './buildBlockPathMap.js';
 
 /**

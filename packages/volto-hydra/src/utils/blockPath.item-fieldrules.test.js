@@ -34,7 +34,7 @@ import {
 import {
   buildBlockPathMap,
   getResolvedSchema,
-} from '../../../hydra-js/buildBlockPathMap.js';
+} from '../../../helpers/buildBlockPathMap.js';
 
 const intl = { formatMessage: (m) => m?.defaultMessage || m?.id || '' };
 

@@ -133,7 +133,7 @@ if (cmd === 'validate' || cmd === 'all') {
 // schemas, so it is only as complete as --schemas.
 let idFieldMap = null;
 if (schemas) {
-  const { buildIdFieldMap } = require('../packages/hydra-js/buildBlockPathMap.js');
+  const { buildIdFieldMap } = require('../packages/helpers/buildBlockPathMap.js');
   idFieldMap = buildIdFieldMap(schemas, { formatMessage: (m) => m?.defaultMessage || '' });
 }
 

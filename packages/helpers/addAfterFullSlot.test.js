@@ -8,7 +8,7 @@
  * Authors select the heading and add what comes under it.
  */
 import { buildBlockPathMap } from './buildBlockPathMap.js';
-import { getBlockAddability } from '@volto-hydra/helpers';
+import { getBlockAddability } from './index.js';
 
 const blocksConfig = {
   frame: {

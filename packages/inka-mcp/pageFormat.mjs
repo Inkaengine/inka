@@ -17,7 +17,7 @@
  * the one the edit_blocks operations address blocks in.
  */
 import { slateToMd, mdToSlate, plaintextOf } from '../../lib/slate-md.mjs';
-import { isObjectListRegion } from '../hydra-js/regionWidgets.js';
+import { isObjectListRegion } from '../helpers/regionWidgets.js';
 
 /** A Slate value: an array of element nodes with `children`. */
 const isSlate = (v) => Array.isArray(v) && v.length > 0
