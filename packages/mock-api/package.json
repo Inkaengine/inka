@@ -13,5 +13,13 @@
   "bin": {
     "inka-mock-api": "./mock-api-server.cjs"
   },
+  "dependencies": {
+    "@inka/blockmd": "workspace:*",
+    "@inka/content-validator": "workspace:*",
+    "@volto-hydra/helpers": "workspace:*",
+    "cors": "^2.8.5",
+    "express": "4.22.1",
+    "yaml": "1.10.2"
+  },
   "license": "MIT"
 }

@@ -23,8 +23,8 @@ const fs = require('fs');
 const path = require('path');
 // hydra's container API. Node require()s sync ESM, so a sync validator can use
 // the same enumeration the editor does instead of reading blocks_layout itself.
-const { getChildFields, getChildBlockEntries, isUnlabelledDefinition } = require('../packages/helpers/index.js');
-const { buildBlockPathMap, getResolvedSchema } = require('../packages/helpers/buildBlockPathMap.js');
+const { getChildFields, getChildBlockEntries, isUnlabelledDefinition } = require('../helpers/index.js');
+const { buildBlockPathMap, getResolvedSchema } = require('../helpers/buildBlockPathMap.js');
 
 // Fields present in block data that are not schema properties but are never
 // authored/editable content: structural, serialisation, and Volto slot runtime.
@@ -840,7 +840,7 @@ function imageDimensions(file) {
     // A slate value must be a SINGLE top-level node. The editor makes one block
     // per paragraph, and a paragraph boundary is a block boundary, so a value
     // with >1 top-level node (a title + body packed into one slate) has no
-    // bare-markdown spelling. lib/slate-normalize collapses it; a genuine
+    // bare-markdown spelling. packages/blockmd/slate-normalize collapses it; a genuine
     // multi-block cell belongs in a `columns` block. (Recurses via the sub-item
     // walk below, so object_list/column children are checked too.)
     if (block['@type'] === 'slate' && Array.isArray(block.value) && block.value.length > 1) {
@@ -1614,7 +1614,7 @@ async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
   const helpersModule = (file) =>
     import(
       require('url').pathToFileURL(
-        require('path').join(__dirname, '..', 'packages', 'helpers', file),
+        require('path').join(__dirname, '..', 'helpers', file),
       ).href
     );
   const { buildBlockPathMap } = await helpersModule('buildBlockPathMap.js');

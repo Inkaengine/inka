@@ -108,7 +108,7 @@ export default defineConfig({
       // any docs-tree unit tests
       'docs/**/*.{test,spec}.mjs',
       // blockmd: the prototype engine and the slate <-> markdown core
-      'lib/**/*.{test,spec}.mjs',
+      'packages/blockmd/**/*.{test,spec}.mjs',
       // The pure data helpers (buildQuerystringSearchBody etc.) — server-safe,
       // no DOM, so their unit tests live alongside them here.
       'packages/helpers/**/*.{test,spec}.{js,jsx,ts,tsx}',

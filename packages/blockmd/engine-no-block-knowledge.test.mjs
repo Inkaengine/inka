@@ -69,7 +69,7 @@ function contentNames() {
     const p = join(d, e.name);
     if (e.isDirectory()) { if (e.name !== 'content' && e.name !== 'node_modules') rec(p); } else if (e.name.endsWith('.md')) pages.push(p);
   });
-  rec(join(HERE, '..', 'docs'));
+  rec(join(HERE, '..', '..', 'docs'));
   for (const page of pages) {
     const md = readFileSync(page, 'utf8');
     for (const m of md.matchAll(/"([A-Za-z_@][\w:@-]*)"\s*:/g)) names.add(m[1]);

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { join, dirname, relative } from 'node:path';
 import { decodePage } from './prototype-mapping.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Dependencies and build output; `content` is docs' generated deploy artifact.
 const SKIP = new Set(['node_modules', 'core', '.git', 'content', '.nuxt', '.output', '.next', 'dist', '.netlify']);
 

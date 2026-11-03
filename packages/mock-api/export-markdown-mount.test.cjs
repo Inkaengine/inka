@@ -72,7 +72,7 @@ describe('/@export json from a markdown mount', { skip: HAVE_ASSETS ? false : 'g
       assert.ok(meta._blob_files_.includes(lead), 'content-item leadimage bytes exported');
 
       // Passes the same validator the JSON export is gated on.
-      const { validate, checkIntegrity } = require('../../lib/plone-content-validator.cjs');
+      const { validate, checkIntegrity } = require('../content-validator/plone-content-validator.cjs');
       assert.deepEqual(validate(content).errors, [], 'validate: no errors');
       assert.deepEqual(checkIntegrity(content).errors, [], 'checkIntegrity: no errors');
     } finally {
@@ -87,13 +87,13 @@ describe('/@export json from a markdown mount', { skip: HAVE_ASSETS ? false : 'g
 //
 // Nothing in THIS repo asserted that, so prose the emitter cannot reproduce
 // landed here and broke the consumer's gate instead of ours. The structural
-// round-trip test (lib/prototype-roundtrip.test.mjs) does not catch it: the
+// round-trip test (packages/blockmd/prototype-roundtrip.test.mjs) does not catch it: the
 // data-json escape hatch is structurally lossless, so a paragraph the emitter
 // cannot write as markdown passes there while destroying the authored prose.
 describe('/@export markdown re-emits docs/ unchanged', () => {
   it('every docs page comes back byte-identical to its source', async () => {
-    const { DEFAULT_PROTOTYPES } = await import('../../lib/default-prototypes.mjs');
-    const { restoreDirectives } = await import('../../lib/restore-directives.mjs');
+    const { DEFAULT_PROTOTYPES } = await import('../blockmd/default-prototypes.mjs');
+    const { restoreDirectives } = await import('../blockmd/restore-directives.mjs');
     const res = await fetch(`${baseUrl}/@export`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ format: 'markdown', prototypes: DEFAULT_PROTOTYPES }),

@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = require('../../lib/plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
 
 /**
  * Build a minimal plone.exportimport content tree under a temp dir.
@@ -659,7 +659,7 @@ describe('plone-content-validator checkIntegrity()', () => {
   it('FAILS on a multi-node slate value (must be a single top-level node)', () => {
     // The editor makes one block per paragraph, and a paragraph boundary is a
     // block boundary, so a slate value with >1 top-level node (a title + body
-    // packed into one block) has no bare-markdown spelling. lib/slate-normalize
+    // packed into one block) has no bare-markdown spelling. packages/blockmd/slate-normalize
     // collapses it; a multi-block cell belongs in a `columns` block instead.
     const { root, contentDir } = buildFixture({
       pageA: {

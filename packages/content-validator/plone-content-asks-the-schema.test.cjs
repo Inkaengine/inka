@@ -13,7 +13,7 @@ const {
   checkIntegrity,
   checkBlockSchemas,
   fieldMapFromSchemas,
-} = require('../../lib/plone-content-validator.cjs');
+} = require('./plone-content-validator.cjs');
 
 // A slider keeps its children in an object_list; a section keeps them in a
 // blocks_layout. The rules that follow must not be able to tell the difference.

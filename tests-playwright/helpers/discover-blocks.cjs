@@ -663,8 +663,8 @@ function collectSlateIssues(blockData, pagePath, blockId, out, blockType, inTabl
  *    structural checks stay in collectSlateIssues)
  */
 // UNDECLARED_EXEMPT: the fields block data may carry that no schema declares.
-// It lives with the validator (lib/plone-content-validator.cjs), which ships.
-const { UNDECLARED_EXEMPT } = require('../../lib/plone-content-validator.cjs');
+// It lives with the validator (packages/content-validator/plone-content-validator.cjs), which ships.
+const { UNDECLARED_EXEMPT } = require('../../packages/content-validator/plone-content-validator.cjs');
 
 // Slate STYLES a person can actually choose from the editor's style menu
 // (Volto's `settings.slate.styleMenu`, stored as a node's `styleName`). Any
@@ -1830,7 +1830,7 @@ async function discoverBlocks(
   // One failing test per affected page, so a broken resolveuid or a
   // blocks_layout entry pointing at a deleted block fails by name.
   {
-    const { checkIntegrity } = require('../../lib/plone-content-validator.cjs');
+    const { checkIntegrity } = require('../../packages/content-validator/plone-content-validator.cjs');
     // Discovery only FETCHES page-like items, but references point at every
     // content type (an image block's url names an Image object). Register the
     // rest of the @search result as stubs — path + UID into the maps, no

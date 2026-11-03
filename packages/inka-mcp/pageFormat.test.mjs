@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decodePage } from '../../lib/prototype-mapping.mjs';
+import { decodePage } from '../blockmd/prototype-mapping.mjs';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 import { toAgentBlocks, toStoredBlocks, toStoredBlock } from './pageFormat.mjs';
 
@@ -35,7 +35,7 @@ describe('agent page format', () => {
       // Yield before a body that blocks the worker: vitest reports each finished
       // test over RPC with a 1s timeout, and a run of synchronous round trips
       // starves it ("Timeout calling onTaskUpdate") though every test passes.
-      // Same as lib/prototype-roundtrip.test.mjs.
+      // Same as packages/blockmd/prototype-roundtrip.test.mjs.
       await new Promise((resolve) => setTimeout(resolve, 0));
       const agent = toAgentBlocks(stored);
       const back = toStoredBlocks(agent, config);

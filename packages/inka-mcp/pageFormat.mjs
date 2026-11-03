@@ -16,7 +16,7 @@
  * This is the format agents got right most often in the format experiment, and
  * the one the edit_blocks operations address blocks in.
  */
-import { slateToMd, mdToSlate, plaintextOf } from '../../lib/slate-md.mjs';
+import { slateToMd, mdToSlate, plaintextOf } from '../blockmd/slate-md.mjs';
 import { isObjectListRegion } from '../helpers/regionWidgets.js';
 
 /** A Slate value: an array of element nodes with `children`. */

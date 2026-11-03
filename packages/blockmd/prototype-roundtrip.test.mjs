@@ -22,7 +22,7 @@ import { join, dirname } from 'node:path';
 import YAML from 'yaml';
 import { parsePrototypes, matchBlocks, emitBlocks, semanticEqual, sameBlocks } from './prototype-mapping.mjs';
 
-const DOCS = join(dirname(fileURLToPath(import.meta.url)), '..', 'docs');
+const DOCS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'docs');
 
 /** Every .md under docs/ except the generated content/ deploy artifact. */
 function docPages(dir = DOCS, out = []) {
