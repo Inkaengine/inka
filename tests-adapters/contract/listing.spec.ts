@@ -213,7 +213,14 @@ describe('querystring.getIndexes', () => {
         // operation is right to refuse it.
         else if (widget === 'ReferenceWidget') value = '/news';
         else if (widget === 'RelativePathWidget') value = './';
-        else if (index.values) value = [Object.keys(index.values)[0]];
+        // NON-EMPTY values. Real plone.app.querystring reports `values: {}` on
+        // a plain string index (Title, Description, SearchableText) where our
+        // mock omits the key, so a truthiness test picked `undefined` out of an
+        // empty object and sent `v: [null]`. Plone answered 400 — "sequence
+        // item 0: expected str instance, NoneType found" — and the mock
+        // accepted it, which is why this read as green for as long as it did.
+        else if (index.values && Object.keys(index.values).length > 0)
+          value = [Object.keys(index.values)[0]];
         else if (index.vocabulary) {
           const vocab: any = await target.adapter.dispatch('vocabulary.get', {
             name: index.vocabulary,

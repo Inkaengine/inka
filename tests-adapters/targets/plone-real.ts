@@ -39,7 +39,23 @@ const ADDON = path.join(REPO_ROOT, 'backend/inkaengine.inka');
 // process did not start.
 const PORT = PORTS.contractPlone;
 const SITE = process.env.PLONE_SITE_ID ?? 'Plone';
-const BASE = `http://localhost:${PORT}/${SITE}`;
+const HOST = `localhost:${PORT}`;
+
+/**
+ * The site through a VIRTUAL HOST MONSTER, not at /Plone directly.
+ *
+ * This is how every Plone deployment is addressed — Volto's proxy does exactly
+ * this, and so does inkasite-api — because it is what makes the site answer as
+ * if it were at the root: `@id` comes back `http://host/news/first-post`
+ * instead of `http://host/Plone/news/first-post`, and every path the adapter
+ * derives from it is site-relative.
+ *
+ * Addressed directly, this target made twelve specs fail on paths with `/Plone`
+ * in them, and I read that as an adapter bug. It is not: the adapter was
+ * correct about what it was given. A VHM is the answer, and leaving it out is
+ * simply not how a Plone site is served.
+ */
+const BASE = `http://${HOST}/VirtualHostBase/http/${HOST}/${SITE}/VirtualHostRoot`;
 
 const ADMIN = { login: 'admin', password: process.env.PLONE_ADMIN_PASSWORD ?? 'admin' };
 
@@ -142,9 +158,21 @@ async function wipe(): Promise<void> {
   if (!res.ok) throw new Error(`@search failed while wiping: ${res.status}`);
   const { items = [] } = await res.json();
   for (const item of items) {
-    const at = new URL(item['@id']).pathname.replace(`/${SITE}`, '') || '/';
+    const at = new URL(item['@id']).pathname || '/';
     if (at === '/') continue;
-    await req(at, { method: 'DELETE' });
+    // Break the lock first. A real Plone refuses to delete a locked object —
+    // 423 — and the lock contract leaves locks behind by design, so without
+    // this the wipe silently did nothing and every later seed failed with
+    // `The id "about" is invalid - it is already in use`. The mock does not
+    // enforce locks on delete, which is why this only showed up here.
+    await req(`${at}/@lock`, {
+      method: 'DELETE',
+      body: JSON.stringify({ force: true }),
+    });
+    const res = await req(at, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) {
+      throw new Error(`wiping ${at} failed: ${res.status} ${await res.text()}`);
+    }
   }
 }
 
@@ -255,7 +283,11 @@ const target: Target = {
    * transaction. Measured first, before being optimised.
    */
   async seed() {
-    if (!token) await login();
+    // ALWAYS, not just when there is no token. expireSession poisons it on
+    // purpose, and a poisoned token is not an absent one — without this the
+    // test after that one wiped with a dead session and died on a 401. The
+    // WordPress target carries the same note about its nonce.
+    await login();
     await wipe();
     const documents = [...seed.documents].sort(
       (a: any, b: any) => a.path.split('/').length - b.path.split('/').length,
@@ -264,19 +296,18 @@ const target: Target = {
   },
 
   async publicBlocks(at: string) {
-    const doc = await publicReader.content(at);
-    return (doc as any)?.blocks ?? null;
+    return publicReader.blocks(at);
   },
 
   async publicNavigation() {
-    const nav = await publicReader.navigation();
-    return (nav as any)?.items ?? null;
+    return publicReader.navigation();
   },
 
   async publicMenuEntries() {
-    // Plone has no separate menu store: a navigation IS the content tree, so
-    // there is nothing here the navigation above does not already answer.
-    return null;
+    // Plone's @navigation, which already honours exclude_from_nav — so the
+    // visitor's menu and the one the adapter manages come from one source.
+    const items = await publicReader.navigation();
+    return items ? items.map((i: any) => ({ label: i.title, path: i.path })) : null;
   },
 
   async expireSession(onEvent) {
