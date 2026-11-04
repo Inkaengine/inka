@@ -35,8 +35,21 @@ export default {
   },
   computed: {
     subs() {
-      const { children } = this.node;
-      return (children && children) || [];
+      const children = this.node.children || [];
+      // The editor keeps an indented item's sub-list BESIDE the item it
+      // belongs to (ul > li, ul); HTML puts it inside that item. The nodes
+      // keep their own data-node-id, so editing reads them back where kept.
+      if (this.node.type !== 'ul' && this.node.type !== 'ol') return children;
+      const out = [];
+      for (const child of children) {
+        const prev = out[out.length - 1];
+        if ((child.type === 'ul' || child.type === 'ol') && prev?.type === 'li') {
+          out[out.length - 1] = { ...prev, children: [...prev.children, child] };
+        } else {
+          out.push(child);
+        }
+      }
+      return out;
     },
     // This frontend tags every heading as a deep-link anchor (a frontend
     // choice). Explicit node.data.anchorId wins; otherwise a heading's id/label

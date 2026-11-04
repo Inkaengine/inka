@@ -288,6 +288,35 @@ Invalid (missing node-id on wrapper):
 This breaks cursor positioning because hydra.js can't correlate DOM structure to Slate structure.
 ```
 
+## Nested lists: draw the sub-list inside its item
+
+Indenting a list item (Tab) wraps it in a new list where it stands, so the editor keeps a sub-list **beside** the item it belongs to:
+
+### Json
+
+```json
+{ "type": "ul", "nodeId": "0", "children": [
+  { "type": "li", "nodeId": "0.0", "children": [{ "text": "Parent" }] },
+  { "type": "ul", "nodeId": "0.1", "children": [
+    { "type": "li", "nodeId": "0.1.0", "children": [{ "text": "Child" }] }
+  ] }
+] }
+```
+
+Drawn as it is kept, that is a list directly inside a list, which HTML does not allow (a screen reader announces it wrongly, and axe fails it as `list`). Draw a list that follows an item inside that item instead:
+
+### Html
+
+```html
+<ul data-node-id="0">
+  <li data-node-id="0.0">Parent
+    <ul data-node-id="0.1"><li data-node-id="0.1.0">Child</li></ul>
+  </li>
+</ul>
+```
+
+Keep every element's own `data-node-id`. The bridge reads a node drawn inside an element whose path is not its own (`0.1` inside `0.0`) back as that element's next sibling, so the value keeps the editor's shape. The [Slate block](../examples/slate.md) examples do it in each stack with a short `nestSubLists` over a list's children.
+
 ## Non-editable content inside a slate field
 
 Sometimes a renderer adds elements to slate output that are **not** part of the editable content — a decorative icon (an "opens in a new tab" glyph), a generated chip, an embedded non-editable widget. These have no `data-node-id` (they aren't Slate nodes), and they must be marked so that **both** the editor's caret and hydra's DOM→Slate reader skip them:

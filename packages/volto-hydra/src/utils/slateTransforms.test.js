@@ -163,3 +163,36 @@ describe('slateTransforms', () => {
     });
   });
 });
+
+describe('outdentEmptyListItem', () => {
+  // Enter on an empty indented item moves it out a level, as Word and Google
+  // Docs do; the editor keeps a sub-list beside its item (ul > [li, ul]).
+  const li = (text) => ({ type: 'li', children: [{ text }] });
+  const at = (path) => ({ anchor: { path, offset: 0 }, focus: { path, offset: 0 } });
+
+  it('moves the empty item out to follow its sub-list in the outer list', () => {
+    const value = [{ type: 'ul', children: [li('Parent'), { type: 'ul', children: [li('Child'), li('')] }, li('Next')] }];
+    const { newValue, newSelection } = slateTransforms.outdentEmptyListItem(value, at([0, 1, 1, 0]));
+    expect(newValue).toEqual([{ type: 'ul', children: [li('Parent'), { type: 'ul', children: [li('Child')] }, li(''), li('Next')] }]);
+    expect(newSelection.anchor.path).toEqual([0, 2, 0]);
+  });
+
+  it("splits the sub-list when the empty item isn't its last", () => {
+    const value = [{ type: 'ul', children: [li('Parent'), { type: 'ul', children: [li('One'), li(''), li('Two')] }] }];
+    const { newValue } = slateTransforms.outdentEmptyListItem(value, at([0, 1, 1, 0]));
+    expect(newValue).toEqual([{ type: 'ul', children: [
+      li('Parent'), { type: 'ul', children: [li('One')] }, li(''), { type: 'ul', children: [li('Two')] },
+    ] }]);
+  });
+
+  it('removes a sub-list left empty', () => {
+    const value = [{ type: 'ul', children: [li('Parent'), { type: 'ul', children: [li('')] }] }];
+    const { newValue } = slateTransforms.outdentEmptyListItem(value, at([0, 1, 0, 0]));
+    expect(newValue).toEqual([{ type: 'ul', children: [li('Parent'), li('')] }]);
+  });
+
+  it('returns null for an item at the top level, which leaves the list instead', () => {
+    const value = [{ type: 'ul', children: [li('Parent'), li('')] }];
+    expect(slateTransforms.outdentEmptyListItem(value, at([0, 1, 0]))).toBeNull();
+  });
+});

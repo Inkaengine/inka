@@ -16,10 +16,29 @@
  * `data-node-id` is what the bridge's selection sync uses to map
  * iframe DOM nodes back to slate node paths during editing — it MUST
  * end up on the rendered tag.
+ *
+ * The editor keeps an indented item's sub-list BESIDE the item it belongs
+ * to (ul > li, ul); HTML puts it inside that item (ul > li > ul), so a
+ * list's children go through nestSubLists. The nodes keep their own
+ * data-node-id, so editing reads them back where they are kept.
  */
 import Self from './SlateNode.astro';
 const { node } = Astro.props;
 const Tag = node?.type;
+const isList = (n: any) => n.type === 'ul' || n.type === 'ol';
+function nestSubLists(children: any[]) {
+  const out: any[] = [];
+  for (const child of children) {
+    const prev = out[out.length - 1];
+    if (isList(child) && prev?.type === 'li') {
+      out[out.length - 1] = { ...prev, children: [...prev.children, child] };
+    } else {
+      out.push(child);
+    }
+  }
+  return out;
+}
+const kids = node?.type && isList(node) ? nestSubLists(node.children || []) : node?.children || [];
 ---
 {node?.text !== undefined ? (
   <Fragment>{node.text.split('\n').map((line: string, i: number) => <Fragment>{i > 0 && <br />}{line}</Fragment>)}{node.text.endsWith('\n') && <br />}</Fragment>
@@ -29,6 +48,6 @@ const Tag = node?.type;
   </a>
 ) : (
   <Tag data-node-id={node.nodeId}>
-    {(node.children || []).map((c: any) => <Self node={c} />)}
+    {kids.map((c: any) => <Self node={c} />)}
   </Tag>
 )}

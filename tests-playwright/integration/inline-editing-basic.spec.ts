@@ -440,6 +440,46 @@ test.describe('Inline Editing - Basic', () => {
     await helper.waitForEditorText(mergedEditor, /First block JOINED Second block/);
   });
 
+  test('Delete over selected text deletes it, as Backspace does', async ({ page }) => {
+    // The select-all selection ends on the field element itself. Delete
+    // treated that as a caret to move into the text, collapsed the selection,
+    // and deleted nothing, leaving a selection that named the element: a
+    // paste after it took the editor down.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const editor = await helper.enterEditMode('block-1-uuid');
+
+    await helper.selectAllTextInEditor(editor);
+    await editor.press('Delete');
+    await helper.waitForEditorText(editor, /^$/);
+    await editor.pressSequentially('Fresh', { delay: 10 });
+    await helper.waitForEditorText(editor, /^Fresh$/);
+  });
+
+  test('HTML pasted after Delete has cleared the field replaces its text', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const editor = await helper.enterEditMode('block-1-uuid');
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+
+    await helper.selectAllTextInEditor(editor);
+    await editor.press('Delete');
+    await helper.waitForEditorText(editor, /^$/);
+    await editor.evaluate((el: HTMLElement) => {
+      const dt = new DataTransfer();
+      dt.setData('text/html', '<p>Hello</p>');
+      dt.setData('text/plain', 'Hello');
+      const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', { value: dt });
+      el.dispatchEvent(event);
+    });
+    await helper.waitForEditorText(editor, /^Hello$/);
+    expect(errors).toEqual([]);
+  });
+
   test('Backspace at start of bullet list item demotes to paragraph', async ({ page }) => {
     // When cursor is at the start of a bullet list item and Backspace is
     // pressed, the list item should be "demoted" — unwrapped from the list
