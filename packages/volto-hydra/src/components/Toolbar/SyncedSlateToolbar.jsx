@@ -13,7 +13,7 @@ import { getBlockById, updateBlockById, getResolvedSchema } from '../../utils/bl
 import { calculateDragHandlePosition, PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef, isStarterUiField } from '@volto-hydra/helpers';
 import { starterPickerTakesFocus } from '../../utils/starterUi';
-import { isStyleAllowed } from '../../../../helpers/slateStyles.js';
+import { isStyleAllowed } from '@volto-hydra/helpers/slateStyles.js';
 import { blockFormatButtons, paragraphStyleItems } from '../../utils/blockFormats';
 import { useDispatch, useSelector } from 'react-redux';
 import FormatDropdown from './FormatDropdown';

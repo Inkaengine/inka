@@ -38,16 +38,16 @@
  * branch can be removed — until then, both branches are load-bearing.
  */
 import { getInjectedBlocksConfig, getSlateStyleGlobals, getSlateVocabulary } from './injectedVoltoConfig.js';
-import { normalizeSlateFields, undefinedSlateTypes } from '../../../helpers/slateStyles.js';
+import { normalizeSlateFields, undefinedSlateTypes } from '@volto-hydra/helpers/slateStyles.js';
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
   deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
-import { addableSiblingTypes, buildBlockPathMap, buildIdFieldMap } from '../../../helpers/buildBlockPathMap.js';
-import { isObjectListRegion } from '../../../helpers/regionWidgets.js';
+import { addableSiblingTypes, buildBlockPathMap, buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
 import {
   createFieldRulesEnhancer,
   evaluateFieldRule,
   setFieldRulesContextProvider,
-} from '../../../helpers/fieldRules.js';
+} from '@volto-hydra/helpers/fieldRules.js';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
   convertFieldValue,

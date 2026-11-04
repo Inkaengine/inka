@@ -18,7 +18,7 @@
  * uid-keyed `blocks` dict + `blocks_layout` the stored shape uses.
  */
 import YAML from 'yaml';
-import { getAtPath, ensureMutablePath } from '../helpers/index.js';
+import { getAtPath, ensureMutablePath } from '@volto-hydra/helpers';
 import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cleanAttrStr, normaliseTables, tableToMd, gridTableToMd, NoCellForm, slateBlockToMdast, isBrTag,
          mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, flatDictAttrs } from './slate-md.mjs';
 

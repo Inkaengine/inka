@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 import { editBlocks, EditError } from './editBlocks.mjs';
-import { slateToMd } from '../blockmd/slate-md.mjs';
+import { slateToMd } from '@inka/blockmd/slate-md.mjs';
 
 /** A page as an ordered list of [id, block]; containers not modelled. */
 function fakeAgent(initial) {

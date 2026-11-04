@@ -28,7 +28,7 @@ import {
   insertTableColumn,
   getContainerFieldConfig,
 } from './blockPath.js';
-import { buildBlockPathMap } from '../../../helpers/buildBlockPathMap.js';
+import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 
 const intl = { formatMessage: (m) => m?.defaultMessage || m?.id || '' };
 const slate = (text) => [{ type: 'p', children: [{ text }] }];

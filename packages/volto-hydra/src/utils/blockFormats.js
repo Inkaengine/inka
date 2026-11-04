@@ -20,7 +20,7 @@
  */
 import { Editor, Element, Transforms } from 'slate';
 
-import { isStyleAllowed } from '../../../helpers/slateStyles.js';
+import { isStyleAllowed } from '@volto-hydra/helpers/slateStyles.js';
 
 const HEADING = /^h[1-6]$/;
 

@@ -23,8 +23,8 @@ import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { isObjectListRegion } from '../../../../helpers/regionWidgets.js';
-import { mergeFrontendBlock } from '../../../../hydra-js/mergeFrontendBlock.js';
+import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
+import { mergeFrontendBlock } from '@volto-hydra/hydra-js/mergeFrontendBlock.js';
 import { registerAgentApi } from './agentApi';
 import {
   isSlateFieldType,

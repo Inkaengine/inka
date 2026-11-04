@@ -15,9 +15,16 @@
     "inka-mcp-http": "./start.mjs"
   },
   "dependencies": {
+    "@inka/blockmd": "workspace:*",
+    "@inka/content-validator": "workspace:*",
     "@modelcontextprotocol/ext-apps": "1.7.5",
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "@volto-hydra/helpers": "workspace:*",
     "playwright": "1.61.0",
     "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@inka/mock-api": "workspace:*",
+    "esbuild": "^0.28.0"
   }
 }

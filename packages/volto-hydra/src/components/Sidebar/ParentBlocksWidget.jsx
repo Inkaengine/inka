@@ -41,7 +41,7 @@ import { getConvertibleTypes, convertBlockType, findTypeField } from '../../util
 import { nestedStatus } from '@volto-hydra/helpers';
 import { buildIdFieldMap } from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { isObjectListRegion, isRegionField } from '../../../../helpers/regionWidgets.js';
+import { isObjectListRegion, isRegionField } from '@volto-hydra/helpers/regionWidgets.js';
 import { isBlockReadonly } from '@volto-hydra/helpers';
 import { flattenToAppURL } from '@plone/volto/helpers';
 import { LinkedText } from '../../utils/linkedText';

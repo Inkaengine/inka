@@ -16,7 +16,7 @@ import {
   reportDisallowedSlateNodes,
 } from './blockSync.js';
 import { setInjectedVoltoConfig } from './injectedVoltoConfig.js';
-import { buildBlockPathMap } from '../../../helpers/buildBlockPathMap.js';
+import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 
 // blockSync carries no `@plone/volto/registry` import (it has to load in bare
 // Node for block-sanity's offline discovery), so the slate settings reach it the

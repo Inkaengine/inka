@@ -31,8 +31,8 @@ import {
 import { expelAllowedTypes, findOnlyEmptyChildUid } from './containerOps.js';
 import { acceptableAt } from './conversionMap.js';
 import { collectLinkableAnchors } from './linkableAnchors.js';
-import { isStyleAllowed } from '../helpers/slateStyles.js';
-import { isRegionField } from '../helpers/regionWidgets.js';
+import { isStyleAllowed } from '@volto-hydra/helpers/slateStyles.js';
+import { isRegionField } from '@volto-hydra/helpers/regionWidgets.js';
 
 /**
  * Has the frontend drawn the slate value it was given? `dom` is the DOM read
@@ -16133,4 +16133,4 @@ export { buildAnchorTree } from './linkableAnchors.js';
 // blocks config — the same one a frontend passes to initBridge. Re-exported so frontends
 // build it from their own block schemas exactly as the admin does: it is a fact about the
 // frontend's schemas, which the backend (and so the @templates endpoint) never sees.
-export { buildIdFieldMap } from '../helpers/buildBlockPathMap.js';
+export { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';

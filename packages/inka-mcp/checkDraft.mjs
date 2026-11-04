@@ -11,8 +11,8 @@
  * brings is refused: a problem the page already had is not the agent's to fix
  * before it may change anything else.
  */
-import validator from '../content-validator/plone-content-validator.cjs';
-import { buildIdFieldMap } from '../helpers/buildBlockPathMap.js';
+import validator from '@inka/content-validator';
+import { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 
 const { checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = validator;
 

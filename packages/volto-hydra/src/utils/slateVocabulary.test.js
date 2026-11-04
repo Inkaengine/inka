@@ -20,7 +20,7 @@ import config from '@plone/volto/registry';
 import {
   DEFAULT_SLATE_VOCABULARY,
   EXTRACTED_SLATE_TYPES,
-} from '../../../helpers/slateStyles.js';
+} from '@volto-hydra/helpers/slateStyles.js';
 
 const liveElements = () => Object.keys(config.settings.slate?.elements || {});
 

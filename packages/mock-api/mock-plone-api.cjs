@@ -2580,7 +2580,7 @@ function loadMarkdownMount(mount) {
  * export-shape check, since they are what gets imported into a real Plone.
  */
 function validateServedContent() {
-  const { validate, checkIntegrity } = require('../content-validator/plone-content-validator.cjs');
+  const { validate, checkIntegrity } = require('@inka/content-validator');
   // ALLOW_MISSING_BLOBS=true: a blob whose bytes are not on disk is a warning,
   // not an error — what `plone-content --allow-missing-blobs` does. For a pull
   // request whose content references a file CI makes only after the merge (a
@@ -2606,8 +2606,8 @@ function validateServedContent() {
   keep(checkIntegrity(source, { schemasFor: hydraSchemasForOwnContent, allowMissingBlobs }));
   for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   if (siteSchemas) {
-    const { checkBlockSchemas, fieldMapFromSchemas } = require('../content-validator/plone-content-validator.cjs');
-    const { buildIdFieldMap } = require('../helpers/buildBlockPathMap.js');
+    const { checkBlockSchemas, fieldMapFromSchemas } = require('@inka/content-validator');
+    const { buildIdFieldMap } = require('@volto-hydra/helpers/buildBlockPathMap.js');
     // Without the idFieldMap the container API sees only object_lists whose
     // items carry templateId, so a slider's slides go unchecked.
     const idFieldMap = buildIdFieldMap(siteSchemas, { formatMessage: (m) => m?.defaultMessage || '' });
@@ -2649,7 +2649,7 @@ function isHydraOwned(urlPath) {
 let siteSchemas = null;
 async function loadSiteSchemas() {
   if (!process.env.CONTENT_SCHEMAS) return;
-  const { loadSchemas } = require('../content-validator/plone-content-validator.cjs');
+  const { loadSchemas } = require('@inka/content-validator');
   siteSchemas = await loadSchemas(process.env.CONTENT_SCHEMAS);
 }
 
@@ -2700,7 +2700,7 @@ function reloadMount(mount) {
  */
 async function getEngine() {
   if (!engine) {
-    const { emitPage, parsePrototypes } = await import('../blockmd/prototype-mapping.mjs');
+    const { emitPage, parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
     engine = { emitPage, parsePrototypes };
   }
   return engine;
@@ -2709,8 +2709,8 @@ async function getEngine() {
 async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
   if (!mounts.length) return;
-  const { readTree } = await import('../blockmd/markdown-mount.mjs');
-  const { checkIntegrity } = require('../content-validator/plone-content-validator.cjs');
+  const { readTree } = await import('@inka/blockmd/markdown-mount.mjs');
+  const { checkIntegrity } = require('@inka/content-validator');
   // readTree takes a type -> blockSchema function; only checkIntegrity takes
   // the whole config. Two different contracts, so both are supplied.
   mdRuntime = {
@@ -3349,7 +3349,7 @@ app.post('/@export', async (req, res) => {
     const { emitPage, parsePrototypes } = await getEngine();
     const YAML = (await import('yaml')).default;
     const { SERVER_STATE } = await import('./server-state.mjs');
-    const { BLOB_FIELD, blobDefaults } = await import('../blockmd/markdown-mount.mjs');
+    const { BLOB_FIELD, blobDefaults } = await import('@inka/blockmd/markdown-mount.mjs');
 
     // The CALLER supplies the readability rules; this endpoint writes each page
     // as a WHOLE, self-contained file — frontmatter (page meta + assignments +
@@ -3647,7 +3647,7 @@ app.post('/@export', async (req, res) => {
       return res.status(409).json({ error: 'no content to export' });
     }
     // Never ship a tree the importer would choke on.
-    const { validate, checkIntegrity } = require('../content-validator/plone-content-validator.cjs');
+    const { validate, checkIntegrity } = require('@inka/content-validator');
     const contentDir = path.join(staging, 'content');
     const v = validate(contentDir, { allowMissingBlobs });
     const c = checkIntegrity(contentDir, { schemasFor: () => hydraBlocksConfig, allowMissingBlobs });

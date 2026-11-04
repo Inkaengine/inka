@@ -34,7 +34,7 @@ import {
 import {
   buildBlockPathMap,
   getResolvedSchema,
-} from '../../../helpers/buildBlockPathMap.js';
+} from '@volto-hydra/helpers/buildBlockPathMap.js';
 
 const intl = { formatMessage: (m) => m?.defaultMessage || m?.id || '' };
 

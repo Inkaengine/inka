@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decodePage } from '../blockmd/prototype-mapping.mjs';
+import { decodePage } from '@inka/blockmd/prototype-mapping.mjs';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 import { toAgentBlocks, toStoredBlocks, toStoredBlock } from './pageFormat.mjs';
 

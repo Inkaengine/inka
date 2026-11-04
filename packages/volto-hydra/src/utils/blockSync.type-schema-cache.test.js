@@ -15,7 +15,7 @@ vi.mock('../context', () => ({
 }));
 
 import { populateTypeSchemaCache } from './blockSync';
-import { getBlockTypeSchema } from '../../../helpers/buildBlockPathMap.js';
+import { getBlockTypeSchema } from '@volto-hydra/helpers/buildBlockPathMap.js';
 
 const region = (title) => ({ title, widget: 'blocks_layout', allowedBlocks: ['slate'] });
 

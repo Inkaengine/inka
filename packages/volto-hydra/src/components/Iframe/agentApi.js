@@ -34,11 +34,11 @@ import {
 } from '../../utils/blockPath';
 import { stripFixedInsideSlots } from '@volto-hydra/helpers';
 import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
-import { getPageAllowedBlocksFromRestricted } from '../../../../helpers/buildBlockPathMap.js';
+import { getPageAllowedBlocksFromRestricted } from '@volto-hydra/helpers/buildBlockPathMap.js';
 import {
   collectFieldRules,
   describeFieldRules,
-} from '../../../../helpers/fieldRules.js';
+} from '@volto-hydra/helpers/fieldRules.js';
 import { lockedBy } from '../AgentSite/lockedBy';
 import {
   getTargetMapping,
