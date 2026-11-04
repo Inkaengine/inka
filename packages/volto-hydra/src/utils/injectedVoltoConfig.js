@@ -8,7 +8,7 @@
  * `config.blocks.blocksConfig` as a last-resort fallback. A static
  * `import config from '@plone/volto/registry'` at the top of either module makes
  * the WHOLE file un-loadable in bare Node (the specifier doesn't resolve), which
- * is why the pure `schemaValidation.mjs` had to be split out.
+ * is why the pure `schemaValidation` (now in @volto-hydra/helpers) had to be split out.
  *
  * Instead of splitting, inject those accessors ONCE. The hydra addon calls
  * `setInjectedVoltoConfig(...)` at init (where `config` is in scope); the pure

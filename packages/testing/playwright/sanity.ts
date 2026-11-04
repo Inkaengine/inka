@@ -38,7 +38,7 @@ import { axeCheckPage, formatViolations } from './axe-sanity';
 import { requireEnvironment } from './preconditions';
 import { harnessUrls } from '../ports';
 import { inContract, readDiscovery, type ContractScope } from '../discovery';
-import { validateTemplatePlaceholders } from '../../volto-hydra/src/utils/formDataValidation';
+import { validateTemplatePlaceholders } from '@volto-hydra/helpers/formDataValidation.js';
 
 export interface SanityOptions extends ContractScope {
   /** Where global setup wrote discovery (the `discoveryDir` it was given). */

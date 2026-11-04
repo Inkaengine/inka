@@ -18,7 +18,7 @@ import { Node } from 'slate';
 import {
   applyBlockDefaults,
 } from '@plone/volto/helpers';
-import { validateAndLog, validateTemplatePlaceholders } from '../../utils/formDataValidation';
+import { validateAndLog, validateTemplatePlaceholders } from '@volto-hydra/helpers/formDataValidation.js';
 import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';

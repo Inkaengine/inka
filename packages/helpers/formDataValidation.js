@@ -13,7 +13,7 @@ import {
   getChildFields,
   getChildBlockEntries,
   getFieldValue,
-} from '@volto-hydra/helpers';
+} from './index.js';
 
 // Re-export for convenience
 export { isSlateFieldType };

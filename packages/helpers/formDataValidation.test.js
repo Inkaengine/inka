@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { validateTemplatePlaceholders } from './formDataValidation';
+import { validateTemplatePlaceholders } from './formDataValidation.js';
 
 /**
  * validateTemplatePlaceholders enforces the slot-grouping rules a template author must follow:

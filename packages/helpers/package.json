@@ -17,16 +17,20 @@
     ".": "./index.js",
     "./buildBlockPathMap.js": "./buildBlockPathMap.js",
     "./fieldRules.js": "./fieldRules.js",
+    "./formDataValidation.js": "./formDataValidation.js",
     "./mergeTemplates.js": "./mergeTemplates.js",
     "./regionWidgets.js": "./regionWidgets.js",
+    "./schemaValidation.js": "./schemaValidation.js",
     "./slateStyles.js": "./slateStyles.js"
   },
   "files": [
     "buildBlockPathMap.js",
     "fieldRules.js",
+    "formDataValidation.js",
     "index.js",
     "mergeTemplates.js",
     "regionWidgets.js",
+    "schemaValidation.js",
     "slateStyles.js"
   ],
   "keywords": [],

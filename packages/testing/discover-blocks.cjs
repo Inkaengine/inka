@@ -678,7 +678,7 @@ const { UNDECLARED_EXEMPT } = require('@inka/content-validator');
 // empty, so a frontend that declares no menu is judged exactly as before.
 let AUTHORABLE_SLATE_STYLES = new Set([]);
 
-// Hydra's own value validator (packages/volto-hydra/.../schemaValidation.mjs) —
+// Hydra's own value validator (@volto-hydra/helpers/schemaValidation.js) —
 // the SAME `isValidValue` Hydra runs to strip un-authorable values on load, so
 // block-sanity and the editor agree on "is this a valid value?". Loaded lazily
 // via dynamic import (it's ESM but dependency-free by design) in discoverBlocks.
@@ -1375,7 +1375,7 @@ async function discoverBlocks(
   // it strips content with, so block-sanity flags exactly what the editor can't
   // produce. Dependency-free ESM.
   ({ isValidValue: isValidValueFn } = await import(
-    '../volto-hydra/src/utils/schemaValidation.mjs'
+    '@volto-hydra/helpers/schemaValidation.js'
   ));
 
   // Load Hydra's real schema resolver offline (esbuild-bundled) and install the

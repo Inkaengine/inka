@@ -3,7 +3,7 @@ import {
   applySchemaDefaultsToBlock,
   applySchemaDefaultsToBlockWithContext,
   isValidValue,
-} from './schemaValidation.mjs';
+} from './schemaValidation.js';
 
 /**
  * A field that takes SEVERAL of its choices holds an array, and every element is

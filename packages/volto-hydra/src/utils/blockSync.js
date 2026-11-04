@@ -67,19 +67,19 @@ setFieldRulesContextProvider({
   context: () => getHydraSchemaContext?.(),
   liveBlockData: (blockId, fallback) => getLiveBlockData?.(blockId, fallback),
 });
-// Pure validation/default-application logic lives in schemaValidation.js
+// Pure validation/default-application logic lives in @volto-hydra/helpers/schemaValidation.js
 // (no dependencies — safe to import from CI scripts and test runners).
-// Re-exported here for backward compat; schemaValidation.js is the SSOT.
+// Re-exported here for backward compat; that module is the SSOT.
 export {
   applySchemaDefaultsToBlock,
   applySchemaDefaultsToBlockWithContext,
-} from './schemaValidation.mjs';
+} from '@volto-hydra/helpers/schemaValidation.js';
 // The internal callers below need direct access (re-exports aren't visible
 // to module-local code in some bundler configs).
 import {
   applySchemaDefaultsToBlock,
   applySchemaDefaultsToBlockWithContext,
-} from './schemaValidation.mjs';
+} from '@volto-hydra/helpers/schemaValidation.js';
 import { PULL_FROM_KEY } from './copyFromTargetMapping';
 
 // Conversion-graph logic lives in conversionValidation.mjs so it stays free of
