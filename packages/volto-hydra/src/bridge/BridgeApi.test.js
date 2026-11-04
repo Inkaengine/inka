@@ -75,74 +75,35 @@ describe('BridgeApi', () => {
   });
 
   /**
-   * Renewal is the only thing that ever asks the site whether a token is still
-   * good, and /connect-agent leans on it: it offers Allow only once renewal has
-   * come back, because the browser can hold a token the site has stopped
-   * accepting (a deploy that resets the site stops accepting every token it
-   * issued) and the agent would be handed that one and fail on every call.
+   * Renewal is answered from the admin's own cookie: in bridge mode the adapter
+   * owns the CMS session, so there is nothing to renew, and a successful
+   * renewal returns the token the admin already has.
    *
-   * Answering renewal out of the admin's own cookie made the bridge admin say
-   * yes to a dead session, which is precisely what that page exists to prevent.
+   * There is a known gap behind this, written up where the code is: renewal is
+   * also the only thing that ever asks whether the site still ACCEPTS that
+   * token, and /connect-agent depends on the answer. Confirming it with the
+   * adapter was tried and reverted — it asks about the adapter's credential,
+   * not the admin's cookie, and broke the sign-in flow for a good session.
    */
   describe('@login-renew', () => {
-    it('is relayed to a Plone-dialect site, which decides', async () => {
-      // A real endpoint there: it answers 401 for a token it no longer accepts
-      // and a FRESH token otherwise, which is what Volto asked for.
-      const r = rpc({ token: 'a-fresh-one' });
-      const api = passthroughApi(r);
-      const res = await api.post('/@login-renew');
-      expect(r.request).toHaveBeenCalledWith(
-        'http',
-        expect.objectContaining({ op: 'post', path: '/@login-renew' }),
-      );
-      expect(res).toEqual({ token: 'a-fresh-one' });
+    it('answers with the token the admin already holds', async () => {
+      const r = rpc({});
+      await passthroughApi(r).post('/@login-renew');
+      expect(r.request).not.toHaveBeenCalled();
     });
 
     it('is not pressed as a login provider called "renew"', async () => {
-      // `@login-renew` also matches the `@login-<option>` branch.
-      const r = rpc({ token: 'a-fresh-one' });
-      await passthroughApi(r).post('/@login-renew');
+      // `@login-renew` also matches the `@login-<option>` branch, which would
+      // ask the adapter to sign in with a provider that does not exist.
+      const r = rpc({});
+      await semanticApi(r).post('/@login-renew');
       expect(r.request).not.toHaveBeenCalledWith(
         'auth.loginWithOption',
         expect.anything(),
       );
     });
-
-    it('asks any other adapter who the session belongs to', async () => {
-      const r = rpc({ id: 'admin' });
-      await semanticApi(r).post('/@login-renew');
-      expect(r.request).toHaveBeenCalledWith('auth.whoami', {});
-    });
-
-    it('fails when the site no longer accepts the session', async () => {
-      const dead = Object.assign(new Error('nope'), {
-        code: 'UNAUTHORIZED',
-        status: 401,
-      });
-      const api = semanticApi({ request: vi.fn().mockRejectedValue(dead) });
-      // Volto's reducer drops the token on a failed renewal, which is how the
-      // person is sent to sign in again.
-      await expect(api.post('/@login-renew')).rejects.toMatchObject({
-        status: 401,
-      });
-    });
-
-    it('fails when the adapter answers with nobody', async () => {
-      // The contract says whoami gives "the signed-in user, or null", so an
-      // adapter may say so by answering rather than by throwing. Either way it
-      // is not a session to hand an agent.
-      const api = semanticApi(rpc(null));
-      await expect(api.post('/@login-renew')).rejects.toThrow(/no longer/i);
-    });
   });
 
-  /**
-   * Volto's reducers read `error.response` on a failure, because its Api helper
-   * rejects with superagent's error and superagent always has one. A bridge
-   * error that has none does not merely lose a message — the reducer THROWS
-   * while reading it, the FAIL action never reaches the store, and the state it
-   * was supposed to change is left exactly as it was.
-   */
   describe('a failed call', () => {
     const rejectingApi = (err) =>
       semanticApi({ request: vi.fn().mockRejectedValue(err) });

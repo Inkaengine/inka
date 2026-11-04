@@ -98,47 +98,35 @@ export class BridgeApi {
       return this.rpc.request('auth.logout', {});
     }
 
-    // Renewal is a question for whoever HOLDS the session, and it has to be
-    // asked.
+    // Volto renews its auth token on a timer and once at startup. In bridge
+    // mode the admin holds no CMS credentials at all — the adapter owns the
+    // session — so there is nothing to renew. Routed like any other POST this
+    // became content.create for a document called "@login-renew", which 404s
+    // on every CMS, and a failed renewal reads to the admin as a dead session.
     //
-    // Volto renews on a timer and once at startup. This used to be answered out
-    // of the admin's own cookie — the reasoning being that in bridge mode the
-    // admin holds no CMS credentials, the adapter owns the session, so there is
-    // nothing to renew. True about renewing, wrong about asking: renewal is the
-    // ONLY thing that ever checks whether the token the browser is holding is
-    // still one the site accepts, and /connect-agent is built on that. It
-    // offers Allow only once renewal has answered, because a deploy that resets
-    // the site stops accepting every token it had issued, and the agent would
-    // be handed that dead one and fail on every call. Answering from the cookie
-    // said yes to a session nobody had asked about — the single thing that page
-    // exists to prevent — and the bridge admin duly offered Allow on a token
-    // the site had just revoked.
+    // Answering with the token the admin already has is what a successful
+    // renewal returns, and leaves its state exactly as it was.
     //
-    // A Plone-dialect adapter is relayed: @login-renew is a real endpoint there,
-    // so the SITE decides — a 401 for a token it no longer accepts, a fresh
-    // token otherwise, which is what Volto asked for in the first place.
+    // KNOWN GAP, and it is not fixed by asking the adapter. Renewal is also the
+    // only thing that ever checks whether the site still accepts the token the
+    // browser holds, and /connect-agent is built on that: it offers Allow only
+    // once renewal has answered, because a deploy that resets the site stops
+    // accepting every token it issued, and the agent would be handed that dead
+    // one and fail on every call (mcp-connect.spec.ts:79, red for that reason).
     //
-    // Any other adapter has no such endpoint, so the adapter is asked who the
-    // session belongs to instead (`auth.whoami`, the contract's Session
-    // question, which all four adapters answer), and the admin keeps the token
-    // it already has.
+    // Confirming it with the adapter was tried and reverted. It asks the wrong
+    // party: the adapter's credential is not the admin's cookie, and a relayed
+    // @login-renew is answered about whichever token the ADAPTER carries. In
+    // CI that broke the sign-in flow itself — "Checking your sign-in…" for a
+    // perfectly good session — in both the mock and the nuxt admin, and every
+    // MCP test that signs in through that page failed behind it.
     //
-    // Both answered HERE, together, and not left to fall through: `@login-renew`
-    // also matches the `@login-<option>` branch below, which would press it as
-    // a login provider called "renew".
+    // What it needs is the question asked about the ADMIN's own token: the
+    // passthrough's `http` intent takes headers, and a Plone adapter lets a
+    // caller's Authorization override its own, so the renewal can be relayed
+    // with the cookie's token explicitly. That is a change worth making with a
+    // test that can be run against both admins, not inferred.
     if (op === 'post' && String(path).split('?')[0].endsWith('@login-renew')) {
-      if (this.supportsPassthrough(info)) {
-        return this.rpc.request('http', { op, path, data, headers, params });
-      }
-      // "The signed-in user, or null" — so an adapter may refuse by answering
-      // rather than by throwing, and both mean the same thing here.
-      const user = await this.rpc.request('auth.whoami', {});
-      if (!user) {
-        throw Object.assign(
-          new Error('[hydra] The site no longer accepts this sign-in.'),
-          { code: 'UNAUTHORIZED', status: 401 },
-        );
-      }
       return { token: currentAuthToken() };
     }
 
