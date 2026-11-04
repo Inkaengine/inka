@@ -1,0 +1,66 @@
+{
+  "name": "@inka/testing",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The test harness for Inka frontends: port blocks, block discovery, the mock-parent admin stand-in, and Playwright helpers and sanity suites.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Inkaengine/inka.git",
+    "directory": "packages/testing"
+  },
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "exports": {
+    "./ports": "./ports.ts",
+    "./discovery": "./discovery.ts",
+    "./discover-blocks": "./discover-blocks.cjs",
+    "./elementless": "./elementless.ts",
+    "./mock-parent": "./mock-parent/vite-plugin.js",
+    "./playwright/AdminUIHelper": "./playwright/AdminUIHelper.ts",
+    "./playwright/BlockVerificationHelper": "./playwright/BlockVerificationHelper.ts",
+    "./playwright/PageIntegrityHelper": "./playwright/PageIntegrityHelper.ts",
+    "./playwright/axe-sanity": "./playwright/axe-sanity.ts",
+    "./playwright/caption": "./playwright/caption.ts",
+    "./playwright/coverage-reporter": "./playwright/coverage-reporter.ts",
+    "./playwright/demoPacing": "./playwright/demoPacing.ts",
+    "./playwright/fixtures": "./playwright/fixtures.ts",
+    "./playwright/global-setup": "./playwright/global-setup.ts",
+    "./playwright/mock-parent": "./playwright/mock-parent.ts",
+    "./playwright/preconditions": "./playwright/preconditions.ts",
+    "./playwright/sanity": "./playwright/sanity.ts",
+    "./playwright/settled-count": "./playwright/settled-count.ts"
+  },
+  "files": [
+    "discover-blocks.cjs",
+    "discovery.ts",
+    "elementless.ts",
+    "field-coverage.ts",
+    "imageSizes.mjs",
+    "mock-parent/",
+    "playwright/*.ts",
+    "!playwright/*.test.*",
+    "ports.ts",
+    "selectablePoint.ts",
+    "text-style-coverage.ts"
+  ],
+  "dependencies": {
+    "@inka/content-validator": "workspace:*",
+    "@inka/mock-api": "workspace:*",
+    "@volto-hydra/helpers": "workspace:*",
+    "@volto-hydra/hydra-js": "workspace:*",
+    "axe-core": "^4.11.4",
+    "esbuild": "^0.28.0"
+  },
+  "peerDependencies": {
+    "@playwright/test": "^1.58.2",
+    "vite": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  }
+}

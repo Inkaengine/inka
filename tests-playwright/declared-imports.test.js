@@ -20,7 +20,7 @@ import { join, dirname, resolve, relative } from 'node:path';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Packages whose bare imports must all be in their own package.json. */
-const DECLARING = ['packages/blockmd', 'packages/content-validator', 'packages/mock-api', 'packages/helpers', 'packages/inka-mcp'];
+const DECLARING = ['packages/blockmd', 'packages/content-validator', 'packages/mock-api', 'packages/helpers', 'packages/inka-mcp', 'packages/testing'];
 /** Packages whose relative imports must stay inside the package. */
 const CONTAINED = [...DECLARING, 'packages/hydra-js', 'packages/volto-hydra'];
 
@@ -52,7 +52,7 @@ function sourceFiles(dir) {
       const p = join(rel, e.name);
       if (e.isDirectory()) {
         if (!['node_modules', 'dist', 'build'].includes(e.name)) walk(p);
-      } else if (/\.(mjs|cjs|js|jsx)$/.test(e.name) && !/\.(test|spec)\./.test(e.name) && e.name !== 'hydra.js') {
+      } else if (/\.(mjs|cjs|js|jsx|ts|tsx)$/.test(e.name) && !/\.(test|spec)\./.test(e.name) && e.name !== 'hydra.js') {
         out.push(p);
       }
     }
@@ -67,6 +67,7 @@ describe('imports are declared', () => {
     expect(files).toContain('packages/blockmd/markdown-mount.mjs');
     expect(files).toContain('packages/content-validator/plone-content-validator.cjs');
     expect(files).toContain('packages/mock-api/mock-api-server.cjs');
+    expect(files).toContain('packages/testing/playwright/AdminUIHelper.ts');
     expect(files).toContain('packages/volto-hydra/src/utils/blockSync.js');
   });
 

@@ -13,7 +13,7 @@ import { createRequire } from 'node:module';
 import { describe, expect, test } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { collectListingContainerIssues } = require('./helpers/discover-blocks.cjs');
+const { collectListingContainerIssues } = require('@inka/testing/discover-blocks');
 
 const withListing = ({ recipe = {}, variation = {} }) => ({
   listing: {

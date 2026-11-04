@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { paragraphShapeOf } = require('../helpers/discover-blocks.cjs');
+const { paragraphShapeOf } = require('@inka/testing/discover-blocks');
 
 /**
  * What block-sanity may reject in a slate text leaf.

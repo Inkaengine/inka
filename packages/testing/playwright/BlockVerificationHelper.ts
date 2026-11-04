@@ -10,14 +10,14 @@
 import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
-import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage';
+import { recordSlateFieldContainer, recordFieldEditable } from '../field-coverage';
 import {
   usesAvailableSizes, resolveImageEntry, availableWidths, isProportionate,
-} from './imageSizes.mjs';
+} from '../imageSizes.mjs';
 import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
 import { settledCount } from './settled-count';
-import { wordsWithNowhereToGo } from './elementless';
-import { isEmptySlate } from '../../packages/helpers/index.js';
+import { wordsWithNowhereToGo } from '../elementless';
+import { isEmptySlate } from '@volto-hydra/helpers';
 
 export interface SubBlock {
   id: string;

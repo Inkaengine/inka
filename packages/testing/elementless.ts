@@ -1,4 +1,4 @@
-import { isEmptySlate } from '../../packages/helpers/index.js';
+import { isEmptySlate } from '@volto-hydra/helpers';
 
 interface FieldSchema {
   type?: string;

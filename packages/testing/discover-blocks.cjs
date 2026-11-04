@@ -664,7 +664,7 @@ function collectSlateIssues(blockData, pagePath, blockId, out, blockType, inTabl
  */
 // UNDECLARED_EXEMPT: the fields block data may carry that no schema declares.
 // It lives with the validator (packages/content-validator/plone-content-validator.cjs), which ships.
-const { UNDECLARED_EXEMPT } = require('../../packages/content-validator/plone-content-validator.cjs');
+const { UNDECLARED_EXEMPT } = require('@inka/content-validator');
 
 // Slate STYLES a person can actually choose from the editor's style menu
 // (Volto's `settings.slate.styleMenu`, stored as a node's `styleName`). Any
@@ -1242,7 +1242,7 @@ async function loadOfflineBlockSyncApi(blocksConfig) {
     const esbuild = require('esbuild');
     const entry = path.resolve(
       __dirname,
-      '../../packages/volto-hydra/src/utils/offlineBlockSyncApi.js',
+      '../volto-hydra/src/utils/offlineBlockSyncApi.js',
     );
     const outfile = path.join(
       os.tmpdir(),
@@ -1370,12 +1370,12 @@ async function discoverBlocks(
   // the schema-defined container fields (blocks_layout, object_list,
   // columns, …) and distinguishes real blocks from inline sub-items.
   // Dynamically imported because the module is ESM and this helper is CJS.
-  const { buildBlockPathMap } = await import('../../packages/helpers/buildBlockPathMap.js');
+  const { buildBlockPathMap } = await import('@volto-hydra/helpers/buildBlockPathMap.js');
   // Reuse Hydra's canonical value validator (choices/enum/actions) — same check
   // it strips content with, so block-sanity flags exactly what the editor can't
   // produce. Dependency-free ESM.
   ({ isValidValue: isValidValueFn } = await import(
-    '../../packages/volto-hydra/src/utils/schemaValidation.mjs'
+    '../volto-hydra/src/utils/schemaValidation.mjs'
   ));
 
   // Load Hydra's real schema resolver offline (esbuild-bundled) and install the
@@ -1830,7 +1830,7 @@ async function discoverBlocks(
   // One failing test per affected page, so a broken resolveuid or a
   // blocks_layout entry pointing at a deleted block fails by name.
   {
-    const { checkIntegrity } = require('../../packages/content-validator/plone-content-validator.cjs');
+    const { checkIntegrity } = require('@inka/content-validator');
     // Discovery only FETCHES page-like items, but references point at every
     // content type (an image block's url names an Image object). Register the
     // rest of the @search result as stubs — path + UID into the maps, no

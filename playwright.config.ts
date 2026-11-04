@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
 import { PORTS, URLS } from './tests-playwright/ports';
+import { CONTRACT_SCOPE, DISCOVERY_DIR } from './tests-playwright/frontends';
 
 // Check which extra servers we need based on --project arg
 const projectArgIndex = process.argv.indexOf('--project');
@@ -59,8 +60,8 @@ export default defineConfig({
     ['html', { open: 'never' }],
     // Aggregates block-sanity field/text-style coverage across all parallel
     // workers and fails the run in onEnd if any block type has a field or style
-    // with no working example anywhere. See tests-playwright/coverage-reporter.ts.
-    ['./tests-playwright/coverage-reporter.ts'],
+    // with no working example anywhere. See @inka/testing/playwright/coverage-reporter.
+    ['@inka/testing/playwright/coverage-reporter', { ...CONTRACT_SCOPE, discoveryDir: DISCOVERY_DIR }],
   ],
 
   /* Shared settings for all the projects below */

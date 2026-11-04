@@ -1,5 +1,5 @@
 /**
- * Run: node --test tests-playwright/helpers/imageSizes.test.mjs
+ * Run: node --test packages/testing/imageSizes.test.mjs
  *
  * Pure contract logic — no browser, no servers, no ports.
  *

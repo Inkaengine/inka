@@ -24,24 +24,21 @@ import type {
   FullResult,
 } from '@playwright/test/reporter';
 // node: prefixes so the reporter's unit test (vitest/jsdom, which shims a bare
-// 'url'/'path' to browser polyfills without fileURLToPath) still gets the real
-// Node builtins. Under Playwright these resolve identically.
+// 'fs' to a browser polyfill) still gets the real Node builtins. Under
+// Playwright these resolve identically.
 import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { inContract, readDiscovery, type ContractScope } from '../discovery';
 import {
   fieldsNeverEditable,
   type FieldRecord,
-} from './helpers/field-coverage';
+} from '../field-coverage';
 import {
   stylesNeverRendered,
   stylesRenderingAsPlainText,
   stylesSeenInContent,
   type StyleRecord,
-} from './helpers/text-style-coverage';
-import { multiScaleSeen } from './helpers/imageSizes.mjs';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+} from '../text-style-coverage';
+import { multiScaleSeen } from '../imageSizes.mjs';
 
 interface CoveragePayload {
   fields: FieldRecord[];
@@ -61,25 +58,20 @@ interface CoveragePayload {
  * says so — SANITY_OPTION_EXAMPLES=false — and only the run that sees the whole
  * corpus keeps the check.
  */
-function unexercisedOptions(): Array<{ blockType: string; field: string; frontend: string }> {
-  const discoveredPath = path.resolve(__dirname, '../.discovered-blocks.json');
-  if (!fs.existsSync(discoveredPath)) return [];
-  const blocks: Array<{
-    blockType: string;
-    field?: string;
-    frontend?: string;
-    unexercisedOption?: boolean;
-  }> = JSON.parse(fs.readFileSync(discoveredPath, 'utf-8'));
-  // Match the spec's own filtering: synthetic conversion blocks and the
-  // non-contract listing blocks are dropped before the loop that skips options.
-  const NON_CONTRACT = new Set(['relatedItemsListing', 'searchShortcuts', 'rssFeed']);
+function unexercisedOptions(
+  options: CoverageReporterOptions,
+): Array<{ blockType: string; field: string; frontend: string }> {
+  if (!options.discoveryDir) return [];
+  const blocks =
+    readDiscovery<{
+      blockType: string;
+      field?: string;
+      frontend?: string;
+      unexercisedOption?: boolean;
+    }>(options.discoveryDir, 'blocks') ?? [];
+  // The same scope block-sanity applies before the loop that skips options.
   return blocks
-    .filter(
-      (b) =>
-        b.unexercisedOption &&
-        !(b.blockType ?? '').startsWith('conv') &&
-        !NON_CONTRACT.has(b.blockType),
-    )
+    .filter((b) => b.unexercisedOption && inContract(b.blockType, options))
     .map((b) => ({
       blockType: b.blockType,
       field: b.field ?? '(unknown)',
@@ -87,7 +79,22 @@ function unexercisedOptions(): Array<{ blockType: string; field: string; fronten
     }));
 }
 
+export interface CoverageReporterOptions extends ContractScope {
+  /**
+   * Where discovery wrote its files (the same directory given to global setup
+   * and the sanity suites). Without it the reporter judges only what the tests
+   * attached, and skips the options no example sets.
+   */
+  discoveryDir?: string;
+}
+
+/**
+ * In a playwright config:
+ *   reporter: [['@inka/testing/playwright/coverage-reporter', { discoveryDir, ...scope }]]
+ */
 export default class CoverageReporter implements Reporter {
+  constructor(private readonly options: CoverageReporterOptions = {}) {}
+
   private fields: FieldRecord[] = [];
   private styles: StyleRecord[] = [];
   private imageSizes: Array<{ field: string; available: number; offered: number }> = [];
@@ -173,7 +180,7 @@ export default class CoverageReporter implements Reporter {
     // their edit annotation, plus sidebar options no example sets. Same rule,
     // two surfaces.
     const neverEditable = fieldsNeverEditable(this.fields);
-    const options = process.env.SANITY_OPTION_EXAMPLES !== 'false' ? unexercisedOptions() : [];
+    const options = process.env.SANITY_OPTION_EXAMPLES !== 'false' ? unexercisedOptions(this.options) : [];
     const missingFields = [
       ...neverEditable.map(
         (n) => `  - ${n.blockType}.${n.field} (${n.kind}) — no edit annotation in any example\n      e.g. ${n.example}`,

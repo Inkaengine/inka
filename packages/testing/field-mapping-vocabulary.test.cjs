@@ -13,11 +13,11 @@ const path = require('node:path');
 
 const mount = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-field-mapping-'));
 process.env.CONTENT_MOUNTS = `/:${mount}`;
-const { app } = require('./mock-api-server.cjs');
+const { app } = require('@inka/mock-api/server');
 const {
   collectFieldMappingIssues,
   loadMappingVocabularies,
-} = require('../../tests-playwright/helpers/discover-blocks.cjs');
+} = require('./discover-blocks.cjs');
 
 let server;
 let baseUrl;

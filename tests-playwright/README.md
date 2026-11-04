@@ -248,7 +248,8 @@ tests-playwright/
 │   ├── site-root/               # The test site root, mounted at /
 │   └── test-frontend/           # The test frontend
 ├── helpers/
-│   └── AdminUIHelper.ts         # Volto UI helper methods
+│   └── AdminUIHelper.ts         # The harness's AdminUIHelper, defaulting to /_test_data
+├── frontends.ts                 # The frontends the suites drive, and block-sanity's scope
 ├── integration/
 │   ├── block-selection.spec.ts  # Block selection tests
 │   └── inline-editing.spec.ts   # Inline editing tests
@@ -258,7 +259,10 @@ tests-playwright/
 ```
 
 The mock API server itself is `packages/mock-api/` (`mock-api-server.cjs`,
-with its content-type schemas in `api/`).
+with its content-type schemas in `api/`). The harness these suites are built
+on — AdminUIHelper and the other Playwright helpers, block discovery, the
+sanity suites, the coverage reporter, mock-parent.html and the port block — is
+`packages/testing/` (`@inka/testing`), which other frontends' suites use too.
 
 ## Mock API Endpoints
 

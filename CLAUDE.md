@@ -113,7 +113,7 @@ The health endpoint (`core/packages/volto/razzle.config.js`) returns:
 
 List all AdminUIHelper methods:
 ```bash
-grep -E '^\s+(async\s+)?[a-zA-Z_]+\(' tests-playwright/helpers/AdminUIHelper.ts | grep -v 'if\s*(' | grep -v 'for\s*(' | sed 's/^\s*//' | awk -F'(' '{print $1}' | sed 's/async //' | sort -u
+grep -E '^\s+(async\s+)?[a-zA-Z_]+\(' packages/testing/playwright/AdminUIHelper.ts | grep -v 'if\s*(' | grep -v 'for\s*(' | sed 's/^\s*//' | awk -F'(' '{print $1}' | sed 's/async //' | sort -u
 ```
 
 ## Manual Development Server

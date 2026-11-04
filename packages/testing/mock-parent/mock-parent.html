@@ -121,16 +121,16 @@
   </div>
 
   <script type="module">
-    import { buildBlockPathMap, buildIdFieldMap } from '/build-block-path-map.js';
-    import { mergeTemplatesIntoPage } from '/merge-templates.js';
-    import { mergeFrontendBlock } from '/merge-frontend-block.js';
+    import { buildBlockPathMap, buildIdFieldMap } from '/inka-mock-parent/build-block-path-map.js';
+    import { mergeTemplatesIntoPage } from '/inka-mock-parent/merge-templates.js';
+    import { mergeFrontendBlock } from '/inka-mock-parent/merge-frontend-block.js';
     import {
       getAllContainerFields,
       getContainerFieldConfig,
       deleteBlockFromContainer,
       ensureEmptyBlockIfEmpty,
-    } from '/block-path.js';
-    import { isBlockReadonly, getAtPath } from '/helpers.js';
+    } from '/inka-mock-parent/block-path.js';
+    import { isBlockReadonly, getAtPath } from '/inka-mock-parent/helpers.js';
 
     // Configure iframe frontend from ?frontend= URL param. The default is the
     // origin THIS page is served from — vite injects it (see vite.config.js), and

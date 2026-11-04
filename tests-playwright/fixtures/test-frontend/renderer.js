@@ -209,7 +209,7 @@ function scaleUrl(baseUrl, download) {
  *
  * This reference frontend exists to demonstrate the contracts Inka asserts, and
  * "an image must use the sizes its data offers" is one of them (see
- * helpers/imageSizes.mjs). Rendering a bare `src` while the data advertises
+ * imageSizes.mjs in @inka/testing). Rendering a bare `src` while the data advertises
  * 400/800/1200 is exactly the failure that rule is for, so the reference has to
  * do the thing it asks of everyone else — otherwise the rule either never fires
  * or fires on Inka's own fixtures.
