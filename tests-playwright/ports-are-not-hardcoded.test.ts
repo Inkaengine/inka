@@ -92,7 +92,7 @@ const ALLOWED: Record<string, string> = {
     'URL composition cases: frontend urls in, proxy/canvas urls out',
   'packages/volto-hydra/src/utils/linkItem.test.js':
     'link normalisation cases',
-  'packages/volto-hydra/src/utils/mergeTemplates.unlabelled-definition.test.js':
+  'packages/helpers/mergeTemplates.unlabelled-definition.test.js':
     'template merge cases that carry absolute urls',
   'packages/volto-hydra/src/components/Widgets/VocabularySelectWidget.test.js':
     'vocabulary term urls as the widget receives them',

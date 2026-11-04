@@ -1,8 +1,8 @@
 /**
  * Template merging utilities.
  *
- * This module is intentionally free of Volto-specific imports (immer, lodash,
- * @plone/volto) so that unit tests in hydra-js can import it directly.
+ * The admin's side of the template merge. Pure data, like the rest of the
+ * helpers: no Volto, DOM or bridge imports.
  */
 
 import {
@@ -12,7 +12,7 @@ import {
   getChildBlockEntries,
   setChildBlockEntries,
   isUnlabelledDefinition,
-} from '@volto-hydra/helpers';
+} from './index.js';
 
 /**
  * Merge templates into page data. Expands template references in every blocks field via

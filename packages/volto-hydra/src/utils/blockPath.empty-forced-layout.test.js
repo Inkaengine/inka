@@ -26,7 +26,7 @@ import {
 // deleteBlocks lives in the EDIT layer (blockSync), not among the storage
 // primitives: it deletes and then settles the structure the delete disturbed.
 import { deleteBlocks } from './blockSync.js';
-import { mergeTemplatesIntoPage } from './mergeTemplates.mjs';
+import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
 
 const EMPTY_ANNOUNCEMENT_TEMPLATE = {
   '@id': '/templates/site-announcement',

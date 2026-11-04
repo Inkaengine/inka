@@ -16,7 +16,7 @@
  * rail on /layout-demo), which is where it was found.
  */
 import { describe, test, expect } from 'vitest';
-import { mergeTemplatesIntoPage } from './mergeTemplates.mjs';
+import { mergeTemplatesIntoPage } from './mergeTemplates.js';
 
 // Two layouts shaped like the real ones: a `contentLayout` wrapper (fixed and
 // readOnly, as a layout's frame is), an empty slate in its `default` slot for

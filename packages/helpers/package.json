@@ -17,6 +17,7 @@
     ".": "./index.js",
     "./buildBlockPathMap.js": "./buildBlockPathMap.js",
     "./fieldRules.js": "./fieldRules.js",
+    "./mergeTemplates.js": "./mergeTemplates.js",
     "./regionWidgets.js": "./regionWidgets.js",
     "./slateStyles.js": "./slateStyles.js"
   },
@@ -24,6 +25,7 @@
     "buildBlockPathMap.js",
     "fieldRules.js",
     "index.js",
+    "mergeTemplates.js",
     "regionWidgets.js",
     "slateStyles.js"
   ],

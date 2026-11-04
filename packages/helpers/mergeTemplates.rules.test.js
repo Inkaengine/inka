@@ -10,7 +10,7 @@
  * round: the target keeps its ids and what is its own, the source brings the rest.
  */
 import { describe, test, expect } from 'vitest';
-import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.mjs';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
 
 const T = '/templates/t';
 const idFieldMap = { slider: { slides: '@id' } };

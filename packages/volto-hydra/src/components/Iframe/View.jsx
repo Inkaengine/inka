@@ -344,7 +344,7 @@ import { heldImages, onImageHeld } from '../../utils/pendingImages';
 import { withImageMetadata } from '../../utils/imageMetadata';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { adoptTemplate, canContainAll, getBlockAddability, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '../../utils/mergeTemplates.mjs';
+import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 import {
   applySchemaDefaultsToFormData,
   previewSchemaDefaultConversions,

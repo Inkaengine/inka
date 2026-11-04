@@ -10,7 +10,7 @@ vi.mock('../context', () => ({
   getLiveBlockData: () => undefined,
 }));
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.mjs';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 import { buildBlockPathMap, buildIdFieldMap, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks } from './blockPath.js';
 import { sharedBlocksConfig } from '../../../../tests-playwright/fixtures/shared-block-schemas.js';
 

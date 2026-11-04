@@ -8,7 +8,7 @@
  * does.
  */
 import { describe, test, expect } from 'vitest';
-import { mergeTemplatesIntoPage } from './mergeTemplates.mjs';
+import { mergeTemplatesIntoPage } from './mergeTemplates.js';
 
 const definition = (label) => {
   const withLabel = (block) =>

@@ -10,7 +10,7 @@
  */
 import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 import { getBlockAddability } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
 
 const blocksConfig = {
   frame: {

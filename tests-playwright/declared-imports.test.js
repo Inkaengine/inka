@@ -28,10 +28,7 @@ const CONTAINED = [...DECLARING, 'packages/hydra-js', 'packages/volto-hydra'];
 const DEV_TOOLING = /^packages\/inka-mcp\/(bundle\.mjs$|journeys\/)/;
 
 /** Relative imports that leave their package, and why each may. */
-const OUTSIDE = {
-  'packages/hydra-js/mergeTemplates.js -> packages/volto-hydra/src/utils/mergeTemplates.mjs':
-    'the bridge re-exports the admin add-on\'s template merge; to move into helpers',
-};
+const OUTSIDE = {};
 
 // A bare specifier is a package name (optionally scoped, optionally a subpath):
 // it can't hold `$`, braces or spaces, which keeps prose such as

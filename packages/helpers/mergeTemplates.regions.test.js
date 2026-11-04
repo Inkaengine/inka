@@ -6,7 +6,7 @@
  * edited footer rendered empty). Each region must be processed and reassembled.
  */
 import { describe, test, expect } from 'vitest';
-import { mergeTemplatesIntoPage } from './mergeTemplates.mjs';
+import { mergeTemplatesIntoPage } from './mergeTemplates.js';
 
 const intl = { formatMessage: (m) => m?.defaultMessage || m?.id || '' };
 const blocksConfig = { slate: { id: 'slate' } };
