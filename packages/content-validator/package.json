@@ -3,7 +3,6 @@
   "version": "0.0.1",
   "private": true,
   "description": "Validates Plone content trees (plone.exportimport JSON or decoded blockmd): structure, references and block schemas, walking blocks the way the editor does.",
-  "main": "./plone-content-validator.cjs",
   "exports": {
     ".": "./plone-content-validator.cjs"
   },

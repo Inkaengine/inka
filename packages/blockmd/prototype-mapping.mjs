@@ -1472,41 +1472,6 @@ function emitSegments(prototypes, blocks, depth = 2) {
     [[...parts, c].join('\n\n'), blocks.slice(0, i + 1)]);
 }
 
-/**
- * Why a block isn't written as markdown: for each clean form (bare, tagged,
- * with `<fields>`), either it can't be produced (`error`), or it doesn't read
- * back the same — `path` is the first place the decoded block differs, with
- * both values. Null when a clean form round-trips. For reports and debugging.
- */
-export function explainFallback(protos, block, depth = 2) {
-  const forms = [['clean', () => emitBlock(protos, block, depth)], ['tagged', () => emitTag(protos, block, depth)],
-    ['with-fields', () => emitFieldsTag(protos, block, depth)]];
-  const tried = [];
-  for (const [form, gen] of forms) {
-    let md;
-    try { md = gen(); } catch (e) { tried.push({ form, error: String(e) }); continue; }
-    if (md == null) continue;
-    let back;
-    try { [back] = matchBlocks(protos, md, depth); } catch (e) { tried.push({ form, error: String(e), md }); continue; }
-    const a = semantic(authored(protos, block)), b = semantic(authored(protos, back));
-    const path = firstDiff(a, b);
-    if (path === null) return null;
-    tried.push({ form, path: path.join('.'), expected: getAtPath(a, path), got: getAtPath(b, path), md });
-  }
-  return tried.length ? tried : [{ form: 'none', error: `no prototype for ${block['@type']}` }];
-}
-
-function firstDiff(a, b, path = []) {
-  if (JSON.stringify(a) === JSON.stringify(b)) return null;
-  if (a && b && typeof a === 'object' && typeof b === 'object') {
-    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
-      const d = firstDiff(a[k], b[k], [...path, k]);
-      if (d) return d;
-    }
-  }
-  return path;
-}
-
 /** Emit a block list as one markdown string (per-block segments, joined). */
 export function emitBlocks(prototypes, blocks, depth = 2) {
   return emitSegments(prototypes, blocks, depth).join('\n\n');

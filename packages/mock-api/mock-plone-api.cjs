@@ -6774,4 +6774,4 @@ if (require.main === module) {
 }
 
 // Export for use by test frontend server or test harnesses
-module.exports = { app, server, contentDirMap, CONTENT_MOUNTS, ready, formSubmissions, writeDistribution, getRedirectTarget, getAllRedirects, mountInternalRefs };
+module.exports = { app, server, CONTENT_MOUNTS, ready, writeDistribution, getRedirectTarget, getAllRedirects, mountInternalRefs };

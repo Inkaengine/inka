@@ -128,4 +128,4 @@ function crc32(buf) {
   return c ^ -1;
 }
 
-module.exports = { SCALE_WIDTHS, imageSize, scaledSize, pngOfSize };
+module.exports = { imageSize, scaledSize, pngOfSize };

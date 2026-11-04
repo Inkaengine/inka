@@ -45,4 +45,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app: apiApp, apiServer };
+module.exports = { app: apiApp };

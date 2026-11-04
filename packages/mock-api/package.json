@@ -3,12 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "description": "A mock Plone REST API serving content from disk: plone.exportimport JSON trees and blockmd markdown mounts.",
-  "main": "./mock-plone-api.cjs",
   "exports": {
     ".": "./mock-plone-api.cjs",
     "./server": "./mock-api-server.cjs",
-    "./tokens": "./mock-tokens.cjs",
-    "./env-port": "./env-port.cjs"
+    "./tokens": "./mock-tokens.cjs"
   },
   "bin": {
     "inka-mock-api": "./mock-api-server.cjs"

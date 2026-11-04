@@ -596,7 +596,7 @@ export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor } =
 // plain url string on a card, so only the schema knows which is a link. A
 // `url`-widget field is an external string and is left alone; an `@id` that
 // resolves to no local object (external / not in this tree) stays bare.
-export function resolveLinkSummaries(items, { schemaFor, prefix = '' } = {}) {
+function resolveLinkSummaries(items, { schemaFor, prefix = '' } = {}) {
   if (!schemaFor) return items; // widget-driven: no schema, nothing to key on
   const localId = (id) => (prefix && id.startsWith(prefix) ? id.slice(prefix.length) : id) || '/';
   const isBareLink = (o) => o && typeof o === 'object' && !Array.isArray(o)

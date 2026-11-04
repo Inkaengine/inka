@@ -49,7 +49,7 @@ export const mdParser = unified().use(remarkParse).use(remarkGfm).use(remarkDefi
  */
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 
-export function relaxIntrawordUnderscores(out) {
+function relaxIntrawordUnderscores(out) {
   let s = '';
   for (let i = 0; i < out.length; i += 1) {
     if (out[i] === '\\' && out[i + 1] === '_'
@@ -75,7 +75,7 @@ export const mdSerializer = unified()
   .use(remarkDefinitionList)
   .use(remarkGridTables);
 
-export const MARK_KEYS = { strong: 'bold', emphasis: 'italic', delete: 'strikethrough' };
+const MARK_KEYS = { strong: 'bold', emphasis: 'italic', delete: 'strikethrough' };
 
 /**
  * Inline custom mark: `<mark name="stylename">…</mark>`. A design system's own
@@ -191,7 +191,7 @@ export function inlineToSlate(nodes) {
   return merged.length ? merged : [{ text: '' }];
 }
 
-export function listToSlate(node) {
+function listToSlate(node) {
   const items = (node.children || []).map((li) => {
     // A list item's children are usually a single paragraph.
     const kids = (li.children || []).flatMap((c) =>
@@ -252,7 +252,7 @@ export function mdToSlate(md, shift = 0) {
 }
 
 // slate -> mdast
-export function slateInlineToMdast(nodes) {
+function slateInlineToMdast(nodes) {
   const out = [];
   for (const n of nodes || []) {
     if (n.text !== undefined && !n.type) {
