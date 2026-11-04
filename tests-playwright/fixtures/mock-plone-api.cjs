@@ -5839,6 +5839,8 @@ app.post('*/@querystring-search', (req, res) => {
  */
 app.get('*/@search', (req, res) => {
   const searchPath = req.path.replace('/@search', '');
+  // Set when this is a children-of-one-container search; see the position sort.
+  let searchedContainer = null;
 
   // UID lookup — the index behind resolveuid. Real Plone's catalog answers
   // this and reflects unsaved-elsewhere edits made in the same session, so it
@@ -5977,6 +5979,10 @@ app.get('*/@search', (req, res) => {
     const contextPath = (searchPath === '' || searchPath === '/') ? '/' : searchPath;
     const normalizedSearch = askedPath || contextPath;
     const searchDepth = normalizedSearch === '/' ? 0 : normalizedSearch.split('/').filter(Boolean).length;
+    // The container whose children these are, for the position sort below: a
+    // reorder in this session is kept per container (sessionOrder), and the
+    // catalog's positions on disk know nothing about it.
+    searchedContainer = normalizedSearch;
 
     // Direct children, from disk AND from anything this session created or
     // moved here. Enumerating contentDirMap alone would miss a page that was
@@ -6105,8 +6111,29 @@ app.get('*/@search', (req, res) => {
   // whole result, as in the querystring-search handler above.
   const sortOn = req.query.sort_on;
   if (sortOn === 'getObjPositionInParent') {
-    const position = (item) => uidPositionMap[item.UID] ?? Number.MAX_SAFE_INTEGER;
-    items = [...items].sort((a, b) => position(a) - position(b));
+    // A reorder made in THIS session wins, exactly as it does in the folder
+    // listing and the menu (see formatNavItem's note). In Plone a reorder
+    // rewrites the very positions this index sorts on, so a search that
+    // answered from the disk order would report an order the site no longer
+    // has — and it did, which is why the adapter could read a folder's
+    // children through @search with no sort at all and nothing here noticed.
+    const explicit = searchedContainer
+      ? sessionOrder[getSessionId(req)]?.[searchedContainer]
+      : null;
+    if (explicit) {
+      // Items the reorder does not name keep their natural position after the
+      // ones it does, as an unpositioned item sorts last in the catalog.
+      const rank = (item) =>
+        explicit.indexOf(String(item['@id'] || '').split('/').filter(Boolean).pop());
+      items = [...items].sort(
+        (a, b) =>
+          (rank(a) === -1 ? explicit.length : rank(a)) -
+          (rank(b) === -1 ? explicit.length : rank(b)),
+      );
+    } else {
+      const position = (item) => uidPositionMap[item.UID] ?? Number.MAX_SAFE_INTEGER;
+      items = [...items].sort((a, b) => position(a) - position(b));
+    }
   } else if (sortOn) {
     items = [...items].sort((a, b) => {
       const x = a[sortOn] ?? '';

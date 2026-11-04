@@ -1342,10 +1342,26 @@ export class PloneAdapter extends BaseAdapter {
         // children. Passing path.query on an unscoped /@search is NOT
         // equivalent — the context is what bounds the subtree.
         const base = args.parent === '/' ? '' : args.parent;
+        // IN THE FOLDER'S OWN ORDER, which is what getObjPositionInParent is.
+        //
+        // Without a sort the catalog answers in whatever order it happens to
+        // hold, which is NOT the order an editor arranged. Against a real Plone
+        // this listing simply did not show a reorder: content.order PATCHes the
+        // container and Plone renumbers the children (verified: 204, and the
+        // folder's own `items` come back in the new order), while this read
+        // kept answering in the old one. So a drag in the contents view
+        // appeared to do nothing, every time, and content.order's whole
+        // contract read as broken when only its read-back was.
+        //
+        // Invisible against the mock, which sorted this index from the
+        // positions on disk and ignored a reorder made in the session — the
+        // same shape as the @order incident this adapter already carries a
+        // note about: the write was corrected and the read was never checked.
         // metadata_fields=UID for the same reason as search above: toBrief
         // reads it, and a default summary does not carry it.
         const raw = await this.fetchJson(
-          `${base}/@search?path.depth=1&metadata_fields=UID`,
+          `${base}/@search?path.depth=1&sort_on=getObjPositionInParent` +
+            `&metadata_fields=UID`,
         );
         return {
           items: (raw.items ?? []).map((i) => this.toBrief(i)),
