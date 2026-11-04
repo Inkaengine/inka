@@ -711,20 +711,25 @@ function renderSlateBlock(block) {
 function renderListItems(items) {
     if (!items || !Array.isArray(items)) return '';
 
-    return items.map(item => {
+    // Each entry is an item's opening tag and content, closed when the next
+    // entry starts: a nested list (an indented item) is kept beside the item
+    // it belongs to, and drawn INSIDE it, where HTML wants it.
+    const entries = [];
+    for (const item of items) {
+        const nodeIdAttr = item.nodeId !== undefined ? ` data-node-id="${item.nodeId}"` : '';
         if (item.type === 'li') {
-            const nodeIdAttr = item.nodeId !== undefined ? ` data-node-id="${item.nodeId}"` : '';
-            const content = renderChildren(item.children || []);
-            return `<li${nodeIdAttr}>${content}</li>`;
+            entries.push({ open: `<li${nodeIdAttr}>${renderChildren(item.children || [])}`, close: '</li>' });
+        } else if (item.type === 'ul' || item.type === 'ol') {
+            const list = `<${item.type}${nodeIdAttr}>${renderListItems(item.children)}</${item.type}>`;
+            const prev = entries[entries.length - 1];
+            if (prev?.close === '</li>') prev.open += list;
+            else entries.push({ open: list, close: '' });
+        } else {
+            // If not an li or nested list, render as inline content
+            entries.push({ open: renderChildren([item]), close: '' });
         }
-        // Handle nested lists (ul/ol inside ul/ol) for indentation
-        if (item.type === 'ul' || item.type === 'ol') {
-            const nodeIdAttr = item.nodeId !== undefined ? ` data-node-id="${item.nodeId}"` : '';
-            return `<${item.type}${nodeIdAttr}>${renderListItems(item.children)}</${item.type}>`;
-        }
-        // If not an li or nested list, render as inline content
-        return renderChildren([item]);
-    }).join('');
+    }
+    return entries.map((entry) => entry.open + entry.close).join('');
 }
 
 /**

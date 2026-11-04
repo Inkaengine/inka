@@ -453,6 +453,46 @@ test.describe('Bridge.readSlateValueFromDOM()', () => {
     });
   });
 
+  test('a sub-list drawn inside its item reads back beside it, as the editor keeps it', async () => {
+    // Indenting a list item (Tab) leaves the new sub-list beside the item it
+    // belongs to: ul > [li, ul]. Valid HTML puts it inside the item, so the
+    // renderers draw it there; reading the DOM must not move it into the item
+    // (slate allows no block beside an item's text) or lose it. The parent
+    // item's text is typed into, and that edit is read.
+    const body = helper.getIframe().locator('body');
+    await testDomToSlate(body, {
+      id: 'l3',
+
+      existing: [{ type: 'ul', nodeId: '0', children: [
+        { type: 'li', nodeId: '0.0', children: [{ text: 'Parent' }] },
+        { type: 'ul', nodeId: '0.1', children: [
+          { type: 'li', nodeId: '0.1.0', children: [{ text: 'Child' }] },
+        ]},
+        { type: 'li', nodeId: '0.2', children: [{ text: 'Next' }] },
+      ]}],
+
+      dom:
+        '<div data-edit-text="value">' +
+          '<ul data-node-id="0">' +
+            '<li data-node-id="0.0">Parent typed' +
+              '<ul data-node-id="0.1">' +
+                '<li data-node-id="0.1.0">Child</li>' +
+              '</ul>' +
+            '</li>' +
+            '<li data-node-id="0.2">Next</li>' +
+          '</ul>' +
+        '</div>',
+
+      expected: [{ type: 'ul', nodeId: '0', children: [
+        { type: 'li', nodeId: '0.0', children: [{ text: 'Parent typed' }] },
+        { type: 'ul', nodeId: '0.1', children: [
+          { type: 'li', nodeId: '0.1.0', children: [{ text: 'Child' }] },
+        ]},
+        { type: 'li', nodeId: '0.2', children: [{ text: 'Next' }] },
+      ]}],
+    });
+  });
+
   test('deeply nested list with link — metadata preserved', async () => {
     const body = helper.getIframe().locator('body');
     await testDomToSlate(body, {

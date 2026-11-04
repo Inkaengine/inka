@@ -8584,7 +8584,14 @@ export class Bridge {
     brs[0].remove();
   }
 
-  domNodeToSlate(el, metadataMap, matchMetadataFromDom = false, keepCaretTargets = false) {
+  /**
+   * `hoisted` collects the nodes drawn INSIDE `el` that its path says are not
+   * its own: a sub-list belongs beside its item in the editor's value
+   * (indenting wraps the item in a new list where it stands), but valid HTML
+   * draws it inside the item. The caller reads each one as `el`'s next
+   * sibling, so the value keeps the editor's shape.
+   */
+  domNodeToSlate(el, metadataMap, matchMetadataFromDom = false, keepCaretTargets = false, hoisted = []) {
     // keepCaretTargets: keep the zero-width spaces — to ask whether the frontend
     // has drawn the caret targets it was given (renderedMatches), not only
     // what the author wrote.
@@ -8622,7 +8629,14 @@ export class Bridge {
         }
         const childNodeId = child.getAttribute('data-node-id');
         if (childNodeId && isValidNodeId(childNodeId)) {
-          children.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets));
+          const ownsChild = !nodeId || childNodeId === nodeId || childNodeId.startsWith(`${nodeId}.`);
+          const besideChild = [];
+          const node = this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets, besideChild);
+          if (ownsChild) {
+            children.push(node, ...besideChild);
+          } else {
+            hoisted.push(node, ...besideChild);
+          }
         } else if (this.isNonContentIsland(child)) {
           // Non-editable / decorative island with no data-node-id — e.g. a
           // frontend's external-link icon after a link's text, or any generated
@@ -8727,7 +8741,8 @@ export class Bridge {
     // Both produce the same Slate value.
     const fieldNodeId = fieldEl.getAttribute('data-node-id');
     if (fieldNodeId && isValidNodeId(fieldNodeId)) {
-      return [this.domNodeToSlate(fieldEl, metadataMap, matchMetadataFromDom, keepCaretTargets)];
+      const beside = [];
+      return [this.domNodeToSlate(fieldEl, metadataMap, matchMetadataFromDom, keepCaretTargets, beside), ...beside];
     }
 
     const topNodes = [];
@@ -8735,7 +8750,8 @@ export class Bridge {
       if (child.nodeType === Node.ELEMENT_NODE) {
         const nodeId = child.getAttribute('data-node-id');
         if (nodeId && isValidNodeId(nodeId)) {
-          topNodes.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets));
+          const beside = [];
+          topNodes.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets, beside), ...beside);
         }
       }
     }
