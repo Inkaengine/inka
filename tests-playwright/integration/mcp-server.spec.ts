@@ -54,11 +54,11 @@ test.describe('MCP server', () => {
 
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
-    // `picture` is for the screenshot view alone: a client lists it to the view, not the model.
-    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_media', 'view_page']);
+    // `picture` and `stage_dropped` are for the views alone: a client lists them to a view, not the model.
+    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_dropped', 'stage_media', 'view_page']);
     // Those that change nothing say so, so a client need not ask the person every time.
     expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
-      .toEqual(['describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'stage_media', 'view_page']);
+      .toEqual(['ask_for_files', 'describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
     expect(tools.find((t) => t.name === 'delete_page')!.annotations).toMatchObject({ destructiveHint: true });
   });
 

@@ -4,6 +4,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { hostedServer, codesFrom, replayBy, forwardTo } from './http.mjs';
 import { sealer } from './sealed.mjs';
 import { localCodes, sealedCodes, localPictures, localMedia } from './codes.mjs';
+import { MAX_FILE_BYTES } from './server.mjs';
 
 
 /**
@@ -276,12 +277,32 @@ describe('a file an agent staged, across instances', () => {
     expect(status).toBe(400);
     expect(message.error.message).toMatch(/held on different instances: add them again/);
   });
+  // A file the person drops in the drop view comes in one call, base64: the
+  // body parser's default limit (100 KB) refused a photo.
+  it('takes a dropped file as large as a file may be staged', async () => {
+    const { urls: [one] } = await twoInstances();
+    const { access_token: token } = await (await exchange(one, await signIn(one))).json();
+    const data = Buffer.alloc(MAX_FILE_BYTES).toString('base64');
+    const { status, message } = await callTool(one, token, 'stage_dropped', { name: 'photo.jpg', type: 'image/jpeg', data });
+    expect(status).toBe(200);
+    expect(message.result.structuredContent.files[0]).toMatchObject({ name: 'photo.jpg', bytes: MAX_FILE_BYTES });
+  });
 });
 
 describe('hostedServer', () => {
   it('refuses to start without a code store', () => {
     expect(() => hostedServer({ adminUrl: ADMIN, publicUrl: 'http://127.0.0.1:1', secret: randomBytes(32).toString('base64'), poolSize: 1, pageIdleMs: 60_000 }))
       .toThrow(/codes/);
+  });
+
+  // DNS rebinding: a page on another site whose name resolves here can't
+  // drive the server, since its requests name that site's host.
+  it('refuses a request naming another host', async () => {
+    const [one] = await instances(1, (port) => ({
+      secret: randomBytes(32).toString('base64'), codes: localCodes({ instance: `h${port}`, now: Date.now }), pictures: null, media: null,
+    }));
+    const answer = await call(`${one}/mcp`, { method: 'POST', headers: { Host: 'evil.example', 'Content-Type': 'application/json' }, body: '{}' });
+    expect(answer.status).toBe(403);
   });
 });
 

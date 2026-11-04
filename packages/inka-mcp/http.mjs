@@ -48,11 +48,12 @@
  */
 import { createServer as httpServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
+import express from 'express';
+import { hostHeaderValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { createServer } from './server.mjs';
+import { createServer, MAX_FILE_BYTES } from './server.mjs';
 import { mediaIn, MEDIA_PREFIX } from './media.mjs';
 import { adminPool } from './adminPool.mjs';
 import { oauthProvider } from './oauth.mjs';
@@ -170,8 +171,13 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, med
   });
   const pool = adminPool({ adminUrl: admin, frontendUrl, size: poolSize, maxIdleMs: pageIdleMs });
 
-  // Requests must name this server's host (DNS rebinding protection).
-  const app = createMcpExpressApp({ allowedHosts: [base.hostname] });
+  // Requests must name this server's host (DNS rebinding protection), checked
+  // before a body is read, as the SDK's createMcpExpressApp does. Its body
+  // limit is express.json's default, 100 KB, and a file the person drops in
+  // the drop view comes in one call, base64.
+  const app = express();
+  app.use(hostHeaderValidation([base.hostname]));
+  app.use(express.json({ limit: Math.ceil(MAX_FILE_BYTES * 4 / 3) + 64 * 1024 }));
   // Each request, as it ends: method, path (never its query: codes travel
   // there) and status; for a refused sign-in step, the OAuth error answered
   // (an error code and description, nothing secret).

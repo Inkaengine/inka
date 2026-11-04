@@ -18,6 +18,7 @@ import { adminPool } from './adminPool.mjs';
 import { subjectOf } from './tokenStore.mjs';
 import { renewDelay, watchSignOut } from './signIn.mjs';
 import { SCREENSHOT_VIEW, screenshotViewHtml } from './screenshotView.mjs';
+import { DROP_VIEW, dropViewHtml } from './dropView.mjs';
 import { PictureGone, MediaGone, MEDIA_MS } from './codes.mjs';
 import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from './media.mjs';
 import { draftCheck } from './checkDraft.mjs';
@@ -123,6 +124,8 @@ const SCREENSHOT_VIEW_HTML = screenshotViewHtml();
 
 /** The most a file an agent stages may be. */
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+const DROP_VIEW_HTML = dropViewHtml({ maxBytes: MAX_FILE_BYTES });
 
 /** A picture's file extension, for its name when the agent gives none. */
 const EXTENSIONS = { 'image/png': 'png', 'image/jpeg': 'jpg' };
@@ -369,6 +372,18 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   });
 
   if (media !== null) {
+    /** `files` (`{ name, type, data }`) kept for `user`: what stage_media and stage_dropped answer. */
+    const stageAll = async (user, files) => {
+      const held = [];
+      for (const file of files) {
+        held.push({
+          media: `${MEDIA_PREFIX}${await media.issue({ user, ...file })}`,
+          name: file.name, type: file.type, bytes: Buffer.from(file.data, 'base64').length,
+        });
+      }
+      return { staged: true, onSite: false, keptUntil: new Date(Date.now() + MEDIA_MS).toISOString(), files: held };
+    };
+
     server.registerTool('stage_media', {
       title: 'Stage images or files for a page change (not on the site yet)',
       // It keeps the files on this server, for a change; nothing on the site changes.
@@ -400,15 +415,37 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
           throw new MediaRefused(`${which}: ${error.message}. Nothing was staged.`, { cause: error });
         }
       }
-      const held = [];
-      for (const file of had) {
-        held.push({
-          media: `${MEDIA_PREFIX}${await media.issue({ user, ...file })}`,
-          name: file.name, type: file.type, bytes: Buffer.from(file.data, 'base64').length,
-        });
-      }
-      return asResult({ staged: true, onSite: false, keptUntil: new Date(Date.now() + MEDIA_MS).toISOString(), files: held });
+      return asResult(await stageAll(user, had));
     });
+
+    registerAppTool(server, 'ask_for_files', {
+      title: 'Ask the person for files to add',
+      // It shows a place to drop them; nothing on the site changes.
+      annotations: SAVES_NOTHING,
+      _meta: { ui: { resourceUri: DROP_VIEW } },
+      description: 'Ask the person for images or files of their own to add to a page, such as a photo on their computer or one they attached to the conversation (whose bytes this server can\'t reach). The conversation shows them a place to drop the files under this call. Each file they drop is staged as stage_media stages one (kept here for two hours, not on the site), and a message from them then gives each one\'s "media" id: use it in edit_blocks as you would one from stage_media. Wait for that message; this call returns at once.',
+      inputSchema: { what: z.string().describe('What you need, as the person will read it, e.g. "the team photo for the About page"') },
+    }, async ({ what }) => asResult({ asked: what, staged: false }));
+
+    registerAppTool(server, 'stage_dropped', {
+      title: 'Stage a file the person dropped, for the drop view',
+      annotations: SAVES_NOTHING,
+      _meta: { ui: { resourceUri: DROP_VIEW, visibility: ['app'] } },
+      description: 'A file the person dropped in the drop view (ask_for_files), staged as stage_media stages one: for the view, which a client hands the drop.',
+      inputSchema: {
+        name: z.string().min(1).describe('The file\'s name'),
+        type: z.string().min(1).describe('Its media type, e.g. image/png'),
+        data: z.string().describe('Its bytes, base64'),
+      },
+    }, async ({ name, type, data }, extra) => {
+      if (Buffer.byteLength(data, 'base64') > MAX_FILE_BYTES) throw new MediaRefused(`${name} is larger than ${MAX_FILE_BYTES} bytes, the most a file may be`);
+      const result = await stageAll(userOf(extra), [{ name, type, data }]);
+      return { ...asResult(result), structuredContent: result };
+    });
+
+    registerAppResource(server, 'Add files', DROP_VIEW, {
+      description: 'Where the person drops their own files for a page change',
+    }, async () => ({ contents: [{ uri: DROP_VIEW, mimeType: RESOURCE_MIME_TYPE, text: DROP_VIEW_HTML }] }));
   }
 
   if (pictures !== null) {

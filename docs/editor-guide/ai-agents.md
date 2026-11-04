@@ -79,7 +79,7 @@ claude mcp add inka --env INKA_ADMIN_URL=https://admin.example.org --env INKA_ME
 - Read a page, and see it as a visitor sees it.
 - Add, change, move and remove blocks, and change a page's own fields such as its title and summary.
 - Preview a change as a visitor would see it before saving it.
-- Add images and other files to a page: from a web address, a screenshot it took, or, when it runs on your computer, a folder you allowed. A file goes onto the site only when the change that uses it is saved. The site's front end has to support this; if it doesn't, the assistant says so.
+- Add images and other files to a page: from a web address, a screenshot it took, a file you drop into the conversation when it asks for one, or, when it runs on your computer, a folder you allowed. A file goes onto the site only when the change that uses it is saved. The site's front end has to support this; if it doesn't, the assistant says so.
 - Add, move, rename and delete pages.
 - Change a template's locked blocks on every page that uses it, but only when you ask for that.
 
