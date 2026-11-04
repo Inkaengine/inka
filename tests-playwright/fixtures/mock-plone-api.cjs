@@ -6555,6 +6555,22 @@ app.delete('*/@form-data', (req, res) => {
   res.status(204).end();
 });
 
+
+/**
+ * Does `path` exist for ANYONE — on disk, or created in any session?
+ *
+ * For the shared stores only (locks). A read must never see another session's
+ * content: that isolation is what lets the suite run in parallel against one
+ * mock. But something shared by every user, as a lock is, cannot be refused
+ * because the user asking happens not to be the one who made the page.
+ */
+function existsInAnySession(path, ownSessionId) {
+  if (getContent(path, ownSessionId) !== null) return true;
+  return Object.keys(sessionContent).some(
+    (id) => getContent(path, id) !== null,
+  );
+}
+
 /**
  * GET /:path/@lock — who holds this, if anyone.
  *
@@ -6570,7 +6586,15 @@ app.post('*/@lock', (req, res) => {
   // There has to be something to lock. Plone traverses to the object first, so
   // a lock on a path it does not have is a 404 — without this the mock invented
   // a lock on nothing and the adapter's own error path went untested.
-  if (getContent(contentPath, getSessionId(req)) === null) {
+  //
+  // Asked of EVERY session, not the caller's. Content here is per session so one
+  // test cannot see another's pages, but a lock is the page's and is shared, as
+  // Plone keeps it — and the point of a lock is that a SECOND user meets it.
+  // Asked of the caller's session alone, this 404'd the moment the second user
+  // was a second session: the tests where one user holds a page another opens
+  // (helpers/otherUser.ts, which creates the page as one user and locks it as
+  // another) got an error body with no `creator` in it instead of the lock.
+  if (!existsInAnySession(contentPath, getSessionId(req))) {
     return res.status(404).json({
       error: { type: 'NotFound', message: `No such resource: ${contentPath}` },
     });

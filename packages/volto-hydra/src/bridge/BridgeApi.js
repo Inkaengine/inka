@@ -38,7 +38,9 @@ export class BridgeApi {
     this.inFlightReads = new Map();
     METHODS.forEach((op) => {
       this[op] = (path, { params, data, headers } = {}) =>
-        this.dispatch({ op, path, data, headers, params });
+        this.dispatch({ op, path, data, headers, params }).catch((error) => {
+          throw asVoltoError(error);
+        });
     });
   }
 
@@ -306,6 +308,40 @@ export class BridgeApi {
  * The auth token the admin is currently carrying, straight from the cookie
  * Volto stores it in. Undefined outside a browser, where nothing renews.
  */
+/**
+ * A failure shaped the way Volto's reducers read one.
+ *
+ * Volto's Api helper rejects with superagent's error, so `error.response` is
+ * always there, and its reducers go straight for it — userSession's
+ * `LOGIN_RENEW_FAIL` does `action.error.response.error` with nothing guarding
+ * it. An error from the bridge has no `response`, and the cost is not a
+ * missing message: the REDUCER THROWS while reading it, so the FAIL action
+ * never lands and the state it was meant to change is left as it was.
+ *
+ * Which is how /connect-agent came to sit on "Checking your sign-in…" for ever
+ * against a revoked token. The renewal was refused exactly as it should be,
+ * 401 and all; the reducer that was supposed to drop the token threw instead,
+ * the token stayed, and the page went on waiting for an answer it had already
+ * been given. Every other `_FAIL` reducer that reads `.response` has the same
+ * hole under it.
+ *
+ * BridgeApi is a drop-in replacement for the Api helper, and the shape of a
+ * rejection is part of that interface, not a detail of the transport.
+ */
+function asVoltoError(error) {
+  if (!error || typeof error !== 'object' || error.response) return error;
+  error.response = {
+    status: error.status ?? 500,
+    // Plone's own error body when the adapter passed one up, else the most
+    // the bridge knows: what went wrong and what it is called.
+    error: error.body?.error ?? {
+      type: error.code ?? 'Error',
+      message: error.message,
+    },
+  };
+  return error;
+}
+
 function currentAuthToken() {
   if (typeof document === 'undefined') return undefined;
   const match = document.cookie.match(/(?:^|;\s*)auth_token=([^;]*)/);

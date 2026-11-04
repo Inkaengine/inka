@@ -136,6 +136,50 @@ describe('BridgeApi', () => {
     });
   });
 
+  /**
+   * Volto's reducers read `error.response` on a failure, because its Api helper
+   * rejects with superagent's error and superagent always has one. A bridge
+   * error that has none does not merely lose a message — the reducer THROWS
+   * while reading it, the FAIL action never reaches the store, and the state it
+   * was supposed to change is left exactly as it was.
+   */
+  describe('a failed call', () => {
+    const rejectingApi = (err) =>
+      semanticApi({ request: vi.fn().mockRejectedValue(err) });
+
+    it('carries a response, as Volto reducers read it', async () => {
+      const err = Object.assign(new Error('nope'), {
+        code: 'UNAUTHORIZED',
+        status: 401,
+      });
+      await expect(rejectingApi(err).get('/news')).rejects.toMatchObject({
+        status: 401,
+        response: { status: 401, error: expect.anything() },
+      });
+    });
+
+    it('keeps the code and status the caller decides on', async () => {
+      const err = Object.assign(new Error('gone'), {
+        code: 'NOT_FOUND',
+        status: 404,
+      });
+      await expect(rejectingApi(err).get('/missing')).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+        status: 404,
+      });
+    });
+
+    it('leaves a response the adapter already gave alone', async () => {
+      const err = Object.assign(new Error('nope'), {
+        status: 400,
+        response: { status: 400, error: { type: 'BadRequest', message: 'said so' } },
+      });
+      await expect(rejectingApi(err).get('/news')).rejects.toMatchObject({
+        response: { error: { message: 'said so' } },
+      });
+    });
+  });
+
   it('works when called with no options object', async () => {
     const r = rpc({});
     const api = passthroughApi(r);
