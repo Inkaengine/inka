@@ -3,11 +3,22 @@
   "version": "0.0.1",
   "private": true,
   "description": "Validates Plone content trees (plone.exportimport JSON or decoded blockmd): structure, references and block schemas, walking blocks the way the editor does.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Inkaengine/inka.git",
+    "directory": "packages/content-validator"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "exports": {
     ".": "./plone-content-validator.cjs"
   },
+  "files": [
+    "plone-content-validator.cjs"
+  ],
   "dependencies": {
     "@volto-hydra/helpers": "workspace:*"
-  },
-  "license": "MIT"
+  }
 }

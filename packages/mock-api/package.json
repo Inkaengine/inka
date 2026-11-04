@@ -3,6 +3,15 @@
   "version": "0.0.1",
   "private": true,
   "description": "A mock Plone REST API serving content from disk: plone.exportimport JSON trees and blockmd markdown mounts.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Inkaengine/inka.git",
+    "directory": "packages/mock-api"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "exports": {
     ".": "./mock-plone-api.cjs",
     "./server": "./mock-api-server.cjs",
@@ -11,6 +20,16 @@
   "bin": {
     "inka-mock-api": "./mock-api-server.cjs"
   },
+  "files": [
+    "api/",
+    "env-port.cjs",
+    "mock-api-server.cjs",
+    "mock-plone-api.cjs",
+    "mock-principals-and-rules.cjs",
+    "mock-tokens.cjs",
+    "scaled-image.cjs",
+    "server-state.mjs"
+  ],
   "dependencies": {
     "@inka/blockmd": "workspace:*",
     "@inka/content-validator": "workspace:*",
@@ -18,7 +37,6 @@
     "express": "4.22.1",
     "yaml": "1.10.2"
   },
-  "license": "MIT",
   "devDependencies": {
     "@volto-hydra/helpers": "workspace:*"
   }

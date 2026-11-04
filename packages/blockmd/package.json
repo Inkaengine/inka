@@ -3,6 +3,15 @@
   "version": "0.0.1",
   "private": true,
   "description": "blockmd: markdown <-> Plone block documents. slate-md, prototype-mapping and default-prototypes are plain JS; markdown-mount and restore-directives read from disk.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Inkaengine/inka.git",
+    "directory": "packages/blockmd"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "exports": {
     "./default-prototypes.mjs": "./default-prototypes.mjs",
     "./markdown-mount.mjs": "./markdown-mount.mjs",
@@ -11,6 +20,14 @@
     "./slate-md.mjs": "./slate-md.mjs",
     "./slate-normalize.mjs": "./slate-normalize.mjs"
   },
+  "files": [
+    "default-prototypes.mjs",
+    "markdown-mount.mjs",
+    "prototype-mapping.mjs",
+    "restore-directives.mjs",
+    "slate-md.mjs",
+    "slate-normalize.mjs"
+  ],
   "dependencies": {
     "@adobe/remark-gridtables": "3.0.20",
     "@volto-hydra/helpers": "workspace:*",
@@ -27,6 +44,5 @@
     "remark-stringify": "11.0.0",
     "unified": "11.0.5",
     "yaml": "1.10.2"
-  },
-  "license": "MIT"
+  }
 }
