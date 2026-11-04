@@ -186,11 +186,30 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
       `the page has changed since it was read (read at ${expectedVersion}, now ${loaded}). Read it again and reapply.`,
     );
   }
-  const blocksConfig = (await agent.getBlockSchemas()).types;
+  const { page: { contentType }, types: blocksConfig } = await agent.getBlockSchemas();
+  // A file in one of the page's own file fields (a lead image) is kept in the
+  // page, as Plone keeps it: the field takes the file itself, as the edit
+  // form's file widget sets it, and nothing is held or uploaded.
+  const inFields = new Map(); // a page field → the agent's media id in it
+  const fileFields = named.size ? Object.entries(blocksConfig[contentType].blockSchema.properties)
+    .filter(([, field]) => ['Image', 'File'].includes(field.factory)).map(([name]) => name) : [];
+  for (const op of ops) {
+    if (op.op !== 'update' || op.id !== '_page' || !op.set) continue;
+    for (const field of fileFields) if (mediaIn(op.set[field] ?? null).size) inFields.set(field, op.set[field]);
+  }
+  for (const [field, id] of inFields) {
+    const file = await heldFile(id);
+    if (file.uploaded) {
+      throw new Error(`${id} is already on the site, as ${file.uploaded}: the page's ${field} keeps a file of its own, so stage it again`);
+    }
+    ops = ops.map((op) => (op.op === 'update' && op.id === '_page' && op.set?.[field] === id
+      ? { ...op, set: { ...op.set, [field]: { data: file.data, encoding: 'base64', 'content-type': file.type, filename: file.name } } }
+      : op));
+  }
   const swaps = new Map(); // an agent's media id → what the operations name the file by
   const refs = new Map(); // an agent's media id → the editor's reference, for a file not uploaded yet
   const dataUrls = new Map(); // the editor's reference → the file as a data: URL, for a preview
-  for (const id of named) {
+  for (const id of mediaIn(ops)) {
     const file = await heldFile(id);
     // A file a save already uploaded is that item now.
     if (file.uploaded) {
@@ -206,8 +225,18 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
   await check({ path, saved: formData, draft: await agent.getDraft(), held: new Set(refs.values()) });
   if (dryRun) {
     const asNamed = new Map([...refs].map(([id, ref]) => [ref, id]));
-    const dry = { dryRun: true, results, ids, ...(lockedBy && { lockedBy }), page: withMedia(await getPage(agent), asNamed) };
-    if (render) dry.rendered = await render(withMedia(await agent.getDraft(), dataUrls));
+    const page = withMedia(await getPage(agent), asNamed);
+    for (const [field, id] of inFields) page[field] = id;
+    const dry = { dryRun: true, results, ids, ...(lockedBy && { lockedBy }), page };
+    if (render) {
+      const draft = withMedia(await agent.getDraft(), dataUrls);
+      // A front end reads a stored file field's download URL.
+      for (const [field, id] of inFields) {
+        const file = await heldFile(id);
+        draft[field] = { filename: file.name, 'content-type': file.type, download: dataUrlOf(file) };
+      }
+      dry.rendered = await render(draft);
+    }
     return dry;
   }
   // Templates are saved as their lock does it ("Change on all pages"), before the page.

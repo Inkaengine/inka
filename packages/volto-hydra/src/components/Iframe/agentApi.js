@@ -50,7 +50,7 @@ import {
 } from '../../utils/copyFromTargetMapping';
 
 // The schema facts an agent needs, as plain data (see plain()).
-const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'choices', 'default', 'maxLength', 'allowedBlocks'];
+const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'factory', 'choices', 'default', 'maxLength', 'allowedBlocks'];
 
 /**
  * Which of a block type's fields a LINK owns, and which link: `{ title: 'href' }`.

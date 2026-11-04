@@ -301,6 +301,26 @@ test.describe('MCP server', () => {
     expect(page.text).toMatch(/a Document has no file field/);
   });
 
+  test("edit_blocks: a staged file in a page's own lead image is kept in the page, as the edit form keeps it", async ({ urls }) => {
+    test.setTimeout(180000);
+    const NEWS = '/_test_data/news-test-page';
+    const viewed = (await call('view_page', { path: NEWS })).json();
+    const { files: [lead] } = (await call('stage_media', { files: [{ picture: viewed.pictures[0], name: 'lead.png' }] })).json();
+    const read = (await call('get_page', { path: NEWS })).json();
+    const ops = [{ op: 'update', id: '_page', set: { preview_image: lead.media } }];
+
+    const dry = (await call('edit_blocks', { path: NEWS, expectedVersion: read.version, ops, dryRun: true })).json();
+    expect(dry.page.preview_image).toBe(lead.media);
+
+    (await call('edit_blocks', { path: NEWS, expectedVersion: read.version, ops })).json();
+    const stored = await (await fetch(`${urls.mockApi}${NEWS}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    expect(stored.preview_image).toMatchObject({ filename: 'lead.png', 'content-type': lead.type });
+    expect(JSON.stringify(stored)).not.toContain('media:');
+    expect(JSON.stringify(stored)).not.toContain('inka-pending:');
+  });
+
   test('reads, dry-runs, saves, and refuses a stale version', async ({ urls }) => {
     // Every call opens the editor afresh — that is what keeps the server stateless.
     test.setTimeout(180000);

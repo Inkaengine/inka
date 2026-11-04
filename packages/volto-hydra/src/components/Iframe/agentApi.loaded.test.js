@@ -99,6 +99,21 @@ describe('what a block says about rules that depend on the data', () => {
     expect(types.plain.fieldRules).toBeUndefined();
   });
 
+  // Plone says a field holds a file by its factory (a lead image's is
+  // "Image"): an agent putting a staged file there gives the file itself, not
+  // the URL an image block takes.
+  it("says which fields hold a file, by the field's factory", () => {
+    const { types } = schemas({
+      teaser: {
+        id: 'teaser',
+        title: 'Teaser',
+        blockSchema: { properties: { lead: { title: 'Lead', type: 'object', factory: 'Image' }, url: { title: 'URL', widget: 'url' } }, fieldsets: [] },
+      },
+    });
+    expect(types.teaser.blockSchema.properties.lead).toEqual({ title: 'Lead', type: 'object', factory: 'Image' });
+    expect(types.teaser.blockSchema.properties.url.factory).toBeUndefined();
+  });
+
   it('says nothing about a block with no rules at all', () => {
     const { types } = schemas({
       bare: { id: 'bare', title: 'Bare', blockSchema: { properties: {}, fieldsets: [] } },
