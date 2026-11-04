@@ -262,15 +262,26 @@ export class BridgeApi {
     const pending = this.rpc.request(routed.intent, routed.args);
     try {
       if (readKey) {
-        this.inFlightReads.set(
-          readKey,
-          pending.then((r) =>
-            plonify(routed.intent, r, {
-              path: fullPath,
-              endpoint: routed.endpoint,
-            }),
-          ),
+        const shared = pending.then((r) =>
+          plonify(routed.intent, r, {
+            path: fullPath,
+            endpoint: routed.endpoint,
+          }),
         );
+        // Someone has to WATCH this one fail. The caller awaits `pending` and
+        // handles its rejection below; `shared` is a second promise derived
+        // from it, kept here for a second caller who may never come — so when
+        // a read failed, its rejection went unobserved. In a browser that is
+        // an "Unhandled promise rejection" in the console of every session
+        // that ever fails a read, in Node it is loud enough to fail the whole
+        // process, and in neither is it a second failure: it is this one,
+        // reported by nobody. Noticed when three of them failed the build
+        // while all 1770 tests passed.
+        //
+        // The no-op catch observes it. `shared` itself still rejects, so a
+        // second caller awaiting it gets the failure exactly as before.
+        shared.catch(() => {});
+        this.inFlightReads.set(readKey, shared);
       }
       result = await pending;
     } catch (err) {
