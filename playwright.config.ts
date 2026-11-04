@@ -394,6 +394,7 @@ export default defineConfig({
       stderr: 'pipe' as const,
       env: {
         PORT: String(PORTS.mockApi),
+        // Inka's own content, and the schemas of the test frontend it is written for.
         CONTENT_MOUNTS: '/docs:docs,/_test_data:tests-playwright/fixtures/content,/:tests-playwright/fixtures/site-root',
         CONTENT_SCHEMAS: 'tests-playwright/fixtures/shared-block-schemas.js',
       },

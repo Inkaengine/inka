@@ -10,13 +10,6 @@
 // — the target of the docs' cross-links to '/' and '/images/*').
 const path = require('node:path');
 const abs = (p) => path.resolve(__dirname, p);
-process.env.CONTENT_MOUNTS = [
-  '/docs:' + abs('../../docs'),
-  '/_test_data:' + abs('../../tests-playwright/fixtures/content'),
-  '/:' + abs('../../tests-playwright/fixtures/site-root'),
-].join(',');
-process.env.CONTENT_SCHEMAS = abs('../../tests-playwright/fixtures/shared-block-schemas.js');
-
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

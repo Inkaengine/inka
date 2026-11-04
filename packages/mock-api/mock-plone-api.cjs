@@ -33,26 +33,31 @@ const API_ORIGIN = `http://localhost:${PORT}`;
 // (see rewriteFixtureOrigin). Covered by tests-playwright/api/fixture-origin.spec.ts.
 const FIXTURE_ORIGIN = 'http://localhost:8888';
 
+// A project's own settings: CONTENT_MOUNTS and CONTENT_SCHEMAS in mock-api.env in
+// the working directory. Read only when CONTENT_MOUNTS isn't already set, so a
+// caller naming its own content never gets the file's CONTENT_SCHEMAS with it.
+if (!process.env.CONTENT_MOUNTS) {
+  try {
+    process.loadEnvFile('mock-api.env');
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+  }
+}
+
 /**
- * Parse CONTENT_MOUNTS env variable for multiple content directories
- * Format: "mountPath:dirPath,mountPath2:dirPath2"
- * Example: "/:/default/content,/pretagov:/path/to/pretagov/content"
- * Without it, serves Inka's own dev content (the three mounts below)
+ * The content directories to serve, from CONTENT_MOUNTS (required):
+ * "mountPath:dirPath,mountPath2:dirPath2", most specific first, since a path is
+ * served by the first mount it falls under ('/' owns everything, so it goes
+ * last). Example: "/docs:./docs,/:./site/content".
  */
 function parseContentMounts() {
   const mountsEnv = process.env.CONTENT_MOUNTS;
   if (!mountsEnv) {
-    // Three mounts, most-specific first (mountFor resolves top-down; '/' owns
-    // everything so it must be last):
-    //   /docs        the docs, authored as <block> markdown in the repo docs/ dir
-    //                (one source of truth: readable md + website + Sphinx source)
-    //   /_test_data  block-coverage fixtures the integration tests drive
-    //   /            the test site root — home, search page, layout templates
-    return [
-      { mountPath: '/docs', dirPath: path.join(__dirname, '../../docs') },
-      { mountPath: '/_test_data', dirPath: path.join(__dirname, '../../tests-playwright/fixtures/content') },
-      { mountPath: '/', dirPath: path.join(__dirname, '../../tests-playwright/fixtures/site-root') },
-    ];
+    throw new Error(
+      'CONTENT_MOUNTS is required: the content to serve, as "mountPath:dirPath,..." '
+      + '(e.g. CONTENT_MOUNTS=/:./content), in the environment or in mock-api.env in the working directory. '
+      + 'Set CONTENT_SCHEMAS too, to check the content against its block schemas.',
+    );
   }
 
   return mountsEnv.split(',').map(mount => {
@@ -63,10 +68,7 @@ function parseContentMounts() {
 }
 
 const CONTENT_MOUNTS = parseContentMounts();
-// Inka's own test frontend's schemas go with Inka's own content: they are the
-// default only when the default mounts are.
-const CONTENT_SCHEMAS = process.env.CONTENT_SCHEMAS
-  || (process.env.CONTENT_MOUNTS ? null : path.join(__dirname, '../../tests-playwright/fixtures/shared-block-schemas.js'));
+const CONTENT_SCHEMAS = process.env.CONTENT_SCHEMAS || null;
 
 /**
  * A mount's redirects as site-relative [old, new] pairs, or [] when it has none.

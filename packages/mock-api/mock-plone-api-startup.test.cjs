@@ -275,6 +275,43 @@ describe('mock API content validation', () => {
     assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
   });
 
+  // A project's own settings: mock-api.env in the directory the mock starts in.
+  const startedIn = (dir, env = {}) => {
+    const { CONTENT_MOUNTS, CONTENT_SCHEMAS, ...rest } = process.env;
+    return spawnSync(
+      process.execPath,
+      ['-e', `require(${JSON.stringify(MODULE)}).ready.then(
+        () => process.exit(0),
+        (e) => { console.error('READY REJECTED: ' + e.message); process.exit(3); })`],
+      { cwd: dir, env: { ...rest, ...env }, encoding: 'utf8', timeout: 60_000 },
+    );
+  };
+  const projectWith = (settings) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-project-'));
+    fs.writeFileSync(path.join(dir, 'mock-api.env'), settings);
+    return dir;
+  };
+
+  it('reads its content and schemas from mock-api.env where it starts', () => {
+    const content = heroPage({ description: 'plain text' });
+    const run = startedIn(projectWith(`CONTENT_MOUNTS=/:${content}\nCONTENT_SCHEMAS=${siteSchemas()}\n`));
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
+  });
+
+  it("ignores mock-api.env when the environment names the content, schemas and all", () => {
+    const content = heroPage({ description: 'plain text' });
+    const dir = projectWith(`CONTENT_MOUNTS=/:${content}\nCONTENT_SCHEMAS=${siteSchemas()}\n`);
+    const run = startedIn(dir, { CONTENT_MOUNTS: `/:${content}` });
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+  });
+
+  it('refuses to start when nothing names the content', () => {
+    const run = startedIn(fs.mkdtempSync(path.join(os.tmpdir(), 'mock-project-')));
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /CONTENT_MOUNTS is required/);
+  });
+
   // Nothing excuses a content problem: there is no list of "expected" errors.
   // Content a test needs broken is made by that test, at runtime, where it can't
   // be committed — never a fixture with an exemption beside it.

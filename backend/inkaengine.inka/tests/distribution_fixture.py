@@ -111,6 +111,7 @@ def build_distribution(dest: Path) -> Path:
         # leaves /docs out makes valid content look broken. Most-specific
         # mount first: '/' owns everything, so it goes last.
         "CONTENT_MOUNTS": "/docs:docs,/:tests-playwright/fixtures/site-root",
+        "CONTENT_SCHEMAS": "tests-playwright/fixtures/shared-block-schemas.js",
     }
     proc = subprocess.Popen(
         ["node", str(MOCK_SERVER)],
