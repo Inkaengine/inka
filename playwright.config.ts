@@ -385,7 +385,7 @@ export default defineConfig({
       // Mock Plone API — REST endpoints, content from disk
       // Test frontend is served by the separate Vite webServer entry below
       name: 'Mock API',
-      command: `node --watch --watch-path=tests-playwright/fixtures --watch-path=packages/mock-api --watch-path=packages/helpers ${path.join(__dirname, 'packages/mock-api/mock-api-server.cjs')}`,
+      command: `node --watch ${path.join(__dirname, 'packages/mock-api/mock-api-server.cjs')}`,
       url: `${URLS.mockApi}/health`,
       timeout: 30 * 1000,
       reuseExistingServer: true,
