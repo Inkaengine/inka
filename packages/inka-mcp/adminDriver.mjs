@@ -196,6 +196,7 @@ export function agentOn(page) {
     remove: (id) => call('remove', id),
     move: (op) => call('move', op),
     save: (op) => call('save', op),
+    holdFile: (file) => call('holdFile', file),
     unlockTemplateOf: (id) => call('unlockTemplateOf', id),
     lockTemplates: () => call('lockTemplates'),
   };

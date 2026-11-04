@@ -25,6 +25,10 @@
  * the view's fetch, like an exchange, can reach any instance. There are no
  * sealed pictures: nothing is held, and a picture is too big for its id. One
  * that is unknown or lapsed is PictureGone.
+ *
+ * The files an agent adds (add_media) are held the same way, for an editing
+ * session, until a page change that uses them is saved (media.mjs). One that
+ * is unknown or lapsed is MediaGone.
  */
 import { randomBytes } from 'node:crypto';
 import { InvalidGrantError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
@@ -70,6 +74,19 @@ const PICTURES = {
   lapsed: () => new PictureGone('the picture is no longer kept: take it again'),
 };
 
+/** A file an agent added that this server no longer has, or never had. */
+export class MediaGone extends Error {}
+
+const MEDIA_MS = 2 * 60 * 60 * 1000;
+
+/** What a media store holds: for two hours, and an unknown or lapsed file is MediaGone. */
+const MEDIA = {
+  kind: 'media',
+  ttlMs: MEDIA_MS,
+  unknown: () => new MediaGone('not a file added on this server, or no longer kept (a file is kept for two hours): add it again'),
+  lapsed: () => new MediaGone('the file is no longer kept: add it again'),
+};
+
 /** Codes in this instance's memory. `instance`: its name, or null when it is the only one. */
 export function localCodes({ instance, now }) {
   return localHeld({ instance, now, ...CODES });
@@ -78,6 +95,11 @@ export function localCodes({ instance, now }) {
 /** Pictures in this instance's memory, as localCodes. */
 export function localPictures({ instance, now }) {
   return localHeld({ instance, now, ...PICTURES });
+}
+
+/** Files an agent added, in this instance's memory, as localCodes. */
+export function localMedia({ instance, now }) {
+  return localHeld({ instance, now, ...MEDIA });
 }
 
 function localHeld({ instance, now, ttlMs, unknown, lapsed }) {
@@ -119,6 +141,11 @@ export function storedCodes({ store, now }) {
 /** Pictures in the deployment's store, as storedCodes, kept apart from its codes. */
 export function storedPictures({ store, now }) {
   return storedHeld({ store, now, ...PICTURES });
+}
+
+/** Files an agent added, in the deployment's store, as storedCodes, kept apart from its codes and pictures. */
+export function storedMedia({ store, now }) {
+  return storedHeld({ store, now, ...MEDIA });
 }
 
 function storedHeld({ store, now, kind, ttlMs, unknown, lapsed }) {

@@ -21,7 +21,7 @@ type Agent = {
   update(op: { id: string; fields: any }): Promise<void>;
   move(op: { id: string; targetId: string; insertAfter: boolean }): Promise<void>;
   remove(id: string): Promise<void>;
-  save(op: { expectedVersion: string }): Promise<{ version: string }>;
+  save(op: { expectedVersion: string }): Promise<{ version: string; uploaded: Record<string, string> }>;
   holdFile(file: { name: string; type: string; data: string }): Promise<string>;
 };
 
@@ -111,8 +111,11 @@ test.describe('Agent API', () => {
     await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
     expect(uploads, 'nothing is uploaded before Save').toHaveLength(0);
 
-    await agent(page, (a, arg) => a.save(arg), { expectedVersion: version });
+    const saved = await agent(page, (a, arg) => a.save(arg), { expectedVersion: version });
     expect(uploads).toHaveLength(1);
+    // The save says which item the held file became, for the agent to use from then on.
+    expect(Object.keys(saved.uploaded)).toEqual([ref]);
+    expect(saved.uploaded[ref]).toMatch(/uploaded-image-\d+$/);
     expect(uploads[0].image.filename).toBe('agent.png');
     expect(uploads[0].image.data).toBe(PNG_BASE64);
 
@@ -120,7 +123,7 @@ test.describe('Agent API', () => {
       headers: { Accept: 'application/json', Authorization: `Bearer ${helper.authToken}` },
     })).json();
     const block = JSON.stringify(stored.blocks.image);
-    expect(block, 'the page names the uploaded image').toMatch(/uploaded-image-\d+/);
+    expect(block, 'the page names the uploaded image').toContain(saved.uploaded[ref].replace(/^https?:\/\/[^/]+/, ''));
     expect(block).toContain('"image_scales"');
     expect(block).not.toContain('inka-pending:');
   });

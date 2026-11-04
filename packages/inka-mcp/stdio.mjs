@@ -19,7 +19,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createServer, headlessAdmin } from './server.mjs';
 import { signIn } from './signIn.mjs';
-import { localPictures } from './codes.mjs';
+import { localPictures, localMedia } from './codes.mjs';
 
 async function main(env) {
   if (!env.INKA_ADMIN_URL) throw new Error('inka-mcp: INKA_ADMIN_URL is not set');
@@ -28,7 +28,11 @@ async function main(env) {
   // waiting at startup while a person signs in.
   const admin = headlessAdmin({ adminUrl, auth: signIn(env, { adminUrl }), frontendUrl: env.INKA_FRONTEND_URL });
   // One person, one process: every picture is theirs.
-  const server = createServer(() => admin, { pictures: localPictures({ instance: null, now: Date.now }), userOf: () => 'this-session' });
+  const server = createServer(() => admin, {
+    pictures: localPictures({ instance: null, now: Date.now }),
+    media: localMedia({ instance: null, now: Date.now }),
+    userOf: () => 'this-session',
+  });
   server.server.onclose = () => admin.close();
   await server.connect(new StdioServerTransport());
 }

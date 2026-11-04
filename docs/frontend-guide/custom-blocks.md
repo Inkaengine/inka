@@ -232,6 +232,7 @@ What changes:
 - A dropped image is checked against the folder it will be uploaded into: if the editor may not add images there, it is refused when it is dropped. The server's own limits, such as its upload size, are met on Save.
 - Until it is saved, a held image has no `image_scales`, so a field rule that reads them (an SVG or aspect-ratio rule) has nothing to read yet.
 - Held images live in the editor's memory: reloading the editor loses them.
+- An agent working through Inka's MCP server can add new images and files to a page change (`add_media`) only on a front end that opts in. They are held in the same way and uploaded when the agent saves.
 
 ## Defining a custom block
 

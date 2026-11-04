@@ -44,6 +44,7 @@ export async function checkAllowed(file, folder, typesIn) {
 
 const held = new Map();
 const listeners = new Set();
+const uploadListeners = new Set();
 
 /**
  * Hold `file` (a dropped or picked File, or one an agent added) for upload
@@ -103,6 +104,16 @@ export function previewUrl(ref) {
   const image = heldImage(ref);
   if (!image.previewUrl) image.previewUrl = URL.createObjectURL(image.file);
   return image.previewUrl;
+}
+
+/**
+ * Call `listener(uploaded)` each time a save uploads held files, with
+ * `{ reference: URL of the item it became }`: what the agent API tells an
+ * agent its files became. Returns a stop function.
+ */
+export function onImagesUploaded(listener) {
+  uploadListeners.add(listener);
+  return () => uploadListeners.delete(listener);
 }
 
 /** Let every held image go (saved, or the edit left). */
@@ -171,5 +182,7 @@ export async function uploadPendingImages(formData, { upload, remove }) {
       throw new UploadFailed(`${image.file.name} could not be uploaded, so the page was not saved: ${error.message}`, { cause: error });
     }
   }
+  const became = Object.fromEntries([...uploaded].map(([ref, content]) => [ref, content['@id']]));
+  for (const listener of uploadListeners) listener(became);
   return withUploaded(formData, uploaded);
 }

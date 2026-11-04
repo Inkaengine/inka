@@ -8,6 +8,7 @@
  */
 import { toAgentPage, toAgentBlock, toStoredBlocks } from './pageFormat.mjs';
 import { editBlocks } from './editBlocks.mjs';
+import { mediaIn, withMedia, MediaNotPreviewable } from './media.mjs';
 import { describeBlockTypes, describeBlockType } from './blockTypes.mjs';
 
 export class StaleVersion extends Error {}
@@ -161,10 +162,21 @@ const EXAMPLE_UID = 'example';
  * changes on every page that uses it. `check({ path, saved, draft })` refuses a
  * change that would leave the page invalid (checkDraft.mjs), before anything
  * is rendered or saved.
+ *
+ * The operations may name files an agent added (`media:<id>`, media.mjs):
+ * `heldFile(id)` gives each one's `{ name, type, data }`, and the editor holds
+ * it until Save (holdFile), so the operations run with the editor's
+ * references. A dry run's page names the files by the agent's ids again; a
+ * save says which item each file it uploaded became (`media`). A file the
+ * page no longer uses is not uploaded, and not in `media`. A preview of new
+ * files is refused, before anything is held.
  */
-export async function editPage(agent, { ops, expectedVersion, dryRun = false, changeTemplates = false, mintId, render, check }) {
+export async function editPage(agent, { ops, expectedVersion, dryRun = false, changeTemplates = false, mintId, render, check, heldFile }) {
   if (!check) throw new Error('editPage: `check` is required (checkDraft.mjs draftCheck)');
   if (render && !dryRun) throw new Error('a preview is for a dry run: add dryRun');
+  const named = mediaIn(ops);
+  if (named.size && render) throw new MediaNotPreviewable();
+  if (named.size && !heldFile) throw new Error("this server keeps no files (add_media), so a change can't add one");
   if (!expectedVersion) throw new Error('edit_blocks needs the expectedVersion get_page returned');
   const { path, version: loaded, lockedBy, formData } = await agent.getPage();
   if (lockedBy && !dryRun) throw new Locked(path, lockedBy);
@@ -174,18 +186,25 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
     );
   }
   const blocksConfig = (await agent.getBlockSchemas()).types;
-  const { results, ids } = await editBlocks(agent, ops, { blocksConfig, mintId, changeTemplates });
-  await check({ path, saved: formData, draft: await agent.getDraft() });
+  const refs = new Map(); // an agent's media id → the editor's reference for the file
+  for (const id of named) refs.set(id, await agent.holdFile(await heldFile(id)));
+  const { results, ids } = await editBlocks(agent, withMedia(ops, refs), { blocksConfig, mintId, changeTemplates });
+  await check({ path, saved: formData, draft: await agent.getDraft(), held: new Set(refs.values()) });
   if (dryRun) {
-    const dry = { dryRun: true, results, ids, ...(lockedBy && { lockedBy }), page: await getPage(agent) };
+    const asNamed = new Map([...refs].map(([id, ref]) => [ref, id]));
+    const dry = { dryRun: true, results, ids, ...(lockedBy && { lockedBy }), page: withMedia(await getPage(agent), asNamed) };
     if (render) dry.rendered = await render(await agent.getDraft());
     return dry;
   }
   // Templates are saved as their lock does it ("Change on all pages"), before the page.
   const templatesChanged = changeTemplates ? await agent.lockTemplates() : [];
-  const { version } = await agent.save({ expectedVersion });
+  const { version, uploaded } = await agent.save({ expectedVersion });
+  const media = Object.fromEntries([...refs].filter(([, ref]) => ref in uploaded).map(([id, ref]) => [id, uploaded[ref]]));
   // Its workflow state: a published page's visitors see the change now.
-  return { results, ids, version, reviewState: formData.review_state, ...(changeTemplates && { templatesChanged }) };
+  return {
+    results, ids, version, reviewState: formData.review_state,
+    ...(changeTemplates && { templatesChanged }), ...(named.size && { media }),
+  };
 }
 
 /**
@@ -197,6 +216,7 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
  */
 export async function previewLayout(agent, { blocks, render, mintId, check }) {
   if (!check) throw new Error('previewLayout: `check` is required (checkDraft.mjs draftCheck)');
+  if (mediaIn(blocks).size) throw new MediaNotPreviewable();
   const blocksConfig = (await agent.getBlockSchemas()).types;
   for (const block of blocks) {
     if (!blocksConfig[block['@type']]) {

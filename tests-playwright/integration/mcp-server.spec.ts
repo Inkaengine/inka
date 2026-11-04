@@ -55,10 +55,10 @@ test.describe('MCP server', () => {
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
     // `picture` is for the screenshot view alone: a client lists it to the view, not the model.
-    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'view_page']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['add_media', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'view_page']);
     // Those that change nothing say so, so a client need not ask the person every time.
     expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
-      .toEqual(['describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'view_page']);
+      .toEqual(['add_media', 'describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'view_page']);
     expect(tools.find((t) => t.name === 'delete_page')!.annotations).toMatchObject({ destructiveHint: true });
   });
 
@@ -206,6 +206,45 @@ test.describe('MCP server', () => {
     expect(refused.isError).toBe(true);
     expect(refused.text).toMatch(/path not in content: \/_test_data\/no-such-page/);
     expect((await call('get_page', { path: PAGE })).json().version).toBe(read.version);
+  });
+
+  test('add_media: a picture added to a page change, uploaded beside the page when it is saved', async ({ urls }) => {
+    test.setTimeout(180000);
+    // Where the test front end sets deferImageUploads.
+    const DEFERRED = '/_test_data/deferred-images-page';
+    const viewed = (await call('view_page', { path: DEFERRED })).json();
+    const added = (await call('add_media', { picture: viewed.pictures[0], name: 'from-the-agent.png' })).json();
+    expect(added).toMatchObject({ media: expect.stringMatching(/^media:/), name: 'from-the-agent.png', type: expect.stringMatching(/^image\/(png|jpeg)$/) });
+
+    const read = (await call('get_page', { path: DEFERRED })).json();
+    const ops = [{ op: 'update', id: 'image', set: { url: added.media } }];
+
+    // A preview can't show a new file yet, and says so.
+    const preview = await call('edit_blocks', { path: DEFERRED, expectedVersion: read.version, ops, dryRun: true, preview: 'desktop' });
+    expect(preview.isError).toBe(true);
+    expect(preview.text).toMatch(/can't be previewed yet/);
+    // A dry run without one shows the change, naming the file by the agent's id.
+    const dry = (await call('edit_blocks', { path: DEFERRED, expectedVersion: read.version, ops, dryRun: true })).json();
+    expect(JSON.stringify(dry.page.blocks.find((b: any) => b['@uid'] === 'image'))).toContain(added.media);
+    expect(JSON.stringify(dry.page)).not.toContain('inka-pending:');
+
+    const saved = (await call('edit_blocks', { path: DEFERRED, expectedVersion: read.version, ops })).json();
+    const item = saved.media[added.media];
+    expect(item, 'the save says which item the file became').toMatch(/uploaded-image-\d+$/);
+    const stored = await (await fetch(`${urls.mockApi}${DEFERRED}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    const block = JSON.stringify(stored.blocks.image);
+    expect(block).toContain(new URL(item).pathname);
+    expect(block).toContain('"image_scales"');
+    expect(block).not.toContain('media:');
+
+    // A file no one added is refused, and so is one in a new page, for now.
+    const unknown = await call('edit_blocks', { path: DEFERRED, expectedVersion: saved.version, ops: [{ op: 'update', id: 'image', set: { url: 'media:made-up' } }] });
+    expect(unknown.text).toMatch(/add it again/);
+    const newPage = await call('create_page', { parent: '/_test_data', title: 'With a file', blocks: [{ '@type': 'image', url: added.media }] });
+    expect(newPage.isError).toBe(true);
+    expect(newPage.text).toMatch(/create the page first/);
   });
 
   test('reads, dry-runs, saves, and refuses a stale version', async ({ urls }) => {

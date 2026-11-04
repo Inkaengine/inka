@@ -18,7 +18,8 @@ import { adminPool } from './adminPool.mjs';
 import { subjectOf } from './tokenStore.mjs';
 import { renewDelay, watchSignOut } from './signIn.mjs';
 import { SCREENSHOT_VIEW, screenshotViewHtml } from './screenshotView.mjs';
-import { PictureGone } from './codes.mjs';
+import { PictureGone, MediaGone } from './codes.mjs';
+import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from './media.mjs';
 import { draftCheck } from './checkDraft.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
@@ -120,6 +121,12 @@ const FOR_THE_VIEW = { ui: { resourceUri: SCREENSHOT_VIEW, visibility: ['app'] }
 
 const SCREENSHOT_VIEW_HTML = screenshotViewHtml();
 
+/** The most a file an agent adds may be. */
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/** A picture's file extension, for its name when the agent gives none. */
+const EXTENSIONS = { 'image/png': 'png', 'image/jpeg': 'jpg' };
+
 /**
  * The MCP server's tools. `adminFor(extra)` is the admin to work in for a
  * request: the one signed-in user's (stdio), or the requesting user's, from
@@ -130,14 +137,24 @@ const SCREENSHOT_VIEW_HTML = screenshotViewHtml();
  * A picture goes in the tool's result, for the model; a client that shows
  * views (Claude) hands the view that result without it, so the result also
  * names it (`pictures`, ids), and the view asks for each with `picture`.
+ *
+ * `media` keeps the files an agent adds (add_media, media.mjs) until a page
+ * change uses them, or is null to keep none: then there is no add_media.
  */
-export function createServer(adminFor, { pictures, userOf }) {
+export function createServer(adminFor, { pictures, media, userOf }) {
   if (pictures === undefined) throw new Error('createServer: `pictures` is required (codes.mjs), or null to keep none');
+  if (media === undefined) throw new Error('createServer: `media` is required (codes.mjs), or null to keep none');
   const server = new McpServer({ name: 'inka', version: '0.0.1' }, { instructions: INSTRUCTIONS });
   /** The ids `rendered` pictures are kept under, for the request's user (none when nothing is kept). */
   const keep = async (extra, rendered) => (pictures === null ? [] : Promise.all(rendered.map(({ image, mimeType }) => (
     pictures.issue({ user: userOf(extra), mimeType, data: image })
   ))));
+  /** The file `id` (a media id) names, as the request's user added it: `{ name, type, data }`. */
+  const heldFile = (extra) => media && (async (id) => {
+    const { user, ...file } = await media.peek(id.slice(MEDIA_PREFIX.length));
+    if (user !== userOf(extra)) throw new MediaGone(`${id} is not a file you added`);
+    return file;
+  });
 
   server.registerTool('get_page', {
     title: 'Read a page',
@@ -294,9 +311,14 @@ export function createServer(adminFor, { pictures, userOf }) {
       type: z.string().optional().describe('The content type (default "Document")'),
       blocks: z.array(z.object({ '@type': z.string() }).passthrough()).optional().describe('Blocks to start with'),
     },
-  }, async ({ parent, title, type = 'Document', blocks }, extra) => asResult(
-    await adminFor(extra).withNewPage({ parent, type, title }, (agent, { site }) => fillNewPage(agent, { blocks, mintId: randomUUID, check: draftCheck(agent, site) })),
-  ));
+  }, async ({ parent, title, type = 'Document', blocks }, extra) => {
+    if (mediaIn(blocks ?? []).size) {
+      throw new MediaRefused('a new page does not take new files yet: create the page first, then add them with edit_blocks');
+    }
+    return asResult(await adminFor(extra).withNewPage({ parent, type, title }, (agent, { site }) => (
+      fillNewPage(agent, { blocks, mintId: randomUUID, check: draftCheck(agent, site) })
+    )));
+  });
 
   registerAppTool(server, 'edit_blocks', {
     title: 'Edit a page',
@@ -313,7 +335,7 @@ export function createServer(adminFor, { pictures, userOf }) {
     },
   }, async ({ path, expectedVersion, ops, dryRun, preview, changeTemplates }, extra) => {
     const result = await adminFor(extra).withEditor(path, (agent, { site, render }) => editPage(agent, {
-      ops, expectedVersion, dryRun, changeTemplates, mintId: randomUUID, check: draftCheck(agent, site),
+      ops, expectedVersion, dryRun, changeTemplates, mintId: randomUUID, check: draftCheck(agent, site), heldFile: heldFile(extra),
       render: preview && ((draft) => render(draft, preview, { maxChars: IMAGE_CHARS })),
     }));
     if (!result.rendered) return asResult(result);
@@ -327,6 +349,35 @@ export function createServer(adminFor, { pictures, userOf }) {
       ],
     };
   });
+
+  if (media !== null) {
+    server.registerTool('add_media', {
+      title: 'Add an image or a file',
+      // It keeps the file on this server, for a change; nothing on the site changes.
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      description: 'Add an image, or any other file, for a page change, without saving anything: from a "url" on the public internet, or a "picture" a tool here took (an id from a result\'s "pictures"). Returns a "media" id: put it in edit_blocks where an image or a file goes, as you would an existing item\'s URL. When that change is saved, the file is uploaded beside the page, and the save\'s "media" gives the item it became: use that from then on. A file is kept for two hours, and may be at most 10 MB. A preview of a change with a new file (dryRun with preview, or preview_layout) is refused for now; a dry run without a preview works. create_page does not take new files yet.',
+      inputSchema: {
+        url: z.string().optional().describe('The file\'s URL, http or https'),
+        picture: z.string().optional().describe('A picture id from a result\'s "pictures"'),
+        name: z.string().optional().describe('Its file name, e.g. "team.jpg" (from the URL if not given)'),
+      },
+    }, async ({ url, picture, name }, extra) => {
+      if (!url === !picture) throw new MediaRefused('add_media takes a "url" or a "picture", one of them');
+      let file;
+      if (url) {
+        file = await fetchMedia(url, { maxBytes: MAX_FILE_BYTES, isAllowed: isPublicAddress, name });
+      } else {
+        if (pictures === null) throw new PictureGone('this server keeps no pictures');
+        const held = await pictures.peek(picture);
+        if (held.user !== userOf(extra)) throw new PictureGone('not a picture this server took');
+        const extension = EXTENSIONS[held.mimeType];
+        if (!extension) throw new Error(`add_media: a picture of type ${held.mimeType} has no file extension here`);
+        file = { name: name ?? `picture.${extension}`, type: held.mimeType, data: held.data };
+      }
+      const id = `${MEDIA_PREFIX}${await media.issue({ user: userOf(extra), ...file })}`;
+      return asResult({ media: id, name: file.name, type: file.type, bytes: Buffer.from(file.data, 'base64').length });
+    });
+  }
 
   if (pictures !== null) {
     registerAppTool(server, 'picture', {

@@ -271,3 +271,89 @@ describe('what the results say of the site', () => {
     expect(await editPage(agent, { ops: [], expectedVersion: 'v1', check: passes })).toMatchObject({ version: 'v2', reviewState: 'published' });
   });
 });
+
+describe('files an agent added (add_media) in a page change', () => {
+  const PNG = { name: 'a.png', type: 'image/png', data: 'iVBORw0KGgo' };
+  const PDF = { name: 'r.pdf', type: 'application/pdf', data: 'JVBERg==' };
+  const files = { 'media:a': PNG, 'media:b': PDF };
+  const heldFile = async (id) => files[id];
+
+  /** An agent whose editor holds what it is handed, as `inka-pending:<n>`, and keeps the page's blocks. */
+  const editing = () => {
+    const did = [];
+    const formData = {
+      '@type': 'Document', title: 'News', modified: 'v1', review_state: 'private',
+      blocks: { img: { '@type': 'image', url: '' } }, blocks_layout: { items: ['img'] },
+    };
+    let n = 0;
+    return {
+      did,
+      formData,
+      getPage: async () => ({ path: '/news', version: 'v1', formData, blockPathMap: { img: { blockType: 'image' } }, lockedBy: null }),
+      getDraft: async () => formData,
+      getBlockSchemas: async () => ({
+        page: { regions: [{ region: 'items', allowedBlocks: ['image'] }], contentType: 'Document' },
+        types: {
+          Document: { title: 'Page', regions: [{ region: 'items', allowedBlocks: ['image'] }], blockSchema: { properties: { title: { title: 'Title' } } } },
+          image: { title: 'Image', blockSchema: { properties: { url: { widget: 'image' }, href: { widget: 'object_browser' } } }, regions: [] },
+        },
+      }),
+      holdFile: async (file) => { did.push(`hold ${file.name}`); return `inka-pending:${++n}`; },
+      update: async ({ id, fields }) => { did.push(`update ${id}`); Object.assign(formData.blocks[id], fields); },
+      insert: async ({ block }) => { did.push('insert'); formData.blocks.added = block; formData.blocks_layout.items.push('added'); return 'added'; },
+      save: async () => { did.push('save'); return { version: 'v2', uploaded: { 'inka-pending:1': 'http://site/news/a.png', 'inka-pending:2': 'http://site/news/r.pdf' } }; },
+    };
+  };
+  const ops = [
+    { op: 'update', id: 'img', set: { url: 'media:a' } },
+    { op: 'add', after: 'img', blocks: [{ '@type': 'image', url: 'media:a', href: [{ '@id': 'media:b' }] }] },
+  ];
+
+  it("holds each file the operations name once, and runs them with the editor's references", async () => {
+    const agent = editing();
+    let checked;
+    await editPage(agent, { ops, expectedVersion: 'v1', dryRun: true, check: async ({ held }) => { checked = held; }, heldFile });
+    expect(agent.did).toEqual(['hold a.png', 'hold r.pdf', 'update img', 'insert']);
+    // The check is told which references the save makes real, and only those.
+    expect([...checked]).toEqual(['inka-pending:1', 'inka-pending:2']);
+    expect(agent.formData.blocks.img.url).toBe('inka-pending:1');
+    expect(agent.formData.blocks.added).toMatchObject({ url: 'inka-pending:1', href: [{ '@id': 'inka-pending:2' }] });
+  });
+
+  it('a dry run shows the agent its own media ids, not the editor\'s references', async () => {
+    const dry = await editPage(editing(), { ops, expectedVersion: 'v1', dryRun: true, check: passes, heldFile });
+    const page = JSON.stringify(dry.page);
+    expect(page).toContain('"media:a"');
+    expect(page).toContain('"media:b"');
+    expect(page).not.toContain('inka-pending:');
+  });
+
+  it('a save says which item each file became, for the agent to use from then on', async () => {
+    const agent = editing();
+    const saved = await editPage(agent, { ops, expectedVersion: 'v1', check: passes, heldFile });
+    expect(agent.did.at(-1)).toBe('save');
+    expect(saved.media).toEqual({ 'media:a': 'http://site/news/a.png', 'media:b': 'http://site/news/r.pdf' });
+  });
+
+  it('a preview of new files is refused before anything is held or rendered', async () => {
+    const agent = editing();
+    let rendered = false;
+    await expect(editPage(agent, {
+      ops, expectedVersion: 'v1', dryRun: true, check: passes, heldFile, render: async () => { rendered = true; return {}; },
+    })).rejects.toThrow(/adds new files, which can't be previewed yet/);
+    expect(agent.did).toEqual([]);
+    expect(rendered).toBe(false);
+  });
+
+  it('a server that keeps no files says so', async () => {
+    await expect(editPage(editing(), { ops, expectedVersion: 'v1', check: passes, heldFile: null }))
+      .rejects.toThrow(/keeps no files/);
+  });
+
+  it('preview_layout refuses new files too', async () => {
+    const agent = editing();
+    await expect(previewLayout(agent, {
+      blocks: [{ '@type': 'image', url: 'media:a' }], render: async () => ({}), mintId: () => 'x', check: passes,
+    })).rejects.toThrow(/adds new files, which can't be previewed yet/);
+  });
+});

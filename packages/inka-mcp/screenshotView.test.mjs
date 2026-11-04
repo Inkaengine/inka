@@ -17,7 +17,7 @@ describe('the screenshot view', () => {
   let client;
   beforeAll(async () => {
     const server = createServer(() => { throw new Error('no admin: nothing here calls a tool'); }, {
-      pictures: localPictures({ instance: null, now: Date.now }), userOf: () => 'jane',
+      pictures: localPictures({ instance: null, now: Date.now }), media: null, userOf: () => 'jane',
     });
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);

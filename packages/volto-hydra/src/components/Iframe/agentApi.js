@@ -42,7 +42,7 @@ import {
 import config from '@plone/volto/registry';
 import { getParentUrl } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from '../AgentSite/lockedBy';
-import { checkAllowed, holdImage } from '../../utils/pendingImages';
+import { checkAllowed, holdImage, onImagesUploaded } from '../../utils/pendingImages';
 import {
   getTargetMapping,
   getSourceField,
@@ -426,7 +426,9 @@ export function registerAgentApi(live) {
 
     /**
      * Save, if the page is still at `expectedVersion`; otherwise refuse — the
-     * agent reads it again and reapplies. Resolves to the new version.
+     * agent reads it again and reapplies. Resolves to the new version, and
+     * `uploaded`: the URL of the item each held file the page used became,
+     * by its reference (holdFile).
      */
     async save({ expectedVersion }) {
       if (!expectedVersion) throw new Error('save: expectedVersion is required');
@@ -441,6 +443,8 @@ export function registerAgentApi(live) {
       // editor when it saves; when the CMS refuses, the refusal is the
       // update's error, and says why.
       const before = live.current.contentUpdate;
+      const uploaded = {};
+      const stopHearing = onImagesUploaded((became) => Object.assign(uploaded, became));
       document.dispatchEvent(new KeyboardEvent('keydown', {
         key: 's', ctrlKey: true, bubbles: true, cancelable: true,
       }));
@@ -448,15 +452,19 @@ export function registerAgentApi(live) {
         const update = live.current.contentUpdate;
         return update !== before && update?.error ? update.error : null;
       };
-      await until(
-        () => !/\/edit\/?$/.test(window.location.pathname) || refusal(),
-        SAVE_LIMIT_MS, 'save: the editor did not save',
-      );
+      try {
+        await until(
+          () => !/\/edit\/?$/.test(window.location.pathname) || refusal(),
+          SAVE_LIMIT_MS, 'save: the editor did not save',
+        );
+      } finally {
+        stopHearing();
+      }
       const refused = refusal();
       if (refused) {
         throw new Error(`save: the CMS refused it: ${refused.response?.body?.error?.message ?? refused.message}`);
       }
-      return { version: await readVersion(path) };
+      return { version: await readVersion(path), uploaded };
     },
   };
 

@@ -10,6 +10,7 @@ import {
   heldImages,
   heldImagesIn,
   onImageHeld,
+  onImagesUploaded,
   releaseImages,
   uploadPendingImages,
   UploadFailed,
@@ -104,6 +105,19 @@ describe('pending images', () => {
       },
     );
     expect(saved.blocks.b1).toEqual({ '@type': 'download', file: 'http://site/news/report.pdf', label: 'Report' });
+  });
+
+  it('says which item each reference became, to whoever is listening', async () => {
+    const used = holdImage(fileNamed('a.png'), '/news');
+    holdImage(fileNamed('unused.png'), '/news');
+    const heard = [];
+    const stop = onImagesUploaded((uploaded) => heard.push(uploaded));
+    await uploadPendingImages(
+      { blocks: { b1: { image: used } } },
+      { upload: async () => created('a.png'), remove: async () => {} },
+    );
+    stop();
+    expect(heard).toEqual([{ [used]: 'http://site/news/a.png' }]);
   });
 
   it('one image in two places is uploaded once', async () => {
