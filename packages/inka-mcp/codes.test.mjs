@@ -188,6 +188,17 @@ for (const [kind, make] of Object.entries(MEDIA_KINDS)) {
       const [media] = make({ now: 1_000_000 });
       await expect(media.peek('made-up')).rejects.toThrow(MediaGone);
     });
+
+    it('can say what a file became, without keeping it any longer', async () => {
+      const clock = { now: 1_000_000 };
+      const [media] = make(clock);
+      const id = await media.issue(FILE);
+      clock.now += 60 * 60_000;
+      await media.update(id, { user: 'jane', name: 'shot.png', type: 'image/png', uploaded: 'http://site/news/shot.png' });
+      expect(await media.peek(id)).toEqual({ user: 'jane', name: 'shot.png', type: 'image/png', uploaded: 'http://site/news/shot.png' });
+      clock.now += 61 * 60_000;
+      await expect(media.peek(id)).rejects.toThrow(MediaGone);
+    });
   });
 }
 

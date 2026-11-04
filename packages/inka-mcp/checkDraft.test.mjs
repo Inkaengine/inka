@@ -54,7 +54,7 @@ describe('checkDraft', () => {
   });
 
   it('lets a link to a file the change holds until it is saved through, and only one it holds', async () => {
-    // add_media: the editor holds the file, and Save uploads it before the page.
+    // stage_media: the editor holds the file, and Save uploads it before the page.
     const draft = withBlock(SAVED, 't', teaserTo('inka-pending:1'));
     await expect(check(SAVED, draft, siteWith(), new Set(['inka-pending:1']))).resolves.toBeUndefined();
     await expect(check(SAVED, draft)).rejects.toThrow(/unrecognized reference form: inka-pending:1/);

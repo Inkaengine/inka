@@ -55,10 +55,10 @@ test.describe('MCP server', () => {
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
     // `picture` is for the screenshot view alone: a client lists it to the view, not the model.
-    expect(tools.map((t) => t.name).sort()).toEqual(['add_media', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'view_page']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_media', 'view_page']);
     // Those that change nothing say so, so a client need not ask the person every time.
     expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
-      .toEqual(['add_media', 'describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'view_page']);
+      .toEqual(['describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'stage_media', 'view_page']);
     expect(tools.find((t) => t.name === 'delete_page')!.annotations).toMatchObject({ destructiveHint: true });
   });
 
@@ -208,21 +208,35 @@ test.describe('MCP server', () => {
     expect((await call('get_page', { path: PAGE })).json().version).toBe(read.version);
   });
 
-  test('add_media: a picture added to a page change, uploaded beside the page when it is saved', async ({ urls }) => {
+  test('stage_media: a picture added to a page change, previewed, and uploaded beside the page when it is saved', async ({ urls }) => {
     test.setTimeout(180000);
     // Where the test front end sets deferImageUploads.
     const DEFERRED = '/_test_data/deferred-images-page';
     const viewed = (await call('view_page', { path: DEFERRED })).json();
-    const added = (await call('add_media', { picture: viewed.pictures[0], name: 'from-the-agent.png' })).json();
+    const held = (await call('stage_media', { files: [{ picture: viewed.pictures[0], name: 'from-the-agent.png' }] })).json();
+    // Said plainly: staged here, not on the site, and for how long.
+    expect(held).toMatchObject({ staged: true, onSite: false });
+    expect(Date.parse(held.keptUntil) - Date.now()).toBeGreaterThan(110 * 60_000);
+    const [added] = held.files;
     expect(added).toMatchObject({ media: expect.stringMatching(/^media:/), name: 'from-the-agent.png', type: expect.stringMatching(/^image\/(png|jpeg)$/) });
+    // If any file can't be had, none are staged.
+    const refused = await call('stage_media', { files: [{ picture: viewed.pictures[0] }, { picture: 'made-up' }] });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/file 2 \(made-up\).*Nothing was staged/);
 
     const read = (await call('get_page', { path: DEFERRED })).json();
     const ops = [{ op: 'update', id: 'image', set: { url: added.media } }];
 
-    // A preview can't show a new file yet, and says so.
-    const preview = await call('edit_blocks', { path: DEFERRED, expectedVersion: read.version, ops, dryRun: true, preview: 'desktop' });
-    expect(preview.isError).toBe(true);
-    expect(preview.text).toMatch(/can't be previewed yet/);
+    // A preview shows the new file: the front end is handed it as a data: URL.
+    const previewed = await client.callTool({
+      name: 'edit_blocks', arguments: { path: DEFERRED, expectedVersion: read.version, ops, dryRun: true, preview: 'desktop' },
+    }, undefined, CALL);
+    expect(previewed.isError, JSON.stringify(previewed.content).slice(0, 300)).toBeFalsy();
+    const [, picture] = previewed.content as any[];
+    expect(picture).toMatchObject(PICTURE);
+    // MCP_PREVIEW_PNG=<file> keeps the screenshot to look at.
+    if (process.env.MCP_PREVIEW_PNG) writeFileSync(process.env.MCP_PREVIEW_PNG, Buffer.from(picture.data, 'base64'));
+    expect((await call('get_page', { path: DEFERRED })).json().version, 'a preview saves nothing').toBe(read.version);
     // A dry run without one shows the change, naming the file by the agent's id.
     const dry = (await call('edit_blocks', { path: DEFERRED, expectedVersion: read.version, ops, dryRun: true })).json();
     expect(JSON.stringify(dry.page.blocks.find((b: any) => b['@uid'] === 'image'))).toContain(added.media);
@@ -239,8 +253,12 @@ test.describe('MCP server', () => {
     expect(block).toContain('"image_scales"');
     expect(block).not.toContain('media:');
 
+    // The id names that item from then on: used again, it is not uploaded again.
+    const again = (await call('edit_blocks', { path: DEFERRED, expectedVersion: saved.version, ops: [{ op: 'update', id: 'image', set: { url: added.media } }] })).json();
+    expect(again.media[added.media]).toBe(item);
+
     // A file no one added is refused, and so is one in a new page, for now.
-    const unknown = await call('edit_blocks', { path: DEFERRED, expectedVersion: saved.version, ops: [{ op: 'update', id: 'image', set: { url: 'media:made-up' } }] });
+    const unknown = await call('edit_blocks', { path: DEFERRED, expectedVersion: again.version, ops: [{ op: 'update', id: 'image', set: { url: 'media:made-up' } }] });
     expect(unknown.text).toMatch(/add it again/);
     const newPage = await call('create_page', { parent: '/_test_data', title: 'With a file', blocks: [{ '@type': 'image', url: added.media }] });
     expect(newPage.isError).toBe(true);

@@ -18,7 +18,7 @@ import { adminPool } from './adminPool.mjs';
 import { subjectOf } from './tokenStore.mjs';
 import { renewDelay, watchSignOut } from './signIn.mjs';
 import { SCREENSHOT_VIEW, screenshotViewHtml } from './screenshotView.mjs';
-import { PictureGone, MediaGone } from './codes.mjs';
+import { PictureGone, MediaGone, MEDIA_MS } from './codes.mjs';
 import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from './media.mjs';
 import { draftCheck } from './checkDraft.mjs';
 import {
@@ -121,7 +121,7 @@ const FOR_THE_VIEW = { ui: { resourceUri: SCREENSHOT_VIEW, visibility: ['app'] }
 
 const SCREENSHOT_VIEW_HTML = screenshotViewHtml();
 
-/** The most a file an agent adds may be. */
+/** The most a file an agent stages may be. */
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 /** A picture's file extension, for its name when the agent gives none. */
@@ -138,8 +138,8 @@ const EXTENSIONS = { 'image/png': 'png', 'image/jpeg': 'jpg' };
  * views (Claude) hands the view that result without it, so the result also
  * names it (`pictures`, ids), and the view asks for each with `picture`.
  *
- * `media` keeps the files an agent adds (add_media, media.mjs) until a page
- * change uses them, or is null to keep none: then there is no add_media.
+ * `media` keeps the files an agent stages (stage_media, media.mjs) until a page
+ * change uses them, or is null to keep none: then there is no stage_media.
  */
 export function createServer(adminFor, { pictures, media, userOf }) {
   if (pictures === undefined) throw new Error('createServer: `pictures` is required (codes.mjs), or null to keep none');
@@ -149,6 +149,15 @@ export function createServer(adminFor, { pictures, media, userOf }) {
   const keep = async (extra, rendered) => (pictures === null ? [] : Promise.all(rendered.map(({ image, mimeType }) => (
     pictures.issue({ user: userOf(extra), mimeType, data: image })
   ))));
+  /** A picture this server took for `user`, as a file named `name` (or picture.<extension>). */
+  const pictureFile = async (picture, name, user) => {
+    if (pictures === null) throw new PictureGone('this server keeps no pictures');
+    const held = await pictures.peek(picture);
+    if (held.user !== user) throw new PictureGone('not a picture this server took');
+    const extension = EXTENSIONS[held.mimeType];
+    if (!extension) throw new Error(`stage_media: a picture of type ${held.mimeType} has no file extension here`);
+    return { name: name ?? `picture.${extension}`, type: held.mimeType, data: held.data };
+  };
   /** The file `id` (a media id) names, as the request's user added it: `{ name, type, data }`. */
   const heldFile = (extra) => media && (async (id) => {
     const { user, ...file } = await media.peek(id.slice(MEDIA_PREFIX.length));
@@ -175,7 +184,7 @@ export function createServer(adminFor, { pictures, media, userOf }) {
     },
   }, async ({ path, blocks, viewport = 'desktop' }, extra) => {
     const rendered = await adminFor(extra).withEditor(path, (agent, { site, render }) => previewLayout(agent, {
-      blocks, mintId: randomUUID, check: draftCheck(agent, site), render: (draft) => render(draft, viewport, { maxChars: IMAGE_CHARS }),
+      blocks, mintId: randomUUID, check: draftCheck(agent, site), heldFile: heldFile(extra), render: (draft) => render(draft, viewport, { maxChars: IMAGE_CHARS }),
     }));
     const { text, renderedOn, cropped } = rendered;
     const kept = await keep(extra, [rendered]);
@@ -338,6 +347,12 @@ export function createServer(adminFor, { pictures, media, userOf }) {
       ops, expectedVersion, dryRun, changeTemplates, mintId: randomUUID, check: draftCheck(agent, site), heldFile: heldFile(extra),
       render: preview && ((draft) => render(draft, preview, { maxChars: IMAGE_CHARS })),
     }));
+    // Each file the save put on the site: its media id names that item from now on.
+    for (const [id, url] of Object.entries(result.media ?? {})) {
+      const code = id.slice(MEDIA_PREFIX.length);
+      const { user, name, type } = await media.peek(code);
+      await media.update(code, { user, name, type, uploaded: url });
+    }
     if (!result.rendered) return asResult(result);
     const { rendered, ...rest } = result;
     const { text, renderedOn, cropped } = rendered;
@@ -351,31 +366,40 @@ export function createServer(adminFor, { pictures, media, userOf }) {
   });
 
   if (media !== null) {
-    server.registerTool('add_media', {
-      title: 'Add an image or a file',
-      // It keeps the file on this server, for a change; nothing on the site changes.
+    server.registerTool('stage_media', {
+      title: 'Stage images or files for a page change (not on the site yet)',
+      // It keeps the files on this server, for a change; nothing on the site changes.
       annotations: { readOnlyHint: true, openWorldHint: true },
-      description: 'Add an image, or any other file, for a page change, without saving anything: from a "url" on the public internet, or a "picture" a tool here took (an id from a result\'s "pictures"). Returns a "media" id: put it in edit_blocks where an image or a file goes, as you would an existing item\'s URL. When that change is saved, the file is uploaded beside the page, and the save\'s "media" gives the item it became: use that from then on. A file is kept for two hours, and may be at most 10 MB. A preview of a change with a new file (dryRun with preview, or preview_layout) is refused for now; a dry run without a preview works. create_page does not take new files yet.',
+      description: 'Stage images, or any other files, for a page change. Nothing is uploaded to the site: each file is kept on this MCP server for two hours, and goes onto the site only when a change that uses it is saved. Each comes from a "url" on the public internet or a "picture" a tool here took (an id from a result\'s "pictures"), at most 10 MB. Returns a "media" id for each, in the order given: put it in edit_blocks where an image or a file goes, as you would an existing item\'s URL. A preview (edit_blocks with dryRun and preview, or preview_layout) shows it. When the change is saved, each file it uses is uploaded beside the page, and the save\'s "media" gives the item it became; the "media" id names that item from then on, for as long as it is kept. If any file can\'t be had, none are staged. create_page does not take new files yet: create the page, then add them with edit_blocks.',
       inputSchema: {
-        url: z.string().optional().describe('The file\'s URL, http or https'),
-        picture: z.string().optional().describe('A picture id from a result\'s "pictures"'),
-        name: z.string().optional().describe('Its file name, e.g. "team.jpg" (from the URL if not given)'),
+        files: z.array(z.object({
+          url: z.string().optional().describe('The file\'s URL, http or https'),
+          picture: z.string().optional().describe('A picture id from a result\'s "pictures"'),
+          name: z.string().optional().describe('Its file name, e.g. "team.jpg" (from the URL if not given)'),
+        })).min(1).describe('Each file: a "url" or a "picture", and optionally its "name"'),
       },
-    }, async ({ url, picture, name }, extra) => {
-      if (!url === !picture) throw new MediaRefused('add_media takes a "url" or a "picture", one of them');
-      let file;
-      if (url) {
-        file = await fetchMedia(url, { maxBytes: MAX_FILE_BYTES, isAllowed: isPublicAddress, name });
-      } else {
-        if (pictures === null) throw new PictureGone('this server keeps no pictures');
-        const held = await pictures.peek(picture);
-        if (held.user !== userOf(extra)) throw new PictureGone('not a picture this server took');
-        const extension = EXTENSIONS[held.mimeType];
-        if (!extension) throw new Error(`add_media: a picture of type ${held.mimeType} has no file extension here`);
-        file = { name: name ?? `picture.${extension}`, type: held.mimeType, data: held.data };
+    }, async ({ files }, extra) => {
+      const user = userOf(extra);
+      // Every file first: if one can't be had, none are staged.
+      const had = [];
+      for (const [i, { url, picture, name }] of files.entries()) {
+        const which = `file ${i + 1} (${url ?? picture})`;
+        if (!url === !picture) throw new MediaRefused(`file ${i + 1}: give a "url" or a "picture", one of them`);
+        try {
+          had.push(url ? await fetchMedia(url, { maxBytes: MAX_FILE_BYTES, isAllowed: isPublicAddress, name }) : await pictureFile(picture, name, user));
+        } catch (error) {
+          if (!(error instanceof MediaRefused || error instanceof PictureGone)) throw error;
+          throw new MediaRefused(`${which}: ${error.message}. Nothing was staged.`, { cause: error });
+        }
       }
-      const id = `${MEDIA_PREFIX}${await media.issue({ user: userOf(extra), ...file })}`;
-      return asResult({ media: id, name: file.name, type: file.type, bytes: Buffer.from(file.data, 'base64').length });
+      const held = [];
+      for (const file of had) {
+        held.push({
+          media: `${MEDIA_PREFIX}${await media.issue({ user, ...file })}`,
+          name: file.name, type: file.type, bytes: Buffer.from(file.data, 'base64').length,
+        });
+      }
+      return asResult({ staged: true, onSite: false, keptUntil: new Date(Date.now() + MEDIA_MS).toISOString(), files: held });
     });
   }
 

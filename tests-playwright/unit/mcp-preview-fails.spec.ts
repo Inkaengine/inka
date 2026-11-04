@@ -26,7 +26,9 @@ const FRONTEND = `<!DOCTYPE html><html><body><main id="page">Loading...</main><s
         page.textContent = '';
         throw new Error('render: no renderer for "throws"');
       }
-      page.innerHTML = blocks.map(([uid, block]) => '<div data-block-uid="' + uid + '">' + block.text + '</div>').join('');
+      page.innerHTML = blocks.map(([uid, block]) => block['@type'] === 'image'
+        ? '<img data-block-uid="' + uid + '" src="' + block.url + '" style="width:40px;height:40px">'
+        : '<div data-block-uid="' + uid + '">' + block.text + '</div>').join('');
     });
 </script></body></html>`;
 
@@ -52,13 +54,37 @@ test.beforeAll(async () => {
 test.afterAll(() => new Promise<void>((closed) => server.close(() => closed())));
 
 const draftOf = (blocks: Record<string, object>) => ({ blocks, blocks_layout: { items: Object.keys(blocks) } });
-const preview = (page, draft) => previewDraft(page.context(), { frontendUrl: `${origin}/page`, path: '/page', draft, maxChars: 100_000 });
+const preview = (page, draft, focus?: string) => previewDraft(page.context(), { frontendUrl: `${origin}/page`, path: '/page', draft, focus, maxChars: 100_000 });
+
+// A 1x1 red PNG.
+const RED = 'data:image/png;base64,' + Buffer.from(
+  '89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c49444154789c63f8cfc0000003010100c9fe92ef0000000049454e44ae426082',
+  'hex',
+).toString('base64');
+
+/** The colour at the middle of a picture (base64), read by drawing it on a canvas. */
+const middleOf = (page, { image, mimeType }) => page.evaluate(async (src) => {
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  const canvas = Object.assign(document.createElement('canvas'), { width: img.width, height: img.height });
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, 0, 0);
+  return [...ctx.getImageData(img.width / 2, img.height / 2, 1, 1).data.slice(0, 3)];
+}, `data:${mimeType};base64,${image}`);
 
 test.describe('previewDraft', () => {
   test('a draft the front end renders: its picture and text', async ({ page }) => {
     const rendered = await preview(page, draftOf({ b: { '@type': 'text', text: 'Drafted' } }));
     expect(rendered.text).toContain('Drafted');
     expect(rendered.image.length).toBeGreaterThan(0);
+  });
+
+  test('a draft naming a file as a data: URL: the front end draws it (an MCP preview of a new file)', async ({ page }) => {
+    const rendered = await preview(page, draftOf({ i: { '@type': 'image', url: RED } }), 'i');
+    const [r, g, b] = await middleOf(page, rendered);
+    expect(r).toBeGreaterThan(200);
+    expect(g + b).toBeLessThan(60);
   });
 
   test('a draft the front end shows its error page for: fails, with what the page said', async ({ page }) => {

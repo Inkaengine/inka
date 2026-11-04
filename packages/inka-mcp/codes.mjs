@@ -26,7 +26,7 @@
  * sealed pictures: nothing is held, and a picture is too big for its id. One
  * that is unknown or lapsed is PictureGone.
  *
- * The files an agent adds (add_media) are held the same way, for an editing
+ * The files an agent stages (stage_media) are held the same way, for an editing
  * session, until a page change that uses them is saved (media.mjs). One that
  * is unknown or lapsed is MediaGone.
  */
@@ -74,10 +74,11 @@ const PICTURES = {
   lapsed: () => new PictureGone('the picture is no longer kept: take it again'),
 };
 
-/** A file an agent added that this server no longer has, or never had. */
+/** A file an agent staged that this server no longer has, or never had. */
 export class MediaGone extends Error {}
 
-const MEDIA_MS = 2 * 60 * 60 * 1000;
+/** How long a file an agent stages is kept. */
+export const MEDIA_MS = 2 * 60 * 60 * 1000;
 
 /** What a media store holds: for two hours, and an unknown or lapsed file is MediaGone. */
 const MEDIA = {
@@ -97,7 +98,7 @@ export function localPictures({ instance, now }) {
   return localHeld({ instance, now, ...PICTURES });
 }
 
-/** Files an agent added, in this instance's memory, as localCodes. */
+/** Files an agent staged, in this instance's memory, as localCodes. */
 export function localMedia({ instance, now }) {
   return localHeld({ instance, now, ...MEDIA });
 }
@@ -125,6 +126,11 @@ function localHeld({ instance, now, ttlMs, unknown, lapsed }) {
     },
     async peek(code) { return find(code, { use: false }); },
     async take(code) { return find(code, { use: true }); },
+    /** Hold `data` under `code` instead, until the same time. */
+    async update(code, data) {
+      find(code, { use: false });
+      held.get(code).data = data;
+    },
   };
 }
 
@@ -143,7 +149,7 @@ export function storedPictures({ store, now }) {
   return storedHeld({ store, now, ...PICTURES });
 }
 
-/** Files an agent added, in the deployment's store, as storedCodes, kept apart from its codes and pictures. */
+/** Files an agent staged, in the deployment's store, as storedCodes, kept apart from its codes and pictures. */
 export function storedMedia({ store, now }) {
   return storedHeld({ store, now, ...MEDIA });
 }
@@ -164,6 +170,13 @@ function storedHeld({ store, now, kind, ttlMs, unknown, lapsed }) {
     },
     async peek(code) { return read(await store.get(key(code))); },
     async take(code) { return read(await store.take(key(code))); },
+    /** Hold `data` under `code` instead, until the same time. */
+    async update(code, data) {
+      const stored = await store.get(key(code));
+      read(stored);
+      const { until } = JSON.parse(stored);
+      await store.put(key(code), JSON.stringify({ data, until }), until - now());
+    },
   };
 }
 

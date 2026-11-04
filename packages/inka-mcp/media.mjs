@@ -1,10 +1,11 @@
 /**
- * Files an agent adds to a page change (add_media): an image, or any other
- * file. The server keeps the bytes (codes.mjs) and gives the agent an id,
+ * Files an agent stages for a page change (stage_media): an image, or any
+ * other file, not on the site yet. The server keeps the bytes (codes.mjs) and gives the agent an id,
  * `media:<id>`, which it puts where an image or a file goes, as it would a
  * real item's URL. Each call that uses one hands the file to the editor
  * (__inkaAgent.holdFile), which holds it until the page is saved, and Save
- * uploads it beside the page. A preview can't show one yet.
+ * uploads it beside the page. A preview hands the front end each file as a
+ * data: URL.
  *
  * A file from a URL is fetched by this server, so the URL must be on the
  * public internet: every address it resolves to, each redirect's included, is
@@ -24,11 +25,9 @@ const REDIRECTS = 5;
 /** A file that can't be added: the URL, its address, its type or its size. */
 export class MediaRefused extends Error {}
 
-/** A preview of a change that adds files: the front end isn't handed them yet. */
-export class MediaNotPreviewable extends Error {
-  constructor() {
-    super("this change adds new files, which can't be previewed yet: preview it without them, or save it to see them");
-  }
+/** `file` (`{ type, data }`, data base64) as a data: URL: how a preview hands a front end a file not on the site. */
+export function dataUrlOf({ type, data }) {
+  return `data:${type};base64,${data}`;
 }
 
 /** The media ids `value` holds, each once, in the order it holds them: only a whole value is one. */

@@ -8,7 +8,7 @@
  */
 import { toAgentPage, toAgentBlock, toStoredBlocks } from './pageFormat.mjs';
 import { editBlocks } from './editBlocks.mjs';
-import { mediaIn, withMedia, MediaNotPreviewable } from './media.mjs';
+import { mediaIn, withMedia, dataUrlOf } from './media.mjs';
 import { describeBlockTypes, describeBlockType } from './blockTypes.mjs';
 
 export class StaleVersion extends Error {}
@@ -163,20 +163,21 @@ const EXAMPLE_UID = 'example';
  * change that would leave the page invalid (checkDraft.mjs), before anything
  * is rendered or saved.
  *
- * The operations may name files an agent added (`media:<id>`, media.mjs):
+ * The operations may name files an agent staged (`media:<id>`, media.mjs):
  * `heldFile(id)` gives each one's `{ name, type, data }`, and the editor holds
  * it until Save (holdFile), so the operations run with the editor's
  * references. A dry run's page names the files by the agent's ids again; a
- * save says which item each file it uploaded became (`media`). A file the
- * page no longer uses is not uploaded, and not in `media`. A preview of new
- * files is refused, before anything is held.
+ * save says which item each file it uploaded became (`media`). A file an
+ * earlier save uploaded (`uploaded`, its URL) is that item: it isn't held
+ * again. A file the page no longer uses is not uploaded, and not in `media`.
+ * A preview hands the front end each file as a data: URL, in place of its
+ * reference: the promise a front end makes by setting deferImageUploads.
  */
 export async function editPage(agent, { ops, expectedVersion, dryRun = false, changeTemplates = false, mintId, render, check, heldFile }) {
   if (!check) throw new Error('editPage: `check` is required (checkDraft.mjs draftCheck)');
   if (render && !dryRun) throw new Error('a preview is for a dry run: add dryRun');
   const named = mediaIn(ops);
-  if (named.size && render) throw new MediaNotPreviewable();
-  if (named.size && !heldFile) throw new Error("this server keeps no files (add_media), so a change can't add one");
+  if (named.size && !heldFile) throw new Error("this server keeps no files (stage_media), so a change can't add one");
   if (!expectedVersion) throw new Error('edit_blocks needs the expectedVersion get_page returned');
   const { path, version: loaded, lockedBy, formData } = await agent.getPage();
   if (lockedBy && !dryRun) throw new Locked(path, lockedBy);
@@ -186,20 +187,36 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
     );
   }
   const blocksConfig = (await agent.getBlockSchemas()).types;
-  const refs = new Map(); // an agent's media id → the editor's reference for the file
-  for (const id of named) refs.set(id, await agent.holdFile(await heldFile(id)));
-  const { results, ids } = await editBlocks(agent, withMedia(ops, refs), { blocksConfig, mintId, changeTemplates });
+  const swaps = new Map(); // an agent's media id → what the operations name the file by
+  const refs = new Map(); // an agent's media id → the editor's reference, for a file not uploaded yet
+  const dataUrls = new Map(); // the editor's reference → the file as a data: URL, for a preview
+  for (const id of named) {
+    const file = await heldFile(id);
+    // A file a save already uploaded is that item now.
+    if (file.uploaded) {
+      swaps.set(id, file.uploaded);
+      continue;
+    }
+    const ref = await agent.holdFile(file);
+    swaps.set(id, ref);
+    refs.set(id, ref);
+    dataUrls.set(ref, dataUrlOf(file));
+  }
+  const { results, ids } = await editBlocks(agent, withMedia(ops, swaps), { blocksConfig, mintId, changeTemplates });
   await check({ path, saved: formData, draft: await agent.getDraft(), held: new Set(refs.values()) });
   if (dryRun) {
     const asNamed = new Map([...refs].map(([id, ref]) => [ref, id]));
     const dry = { dryRun: true, results, ids, ...(lockedBy && { lockedBy }), page: withMedia(await getPage(agent), asNamed) };
-    if (render) dry.rendered = await render(await agent.getDraft());
+    if (render) dry.rendered = await render(withMedia(await agent.getDraft(), dataUrls));
     return dry;
   }
   // Templates are saved as their lock does it ("Change on all pages"), before the page.
   const templatesChanged = changeTemplates ? await agent.lockTemplates() : [];
   const { version, uploaded } = await agent.save({ expectedVersion });
-  const media = Object.fromEntries([...refs].filter(([, ref]) => ref in uploaded).map(([id, ref]) => [id, uploaded[ref]]));
+  // Each file now on the site: one this save uploaded, or one an earlier save had.
+  const media = Object.fromEntries([...swaps]
+    .filter(([id, to]) => !refs.has(id) || to in uploaded)
+    .map(([id, to]) => [id, refs.has(id) ? uploaded[to] : to]));
   // Its workflow state: a published page's visitors see the change now.
   return {
     results, ids, version, reviewState: formData.review_state,
@@ -214,9 +231,17 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
  * one; `render(draft)` renders a draft of the page. `check` refuses a layout
  * that would leave the page invalid, as editPage's does.
  */
-export async function previewLayout(agent, { blocks, render, mintId, check }) {
+export async function previewLayout(agent, { blocks: proposedBlocks, render, mintId, check, heldFile }) {
   if (!check) throw new Error('previewLayout: `check` is required (checkDraft.mjs draftCheck)');
-  if (mediaIn(blocks).size) throw new MediaNotPreviewable();
+  // Nothing is held or saved: each file the layout names is a data: URL in it.
+  const named = mediaIn(proposedBlocks);
+  if (named.size && !heldFile) throw new Error("this server keeps no files (stage_media), so a layout can't show one");
+  const shown = new Map(); // a media id → its item's URL once saved, else the file as a data: URL
+  for (const id of named) {
+    const file = await heldFile(id);
+    shown.set(id, file.uploaded ? file.uploaded : dataUrlOf(file));
+  }
+  const blocks = withMedia(proposedBlocks, shown);
   const blocksConfig = (await agent.getBlockSchemas()).types;
   for (const block of blocks) {
     if (!blocksConfig[block['@type']]) {

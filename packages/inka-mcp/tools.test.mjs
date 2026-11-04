@@ -272,7 +272,7 @@ describe('what the results say of the site', () => {
   });
 });
 
-describe('files an agent added (add_media) in a page change', () => {
+describe('files an agent staged (stage_media) in a page change', () => {
   const PNG = { name: 'a.png', type: 'image/png', data: 'iVBORw0KGgo' };
   const PDF = { name: 'r.pdf', type: 'application/pdf', data: 'JVBERg==' };
   const files = { 'media:a': PNG, 'media:b': PDF };
@@ -286,6 +286,7 @@ describe('files an agent added (add_media) in a page change', () => {
       blocks: { img: { '@type': 'image', url: '' } }, blocks_layout: { items: ['img'] },
     };
     let n = 0;
+    const held = {};
     return {
       did,
       formData,
@@ -298,10 +299,11 @@ describe('files an agent added (add_media) in a page change', () => {
           image: { title: 'Image', blockSchema: { properties: { url: { widget: 'image' }, href: { widget: 'object_browser' } } }, regions: [] },
         },
       }),
-      holdFile: async (file) => { did.push(`hold ${file.name}`); return `inka-pending:${++n}`; },
+      // Save uploads each held file beside the page, by its own name.
+      holdFile: async (file) => { did.push(`hold ${file.name}`); const ref = `inka-pending:${++n}`; held[ref] = `http://site/news/${file.name}`; return ref; },
       update: async ({ id, fields }) => { did.push(`update ${id}`); Object.assign(formData.blocks[id], fields); },
       insert: async ({ block }) => { did.push('insert'); formData.blocks.added = block; formData.blocks_layout.items.push('added'); return 'added'; },
-      save: async () => { did.push('save'); return { version: 'v2', uploaded: { 'inka-pending:1': 'http://site/news/a.png', 'inka-pending:2': 'http://site/news/r.pdf' } }; },
+      save: async () => { did.push('save'); return { version: 'v2', uploaded: held }; },
     };
   };
   const ops = [
@@ -335,14 +337,30 @@ describe('files an agent added (add_media) in a page change', () => {
     expect(saved.media).toEqual({ 'media:a': 'http://site/news/a.png', 'media:b': 'http://site/news/r.pdf' });
   });
 
-  it('a preview of new files is refused before anything is held or rendered', async () => {
+  it('a preview shows new files: the front end is handed each as a data: URL, in place of its reference', async () => {
     const agent = editing();
-    let rendered = false;
-    await expect(editPage(agent, {
-      ops, expectedVersion: 'v1', dryRun: true, check: passes, heldFile, render: async () => { rendered = true; return {}; },
-    })).rejects.toThrow(/adds new files, which can't be previewed yet/);
-    expect(agent.did).toEqual([]);
-    expect(rendered).toBe(false);
+    let drafted;
+    const dry = await editPage(agent, {
+      ops, expectedVersion: 'v1', dryRun: true, check: passes, heldFile,
+      render: async (draft) => { drafted = draft; return { image: 'png', text: '' }; },
+    });
+    expect(dry.rendered).toEqual({ image: 'png', text: '' });
+    expect(drafted.blocks.img.url).toBe(`data:image/png;base64,${PNG.data}`);
+    expect(drafted.blocks.added.href).toEqual([{ '@id': `data:application/pdf;base64,${PDF.data}` }]);
+    expect(JSON.stringify(drafted)).not.toContain('inka-pending:');
+    // The editor still names them by reference; only the picture's draft is swapped.
+    expect(agent.formData.blocks.img.url).toBe('inka-pending:1');
+  });
+
+  it('a file a save already uploaded is that item from then on: nothing is held or uploaded again', async () => {
+    const agent = editing();
+    const uploaded = async (id) => (id === 'media:a'
+      ? { name: 'a.png', type: 'image/png', uploaded: 'http://site/news/a.png' }
+      : heldFile(id));
+    const saved = await editPage(agent, { ops, expectedVersion: 'v1', check: passes, heldFile: uploaded });
+    expect(agent.did).toEqual(['hold r.pdf', 'update img', 'insert', 'save']);
+    expect(agent.formData.blocks.img.url).toBe('http://site/news/a.png');
+    expect(saved.media).toEqual({ 'media:a': 'http://site/news/a.png', 'media:b': 'http://site/news/r.pdf' });
   });
 
   it('a server that keeps no files says so', async () => {
@@ -350,10 +368,28 @@ describe('files an agent added (add_media) in a page change', () => {
       .rejects.toThrow(/keeps no files/);
   });
 
-  it('preview_layout refuses new files too', async () => {
-    const agent = editing();
-    await expect(previewLayout(agent, {
-      blocks: [{ '@type': 'image', url: 'media:a' }], render: async () => ({}), mintId: () => 'x', check: passes,
-    })).rejects.toThrow(/adds new files, which can't be previewed yet/);
+  it('preview_layout shows new files too, each as a data: URL', async () => {
+    let drafted;
+    await previewLayout(editing(), {
+      blocks: [{ '@type': 'image', url: 'media:a' }], mintId: () => 'x', check: passes, heldFile,
+      render: async (draft) => { drafted = draft; return {}; },
+    });
+    expect(drafted.blocks.x.url).toBe(`data:image/png;base64,${PNG.data}`);
+  });
+
+  it('preview_layout shows a file an earlier save uploaded as that item', async () => {
+    let drafted;
+    await previewLayout(editing(), {
+      blocks: [{ '@type': 'image', url: 'media:a' }], mintId: () => 'x', check: passes,
+      heldFile: async () => ({ name: 'a.png', type: 'image/png', uploaded: 'http://site/news/a.png' }),
+      render: async (draft) => { drafted = draft; return {}; },
+    });
+    expect(drafted.blocks.x.url).toBe('http://site/news/a.png');
+  });
+
+  it('preview_layout on a server that keeps no files says so', async () => {
+    await expect(previewLayout(editing(), {
+      blocks: [{ '@type': 'image', url: 'media:a' }], mintId: () => 'x', check: passes, heldFile: null, render: async () => ({}),
+    })).rejects.toThrow(/keeps no files/);
   });
 });

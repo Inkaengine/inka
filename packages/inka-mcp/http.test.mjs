@@ -229,9 +229,9 @@ describe('a picture across instances', () => {
   });
 });
 
-describe('a file an agent added, across instances', () => {
+describe('a file an agent staged, across instances', () => {
   // A call naming a file (a media id, anywhere in its arguments) goes to the
-  // instance holding it, as a picture's does; so does add_media from a picture.
+  // instance holding it, as a picture's does; so does stage_media from a picture.
   async function twoInstances() {
     const secret = randomBytes(32).toString('base64');
     const held = {};
@@ -257,11 +257,11 @@ describe('a file an agent added, across instances', () => {
     expect(headers.get('x-replay-to')).toBe(`machine=m${new URL(one).port}`);
   });
 
-  it('add_media from a picture is handed to the instance holding the picture', async () => {
+  it('stage_media from a picture is handed to the instance holding the picture', async () => {
     const { urls: [one, two], on } = await twoInstances();
     const { access_token: token } = await (await exchange(one, await signIn(one))).json();
     const picture = await on(one).pictures.issue({ user: 'jane', ...PICTURE });
-    const { headers } = await callTool(two, token, 'add_media', { picture });
+    const { headers } = await callTool(two, token, 'stage_media', { files: [{ picture }] });
     expect(headers.get('x-replay-to')).toBe(`machine=m${new URL(one).port}`);
   });
 
@@ -356,7 +356,7 @@ describe('INKA_MCP_CODES', () => {
     expect(pictures).toBeNull();
   });
 
-  it('files an agent adds are kept where pictures are, and not at all when sealed', async () => {
+  it('files an agent stages are kept where pictures are, and not at all when sealed', async () => {
     const route = { instance: 'm-1', send: replayBy('fly-replay', 'instance={instance}') };
     const { media } = await codesFrom({ INKA_MCP_CODES: 'memory' }, secret, { route });
     expect((await media.issue({ user: 'jane', name: 'a.png', type: 'image/png', data: 'x' })).startsWith('m-1~')).toBe(true);

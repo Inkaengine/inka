@@ -14,7 +14,7 @@
  *   INKA_MCP_SECRET      the sealing key: 32 random bytes, base64
  *   INKA_MCP_CODES       where sign-in codes wait between sign-in and the client's
  *                        exchange, and where the pictures a client's view fetches
- *                        and the files an agent adds (add_media) are kept
+ *                        and the files an agent stages (stage_media) are kept
  *                        (codes.mjs; sealed keeps neither): `memory`
  *                        (one instance, or several
  *                        with a route, below), `sealed` (any instance, nothing
@@ -146,14 +146,14 @@ export function forwardTo(peerUrl) {
  * The server as an Express app (from the MCP SDK), and `close()` for its
  * browser. `publicUrl` is where clients reach it. `codes`: where sign-in
  * codes wait, `pictures` where the pictures a view fetches are kept and
- * `media` where the files an agent adds are, each or null to keep none
+ * `media` where the files an agent stages are, each or null to keep none
  * (codes.mjs). `route`: for local codes, pictures and files on several
  * instances, { instance, send } (see the configuration above).
  */
 export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, media, route, poolSize, pageIdleMs, frontendUrl }) {
   if (!codes) throw new Error('hostedServer: `codes` is required, where sign-in codes wait (codes.mjs; codesFrom reads INKA_MCP_CODES)');
   if (pictures === undefined) throw new Error('hostedServer: `pictures` is required, where pictures are kept, or null for none (codesFrom gives it)');
-  if (media === undefined) throw new Error('hostedServer: `media` is required, where the files an agent adds are kept, or null for none (codesFrom gives it)');
+  if (media === undefined) throw new Error('hostedServer: `media` is required, where the files an agent stages are kept, or null for none (codesFrom gives it)');
   if (route && !isInstanceName(route.instance)) {
     throw new Error(`a route's instance is its name: letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
@@ -188,7 +188,7 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, med
   });
   // A code exchange whose code another instance holds goes to that instance,
   // and so does a tool call naming what another instance holds: a view's ask
-  // for a picture, add_media from a picture, a change naming a file an agent
+  // for a picture, stage_media from a picture, a change naming a file an agent
   // added (heldIn).
   if (route) {
     app.post('/mcp', async (req, res, next) => {
@@ -286,14 +286,16 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, med
 
 /**
  * The ids of what an instance holds that a tool call names: the picture a
- * view asks for, the picture add_media adds, and every file an agent added
+ * view asks for, the pictures stage_media holds, and every file an agent staged
  * that its arguments name (media ids, anywhere in them).
  */
 function heldIn(params) {
   const args = params?.arguments ?? {};
   const ids = [...mediaIn(args)].map((id) => id.slice(MEDIA_PREFIX.length));
   if (params?.name === 'picture' && args.id) ids.push(args.id);
-  if (params?.name === 'add_media' && args.picture) ids.push(args.picture);
+  if (params?.name === 'stage_media') {
+    for (const file of args.files ?? []) if (file?.picture) ids.push(file.picture);
+  }
   return ids;
 }
 
