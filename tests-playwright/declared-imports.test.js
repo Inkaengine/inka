@@ -29,10 +29,6 @@ const DEV_TOOLING = /^packages\/inka-mcp\/(bundle\.mjs$|journeys\/)/;
 
 /** Relative imports that leave their package, and why each may. */
 const OUTSIDE = {
-  'packages/content-validator/plone-content-validator.cjs -> packages/helpers/index.js':
-    'runs with no install: Dockerfile.api copies the validator beside helpers, and pretagov-site CI runs bin/plone-content.cjs from a bare checkout',
-  'packages/content-validator/plone-content-validator.cjs -> packages/helpers/buildBlockPathMap.js':
-    'runs with no install (see above)',
   'packages/hydra-js/mergeTemplates.js -> packages/volto-hydra/src/utils/mergeTemplates.mjs':
     'the bridge re-exports the admin add-on\'s template merge; to move into helpers',
 };

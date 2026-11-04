@@ -23,8 +23,8 @@ const fs = require('fs');
 const path = require('path');
 // hydra's container API. Node require()s sync ESM, so a sync validator can use
 // the same enumeration the editor does instead of reading blocks_layout itself.
-const { getChildFields, getChildBlockEntries, isUnlabelledDefinition } = require('../helpers/index.js');
-const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('../helpers/buildBlockPathMap.js');
+const { getChildFields, getChildBlockEntries, isUnlabelledDefinition } = require('@volto-hydra/helpers');
+const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('@volto-hydra/helpers/buildBlockPathMap.js');
 
 // Fields present in block data that are not schema properties but are never
 // authored/editable content: structural, serialisation, and Volto slot runtime.
@@ -1611,15 +1611,9 @@ function checkChooserGroups(schemas) {
 
 async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
   const exempt = new Set(exemptSlots);
-  const helpersModule = (file) =>
-    import(
-      require('url').pathToFileURL(
-        require('path').join(__dirname, '..', 'helpers', file),
-      ).href
-    );
-  const { buildBlockPathMap } = await helpersModule('buildBlockPathMap.js');
-  const { normalizeSlateFields } = await helpersModule('slateStyles.js');
-  const { createFieldRulesEnhancer } = await helpersModule('fieldRules.js');
+  const { buildBlockPathMap } = await import('@volto-hydra/helpers/buildBlockPathMap.js');
+  const { normalizeSlateFields } = await import('@volto-hydra/helpers/slateStyles.js');
+  const { createFieldRulesEnhancer } = await import('@volto-hydra/helpers/fieldRules.js');
   // A schemas file carries schemaEnhancer RECIPES (plain data), and
   // buildBlockPathMap runs only enhancer FUNCTIONS — in the admin, blockSync
   // turns recipes into functions at init. Do the same for `fieldRules`, with
