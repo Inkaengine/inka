@@ -3576,16 +3576,19 @@ export class Bridge {
       }
     }
 
-    // Selection spans element nodes (formatted content) → delete transform
-    if (!range.collapsed) {
-      const hasElementNodes = this.selectionContainsElementNodes(range);
-      if (hasElementNodes) {
-        log('Delete selection contains element nodes, sending transform');
-        this.sendTransformRequest(blockUid, 'delete', {
-          direction: key === 'Backspace' ? 'backward' : 'forward',
-        });
-        return true;
-      }
+    // A selection in a slate field → delete transform, for either key. The
+    // browser deleting it can remove whole text nodes (select-all), which the
+    // bridge only reads back as text edits: select-all + Delete emptied the
+    // field on screen, the admin kept the old text, and the next paste landed
+    // on it and took the editor down. (Backspace only escaped this because a
+    // selection from offset 0 counts as "at start" below.) Slate also merges
+    // formatted content across the deleted range.
+    if (!range.collapsed && this.isSlateField(blockUid, this.focusedFieldName)) {
+      log('Delete of a selection, sending transform');
+      this.sendTransformRequest(blockUid, 'delete', {
+        direction: key === 'Backspace' ? 'backward' : 'forward',
+      });
+      return true;
     }
 
     // At node boundary with different formatting → delete transform
@@ -12044,6 +12047,14 @@ export class Bridge {
       editableField.addEventListener('paste', (e) => {
         e.preventDefault(); // Prevent default paste
         const html = e.clipboardData.getData('text/html') || e.clipboardData.getData('text/plain');
+        // During a transform (a delete still on its way to the admin), the
+        // paste waits for it, as the document handler's does: sent at once,
+        // it went with the content from before the delete.
+        if (this.blockedBlockId) {
+          this.eventBuffer.push({ _type: 'paste', html });
+          log('BUFFERED paste data (field handler), buffer size:', this.eventBuffer.length);
+          return;
+        }
         this._doPaste(blockUid, html);
       });
 
@@ -15087,36 +15098,6 @@ export class Bridge {
   ////////////////////////////////////////////////////////////////////////////////
   // Text Formatting
   ////////////////////////////////////////////////////////////////////////////////
-
-  /**
-   * Check if a selection range involves formatted content (nested elements).
-   * Uses getNodePath to determine if selection is inside or spans inline formatting.
-   *
-   * Path length indicates nesting:
-   * - [0, 0] = text directly in paragraph (plain text)
-   * - [0, 1, 0] = text inside inline element like strong (formatted)
-   *
-   * @param {Range} range - The selection range
-   * @returns {boolean} True if selection involves formatted/structured content
-   */
-  selectionContainsElementNodes(range) {
-    // Get paths for start and end of selection
-    const startPath = this.getNodePath(range.startContainer);
-    const endPath = this.getNodePath(range.endContainer);
-
-    if (!startPath || !endPath) return false;
-
-    // Path length > 2 means inside nested element (e.g., strong inside p)
-    if (startPath.length > 2) return true;
-    if (endPath.length > 2) return true;
-
-    // If paths are identical, selection is within same text node - no structure
-    if (startPath.join('.') === endPath.join('.')) return false;
-
-    // Different paths means selection spans multiple children
-    // Could have elements between them (e.g., start [0,0], end [0,2] has [0,1] between)
-    return true;
-  }
 
   getSelectionHTML(range) {
     const div = document.createElement('div');

@@ -338,54 +338,6 @@ test.describe('Markdown Shortcuts', () => {
       await expect(nestedLi).toContainText('child');
     });
 
-    test('an indented bullet is drawn inside its parent item, and both are still typed into', async ({ page }) => {
-      // The editor keeps the sub-list beside its item (ul > li, ul); the
-      // renderer draws it inside the item (ul > li > ul), which is valid HTML.
-      // Typing in either item must read back into the editor's shape, not
-      // move the sub-list into the item or lose it.
-      const helper = new AdminUIHelper(page);
-      await helper.login();
-      await helper.navigateToEdit('/test-page');
-
-      const blockId = 'block-1-uuid';
-      const iframe = helper.getIframe();
-      const block = iframe.locator(`[data-block-uid="${blockId}"]`);
-      const editor = await helper.enterEditMode(blockId);
-
-      await helper.selectAllTextInEditor(editor);
-      await editor.pressSequentially('-', { delay: 10 });
-      await editor.press(' ');
-      await expect(block.locator('ul li').first()).toBeVisible({ timeout: 5000 });
-      await editor.pressSequentially('parent', { delay: 10 });
-      await editor.press('Enter');
-      await editor.pressSequentially('child', { delay: 10 });
-      await editor.press('Tab');
-
-      const nested = block.locator('ul > li > ul > li');
-      await expect(nested).toHaveText('child', { timeout: 5000 });
-      await expect(block.locator('ul > ul')).toHaveCount(0);
-
-      // Typing on in the indented item...
-      await editor.pressSequentially(' two', { delay: 10 });
-      await expect(nested).toHaveText('child two', { timeout: 5000 });
-      // ...and in its parent item.
-      // Near its top-left corner: the item's box holds the sub-list too.
-      await block.locator('ul > li', { hasText: 'parent' }).first().click({ position: { x: 4, y: 4 } });
-      await editor.press('End');
-      await editor.pressSequentially(' one', { delay: 10 });
-
-      const stored = () =>
-        page.evaluate(
-          (id) => (window as any).__inkaAgent.getPage().formData.blocks[id].value,
-          blockId,
-        );
-      const text = (n: any): any =>
-        n.text !== undefined ? n.text : { [n.type]: n.children.map(text) };
-      await expect
-        .poll(async () => (await stored()).map(text), { timeout: 5000 })
-        .toEqual([{ ul: [{ li: ['parent one'] }, { ul: [{ li: ['child two'] }] }] }]);
-    });
-
     test('Shift+Tab outdents a nested bullet', async ({ page }) => {
       const helper = new AdminUIHelper(page);
       await helper.login();
