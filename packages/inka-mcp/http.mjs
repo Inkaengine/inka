@@ -265,7 +265,8 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, med
     const server = createServer(({ authInfo: { extra: { user, plone } } }) => watchSignOut(
       pool.forUser(async () => ({ id: user, token: plone })),
       () => provider.signedOut(plone),
-    ), { pictures, media, userOf: ({ authInfo }) => authInfo.extra.user });
+    // A hosted server reads no one's computer: a file comes by URL or picture.
+    ), { pictures, media, localFiles: null, userOf: ({ authInfo }) => authInfo.extra.user });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {
       transport.close();

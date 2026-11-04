@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createServer } from 'node:http';
-import { mediaIn, withMedia, isPublicAddress, fetchMedia, MediaRefused } from './media.mjs';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { mediaIn, withMedia, isPublicAddress, fetchMedia, localFiles, MediaRefused } from './media.mjs';
 
 describe('media ids in what an agent sends', () => {
   const ops = [
@@ -112,5 +115,65 @@ describe('fetching a file from a URL', () => {
 
   it('takes only http and https', async () => {
     await expect(fetchMedia('file:///etc/passwd', { maxBytes: 50, isAllowed: loopbackOnly })).rejects.toThrow(/http or https/);
+  });
+});
+
+describe('a file from a folder the person allows (the stdio server)', () => {
+  let root;
+  let allowed;
+  let read;
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), 'inka-media-'));
+    allowed = join(root, 'allowed');
+    mkdirSync(join(allowed, 'team'), { recursive: true });
+    writeFileSync(join(allowed, 'team', 'jane.png'), 'png bytes');
+    writeFileSync(join(allowed, 'report.pdf'), 'pdf bytes');
+    writeFileSync(join(allowed, 'big.png'), 'x'.repeat(51));
+    writeFileSync(join(allowed, 'notes.xyz'), 'what is this');
+    writeFileSync(join(root, 'secret.png'), 'not yours');
+    symlinkSync(join(root, 'secret.png'), join(allowed, 'link.png'));
+    read = localFiles([allowed], { maxBytes: 50 });
+  });
+  afterAll(() => rmSync(root, { recursive: true }));
+
+  it('reads one inside an allowed folder, typed by its extension', async () => {
+    expect(await read(join(allowed, 'team', 'jane.png'))).toEqual({
+      name: 'jane.png', type: 'image/png', data: Buffer.from('png bytes').toString('base64'),
+    });
+    expect(await read(join(allowed, 'report.pdf'), 'Annual report.pdf')).toMatchObject({ name: 'Annual report.pdf', type: 'application/pdf' });
+  });
+
+  it.each([
+    ['outside every folder', () => join(root, 'secret.png')],
+    ['outside by ..', () => join(allowed, '..', 'secret.png')],
+    ['outside through a link', () => join(allowed, 'link.png')],
+  ])('refuses one %s', async (_, path) => {
+    await expect(read(path())).rejects.toThrow(MediaRefused);
+    await expect(read(path())).rejects.toThrow(/not in a folder you allowed/);
+  });
+
+  it('takes only a whole path', async () => {
+    await expect(read('team/jane.png')).rejects.toThrow(/a whole path/);
+  });
+
+  it('says a file is not there', async () => {
+    await expect(read(join(allowed, 'gone.png'))).rejects.toThrow(/no file at/);
+  });
+
+  it('refuses a folder', async () => {
+    await expect(read(join(allowed, 'team'))).rejects.toThrow(/not a file/);
+  });
+
+  it('refuses one over the size limit', async () => {
+    await expect(read(join(allowed, 'big.png'))).rejects.toThrow(/larger than 50 bytes/);
+  });
+
+  it('refuses one whose kind it does not know from its extension', async () => {
+    await expect(read(join(allowed, 'notes.xyz'))).rejects.toThrow(/what kind of file .xyz is/);
+  });
+
+  it('refuses, at start, a folder that is not there', () => {
+    expect(() => localFiles([join(root, 'nowhere')], { maxBytes: 50 })).toThrow(/the folder .*nowhere is not there/);
+    expect(() => localFiles([join(allowed, 'report.pdf')], { maxBytes: 50 })).toThrow(/not a folder/);
   });
 });

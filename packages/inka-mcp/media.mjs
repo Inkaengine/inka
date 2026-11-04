@@ -11,7 +11,13 @@
  * public internet: every address it resolves to, each redirect's included, is
  * checked as it is connected to, so a name can't resolve to one address for
  * the check and another for the fetch.
+ *
+ * A file on the person's own computer (the stdio server only) must be inside a
+ * folder they allowed, after every link in its path is followed.
  */
+import { realpathSync, statSync } from 'node:fs';
+import { realpath, stat, readFile } from 'node:fs/promises';
+import { basename, extname, isAbsolute, relative } from 'node:path';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { lookup as dnsLookup } from 'node:dns';
@@ -161,4 +167,59 @@ export async function fetchMedia(url, { maxBytes, isAllowed, name }) {
     if (!named) throw new MediaRefused(`${at} has no file name in it: give it a name`);
     return { name: named, type, data: data.toString('base64') };
   }
+}
+
+// What a file on disk is, by its extension: a disk gives no Content-Type.
+const TYPES = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+  '.svg': 'image/svg+xml', '.avif': 'image/avif', '.pdf': 'application/pdf', '.txt': 'text/plain', '.csv': 'text/csv',
+  '.doc': 'application/msword', '.xls': 'application/vnd.ms-excel', '.ppt': 'application/vnd.ms-powerpoint',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.odt': 'application/vnd.oasis.opendocument.text', '.zip': 'application/zip',
+  '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.webm': 'video/webm',
+};
+
+/** Is `path` (a real path) `folder` or inside it? */
+const isInside = (folder, path) => {
+  const rel = relative(folder, path);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+};
+
+/**
+ * A reader of files inside `folders` (the folders the person allowed), each at
+ * most `maxBytes`: `read(path, name?)` gives `{ name, type, data }` (data
+ * base64). Each folder must be there when this is made.
+ */
+export function localFiles(folders, { maxBytes }) {
+  if (!maxBytes) throw new Error('localFiles: maxBytes is required');
+  const real = folders.map((folder) => {
+    let at;
+    try {
+      at = realpathSync(folder);
+    } catch (error) {
+      if (error.code === 'ENOENT') throw new Error(`localFiles: the folder ${folder} is not there`, { cause: error });
+      throw error;
+    }
+    if (!statSync(at).isDirectory()) throw new Error(`localFiles: ${folder} is not a folder`);
+    return at;
+  });
+  return async (path, name) => {
+    if (!isAbsolute(path)) throw new MediaRefused(`${path} is not a whole path: give one starting at /`);
+    let at;
+    try {
+      at = await realpath(path);
+    } catch (error) {
+      if (error.code === 'ENOENT') throw new MediaRefused(`there is no file at ${path}`);
+      throw error;
+    }
+    if (!real.some((folder) => isInside(folder, at))) throw new MediaRefused(`${path} is not in a folder you allowed the assistant to read`);
+    const found = await stat(at);
+    if (!found.isFile()) throw new MediaRefused(`${path} is not a file`);
+    if (found.size > maxBytes) throw new MediaRefused(`${path} is larger than ${maxBytes} bytes, the most a file may be`);
+    const type = TYPES[extname(at).toLowerCase()];
+    if (!type) throw new MediaRefused(`this server doesn't know what kind of file ${extname(at) || 'one with no extension'} is`);
+    return { name: name ?? basename(path), type, data: (await readFile(at)).toString('base64') };
+  };
 }

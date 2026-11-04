@@ -122,7 +122,7 @@ const FOR_THE_VIEW = { ui: { resourceUri: SCREENSHOT_VIEW, visibility: ['app'] }
 const SCREENSHOT_VIEW_HTML = screenshotViewHtml();
 
 /** The most a file an agent stages may be. */
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 /** A picture's file extension, for its name when the agent gives none. */
 const EXTENSIONS = { 'image/png': 'png', 'image/jpeg': 'jpg' };
@@ -140,10 +140,13 @@ const EXTENSIONS = { 'image/png': 'png', 'image/jpeg': 'jpg' };
  *
  * `media` keeps the files an agent stages (stage_media, media.mjs) until a page
  * change uses them, or is null to keep none: then there is no stage_media.
+ * `localFiles` reads a file on the person's own computer from the folders they
+ * allowed (media.mjs), or is null where there is no such source (hosted).
  */
-export function createServer(adminFor, { pictures, media, userOf }) {
+export function createServer(adminFor, { pictures, media, localFiles, userOf }) {
   if (pictures === undefined) throw new Error('createServer: `pictures` is required (codes.mjs), or null to keep none');
   if (media === undefined) throw new Error('createServer: `media` is required (codes.mjs), or null to keep none');
+  if (localFiles === undefined) throw new Error('createServer: `localFiles` is required (media.mjs), or null for none');
   const server = new McpServer({ name: 'inka', version: '0.0.1' }, { instructions: INSTRUCTIONS });
   /** The ids `rendered` pictures are kept under, for the request's user (none when nothing is kept). */
   const keep = async (extra, rendered) => (pictures === null ? [] : Promise.all(rendered.map(({ image, mimeType }) => (
@@ -370,23 +373,28 @@ export function createServer(adminFor, { pictures, media, userOf }) {
       title: 'Stage images or files for a page change (not on the site yet)',
       // It keeps the files on this server, for a change; nothing on the site changes.
       annotations: { readOnlyHint: true, openWorldHint: true },
-      description: 'Stage images, or any other files, for a page change. Nothing is uploaded to the site: each file is kept on this MCP server for two hours, and goes onto the site only when a change that uses it is saved. Each comes from a "url" on the public internet or a "picture" a tool here took (an id from a result\'s "pictures"), at most 10 MB. Returns a "media" id for each, in the order given: put it in edit_blocks where an image or a file goes, as you would an existing item\'s URL. A preview (edit_blocks with dryRun and preview, or preview_layout) shows it. When the change is saved, each file it uses is uploaded beside the page, and the save\'s "media" gives the item it became; the "media" id names that item from then on, for as long as it is kept. If any file can\'t be had, none are staged. create_page does not take new files yet: create the page, then add them with edit_blocks.',
+      description: `Stage images, or any other files, for a page change. Nothing is uploaded to the site: each file is kept on this MCP server for two hours, and goes onto the site only when a change that uses it is saved. Each comes from a "url" on the public internet${localFiles ? ', a "path" to a file on the person\'s computer, in a folder they allowed,' : ''} or a "picture" a tool here took (an id from a result's "pictures"), at most 10 MB. Returns a "media" id for each, in the order given: put it in edit_blocks where an image or a file goes, as you would an existing item's URL. A preview (edit_blocks with dryRun and preview, or preview_layout) shows it. When the change is saved, each file it uses is uploaded beside the page, and the save's "media" gives the item it became; the "media" id names that item from then on, for as long as it is kept. If any file can't be had, none are staged. create_page does not take new files yet: create the page, then add them with edit_blocks.`,
       inputSchema: {
         files: z.array(z.object({
           url: z.string().optional().describe('The file\'s URL, http or https'),
           picture: z.string().optional().describe('A picture id from a result\'s "pictures"'),
+          ...(localFiles && { path: z.string().optional().describe('A whole path to a file on the person\'s computer, in a folder they allowed') }),
           name: z.string().optional().describe('Its file name, e.g. "team.jpg" (from the URL if not given)'),
-        })).min(1).describe('Each file: a "url" or a "picture", and optionally its "name"'),
+        })).min(1).describe(`Each file: a "url"${localFiles ? ', a "path"' : ''} or a "picture", and optionally its "name"`),
       },
     }, async ({ files }, extra) => {
       const user = userOf(extra);
       // Every file first: if one can't be had, none are staged.
       const had = [];
-      for (const [i, { url, picture, name }] of files.entries()) {
-        const which = `file ${i + 1} (${url ?? picture})`;
-        if (!url === !picture) throw new MediaRefused(`file ${i + 1}: give a "url" or a "picture", one of them`);
+      for (const [i, { url, picture, path, name }] of files.entries()) {
+        const which = `file ${i + 1} (${url ?? picture ?? path})`;
+        if ([url, picture, path].filter(Boolean).length !== 1) {
+          throw new MediaRefused(`file ${i + 1}: give a "url"${localFiles ? ', a "path"' : ''} or a "picture", one of them`);
+        }
         try {
-          had.push(url ? await fetchMedia(url, { maxBytes: MAX_FILE_BYTES, isAllowed: isPublicAddress, name }) : await pictureFile(picture, name, user));
+          if (url) had.push(await fetchMedia(url, { maxBytes: MAX_FILE_BYTES, isAllowed: isPublicAddress, name }));
+          else if (path) had.push(await localFiles(path, name));
+          else had.push(await pictureFile(picture, name, user));
         } catch (error) {
           if (!(error instanceof MediaRefused || error instanceof PictureGone)) throw error;
           throw new MediaRefused(`${which}: ${error.message}. Nothing was staged.`, { cause: error });
