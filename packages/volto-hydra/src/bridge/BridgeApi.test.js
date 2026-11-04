@@ -20,6 +20,13 @@ const passthroughApi = (r) =>
       Promise.resolve({ capabilities: ['http-passthrough'] }),
   });
 
+/** An adapter that does NOT speak Plone's dialect: everything goes by intent. */
+const semanticApi = (r) =>
+  new BridgeApi(r, {
+    getAdapterInfo: () => ({ capabilities: [] }),
+    whenAdapterReady: () => Promise.resolve({ capabilities: [] }),
+  });
+
 describe('BridgeApi', () => {
   it('exposes exactly the five Api methods', () => {
     const api = passthroughApi(rpc({}));
@@ -65,6 +72,68 @@ describe('BridgeApi', () => {
     });
     const api = passthroughApi({ request: vi.fn().mockRejectedValue(err) });
     await expect(api.get('/missing')).rejects.toMatchObject({ status: 404 });
+  });
+
+  /**
+   * Renewal is the only thing that ever asks the site whether a token is still
+   * good, and /connect-agent leans on it: it offers Allow only once renewal has
+   * come back, because the browser can hold a token the site has stopped
+   * accepting (a deploy that resets the site stops accepting every token it
+   * issued) and the agent would be handed that one and fail on every call.
+   *
+   * Answering renewal out of the admin's own cookie made the bridge admin say
+   * yes to a dead session, which is precisely what that page exists to prevent.
+   */
+  describe('@login-renew', () => {
+    it('is relayed to a Plone-dialect site, which decides', async () => {
+      // A real endpoint there: it answers 401 for a token it no longer accepts
+      // and a FRESH token otherwise, which is what Volto asked for.
+      const r = rpc({ token: 'a-fresh-one' });
+      const api = passthroughApi(r);
+      const res = await api.post('/@login-renew');
+      expect(r.request).toHaveBeenCalledWith(
+        'http',
+        expect.objectContaining({ op: 'post', path: '/@login-renew' }),
+      );
+      expect(res).toEqual({ token: 'a-fresh-one' });
+    });
+
+    it('is not pressed as a login provider called "renew"', async () => {
+      // `@login-renew` also matches the `@login-<option>` branch.
+      const r = rpc({ token: 'a-fresh-one' });
+      await passthroughApi(r).post('/@login-renew');
+      expect(r.request).not.toHaveBeenCalledWith(
+        'auth.loginWithOption',
+        expect.anything(),
+      );
+    });
+
+    it('asks any other adapter who the session belongs to', async () => {
+      const r = rpc({ id: 'admin' });
+      await semanticApi(r).post('/@login-renew');
+      expect(r.request).toHaveBeenCalledWith('auth.whoami', {});
+    });
+
+    it('fails when the site no longer accepts the session', async () => {
+      const dead = Object.assign(new Error('nope'), {
+        code: 'UNAUTHORIZED',
+        status: 401,
+      });
+      const api = semanticApi({ request: vi.fn().mockRejectedValue(dead) });
+      // Volto's reducer drops the token on a failed renewal, which is how the
+      // person is sent to sign in again.
+      await expect(api.post('/@login-renew')).rejects.toMatchObject({
+        status: 401,
+      });
+    });
+
+    it('fails when the adapter answers with nobody', async () => {
+      // The contract says whoami gives "the signed-in user, or null", so an
+      // adapter may say so by answering rather than by throwing. Either way it
+      // is not a session to hand an agent.
+      const api = semanticApi(rpc(null));
+      await expect(api.post('/@login-renew')).rejects.toThrow(/no longer/i);
+    });
   });
 
   it('works when called with no options object', async () => {

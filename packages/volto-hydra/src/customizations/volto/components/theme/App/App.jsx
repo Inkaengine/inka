@@ -331,7 +331,41 @@ export function connectAppComponent(AppComponent) {
         // `@components.translations`, and nothing reads it again. SSR settles
         // this for a direct-fetch admin; there is no server here to settle it.
         promise: async ({ location, store }) => {
-          if (!loadsInThisEnvironment()) return;
+          // The SERVER's read, and only ever the server's — on the client the
+          // route reads its own content, exactly as a direct-fetch admin does.
+          //
+          // `loadsInThisEnvironment` is what the other keys here need, because
+          // nothing else fetches breadcrumbs or navigation and a bridge session
+          // has no server-side CMS to inherit them from. Content is different:
+          // every route that needs it reads it as it mounts (Edit's and
+          // Contents' own loaders, through withClientSideAsyncConnect; View's
+          // in componentDidMount), so on the client this read is not the one
+          // that matters — it is a SECOND read of the same slot.
+          //
+          // And a second read is not harmless, because redux-connect re-runs
+          // every route loader on every client-side navigation, which SSR never
+          // does. Two content reads for two different paths are then in flight
+          // at once and nothing orders them: redux-connect's loadDataCounter
+          // only decides which route RENDERS (Volto's own note there is "TODO:
+          // investigate race conditions"), and the content reducer keeps one
+          // slot and takes whatever lands last.
+          //
+          // That is how the MCP server's admin came to hold the SITE ROOT while
+          // editing a page. Its driver moves within the admin instead of
+          // loading it afresh, so parking on /contents read `/` — getBaseUrl
+          // drops the view — and that read landed after the editor's. The
+          // editor had the page, then the root: `get_page` answered "Plone
+          // Site"/"Inka", and Volto only unlocks on unmount `if
+          // (content?.lock?.locked)`, which the root's content is not, so every
+          // page the agent opened stayed locked for the lock's full ten
+          // minutes. Eleven specs, and only in bridge mode — on the client a
+          // direct-fetch admin never runs this loader at all.
+          //
+          // Nothing is lost on the client: this read never ran there on a page
+          // LOAD either. loadOnServer ends with END_GLOBAL_LOAD, so the
+          // serialised store arrives `loaded: true` and AsyncConnect's
+          // componentDidMount skips the loaders. Only navigations reached here.
+          if (!__SERVER__) return;
           if (config.settings.useBridgeBackend) await ensureSiteLoaded(store);
           return fetchContent({ store, location });
         },
