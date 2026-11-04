@@ -89,6 +89,21 @@ const WRITE_INTENTS = new Set([
   'content.delete',
   'content.move',
   'content.order',
+  // A LOCK is a write, because it changes what a read of that page says.
+  //
+  // A CMS with edit locks reports them on the content itself — Plone's GET
+  // carries `lock: {locked, creator, token, …}` — and the admin acts on exactly
+  // that: Volto's Edit releases the lock on unmount only `if
+  // (content?.lock?.locked)`. Left out of this list, taking a lock left the
+  // cached read saying the page was free, so the editor walked away without
+  // releasing it and the page stayed locked for the lock's full ten minutes.
+  //
+  // It hid behind something else for a while: an unrelated experiment relayed
+  // @login-renew as an `http` POST, which IS a write by the rule below, so
+  // every renewal happened to flush the cache. Reverting it did not break the
+  // locks — it stopped covering for this.
+  'content.lock',
+  'content.unlock',
   'asset.upload',
   'state.transition',
   'permissions.update',

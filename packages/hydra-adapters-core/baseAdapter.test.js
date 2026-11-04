@@ -105,3 +105,27 @@ describe('an expansion the adapter cannot serve', () => {
     );
   });
 });
+
+/**
+ * Taking a lock CHANGES what a read of that page says.
+ *
+ * A CMS that has edit locks reports them on the content itself — Plone's GET
+ * carries `lock: {locked, creator, token, …}` — and the admin acts on exactly
+ * that: Volto's Edit unlocks on unmount only `if (content?.lock?.locked)`. So a
+ * lock that does not invalidate the read cache leaves a cached copy saying the
+ * page is free, and the editor walks away without releasing it.
+ *
+ * Which is what happened: every page the MCP agent opened stayed locked for the
+ * lock's full ten minutes, and the lock call itself was working perfectly.
+ */
+test('a lock invalidates the reads, because it changes what a read says', () => {
+  const a = new Stub([]);
+  expect(a.isWriteIntent('content.lock', {})).toBe(true);
+  expect(a.isWriteIntent('content.unlock', {})).toBe(true);
+});
+
+test('a read is still a read', () => {
+  const a = new Stub([]);
+  expect(a.isWriteIntent('content.get', {})).toBe(false);
+  expect(a.isWriteIntent('tree.list', {})).toBe(false);
+});
