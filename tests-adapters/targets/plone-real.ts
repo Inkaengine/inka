@@ -154,6 +154,36 @@ async function waitForSite(timeoutMs = 180_000): Promise<void> {
 
 
 /**
+ * A site with at least one MEMBER.
+ *
+ * `admin` here is the Zope root user from the instance's inituser, not a member
+ * of the Plone site, so a site created by `make create-site` has no members at
+ * all — and plone.app.vocabularies.Users enumerates the site's membership.
+ * The contract asks every index that names a vocabulary to offer terms from
+ * it, and Creator names that one, so it answered with nothing: 0 terms, on a
+ * site that plainly has an author for every document.
+ *
+ * Not a failing of the vocabulary and not something a query would have found
+ * (checked: `?title=admin` is empty too) — just a site nobody has joined.
+ */
+async function ensureAMember(): Promise<void> {
+  const created = await req('/@users', {
+    method: 'POST',
+    body: JSON.stringify({
+      username: 'editor',
+      email: 'editor@example.com',
+      password: 'editor-secret-1',
+      roles: ['Member'],
+    }),
+  });
+  // 400 is Plone saying the login is already in use, which is this function
+  // having run before — every other refusal is one to hear about.
+  if (!created.ok && created.status !== 400) {
+    throw new Error(`creating a member failed: ${created.status} ${await created.text()}`);
+  }
+}
+
+/**
  * The site the CONTRACT needs, not the site a fresh Plone gives you.
  *
  * A default Plone 6 has plone.app.multilingual in its dependency pins but does
@@ -204,7 +234,8 @@ async function waitForSite(timeoutMs = 180_000): Promise<void> {
  * multilingual only for a site whose navigation root IS a language folder —
  * and not something to settle inside a test fixture.
  */
-async function ensureMultilingual(): Promise<void> {
+async function prepareSite(): Promise<void> {
+  await ensureAMember();
   const addon = '/@addons/plone.app.multilingual';
   const state = await req(addon);
   if (!state.ok) {
@@ -342,7 +373,7 @@ const target: Target = {
     }
     await waitForSite();
     await login();
-    await ensureMultilingual();
+    await prepareSite();
     await this.seed();
   },
 
@@ -396,7 +427,22 @@ const target: Target = {
   },
 
   async fetchAsSession(url: string) {
-    return fetch(url, {
+    // Back through the VHM, which is the only way this host serves the site.
+    //
+    // Plone publishes absolute URLs built from what the VHM tells it it is —
+    // `http://localhost:PORT/news/scaled.png/@@images/...` — and that is the
+    // right URL for a site served at the root of that host, which is how every
+    // deployment serves it. Here the root of the host is ZOPE, and the site is
+    // one object down, so fetching what Plone published lands on nothing: the
+    // image scale came back 404 and read as the adapter publishing a bad URL.
+    // It is publishing the right one; this target is the thing reaching Plone
+    // by an address no deployment uses.
+    const at = new URL(url);
+    const through =
+      at.host === HOST && !at.pathname.startsWith('/VirtualHostBase/')
+        ? `${BASE}${at.pathname}${at.search}`
+        : url;
+    return fetch(through, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
   },

@@ -24,10 +24,22 @@ const codeExamples = (page, slotId) =>
   Object.values(page.blocks || {}).filter((b) => b['@type'] === 'codeExample' && b.slotId === slotId);
 
 let examplePages;
+/**
+ * Long enough for the work, which is reading and parsing the WHOLE docs tree.
+ *
+ * That takes about four and a half seconds on its own and vitest allows a hook
+ * ten, so it fit until the suite around it grew — the adapter packages' tests
+ * now run beside it — and then it tipped over, with a hook timeout that says
+ * nothing about the docs and looks for all the world like a flake. Same answer
+ * as ports-are-not-hardcoded.test.ts's SCAN_TIMEOUT, and for the same reason:
+ * the test reads a lot of files on purpose, so it is given the time to, rather
+ * than reading fewer of them.
+ */
+const PARSE_DOCS = 60_000;
 beforeAll(() => {
   const { items } = readTree(DOCS, { schemaFor });
   examplePages = [...items].filter(([id, p]) => id.startsWith('/examples/') && usesTemplate(p));
-});
+}, PARSE_DOCS);
 
 describe('example pages are single-source (discovered by their template)', () => {
   it('finds the example pages by template, not a hardcoded list', () => {
