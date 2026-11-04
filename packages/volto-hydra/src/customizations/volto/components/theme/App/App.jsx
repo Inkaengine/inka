@@ -333,42 +333,6 @@ export function connectAppComponent(AppComponent) {
         promise: async ({ location, store }) => {
           if (!loadsInThisEnvironment()) return;
           if (config.settings.useBridgeBackend) await ensureSiteLoaded(store);
-
-          // On the CLIENT, a CMS-UI route reads its own content; this one does
-          // not read it again.
-          //
-          // Three measured results decided this, not an argument. Skipping the
-          // read on the client ENTIRELY: admin-mock 741 passed, every MCP lock
-          // failure gone — and all four journeys lost their toolbar Add button,
-          // because the VIEW route's content comes from here and nothing else
-          // fetches it. Keeping the read and correcting it afterwards (the heal
-          // below): journeys green, admin-mock 616, the lock failures back.
-          // Making a lock invalidate the adapter's read cache, which is a real
-          // bug and is fixed in baseAdapter: still 616.
-          //
-          // So the split is between routes that have their own loader and
-          // routes that do not. isCmsUi is exactly that line — it tests
-          // nonContentRoutes, so /contents and /x/edit are true and a view path
-          // is false. The editor and the contents view read their own content
-          // (Edit's reduxAsyncConnect, Contents through
-          // withClientSideAsyncConnect); the view route has only this.
-          //
-          // What this removes is the read that was doing the damage: parking on
-          // /contents read `/`, because getBaseUrl drops the view, and that
-          // landed after the editor's read of the page it was editing.
-          //
-          // Page LOADS are unaffected either way: loadOnServer ends with
-          // END_GLOBAL_LOAD, so the serialised store arrives `loaded: true` and
-          // AsyncConnect's componentDidMount skips these loaders. Only
-          // client-side navigation ever reaches here.
-          if (
-            !__SERVER__ &&
-            config.settings.useBridgeBackend &&
-            isCmsUi(location.pathname)
-          ) {
-            return;
-          }
-
           const content = await fetchContent({ store, location });
           if (!config.settings.useBridgeBackend) return content;
 
