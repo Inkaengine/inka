@@ -395,6 +395,7 @@ export default defineConfig({
       env: {
         PORT: String(PORTS.mockApi),
         CONTENT_MOUNTS: '/docs:docs,/_test_data:tests-playwright/fixtures/content,/:tests-playwright/fixtures/site-root',
+        CONTENT_SCHEMAS: 'tests-playwright/fixtures/shared-block-schemas.js',
       },
     },
     {

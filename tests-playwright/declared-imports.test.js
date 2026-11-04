@@ -33,8 +33,6 @@ const OUTSIDE = {
     'runs with no install: Dockerfile.api copies the validator beside helpers, and pretagov-site CI runs bin/plone-content.cjs from a bare checkout',
   'packages/content-validator/plone-content-validator.cjs -> packages/helpers/buildBlockPathMap.js':
     'runs with no install (see above)',
-  'packages/mock-api/mock-plone-api.cjs -> tests-playwright/fixtures/shared-block-schemas.js':
-    "Inka's own test-frontend block schemas, which judge only content that ships in the Inka checkout",
   'packages/hydra-js/mergeTemplates.js -> packages/volto-hydra/src/utils/mergeTemplates.mjs':
     'the bridge re-exports the admin add-on\'s template merge; to move into helpers',
 };

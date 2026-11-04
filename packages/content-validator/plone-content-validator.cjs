@@ -24,7 +24,7 @@ const path = require('path');
 // hydra's container API. Node require()s sync ESM, so a sync validator can use
 // the same enumeration the editor does instead of reading blocks_layout itself.
 const { getChildFields, getChildBlockEntries, isUnlabelledDefinition } = require('../helpers/index.js');
-const { buildBlockPathMap, getResolvedSchema } = require('../helpers/buildBlockPathMap.js');
+const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('../helpers/buildBlockPathMap.js');
 
 // Fields present in block data that are not schema properties but are never
 // authored/editable content: structural, serialisation, and Volto slot runtime.
@@ -1843,4 +1843,45 @@ function fieldMapFromSchemas(schemas) {
   return { blocks, identityFields: [...identityFields] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };
+/** The id field each list-of-objects item is identified by, from a site's
+ *  schemas: what checkIntegrity and checkBlockSchemas need to walk a slider's
+ *  slides or a table's rows. Null without schemas. */
+function idFieldMapFor(schemas) {
+  return schemas ? buildIdFieldMap(schemas, { formatMessage: (m) => m?.defaultMessage || '' }) : null;
+}
+
+/**
+ * Everything content is checked for, given the block schemas it is written
+ * against: its structure and references (checkIntegrity), and with schemas each
+ * field's value against its widget and every stored field against what the
+ * block declares (checkBlockSchemas). Without schemas, the structural checks
+ * only. `source` is a directory or `[{ rel, data }]`. With `elsewhere`, references
+ * to content outside `source` come back in `elsewhere` instead of as errors.
+ */
+function checkContent(source, { schemas = null, allowMissingBlobs = false, elsewhere = false } = {}) {
+  const idFieldMap = idFieldMapFor(schemas);
+  const integrity = checkIntegrity(source, {
+    ...(schemas && { schemasFor: () => schemas }),
+    allowMissingBlobs,
+    idFieldMap,
+    elsewhere,
+  });
+  const declared = schemas
+    ? checkBlockSchemas(source, fieldMapFromSchemas(schemas), { idFieldMap })
+    : { errors: [], warnings: [] };
+  return {
+    errors: [...integrity.errors, ...declared.errors],
+    warnings: [...integrity.warnings, ...declared.warnings],
+    ...(elsewhere && { elsewhere: integrity.elsewhere }),
+  };
+}
+
+/** checkContent for a plone.exportimport directory, plus its export shape
+ *  (validate): what an importer needs of the tree before it is shipped. */
+function checkExport(contentDir, { schemas = null, allowMissingBlobs = false } = {}) {
+  const shape = validate(contentDir, { allowMissingBlobs });
+  const content = checkContent(contentDir, { schemas, allowMissingBlobs });
+  return { errors: [...shape.errors, ...content.errors], warnings: [...shape.warnings, ...content.warnings] };
+}
+
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };

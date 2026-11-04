@@ -15,6 +15,7 @@ process.env.CONTENT_MOUNTS = [
   '/_test_data:' + abs('../../tests-playwright/fixtures/content'),
   '/:' + abs('../../tests-playwright/fixtures/site-root'),
 ].join(',');
+process.env.CONTENT_SCHEMAS = abs('../../tests-playwright/fixtures/shared-block-schemas.js');
 
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');

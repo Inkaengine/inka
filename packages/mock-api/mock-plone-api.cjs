@@ -37,7 +37,7 @@ const FIXTURE_ORIGIN = 'http://localhost:8888';
  * Parse CONTENT_MOUNTS env variable for multiple content directories
  * Format: "mountPath:dirPath,mountPath2:dirPath2"
  * Example: "/:/default/content,/pretagov:/path/to/pretagov/content"
- * Falls back to default ./content directory mounted at /
+ * Without it, serves Inka's own dev content (the three mounts below)
  */
 function parseContentMounts() {
   const mountsEnv = process.env.CONTENT_MOUNTS;
@@ -63,6 +63,10 @@ function parseContentMounts() {
 }
 
 const CONTENT_MOUNTS = parseContentMounts();
+// Inka's own test frontend's schemas go with Inka's own content: they are the
+// default only when the default mounts are.
+const CONTENT_SCHEMAS = process.env.CONTENT_SCHEMAS
+  || (process.env.CONTENT_MOUNTS ? null : path.join(__dirname, '../../tests-playwright/fixtures/shared-block-schemas.js'));
 
 /**
  * A mount's redirects as site-relative [old, new] pairs, or [] when it has none.
@@ -165,7 +169,7 @@ function getAllRedirects() {
   return out;
 }
 
-// The ESM loaders (readTree, checkIntegrity) are imported once at startup and
+// The ESM loader (readTree) is imported once at startup and
 // held so a mount can be reloaded SYNCHRONOUSLY (on a watcher change or a cache
 // miss) without re-awaiting a dynamic import.
 let mdRuntime = null;
@@ -2542,7 +2546,7 @@ function mountFor(urlPath) {
  *  is what clears deletions. */
 function loadMarkdownMount(mount) {
   if (!mdRuntime) return;
-  const { readTree, checkIntegrity } = mdRuntime;
+  const { readTree } = mdRuntime;
   const { mountPath, dirPath } = mount;
   // Pass the mountPath as the link prefix so hand-authored .md cross-links resolve
   // to the served @ids (a /docs mount serves its tree under /docs, not at root).
@@ -2580,7 +2584,7 @@ function loadMarkdownMount(mount) {
  * export-shape check, since they are what gets imported into a real Plone.
  */
 function validateServedContent() {
-  const { validate, checkIntegrity } = require('@inka/content-validator');
+  const { validate, checkContent } = require('@inka/content-validator');
   // ALLOW_MISSING_BLOBS=true: a blob whose bytes are not on disk is a warning,
   // not an error — what `plone-content --allow-missing-blobs` does. For a pull
   // request whose content references a file CI makes only after the merge (a
@@ -2603,54 +2607,26 @@ function validateServedContent() {
     if (data == null) throw new Error(`content-check: ${urlPath} is registered but has no content`);
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
-  keep(checkIntegrity(source, { schemasFor: hydraSchemasForOwnContent, allowMissingBlobs }));
+  keep(checkContent(source, { schemas: contentSchemas, allowMissingBlobs }));
   for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
-  if (siteSchemas) {
-    const { checkBlockSchemas, fieldMapFromSchemas } = require('@inka/content-validator');
-    const { buildIdFieldMap } = require('@volto-hydra/helpers/buildBlockPathMap.js');
-    // Without the idFieldMap the container API sees only object_lists whose
-    // items carry templateId, so a slider's slides go unchecked.
-    const idFieldMap = buildIdFieldMap(siteSchemas, { formatMessage: (m) => m?.defaultMessage || '' });
-    const own = source.filter((item) => !isHydraOwned(item.rel));
-    errors.push(...checkBlockSchemas(own, fieldMapFromSchemas(siteSchemas), { idFieldMap }).errors);
-  }
   return errors.map((m) => m.trim());
 }
 
 /**
- * shared-block-schemas describe hydra's OWN test frontend, so they judge only
- * content that ships in this checkout (the docs, the fixtures, the site root).
- * A frontend mounting its own content has its own schemas — its `hero` is not
- * this `hero` — so its blocks get the structural checks, not these shapes.
+ * The block schemas the served content is checked against, from CONTENT_SCHEMAS:
+ * the module the frontend's config loads (`.mjs`/`.js`, default export) or a
+ * `.json` file, shaped `{ blockType: { blockSchema, schemaEnhancer? } }`. They
+ * judge every mount -- each field's value against its widget, every stored field
+ * against what the block declares -- decode markdown mounts (a `codeExample`
+ * that shows a schema, link summaries) and check what @export writes. Without
+ * them the content gets only the structural checks. Loaded at startup, before
+ * the served content is validated.
  */
-const HYDRA_ROOT = path.resolve(__dirname, '..', '..');
-function hydraSchemasForOwnContent(urlPath) {
-  return isHydraOwned(urlPath) ? hydraBlocksConfig : siteSchemas;
-}
-
-/** Whether the content at `urlPath` is served from inside this hydra checkout
- *  (hydra's own test content) rather than a consumer's mount. */
-function isHydraOwned(urlPath) {
-  const mount = CONTENT_MOUNTS
-    .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(m.mountPath + '/'))
-    .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
-  return path.resolve(mount.dirPath).startsWith(HYDRA_ROOT + path.sep);
-}
-
-/**
- * A consumer's own block schemas, from CONTENT_SCHEMAS: the module its frontend
- * config loads (`.mjs`/`.js`, default export) or a `.json` file, either shaped
- * `{ blockType: { blockSchema, schemaEnhancer? } }`. Its content is checked
- * against them -- each field's value against its widget, and every field
- * against what the block declares. Without it a consumer's blocks are not
- * schema-checked (hydra's own schemas describe hydra's test frontend, not
- * theirs). Loaded at startup, before the served content is validated.
- */
-let siteSchemas = null;
-async function loadSiteSchemas() {
-  if (!process.env.CONTENT_SCHEMAS) return;
+let contentSchemas = null;
+async function loadContentSchemas() {
+  if (!CONTENT_SCHEMAS) return;
   const { loadSchemas } = require('@inka/content-validator');
-  siteSchemas = await loadSchemas(process.env.CONTENT_SCHEMAS);
+  contentSchemas = await loadSchemas(CONTENT_SCHEMAS);
 }
 
 function reportContentErrors(errors) {
@@ -2710,26 +2686,11 @@ async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
   if (!mounts.length) return;
   const { readTree } = await import('@inka/blockmd/markdown-mount.mjs');
-  const { checkIntegrity } = require('@inka/content-validator');
-  // readTree takes a type -> blockSchema function; only checkIntegrity takes
-  // the whole config. Two different contracts, so both are supplied.
   mdRuntime = {
     readTree,
-    checkIntegrity,
-    schemaFor: (type) => hydraBlocksConfig?.[type]?.blockSchema ?? null,
+    schemaFor: (type) => contentSchemas?.[type]?.blockSchema ?? null,
   };
   for (const mount of mounts) loadMarkdownMount(mount);
-}
-
-/** The block schemas content is checked against, and that a markdown
- *  `<block type="codeExample" format="schema">` shows — shared-block-schemas,
- *  the complete registry the frontends register from, so neither can drift from
- *  what renders. A type it does not know is not schema-checked. Imported here,
- *  not via markdown-mount, so a JSON-only consumer needs no markdown toolchain. */
-let hydraBlocksConfig = null;
-async function loadBlockSchemas() {
-  const { sharedBlocksConfig } = await import('../../tests-playwright/fixtures/shared-block-schemas.js');
-  hydraBlocksConfig = sharedBlocksConfig;
 }
 
 // Scan content directories on startup (content loaded on-demand)
@@ -2774,7 +2735,7 @@ initContentDirMap();
 // Markdown mounts need a dynamic import, so loading them is async. Anything
 // that serves requests must await `ready` first, or the first request can
 // arrive before the tree is in memory.
-ready = loadBlockSchemas().then(loadSiteSchemas).then(initMarkdownMounts).then(assertServedContentValid);
+ready = loadContentSchemas().then(initMarkdownMounts).then(assertServedContentValid);
 
 // Watch content mounts for additions/deletions/modifications and rebuild
 // contentDirMap. node --watch only restarts the JS process on .cjs edits —
@@ -3647,11 +3608,9 @@ app.post('/@export', async (req, res) => {
       return res.status(409).json({ error: 'no content to export' });
     }
     // Never ship a tree the importer would choke on.
-    const { validate, checkIntegrity } = require('@inka/content-validator');
+    const { checkExport } = require('@inka/content-validator');
     const contentDir = path.join(staging, 'content');
-    const v = validate(contentDir, { allowMissingBlobs });
-    const c = checkIntegrity(contentDir, { schemasFor: () => hydraBlocksConfig, allowMissingBlobs });
-    const errors = [...v.errors, ...c.errors];
+    const { errors } = checkExport(contentDir, { schemas: contentSchemas, allowMissingBlobs });
     if (errors.length) {
       return res.status(500).json({ error: 'export failed validation', errors: errors.slice(0, 20) });
     }

@@ -2340,3 +2340,5 @@ export const sharedBlocksConfig = {
         },
     },
 };
+
+export default sharedBlocksConfig;

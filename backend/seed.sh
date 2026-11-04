@@ -58,7 +58,7 @@ if curl -sf -o /dev/null -H 'Accept: application/json' -H "Authorization: Bearer
 fi
 
 echo "==> Exporting the shared fixtures + docs from the mock API (port $SEED_MOCK_PORT)"
-PORT="$SEED_MOCK_PORT" CONTENT_MOUNTS="/docs:docs,/:tests-playwright/fixtures/site-root" \
+PORT="$SEED_MOCK_PORT" CONTENT_MOUNTS="/docs:docs,/:tests-playwright/fixtures/site-root" CONTENT_SCHEMAS="tests-playwright/fixtures/shared-block-schemas.js" \
   node "$ROOT/packages/mock-api/mock-api-server.cjs" > "$WORK/mock.log" 2>&1 &
 MOCK_PID=$!
 for _ in $(seq 1 60); do

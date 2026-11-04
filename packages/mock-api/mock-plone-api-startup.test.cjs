@@ -247,8 +247,9 @@ describe('mock API content validation', () => {
     assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
   });
 
-  it("judges content shipped in this checkout by hydra's schemas", () => {
-    // The same block, mounted from inside hydra, IS hydra's test content.
+  it('judges content only by CONTENT_SCHEMAS, wherever it is mounted from', () => {
+    // Mounted from inside this checkout and named nothing: no schemas, so only
+    // the structural checks -- where content lives says nothing about its blocks.
     const dir = fs.mkdtempSync(path.join(__dirname, '.content-check-'));
     try {
       fs.mkdirSync(path.join(dir, 'page'));
@@ -258,11 +259,20 @@ describe('mock API content validation', () => {
         blocks_layout: { items: ['h'] },
       }));
       const run = loadAndAwaitReady(`/:${dir}`);
-      assert.equal(run.status, 3, run.stderr.slice(-2000));
-      assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
+      assert.equal(run.status, 0, run.stderr.slice(-2000));
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("judges content by Inka's test-frontend schemas when CONTENT_SCHEMAS names them", () => {
+    // Inka's own content is checked the way any consumer's is: by being told
+    // the schemas. Its test hero declares `description` as slate.
+    const run = loadAndAwaitReady(`/:${heroPage({ description: 'plain text' })}`, {
+      CONTENT_SCHEMAS: path.join(__dirname, '../../tests-playwright/fixtures/shared-block-schemas.js'),
+    });
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
   });
 
   // Nothing excuses a content problem: there is no list of "expected" errors.
