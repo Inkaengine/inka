@@ -319,20 +319,35 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
 
   server.registerTool('create_page', {
     title: 'Create a page',
-    description: 'Add a page inside a section, as an editor does through the admin\'s add form, and save it. Optional "blocks" (in the get_page format, each with your own "@uid" if you will refer to it) are added after the blocks the page starts with. Returns the new page\'s path, its version for edit_blocks, and the ids of your blocks.',
+    description: 'Add a page inside a section, as an editor does through the admin\'s add form, and save it. Optional "blocks" (in the get_page format, each with your own "@uid" if you will refer to it) are added after the blocks the page starts with. For an item that is a file, such as an Image or a File, "file" is the media id of a file you staged (stage_media), and the item is made of it: the result\'s "media" gives the item, which the id names from then on. Returns the new page\'s path, its version for edit_blocks, and the ids of your blocks.',
     inputSchema: {
       parent: z.string().describe('The section to add it to, e.g. /docs'),
       title: z.string().describe('The page title'),
       type: z.string().optional().describe('The content type (default "Document")'),
       blocks: z.array(z.object({ '@type': z.string() }).passthrough()).optional().describe('Blocks to start with'),
+      ...(media && { file: z.string().optional().describe('For an Image, a File or another item that is a file: the media id of its file') }),
     },
-  }, async ({ parent, title, type = 'Document', blocks }, extra) => {
+  }, async ({ parent, title, type = 'Document', blocks, file }, extra) => {
     if (mediaIn(blocks ?? []).size) {
       throw new MediaRefused('a new page does not take new files yet: create the page first, then add them with edit_blocks');
     }
-    return asResult(await adminFor(extra).withNewPage({ parent, type, title }, (agent, { site }) => (
-      fillNewPage(agent, { blocks, mintId: randomUUID, check: draftCheck(agent, site) })
-    )));
+    if (!file) {
+      return asResult(await adminFor(extra).withNewPage({ parent, type, title }, (agent, { site }) => (
+        fillNewPage(agent, { blocks, mintId: randomUUID, check: draftCheck(agent, site) })
+      )));
+    }
+    if (mediaIn(file).size !== 1) throw new MediaRefused(`"file" is a media id from stage_media, not ${JSON.stringify(file)}`);
+    if (blocks?.length) throw new MediaRefused('an item that is a file has no blocks: give "file" or "blocks", not both');
+    const held = await heldFile(extra)(file);
+    if (held.uploaded) throw new MediaRefused(`${file} is already on the site, as ${held.uploaded}: use that item`);
+    const { name, type: fileType, data } = held;
+    const made = await adminFor(extra).withNewPage({ parent, type, title, file: { name, type: fileType, data } }, async (_, { site, created }) => ({
+      ...created, version: (await site.status(created.path)).version,
+    }));
+    // The media id names the item from now on, as one a save uploaded does.
+    const code = file.slice(MEDIA_PREFIX.length);
+    await media.update(code, { user: userOf(extra), name, type: fileType, uploaded: made.url });
+    return asResult({ path: made.path, version: made.version, media: { [file]: made.url } });
   });
 
   registerAppTool(server, 'edit_blocks', {
@@ -388,7 +403,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       title: 'Stage images or files for a page change (not on the site yet)',
       // It keeps the files on this server, for a change; nothing on the site changes.
       annotations: { readOnlyHint: true, openWorldHint: true },
-      description: `Stage images, or any other files, for a page change. Nothing is uploaded to the site: each file is kept on this MCP server for two hours, and goes onto the site only when a change that uses it is saved. Each comes from a "url" on the public internet${localFiles ? ', a "path" to a file on the person\'s computer, in a folder they allowed,' : ''} or a "picture" a tool here took (an id from a result's "pictures"), at most 10 MB. Returns a "media" id for each, in the order given: put it in edit_blocks where an image or a file goes, as you would an existing item's URL. A preview (edit_blocks with dryRun and preview, or preview_layout) shows it. When the change is saved, each file it uses is uploaded beside the page, and the save's "media" gives the item it became; the "media" id names that item from then on, for as long as it is kept. If any file can't be had, none are staged. create_page does not take new files yet: create the page, then add them with edit_blocks.`,
+      description: `Stage images, or any other files, for a page change. Nothing is uploaded to the site: each file is kept on this MCP server for two hours, and goes onto the site only when a change that uses it is saved. Each comes from a "url" on the public internet${localFiles ? ', a "path" to a file on the person\'s computer, in a folder they allowed,' : ''} or a "picture" a tool here took (an id from a result's "pictures"), at most 10 MB. Returns a "media" id for each, in the order given: put it in edit_blocks where an image or a file goes, as you would an existing item's URL. A preview (edit_blocks with dryRun and preview, or preview_layout) shows it. When the change is saved, each file it uses is uploaded beside the page, and the save's "media" gives the item it became; the "media" id names that item from then on, for as long as it is kept. If any file can't be had, none are staged. create_page makes an Image or File item of one (its "file"); for a new page\'s blocks, create the page, then add files with edit_blocks.`,
       inputSchema: {
         files: z.array(z.object({
           url: z.string().optional().describe('The file\'s URL, http or https'),

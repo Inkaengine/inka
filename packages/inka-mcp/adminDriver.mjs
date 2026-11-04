@@ -120,7 +120,7 @@ function locksOf(page) {
  * CMS or the admin refuses (a required field, a type not allowed there) throws
  * with what the form says.
  */
-export async function createPage(page, { parent, type, title }) {
+export async function createPage(page, { parent, type, title, file }) {
   await goTo(page, `${parent.replace(/\/$/, '')}/add?type=${encodeURIComponent(type)}`);
   const created = page.waitForResponse(
     (r) => r.request().method() === 'POST' && r.status() === 201,
@@ -133,6 +133,7 @@ export async function createPage(page, { parent, type, title }) {
   const refused = errors.first().waitFor({ state: 'visible', timeout: READY_MS })
     .then(() => errors.allInnerTexts(), () => null);
   await page.locator('#field-title input, input#field-title, input[name="title"]').first().fill(title);
+  if (file) await chooseFile(page, type, file);
   await page.locator('#toolbar-save').click();
   const outcome = await Promise.race([created.then((response) => ({ response })), refused.then((said) => ({ said }))]);
   if (!outcome.response) {
@@ -140,10 +141,36 @@ export async function createPage(page, { parent, type, title }) {
     throw new Error(`create_page: the add form refused it: ${outcome.said.join(' / ')}`);
   }
   const response = outcome.response;
-  const path = new URL((await response.json())['@id']).pathname;
-  await page.waitForURL((url) => url.pathname === `${path}/edit`, { timeout: READY_MS });
+  const url = (await response.json())['@id'];
+  const path = new URL(url).pathname;
+  // An item that is a file has no blocks, and so no editor to go on to.
+  if (file) return { path, url };
+  await page.waitForURL((at) => at.pathname === `${path}/edit`, { timeout: READY_MS });
   await waitForAgent(page);
-  return path;
+  return { path, url };
+}
+
+/**
+ * Choose `file` (`{ name, type, data }`, data base64) in the add form's one
+ * required file field (an Image's image, a File's file), as an editor does,
+ * and wait until the field has read it.
+ */
+async function chooseFile(page, type, file) {
+  // A file field's input comes with its drop area, which loads on its own
+  // (loadable react-dropzone) after the form: wait for every required field's.
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('.field.required')].every((field) => field.querySelector('input, textarea, select')),
+    null,
+    { timeout: READY_MS },
+  );
+  const inputs = page.locator('.field.required input[type="file"]');
+  const count = await inputs.count();
+  if (count !== 1) {
+    throw new Error(`create_page: a ${type} has ${count ? 'more than one' : 'no'} file field to take a file`);
+  }
+  const field = (await inputs.getAttribute('id')).replace(/^field-/, '');
+  await inputs.setInputFiles({ name: file.name, mimeType: file.type, buffer: Buffer.from(file.data, 'base64') });
+  await page.locator(`.field-wrapper-${field} .field-file-name`).filter({ hasText: file.name }).waitFor({ timeout: READY_MS });
 }
 
 /**

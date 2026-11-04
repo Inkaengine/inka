@@ -265,6 +265,42 @@ test.describe('MCP server', () => {
     expect(newPage.text).toMatch(/create the page first/);
   });
 
+  test('create_page: an Image or a File item made from a staged file, as the add form makes one', async ({ urls }) => {
+    test.setTimeout(180000);
+    const viewed = (await call('view_page', { path: PAGE })).json();
+    const { files: [photo, report, spare] } = (await call('stage_media', { files: [
+      { picture: viewed.pictures[0], name: 'team.png' },
+      { picture: viewed.pictures[0], name: 'report.png' },
+      { picture: viewed.pictures[0], name: 'spare.png' },
+    ] })).json();
+    const stored = async (path: string) => (await fetch(`${urls.mockApi}${path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+
+    const image = (await call('create_page', { parent: '/_test_data', type: 'Image', title: 'Team photo', file: photo.media })).json();
+    expect(image.version).toBeTruthy();
+    const madeImage = await stored(image.path);
+    expect(madeImage['@type']).toBe('Image');
+    expect(madeImage.title).toBe('Team photo');
+    expect(madeImage.image_scales.image[0]).toMatchObject({ filename: 'team.png', 'content-type': photo.type });
+    // The id names the item from then on.
+    expect(new URL(image.media[photo.media]).pathname).toBe(image.path);
+
+    const file = (await call('create_page', { parent: '/_test_data', type: 'File', title: 'Annual report', file: report.media })).json();
+    const madeFile = await stored(file.path);
+    expect(madeFile['@type']).toBe('File');
+    expect(madeFile.file).toMatchObject({ filename: 'report.png', 'content-type': report.type });
+
+    // A file already on the site is that item: a second one is not made of it.
+    const twice = await call('create_page', { parent: '/_test_data', type: 'Image', title: 'Again', file: photo.media });
+    expect(twice.isError).toBe(true);
+    expect(twice.text).toMatch(/is already on the site, as .*: use that item/);
+    // A type whose add form has no file to fill takes none.
+    const page = await call('create_page', { parent: '/_test_data', title: 'A page', file: spare.media });
+    expect(page.isError).toBe(true);
+    expect(page.text).toMatch(/a Document has no file field/);
+  });
+
   test('reads, dry-runs, saves, and refuses a stale version', async ({ urls }) => {
     // Every call opens the editor afresh — that is what keeps the server stateless.
     test.setTimeout(180000);

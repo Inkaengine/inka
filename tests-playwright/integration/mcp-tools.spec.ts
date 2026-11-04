@@ -156,7 +156,7 @@ test.describe('MCP tools', () => {
     await helper.login();
     await openAdmin(page, { adminUrl: helper.adminUrl });
 
-    const path = await createPage(page, { parent: '/_test_data', type: 'Document', title: 'Made by the MCP' });
+    const { path } = await createPage(page, { parent: '/_test_data', type: 'Document', title: 'Made by the MCP' });
     expect(path).toMatch(/^\/_test_data\/made-by-the-mcp/);
 
     const blocks = [{ '@uid': 'intro', '@type': 'slate', value: 'Written *by an agent*' }];
