@@ -129,13 +129,15 @@ test.describe('Nested lists', () => {
     });
 
     test('Enter on an empty indented item moves it out a level', async ({ page }) => {
-      // As Google Docs and Word do.
+      // As Word does. (Enter on an empty top-level item still leaves the list:
+      // markdown-shortcuts, "Enter on empty bullet exits list".)
       const helper = new AdminUIHelper(page);
       const block = helper.getIframe().locator(`[data-block-uid="${blockId}"]`);
       const editor = await parentWithChild(page, helper, block);
       await editor.press('Enter');
       await expect(block.locator('ul > li > ul > li')).toHaveCount(2, { timeout: 5000 });
       await editor.press('Enter');
+      await expectStored(page, [{ ul: [{ li: ['Parent'] }, { ul: [{ li: ['Child'] }] }, { li: [] }] }]);
       await editor.pressSequentially('Back out', { delay: 10 });
 
       await expectStored(page, [{ ul: [{ li: ['Parent'] }, { ul: [{ li: ['Child'] }] }, { li: ['Back out'] }] }]);
