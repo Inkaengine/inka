@@ -152,6 +152,83 @@ async function waitForSite(timeoutMs = 180_000): Promise<void> {
   );
 }
 
+
+/**
+ * The site the CONTRACT needs, not the site a fresh Plone gives you.
+ *
+ * A default Plone 6 has plone.app.multilingual in its dependency pins but does
+ * not activate it on the site, and offers one language. The adapter advertises
+ * `multilingual` because it can SERVE those calls (site.get's
+ * `features.multilingual` is what says whether a given site has languages), so
+ * the contract runs the translation group against it — and against a site with
+ * no multilingual support @translations and @translation-locator simply 404.
+ *
+ * Installing it here rather than skipping those specs, for two reasons. The
+ * package is already in the venv and inkaengine.inka pins it, so a deployed
+ * Inka site is a multilingual-capable one; and a target that skips what it
+ * finds inconvenient stops being the proof it exists to be. Same shape as the
+ * WordPress target, which installs its companion plugin before the contract
+ * runs rather than asserting a site without it.
+ *
+ * German is added because the specs translate into `de` — one language is not
+ * a multilingual site, whatever is installed. Idempotent: run on every start,
+ * including against an instance left up between runs.
+ *
+ * This takes two of the three translation specs from failing to passing. The
+ * third cannot pass against content at the site root, and the reason is worth
+ * writing down because it is not a fixture this target is missing. Reading a
+ * group back goes through plone.restapi's Translations adapter, which does
+ * this (services/multilingual/pam.py):
+ *
+ *     current_lang_nav_root = portal_state.navigation_root()
+ *     if IPloneSiteRoot.providedBy(current_lang_nav_root):
+ *         # We are not inside a LRF, bail off
+ *         return result            # no `items` key at all
+ *     result["translations"]["items"] = translations
+ *
+ * So `@translations` reports a group ONLY for content inside a Language Root
+ * Folder. Linking a translation of a root-level document succeeds — POST
+ * @translations answers 201, and a second attempt is refused with "Source
+ * already translated into language de", so the registration is certainly
+ * there — and the group still reads back empty. Verified by hand against this
+ * instance, with both ends carrying their languages ('en' and 'de') and the
+ * site offering both.
+ *
+ * Which makes `multilingual` and `features.multilingual` insufficient as a
+ * promise: a Plone site can have the addon installed, two languages
+ * configured, and still be unable to report what a document is translated
+ * into. Seeding this target under /en instead would make the spec pass and
+ * would also make its paths differ from every other target's, which is the
+ * one thing a shared contract cannot have. Left failing deliberately, because
+ * what to do about it is a contract decision — whether site.get should report
+ * multilingual only for a site whose navigation root IS a language folder —
+ * and not something to settle inside a test fixture.
+ */
+async function ensureMultilingual(): Promise<void> {
+  const addon = '/@addons/plone.app.multilingual';
+  const state = await req(addon);
+  if (!state.ok) {
+    throw new Error(`@addons could not be read: ${state.status} ${await state.text()}`);
+  }
+  if (!(await state.json()).is_installed) {
+    const installed = await req(`${addon}/install`, { method: 'POST' });
+    if (!installed.ok) {
+      throw new Error(
+        `installing plone.app.multilingual failed: ${installed.status} ${await installed.text()}`,
+      );
+    }
+  }
+  const languages = await req('/@controlpanels/language', {
+    method: 'PATCH',
+    body: JSON.stringify({ available_languages: ['en', 'de'] }),
+  });
+  if (!languages.ok) {
+    throw new Error(
+      `offering en and de failed: ${languages.status} ${await languages.text()}`,
+    );
+  }
+}
+
 /** Everything the site holds that this suite put there. */
 async function wipe(): Promise<void> {
   const res = await req('/@search?depth=1&metadata_fields=UID&b_size=200');
@@ -265,6 +342,7 @@ const target: Target = {
     }
     await waitForSite();
     await login();
+    await ensureMultilingual();
     await this.seed();
   },
 
