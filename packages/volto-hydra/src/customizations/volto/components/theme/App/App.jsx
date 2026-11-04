@@ -337,10 +337,12 @@ export function connectAppComponent(AppComponent) {
           // `loadsInThisEnvironment` is what the other keys here need, because
           // nothing else fetches breadcrumbs or navigation and a bridge session
           // has no server-side CMS to inherit them from. Content is different:
-          // every route that needs it reads it as it mounts (Edit's and
-          // Contents' own loaders, through withClientSideAsyncConnect; View's
-          // in componentDidMount), so on the client this read is not the one
-          // that matters — it is a SECOND read of the same slot.
+          // every route that needs it reads it for itself. Edit's own loader
+          // does, through redux-connect like any route loader — which is how we
+          // know it runs, since it is the call that takes the lock; View reads
+          // in componentDidMount; Contents through withClientSideAsyncConnect.
+          // So on the client this read is not the one that matters — it is a
+          // SECOND read of the same slot.
           //
           // And a second read is not harmless, because redux-connect re-runs
           // every route loader on every client-side navigation, which SSR never
