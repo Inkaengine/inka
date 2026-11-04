@@ -1266,12 +1266,33 @@ export class PloneAdapter extends BaseAdapter {
         // menus are built from what this adapter advertises.
 
         await this.assertSortable(args.sortOn);
+        // The block's stored criteria, plus what the visitor asked for in
+        // Plone's own spelling. See visitorCriteria.
+        const criteria = [...(args.query ?? []), ...this.visitorCriteria(args)];
         const raw = await this.fetchJson('/@querystring-search', {
           method: 'POST',
           body: {
-            // The block's stored criteria, plus what the visitor asked for in
-            // Plone's own spelling. See visitorCriteria.
-            query: [...(args.query ?? []), ...this.visitorCriteria(args)],
+            // NO criteria means everything, and Plone has to be told so.
+            //
+            // @querystring-search refuses an empty query outright — 400, "No
+            // query supplied" — where the canonical intent means what it says:
+            // a listing that names no criteria lists what there is. A listing
+            // block just dropped on a page is exactly that, and against a real
+            // Plone it answered with an error instead of the site's content.
+            //
+            // Said as a path criterion on the site root, which is how Plone
+            // spells "anywhere". Translating the CMS's dialect is this
+            // adapter's whole job; the alternative is every caller knowing
+            // that this one backend needs a criterion it did not ask for.
+            query: criteria.length
+              ? criteria
+              : [
+                  {
+                    i: 'path',
+                    o: 'plone.app.querystring.operation.string.absolutePath',
+                    v: '/',
+                  },
+                ],
             ...(args.sortOn ? { sort_on: args.sortOn } : {}),
             ...(args.sortOrder ? { sort_order: args.sortOrder } : {}),
             ...(args.limit ? { b_size: args.limit } : {}),
