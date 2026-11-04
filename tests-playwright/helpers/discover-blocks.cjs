@@ -78,7 +78,7 @@ function itemTypeFieldOf(blockDef) {
 /**
  * Every region a block type declares: a `blocks_layout` field, or an
  * `object_list` whose items hold blocks (subBlocks !== false) — the same test as
- * isRegionField() in packages/hydra-js/regionWidgets.js. A block that declares
+ * isRegionField() in packages/helpers/regionWidgets.js. A block that declares
  * no region field but restricts its children (allowedBlocks / defaultBlockType
  * on the block itself) has the default `items` region.
  *
@@ -1370,7 +1370,7 @@ async function discoverBlocks(
   // the schema-defined container fields (blocks_layout, object_list,
   // columns, …) and distinguishes real blocks from inline sub-items.
   // Dynamically imported because the module is ESM and this helper is CJS.
-  const { buildBlockPathMap } = await import('../../packages/hydra-js/buildBlockPathMap.js');
+  const { buildBlockPathMap } = await import('../../packages/helpers/buildBlockPathMap.js');
   // Reuse Hydra's canonical value validator (choices/enum/actions) — same check
   // it strips content with, so block-sanity flags exactly what the editor can't
   // produce. Dependency-free ESM.
