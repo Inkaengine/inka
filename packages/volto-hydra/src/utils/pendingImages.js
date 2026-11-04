@@ -14,26 +14,31 @@
  * image. Cancel uploads nothing: the held images are let go.
  */
 import { v4 as uuid } from 'uuid';
+import { uploadTypeOf } from './uploadPayload';
 
 export const PENDING_PREFIX = 'inka-pending:';
 
 /** A held image could not be uploaded, so the page was not saved. */
 export class UploadFailed extends Error {}
 
-/** The folder an image would be uploaded into does not take images from this user. */
-export class ImagesNotAllowed extends Error {}
+/** The folder a file would be uploaded into does not take its kind from this user. */
+export class NotAllowedThere extends Error {}
+
+const KIND = { Image: 'images', File: 'files' };
 
 /**
- * Check, before holding an image, that `folder` takes images from the
- * signed-in user, so the editor hears it when the image is dropped, not only
- * when the page is saved. `typesIn(folder)` resolves to the folder's @types:
- * every type, each marked `addable` for this user there. The server's own
- * limits (its upload size) are still only met on Save.
+ * Check, before holding `file`, that `folder` takes what it will be uploaded
+ * as (an Image, or a File: uploadTypeOf) from the signed-in user, so the
+ * editor hears it when the file is dropped, not only when the page is saved.
+ * `typesIn(folder)` resolves to the folder's @types: every type, each marked
+ * `addable` for this user there. The server's own limits (its upload size)
+ * are still only met on Save.
  */
-export async function checkImagesAllowed(folder, typesIn) {
-  const image = (await typesIn(folder)).find((type) => type.id === 'Image');
-  if (!image?.addable) {
-    throw new ImagesNotAllowed(`You can’t add images to ${folder}, so this one can’t be saved there.`);
+export async function checkAllowed(file, folder, typesIn) {
+  const id = uploadTypeOf(file);
+  const type = (await typesIn(folder)).find((t) => t.id === id);
+  if (!type?.addable) {
+    throw new NotAllowedThere(`You can’t add ${KIND[id]} to ${folder}, so this one can’t be saved there.`);
   }
 }
 
@@ -41,7 +46,9 @@ const held = new Map();
 const listeners = new Set();
 
 /**
- * Hold `file` (a dropped or picked File) for upload into `folder` (a path).
+ * Hold `file` (a dropped or picked File, or one an agent added) for upload
+ * into `folder` (a path). An image is uploaded as an Image, anything else as
+ * a File.
  * Returns the reference the page names it by.
  */
 export function holdImage(file, folder) {
@@ -120,9 +127,10 @@ function referencesIn(data, found = new Set()) {
 }
 
 /**
- * `data` with each reference replaced by its uploaded image: the URL where the
- * reference was, and on the object that held it the `image_field` and
- * `image_scales` an upload at drop time sets (ImageWidget).
+ * `data` with each reference replaced by what was uploaded: the URL where the
+ * reference was, and, for an Image, on the object that held it the
+ * `image_field` and `image_scales` an upload at drop time sets (ImageWidget).
+ * A File has no scales: its URL is all there is.
  */
 function withUploaded(data, uploaded) {
   if (!data || typeof data !== 'object') return data;
@@ -131,8 +139,10 @@ function withUploaded(data, uploaded) {
     if (isPendingImage(value)) {
       const content = uploaded.get(value);
       copy[key] = content['@id'];
-      copy.image_field = 'image';
-      copy.image_scales = { image: [content.image] };
+      if (content.image) {
+        copy.image_field = 'image';
+        copy.image_scales = { image: [content.image] };
+      }
     } else {
       copy[key] = withUploaded(value, uploaded);
     }

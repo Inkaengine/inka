@@ -23,10 +23,10 @@ import Api from '@plone/volto/helpers/Api/Api';
 import { toast } from 'react-toastify';
 import Toast from '@plone/volto/components/manage/Toast/Toast';
 import {
-  checkImagesAllowed,
+  checkAllowed,
   heldImagesIn,
   holdImage,
-  ImagesNotAllowed,
+  NotAllowedThere,
 } from '../../../../../utils/pendingImages';
 import Icon from '@plone/volto/components/theme/Icon/Icon';
 import { flattenToAppURL, isInternalURL } from '@plone/volto/helpers/Url/Url';
@@ -484,7 +484,7 @@ class ObjectBrowserBody extends Component {
     // (heldImagesIn), and picked as an uploaded one would be.
     if (config.settings.deferImageUploads && file.type.startsWith('image/')) {
       const folder = flattenToAppURL(this.state.currentFolder);
-      checkImagesAllowed(folder, (path) => new Api().get(`${path}/@types`))
+      checkAllowed(file, folder, (path) => new Api().get(`${path}/@types`))
         .then(() => {
           const ref = holdImage(file, folder);
           this.handleSelectItem(
@@ -492,7 +492,7 @@ class ObjectBrowserBody extends Component {
           );
         })
         .catch((error) => {
-          if (!(error instanceof ImagesNotAllowed)) throw error;
+          if (!(error instanceof NotAllowedThere)) throw error;
           toast.error(<Toast error title="Can't add this image" content={error.message} />);
         });
       return;

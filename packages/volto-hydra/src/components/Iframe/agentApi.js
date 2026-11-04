@@ -39,7 +39,10 @@ import {
   collectFieldRules,
   describeFieldRules,
 } from '../../../../hydra-js/fieldRules.js';
+import config from '@plone/volto/registry';
+import { getParentUrl } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from '../AgentSite/lockedBy';
+import { checkAllowed, holdImage } from '../../utils/pendingImages';
 import {
   getTargetMapping,
   getSourceField,
@@ -386,6 +389,39 @@ export function registerAgentApi(live) {
       // didn't move it, and says why.
       if (outcome !== 'moved') throw new Error(`move: ${outcome}`);
       await until(() => properties() !== before, STATE_LIMIT_MS, "move: the editor's state did not change");
+    },
+
+    /**
+     * Hold a file an agent adds (an image, or any other file) until the page
+     * is saved, as the editor holds one dropped on it: the page names it by
+     * the reference this resolves to, and Save uploads it (pendingImages.js)
+     * into the folder the image widget would, the page itself when it holds
+     * items, otherwise beside it. `data` is the file's bytes, base64.
+     *
+     * Only for a front end that sets deferImageUploads: it has promised to
+     * render a held image it is handed, which an agent's preview relies on.
+     */
+    async holdFile({ name, type, data }) {
+      if (!config.settings.deferImageUploads) {
+        throw new Error(
+          "holdFile: this site's front end doesn't show images held until the page is saved "
+          + '(deferImageUploads), so a file can\'t be added with a page change',
+        );
+      }
+      if (!name || !type || !data) throw new Error('holdFile: needs { name, type, data }');
+      const { is_folderish: isFolderish } = properties();
+      if (typeof isFolderish !== 'boolean') throw new Error('holdFile: the page does not say whether it holds items (is_folderish)');
+      const path = contentPath();
+      const folder = isFolderish ? path : getParentUrl(path);
+      const file = new File([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], name, { type });
+      await checkAllowed(file, folder, async (at) => {
+        const res = await fetch(`/++api++${at.replace(/\/$/, '')}/@types`, {
+          headers: { Accept: 'application/json', ...authHeaders() },
+        });
+        if (!res.ok) throw new Error(`holdFile: reading what ${at} takes answered ${res.status}`);
+        return res.json();
+      });
+      return holdImage(file, folder);
     },
 
     /**

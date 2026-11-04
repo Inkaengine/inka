@@ -12,7 +12,9 @@ vi.mock('../../context', () => ({
   useHydraSchemaContext: () => ({}),
 }));
 
+import config from '@plone/volto/registry';
 import { registerAgentApi } from './agentApi';
+import { heldImage, releaseImages } from '../../utils/pendingImages';
 
 describe('agent API before the editor has its page', () => {
   let unregister;
@@ -102,5 +104,79 @@ describe('what a block says about rules that depend on the data', () => {
       bare: { id: 'bare', title: 'Bare', blockSchema: { properties: {}, fieldsets: [] } },
     });
     expect(types.bare.fieldRules).toBeUndefined();
+  });
+});
+
+describe('holding a file an agent adds, until the page is saved', () => {
+  let unregister;
+  afterEach(() => {
+    unregister?.();
+    releaseImages();
+    vi.unstubAllGlobals();
+    delete config.settings.deferImageUploads;
+    window.history.pushState({}, '', '/');
+  });
+
+  /** The editor of `path`, a page that is folderish or not, in a folder whose @types are `addable`. */
+  const editing = (path, { isFolderish, addable }) => {
+    window.history.pushState({}, '', `${path}/edit`);
+    const asked = [];
+    vi.stubGlobal('fetch', async (url) => {
+      asked.push(url);
+      return new Response(JSON.stringify(Object.entries(addable).map(([id, ok]) => ({ id, addable: ok }))));
+    });
+    unregister = registerAgentApi({
+      current: { properties: { '@type': 'Document', is_folderish: isFolderish }, blockPathMap: {} },
+    });
+    return asked;
+  };
+  const PNG_BASE64 = btoa(String.fromCharCode(137, 80, 78, 71));
+
+  it("is refused when the site's front end doesn't take held images", async () => {
+    editing('/news/page', { isFolderish: false, addable: { Image: true } });
+    await expect(window.__inkaAgent.holdFile({ name: 'a.png', type: 'image/png', data: PNG_BASE64 }))
+      .rejects.toThrow(/front end .*deferImageUploads/);
+  });
+
+  it('holds the file where the image widget would upload it, and returns the reference the page names it by', async () => {
+    config.settings.deferImageUploads = true;
+    const asked = editing('/news/page', { isFolderish: false, addable: { Image: true } });
+    const ref = await window.__inkaAgent.holdFile({ name: 'a.png', type: 'image/png', data: PNG_BASE64 });
+    expect(ref).toMatch(/^inka-pending:/);
+    const held = heldImage(ref);
+    // Beside a page that holds no items, as ImageWidget uploads.
+    expect(held.folder).toBe('/news');
+    expect(asked).toEqual(['/++api++/news/@types']);
+    expect(held.file.name).toBe('a.png');
+    expect(held.file.type).toBe('image/png');
+    expect([...new Uint8Array(await held.file.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+  });
+
+  it('holds it inside a page that holds items', async () => {
+    config.settings.deferImageUploads = true;
+    editing('/news/page', { isFolderish: true, addable: { File: true } });
+    const ref = await window.__inkaAgent.holdFile({ name: 'r.pdf', type: 'application/pdf', data: btoa('%PDF') });
+    expect(heldImage(ref).folder).toBe('/news/page');
+  });
+
+  it("holds it in the site's root when editing the home page", async () => {
+    config.settings.deferImageUploads = true;
+    window.history.pushState({}, '', '/edit');
+    const asked = [];
+    vi.stubGlobal('fetch', async (url) => {
+      asked.push(url);
+      return new Response(JSON.stringify([{ id: 'Image', addable: true }]));
+    });
+    unregister = registerAgentApi({ current: { properties: { '@type': 'Plone Site', is_folderish: true }, blockPathMap: {} } });
+    const ref = await window.__inkaAgent.holdFile({ name: 'a.png', type: 'image/png', data: PNG_BASE64 });
+    expect(heldImage(ref).folder).toBe('/');
+    expect(asked).toEqual(['/++api++/@types']);
+  });
+
+  it("is refused when the folder doesn't take that kind of file from this user", async () => {
+    config.settings.deferImageUploads = true;
+    editing('/news/page', { isFolderish: false, addable: { Image: true, File: false } });
+    await expect(window.__inkaAgent.holdFile({ name: 'r.pdf', type: 'application/pdf', data: btoa('%PDF') }))
+      .rejects.toThrow('You can’t add files to /news, so this one can’t be saved there.');
   });
 });
