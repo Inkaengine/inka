@@ -95,6 +95,25 @@ def _parent_path(data_json: Path) -> str:
     return json.loads(data_json.read_text())["@id"].rsplit("/", 1)[0]
 
 
+def _item_dirs(dist_content_dir: Path) -> dict[str, str]:
+    """Each item's directory under `dist_content_dir`, by its UID and by the
+    directory name itself.
+
+    plone.exportimport keys its metadata by the object's UID, not by where the
+    item's data.json sits: an export names every directory after the UID, but
+    a layout may name them by path (`videos/intro/`). A key in neither form
+    names an item the layout no longer holds.
+    """
+    dirs: dict[str, str] = {}
+    for data_json in Path(dist_content_dir).rglob("data.json"):
+        dirname = data_json.parent.relative_to(dist_content_dir).as_posix()
+        dirs[dirname] = dirname
+        uid = json.loads(data_json.read_text()).get("UID")
+        if uid:
+            dirs[uid] = dirname
+    return dirs
+
+
 def subset_metadata_setters(
     dist_content_dir: Path,
     kept_dirs: set[str],
@@ -121,11 +140,15 @@ def subset_metadata_setters(
     `default_page` is keyed by CONTAINER, not by the page, so it needs the
     other rule: keep it when its TARGET is here. The site root is almost never
     in a delta, and that entry is precisely the one that matters.
+
+    Every table is keyed by UID (_item_dirs); an entry for an item the layout
+    no longer holds is left out, since there is nothing here for it to set.
     """
     meta_path = Path(dist_content_dir) / "__metadata__.json"
     if not meta_path.is_file():
         return {}
     source = json.loads(meta_path.read_text())
+    dirs = _item_dirs(dist_content_dir)
 
     out: dict = {}
     for name in SUBSET_SETTERS:
@@ -153,7 +176,7 @@ def subset_metadata_setters(
             kept = {
                 key: value
                 for key, value in data.items()
-                if key in kept_dirs
+                if dirs.get(key) in kept_dirs
                 or (
                     isinstance(value, dict)
                     and value.get("default_page_uuid") in kept_uids
@@ -168,14 +191,22 @@ def subset_metadata_setters(
             # item is placed with it; the importer sorts by position, so the
             # folder's relative order is the export's.
             parent_of = {
-                key: _parent_path(dist_content_dir / key / "data.json") for key in data
+                key: _parent_path(dist_content_dir / dirs[key] / "data.json")
+                for key in data
+                if key in dirs
             }
-            folders = {parent_of[key] for key in kept_dirs if key in parent_of}
+            folders = {
+                parent for key, parent in parent_of.items() if dirs[key] in kept_dirs
+            }
             kept = {
-                key: value for key, value in data.items() if parent_of[key] in folders
+                key: value
+                for key, value in data.items()
+                if parent_of.get(key) in folders
             }
         else:
-            kept = {key: value for key, value in data.items() if key in kept_dirs}
+            kept = {
+                key: value for key, value in data.items() if dirs.get(key) in kept_dirs
+            }
         if kept:
             out[name] = kept
     return out

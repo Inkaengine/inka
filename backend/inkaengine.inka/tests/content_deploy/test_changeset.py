@@ -433,3 +433,27 @@ def test_the_whole_metadata_still_leaves_relations_alone():
             ChangeSet(creates=["a"]), dist, tmp / "subset", whole_metadata=True
         )
         assert "relations" not in meta
+
+
+def test_metadata_is_keyed_by_uid_whatever_the_folders_are_named():
+    """plone.exportimport keys `ordering`, `local_roles` and the rest by the
+    object's UID. A layout whose item folders are named by path, not UID,
+    matched none of them, and a key naming an item the layout no longer holds
+    stopped the subset with FileNotFoundError."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        dist = _make_dist_with_metadata(
+            tmp / "dist",
+            {
+                "videos/a": {"@id": "/videos/a", "UID": "uid-a"},
+                "videos/b": {"@id": "/videos/b", "UID": "uid-b"},
+                "other": {"@id": "/other", "UID": "uid-o"},
+            },
+            {
+                "ordering": {"uid-a": 1, "uid-b": 0, "uid-o": 5, "uid-gone": 2},
+                "local_roles": {"uid-a": {"editor": ["Editor"]}, "uid-gone": {}},
+            },
+        )
+        meta = build_subset_dir(ChangeSet(updates=["videos/a"]), dist, tmp / "subset")
+        assert meta["ordering"] == {"uid-a": 1, "uid-b": 0}
+        assert meta["local_roles"] == {"uid-a": {"editor": ["Editor"]}}
