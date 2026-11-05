@@ -346,6 +346,49 @@ describe('a replaced peer', () => {
     await expect(inFlight).rejects.toMatchObject({ code: 'PEER_GONE' });
   });
 
+  it('re-sends a search, which Plone spells as a POST', async () => {
+    // @querystring-search takes its query in a body, so Plone made it POST —
+    // and "everything but a GET is a write" then threw away a READ when the
+    // preview window was replaced. list_children failed exactly that way:
+    // "search: Bridge request 'http' was lost: the preview window was
+    // replaced."
+    const { rpc, sent } = clientFor();
+    // Watched: until the fix this rejects, and an unhandled rejection takes
+    // the worker down instead of failing the test.
+    const inFlight = rpc.request('http', {
+      op: 'post',
+      path: '/@querystring-search',
+    });
+    const settled = inFlight.then(
+      () => 'resolved',
+      (err) => err.code,
+    );
+    expect(sent).toHaveLength(1);
+
+    rpc.peerReplaced();
+
+    expect(sent).toHaveLength(2);
+    expect(sent[1].intent).toBe('http');
+    // Still waiting on the NEW window, not rejected by the old one's going.
+    await expect(
+      Promise.race([settled, Promise.resolve('pending')]),
+    ).resolves.toBe('pending');
+  });
+
+  it('still refuses to re-send a POST that writes', async () => {
+    const { rpc, sent } = clientFor();
+    const inFlight = rpc.request('http', { op: 'post', path: '/news' });
+    const rejection = expect(inFlight).rejects.toMatchObject({
+      code: 'PEER_GONE',
+    });
+    expect(sent).toHaveLength(1);
+
+    rpc.peerReplaced();
+
+    expect(sent).toHaveLength(1);
+    await rejection;
+  });
+
   it('re-sends an in-flight READ to the new window', async () => {
     const { rpc, sent } = clientFor();
     const inFlight = rpc.request('content.get', { path: '/news' });

@@ -34,8 +34,28 @@ const WRITE_INTENTS = new Set([
   'permissions.update',
 ]);
 
+/**
+ * Reads that Plone spells as a POST.
+ *
+ * @querystring-search takes its query in a body — a stored listing's criteria
+ * are far too big for a URL — so plone.restapi made it POST-only. It reads
+ * nothing but the catalog, and re-asking changes nothing.
+ *
+ * "Everything but a GET is a write" is otherwise the right rule, and it is the
+ * same one baseAdapter uses to decide what invalidates its read cache. Here it
+ * threw away a READ when the preview window was replaced: `list_children`
+ * failed with "search: Bridge request 'http' was lost: the preview window was
+ * replaced", because the search went out as a POST and nothing would re-send
+ * it.
+ */
+const READS_BY_POST = /\/@querystring-search(\?|$)/;
+
 function isRetryableIntent(intent, args) {
-  if (intent === 'http') return (args?.op ?? 'get').toLowerCase() === 'get';
+  if (intent === 'http') {
+    const op = (args?.op ?? 'get').toLowerCase();
+    if (op === 'get') return true;
+    return op === 'post' && READS_BY_POST.test(String(args?.path ?? ''));
+  }
   return !WRITE_INTENTS.has(intent);
 }
 
