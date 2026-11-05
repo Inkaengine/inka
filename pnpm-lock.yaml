@@ -1570,6 +1570,48 @@ importers:
 
   packages/helpers: {}
 
+  packages/hydra-adapters-core:
+    dependencies:
+      '@volto-hydra/hydra-types':
+        specifier: workspace:*
+        version: link:../hydra-types
+
+  packages/hydra-adapters-drupal:
+    dependencies:
+      '@volto-hydra/hydra-adapters-core':
+        specifier: workspace:*
+        version: link:../hydra-adapters-core
+      '@volto-hydra/hydra-types':
+        specifier: workspace:*
+        version: link:../hydra-types
+
+  packages/hydra-adapters-plone:
+    dependencies:
+      '@volto-hydra/hydra-adapters-core':
+        specifier: workspace:*
+        version: link:../hydra-adapters-core
+      '@volto-hydra/hydra-types':
+        specifier: workspace:*
+        version: link:../hydra-types
+
+  packages/hydra-adapters-strapi:
+    dependencies:
+      '@volto-hydra/hydra-adapters-core':
+        specifier: workspace:*
+        version: link:../hydra-adapters-core
+      '@volto-hydra/hydra-types':
+        specifier: workspace:*
+        version: link:../hydra-types
+
+  packages/hydra-adapters-wordpress:
+    dependencies:
+      '@volto-hydra/hydra-adapters-core':
+        specifier: workspace:*
+        version: link:../hydra-adapters-core
+      '@volto-hydra/hydra-types':
+        specifier: workspace:*
+        version: link:../hydra-types
+
   packages/hydra-js:
     dependencies:
       '@volto-hydra/helpers':
@@ -1591,6 +1633,8 @@ importers:
       jsdom:
         specifier: ^22.0.0
         version: 22.1.0
+
+  packages/hydra-types: {}
 
   packages/inka-mcp:
     dependencies:
@@ -7917,9 +7961,6 @@ packages:
 
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
-
-  electron-to-chromium@1.5.364:
-    resolution: {integrity: sha512-G/dYE3+AYhyHwzTwg8UbnXf7zqMERYh7l2jJ3QujhFsH8agSYwtnGAR2aZ7f0AakIKJXd5En/Hre4igIUrdlYw==}
 
   electron-to-chromium@1.5.465:
     resolution: {integrity: sha512-zg4iUpbeGw7YNZsswc2xKr2uiBex2d8dELAXo92Icw3but1ULbrvK8USe6wVLaWjgJnKBARv0pchx9Owktx6wQ==}
@@ -22025,8 +22066,8 @@ snapshots:
 
   browserslist@4.14.2:
     dependencies:
-      caniuse-lite: 1.0.30001793
-      electron-to-chromium: 1.5.364
+      caniuse-lite: 1.0.30001819
+      electron-to-chromium: 1.5.465
       escalade: 3.2.0
       node-releases: 1.1.77
 
@@ -23426,8 +23467,6 @@ snapshots:
       safe-buffer: 5.2.1
 
   ee-first@1.1.1: {}
-
-  electron-to-chromium@1.5.364: {}
 
   electron-to-chromium@1.5.465: {}
 
@@ -26115,7 +26154,7 @@ snapshots:
       jest-environment-jsdom: 26.6.2
       jest-environment-node: 26.6.2
       jest-get-type: 26.3.0
-      jest-jasmine2: 26.6.3(ts-node@10.9.2(@types/node@22.19.3)(typescript@5.9.3))
+      jest-jasmine2: 26.6.3
       jest-regex-util: 26.0.0
       jest-resolve: 26.6.2
       jest-util: 26.6.2
@@ -26282,7 +26321,7 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
-  jest-jasmine2@26.6.3(ts-node@10.9.2(@types/node@22.19.3)(typescript@5.9.3)):
+  jest-jasmine2@26.6.3:
     dependencies:
       '@babel/traverse': 7.29.7
       '@jest/environment': 26.6.2
@@ -26303,11 +26342,7 @@ snapshots:
       pretty-format: 26.6.2
       throat: 5.0.0
     transitivePeerDependencies:
-      - bufferutil
-      - canvas
       - supports-color
-      - ts-node
-      - utf-8-validate
 
   jest-leak-detector@26.6.2:
     dependencies:

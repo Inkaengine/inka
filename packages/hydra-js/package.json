@@ -4,7 +4,8 @@
   "description": "Provides a method to initialize a bridge which enables communication between Volt Hydra and your frontend",
   "private": true,
   "exports": {
-    ".": "./hydra.src.js"
+    ".": "./hydra.src.js",
+    "./bridgeRpc": "./bridgeRpc.js"
   },
   "scripts": {
     "build": "esbuild hydra.src.js --bundle --format=esm --outfile=hydra.js --sourcemap",

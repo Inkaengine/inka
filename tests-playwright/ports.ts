@@ -84,6 +84,18 @@ const OFFSET = {
   vanillaDoc: 12,
   svelteQs: 13,
   astroQs: 14,
+  // The three-CMS journey's real backends.
+  mockDrupal: 15,
+  wordpress: 16,
+  strapi: 17,
+  plonSeeded: 18,
+  // The contract suite's own CMSes. Separate instances from the journey's, on
+  // separate ports, because the two suites seed the same paths to different
+  // states — sharing one would make each suite's fixtures the other's flake.
+  contractPlone: 19,
+  contractWordpress: 20,
+  contractStrapi: 21,
+  contractDrupal: 22,
 } as const;
 
 export type PortName = keyof typeof OFFSET;
@@ -105,6 +117,14 @@ export const PORT_ENV: Readonly<Record<PortName, string>> = {
   vanillaDoc: 'HYDRA_VANILLA_DOC_PORT',
   svelteQs: 'HYDRA_SVELTE_QS_PORT',
   astroQs: 'HYDRA_ASTRO_QS_PORT',
+  mockDrupal: 'HYDRA_MOCK_DRUPAL_PORT',
+  wordpress: 'HYDRA_WORDPRESS_PORT',
+  strapi: 'HYDRA_STRAPI_PORT',
+  plonSeeded: 'HYDRA_PLONE_SEED_PORT',
+  contractPlone: 'HYDRA_CONTRACT_PLONE_PORT',
+  contractWordpress: 'HYDRA_CONTRACT_WORDPRESS_PORT',
+  contractStrapi: 'HYDRA_CONTRACT_STRAPI_PORT',
+  contractDrupal: 'HYDRA_CONTRACT_DRUPAL_PORT',
 } as const;
 
 const port = (which: PortName): number => {
@@ -163,6 +183,29 @@ export const PORTS = {
   svelteQs: port('svelteQs'),
   /** Quick Start: dedicated Astro starter (docs/quickstart/astro). */
   astroQs: port('astroQs'),
+  /** Mock Drupal JSON:API, for the three-CMS journey. */
+  mockDrupal: port('mockDrupal'),
+  /** WordPress Playground, for the three-CMS journey. */
+  wordpress: port('wordpress'),
+  /**
+   * Strapi, for the journey.
+   *
+   * A DIFFERENT instance from the contract suite's, exactly as the journey's
+   * WordPress is: the two suites seed the same paths to different states, so
+   * sharing one would make each suite's fixtures the other's flake.
+   */
+  strapi: port('strapi'),
+  /**
+   * A Plone mock serving the CANONICAL seed, for journey specs that need the
+   * same fixtures as WordPress and Drupal. Separate from the docs-content mock
+   * on mockApi, which the other Plone journey project keeps using.
+   */
+  plonSeeded: port('plonSeeded'),
+  /** The contract suite's own CMSes, seeded from tests-adapters/fixtures/seed.json. */
+  contractPlone: port('contractPlone'),
+  contractWordpress: port('contractWordpress'),
+  contractStrapi: port('contractStrapi'),
+  contractDrupal: port('contractDrupal'),
 } as const;
 
 /**
@@ -175,7 +218,16 @@ export const PORTS = {
  */
 export const URLS = {
   mockApi: `http://localhost:${PORTS.mockApi}`,
-  testFrontend: `http://localhost:${PORTS.testFrontend}`,
+  // 127.0.0.1, not localhost.
+  //
+  // WordPress refuses `localhost` as an application-password success_url — its
+  // SSRF guard rejects the host, and authorize-application.php 500s rather than
+  // declining cleanly. The sign-in flow redirects back to this origin, so the
+  // frontend has to be addressed as something the CMS will accept. The CMS
+  // mocks already use 127.0.0.1, so this is also the more consistent choice.
+  testFrontend: `http://127.0.0.1:${PORTS.testFrontend}`,
+  plonSeeded: `http://127.0.0.1:${PORTS.plonSeeded}`,
+  strapi: `http://127.0.0.1:${PORTS.strapi}`,
   mockParent: `http://localhost:${PORTS.mockParent}`,
   voltoSsr: `http://localhost:${PORTS.voltoSsr}`,
   voltoWebpack: `http://localhost:${PORTS.voltoWebpack}`,

@@ -1,0 +1,1 @@
+The toolbar's More menu offers Rules and URL Management again. Both entries are gated on actions the CMS sends with the content, and a Plug registers its children once on mount — with no server render to fill the store first, the menu mounted while those actions were still in flight and registered "nothing" for good.

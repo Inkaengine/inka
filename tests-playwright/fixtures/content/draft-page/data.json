@@ -1,0 +1,29 @@
+{
+  "@id": "http://localhost:8888/draft-page",
+  "@type": "Document",
+  "UID": "draft-page-uid",
+  "id": "draft-page",
+  "title": "Draft Page",
+  "review_state": "private",
+  "description": "Not published: the view-mode preview must still show it to a signed-in editor.",
+  "blocks": {
+    "block-1": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Only editors see this."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "block-1"
+    ]
+  }
+}

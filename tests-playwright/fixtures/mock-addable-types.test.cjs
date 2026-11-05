@@ -69,7 +69,17 @@ async function addable(folder) {
 
 describe('@types in a folder', () => {
   it('an ordinary folder takes images and files', async () => {
-    assert.deepEqual(await addable('/open'), ['Document', 'Folder', 'Image', 'File']);
+    // Link is in the list because an external link in a navigation is a real
+    // Link DOCUMENT in Plone — everything in the tree is content — so the mock
+    // holds the type rather than treating a menu entry as a separate kind of
+    // thing. See the @types entry for it.
+    assert.deepEqual(await addable('/open'), [
+      'Link',
+      'Document',
+      'Folder',
+      'Image',
+      'File',
+    ]);
   });
 
   it('a folder that allows pages only takes no images', async () => {

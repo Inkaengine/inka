@@ -1,0 +1,21 @@
+{
+  "name": "@volto-hydra/hydra-adapters-wordpress",
+  "version": "1.0.0",
+  "description": "Hydra adapter for vanilla WordPress. No plugin required.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./public": "./publicRead.js",
+    "./playground-blueprint": "./companion-plugin/blueprint-steps.mjs"
+  },
+  "files": [
+    "index.js",
+    "publicRead.js",
+    "companion-plugin"
+  ],
+  "dependencies": {
+    "@volto-hydra/hydra-adapters-core": "workspace:*",
+    "@volto-hydra/hydra-types": "workspace:*"
+  },
+  "license": "MIT"
+}

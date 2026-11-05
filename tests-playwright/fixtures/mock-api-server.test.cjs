@@ -814,6 +814,265 @@ describe('redirects.json of an exportimport mount', () => {
   });
 });
 
+/**
+ * Where this mock must FAIL.
+ *
+ * Twice now a real-Plone bug has hidden behind this file being more forgiving
+ * than Plone: an invented @order endpoint our adapter was written against, and a
+ * @copy that overwrote where Plone renames. A mock that accepts what the CMS
+ * rejects does not make tests pass, it makes them meaningless — so each of these
+ * pins a refusal, with Plone's own status and wording.
+ */
+describe('refusals, as Plone refuses', () => {
+  const token = 'strictness-suite';
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+
+  it('has no @order endpoint', async () => {
+    // plone.restapi orders via PATCH on the container. This route existed here
+    // and nowhere else, so the adapter that used it 404'd against every real
+    // Plone while the contract suite stayed green.
+    const res = await fetch(`${baseUrl}/_test_data/@order`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ obj_id: 'anything', delta: 'top' }),
+    });
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.match(body.error.message, /PATCH on the container/);
+  });
+
+  it('refuses to order something that holds no children', async () => {
+    // another-page is authored is_folderish: false — it holds nothing, so there
+    // is no order to set.
+    const res = await fetch(`${baseUrl}/_test_data/another-page`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ ordering: { obj_id: 'x', delta: 'top' } }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error.message, /ordering is not supported/);
+  });
+
+  it('refuses a reorder computed against an order it does not share', async () => {
+    // Plone's own check: if the client's subset is not in the server's order,
+    // the client is looking at a stale table and the move would hit the wrong
+    // row.
+    const res = await fetch(`${baseUrl}/_test_data`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        ordering: {
+          obj_id: 'accordion-test-page',
+          delta: 'top',
+          subset_ids: ['this-one-does-not-exist', 'nor-this'],
+        },
+      }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error.message, /ordering mismatch/);
+  });
+
+  it('refuses to create a type it does not have', async () => {
+    const res = await fetch(`${baseUrl}/_test_data`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ '@type': 'Documnet', title: 'Typo' }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error.message, /Invalid type/);
+  });
+
+  it('still creates the types it declares, and the File it serves uploads for', async () => {
+    // The point is not to refuse everything: what this mock CREATES and what it
+    // DECLARES in @types have to be the same set, or the refusal above is just a
+    // different way to be wrong.
+    for (const type of ['Document', 'Folder', 'File']) {
+      const res = await fetch(`${baseUrl}/_test_data`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ '@type': type, title: `A ${type}` }),
+      });
+      assert.equal(res.status, 201, `${type} should be creatable`);
+    }
+  });
+});
+
+/**
+ * Locking and users, which the admin has always half-used.
+ *
+ * Volto's Edit route locks a document whenever the content carries a `lock` key
+ * — this mock has always sent one — and then sends `content.lock.token` as a
+ * Lock-Token header on every write. The lock routes here answered a fixed object
+ * with no token, had no GET at all, and content always reported {locked:false},
+ * so the whole round trip was write-only: a lock could not be read back, the
+ * token never travelled, and the unlock on leaving the editor never fired.
+ */
+describe('locking', () => {
+  const headers = (user) => ({
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    Authorization: `Bearer ${tokenFor(user)}`,
+  });
+  // The mock's OWN minter, not a hand-rolled copy. These tokens used to be
+  // built here with the literal signature "fake-signature", which the mock
+  // accepted when it never checked one. It verifies now, so every lock request
+  // came back 401 — and two of these tests passed anyway, because comparing
+  // one absent token to another absent token succeeds. Minting the real thing
+  // is what makes them mean something.
+  const tokenFor = (user) => mintToken(user);
+
+  const PATH = '/_test_data/test-page';
+
+  it('reports nobody holding it, in two keys', async () => {
+    // Read from the CONTENT, which is where Volto reads it: `content.lock` is
+    // what its Edit route consults to decide whether locking exists at all and
+    // whether to unlock on the way out. There is no GET @lock — nothing asks
+    // for one (the adapter POSTs and DELETEs), and plone.restapi's unlocked
+    // shape is exactly these two keys.
+    const content = await (
+      await fetch(`${baseUrl}${PATH}`, { headers: headers('nobody') })
+    ).json();
+    assert.deepEqual(content.lock, { locked: false, stealable: true });
+  });
+
+  it('takes a lock, with a token, and reads it back', async () => {
+    const taken = await (
+      await fetch(`${baseUrl}${PATH}/@lock`, { method: 'POST', headers: headers('admin') })
+    ).json();
+    assert.equal(taken.locked, true);
+    assert.equal(taken.creator, 'admin', 'the lock belongs to whoever asked');
+    assert.ok(taken.token, 'a lock without a token protects nothing');
+
+    // And the CONTENT says so, which is what Volto reads to decide whether to
+    // unlock when the editor closes — and is how the lock is read back.
+    const content = await (
+      await fetch(`${baseUrl}${PATH}`, { headers: headers('admin') })
+    ).json();
+    assert.equal(content.lock.locked, true);
+    assert.equal(content.lock.token, taken.token);
+  });
+
+  it('keeps the same token when the holder locks again', async () => {
+    // Volto locks on every entry into edit. A new token each time would
+    // invalidate the header the open editor is still sending.
+    const first = await (
+      await fetch(`${baseUrl}${PATH}/@lock`, { method: 'POST', headers: headers('admin') })
+    ).json();
+    const second = await (
+      await fetch(`${baseUrl}${PATH}/@lock`, { method: 'POST', headers: headers('admin') })
+    ).json();
+    assert.equal(second.token, first.token);
+  });
+
+  it('refuses to refresh a lock nobody holds', async () => {
+    const res = await fetch(`${baseUrl}/_test_data/another-page/@lock`, {
+      method: 'PATCH',
+      headers: headers('admin'),
+    });
+    assert.equal(res.status, 404, 'a refresh must not invent a lock');
+  });
+
+  it('releases it, and says so in lock_info', async () => {
+    await fetch(`${baseUrl}${PATH}/@lock`, { method: 'POST', headers: headers('admin') });
+    const released = await (
+      await fetch(`${baseUrl}${PATH}/@lock`, { method: 'DELETE', headers: headers('admin') })
+    ).json();
+    assert.deepEqual(released, { locked: false, stealable: true });
+  });
+
+  it("is the page's, so another editor sees it and can take it over", async () => {
+    // Content in this mock is per session; a lock is NOT, because in Plone a
+    // lock belongs to the object and every user sees it — that is the whole
+    // point of one. An editor who finds a page locked is told who holds it, and
+    // Volto's "unlock" sends force to take it over.
+    await fetch(`${baseUrl}${PATH}/@lock`, { method: 'POST', headers: headers('admin') });
+
+    const seen = await (
+      await fetch(`${baseUrl}${PATH}`, { headers: headers('editor') })
+    ).json();
+    assert.equal(seen.lock.locked, true, 'the other editor sees the lock');
+    assert.equal(seen.lock.creator, 'admin', 'and who is holding it');
+
+    const freed = await (
+      await fetch(`${baseUrl}${PATH}/@lock`, {
+        method: 'DELETE',
+        headers: headers('editor'),
+        body: JSON.stringify({ force: true }),
+      })
+    ).json();
+    assert.deepEqual(freed, { locked: false, stealable: true }, 'force takes it over');
+  });
+});
+
+describe('@users', () => {
+  const headers = { Accept: 'application/json' };
+
+  it('lists users in an envelope', async () => {
+    const res = await fetch(`${baseUrl}/@users`, { headers });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.items));
+    assert.equal(typeof body.items_total, 'number');
+    assert.ok(body['@id'].endsWith('/@users'));
+    // The member shape plone.restapi answers with.
+    for (const key of ['@id', 'id', 'username', 'fullname', 'email', 'roles', 'groups']) {
+      assert.ok(key in body.items[0], `a user record has ${key}`);
+    }
+  });
+
+  it('searches, so a picker has something to narrow', async () => {
+    // Against the seeded directory in mock-principals-and-rules.cjs, which is
+    // where users live. This asked for `edith` — a name from a SECOND user
+    // list that used to sit in mock-plone-api.cjs, where the same account was
+    // called Edith Editor. The module calls them Ed Editor, so the search
+    // matched nothing the moment the module started answering.
+    const body = await (
+      await fetch(`${baseUrl}/@users?query=editor`, { headers })
+    ).json();
+    assert.equal(body.items_total, 1);
+    assert.equal(body.items[0].id, 'editor');
+  });
+
+  it('404s an id it does not have, rather than inventing the user', async () => {
+    // The adapter identifies its session by asking for its own id. Synthesising
+    // an answer would make that succeed against a CMS with no such account.
+    const res = await fetch(`${baseUrl}/@users/nobody-here`, { headers });
+    assert.equal(res.status, 404);
+  });
+
+  it('knows the account a session signed in as', async () => {
+    // Login accepts any credentials here by design, and a login that succeeds
+    // means the account exists — so the two endpoints have to agree. That is
+    // what the adapter depends on: it identifies its session by asking for its
+    // own id straight after signing in.
+    //
+    // WITH THE TOKEN, which is the flow being protected. The account is known
+    // to the session that signed in, not to the world: an anonymous reader
+    // asking after someone else's account gets the same 404 as above, which is
+    // what Plone does too. This asserted the anonymous case until the users
+    // endpoint moved into mock-principals-and-rules.cjs, where a user belongs
+    // to a session — and then nothing served it.
+    const login = await fetch(`${baseUrl}/@login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ login: 'newcomer', password: 'secret' }),
+    });
+    const { token } = await login.json();
+    const res = await fetch(`${baseUrl}/@users/newcomer`, {
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).id, 'newcomer');
+  });
+});
+
 // Plone batches a folder's `items` (plone.restapi's HypermediaBatch): 25 by
 // default, from `b_start` / `b_size`, with `items_total` the whole folder.
 // ploneFetchItems now answers a folder-contents listing from here, so a mock

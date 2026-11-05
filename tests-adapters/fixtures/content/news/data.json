@@ -1,0 +1,13 @@
+{
+  "@id": "/news",
+  "@type": "Document",
+  "UID": "seed-news",
+  "id": "news",
+  "title": "News",
+  "review_state": "published",
+  "is_folderish": true,
+  "blocks": {},
+  "blocks_layout": {
+    "items": []
+  }
+}

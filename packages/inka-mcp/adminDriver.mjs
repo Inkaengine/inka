@@ -94,16 +94,51 @@ const heldLocks = new WeakMap();
 const isApi = (url) => new URL(url).pathname.startsWith('/++api++');
 const apiPathOf = (url) => new URL(url).pathname.replace(/^\/\+\+api\+\+/, '').replace(/\/@lock$/, '') || '/';
 
-/** Note each lock an editor in `page` takes (POST @lock) and lets go (DELETE @lock). */
+/** Who a request was made as, from its bearer token's `sub`. */
+function subjectOf(authorization) {
+  const token = /^Bearer\s+(.+)$/i.exec(authorization ?? '')?.[1];
+  const payload = token?.split('.')[1];
+  if (!payload) return null;
+  try {
+    return JSON.parse(Buffer.from(payload, 'base64').toString('utf-8')).sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Note each lock an editor in `page` takes (POST @lock) and lets go (DELETE @lock).
+ *
+ * OURS only. Plone's lock() leaves a lock someone else holds exactly as it is
+ * and answers with it, so a POST that comes back 200 has not necessarily taken
+ * anything — on a page another user is editing it is their lock being read
+ * back. Counted as ours, `park` then waited for a release that correctly never
+ * comes: the editor does not steal a lock it does not hold, so the page was
+ * "never let go" and every call that touched a page someone else was editing
+ * timed out. The admin applies the same rule on the way out (App's
+ * componentDidUpdate releases only a lock whose creator is this user), and
+ * these two have to agree or one of them waits for the other for ever.
+ */
 function trackLocks(page) {
   if (heldLocks.has(page)) return;
   const held = new Set();
   heldLocks.set(page, held);
-  page.on('response', (response) => {
+  page.on('response', async (response) => {
     if (!/\/@lock$/.test(new URL(response.url()).pathname) || !response.ok()) return;
     const method = response.request().method();
-    if (method === 'POST') held.add(apiPathOf(response.url()));
-    if (method === 'DELETE') held.delete(apiPathOf(response.url()));
+    if (method === 'DELETE') {
+      held.delete(apiPathOf(response.url()));
+      return;
+    }
+    if (method !== 'POST') return;
+    const lock = await response.json().catch(() => null);
+    const asUser = subjectOf(response.request().headers().authorization);
+    // No creator and no subject to compare it with: treat it as ours, which is
+    // what it was before any of this and is the safe way round — a lock watched
+    // that we do not hold is a timeout, a lock unwatched that we do hold is a
+    // page left locked.
+    if (lock?.creator && asUser && lock.creator !== asUser) return;
+    held.add(apiPathOf(response.url()));
   });
 }
 

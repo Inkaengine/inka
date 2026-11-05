@@ -1,0 +1,65 @@
+/*
+ * The state menu.
+ *
+ * It renders as one <li> inside Volto's More menu, which styles the list but
+ * nothing inside it — the entries, the dialog and its confirm button are ours.
+ */
+
+.state-menu .state-label {
+  display: block;
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+
+.state-menu .state-current {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5em;
+}
+
+.state-menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.state-menu-entry {
+  display: block;
+  width: 100%;
+  padding: 0.5em 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.state-menu-entry:hover {
+  text-decoration: underline;
+}
+
+.state-menu-empty,
+.state-consequence,
+.state-relocates {
+  font-size: 0.9em;
+  opacity: 0.8;
+  margin: 0.5em 0;
+}
+
+.state-error {
+  color: #c02c2c;
+  font-size: 0.9em;
+  margin: 0.5em 0;
+}
+
+.state-back {
+  border: 0;
+  background: none;
+  padding: 0 0 0.5em;
+  cursor: pointer;
+}
+
+.state-commit {
+  margin-top: 0.75em;
+  padding: 0.5em 1em;
+  cursor: pointer;
+}

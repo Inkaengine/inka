@@ -14,7 +14,7 @@
  * against a data model the real editor never has. These tests pin the fidelity.
  */
 import { test as base, expect } from '../fixtures';
-import { AdminUIHelper } from '../helpers/AdminUIHelper';
+import { AdminUIHelper, previewFrame } from '../helpers/AdminUIHelper';
 
 const test = base.extend<{ helper: AdminUIHelper }>({
   helper: async ({ page }, use) => {
@@ -53,7 +53,7 @@ test.describe('Forced-layout merge (mock parent ↔ admin fidelity)', () => {
 
   /** Every block the merge stamped onto the page, read from the bridge's own data. */
   async function mergedTemplateBlocks(page: import('@playwright/test').Page) {
-    const frame = page.frames().find((f) => f !== page.mainFrame())!;
+    const frame = await previewFrame(page);
     return frame.evaluate<TemplateBlock[]>(() => {
       const bridge = (window as any).__hydraBridge;
       const found: TemplateBlock[] = [];
@@ -104,7 +104,7 @@ test.describe('Forced-layout merge (mock parent ↔ admin fidelity)', () => {
     // Guard against passing vacuously: with no merged blocks the comparison
     // below is [] vs [] — which is exactly the broken state this pins.
     expect(blocks.length, 'no merged template blocks to look up').toBeGreaterThan(0);
-    const frame = page.frames().find((f) => f !== page.mainFrame())!;
+    const frame = await previewFrame(page);
     const known = await frame.evaluate(
       (uids: string[]) => {
         const bridge = (window as any).__hydraBridge;
@@ -132,7 +132,7 @@ test.describe('Forced-layout merge (mock parent ↔ admin fidelity)', () => {
     await helper.waitForIframeReady();
     await helper.waitForBridgeConnected();
 
-    const frame = page.frames().find((f) => f !== page.mainFrame())!;
+    const frame = await previewFrame(page);
     const own = await frame.evaluate(() =>
       Object.keys((window as any).__hydraBridge?.formData?.blocks || {}),
     );
@@ -146,7 +146,7 @@ test.describe('Forced-layout merge (mock parent ↔ admin fidelity)', () => {
     const blocks = await mergedTemplateBlocks(page);
     const locked = blocks.find((b) => b.readOnly);
     expect(locked, 'no readOnly block in the merged footer to unlock').toBeTruthy();
-    const frame = page.frames().find((f) => f !== page.mainFrame())!;
+    const frame = await previewFrame(page);
 
     // Locked to begin with: this is the state an author sees on an ordinary page.
     expect(

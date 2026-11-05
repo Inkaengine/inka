@@ -60,3 +60,12 @@ tests-playwright/.generated/
 # Generated Sphinx/myst source — `pnpm gen:myst` emits it OUTSIDE docs/ (the
 # source tree stays loader-shaped <block> markdown); a throwaway build artifact.
 _myst-build/
+
+# WordPress plugins the contract suite mounts into Playground — fetched, not
+# committed. Regenerate with `pnpm wp:plugins`.
+tests-adapters/fixtures/wp-plugins/
+# The Strapi instance the contract suite runs against — ~670MB of deps,
+# scaffolded by `pnpm strapi:fixture`. The committed part is the content model
+# in tests-adapters/fixtures/strapi-app/src.
+tests-adapters/fixtures/strapi-app/app/
+

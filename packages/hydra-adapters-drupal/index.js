@@ -1,0 +1,1867 @@
+import {
+  BaseAdapter,
+  AdapterError,
+  resolveOrderPosition,
+  VIEW_PREFIX,
+  EXCLUDED_NODE,
+  parseViewPath,
+} from '@volto-hydra/hydra-adapters-core';
+import { flattenPayload, aliasOf } from './normalize.js';
+
+/**
+ * Hydra adapter for Drupal via JSON:API.
+ *
+ * Two things make Drupal unlike Plone and WordPress:
+ *
+ *  - Nodes are FLAT. There is no parent pointer and no tree. Hierarchy comes
+ *    from menu links, which is how Drupal sites actually express structure.
+ *    Content with no menu link therefore has no place in the tree at all, so
+ *    it surfaces in a virtual folder rather than being invisible.
+ *  - A path alias is the document's URL and carries no structure. Moving a
+ *    document re-parents its MENU LINK; it must NOT rewrite a published URL.
+ */
+
+/** Virtual folder listing content that has no menu link yet. */
+export const UNFILED_PATH = '/_unfiled';
+
+/**
+ * Assets are Media entities, not bare files.
+ *
+ * A file entity has a uuid and a URI and nothing else — no name, no published
+ * state, no listing. Media is Drupal's equivalent of a WordPress attachment or
+ * a Plone Image object, and it is what makes an asset something an editor can
+ * find, rename and relocate. Core has shipped Media since 8.4 and the standard
+ * profile enables it, so requiring it is reasonable; sites without it are told
+ * so at init rather than silently given a degraded record.
+ */
+const MEDIA_BUNDLE = 'image';
+const MEDIA_FILE_FIELD = 'field_media_image';
+
+const STATE_MAP = { true: 'published', false: 'draft' };
+
+/**
+ * Order documents the admin's way, on the client.
+ *
+ * Used where the answer came from the MENU rather than a node query — the
+ * menu's own order is menu weight, the sibling order an editor arranges by
+ * hand, which is the right answer only until a sort is asked for. JSON:API
+ * cannot be asked to sort a set it did not select, and the documents are
+ * already in hand, so ordering them here costs nothing. Callers must apply any
+ * limit AFTER this, or a first page is chosen by one order and shown in
+ * another.
+ */
+function orderDocuments(items, sortOn, sortOrder) {
+  if (!sortOn) return items;
+  const field = sortFieldFor(sortOn);
+  const keyOf = (doc) =>
+    field === 'title'
+      ? (doc.title ?? '')
+      : (doc._adapter?.raw?.attributes?.[field] ?? '');
+  const descending = String(sortOrder ?? '').startsWith('desc');
+  return [...items].sort((a, b) => {
+    const x = keyOf(a);
+    const y = keyOf(b);
+    // Numbers compare as numbers: nid 10 does not sort before nid 2.
+    const order =
+      typeof x === 'number' && typeof y === 'number'
+        ? x - y
+        : String(x) < String(y)
+          ? -1
+          : String(x) > String(y)
+            ? 1
+            : 0;
+    return descending ? -order : order;
+  });
+}
+
+/**
+ * Drupal's query operations: what each is called, and which input collects its
+ * value. The ids are this adapter's own, like the index names — nothing
+ * translates them, so a criterion is stored and executed in one spelling.
+ *
+ * JSON:API's filter operators are what is behind them: `IN` for a multi-value
+ * selection, `NOT IN` for its negation, `CONTAINS` for a substring. An index
+ * advertises only the ones that make sense for it.
+ */
+const OPERATORS = {
+  'selection.any': {
+    title: 'Matches any of',
+    widget: 'MultipleSelectionWidget',
+  },
+  'selection.none': {
+    title: 'Matches none of',
+    widget: 'MultipleSelectionWidget',
+  },
+  'string.contains': { title: 'Contains', widget: 'StringWidget' },
+  'reference.any': { title: 'Matches any of', widget: 'autocomplete' },
+  'reference.none': { title: 'Matches none of', widget: 'autocomplete' },
+  // Drupal's hierarchy IS the menu, so a location criterion is answered from
+  // the menu tree rather than a path prefix. The title says which it is.
+  'menu_parent.is': { title: 'Under this menu item', widget: 'ReferenceWidget' },
+  'date.after': { title: 'After', widget: 'DateWidget' },
+  'date.before': { title: 'Before', widget: 'DateWidget' },
+  'int.is': { title: 'Equals', widget: 'StringWidget' },
+  'int.largerThan': { title: 'More than', widget: 'StringWidget' },
+  'int.lessThan': { title: 'Less than', widget: 'StringWidget' },
+  'boolean.isTrue': { title: 'Yes', widget: null },
+  'boolean.isFalse': { title: 'No', widget: null },
+};
+
+/** The operators map for one index: its own operations, described. */
+const operatorsFor = (ids) =>
+  Object.fromEntries(ids.map((id) => [id, { ...OPERATORS[id], operation: id }]));
+
+export class DrupalAdapter extends BaseAdapter {
+  /**
+   * `translations` says how THIS Drupal holds them, because Drupal does both
+   * and its own API cannot tell you which the editors use:
+   *
+   *   'variants' — Content Translation: one node carrying a version of each
+   *                field per langcode. The default, and what `default_langcode`
+   *                on a node means.
+   *   'grouped'  — separate nodes per language joined by a reference field,
+   *                which some sites prefer because each language then has its
+   *                own revisions, workflow and URL history.
+   *
+   * Whoever builds the adapter knows which; the CMS's name does not settle it,
+   * and guessing wrong offers an editor a lossless "link" that would actually
+   * merge one node into another and delete it.
+   */
+  constructor({
+    cmsBaseUrl,
+    credentials,
+    bundle = 'page',
+    translations = 'variants',
+  } = {}) {
+    super({
+      name: 'drupal',
+      capabilities: [
+        'content',
+        // JSON:API filter groups search title OR stored block content with
+        // CONTAINS, so core Drupal answers this without search_api.
+        'search-fulltext',
+        'search-filter',
+        'vocabulary',
+        'schema',
+        'asset',
+        'state',
+        // A Drupal menu link carries an enabled flag and a title of its own,
+        // so it can keep a document out of the menu and label it differently
+        // there. Neither is a property of the node.
+        // Drupal cannot see links inside our blocks the way it sees entity
+        // reference fields — they live in a JSON text field — but JSON:API's
+        // CONTAINS filter can search that field server-side, which is enough to
+        // answer what points at a document. See reference.dependents.
+        'link-integrity',
+      ],
+    });
+    this.cmsBaseUrl = cmsBaseUrl;
+    this.credentials = credentials ?? null;
+    this.bundle = bundle;
+    this.translationsMode = translations;
+    this.csrfToken = null;
+  }
+
+  /**
+   * What a VISITOR asked a search block for, as Drupal criteria.
+   *
+   * Its own ids, executed by the loop below like any stored criterion. A
+   * location window is the MENU tree, which is where Drupal keeps hierarchy;
+   * it answers for the items under a menu item, so a deeper window is refused
+   * rather than silently flattened.
+   */
+  visitorCriteria({ text, filters = [], ranges = [], under } = {}) {
+    const criteria = [];
+    if (text) criteria.push({ i: 'title', o: 'string.contains', v: text });
+    for (const f of filters) {
+      criteria.push({ i: f.i, o: 'selection.any', v: f.values });
+    }
+    for (const r of ranges) {
+      if (r.from) criteria.push({ i: r.i, o: 'date.after', v: r.from });
+      if (r.to) criteria.push({ i: r.i, o: 'date.before', v: r.to });
+    }
+    if (under) {
+      if (under.depth !== undefined && under.depth !== 1) {
+        throw new AdapterError(
+          `drupal lists the menu items directly under ${under.path}, not ${under.depth} levels of them`,
+          { code: 'BAD_REQUEST', status: 400 },
+        );
+      }
+      criteria.push({ i: 'menu_parent', o: 'menu_parent.is', v: under.path });
+    }
+    return criteria;
+  }
+
+  async init(ctx) {
+    await super.init(ctx);
+    this.cmsBaseUrl = ctx.cmsBaseUrl ?? this.cmsBaseUrl;
+    if (!this.csrfToken) this.csrfToken = await this.fetchCsrfToken();
+    await this.assertMediaAvailable();
+  }
+
+  /**
+   * Refuse to run against a site with no Media, rather than quietly degrading.
+   *
+   * Without it an upload can still create a file entity, but the editor gets an
+   * asset with no name, no state and no listing — a record it cannot browse or
+   * relocate. Failing here names the missing setup; failing later looks like a
+   * broken object browser.
+   */
+  async assertMediaAvailable() {
+    const res = await fetch(
+      `${this.cmsBaseUrl}/jsonapi/media_type/media_type`,
+      // See requestJson: never cookies, cross-origin by construction.
+      { credentials: 'omit', headers: this.authHeaders() },
+    );
+    // An auth failure is NOT a missing module. Conflating them would send an
+    // integrator to install Media on a site that already has it, so leave 401
+    // and 403 to the normal auth path.
+    if (res.status === 401 || res.status === 403) return;
+    if (!res.ok) {
+      throw new AdapterError(
+        'Drupal Media is required but /jsonapi/media_type is unavailable. ' +
+          'Enable the Media and JSON:API modules.',
+        { code: 'SETUP_REQUIRED', status: res.status },
+      );
+    }
+    const bundles = (flattenPayload(await res.json()) ?? []).map(
+      (t) => t.attributes?.drupal_internal__id,
+    );
+    if (!bundles.includes(MEDIA_BUNDLE)) {
+      throw new AdapterError(
+        `Drupal Media bundle '${MEDIA_BUNDLE}' not found (have: ${bundles.join(', ') || 'none'}). ` +
+          'Hydra stores assets as media entities so editors can browse and rename them.',
+        { code: 'SETUP_REQUIRED' },
+      );
+    }
+  }
+
+  /** Drupal requires a CSRF token for every write. */
+  async fetchCsrfToken() {
+    const res = await fetch(`${this.cmsBaseUrl}/session/token`, {
+      credentials: 'omit',
+      headers: this.authHeaders(),
+    });
+    if (!res.ok) return null;
+    return (await res.text()).trim();
+  }
+
+  authHeaders() {
+    if (!this.credentials) return {};
+    const { username, password } = this.credentials;
+    return { Authorization: `Basic ${btoa(`${username}:${password}`)}` };
+  }
+
+  /** See the Plone adapter: reads are scope-cached, writes clear the scope. */
+  async fetchJson(route, options = {}) {
+    const method = options.method ?? 'GET';
+    if (method !== 'GET') {
+      this.invalidateReads();
+      return this.requestJson(route, options);
+    }
+    return this.cachedRead(
+      `GET ${this.scopeKey(route, options.params)}`,
+      () => this.requestJson(route, options),
+    );
+  }
+
+  async requestJson(route, { method = 'GET', body, params } = {}) {
+    const qs = params ? `?${params}` : '';
+    const headers = {
+      Accept: 'application/vnd.api+json',
+      ...this.authHeaders(),
+    };
+    if (body !== undefined) headers['Content-Type'] = 'application/vnd.api+json';
+    if (method !== 'GET' && this.csrfToken) headers['X-CSRF-Token'] = this.csrfToken;
+
+    const res = await fetch(`${this.cmsBaseUrl}${route}${qs}`, {
+      // NEVER cookies, with or without credentials.
+      //
+      // A wildcard Access-Control-Allow-Origin — what a dev CMS typically
+      // returns — makes the browser reject a credentialled cross-origin
+      // request outright, surfacing only as "Failed to fetch". That was
+      // already known for the explicit-credentials case; what it missed is
+      // that `include` is WORSE for a visitor, because in Hydra the frontend
+      // is never same-origin with its CMS, so the cookie session this was
+      // reaching for cannot apply — while published content needs no
+      // credential at all.
+      //
+      // So the anonymous path was the only one that asked for cookies and the
+      // only one that could not work. Every test held an editor's credentials,
+      // which is why it took a public-site spec to find it: the frontend could
+      // not read a published Drupal page as a visitor.
+      credentials: 'omit',
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      throw new AdapterError('Unauthorized', { code: 'UNAUTHORIZED', status: 401 });
+    }
+    if (res.status === 404) {
+      throw new AdapterError(`Not found: ${route}`, { code: 'NOT_FOUND', status: 404 });
+    }
+    if (!res.ok) {
+      throw new AdapterError(`Drupal returned ${res.status} for ${route}`, {
+        code: 'SERVER_ERROR',
+        status: res.status,
+      });
+    }
+    if (res.status === 204) return null;
+    const text = await res.text();
+    return text.length === 0 ? null : JSON.parse(text);
+  }
+
+  // --- lookups -----------------------------------------------------------
+
+  async nodeByAlias(alias) {
+    const payload = await this.fetchJson(`/jsonapi/node/${this.bundle}`, {
+      params: `filter[path.alias]=${encodeURIComponent(alias)}`,
+    });
+    const flat = flattenPayload(payload) ?? [];
+    if (flat.length === 0) {
+      throw new AdapterError(`Not found: ${alias}`, { code: 'NOT_FOUND', status: 404 });
+    }
+    return flat[0];
+  }
+
+  async nodeByUuid(id) {
+    const payload = await this.fetchJson(`/jsonapi/node/${this.bundle}/${id}`);
+    return flattenPayload(payload);
+  }
+
+/**
+   * Menu links WITH the node each one points at, in one request.
+   *
+   * `include=node` is JSON:API's answer to N+1 — without it this fetched every
+   * referenced node separately.
+   */
+  async menuLinksWithNodes() {
+    const payload = await this.fetchJson(
+      '/jsonapi/menu_link_content/menu_link_content?include=node',
+    );
+    const aliasByUuid = new Map(
+      (payload?.included ?? []).map((node) => [node.id, aliasOf(node) ?? '']),
+    );
+    return { links: flattenPayload(payload) ?? [], aliasByUuid };
+  }
+
+  /** A node in a menu view: the LINK, which is a placement, not the node. */
+  toPlacement(menu, link, reference, excluded) {
+    const base = excluded
+      ? `/${VIEW_PREFIX}/${menu}/${EXCLUDED_NODE}`
+      : `/${VIEW_PREFIX}/${menu}`;
+    return {
+      id: link.id,
+      path: `${base}/${link.id}`,
+      // "link" is not a type, it is the ABSENCE of a reference.
+      type: reference ? 'placement' : 'link',
+      title: link.attributes?.title ?? '',
+      blocks: {},
+      blocksLayout: { items: [] },
+      fields: {
+        reference: reference || null,
+        // Only an EXTERNAL link has a url worth handing out. A node link's uri is
+        // `entity:node/<uuid>`, which is Drupal's internal form and not something
+        // a frontend could follow.
+        url: reference ? null : (link.attributes?.link?.uri ?? null),
+      },
+      state: link.attributes?.enabled === false ? 'private' : 'published',
+      _adapter: { raw: link },
+    };
+  }
+
+  /**
+   * A menu view's nodes.
+   *
+   * A DISABLED link is Drupal's own "in the menu's definition but not in the
+   * menu" — the same claim an unpublished nav_menu_item makes in WordPress — so
+   * that is what the view's Excluded node holds.
+   */
+  async listPlacements({ menu, excluded, rest }) {
+    const { links, aliasByUuid } = await this.menuLinksWithNodes();
+    const wantedParent = rest || null;
+    const children = links
+      .filter((link) => {
+        const disabled = link.attributes?.enabled === false;
+        if (disabled !== Boolean(excluded)) return false;
+        const parent = link.relationships?.parent?.id ?? null;
+        return (parent ?? null) === wantedParent;
+      })
+      .sort(
+        (a, b) =>
+          (a.attributes?.weight ?? 0) - (b.attributes?.weight ?? 0) ||
+          String(a.attributes?.title ?? '').localeCompare(
+            String(b.attributes?.title ?? ''),
+          ),
+      );
+
+    const nodes = children.map((link) =>
+      this.toPlacement(
+        menu,
+        link,
+        aliasByUuid.get(link.relationships?.node?.id),
+        Boolean(excluded),
+      ),
+    );
+
+    // Offered at the view's ROOT, so what was taken out of the menu is
+    // discoverable in the menu rather than only through the picker. Not
+    // selectable: it is a bucket, not content.
+    if (!excluded && !rest) {
+      nodes.push({
+        id: EXCLUDED_NODE,
+        path: `/${VIEW_PREFIX}/${menu}/${EXCLUDED_NODE}`,
+        type: 'bucket',
+        title: 'Not in this menu',
+        blocks: {},
+        blocksLayout: { items: [] },
+        fields: { reference: null, url: null },
+        state: 'private',
+        _adapter: { raw: null },
+      });
+    }
+
+    return { items: nodes };
+  }
+
+  /**
+   * Add a link to a menu.
+   *
+   * `data.reference` is a CONTENT path; the node itself is untouched. Appended
+   * last, because a position the caller did not ask for is not ours to invent.
+   */
+  async addPlacement({ menu, rest }, data) {
+    const reference = data.reference ?? data.path;
+    // A node with a URL and no reference is an EXTERNAL LINK. Drupal needs no
+    // special entity for one: menu_link_content holds a `link.uri` either way, so
+    // a menu entry does not have to be content.
+    const url = data.url ?? null;
+    if (!reference && !url) {
+      throw new AdapterError(
+        'drupal: a menu link needs either a reference to content or a url',
+        { code: 'BAD_REQUEST', status: 400 },
+      );
+    }
+    const node = reference ? await this.nodeByAlias(reference) : null;
+    const links = await this.allMenuLinks();
+    const lastWeight = links.reduce(
+      (highest, link) => Math.max(highest, Number(link.attributes?.weight ?? 0)),
+      0,
+    );
+
+    const created = await this.fetchJson(
+      '/jsonapi/menu_link_content/menu_link_content',
+      {
+        method: 'POST',
+        body: {
+          data: {
+            type: 'menu_link_content--menu_link_content',
+            attributes: {
+              title: data.title ?? null,
+              weight: lastWeight + 1,
+              enabled: true,
+              ...(reference ? {} : { link: { uri: url } }),
+            },
+            relationships: {
+              ...(node ? { node: { data: { type: node.type, id: node.id } } } : {}),
+              ...(rest
+                ? {
+                    parent: {
+                      data: {
+                        type: 'menu_link_content--menu_link_content',
+                        id: rest,
+                      },
+                    },
+                  }
+                : {}),
+            },
+          },
+        },
+      },
+    );
+
+    const id = created?.data?.id ?? created?.id;
+    return {
+      id,
+      path: `/${VIEW_PREFIX}/${menu}/${id}`,
+      type: reference ? 'placement' : 'link',
+      title: data.title ?? '',
+      blocks: {},
+      blocksLayout: { items: [] },
+      fields: { reference: reference ?? null, url: reference ? null : url },
+      state: 'published',
+      _adapter: { raw: created },
+    };
+  }
+
+  /**
+   * Move a link into or out of the menu view's Excluded node.
+   *
+   * `enabled` is the mapping. The NODE is never touched: it keeps its alias and
+   * stays readable by anyone holding its address, which is why taking something
+   * out of a menu is a different claim from unpublishing it.
+   */
+  async movePlacement(fromView, toView, args) {
+    if (!fromView || !fromView.rest) {
+      throw new AdapterError(
+        `drupal: ${args.path} is not something in a menu view`,
+        { code: 'INVALID_MOVE', status: 400 },
+      );
+    }
+    if (!toView || toView.menu !== fromView.menu) {
+      throw new AdapterError(
+        'drupal: a link can only move within its own menu',
+        { code: 'INVALID_MOVE', status: 400 },
+      );
+    }
+    await this.fetchJson(
+      `/jsonapi/menu_link_content/menu_link_content/${fromView.rest}`,
+      {
+        method: 'PATCH',
+        body: {
+          data: {
+            type: 'menu_link_content--menu_link_content',
+            id: fromView.rest,
+            attributes: { enabled: !toView.excluded },
+          },
+        },
+      },
+    );
+    const base = toView.excluded
+      ? `/${VIEW_PREFIX}/${toView.menu}/${EXCLUDED_NODE}`
+      : `/${VIEW_PREFIX}/${toView.menu}`;
+    return { path: `${base}/${fromView.rest}` };
+  }
+
+  async allMenuLinks() {
+    const payload = await this.fetchJson(
+      '/jsonapi/menu_link_content/menu_link_content',
+    );
+    return flattenPayload(payload) ?? [];
+  }
+
+  /**
+   * An alias under `parent` that no node holds yet, starting from `id`.
+   *
+   * Drupal's path aliases are not unique — nothing stops two nodes claiming the
+   * same one, and which the path then resolves to is not the caller's choice. So
+   * a copy has to look before it writes. Pathauto suffixes a number when it
+   * collides, which is the convention followed here.
+   */
+  async freeAlias(parent, id, limit = 50) {
+    for (let n = 0; n < limit; n += 1) {
+      const alias = `${parent}/${n === 0 ? id : `${id}-${n}`}`;
+      try {
+        await this.nodeByAlias(alias);
+      } catch (error) {
+        // Only "nothing is there" means the alias is free. Anything else — a
+        // dead CMS, a rejected credential — must not read as a free slot.
+        if (error?.code === 'NOT_FOUND') return alias;
+        throw error;
+      }
+    }
+    throw new AdapterError(
+      `No free alias under ${parent} for ${id} after ${limit} tries`,
+      { code: 'CONFLICT', status: 409 },
+    );
+  }
+
+  toDocument(flat) {
+    const blocksRaw = flat.attributes.field_hydra_blocks;
+    const parsed = blocksRaw ? JSON.parse(blocksRaw) : {};
+    return {
+      id: flat.id,
+      path: aliasOf(flat),
+      type: flat.attributes.drupal_internal__type ?? this.bundle,
+      title: flat.attributes.title,
+      blocks: parsed.blocks ?? {},
+      blocksLayout: parsed.blocksLayout ?? { items: [] },
+      fields: { nid: flat.attributes.drupal_internal__nid },
+      state: STATE_MAP[String(flat.attributes.status)] ?? 'draft',
+      _adapter: { raw: flat },
+    };
+  }
+
+  async whoami() {
+    return this.dispatch('auth.whoami', {});
+  }
+
+  /**
+   * Core Drupal, no Content Moderation: publishing is a status flip, so the
+   * only thing worth asking for is the revision log message every node carries
+   * anyway. With Content Moderation enabled this is where the workflow's own
+   * transitions and their permissions would appear.
+   */
+  /**
+   * Drupal's alias is what Plone calls the short name — except it is the WHOLE
+   * address, not a segment, because nothing here comes from a hierarchy. Same
+   * argument for putting it here either way: the moment a document becomes
+   * visible is the moment its address matters, and a field nobody sees until
+   * afterwards gets set once the URL is already wrong.
+   */
+  aliasField() {
+    return {
+      title: 'Address',
+      description:
+        'The whole path, and it carries no structure — moving this document in the menu will not change it. Changing it after people have linked here breaks those links.',
+      type: 'string',
+    };
+  }
+
+  revisionLogField() {
+    return {
+      title: 'Revision log message',
+      description:
+        'Recorded against this revision. Visible to anyone who can see the revision history.',
+      type: 'string',
+      widget: 'textarea',
+    };
+  }
+
+  async transitionForms(path) {
+    const node = await this.nodeByAlias(path);
+    const published = node.attributes.status === true;
+    const id = published ? 'unpublish' : 'publish';
+
+    const withAddress = {
+      schema: {
+        fieldsets: [
+          {
+            id: 'default',
+            title: 'Default',
+            fields: ['path_alias', 'revision_log'],
+          },
+        ],
+        properties: {
+          path_alias: this.aliasField(),
+          revision_log: this.revisionLogField(),
+        },
+        required: [],
+      },
+      data: { path_alias: path, revision_log: '' },
+    };
+
+    const forms = {
+      // Unpublishing takes an audience away; there is nothing to configure
+      // about that beyond saying why.
+      [id]: published
+        ? {
+            schema: {
+              fieldsets: [
+                { id: 'default', title: 'Default', fields: ['revision_log'] },
+              ],
+              properties: { revision_log: this.revisionLogField() },
+              required: [],
+            },
+            data: { revision_log: '' },
+          }
+        : withAddress,
+
+      // Staying where it is, and changing what matters here. Drupal needs this
+      // as much as Plone does and has nothing to do with permissions: the
+      // address is editable whatever state the document is in, and an already
+      // published document has no publish transition to reach it through.
+      update: withAddress,
+    };
+    return forms;
+  }
+
+  async dispatch(intent, args) {
+    return this.dispatchWithInvalidation(intent, args, () =>
+      this.withAuthRetry(() => this.dispatchOnce(intent, args)),
+    );
+  }
+
+  async dispatchOnce(intent, args) {
+    switch (intent) {
+      case 'content.get': {
+        const doc = this.toDocument(await this.nodeByAlias(args.path));
+        return this.withContext(doc, args.path, args.expand);
+      }
+
+      case 'content.update': {
+        const node = await this.nodeByAlias(args.path);
+        const attributes = {};
+        if (args.data.title !== undefined) attributes.title = args.data.title;
+        if (args.data.blocks !== undefined) {
+          attributes.field_hydra_blocks = JSON.stringify({
+            v: 1,
+            blocks: args.data.blocks,
+            blocksLayout: args.data.blocksLayout ?? { items: [] },
+          });
+        }
+        await this.fetchJson(`/jsonapi/node/${this.bundle}/${node.id}`, {
+          method: 'PATCH',
+          body: { data: { type: `node--${this.bundle}`, id: node.id, attributes } },
+        });
+        return null;
+      }
+
+      case 'content.create': {
+        const intoView = parseViewPath(args.parentPath);
+        if (intoView) return this.addPlacement(intoView, args.data ?? {});
+
+        // An explicit slug wins, as WordPress's create already allowed. A copy
+        // needs it: the id an editor pasted is the one they expect to find, and
+        // deriving it from the title again would put the copy at the same alias
+        // as the original — which Drupal accepts, then resolves to whichever
+        // node it likes.
+        // Then the id the caller asked for, before the title: an importer
+        // recreating a tree addresses the document by it next.
+        const slug =
+          args.data.slug ??
+          args.data.id ??
+          String(args.data.title)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        const parent = args.parentPath === '/' ? '' : args.parentPath;
+        const alias = `${parent}/${slug}`;
+
+        const created = flattenPayload(
+          await this.fetchJson(`/jsonapi/node/${this.bundle}`, {
+            method: 'POST',
+            body: {
+              data: {
+                type: `node--${this.bundle}`,
+                attributes: {
+                  title: args.data.title,
+                  status: false,
+                  path: { alias },
+                  field_hydra_blocks: JSON.stringify({
+                    v: 1,
+                    blocks: args.data.blocks ?? {},
+                    blocksLayout: args.data.blocksLayout ?? { items: [] },
+                  }),
+                },
+              },
+            },
+          }),
+        );
+
+        // Give it a place in the tree straight away, under the requested
+        // parent — otherwise a newly created document would land in the
+        // virtual folder, which is for content that never got filed.
+        await this.linkNode(created.id, args.parentPath);
+        return this.toDocument(created);
+      }
+
+      case 'content.delete': {
+        if (parseViewPath(args.path)) {
+          // Removal from a menu is a MOVE into the view's Excluded node, so that
+          // content.delete means "destroy this" in every view. Deleting the LINK
+          // row itself is a separate operation nothing needs yet.
+          throw new AdapterError(
+            `drupal: ${args.path} is a place in a menu — move it to ` +
+              `${EXCLUDED_NODE} to take it out of the menu, or delete the node ` +
+              `itself in the main view`,
+            { code: 'NOT_IMPLEMENTED', status: 501 },
+          );
+        }
+
+        const node = await this.nodeByAlias(args.path);
+        await this.fetchJson(`/jsonapi/node/${this.bundle}/${node.id}`, {
+          method: 'DELETE',
+        });
+        return null;
+      }
+
+      case 'content.move': {
+        const fromView = parseViewPath(args.path);
+        const toView = parseViewPath(args.targetParentPath);
+        if (fromView || toView) {
+          return this.movePlacement(fromView, toView, args);
+        }
+
+        if (
+          args.targetParentPath === args.path ||
+          args.targetParentPath.startsWith(`${args.path}/`)
+        ) {
+          throw new AdapterError('Cannot move a document inside itself', {
+            code: 'INVALID_MOVE',
+            status: 400,
+          });
+        }
+        const node = await this.nodeByAlias(args.path);
+        await this.linkNode(node.id, args.targetParentPath);
+        // The alias is deliberately untouched: in Drupal the URL is not the
+        // tree position, and re-filing a document must not break its links.
+        return this.toDocument(await this.nodeByUuid(node.id));
+      }
+
+      case 'content.copy': {
+        if (
+          args.targetParentPath === args.path ||
+          args.targetParentPath.startsWith(`${args.path}/`)
+        ) {
+          throw new AdapterError('Cannot copy a document inside itself', {
+            code: 'INVALID_MOVE',
+            status: 400,
+          });
+        }
+        // A new node, not a second reference to the same one: Drupal has no
+        // duplicate operation in JSON:API, so the copy is a create carrying the
+        // original's fields. Its alias is derived from the target, and the id
+        // gains a suffix when the target already holds that alias — the same
+        // problem Plone solves with copy_of_.
+        const source = this.toDocument(await this.nodeByAlias(args.path));
+        const parent = args.targetParentPath === '/' ? '' : args.targetParentPath;
+        const id = args.path.split('/').filter(Boolean).pop();
+        return this.dispatchOnce('content.create', {
+          parentPath: args.targetParentPath,
+          data: {
+            type: source.type,
+            title: source.title,
+            blocks: source.blocks,
+            blocksLayout: source.blocksLayout,
+            // Drupal will happily store a SECOND node at an alias it already
+            // has, and then resolve that path to whichever it prefers — so
+            // pasting twice would lose a copy with nothing to say it had.
+            slug: (await this.freeAlias(parent, id)).split('/').pop(),
+          },
+        });
+      }
+
+      case 'reference.dependents': {
+        // Drupal's own back-reference tracking only covers entity reference
+        // FIELDS. Our blocks are a JSON string in field_hydra_blocks, so Drupal
+        // does not know they contain links — but JSON:API will search that field
+        // with a CONTAINS filter, which keeps the work on the server instead of
+        // fetching every node and scanning here.
+        //
+        // nodeByAlias first, so a path that does not exist is NOT_FOUND rather
+        // than an empty list: "nothing links to it" must not be the answer to a
+        // typo.
+        const node = await this.nodeByAlias(args.path);
+        const alias = aliasOf(node);
+        const nid = node.attributes.drupal_internal__nid;
+        // Both encodings a Drupal link can carry: the alias an author sees, and
+        // the /node/<id> form that survives an alias change.
+        const needles = [alias, `/node/${nid}`].filter(Boolean);
+
+        const byId = new Map();
+        for (const needle of needles) {
+          const params = new URLSearchParams();
+          params.set('filter[l][condition][path]', 'field_hydra_blocks');
+          params.set('filter[l][condition][operator]', 'CONTAINS');
+          params.set('filter[l][condition][value]', needle);
+          const found = flattenPayload(
+            await this.fetchJson(`/jsonapi/node/${this.bundle}?${params}`),
+          ) ?? [];
+          for (const candidate of found) {
+            if (candidate.id === node.id) continue;
+            // CONTAINS is a substring match, so /about also matches /about-us —
+            // and /news matches /news/first-post, which would make a link to a
+            // CHILD look like a link to its parent. Re-check with a boundary that
+            // excludes a path separator too, still without knowing any block's
+            // shape, which is the engine's rule here as well.
+            const blocks = candidate.attributes.field_hydra_blocks ?? '';
+            const bounded = new RegExp(
+              `${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w\\-/])`,
+            );
+            if (!bounded.test(blocks)) continue;
+            byId.set(candidate.id, {
+              id: candidate.id,
+              path: aliasOf(candidate),
+              title: candidate.attributes.title,
+            });
+          }
+        }
+        return { references: [...byId.values()] };
+      }
+
+      case 'content.sort': {
+        // Persistent, like every other reorder here: the children are read in
+        // the order asked for and their menu weights rewritten, so a later
+        // listing with no sort returns them this way.
+        const children = await this.dispatchOnce('tree.list', {
+          parent: args.path,
+          sortOn: args.sortOn,
+          sortOrder: args.sortOrder,
+        });
+        for (const [index, child] of children.items.entries()) {
+          await this.dispatchOnce('content.order', {
+            path: child.path,
+            targetIndex: index,
+          });
+        }
+        return null;
+      }
+
+      case 'content.order': {
+        const node = await this.nodeByAlias(args.path);
+        const links = await this.allMenuLinks();
+        const link = links.find((l) => l.relationships.node?.id === node.id);
+        if (!link) {
+          throw new AdapterError(`${args.path} has no menu link to order`, {
+            code: 'NOT_FOUND',
+            status: 404,
+          });
+        }
+
+        // Renumber the whole sibling set rather than assigning the target
+        // index as a weight. Menu weights start life all-equal, so setting one
+        // to 0 among zeroes is a tie and reorders nothing — the operation
+        // would appear to succeed and do nothing at all.
+        const parentId = link.relationships.parent?.id ?? null;
+        const siblings = links
+          .filter((l) => (l.relationships.parent?.id ?? null) === parentId)
+          .sort((a, b) => (a.attributes.weight ?? 0) - (b.attributes.weight ?? 0));
+
+        const without = siblings.filter((l) => l.id !== link.id);
+        const at = resolveOrderPosition({
+          targetIndex: args.targetIndex,
+          delta: args.delta,
+          from: siblings.findIndex((l) => l.id === link.id),
+          count: without.length,
+        });
+        without.splice(at, 0, link);
+
+        for (const [index, sibling] of without.entries()) {
+          await this.fetchJson(
+            `/jsonapi/menu_link_content/menu_link_content/${sibling.id}`,
+            {
+              method: 'PATCH',
+              body: {
+                data: {
+                  type: 'menu_link_content--menu_link_content',
+                  id: sibling.id,
+                  attributes: { weight: index },
+                },
+              },
+            },
+          );
+        }
+        return null;
+      }
+
+      case 'search': {
+        // Core Drupal has no search index, but JSON:API filter groups do real
+        // work: an OR group over the title and the stored block content
+        // matches the same documents a title-only filter would miss. No
+        // search_api, no contrib module.
+        //
+        // Note the shorthand filter[title]=x is an EQUALS match in Drupal;
+        // substring matching requires the extended condition form below.
+        const q = String(args.query ?? '');
+        if (!q) return { items: [], total: 0 };
+
+        const params = new URLSearchParams();
+        params.set('filter[any][group][conjunction]', 'OR');
+        for (const [name, path] of [
+          ['t', 'title'],
+          ['b', 'field_hydra_blocks'],
+        ]) {
+          params.set(`filter[${name}][condition][path]`, path);
+          params.set(`filter[${name}][condition][operator]`, 'CONTAINS');
+          params.set(`filter[${name}][condition][value]`, q);
+          params.set(`filter[${name}][condition][memberOf]`, 'any');
+        }
+        if (args.limit) params.set('page[limit]', String(args.limit));
+
+        const flat = flattenPayload(
+          await this.fetchJson(`/jsonapi/node/${this.bundle}?${params}`),
+        );
+        let items = (flat ?? []).map((n) => this.toDocument(n));
+        // Scoped, when a scope was asked for. This ignored `args.path`, so the
+        // contents view's filter box — which filters the folder it is listing
+        // — answered with matches from anywhere on the site.
+        //
+        // By PATH rather than by a JSON:API filter: Drupal's hierarchy is the
+        // menu, not a field on the node, so there is nothing to filter on in
+        // the node query. The matches are a page of search hits, so keeping
+        // the ones inside the scope costs nothing.
+        if (args.path) {
+          const scope = String(args.path).replace(/\/$/, '');
+          items = items.filter((doc) => {
+            const path = String(doc.path ?? '');
+            if (!path.startsWith(`${scope}/`)) return false;
+            if (args.depth === undefined) return true;
+            return path.slice(scope.length + 1).split('/').length <= args.depth;
+          });
+        }
+        return { items, total: items.length };
+      }
+
+      case 'tree.list': {
+        const view = parseViewPath(args.parent);
+        if (view) return this.listPlacements(view);
+
+        const links = await this.allMenuLinks();
+
+        // The virtual folder: everything with no menu link. Without it a
+        // document created outside Hydra would exist and be unreachable.
+        if (args.parent === UNFILED_PATH) {
+          const filed = new Set(
+            links.map((l) => l.relationships.node?.id).filter(Boolean),
+          );
+          const all = flattenPayload(
+            await this.fetchJson(`/jsonapi/node/${this.bundle}`),
+          );
+          const unfiled = all.filter((n) => !filed.has(n.id));
+          return { items: unfiled.map((n) => this.toDocument(n)), total: unfiled.length };
+        }
+
+        const parentLinkId =
+          args.parent === '/' ? null : await this.linkIdForPath(args.parent);
+        const children = links
+          .filter((l) => (l.relationships.parent?.id ?? null) === parentLinkId)
+          // Menu weight IS the sibling order; without sorting, content.order
+          // would appear to do nothing.
+          .sort((a, b) => (a.attributes.weight ?? 0) - (b.attributes.weight ?? 0));
+        const items = [];
+        for (const child of children) {
+          const nodeId = child.relationships.node?.id;
+          if (!nodeId) continue;
+          items.push(this.toDocument(await this.nodeByUuid(nodeId)));
+        }
+        // Menu weight above is the folder's OWN order, which is what a listing
+        // gets when nothing else is asked for. An explicit sort replaces it.
+        return {
+          items: orderDocuments(items, args.sortOn, args.sortOrder),
+          total: items.length,
+        };
+      }
+
+      case 'breadcrumbs.get': {
+        const links = await this.allMenuLinks();
+        const byId = new Map(links.map((l) => [l.id, l]));
+        let current = links.find(
+          async (l) => l.relationships.node?.id === (await this.nodeByAlias(args.path)).id,
+        );
+        const node = await this.nodeByAlias(args.path);
+        current = links.find((l) => l.relationships.node?.id === node.id) ?? null;
+
+        const trail = [];
+        while (current) {
+          const nodeId = current.relationships.node?.id;
+          if (nodeId) trail.unshift(this.toDocument(await this.nodeByUuid(nodeId)));
+          const parentId = current.relationships.parent?.id ?? null;
+          current = parentId ? byId.get(parentId) : null;
+        }
+        return { items: trail };
+      }
+
+      case 'navigation.get': {
+        const links = await this.allMenuLinks();
+        const top = links
+          .filter(
+            (l) =>
+              !l.relationships.parent?.id &&
+              // A disabled link is Drupal's "keep this out of the menu". The
+              // document is untouched and still readable by anyone with its
+              // address — it is simply not listed, which is a different claim
+              // from being unpublished.
+              l.attributes?.enabled !== false,
+          )
+          // BY WEIGHT, which is the whole point of ordering. tree.list sorted
+          // here and this did not, so reordering a page moved it in the contents
+          // view and left the menu — the thing being arranged — untouched. Title
+          // breaks a tie, as Drupal's own menu tree does, so equal weights are
+          // at least stable rather than however JSON:API happened to answer.
+          .sort(
+            (a, b) =>
+              (a.attributes.weight ?? 0) - (b.attributes.weight ?? 0) ||
+              String(a.attributes.title ?? '').localeCompare(
+                String(b.attributes.title ?? ''),
+              ),
+          );
+        const items = [];
+        for (const l of top) {
+          const nodeId = l.relationships.node?.id;
+          if (!nodeId) continue;
+          const doc = this.toDocument(await this.nodeByUuid(nodeId));
+          // The LINK's title wins where it has one. Drupal stores it
+          // separately precisely so a menu can say "About" while the page says
+          // "About our organisation" — Plone has no equivalent at all.
+          items.push(
+            l.attributes?.title ? { ...doc, title: l.attributes.title } : doc,
+          );
+        }
+        return { items };
+      }
+
+      case 'auth.logout':
+        return this.logout();
+
+      // The ways in, beside the credential this adapter already holds.
+      //
+      // Drupal has no endpoint that advertises alternative sign-ins over
+      // JSON:API; a site's SSO module is a browser-side login route, not
+      // something the content API lists.
+      // An empty list is the real answer, not a gap: the admin renders no
+      // extra buttons and shows its form, which is exactly right. It is
+      // answered rather than left unimplemented because the admin asks every
+      // adapter the same question, and an adapter that cannot be asked sends
+      // it back to guessing.
+      case 'auth.loginOptions':
+        return { options: [] };
+
+      case 'auth.loginWithOption':
+        throw new AdapterError(
+          `This site offers no sign-in option '${args.id}'`,
+          { code: 'NOT_FOUND', status: 404 },
+        );
+
+      case 'auth.whoami': {
+        // The JSON:API index names the current user and nothing else does:
+        // `meta.links.me` carries their uuid when authenticated and is ABSENT
+        // when anonymous, which is also what makes logout observable.
+        //
+        // This used to read /jsonapi/user/user and take the first row. Against
+        // the mock that was the admin, because the mock returned exactly one
+        // user. Against a real Drupal 11 it returns EVERY user with Anonymous
+        // first, so whoami reported "Anonymous" while signed in as admin — and
+        // anonymous callers may read that collection too, so it could never
+        // have detected a logged-out session either.
+        const index = await this.fetchJson('/jsonapi');
+        const me = index?.meta?.links?.me?.meta?.id;
+        if (!me) {
+          throw new AdapterError('No user for this session', {
+            code: 'UNAUTHORIZED',
+            status: 401,
+          });
+        }
+        // A SINGLE resource, so flattenPayload returns the object itself —
+        // indexing [0] here silently yields undefined.
+        const flat = flattenPayload(await this.fetchJson(`/jsonapi/user/user/${me}`));
+        if (!flat) {
+          throw new AdapterError('No user for this session', {
+            code: 'UNAUTHORIZED',
+            status: 401,
+          });
+        }
+        return {
+          id: flat.id,
+          username: flat.attributes.name,
+          fullname: flat.attributes.display_name,
+          email: flat.attributes.mail,
+          roles: flat.attributes.roles ?? [],
+        };
+      }
+
+      case 'types.list': {
+        const flat = flattenPayload(
+          await this.fetchJson('/jsonapi/node_type/node_type'),
+        );
+        return {
+          items: (flat ?? []).map((t) => ({
+            id: t.attributes.drupal_internal__type,
+            title: t.attributes.name,
+            addable: true,
+          })),
+        };
+      }
+
+      case 'types.getSchema': {
+        // JSON:API exposes no canonical schema, so it is assembled from field
+        // config — the static-schema fallback the spec anticipated.
+        const flat =
+          flattenPayload(await this.fetchJson('/jsonapi/field_config/field_config')) ??
+          [];
+        const fields = flat.filter((f) => f.attributes.bundle === args.type);
+        if (fields.length === 0) {
+          throw new AdapterError(`No such content type: ${args.type}`, {
+            code: 'NOT_FOUND',
+            status: 404,
+          });
+        }
+        const properties = {};
+        for (const f of fields) {
+          properties[f.attributes.field_name] = {
+            title: f.attributes.label,
+            type: f.attributes.field_type,
+          };
+        }
+        return {
+          properties,
+          fieldsets: [
+            { id: 'default', title: 'Default', fields: Object.keys(properties) },
+          ],
+          required: fields
+            .filter((f) => f.attributes.required)
+            .map((f) => f.attributes.field_name),
+        };
+      }
+
+      case 'vocabulary.get': {
+        const params = new URLSearchParams();
+        if (args.title) {
+          params.set('filter[name][operator]', 'CONTAINS');
+          params.set('filter[name][value]', args.title);
+        }
+        params.set('page[limit]', String(args.limit ?? 25));
+        const payload = await this.fetchJson(
+          `/jsonapi/taxonomy_term/${encodeURIComponent(args.name)}`,
+          { params: params.toString() },
+        );
+        const flat = flattenPayload(payload) ?? [];
+        return {
+          items: flat.map((t) => ({ token: t.id, title: t.attributes.name })),
+          total: payload?.meta?.count ?? flat.length,
+        };
+      }
+
+      case 'state.get': {
+        const node = await this.nodeByAlias(args.path);
+        const published = node.attributes.status === true;
+        return {
+          state: {
+            name: published ? 'published' : 'draft',
+            label: published ? 'Published' : 'Draft',
+          },
+          transitions: published
+            ? [{ id: 'unpublish', label: 'Unpublish', targetState: 'draft' }]
+            : [{ id: 'publish', label: 'Publish', targetState: 'published' }],
+          effective: {
+            canEdit: true,
+            canPublish: true,
+            canDelete: true,
+            canShare: false,
+            canComment: false,
+          },
+          // Core Drupal has no per-node principal grants; that needs the
+          // Group module. The sharing half of the panel hides on this.
+          shareEntries: null,
+
+          actions: [
+            {
+              // Your own account belongs to the CMS that holds it. Changing a
+              // password or an email is not something to reimplement here, and
+              // the admin has no credentials to do it with anyway. /user
+              // resolves to whoever is signed in, so this needs no uid.
+              id: 'preferences',
+              title: 'Your profile',
+              url: `${this.cmsBaseUrl}/user`,
+              category: 'user',
+              // Answers the admin's own Profile screen.
+              panel: 'profile',
+            },
+          ],
+        };
+      }
+
+      case 'state.getForms':
+        return this.transitionForms(args.path);
+
+      case 'state.transition': {
+        const node = await this.nodeByAlias(args.path);
+        const forms = await this.transitionForms(args.path);
+        this.assertDeclared(args.data, this.offeredTransition(forms, args.id).schema, args.id);
+
+        const nextAlias = args.data?.path_alias;
+        const moved = nextAlias !== undefined && nextAlias !== args.path;
+        if (moved) {
+          await this.fetchJson(`/jsonapi/node/${this.bundle}/${node.id}`, {
+            method: 'PATCH',
+            body: {
+              data: {
+                type: `node--${this.bundle}`,
+                id: node.id,
+                attributes: { path: { alias: nextAlias } },
+              },
+            },
+          });
+        }
+
+        // `update` keeps the document where it is. Flipping status here would
+        // make the one entry that promises not to change state the one that
+        // silently does.
+        if (args.id === 'update') {
+          return moved ? { redirect: nextAlias } : null;
+        }
+        if (args.data?.revision_log) {
+          await this.fetchJson(`/jsonapi/node/${this.bundle}/${node.id}`, {
+            method: 'PATCH',
+            body: {
+              data: {
+                type: `node--${this.bundle}`,
+                id: node.id,
+                attributes: { revision_log: args.data.revision_log },
+              },
+            },
+          });
+        }
+        await this.fetchJson(`/jsonapi/node/${this.bundle}/${node.id}`, {
+          method: 'PATCH',
+          body: {
+            data: {
+              type: `node--${this.bundle}`,
+              id: node.id,
+              attributes: { status: args.id === 'publish' },
+            },
+          },
+        });
+        return null;
+      }
+
+      case 'asset.upload': {
+        // Two steps, because a bare file entity is not something an editor can
+        // work with. Uploading to the media bundle's field creates the FILE;
+        // the media entity that wraps it is what carries a name, a published
+        // state, a bundle (image / document / video) and a place in
+        // /admin/content/media. Without it there is no record to browse, rename
+        // or relocate — the object browser would list a filename and nothing
+        // else, which is what it did while this created files alone.
+        //
+        // This is why the adapter requires Media (see init): it is the only
+        // Drupal construct equivalent to a WordPress attachment or a Plone
+        // Image object.
+        const binary = Uint8Array.from(atob(args.data), (c) => c.charCodeAt(0));
+        const fileRes = await fetch(
+          `${this.cmsBaseUrl}/jsonapi/media/${MEDIA_BUNDLE}/${MEDIA_FILE_FIELD}`,
+          {
+            method: 'POST',
+            credentials: 'omit',
+            headers: {
+              ...this.authHeaders(),
+              ...(this.csrfToken ? { 'X-CSRF-Token': this.csrfToken } : {}),
+              'Content-Type': args.contentType,
+              'Content-Disposition': `file; filename="${args.filename}"`,
+            },
+            body: binary,
+          },
+        );
+        if (!fileRes.ok) {
+          throw new AdapterError(`Upload failed: ${fileRes.status}`, {
+            code: 'UPLOAD_FAILED',
+            status: fileRes.status,
+          });
+        }
+        const file = flattenPayload(await fileRes.json());
+
+        const mediaRes = await fetch(`${this.cmsBaseUrl}/jsonapi/media/${MEDIA_BUNDLE}`, {
+          method: 'POST',
+          credentials: 'omit',
+          headers: {
+            ...this.authHeaders(),
+            ...(this.csrfToken ? { 'X-CSRF-Token': this.csrfToken } : {}),
+            'Content-Type': 'application/vnd.api+json',
+          },
+          body: JSON.stringify({
+            data: {
+              type: `media--${MEDIA_BUNDLE}`,
+              attributes: { name: args.filename, status: true },
+              relationships: {
+                [MEDIA_FILE_FIELD]: {
+                  data: { type: 'file--file', id: file.id },
+                },
+              },
+            },
+          }),
+        });
+        if (!mediaRes.ok) {
+          throw new AdapterError(`Media create failed: ${mediaRes.status}`, {
+            code: 'UPLOAD_FAILED',
+            status: mediaRes.status,
+          });
+        }
+        const media = flattenPayload(await mediaRes.json());
+
+        return {
+          // The MEDIA entity's uuid is the asset's identity — the thing blocks
+          // reference and the editor browses. The file url is a property of it.
+          id: media.id,
+          path: file.attributes.uri?.url ?? `/${file.attributes.filename}`,
+          type: MEDIA_BUNDLE,
+          title: media.attributes?.name ?? args.filename,
+          blocks: {},
+          blocksLayout: { items: [] },
+          fields: {
+            filename: file.attributes.filename,
+            // ABSOLUTE. `path` stays CMS-relative per the Document contract,
+            // but this is what gets rendered in an <img>, and a relative URL
+            // there is resolved against whatever origin the page came from —
+            // which put a Drupal file path on the Plone mock, with Plone's
+            // @@images scale suffix appended for good measure. Same reason
+            // asset.imageUrl is specified as absolute.
+            url: file.attributes.uri?.url
+              ? new URL(file.attributes.uri.url, this.cmsBaseUrl).href
+              : undefined,
+          },
+          state: media.attributes?.status === false ? 'draft' : 'published',
+          _adapter: { raw: { media, file } },
+        };
+      }
+
+      case 'asset.imageUrl': {
+        // Drupal core serves the original file; named image styles require
+        // configuration, so the original is the honest answer rather than a
+        // fabricated style URL that would 404.
+        return `${this.cmsBaseUrl}${args.path}`;
+      }
+
+      // Drupal reports its configured languages through JSON:API when the
+      // Language module is on. When it is off there is exactly one language and
+      // no endpoint for it, which is not an error — it is the answer.
+      //
+      // `multilingual` follows the same evidence: more than one configured
+      // language is what makes a translation possible here, so it is derived
+      // rather than declared, and a single-language Drupal reports false.
+      case 'site.get': {
+        // The views this CMS offers.
+        //
+        // Drupal's nodes are FLAT: it has no intrinsic content hierarchy, and the
+        // paths a tree is browsed by come from menu links. So its menu is not a
+        // second view over a tree the way WordPress's is — it is where hierarchy
+        // lives at all. The descriptor still names it separately from `content`
+        // because `menu_name` is not modelled yet, so this adapter knows exactly
+        // one menu; see the build order in the design spec.
+        //
+        // `ordered: 'own'` — a link's weight is its own, independent of anything
+        // on the node. `allowsLabels: true` — a link carries its own title, so a
+        // menu can say "About" where the node is titled "About our organisation".
+        const views = [
+          {
+            id: 'content',
+            title: 'Content',
+            shape: 'hierarchy',
+            main: true,
+            prefix: '',
+            ordered: 'own',
+            holdsContent: true,
+            remove: 'delete',
+          },
+          {
+            id: 'menu:main',
+            title: 'Main menu',
+            shape: 'hierarchy',
+            prefix: `${VIEW_PREFIX}/main`,
+            ordered: 'own',
+            holdsContent: true,
+            allowsLinks: true,
+            allowsLabels: true,
+            remove: 'unlink',
+          },
+        ];
+        let languages = [];
+        let defaultLanguage = null;
+        try {
+          const payload = await this.fetchJson(
+            '/jsonapi/configurable_language/configurable_language',
+          );
+          for (const entry of payload?.data ?? []) {
+            const code = entry?.attributes?.drupal_internal__id;
+            // Drupal lists two pseudo-languages of its own that no content is
+            // ever in.
+            if (!code || code === 'und' || code === 'zxx') continue;
+            languages.push(code);
+            if (entry?.attributes?.default) defaultLanguage = code;
+          }
+        } catch {
+          // The Language module is not installed. One language, unnamed here.
+          languages = [];
+        }
+        defaultLanguage = defaultLanguage ?? languages[0] ?? 'en';
+        if (!languages.length) languages = [defaultLanguage];
+        return {
+          views,
+          defaultLanguage,
+          languages,
+          features: {
+            multilingual: languages.length > 1,
+            translations: this.translationsMode,
+          },
+        };
+      }
+
+      case 'querystring.getIndexes': {
+        // Discovered from the site's own content types and fields, so the
+        // query builder describes THIS Drupal rather than Drupal in general.
+        const [types, fields] = await Promise.all([
+          this.dispatchOnce('types.list', {}),
+          this.fetchJson('/jsonapi/field_config/field_config'),
+        ]);
+        const flatFields = flattenPayload(fields) ?? [];
+
+        const indexes = {
+          node_type: {
+            title: 'Type',
+            type: 'string',
+            description: 'Content type',
+            group: 'Metadata',
+            enabled: true,
+            sortable: false,
+            // filter[node_type] is one equality; JSON:API can negate it with
+            // NOT IN, so both are real here.
+            operations: ['selection.any', 'selection.none'],
+            operators: operatorsFor(['selection.any', 'selection.none']),
+            values: Object.fromEntries(
+              types.items.map((t) => [t.id, { title: t.title }]),
+            ),
+          },
+          menu_parent: {
+            title: 'Location',
+            type: 'string',
+            description: 'Parent in the menu tree',
+            group: 'Metadata',
+            enabled: true,
+            sortable: false,
+            operations: ['menu_parent.is'],
+            operators: operatorsFor(['menu_parent.is']),
+          },
+          status: {
+            title: 'State',
+            // Shown as a column by default: see the contract.
+            column: true,
+            type: 'boolean',
+            group: 'Metadata',
+            enabled: true,
+            sortable: false,
+            operations: ['selection.any'],
+            operators: operatorsFor(['selection.any']),
+            values: {
+              published: { title: 'Published' },
+              draft: { title: 'Draft' },
+            },
+          },
+          changed: {
+            title: 'Last edited',
+            // Shown as a column by default: see the contract.
+            column: true,
+            type: 'date',
+            description: 'When the content was last changed',
+            group: 'Dates',
+            enabled: true,
+            // The listing block's "most recently edited first" needs a
+            // sortable date, and without one the query builder cannot offer
+            // the ordering at all — the index has to exist, not just the sort.
+            sortable: true,
+            // filter[changed][operator]=< / > against a timestamp.
+            operations: ['date.after', 'date.before'],
+            operators: operatorsFor(['date.after', 'date.before']),
+          },
+          title: {
+            title: 'Title',
+            type: 'string',
+            group: 'Metadata',
+            enabled: true,
+            sortable: true,
+            operations: ['string.contains'],
+            operators: operatorsFor(['string.contains']),
+          },
+        };
+
+        for (const f of flatFields) {
+          const name = f.attributes.field_name;
+          if (!name?.startsWith('field_') || name === 'field_hydra_blocks') continue;
+          // What a field can be queried WITH follows from its type, and so
+          // does the input that collects the value. Declared uniformly as a
+          // selection, every field drew a multi-select: an integer field asked
+          // for a tick-list of nothing, and a reference field offered no way
+          // to find a term.
+          const kind = f.attributes.field_type;
+          const target =
+            f.attributes.settings?.handler_settings?.target_bundles?.[0];
+          const common = {
+            title: f.attributes.label,
+            group: 'Fields',
+            enabled: true,
+            sortable: false,
+          };
+          if (kind === 'entity_reference' && target) {
+            indexes[name] = {
+              ...common,
+              type: 'array',
+              operations: ['reference.any', 'reference.none'],
+              operators: operatorsFor(['reference.any', 'reference.none']),
+              // Looked up, not listed: a vocabulary can run to thousands of
+              // terms, and `vocabulary.get` reads this bundle.
+              vocabulary: target,
+            };
+          } else if (['integer', 'decimal', 'float'].includes(kind)) {
+            indexes[name] = {
+              ...common,
+              type: 'number',
+              operations: ['int.is', 'int.largerThan', 'int.lessThan'],
+              operators: operatorsFor([
+                'int.is',
+                'int.largerThan',
+                'int.lessThan',
+              ]),
+            };
+          } else if (kind === 'boolean') {
+            indexes[name] = {
+              ...common,
+              type: 'boolean',
+              operations: ['boolean.isTrue', 'boolean.isFalse'],
+              operators: operatorsFor(['boolean.isTrue', 'boolean.isFalse']),
+            };
+          } else {
+            indexes[name] = {
+              ...common,
+              type: 'string',
+              operations: ['string.contains'],
+              operators: operatorsFor(['string.contains']),
+            };
+          }
+        }
+
+        // WHAT JSON:API WILL SORT A NODE COLLECTION BY, as Drupal names its
+        // fields. A separate vocabulary from the queryable indexes above, the
+        // same way Plone's sort keys are separate from its indexes.
+        const sortable_indexes = {
+          title: { title: 'Title' },
+          changed: { title: 'Last modified' },
+          created: { title: 'Created on' },
+          drupal_internal__nid: { title: 'ID' },
+        };
+        return { indexes, sortable_indexes };
+      }
+
+      case 'querystringSearch': {
+
+        // Refused here, not translated: see assertSortable. The admin's
+
+        // menus are built from what this adapter advertises.
+
+        await this.assertSortable(args.sortOn);
+        const params = new URLSearchParams();
+        let menuParent = null;
+
+        for (const criterion of [
+          ...(args.query ?? []),
+          ...this.visitorCriteria(args),
+        ]) {
+          const value = Array.isArray(criterion.v) ? criterion.v : [criterion.v];
+          // The operation is honoured, not ignored: this used to switch on the
+          // INDEX alone, so an index advertising `selection.none` filtered
+          // exactly like `selection.any` and the sidebar's "matches none of"
+          // returned the nodes that matched. An operation this adapter did not
+          // advertise for this index is refused, like an unadvertised sort key.
+          const op = criterion.o;
+          const refuse = () => {
+            throw new AdapterError(
+              `drupal cannot apply '${op}' to '${criterion.i}'`,
+              { code: 'BAD_REQUEST', status: 400 },
+            );
+          };
+          const negated = op === 'selection.none';
+          switch (criterion.i) {
+            case 'node_type':
+              if (op !== 'selection.any' && !negated) refuse();
+              if (negated) {
+                params.set('filter[node_type][operator]', 'NOT IN');
+                for (const v of value) {
+                  params.append('filter[node_type][value][]', String(v));
+                }
+              } else {
+                params.set('filter[node_type]', String(value[0]));
+              }
+              break;
+            case 'menu_parent':
+              if (op !== 'menu_parent.is') refuse();
+              menuParent = String(value[0]);
+              break;
+            case 'status':
+              if (op !== 'selection.any') refuse();
+              params.set('filter[status]', value[0] === 'published' ? '1' : '0');
+              break;
+            case 'changed':
+              if (op === 'date.after') {
+                params.set('filter[changed][operator]', '>');
+                params.set(
+                  'filter[changed][value]',
+                  String(Math.floor(new Date(String(value[0])).getTime() / 1000)),
+                );
+              } else if (op === 'date.before') {
+                params.set('filter[changed][operator]', '<');
+                params.set(
+                  'filter[changed][value]',
+                  String(Math.floor(new Date(String(value[0])).getTime() / 1000)),
+                );
+              } else refuse();
+              break;
+            case 'title':
+              if (op !== 'string.contains') refuse();
+              params.set('filter[title][operator]', 'CONTAINS');
+              params.set('filter[title][value]', String(value[0]));
+              break;
+            default:
+              // A field_config-derived index. Which operations it has came
+              // from its field TYPE, so this honours the same split.
+              if (op === 'string.contains') {
+                params.set(`filter[${criterion.i}][operator]`, 'CONTAINS');
+                params.set(`filter[${criterion.i}][value]`, String(value[0]));
+                break;
+              }
+              if (op === 'int.is') {
+                params.set(`filter[${criterion.i}]`, String(value[0]));
+                break;
+              }
+              if (op === 'int.largerThan' || op === 'int.lessThan') {
+                params.set(
+                  `filter[${criterion.i}][operator]`,
+                  op === 'int.largerThan' ? '>' : '<',
+                );
+                params.set(`filter[${criterion.i}][value]`, String(value[0]));
+                break;
+              }
+              if (op === 'boolean.isTrue' || op === 'boolean.isFalse') {
+                params.set(
+                  `filter[${criterion.i}]`,
+                  op === 'boolean.isTrue' ? '1' : '0',
+                );
+                break;
+              }
+              if (!['selection.any', 'reference.any'].includes(op) && !negated
+                  && op !== 'reference.none') refuse();
+              if (negated || op === 'reference.none') {
+                params.set(`filter[${criterion.i}][operator]`, 'NOT IN');
+                for (const v of value) {
+                  params.append(`filter[${criterion.i}][value][]`, String(v));
+                }
+                break;
+              }
+              // selection.any is multi-value, and Drupal has no comma syntax:
+              // filter[x]=a,b is one equality against the literal "a,b" and
+              // matches nothing. Every field_config-derived index advertises
+              // selection.any, so this branch carries most of them.
+              if (value.length > 1) {
+                params.set(`filter[${criterion.i}][operator]`, 'IN');
+                for (const v of value) {
+                  params.append(`filter[${criterion.i}][value][]`, String(v));
+                }
+              } else {
+                params.set(`filter[${criterion.i}]`, String(value[0]));
+              }
+          }
+        }
+
+        // A menu-parent filter is a tree question, not a field one, so it is
+        // answered from the menu rather than pushed into the node query.
+        if (menuParent) {
+          const subtree = await this.dispatchOnce('tree.list', {
+            parent: menuParent,
+          });
+
+          // Sorted HERE rather than by the CMS, and only on this branch.
+          //
+          // tree.list answers from the menu, whose order is menu weight — the
+          // sibling order an editor arranges by hand. That is the right answer
+          // for an unsorted listing and the wrong one the moment a sort is
+          // asked for, and because this branch returns early it used to drop
+          // `sortOn` on the floor: the contents view offered orderings that
+          // did nothing. Pushing the sort into JSON:API is not available here,
+          // since the question was answered from menu links rather than a node
+          // query; the subtree is already fetched, so ordering it costs
+          // nothing and must happen BEFORE the limit is applied.
+          const items = orderDocuments(subtree.items, args.sortOn, args.sortOrder);
+          const limited = args.limit ? items.slice(0, args.limit) : items;
+          return { items: limited, total: subtree.total };
+        }
+
+        // Sorting was not implemented at all: JSON:API takes `sort`, with a
+        // leading '-' for descending. Advertising a sortable index without
+        // this would offer an ordering that silently did nothing.
+        if (args.sortOn) {
+          const descending = String(args.sortOrder ?? '').startsWith('desc');
+          params.set('sort', `${descending ? '-' : ''}${sortFieldFor(args.sortOn)}`);
+        }
+        if (args.limit) params.set('page[limit]', String(args.limit));
+        const payload = await this.fetchJson(`/jsonapi/node/${this.bundle}`, {
+          params: params.toString(),
+        });
+        const flat = flattenPayload(payload) ?? [];
+        return {
+          items: flat.map((n) => this.toDocument(n)),
+          total: payload?.meta?.count ?? flat.length,
+        };
+      }
+
+      case 'reference.resolve': {
+        // A uuid never changes — not when the title changes, not when the
+        // document is re-filed under a different menu parent.
+        const flat = await this.nodeByUuid(args.id).catch(() => null);
+        if (!flat) {
+          throw new AdapterError(`No document with id ${args.id}`, {
+            code: 'NOT_FOUND',
+            status: 404,
+          });
+        }
+        const path = aliasOf(flat);
+        return {
+          id: flat.id,
+          path,
+          url: `${this.cmsBaseUrl}${path}`,
+          title: flat.attributes.title,
+        };
+      }
+
+      default:
+        return super.dispatch(intent, args);
+    }
+  }
+
+  /** Find the menu link id that represents a path, for use as a parent. */
+  async linkIdForPath(pathValue) {
+    const node = await this.nodeByAlias(pathValue);
+    const link = (await this.allMenuLinks()).find(
+      (l) => l.relationships.node?.id === node.id,
+    );
+    return link ? link.id : null;
+  }
+
+  /** Put a node under a parent path in the menu tree, creating or re-parenting. */
+  async linkNode(nodeId, parentPath) {
+    const parentLinkId =
+      parentPath === '/' || !parentPath ? null : await this.linkIdForPath(parentPath);
+    const existing = (await this.allMenuLinks()).find(
+      (l) => l.relationships.node?.id === nodeId,
+    );
+    const parentRel = parentLinkId
+      ? { type: 'menu_link_content--menu_link_content', id: parentLinkId }
+      : null;
+
+    if (existing) {
+      await this.fetchJson(
+        `/jsonapi/menu_link_content/menu_link_content/${existing.id}`,
+        {
+          method: 'PATCH',
+          body: {
+            data: {
+              type: 'menu_link_content--menu_link_content',
+              id: existing.id,
+              relationships: { parent: { data: parentRel } },
+            },
+          },
+        },
+      );
+      return existing.id;
+    }
+
+    const created = await this.fetchJson(
+      '/jsonapi/menu_link_content/menu_link_content',
+      {
+        method: 'POST',
+        body: {
+          data: {
+            type: 'menu_link_content--menu_link_content',
+            attributes: { weight: 0 },
+            relationships: {
+              node: { data: { type: `node--${this.bundle}`, id: nodeId } },
+              parent: { data: parentRel },
+            },
+          },
+        },
+      },
+    );
+    return created?.data?.id ?? null;
+  }
+}
+
+export default DrupalAdapter;
+
+/**
+ * The JSON:API sort field, which is the name as given.
+ *
+ * There was a table here mapping Plone's index names onto Drupal's fields,
+ * from when Volto's contents view hard-coded them. The admin's menus now come
+ * from this adapter's `sortable_indexes`, so the names arriving ARE Drupal's,
+ * and `assertSortable` refuses anything else rather than guessing at it.
+ */
+function sortFieldFor(index) {
+  return index;
+}
