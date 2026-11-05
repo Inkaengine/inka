@@ -1,0 +1,1 @@
+Pasting a list keeps it a list: its items, nested ones included, no longer become separate blocks of bare items. Delete over selected text reaches the editor (it emptied the field on screen only, and a paste after it crashed the editor), and a paste during a delete waits for it.

@@ -63,6 +63,31 @@ function isSelectionValidForDocument(selection, children) {
 }
 
 /**
+ * Pasted lists in the editor's shape: a sub-list beside the item it belongs
+ * to (ul > [li, ul]), as indenting makes it. Valid HTML has it inside the
+ * item (li > [text, ul]), which Slate will not keep: it flattens the sub-list
+ * into the item's text ("ParentChild"). So each sub-list inside an item moves
+ * out to follow it.
+ */
+function subListsBesideTheirItems(nodes) {
+  const isList = (n) => n?.type === 'ul' || n?.type === 'ol';
+  return nodes.map((node) => {
+    if (!isList(node)) return node;
+    const children = [];
+    for (const child of node.children || []) {
+      if (child.type === 'li' && (child.children || []).some(isList)) {
+        const own = child.children.filter((c) => !isList(c));
+        children.push({ ...child, children: own.length ? own : [{ text: '' }] });
+        children.push(...subListsBesideTheirItems(child.children.filter(isList)));
+      } else {
+        children.push(...subListsBesideTheirItems([child]));
+      }
+    }
+    return { ...node, children };
+  });
+}
+
+/**
  * Error boundary to catch ReactEditor DOM errors from toolbar editors
  * The toolbar editor isn't in a resolvable DOM tree, so Slate DOM operations fail
  */
@@ -774,7 +799,45 @@ const SyncedSlateToolbar = ({
           } else {
             dt.setData('text/plain', pasteContent);
           }
-          editor.insertData(dt);
+          // Pasted blocks go in whole beside a text block. Slate's own
+          // insertFragment merges the first pasted block into the one at the
+          // cursor and sets the rest beside it, so a pasted list lost its
+          // first item into the paragraph and the rest became bare list
+          // items, each split out as a block of its own. A list (or any
+          // block) at the cursor of a list keeps Slate's merge: its items
+          // join the list.
+          const insertFragment = editor.insertFragment;
+          editor.insertFragment = (pasted) => {
+            const fragment = subListsBesideTheirItems(pasted);
+            const [top] = editor.children;
+            if (!Element.isElement(top) || ['ul', 'ol'].includes(top.type) || !fragment.some((n) => ['ul', 'ol'].includes(n.type))) {
+              insertFragment(fragment);
+              return;
+            }
+            Editor.withoutNormalizing(editor, () => {
+              if (editor.selection && !Range.isCollapsed(editor.selection)) {
+                Transforms.delete(editor);
+              }
+              if (Editor.isEmpty(editor, top)) {
+                Transforms.removeNodes(editor, { at: [0] });
+                Transforms.insertNodes(editor, fragment, { at: [0] });
+                return;
+              }
+              // Split the text block at the cursor and put the pasted blocks
+              // between its two halves; an empty second half goes.
+              Transforms.splitNodes(editor, { always: true, mode: 'highest' });
+              Transforms.insertNodes(editor, fragment, { at: [1] });
+              const after = fragment.length + 1;
+              if (editor.children[after] && Editor.isEmpty(editor, editor.children[after])) {
+                Transforms.removeNodes(editor, { at: [after] });
+              }
+            });
+          };
+          try {
+            editor.insertData(dt);
+          } finally {
+            editor.insertFragment = insertFragment;
+          }
 
           // Paste is the one surface with no keystroke to intercept — the HTML
           // is deserialized by volto-slate before we see it — so the allow-list
@@ -1130,7 +1193,9 @@ const SyncedSlateToolbar = ({
       const currentFieldValue = getFieldValue(block, fieldName);
       const currentText = currentFieldValue?.[0]?.children?.[0]?.text?.substring(0, 40);
 
-      if (isEqual(newValue, currentFieldValue)) {
+      // Unless a paste left blocks to add after this one: a list pasted at
+      // the end of a paragraph leaves the paragraph as it was.
+      if (isEqual(newValue, currentFieldValue) && !editor._extraBlocks) {
         log('onChange: values equal, skipping');
         return;
       }

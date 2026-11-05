@@ -3180,7 +3180,24 @@ const Iframe = (props) => {
                   config.blocks.blocksConfig, intl,
                 );
 
-                if (slateTransforms.isCurrentListItemEmpty(fieldValue, enterSelection)) {
+                // Empty indented item: out a level, as Word and Google Docs do.
+                const outdented = slateTransforms.isCurrentListItemEmpty(fieldValue, enterSelection)
+                  ? slateTransforms.outdentEmptyListItem(fieldValue, enterSelection)
+                  : null;
+                if (outdented) {
+                  const updatedBlock = { ...currentBlock, [enterFieldName]: outdented.newValue };
+                  const mutatedFormData = mutateBlockInContainer(
+                    formToUseForEnter, enterBlockPathMap, enterBlockId, updatedBlock, containerConfig,
+                  );
+                  const newBpm = buildBlockPathMap(mutatedFormData, config.blocks.blocksConfig, intl);
+                  setIframeSyncState(prev => ({
+                    ...prev,
+                    formData: mutatedFormData,
+                    blockPathMap: newBpm,
+                    selection: outdented.newSelection,
+                    toolbarRequestDone: enterRequestId,
+                  }));
+                } else if (slateTransforms.isCurrentListItemEmpty(fieldValue, enterSelection)) {
                   // Empty list item: remove it and create new empty block after
                   const { newValue } = slateTransforms.removeEmptyListItem(fieldValue, enterSelection);
                   const updatedBlock = { ...currentBlock, [enterFieldName]: newValue };
