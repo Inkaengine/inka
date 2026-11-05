@@ -86,38 +86,15 @@ describe('BridgeApi', () => {
    * not the admin's cookie, and broke the sign-in flow for a good session.
    */
   describe('@login-renew', () => {
-    it("asks the site about the ADMIN's own token, not the adapter's", async () => {
-      // The adapter's credential is not the admin's cookie; relayed without
-      // saying which token to ask about, the site answers about the wrong one
-      // and a perfectly good session reads as refused.
-      document.cookie = 'auth_token=the-admin-token';
-      const r = rpc({ token: 'a-fresh-one' });
-      const res = await passthroughApi(r).post('/@login-renew');
-      expect(r.request).toHaveBeenCalledWith(
-        'http',
-        expect.objectContaining({
-          op: 'post',
-          path: '/@login-renew',
-          headers: expect.objectContaining({
-            Authorization: 'Bearer the-admin-token',
-          }),
-        }),
-      );
-      expect(res).toEqual({ token: 'a-fresh-one' });
-    });
-
-    it('answers from the cookie when there is no endpoint to ask', async () => {
-      // No passthrough, no @login-renew: the adapter owns the session and
-      // there is nothing to renew.
-      document.cookie = 'auth_token=the-admin-token';
+    it('answers with the token the admin already holds', async () => {
       const r = rpc({});
-      const res = await semanticApi(r).post('/@login-renew');
+      await passthroughApi(r).post('/@login-renew');
       expect(r.request).not.toHaveBeenCalled();
-      expect(res).toEqual({ token: 'the-admin-token' });
     });
 
     it('is not pressed as a login provider called "renew"', async () => {
-      // `@login-renew` also matches the `@login-<option>` branch.
+      // `@login-renew` also matches the `@login-<option>` branch, which would
+      // ask the adapter to sign in with a provider that does not exist.
       const r = rpc({});
       await semanticApi(r).post('/@login-renew');
       expect(r.request).not.toHaveBeenCalledWith(

@@ -98,48 +98,36 @@ export class BridgeApi {
       return this.rpc.request('auth.logout', {});
     }
 
-    // Renewal asks the site about the ADMIN's OWN token.
+    // Volto renews its auth token on a timer and once at startup. In bridge
+    // mode the admin holds no CMS credentials at all — the adapter owns the
+    // session — so there is nothing to renew. Routed like any other POST this
+    // became content.create for a document called "@login-renew", which 404s
+    // on every CMS, and a failed renewal reads to the admin as a dead session.
     //
-    // Volto renews on a timer and once at startup. In bridge mode the admin
-    // holds no CMS credentials — the adapter owns the session — so there is
-    // nothing to renew, and routed like any other POST this became
-    // content.create for a document called "@login-renew", which 404s on every
-    // CMS. Answering from the admin's cookie was the first fix, and it is what
-    // a successful renewal returns.
+    // Answering with the token the admin already has is what a successful
+    // renewal returns, and leaves its state exactly as it was.
     //
-    // But renewal is also the ONLY thing that ever asks whether the site still
-    // ACCEPTS the token the browser holds, and /connect-agent is built on that
-    // answer: it offers Allow only once renewal has come back, because a deploy
-    // that resets the site stops accepting every token it issued, and the agent
-    // would be handed that dead one and fail on every call.
+    // KNOWN GAP, and it is not fixed by asking the adapter. Renewal is also the
+    // only thing that ever checks whether the site still accepts the token the
+    // browser holds, and /connect-agent is built on that: it offers Allow only
+    // once renewal has answered, because a deploy that resets the site stops
+    // accepting every token it issued, and the agent would be handed that dead
+    // one and fail on every call (mcp-connect.spec.ts:79, red for that reason).
     //
-    // Asking the ADAPTER was tried and reverted: its credential is not the
-    // admin's cookie, so a plain relay is answered about whichever token the
-    // adapter carries, and in CI that broke the sign-in flow itself for a good
-    // session, in both admins.
+    // Confirming it with the adapter was tried and reverted. It asks the wrong
+    // party: the adapter's credential is not the admin's cookie, and a relayed
+    // @login-renew is answered about whichever token the ADAPTER carries. In
+    // CI that broke the sign-in flow itself — "Checking your sign-in…" for a
+    // perfectly good session — in both the mock and the nuxt admin, and every
+    // MCP test that signs in through that page failed behind it.
     //
-    // So the token goes with the question. The passthrough's `http` intent
-    // carries headers, and a Plone adapter lets a caller's Authorization
-    // override its own, so this asks the site about exactly the token the
-    // browser is holding — a 401 for one it no longer accepts, a fresh token
-    // otherwise, which is what Volto asked for.
-    //
-    // Without a passthrough there is no @login-renew to ask, so the cookie's
-    // answer stands. Answered HERE for both, because `@login-renew` also
-    // matches the `@login-<option>` branch below, which would press it as a
-    // login provider called "renew".
+    // What it needs is the question asked about the ADMIN's own token: the
+    // passthrough's `http` intent takes headers, and a Plone adapter lets a
+    // caller's Authorization override its own, so the renewal can be relayed
+    // with the cookie's token explicitly. That is a change worth making with a
+    // test that can be run against both admins, not inferred.
     if (op === 'post' && String(path).split('?')[0].endsWith('@login-renew')) {
-      const held = currentAuthToken();
-      if (held && this.supportsPassthrough(info)) {
-        return this.rpc.request('http', {
-          op,
-          path,
-          data,
-          headers: { ...headers, Authorization: `Bearer ${held}` },
-          params,
-        });
-      }
-      return { token: held };
+      return { token: currentAuthToken() };
     }
 
     // @querystring is a DECLARATION, not content.
