@@ -14,6 +14,7 @@ docs/deploy-and-secure.md ("Deploy a site's content") for the model.
 
 from __future__ import annotations
 
+from .changeset import item_data_files
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
@@ -73,6 +74,9 @@ VOLATILE: frozenset[str] = frozenset({
     "is_folderish",
     "type_title",
     "workflow",
+    # derived from @id, which carries the path (and so any move); the live
+    # exporter leaves it out while a hand-written layout may not.
+    "parent",
     # per-object system flags a live export carries but hand-maintained git does
     # not: enabling versioning on an object bumps `versioning_enabled`, which must
     # NOT register as a content divergence (else every deploy of that object is
@@ -194,6 +198,13 @@ def cleaned_for_compare(
     # one conversion). Another view is an editor's choice and still counts.
     if cleaned.get("@type") == "Document" and cleaned.get("layout") == "document_view":
         cleaned.pop("layout")
+    # A file's `blob_path` is where an export put its bytes: `<uid>/file/x` from
+    # the exporter, `videos/x/file/x` in a layout whose folders are named by
+    # path. Every such file warned as a live edit. Its name, type and size are
+    # the file; where it was exported to is not.
+    for key, value in list(cleaned.items()):
+        if isinstance(value, dict) and "blob_path" in value:
+            cleaned[key] = {k: v for k, v in value.items() if k != "blob_path"}
     return cleaned
 
 
@@ -228,16 +239,16 @@ def _uid_index(tree: dict[str, dict]) -> dict[str, str]:
 
 
 def load_exportimport_tree(content_dir):
-    """Load a plone.exportimport content dir (UID-keyed item dirs) into the
-    classifier's shape: ({rel: data}, {rel: dirname}). The rel-path comes from
-    each item's @id (the dirname is a UID and carries no hierarchy); pass the
-    second mapping as ``dir_for`` to build_subset_dir/apply_changeset. The
-    site root becomes 'plone_site_root'.
+    """Load a plone.exportimport content dir into the classifier's shape:
+    ({rel: data}, {rel: dirname}). The rel-path comes from each item's @id
+    (an export's dirname is a UID and carries no hierarchy; a layout's may be
+    a path, at any depth); pass the second mapping as ``dir_for`` to
+    build_subset_dir/apply_changeset. The site root becomes 'plone_site_root'.
     """
     content_dir = Path(content_dir)
     tree: dict[str, dict] = {}
     dirs: dict[str, str] = {}
-    for data_file in sorted(content_dir.glob("*/data.json")):
+    for data_file in item_data_files(content_dir):
         data = json.loads(data_file.read_text())
         at_id = data.get("@id") or ""
         if data.get("@type") == "Plone Site" or at_id in ("/", "/Plone"):
@@ -247,7 +258,7 @@ def load_exportimport_tree(content_dir):
         if not rel:
             continue
         tree[rel] = data
-        dirs[rel] = data_file.parent.name
+        dirs[rel] = data_file.parent.relative_to(content_dir).as_posix()
     return tree, dirs
 
 

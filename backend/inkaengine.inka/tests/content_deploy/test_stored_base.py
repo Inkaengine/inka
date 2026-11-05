@@ -158,3 +158,15 @@ def test_a_refused_deploy_keeps_the_base_it_had(deployed, tmp_path):
         again = deploy_content(portal, request, first, commit=False)
     assert again["plan"]["creates"] == []
     assert again["plan"]["deletes"] == []
+
+
+def test_items_in_nested_folders_are_in_the_base(integration, tmp_path):
+    """The base holds every item, including one whose folder sits inside
+    another item's (`videos/intro/`)."""
+    layout = write_layout(
+        tmp_path / "layout", {"root": ROOT, "videos": {"@id": "/videos"}}
+    )
+    intro = layout / "content" / "videos" / "intro"
+    intro.mkdir()
+    (intro / "data.json").write_text(json.dumps({"@id": "/videos/intro"}))
+    assert record_base(integration["portal"], layout) == 3

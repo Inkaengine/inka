@@ -26,6 +26,8 @@ instance has locked.
 
 from __future__ import annotations
 
+from .changeset import copy_item
+from .changeset import item_data_files
 from pathlib import Path
 
 import json
@@ -50,7 +52,7 @@ def base_holds_items(layout_prev: Path) -> bool:
     serialisation the delta exists to avoid. That has to be refused where "no
     base at all" is refused, rather than discovered from how long it takes.
     """
-    return any(Path(layout_prev).glob("content/*/data.json"))
+    return bool(item_data_files(Path(layout_prev) / "content"))
 
 
 def _rel_of(data: dict) -> str:
@@ -76,7 +78,7 @@ def write_base(live: set[str], layout: Path, layout_prev: Path) -> dict:
         raise FileNotFoundError(f"no {content} — write the layout first")
 
     existing = layout_prev / "content"
-    if existing.is_dir() and any(existing.glob("*/data.json")):
+    if existing.is_dir() and item_data_files(existing):
         raise BaseExists(
             f"{layout_prev} already holds a base. That is the record of what was "
             "last applied; rebuilding it from the live site would declare every "
@@ -90,25 +92,23 @@ def write_base(live: set[str], layout: Path, layout_prev: Path) -> dict:
 
     kept = 0
     candidates: list[str] = []
-    for item in sorted(content.iterdir()):
-        data_file = item / "data.json"
-        # content/__metadata__.json is a file, not an item. Skipping it here is
-        # also what leaves it out of the base — see below.
-        if not data_file.is_file():
-            continue
+    # Items only: content/__metadata__.json is a file, not an item, and is
+    # left out of the base — see below.
+    for data_file in item_data_files(content):
+        dirname = data_file.parent.relative_to(content).as_posix()
         data = json.loads(data_file.read_text())
         rel = _rel_of(data)
         # The site root has no path of its own, so it can never appear in a
         # catalog result. It is always present.
-        if rel in live or not rel or item.name == "plone_site_root":
-            shutil.copytree(item, layout_prev / "content" / item.name)
+        if rel in live or not rel or dirname == "plone_site_root":
+            copy_item(data_file.parent, layout_prev / "content" / dirname)
             kept += 1
         else:
-            candidates.append(data.get("@id") or item.name)
+            candidates.append(data.get("@id") or dirname)
 
     # No sidecars, and no content/__metadata__.json, on purpose. The delta
-    # reads a base with load_exportimport_tree(), which globs `*/data.json` and
-    # reads nothing else. Copying redirects.json and a _data_files_ manifest
+    # reads a base with load_exportimport_tree(), which reads each item's
+    # data.json and nothing else. Copying redirects.json and a _data_files_ manifest
     # would only make this tree LOOK like an importable layout while the
     # manifest disagreed with the items present — and a manifest that disagrees
     # with the tree is how 90 of 150 objects vanished silently once. This is a

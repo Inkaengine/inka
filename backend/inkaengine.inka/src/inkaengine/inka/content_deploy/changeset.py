@@ -95,6 +95,32 @@ def _parent_path(data_json: Path) -> str:
     return json.loads(data_json.read_text())["@id"].rsplit("/", 1)[0]
 
 
+def item_data_files(content_dir: Path) -> list[Path]:
+    """Every item's data.json under `content_dir`, at any depth.
+
+    An export names each item's folder after its UID, one level deep. A layout
+    may name them by path instead, and then one item's folder sits inside
+    another's (`videos/` and `videos/intro/`): reading one level left every
+    nested item out of the delta.
+    """
+    return sorted(Path(content_dir).rglob("data.json"))
+
+
+def copy_item(src_dir: Path, dst_dir: Path) -> list[Path]:
+    """Copy one item's own files — its data.json and blobs — and none of the
+    items nested in its folder. Returns what it copied, relative to src_dir."""
+    nested = [p.parent for p in src_dir.rglob("data.json") if p.parent != src_dir]
+    copied: list[Path] = []
+    for f in sorted(src_dir.rglob("*")):
+        if not f.is_file() or any(n in f.parents for n in nested):
+            continue
+        rel = f.relative_to(src_dir)
+        (dst_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, dst_dir / rel)
+        copied.append(rel)
+    return copied
+
+
 def _item_dirs(dist_content_dir: Path) -> dict[str, str]:
     """Each item's directory under `dist_content_dir`, by its UID and by the
     directory name itself.
@@ -105,7 +131,7 @@ def _item_dirs(dist_content_dir: Path) -> dict[str, str]:
     names an item the layout no longer holds.
     """
     dirs: dict[str, str] = {}
-    for data_json in Path(dist_content_dir).rglob("data.json"):
+    for data_json in item_data_files(dist_content_dir):
         dirname = data_json.parent.relative_to(dist_content_dir).as_posix()
         dirs[dirname] = dirname
         uid = json.loads(data_json.read_text()).get("UID")
@@ -250,15 +276,11 @@ def build_subset_dir(
         uid = json.loads(data_json.read_text()).get("UID")
         if uid:
             kept_uids.add(uid)
-        dst_dir = content_out / dirname
-        if dst_dir.exists():
-            shutil.rmtree(dst_dir)
-        shutil.copytree(src_dir, dst_dir)
         entries.append((rel, dirname))
         # blob sidecars (image/<filename>, file/<filename>, ...) for this item
-        for f in sorted(src_dir.rglob("*")):
-            if f.is_file() and f.name != "data.json":
-                blob_files.append(f"{f.relative_to(dist_content_dir).as_posix()}")
+        for copied in copy_item(src_dir, content_out / dirname):
+            if copied.name != "data.json":
+                blob_files.append((Path(dirname) / copied).as_posix())
 
     # Parents before children BY CONTENT PATH (the rel), whatever the dirnames.
     entries.sort(key=lambda pair: data_sort_key(f"{pair[0]}/data.json"))
