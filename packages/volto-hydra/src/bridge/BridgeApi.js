@@ -121,11 +121,21 @@ export class BridgeApi {
     // perfectly good session — in both the mock and the nuxt admin, and every
     // MCP test that signs in through that page failed behind it.
     //
-    // What it needs is the question asked about the ADMIN's own token: the
-    // passthrough's `http` intent takes headers, and a Plone adapter lets a
-    // caller's Authorization override its own, so the renewal can be relayed
-    // with the cookie's token explicitly. That is a change worth making with a
-    // test that can be run against both admins, not inferred.
+    // Sending the admin's own token with the question was tried too — the
+    // passthrough's `http` intent takes headers and a Plone adapter lets a
+    // caller's Authorization override its own — and it failed in exactly the
+    // same way, which means the first explanation was at best incomplete.
+    //
+    // The lead for a third attempt, from the one thing that was measured: the
+    // site answers a renewal with a FRESH token (verified against the mock:
+    // 200, and a different jwt). ConnectAgent's effect depends on `token`, so
+    // a renewal that changes it re-runs the effect, where answering from the
+    // cookie returns the same token and settles at once. That is a loop to
+    // watch for, and watching means instrumenting ConnectAgent's renewal
+    // promise in a browser — whether it resolves, rejects or never settles —
+    // on a machine quiet enough for the timing to mean something. Two CI runs
+    // have now said "it breaks" without saying why, which is the wrong tool
+    // for this question.
     if (op === 'post' && String(path).split('?')[0].endsWith('@login-renew')) {
       return { token: currentAuthToken() };
     }
