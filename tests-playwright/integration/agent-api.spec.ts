@@ -21,8 +21,15 @@ type Agent = {
   update(op: { id: string; fields: any }): Promise<void>;
   move(op: { id: string; targetId: string; insertAfter: boolean }): Promise<void>;
   remove(id: string): Promise<void>;
-  save(op: { expectedVersion: string }): Promise<{ version: string }>;
+  save(op: { expectedVersion: string }): Promise<{ version: string; uploaded: Record<string, string> }>;
+  holdFile(file: { name: string; type: string; data: string }): Promise<string>;
 };
+
+// A 1x1 red PNG, base64: the bytes an agent hands holdFile.
+const PNG_BASE64 = Buffer.from(
+  '89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c4944415408d763f8ffff3f0005fe02fe0000000049454e44ae426082',
+  'hex',
+).toString('base64');
 
 /** Run a function against window.__inkaAgent in the admin page. */
 const agent = <T>(page: any, fn: (a: Agent, arg: any) => T | Promise<T>, arg?: any): Promise<T> =>
@@ -82,6 +89,54 @@ test.describe('Agent API', () => {
     expect(stored.blocks_layout.items).toContain(newId);
     expect(stored.blocks_layout.items).not.toContain('block-2-uuid');
     expect(JSON.stringify(stored.blocks['block-3-uuid'].value)).toContain('Updated by the agent');
+  });
+
+  test('holds a file the agent adds until Save, which uploads it beside the page', async ({ page, urls }) => {
+    // /deferred-images-page is where the test front end sets deferImageUploads.
+    const helper = new AdminUIHelper(page);
+    const uploads: any[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.postDataJSON?.()?.['@type'] === 'Image') uploads.push(request.postDataJSON());
+    });
+    await helper.login();
+    await helper.navigateToEdit('/deferred-images-page');
+    const { version } = await agent(page, (a) => a.getPage());
+
+    const ref = await agent(page, (a, arg) => a.holdFile(arg), { name: 'agent.png', type: 'image/png', data: PNG_BASE64 });
+    expect(ref).toMatch(/^inka-pending:/);
+    await agent(page, (a, arg) => a.update(arg), { id: 'image', fields: { url: ref } });
+    // The canvas draws it, as it draws an image a person drops.
+    const image = helper.getIframe().locator('[data-block-uid="image"] [data-edit-media="url"]');
+    await expect(image).toHaveAttribute('src', /^blob:/);
+    await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
+    expect(uploads, 'nothing is uploaded before Save').toHaveLength(0);
+
+    const saved = await agent(page, (a, arg) => a.save(arg), { expectedVersion: version });
+    expect(uploads).toHaveLength(1);
+    // The save says which item the held file became, for the agent to use from then on.
+    expect(Object.keys(saved.uploaded)).toEqual([ref]);
+    expect(saved.uploaded[ref]).toMatch(/uploaded-image-\d+$/);
+    expect(uploads[0].image.filename).toBe('agent.png');
+    expect(uploads[0].image.data).toBe(PNG_BASE64);
+
+    const stored = await (await page.request.get(`${urls.mockApi}/_test_data/deferred-images-page`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${helper.authToken}` },
+    })).json();
+    const block = JSON.stringify(stored.blocks.image);
+    expect(block, 'the page names the uploaded image').toContain(saved.uploaded[ref].replace(/^https?:\/\/[^/]+/, ''));
+    expect(block).toContain('"image_scales"');
+    expect(block).not.toContain('inka-pending:');
+  });
+
+  test("refuses a file when the page's front end doesn't take held images", async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const refused = await page.evaluate(
+      (data) => (window as any).__inkaAgent.holdFile({ name: 'agent.png', type: 'image/png', data }).then(() => null, (e: Error) => e.message),
+      PNG_BASE64,
+    );
+    expect(refused).toMatch(/deferImageUploads/);
   });
 
   test('refuses to save when someone else saved the page since it was read', async ({ page, urls }) => {

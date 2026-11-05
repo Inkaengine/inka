@@ -11,6 +11,13 @@
       "type": "string",
       "widget": "textarea"
     },
+    "preview_image": {
+      "title": "Preview image",
+      "description": "Insert an image that will be used in listing and teaser blocks.",
+      "type": "object",
+      "factory": "Image",
+      "widget": "file"
+    },
     "blocks": {
       "title": "Blocks",
       "type": "object"
@@ -29,7 +36,8 @@
       "title": "Default",
       "fields": [
         "title",
-        "description"
+        "description",
+        "preview_image"
       ]
     }
   ],

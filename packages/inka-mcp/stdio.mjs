@@ -15,11 +15,16 @@
  *   INKA_TOKEN      a token to use instead, or
  *   INKA_USER + INKA_PASSWORD + INKA_API_URL  to log in to a plain account
  * The agent can do what that CMS user can do, nothing more.
+ *   INKA_MEDIA_FOLDERS  optional: folders (separated by ':', ';' on Windows)
+ *                       the agent may take files from, to add to a page;
+ *                       without it, it reads no file on this computer
  */
+import { delimiter } from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { createServer, headlessAdmin } from './server.mjs';
+import { createServer, headlessAdmin, MAX_FILE_BYTES } from './server.mjs';
 import { signIn } from './signIn.mjs';
-import { localPictures } from './codes.mjs';
+import { localPictures, localMedia } from './codes.mjs';
+import { localFiles } from './media.mjs';
 
 async function main(env) {
   if (!env.INKA_ADMIN_URL) throw new Error('inka-mcp: INKA_ADMIN_URL is not set');
@@ -28,7 +33,12 @@ async function main(env) {
   // waiting at startup while a person signs in.
   const admin = headlessAdmin({ adminUrl, auth: signIn(env, { adminUrl }), frontendUrl: env.INKA_FRONTEND_URL });
   // One person, one process: every picture is theirs.
-  const server = createServer(() => admin, { pictures: localPictures({ instance: null, now: Date.now }), userOf: () => 'this-session' });
+  const server = createServer(() => admin, {
+    pictures: localPictures({ instance: null, now: Date.now }),
+    media: localMedia({ instance: null, now: Date.now }),
+    localFiles: env.INKA_MEDIA_FOLDERS ? localFiles(env.INKA_MEDIA_FOLDERS.split(delimiter), { maxBytes: MAX_FILE_BYTES }) : null,
+    userOf: () => 'this-session',
+  });
   server.server.onclose = () => admin.close();
   await server.connect(new StdioServerTransport());
 }

@@ -108,11 +108,15 @@ export function adminPool({ adminUrl, frontendUrl, size, waitMs, maxIdleMs }) {
         withSite(work) {
           return as(currentUser, (page) => work(siteOn(page)));
         },
-        /** Add a page through the admin's add form, then work in its editor. */
-        withNewPage({ parent, type, title }, work) {
+        /**
+         * Add a page through the admin's add form, then work in its editor:
+         * `created` is its `{ path, url }`. An item that is a file (`file`)
+         * has no editor, and no agent.
+         */
+        withNewPage({ parent, type, title, file }, work) {
           return as(currentUser, async (page) => {
-            await createPage(page, { parent, type, title });
-            return work(agentOn(page), { site: siteOn(page) });
+            const created = await createPage(page, { parent, type, title, file });
+            return work(file ? null : agentOn(page), { site: siteOn(page), created });
           });
         },
       };

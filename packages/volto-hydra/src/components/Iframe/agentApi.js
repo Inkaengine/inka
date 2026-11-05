@@ -39,7 +39,10 @@ import {
   collectFieldRules,
   describeFieldRules,
 } from '../../../../hydra-js/fieldRules.js';
+import config from '@plone/volto/registry';
+import { getParentUrl } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from '../AgentSite/lockedBy';
+import { checkAllowed, holdImage, onImagesUploaded } from '../../utils/pendingImages';
 import {
   getTargetMapping,
   getSourceField,
@@ -47,7 +50,7 @@ import {
 } from '../../utils/copyFromTargetMapping';
 
 // The schema facts an agent needs, as plain data (see plain()).
-const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'choices', 'default', 'maxLength', 'allowedBlocks'];
+const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'factory', 'choices', 'default', 'maxLength', 'allowedBlocks'];
 
 /**
  * Which of a block type's fields a LINK owns, and which link: `{ title: 'href' }`.
@@ -389,8 +392,43 @@ export function registerAgentApi(live) {
     },
 
     /**
+     * Hold a file an agent adds (an image, or any other file) until the page
+     * is saved, as the editor holds one dropped on it: the page names it by
+     * the reference this resolves to, and Save uploads it (pendingImages.js)
+     * into the folder the image widget would, the page itself when it holds
+     * items, otherwise beside it. `data` is the file's bytes, base64.
+     *
+     * Only for a front end that sets deferImageUploads: it has promised to
+     * render a held image it is handed, which an agent's preview relies on.
+     */
+    async holdFile({ name, type, data }) {
+      if (!config.settings.deferImageUploads) {
+        throw new Error(
+          "holdFile: this site's front end doesn't show images held until the page is saved "
+          + '(deferImageUploads), so a file can\'t be added with a page change',
+        );
+      }
+      if (!name || !type || !data) throw new Error('holdFile: needs { name, type, data }');
+      const { is_folderish: isFolderish } = properties();
+      if (typeof isFolderish !== 'boolean') throw new Error('holdFile: the page does not say whether it holds items (is_folderish)');
+      const path = contentPath();
+      const folder = isFolderish ? path : getParentUrl(path);
+      const file = new File([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], name, { type });
+      await checkAllowed(file, folder, async (at) => {
+        const res = await fetch(`/++api++${at.replace(/\/$/, '')}/@types`, {
+          headers: { Accept: 'application/json', ...authHeaders() },
+        });
+        if (!res.ok) throw new Error(`holdFile: reading what ${at} takes answered ${res.status}`);
+        return res.json();
+      });
+      return holdImage(file, folder);
+    },
+
+    /**
      * Save, if the page is still at `expectedVersion`; otherwise refuse — the
-     * agent reads it again and reapplies. Resolves to the new version.
+     * agent reads it again and reapplies. Resolves to the new version, and
+     * `uploaded`: the URL of the item each held file the page used became,
+     * by its reference (holdFile).
      */
     async save({ expectedVersion }) {
       if (!expectedVersion) throw new Error('save: expectedVersion is required');
@@ -405,6 +443,8 @@ export function registerAgentApi(live) {
       // editor when it saves; when the CMS refuses, the refusal is the
       // update's error, and says why.
       const before = live.current.contentUpdate;
+      const uploaded = {};
+      const stopHearing = onImagesUploaded((became) => Object.assign(uploaded, became));
       document.dispatchEvent(new KeyboardEvent('keydown', {
         key: 's', ctrlKey: true, bubbles: true, cancelable: true,
       }));
@@ -412,15 +452,19 @@ export function registerAgentApi(live) {
         const update = live.current.contentUpdate;
         return update !== before && update?.error ? update.error : null;
       };
-      await until(
-        () => !/\/edit\/?$/.test(window.location.pathname) || refusal(),
-        SAVE_LIMIT_MS, 'save: the editor did not save',
-      );
+      try {
+        await until(
+          () => !/\/edit\/?$/.test(window.location.pathname) || refusal(),
+          SAVE_LIMIT_MS, 'save: the editor did not save',
+        );
+      } finally {
+        stopHearing();
+      }
       const refused = refusal();
       if (refused) {
         throw new Error(`save: the CMS refused it: ${refused.response?.body?.error?.message ?? refused.message}`);
       }
-      return { version: await readVersion(path) };
+      return { version: await readVersion(path), uploaded };
     },
   };
 

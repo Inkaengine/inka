@@ -10,15 +10,17 @@ import {
   heldImages,
   heldImagesIn,
   onImageHeld,
+  onImagesUploaded,
   releaseImages,
   uploadPendingImages,
   UploadFailed,
-  checkImagesAllowed,
-  ImagesNotAllowed,
+  checkAllowed,
+  NotAllowedThere,
 } from './pendingImages';
 
 /** A dropped file, as the browser hands it over. */
 const fileNamed = (name) => new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' });
+const pdfNamed = (name) => new File(['%PDF'], name, { type: 'application/pdf' });
 const created = (id) => ({
   '@id': `http://site/news/${id}`,
   image: { download: `http://site/news/${id}/@@images/image.png`, width: 1, height: 1, scales: {} },
@@ -49,12 +51,16 @@ describe('pending images', () => {
     expect(heldImagesIn('/elsewhere')).toEqual([]);
   });
 
-  it('before holding an image, checks the folder takes images from this user', async () => {
+  it('before holding a file, checks the folder takes its type from this user', async () => {
     const typesIn = (types) => async () => types.map(([id, addable]) => ({ '@id': `http://site/@types/${id}`, id, addable }));
-    await expect(checkImagesAllowed('/news', typesIn([['Document', true], ['Image', true]]))).resolves.toBeUndefined();
-    const refused = checkImagesAllowed('/news', typesIn([['Document', true], ['Image', false]]));
-    await expect(refused).rejects.toThrow(ImagesNotAllowed);
+    await expect(checkAllowed(fileNamed('a.png'), '/news', typesIn([['Document', true], ['Image', true]]))).resolves.toBeUndefined();
+    const refused = checkAllowed(fileNamed('a.png'), '/news', typesIn([['Document', true], ['Image', false]]));
+    await expect(refused).rejects.toThrow(NotAllowedThere);
     await expect(refused).rejects.toThrow('You can’t add images to /news, so this one can’t be saved there.');
+    // A file that isn't an image becomes a File, so it's Files the folder must take.
+    await expect(checkAllowed(pdfNamed('r.pdf'), '/news', typesIn([['Image', true], ['File', false]])))
+      .rejects.toThrow('You can’t add files to /news, so this one can’t be saved there.');
+    await expect(checkAllowed(pdfNamed('r.pdf'), '/news', typesIn([['Image', false], ['File', true]]))).resolves.toBeUndefined();
   });
 
   it('on save, uploads each image the page uses and puts the image in its place', async () => {
@@ -84,6 +90,34 @@ describe('pending images', () => {
     expect(saved.blocks.b1.url).toEqual([{
       '@id': 'http://site/news/a.png', title: 'A', image_field: 'image', image_scales: { image: [created('a.png').image] },
     }]);
+  });
+
+  it('a held file that is not an image is put in place by its URL alone, with no image scales', async () => {
+    const ref = holdImage(pdfNamed('report.pdf'), '/news');
+    const saved = await uploadPendingImages(
+      { blocks: { b1: { '@type': 'download', file: ref, label: 'Report' } } },
+      {
+        upload: async () => ({
+          '@id': 'http://site/news/report.pdf',
+          file: { download: 'http://site/news/report.pdf/@@download/file', filename: 'report.pdf' },
+        }),
+        remove: async () => {},
+      },
+    );
+    expect(saved.blocks.b1).toEqual({ '@type': 'download', file: 'http://site/news/report.pdf', label: 'Report' });
+  });
+
+  it('says which item each reference became, to whoever is listening', async () => {
+    const used = holdImage(fileNamed('a.png'), '/news');
+    holdImage(fileNamed('unused.png'), '/news');
+    const heard = [];
+    const stop = onImagesUploaded((uploaded) => heard.push(uploaded));
+    await uploadPendingImages(
+      { blocks: { b1: { image: used } } },
+      { upload: async () => created('a.png'), remove: async () => {} },
+    );
+    stop();
+    expect(heard).toEqual([{ [used]: 'http://site/news/a.png' }]);
   });
 
   it('one image in two places is uploaded once', async () => {

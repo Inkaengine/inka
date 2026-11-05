@@ -4,6 +4,7 @@ import { InvalidGrantError } from '@modelcontextprotocol/sdk/server/auth/errors.
 import { sealer } from './sealed.mjs';
 import {
   localCodes, storedCodes, sealedCodes, CodeElsewhere, instanceOfCode, localPictures, storedPictures, PictureGone,
+  localMedia, storedMedia, MediaGone,
 } from './codes.mjs';
 
 const DATA = { client: 'c-hash', redirect: 'r-hash', code_challenge: 'x'.repeat(43), plone: 'a.b.c' };
@@ -156,5 +157,64 @@ describe('pictures on several instances', () => {
     const pictures = storedPictures({ store, now: () => clock.now });
     const codes = storedCodes({ store, now: () => clock.now });
     await expect(codes.take(await pictures.issue(PICTURE))).rejects.toThrow(InvalidGrantError);
+  });
+});
+
+const FILE = { user: 'jane', name: 'shot.png', type: 'image/png', data: 'iVBORw0KGgo' };
+
+const MEDIA_KINDS = {
+  local: (clock) => ['one', 'two'].map((instance) => localMedia({ instance, now: () => clock.now })),
+  stored: (clock) => {
+    const store = fakeStore(clock);
+    return [storedMedia({ store, now: () => clock.now }), storedMedia({ store, now: () => clock.now })];
+  },
+};
+
+for (const [kind, make] of Object.entries(MEDIA_KINDS)) {
+  describe(`${kind} media`, () => {
+    it('gives a file back as often as it is asked for, for an editing session of two hours', async () => {
+      const clock = { now: 1_000_000 };
+      const [media] = make(clock);
+      const id = await media.issue(FILE);
+      expect(await media.peek(id)).toEqual(FILE);
+      clock.now += 119 * 60_000;
+      expect(await media.peek(id)).toEqual(FILE);
+      clock.now += 2 * 60_000;
+      await expect(media.peek(id)).rejects.toThrow(MediaGone);
+      await expect(media.peek(id)).rejects.toThrow(/add it again/);
+    });
+
+    it('refuses an id it never issued', async () => {
+      const [media] = make({ now: 1_000_000 });
+      await expect(media.peek('made-up')).rejects.toThrow(MediaGone);
+    });
+
+    it('can say what a file became, without keeping it any longer', async () => {
+      const clock = { now: 1_000_000 };
+      const [media] = make(clock);
+      const id = await media.issue(FILE);
+      clock.now += 60 * 60_000;
+      await media.update(id, { user: 'jane', name: 'shot.png', type: 'image/png', uploaded: 'http://site/news/shot.png' });
+      expect(await media.peek(id)).toEqual({ user: 'jane', name: 'shot.png', type: 'image/png', uploaded: 'http://site/news/shot.png' });
+      clock.now += 61 * 60_000;
+      await expect(media.peek(id)).rejects.toThrow(MediaGone);
+    });
+  });
+}
+
+describe('media on several instances', () => {
+  it('a local file names its instance, and another instance says where it is', async () => {
+    const [one, two] = MEDIA_KINDS.local({ now: 1_000_000 });
+    const id = await one.issue(FILE);
+    expect(instanceOfCode(id)).toBe('one');
+    expect((await two.peek(id).catch((error) => error)).instance).toBe('one');
+  });
+
+  it('a stored file is kept apart from the pictures in the same store', async () => {
+    const clock = { now: 1_000_000 };
+    const store = fakeStore(clock);
+    const media = storedMedia({ store, now: () => clock.now });
+    const pictures = storedPictures({ store, now: () => clock.now });
+    await expect(pictures.peek(await media.issue(FILE))).rejects.toThrow(PictureGone);
   });
 });
