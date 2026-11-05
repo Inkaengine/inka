@@ -2081,7 +2081,13 @@ test.describe('Multi-Block Selection', () => {
     await helper.waitForIframeBlockHandle('block-1-uuid');
     await helper.escapeFromEditing();
     await iframe.locator('[data-block-uid="block-3-uuid"]').click({ modifiers: ['ControlOrMeta'] });
-    await helper.waitForMultiSelectOutlines(2);
+
+    // Where this test should be before it scrolls, so a failure below is about
+    // the scroll: both blocks outlined, and the page has somewhere to go.
+    for (const uid of ['block-1-uuid', 'block-3-uuid']) {
+      await expect(page.locator(`.volto-hydra-block-outline[data-block-uid="${uid}"]`), 'multi-selected before the scroll').toBeVisible();
+    }
+    await expect(iframe.locator('[data-block-uid]').last(), 'the page can scroll').not.toBeInViewport();
 
     // Scroll iframe down — outlines should disappear during scroll. They are
     // back 150ms after the scroll stops, sooner than a poll may look, so the
