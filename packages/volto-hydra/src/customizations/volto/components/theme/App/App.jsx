@@ -56,7 +56,7 @@ import BodyClass from '@plone/volto/helpers/BodyClass/BodyClass';
 import { getBaseUrl, getView, isCmsUi } from '@plone/volto/helpers/Url/Url';
 import { hasApiExpander } from '@plone/volto/helpers/Utils/Utils';
 import { getBreadcrumbs } from '@plone/volto/actions/breadcrumbs/breadcrumbs';
-import { getContent } from '@plone/volto/actions/content/content';
+import { getContent, unlockContent } from '@plone/volto/actions/content/content';
 import { getNavigation } from '@plone/volto/actions/navigation/navigation';
 import { getTypes } from '@plone/volto/actions/types/types';
 import { getWorkflow } from '@plone/volto/actions/workflow/workflow';
@@ -117,6 +117,52 @@ export class App extends Component {
   componentDidCatch(error, info) {
     this.setState({ hasError: true, error, errorInfo: info });
     config.settings.errorHandlers.forEach((handler) => handler(error));
+  }
+
+  /**
+   * Release the lock when the editor is LEFT, from what was known on the way out.
+   *
+   * Volto's Edit does this itself in componentWillUnmount, gated on
+   * `this.props.content?.lock?.locked`. In a bridge session that gate is read
+   * too late to be true. AsyncConnect keeps rendering the PREVIOUS route until
+   * the next route's loaders resolve (`previousLocation || location` in its
+   * render), so the editor is still mounted when the next route's content
+   * lands in `state.content.data` — the one slot everything shares. Leaving
+   * /x/edit for /contents reads `/`, because getBaseUrl drops the view, and the
+   * editor then unmounts holding the SITE ROOT's content, whose lock is not
+   * locked. It releases nothing, and the page stays locked for the lock's full
+   * ten minutes.
+   *
+   * Measured, with the mock logging every read: five reads of the page with
+   * lock.locked=false, the POST @lock, further reads with lock.locked=true, and
+   * then `READ / lock.locked=false` as the park navigation begins — and no
+   * DELETE @lock, ever.
+   *
+   * In a direct-fetch admin nothing writes that slot during the window (App's
+   * content loader does not run on the client at all), which is why this is a
+   * bridge-only fault and why Volto has never had to care.
+   *
+   * Keyed on the ROUTER's location, not this component's `pathname` prop.
+   * Everything rendered under AsyncConnect — App included — is handed
+   * `previousLocation` during the load, so the props here lag by exactly the
+   * window that causes the bug. `state.router.location` changes the moment the
+   * navigation is dispatched, which is before the next route's content read
+   * lands, and that is the only moment at which the page's own lock is still
+   * what `state.content.data` describes.
+   *
+   * Volto's own action, not a lock manager of our own; Edit's unlock still runs
+   * whenever it can, and a second DELETE on an unlocked page is a no-op.
+   */
+  componentDidUpdate(prevProps) {
+    const left = prevProps.routerPathname;
+    if (!left || left === this.props.routerPathname) return;
+    if (getView(left) !== 'edit') return;
+    const lock = prevProps.content?.lock;
+    // Ours to release: a lock someone else holds is theirs, and stealing it on
+    // the way out of a page we could not edit anyway is the opposite of what
+    // the lock is for.
+    if (!lock?.locked || lock.creator !== prevProps.userId) return;
+    this.props.unlockContent(getBaseUrl(left));
   }
 
   dispatchContentClick = (event) => {
@@ -432,6 +478,10 @@ export function connectAppComponent(AppComponent) {
     connect(
       (state, props) => ({
         pathname: props.location.pathname,
+        // The location as the ROUTER has it, which is ahead of the one this
+        // component is rendered with while a route's data loads. See
+        // componentDidUpdate.
+        routerPathname: state.router?.location?.pathname,
         token: state.userSession.token,
         userId: state.userSession.token
           ? jwtDecode(state.userSession.token).sub
@@ -440,7 +490,7 @@ export function connectAppComponent(AppComponent) {
         apiError: state.apierror.error,
         connectionRefused: state.apierror.connectionRefused,
       }),
-      null,
+      { unlockContent },
     ),
   )(AppComponent);
 }
