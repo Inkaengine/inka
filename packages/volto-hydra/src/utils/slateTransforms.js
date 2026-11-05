@@ -300,6 +300,45 @@ export function removeEmptyListItem(value, selection) {
 }
 
 /**
+ * Move the empty list item at the selection out of its sub-list, to follow
+ * that sub-list in the outer list: Enter on an empty indented item, as Word
+ * and Google Docs do. The editor keeps a sub-list beside the item it belongs
+ * to (ul > [li, ul]). Items after it in the sub-list stay a sub-list, now
+ * under the moved item; a sub-list left empty goes. Returns null for an item
+ * at the top level (Enter there leaves the list: removeEmptyListItem).
+ */
+export function outdentEmptyListItem(value, selection) {
+  const { slate } = config.settings;
+  const editor = createHeadlessEditor(value);
+  const [match] = Editor.nodes(editor, {
+    at: selection.anchor.path,
+    match: (n) => Element.isElement(n) && n.type === slate.listItemType,
+    mode: 'lowest',
+  });
+  if (!match) return null;
+  const [, itemPath] = match;
+  const subListPath = Path.parent(itemPath);
+  if (subListPath.length < 2) return null;
+  const [outer] = Editor.parent(editor, subListPath);
+  if (!slate.listTypes.includes(outer.type)) return null;
+
+  let finalPath = Path.next(subListPath);
+  Editor.withoutNormalizing(editor, () => {
+    const [subList] = Editor.node(editor, subListPath);
+    if (itemPath[itemPath.length - 1] < subList.children.length - 1) {
+      Transforms.splitNodes(editor, { at: Path.next(itemPath) });
+    }
+    Transforms.moveNodes(editor, { at: itemPath, to: finalPath });
+    if (Editor.node(editor, subListPath)[0].children.length === 0) {
+      Transforms.removeNodes(editor, { at: subListPath });
+      finalPath = subListPath;
+    }
+  });
+  const start = Editor.start(editor, finalPath);
+  return { newValue: editor.children, newSelection: { anchor: start, focus: start } };
+}
+
+/**
  * Split a list block at a top-level list item into before/paragraph/after.
  * Returns null if the item is nested (not top-level) — caller should use toolbar outdent.
  * Returns { before, paragraph, after } where each is a Slate value or null.
@@ -358,5 +397,6 @@ export default {
   isCurrentListItemEmpty,
   splitListItem,
   removeEmptyListItem,
+  outdentEmptyListItem,
   splitListAtItem,
 };

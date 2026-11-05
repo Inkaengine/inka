@@ -26,6 +26,25 @@ function lineBreaks(text) {
 }
 
 /**
+ * The editor keeps an indented item's sub-list BESIDE the item it belongs to
+ * (ul > li, ul); HTML puts it inside that item (ul > li > ul). The nodes keep
+ * their own data-node-id, so editing reads them back where they are kept.
+ */
+function nestSubLists(children) {
+  const isList = (n) => n.type === "ul" || n.type === "ol";
+  const out = [];
+  for (const child of children) {
+    const prev = out[out.length - 1];
+    if (isList(child) && prev?.type === "li") {
+      out[out.length - 1] = { ...prev, children: [...prev.children, child] };
+    } else {
+      out.push(child);
+    }
+  }
+  return out;
+}
+
+/**
  * Recursively serializes a single Slate node into a JSX element. Keys are the
  * node's position among its siblings: stable across renders, so React updates
  * the DOM it already has instead of replacing it on every edit.
@@ -48,9 +67,8 @@ function serializeNode(node, index) {
     );
   }
 
-  const children = node.children
-    ? node.children.map((child, i) => serializeNode(child, i))
-    : null;
+  const kids = node.type === "ul" || node.type === "ol" ? nestSubLists(node.children || []) : node.children;
+  const children = kids ? kids.map((child, i) => serializeNode(child, i)) : null;
   // Only attach data-node-id when nodeId is a valid path. The previous
   // `${node?.nodeId}` template would emit the literal string "undefined"
   // when missing, which the bridge then treated as a real (broken) anchor
