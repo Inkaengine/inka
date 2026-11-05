@@ -224,6 +224,7 @@ export function agentOn(page) {
     move: (op) => call('move', op),
     save: (op) => call('save', op),
     holdFile: (file) => call('holdFile', file),
+    blockPathMapOf: (draft) => call('blockPathMapOf', draft),
     unlockTemplateOf: (id) => call('unlockTemplateOf', id),
     lockTemplates: () => call('lockTemplates'),
   };

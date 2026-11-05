@@ -24,12 +24,14 @@
  */
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
+  buildBlockPathMap,
   getBlockById,
   getBlockTypeSchema,
   getAllContainerFields,
   getContainerRegionDescriptors,
   resolveRegionConstraints,
   resolveObjectListConstraints,
+  stripBlockPathMapForPostMessage,
   stripEmptyBlocks,
 } from '../../utils/blockPath';
 import { stripFixedInsideSlots } from '@volto-hydra/helpers';
@@ -204,6 +206,15 @@ export function registerAgentApi(live) {
         blockPathMap: { ...blockPathMap, [PAGE_BLOCK_UID]: { ...blockPathMap[PAGE_BLOCK_UID], blockType: formData['@type'] } },
         lockedBy: lockedBy(contentLock, sessionToken),
       };
+    },
+
+    /**
+     * The block map a front end needs beside `draft` to be handed it through
+     * its bridge, as the compare view's panes are. What a preview sends.
+     */
+    blockPathMapOf(draft) {
+      const { blocksConfig, intl } = live.current;
+      return stripBlockPathMapForPostMessage(buildBlockPathMap(draft, blocksConfig, intl));
     },
 
     /**
