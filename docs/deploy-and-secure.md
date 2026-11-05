@@ -106,6 +106,39 @@ Inka keeps no content, no database and no files. Content, users and history stay
 - **Scale out.** Run more than one instance behind a load balancer. There is no shared state to synchronise.
 - **Recover by redeploying.** There is nothing to back up or restore in Inka itself. Back up the CMS as you do now.
 
+## Deploy a site's content without taking it down
+
+A Plone site whose content ships with its code, as a plone.exportimport layout, is often deployed by deleting the site and importing the layout again. While that import runs there is no site: every page is a 404 to visitors, on every machine that shares the database.
+
+`inkaengine.inka.content_deploy` applies only what the layout changed, in one transaction, so visitors see the old content until the new content is complete:
+
+- **Creates and updates** go through plone.exportimport's own importer, for just the changed items.
+- **Moves** keep the item's UID, history and place in its folder. **Deletes** remove the item. Both leave a redirect from the old path.
+- **Ordering, default pages, relations, workflow states and redirects** from the layout are applied too.
+
+The site keeps its own base: the layout it was last deployed from, saved in the same transaction as the content. The release step needs nothing else, so it can run on a throwaway machine. A dry run, a failure or a refused deploy leaves both the content and the base as they were.
+
+Run it from a script that `zconsole` runs in your release step. On RelStorage the running instances keep serving while it works.
+
+### Python
+
+```python
+from inkaengine.inka.content_deploy.stored_base import deploy_content
+from inkaengine.inka.content_deploy.stored_base import has_base
+from inkaengine.inka.content_deploy.stored_base import record_base
+
+if has_base(site):
+    report = deploy_content(site, request, layout, commit=True)
+else:
+    # First deploy: import the layout in full, as you do now, then
+    record_base(site, layout)
+    transaction.commit()
+```
+
+`layout` is the folder that holds `content/`, and `redirects.json`, `relations.json`, `principals.json` or `site-settings.json` if the layout has them.
+
+A deploy refuses to overwrite a page an editor changed on the site since the base was recorded, and lists it under `must_merge` in the report. Bring that change into the layout and deploy again. A field your site's schema cannot hold looks like an edit on every page that has it, because no export can carry it back; name such fields in `ignored_fields`.
+
 ## Self-hosted or managed
 
 Inka is open source under the MIT licence, and you can run it on your own infrastructure. Nothing phones home.
