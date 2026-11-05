@@ -434,10 +434,10 @@ This site uses some recommended **add-ons**:
 
 ## View this site in other frameworks
 
-- [NUXT.js Example](https://hydra-nuxt-flowbrite.netlify.app/)
+- [NUXT.js Example](https://inka.sh/)
 - [Framework7 Example (mobile app)](https://hydra-vue-f7.netlify.app/)
 - [Next.js Example](https://hydra-blogsite-nextjs.vercel.app)
-- [Edit either of these frontends: hydra.pretagov.com](https://hydra.pretagov.com)
+- [Edit either of these frontends: admin.inka.sh](https://admin.inka.sh)
 
 ## Find out more about Inka
 
