@@ -1,13 +1,11 @@
 /**
- * Run: node --test packages/testing/imageSizes.test.mjs
- *
  * Pure contract logic — no browser, no servers, no ports.
  *
  * Every case here is phrased as "the data offered X, the render did Y", which
  * is the only thing Inka gets to have an opinion about. How a frontend builds
  * its URLs is its own business.
  */
-import test from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert';
 import {
   scalesAvailable, sizesOffered, usesAvailableSizes,
