@@ -70,6 +70,14 @@ function parseContentMounts() {
 const CONTENT_MOUNTS = parseContentMounts();
 const CONTENT_SCHEMAS = process.env.CONTENT_SCHEMAS || null;
 
+/** The prefix of the non-root mount a path is under (`/_test_data` for `/_test_data/x`), or null. */
+function prefixMountOf(urlPath) {
+  const mount = CONTENT_MOUNTS.find(
+    ({ mountPath }) => mountPath !== '/' && (urlPath === mountPath || urlPath.startsWith(`${mountPath}/`)),
+  );
+  return mount ? mount.mountPath : null;
+}
+
 /**
  * A mount's redirects as site-relative [old, new] pairs, or [] when it has none.
  *
@@ -2795,13 +2803,15 @@ function getContent(urlPath, sessionId, expandList = [], expandParams = {}) {
   if (sessionId && sessionContent[sessionId]) {
     const store = sessionContent[sessionId];
     let stored = store[urlPath];
-    // A reader may address session-created content under the /_test_data test-content
-    // mount even though it was created under a bare path (e.g. the admin's templatesPath
-    // "/templates/x" while the frontend fetches "/_test_data/templates/x"). Un-prefix a
-    // missed /_test_data path so created content is served in-session either way. Strip
+    // A reader may address session-created content under a prefix mount (test
+    // fixtures mounted at /_test_data, say) even though it was created under a
+    // bare path (e.g. the admin's templatesPath "/templates/x" while the frontend
+    // fetches "/_test_data/templates/x"). Un-prefix a missed path by the mount it
+    // falls under, so created content is served in-session either way. Strip
     // ONLY (never add a prefix) so this can't shadow bare disk content.
-    if (!stored && urlPath.startsWith('/_test_data')) {
-      stored = store[urlPath.slice('/_test_data'.length) || '/'];
+    if (!stored) {
+      const mount = prefixMountOf(urlPath);
+      if (mount) stored = store[urlPath.slice(mount.length) || '/'];
     }
     if (stored) {
       // Session content may be stored raw (POST handlers) or already-enriched

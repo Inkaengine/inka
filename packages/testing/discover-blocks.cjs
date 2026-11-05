@@ -128,12 +128,13 @@ function buildEmptyRegionCases(blocksConfig, blocks) {
     cases.push({ parentType, field, pagePath: example.pagePath, blockId: example.blockId });
   }
   // A page holding template content — by the same test as the examples above: a
-  // definition need not name itself, so a templateId alone misses one.
+  // definition need not name itself, so a templateId alone misses one. The site
+  // root is passed over too: it's the one page a site's own layout tends to own.
   const templated = new Set((blocks || []).filter(isTemplated).map((b) => b.pagePath));
   const plainPage = [...new Set((blocks || []).map((b) => b.pagePath))]
     .filter(Boolean)
     .sort()
-    .find((p) => !templated.has(p) && p.startsWith('/_test_data/'));
+    .find((p) => !templated.has(p) && p !== '/');
   if (plainPage) cases.push({ parentType: 'page', field: '*', pagePath: plainPage, blockId: '_page' });
   return cases;
 }
@@ -1307,33 +1308,17 @@ const CONTAINMENT_EXEMPT_TYPES = new Set([
  * the doc page still has to show one. Only the project that authored the
  * template knows which slot means "an example lives here", so hydra takes it as
  * configuration instead of guessing.
+ *
+ * `CONTAINMENT_EXEMPT_PAGES` — comma-separated page paths whose placements
+ * aren't authored content at all: test apparatus, or fixture pages that show a
+ * block on its own. Their placements are not a project's choice to get wrong,
+ * so the containment check does not apply there.
  */
-// Pages that are test APPARATUS, not authored content. Their placements are
-// not a project's choice to get wrong, so the containment check does not apply.
-//
-// dnd-convert-page is the whole synthetic conversion graph: convSource and the
-// conv containers sit at page level because a drag source has to exist
-// somewhere to be dragged FROM, and they are `restricted` because you should
-// never be offered "convAlien" in a real block chooser. Both are correct, and
-// together they read as a containment violation — the page's allowed set is the
-// non-restricted types. Un-restricting them to satisfy this check breaks 28
-// tests: the option-counting those specs assert on ("one option -> auto-convert,
-// two -> chooser") flows from that same flag.
-const APPARATUS_PAGES = new Set(['/_test_data/dnd-convert-page']);
-
 function readContainmentRules(env = process.env) {
+  const list = (value) => (value || '').split(',').map((s) => s.trim()).filter(Boolean);
   return {
-    slots: (env.CONTAINMENT_EXEMPT_SLOTS || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
-    pages: [
-      ...APPARATUS_PAGES,
-      ...(env.CONTAINMENT_EXEMPT_PAGES || '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ],
+    slots: list(env.CONTAINMENT_EXEMPT_SLOTS),
+    pages: list(env.CONTAINMENT_EXEMPT_PAGES),
   };
 }
 
@@ -1342,7 +1327,7 @@ function readContainmentRules(env = process.env) {
  *
  * Exempt when: it is structural, template-placed or position-fixed; its
  * container declares no allowed set, or declares one that includes the type;
- * or it sits in a slot, or on an apparatus page, the project nominated
+ * or it sits in a slot, or on a page, the project nominated
  * (see readContainmentRules).
  */
 function isContainmentExempt(entry, blockData, rules = { slots: [] }, pagePath = null) {

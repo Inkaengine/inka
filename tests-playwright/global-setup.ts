@@ -76,6 +76,20 @@ async function globalSetup() {
   // merged view. Default the integrity exemption here so every harness gets
   // it; a consuming repo can still override before setup runs.
   process.env.INTEGRITY_EXEMPT_PREFIXES ??= '/_test_data';
+  // Pages that are test APPARATUS, not authored content, so the containment
+  // check does not apply to them. Added to whatever the launcher gives.
+  //
+  // dnd-convert-page is the whole synthetic conversion graph: convSource and the
+  // conv containers sit at page level because a drag source has to exist
+  // somewhere to be dragged FROM, and they are `restricted` because you should
+  // never be offered "convAlien" in a real block chooser. Both are correct, and
+  // together they read as a containment violation — the page's allowed set is the
+  // non-restricted types. Un-restricting them to satisfy this check breaks 28
+  // tests: the option-counting those specs assert on ("one option -> auto-convert,
+  // two -> chooser") flows from that same flag.
+  process.env.CONTAINMENT_EXEMPT_PAGES = [process.env.CONTAINMENT_EXEMPT_PAGES, '/_test_data/dnd-convert-page']
+    .filter(Boolean)
+    .join(',');
   // Only frontends block-sanity enforces. A frontend it skips yields cases
   // that are generated and then skipped — pure cost, and for the docs
   // frontends (which register a small registry, so most content reads as
