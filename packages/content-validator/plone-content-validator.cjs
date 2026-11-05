@@ -13,8 +13,7 @@
  *                            the in-memory form.
  *
  * Both return { errors: string[], warnings: string[], stats: object }.
- * Mirrors the behaviour of pretagov-site/{validate,test}-content.py so the
- * same errors surface whether invoked at mock-api startup or from a CI
+ * The same errors surface whether invoked at mock-api startup or from a CI
  * script.
  */
 'use strict';
@@ -278,8 +277,8 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
         // is the bug worth catching.
         //
         // A WHOLLY site-relative file is not that bug. A consumer may convert
-        // the raw export into a site-relative tree deliberately (pretagov's
-        // convert-export-to-local.py strips the site prefix from redirect keys
+        // the raw export into a site-relative tree deliberately (a conversion
+        // script strips the site prefix from redirect keys
         // and values), and re-adding the prefix there is undone by the next
         // export — churn forever, against redirects that demonstrably work.
         // So judge CONSISTENCY rather than conformance to one of the two.

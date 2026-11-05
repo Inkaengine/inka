@@ -3209,7 +3209,7 @@ export class AdminUIHelper {
    * resolve the uid here, in the one place that has to know the attribute
    * exists.
    *
-   *   const empty = iframe.locator('.nsw-card:has([data-edit-text][data-empty])').first();
+   *   const empty = iframe.locator('.ds-card:has([data-edit-text][data-empty])').first();
    *   await helper.enterEditMode(await helper.getBlockUid(empty), 'title');
    *
    * Resolves from the element itself or the nearest ancestor carrying the

@@ -60,7 +60,7 @@ test('names that collapse onto one width are not a choice', () => {
 });
 
 test('srcset is counted by URL, not by width descriptor', () => {
-  // The pretagov hero on 2026-10-15: nine descriptors, one file. The browser
+  // A live homepage hero: nine descriptors, one file. The browser
   // has one image to choose from and downloads the full-size original.
   const nineSame = Array.from({ length: 9 }, (_, i) => `${API}/getty.jpg ${320 * (i + 1)}w`).join(', ');
   assert.equal(sizesOffered(nineSame), 1);

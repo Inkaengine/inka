@@ -17,8 +17,8 @@
  *     which resolves, so naturalWidth > 0 and the check is satisfied. The
  *     failure is invisible to anything that looks at `src`.
  *   - an <img> whose srcset lists the same URL nine times at nine different
- *     width descriptors. Nine candidates, one size. That is the pretagov
- *     homepage hero on 2026-10-15, shipping a 1920px 497KB original to phones.
+ *     width descriptors. Nine candidates, one size. A live homepage
+ *     hero did exactly that, shipping a 1920px 497KB original to phones.
  *
  * Both are "the data offered sizes and the render ignored them", which is why
  * that is the question this asks rather than "is there a srcset".

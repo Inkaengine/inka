@@ -1097,7 +1097,7 @@ export class Bridge {
    *
    * A frontend annotates the element it renders. A design system's script then
    * often turns that element into a shell around the control it builds for
-   * itself: the NSW accordion empties its `.nsw-accordion__title`, puts a
+   * itself: an accordion empties its `.ds-accordion__title`, puts a
    * `<button>` inside it, and binds both the toggle and `aria-expanded` to that
    * button. A person clicking the title hits the button — the event starts
    * there and bubbles outward — but `shell.click()` starts at the shell and

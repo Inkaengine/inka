@@ -227,48 +227,48 @@ describe('undefinedSlateTypes', () => {
  * A DESIGN SYSTEM style — the style menu's, not slate's own.
  *
  * volto-slate's StyleMenu does not retype the node: `toggleBlockStyleInSelection`
- * writes `styleName: "nsw-small"` (space separated when several apply). So a
+ * writes `styleName: "ds-small"` (space separated when several apply). So a
  * rule naming node types could never reach one, and the allow-list had nothing
  * to say about the styles a design system actually ships — the case it exists
  * for. They are keyed by their CSS class with a leading dot, the same shape
- * getSlateVocabulary reports them under (`.nsw-small`), which is what keeps a
+ * getSlateVocabulary reports them under (`.ds-small`), which is what keeps a
  * class called `p` from colliding with the element type `p`.
  */
 describe('design-system styles (styleName)', () => {
   const FOOTER_ONLY = {
     allowedStyles: null,
-    disallowedStyles: ['.nsw-small'],
+    disallowedStyles: ['.ds-small'],
     allowedMarks: null,
     disallowedMarks: null,
   };
   const styled = (styleName, text) => ({ type: 'p', styleName, children: [{ text }] });
 
   test('a disallowed style is stripped, and the node keeps everything else', () => {
-    const value = [styled('nsw-small', 'fine print')];
+    const value = [styled('ds-small', 'fine print')];
     const out = normalizeSlateValue(value, FOOTER_ONLY, OPTS);
     expect(out.value).toEqual([{ type: 'p', children: [{ text: 'fine print' }] }]);
-    expect(out.changes[0]).toMatchObject({ from: '.nsw-small', to: null, kind: 'style-name' });
+    expect(out.changes[0]).toMatchObject({ from: '.ds-small', to: null, kind: 'style-name' });
   });
 
   test('only the disallowed one goes; the rest of the list survives', () => {
-    const value = [styled('nsw-intro nsw-small', 'lede')];
+    const value = [styled('ds-intro ds-small', 'lede')];
     const out = normalizeSlateValue(value, FOOTER_ONLY, OPTS);
-    expect(out.value[0].styleName).toBe('nsw-intro');
+    expect(out.value[0].styleName).toBe('ds-intro');
   });
 
   test('an allowed style is untouched, by reference', () => {
-    const value = [styled('nsw-intro', 'lede')];
+    const value = [styled('ds-intro', 'lede')];
     expect(normalizeSlateValue(value, FOOTER_ONLY, OPTS).value).toBe(value);
   });
 
   test('where nothing is declared, every style stays', () => {
-    const value = [styled('nsw-small', 'fine print')];
+    const value = [styled('ds-small', 'fine print')];
     expect(normalizeSlateValue(value, null, OPTS).value).toBe(value);
   });
 
   test('a style is asked about by its dotted key', () => {
-    expect(isStyleAllowed('.nsw-small', FOOTER_ONLY)).toBe(false);
-    expect(isStyleAllowed('.nsw-intro', FOOTER_ONLY)).toBe(true);
+    expect(isStyleAllowed('.ds-small', FOOTER_ONLY)).toBe(false);
+    expect(isStyleAllowed('.ds-intro', FOOTER_ONLY)).toBe(true);
     // The element type `p` is a different thing from a class called `p`.
     expect(isStyleAllowed('p', FOOTER_ONLY)).toBe(true);
   });

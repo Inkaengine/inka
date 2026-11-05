@@ -182,7 +182,7 @@ export function buildQuerystringSearchBody(
   } else {
     // Default: the context's CONTENTS — its direct children (`.::1`), which is
     // what Volto shows for a listing with no criteria. `.` alone is the whole
-    // subtree: a converted LECC page listed 25 items (every language folder's
+    // subtree: a converted site's page listed 25 items (every language folder's
     // sub-pages) where the source listed its 7 languages. A listing that sets
     // its own `depth` keeps it (applied below).
     query = [

@@ -22,13 +22,13 @@ const API = 'http://api.test';
 describe('getImageUrl', () => {
   test('preview_image_link: resolves the hashed scale against base_path (the linked logo)', () => {
     const item = {
-      '@id': '/case-studies/justice-health-nsw',
+      '@id': '/case-studies/health-agency',
       image_field: 'preview_image_link',
       image_scales: {
         preview_image_link: [
           {
             download: '@@images/image-279-aaaaaaaa.png',
-            base_path: '/logos/justice-health-nsw',
+            base_path: '/logos/health-agency',
             width: 279,
             height: 65,
           },
@@ -36,23 +36,23 @@ describe('getImageUrl', () => {
       },
     };
     expect(getImageUrl(item, API)).toBe(
-      `${API}/logos/justice-health-nsw/@@images/image-279-aaaaaaaa.png`,
+      `${API}/logos/health-agency/@@images/image-279-aaaaaaaa.png`,
     );
   });
 
   test('preview_image_link: never resolves against the referencing item @id', () => {
     const item = {
-      '@id': '/case-studies/justice-health-nsw',
+      '@id': '/case-studies/health-agency',
       image_field: 'preview_image_link',
       image_scales: {
         preview_image_link: [
-          { download: '@@images/image-32-bbbb.png', base_path: '/logos/lecc' },
+          { download: '@@images/image-32-bbbb.png', base_path: '/logos/agency' },
         ],
       },
     };
     const url = getImageUrl(item, API);
     expect(url).not.toContain('/case-studies/');
-    expect(url).toBe(`${API}/logos/lecc/@@images/image-32-bbbb.png`);
+    expect(url).toBe(`${API}/logos/agency/@@images/image-32-bbbb.png`);
   });
 
   test('leadimage (no base_path): resolves the hashed download against the item @id', () => {

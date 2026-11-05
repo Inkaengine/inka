@@ -6,8 +6,8 @@ import { selectablePoint } from './selectablePoint';
  * element".
  *
  * A block can be several elements sharing one data-block-uid, and its first
- * element in the DOM is not necessarily the one an author would click. The
- * NSW consent block is its editing bar plus the cookie banner the design
+ * element in the DOM is not necessarily the one an author would click. A
+ * consent block can be its editing bar plus a cookie banner the design
  * system builds; the banner comes first, and its centre is the message's
  * "manage your cookie settings" link. Clicking there follows the link and the
  * editor leaves the page — which is not selecting the block.

@@ -219,7 +219,7 @@ function retypeTarget(type, rules, aliases, defaultBlockType) {
  * one, so the allow-list had nothing to say about the styles a design system
  * actually ships — the case it exists for.
  *
- * Keyed by CSS class with a leading dot (`.nsw-small`), the shape
+ * Keyed by CSS class with a leading dot (`.ds-small`), the shape
  * getSlateVocabulary already reports them under, so a class named `p` cannot
  * collide with the element type `p`.
  *

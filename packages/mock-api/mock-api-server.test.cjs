@@ -616,8 +616,8 @@ describe('@types schemas', () => {
 
 // Which SearchableText operations the backend has — and the mock must be
 // honest about it. `string.search` (raw, un-munged terms for elastic) is NOT
-// core Plone: it comes from pretagov's plone.app.querystring fork, which a site
-// like lecc.nsw.gov.au runs. Stock Plone 6.2 (plone.app.querystring 3.0.0,
+// core Plone: it comes from a plone.app.querystring fork that some production
+// sites run. Stock Plone 6.2 (plone.app.querystring 3.0.0,
 // demo.plone.org) offers only `contains` and answers anything else with
 // 400 "Invalid query.". The mock used to accept `string.search` while
 // advertising only `contains`, so a frontend that sent it passed every test
@@ -660,7 +660,7 @@ describe('SearchableText operations: stock Plone 6.2 (default)', () => {
   });
 });
 
-describe('SearchableText operations: the pretagov fork (MOCK_QUERYSTRING_SEARCH=1)', () => {
+describe('SearchableText operations: the querystring fork (MOCK_QUERYSTRING_SEARCH=1)', () => {
   before(() => {
     process.env.MOCK_QUERYSTRING_SEARCH = '1';
   });
@@ -668,7 +668,7 @@ describe('SearchableText operations: the pretagov fork (MOCK_QUERYSTRING_SEARCH=
     delete process.env.MOCK_QUERYSTRING_SEARCH;
   });
 
-  it('advertises contains and search, as lecc.nsw.gov.au does', async () => {
+  it('advertises contains and search, as a site running the fork does', async () => {
     assert.deepEqual(await textOperations(), [CONTAINS, SEARCH]);
   });
 
@@ -711,8 +711,8 @@ describe('SearchableText operations: the pretagov fork (MOCK_QUERYSTRING_SEARCH=
 // real site has one root, so its references resolve; the mount has to give
 // them the prefix its items got. Only a reference that does NOT resolve as
 // written and DOES under the mount is changed, so nothing that works today
-// moves. (nsw-dds-nextjs mounts its fixtures at /_test_data in the docs repo;
-// a content block whose pictogram is fetched server-side 500'd there.)
+// moves. (A frontend mounting its fixtures at /_test_data inside a larger site
+// hit this: a content block whose pictogram is fetched server-side 500'd.)
 describe('internal references under a prefix mount', () => {
   const get = async (p) =>
     (await fetch(`${baseUrl}${p}`, { headers: { Accept: 'application/json' } })).text();
@@ -755,7 +755,7 @@ describe('internal references under a prefix mount', () => {
 
 // An exportimport mount's redirects.json, beside its content dir. A key may be
 // physical ("/Plone/old"), as plone.exportimport round-trips it, or site-relative
-// ("/old"), as a converted tree stores it (pretagov-site does, and prefixes on
+// ("/old"), as a converted tree stores it (a site that converts its export does, and prefixes on
 // import). Both must serve. The site-relative form used to THROW while the mount
 // was parsed, so every 404 on that mount went through the lookup and became a 500.
 describe('redirects.json of an exportimport mount', () => {

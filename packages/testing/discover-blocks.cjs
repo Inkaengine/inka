@@ -1028,7 +1028,7 @@ function collectWidgetShapeIssues(
         // The value being an array isn't enough: a slate node's block-level
         // `styleName` must be a style the editor's style menu can apply. Any
         // other styleName is content nobody can author — hand-injected to fake a
-        // rendering. Flag each one (this is what caught a fabricated nsw-intro).
+        // rendering. Flag each one (this is what caught a fabricated intro style).
         const bad = unauthorableSlateStyles(value);
         for (const s of bad) {
           issues.push(

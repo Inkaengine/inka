@@ -114,8 +114,8 @@ function readRedirects(mount) {
   //                Zope-physical path.
   //   /old         portal-relative, as every other @id in the archive is. A
   //                converted tree strips the site prefix by design, and a
-  //                distribution applied by its own boot/deploy step (pretagov's
-  //                apply_redirects_file) prefixes on the way in.
+  //                distribution applied by its own boot/deploy step (e.g. an
+  //                apply_redirects_file step) prefixes on the way in.
   //
   // This used to THROW on the second form. That is wrong twice over: the
   // validator in this repo already accepts a wholly site-relative file and
@@ -678,8 +678,8 @@ const TEXT_OPERATORS = {
 
 /**
  * The SearchableText operations this "site" has. `string.search` is not core
- * Plone: it comes from pretagov's plone.app.querystring fork (raw, un-munged
- * terms for collective.elasticsearch), as run by lecc.nsw.gov.au. Stock 6.2
+ * Plone: it comes from a plone.app.querystring fork (raw, un-munged
+ * terms for collective.elasticsearch) that some production sites run. Stock 6.2
  * (plone.app.querystring 3.0.0, demo.plone.org) has only `contains`.
  * MOCK_QUERYSTRING_SEARCH=1 makes the mock the fork. Read per request, so the
  * mock's own tests can exercise both in one process.
@@ -1325,7 +1325,7 @@ function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth, sessionId) 
  * Get navigation items at a specific level under a base path
  * Only includes content from disk (contentDirMap), not session uploads
  * Uses raw content to avoid circular enrichment calls
- * @param {string} basePath - The base path to get navigation for (e.g., '/' or '/pretagov')
+ * @param {string} basePath - The base path to get navigation for (e.g., '/' or '/site')
  * @param {number} depth - How many levels deep to include (default 1)
  */
 /*

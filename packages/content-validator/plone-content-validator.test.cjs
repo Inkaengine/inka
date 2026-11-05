@@ -394,7 +394,7 @@ describe('plone-content-validator validate()', () => {
   it('accepts content with NO local_roles (optional for plone.distribution)', () => {
     // local_roles is generated/defaulted on import, not required: plone.distribution
     // imports items fine when it is absent and defaults them to admin ownership.
-    // The REAL pretagov __metadata__.json ships no local_roles key at all and is
+    // A REAL production __metadata__.json ships no local_roles key at all and is
     // deployed live (197 items). An earlier version of this test asserted the
     // OPPOSITE — that missing local_roles is an error — which would have rejected
     // that valid distribution. Assert the true behavior instead.
@@ -455,8 +455,8 @@ describe('plone-content-validator validate()', () => {
  * That MIX is the bug.
  *
  * A wholly site-relative file is a different thing. A consumer may convert the
- * raw export into a site-relative tree on purpose — pretagov's
- * convert-export-to-local.py strips the site prefix from redirect keys and
+ * raw export into a site-relative tree on purpose — a conversion
+ * script strips the site prefix from redirect keys and
  * values — and demanding the prefix there is undone by the next export, so the
  * check would churn forever against redirects that demonstrably work (verified:
  * /about/about-us 302s on the live API). Previously this file was rejected
@@ -1243,7 +1243,7 @@ describe('plone-content-validator checkIntegrity()', () => {
   });
 
   it('FAILS on an image block url in [{"@id": path}] array form pointing nowhere', () => {
-    // The exact shape that shipped 5 dead image blocks on pretagov-site: url as
+    // The exact shape that shipped 5 dead image blocks on a live site: url as
     // an object_browser ARRAY, not a string, pointing at /images/test-image
     // which does not exist. Pass 2c only checked url as a STRING, so this was
     // never looked at and the gate reported "0 broken".
@@ -1324,7 +1324,7 @@ describe('plone-content-validator checkIntegrity()', () => {
         UID: 'pageauid1234567',
         parent: { '@id': '/' },
         blocks: {
-          'img-1': { '@type': 'image', href: [{ '@id': 'https://digital.nsw.gov.au/x' }] },
+          'img-1': { '@type': 'image', href: [{ '@id': 'https://www.example.gov.au/x' }] },
           'img-2': { '@type': 'image', href: [{ '@id': 'mailto:hi@example.com' }] },
         },
       },

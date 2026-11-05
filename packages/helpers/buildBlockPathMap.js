@@ -15,7 +15,7 @@
 // PAGE_BLOCK_UID is inlined below.
 //
 // Imported by RELATIVE path, not as '@volto-hydra/helpers'. Consumers import
-// this file directly out of a checkout — pretagov-site's content gate runs it
+// this file directly out of a checkout — a site's content gate can run it
 // as plain node, with no install — and a bare specifier needs node_modules to
 // resolve, so it failed there with ERR_MODULE_NOT_FOUND while passing anywhere
 // the workspace happened to be linked. A relative path needs nothing installed.
