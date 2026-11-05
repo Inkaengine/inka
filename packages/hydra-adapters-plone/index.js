@@ -202,10 +202,30 @@ export class PloneAdapter extends BaseAdapter {
       });
     }
     if (!res.ok) {
-      throw new AdapterError(`Plone returned ${res.status} for ${path}`, {
-        code: 'SERVER_ERROR',
-        status: res.status,
-      });
+      // WITH what Plone said, not just the number it said it with.
+      //
+      // plone.restapi puts a sentence in every error body — "Resource is
+      // locked." for a save against someone else's lock — and that sentence is
+      // the only thing that tells an editor, or an agent, what to do about it.
+      // Thrown away, every refusal read as "Plone returned 403", which names
+      // the status and explains nothing: the MCP tool that promises "a save the
+      // CMS refuses says why" had nothing to say.
+      const said = await res
+        .text()
+        .then((text) => {
+          try {
+            return JSON.parse(text)?.error?.message ?? '';
+          } catch {
+            return '';
+          }
+        })
+        .catch(() => '');
+      throw new AdapterError(
+        said
+          ? `${said} (Plone returned ${res.status} for ${path})`
+          : `Plone returned ${res.status} for ${path}`,
+        { code: 'SERVER_ERROR', status: res.status },
+      );
     }
     if (res.status === 204) return null;
     const text = await res.text();
