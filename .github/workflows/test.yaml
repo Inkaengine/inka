@@ -44,10 +44,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -61,6 +57,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Check Volto customizations for upstream drift
         # Shadows are forks of upstream files, and forks go stale silently:
         # upstream fixes its copy and ours keeps the old behaviour. Runs right
@@ -129,10 +129,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Install dependencies
         # The addon's tests run against the SAME template fixtures as the JS suites: the
         # mock API exports them as a plone.exportimport distribution at test time, so the
@@ -141,6 +137,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Use Python
         uses: actions/setup-python@v5
         with:
@@ -184,10 +184,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -201,6 +197,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Start servers
         run: |
           # The servers outlive this step, but its stdout does not: in a container
@@ -309,10 +309,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -326,6 +322,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build workspace deps (@plone/registry, @plone/components)
         # pnpm start:prod loads these at runtime via workspace symlinks;
         # their dist/ output must exist or the SSR server fails to boot.
@@ -428,10 +428,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -445,6 +441,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build workspace deps (@plone/registry, @plone/components)
         # pnpm start:prod loads these at runtime via workspace symlinks;
         # their dist/ output must exist or the SSR server fails to boot.
@@ -558,10 +558,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -575,6 +571,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Install and build Nuxt
         run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
       - name: Start servers
@@ -676,10 +676,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -693,6 +689,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build workspace deps (@plone/registry, @plone/components)
         # pnpm start:prod loads these at runtime via workspace symlinks;
         # their dist/ output must exist or the SSR server fails to boot.
@@ -798,10 +798,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -815,6 +811,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build Next.js example
         run: cd examples/hydra-nextjs && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
         env:
