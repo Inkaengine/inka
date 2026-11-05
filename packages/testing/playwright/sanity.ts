@@ -151,10 +151,9 @@ export function defineBlockSanityTests(options: SanityOptions): void {
     for (const block of discoveredBlocks) {
       // Run each discovered case only on the frontend it came from. Discovery is
       // per-frontend because they do not register the same blocks — one found via
-      // nextjs must not be asserted against f7, which never claimed it.
-      // Playwright collects this file once for all projects, so the cases are all
-      // generated and the foreign ones skip at run time (the idiom dnd-convert
-      // already uses for its mock-only conversion blocks).
+      // one frontend must not be asserted against another that never claimed it.
+      // Playwright collects a spec once for all projects, so the cases are all
+      // generated and the foreign ones skip at run time.
       const belongsHere = (name: string) =>
         !block.frontend || block.frontend === name
         || sharedSources.has(block.frontend);
@@ -456,10 +455,10 @@ export function defineBlockSanityTests(options: SanityOptions): void {
         // TEXT-STYLE COVERAGE (#295). A style the author can apply has to render,
         // and has to render DIFFERENTLY from body text — otherwise picking it does
         // nothing visible and nothing says why. Measured by APPEARANCE, never by
-        // markup: the frontend picks its own tags (this one renders `strong` as a
-        // styled span deliberately), so we locate the style's text, take a
+        // markup: the frontend picks its own tags (it may render `strong` as a
+        // styled span), so we locate the style's text, take a
         // signature of how it actually looks, and compare against body text on the
-        // same page. The aggregates at the end of the file do the judging.
+        // same page. The coverage reporter does the judging, over every worker.
         for (const [field, value] of Object.entries(block.blockData || {})) {
           if (!Array.isArray(value)) continue;
           const wanted = [...slateStyles(value)].map(([style, text]) => ({ style, text }));
@@ -488,12 +487,13 @@ export function defineBlockSanityTests(options: SanityOptions): void {
         // are judged in context. serious/critical WCAG A/AA violations (incl.
         // heading-order) BLOCK; advisory (moderate/minor, best-practice-only, or
         // page-SHELL rules a minimal fixture can't be judged on) is logged only.
-        // OPT-IN: off by default (the mock fixtures aren't a11y-clean and their
-        // cosmetics aren't what block-sanity guards — real-site a11y is enforced
-        // elsewhere). Run the a11y pass with SANITY_AXE=1.
+        // OPT-IN: off by default (test fixtures are rarely a11y-clean, and their
+        // cosmetics aren't what block-sanity guards). Run the a11y pass with
+        // SANITY_AXE=1.
         //
-        // Some doc pages deliberately render MULTIPLE instances of a layout-chrome
-        // component (header/masthead/main-nav) as structural-parity examples. That
+        // `axeSkipPages` is for pages that deliberately render MULTIPLE instances
+        // of a layout-chrome component (header/masthead/main-nav), such as
+        // structural-parity examples on a documentation site. That
         // duplication trips axe's duplicate-id / one-landmark rules — but the
         // chrome's a11y is already proven by the SINGLE live instance on every
         // other page (the layout renders it everywhere), so axe is skipped on the
@@ -819,8 +819,8 @@ function explain(c: ListingContainerIssue): string {
 export function defineListingContainerTests(
   options: Pick<SanityOptions, 'discoveryDir' | 'projects' | 'excludeBlockTypes' | 'excludeTypePrefixes'>,
 ): void {
-  const SANITY_PROJECTS = new Set(options.projects);
-  const onlyOn = describeProjects(SANITY_PROJECTS);
+  const projects = new Set(options.projects);
+  const onlyOn = describeProjects(projects);
   const found = readDiscovery<ListingContainerIssue>(options.discoveryDir, 'listingContainerIssues');
   const cases = (found ?? []).filter((c) => inContract(c.parentType, options));
   const test = playwrightTest;
@@ -828,7 +828,7 @@ export function defineListingContainerTests(
   test.describe('Listing container sanity', () => {
     test('discovery ran', ({}, testInfo) => {
       testInfo.skip(
-        !SANITY_PROJECTS.has(testInfo.project.name),
+        !projects.has(testInfo.project.name),
         `listing-container sanity only runs on ${onlyOn} (skipping ${testInfo.project.name})`,
       );
       requireEnvironment(
@@ -850,7 +850,7 @@ export function defineListingContainerTests(
             : `offers ${c.itemType}, which has a @default mapping`;
       test(`${c.parentType}.${c.field} ${what}`, ({}, testInfo) => {
         testInfo.skip(
-          !SANITY_PROJECTS.has(testInfo.project.name),
+          !projects.has(testInfo.project.name),
           `listing-container sanity only runs on ${onlyOn} (skipping ${testInfo.project.name})`,
         );
         throw new Error(explain(c));

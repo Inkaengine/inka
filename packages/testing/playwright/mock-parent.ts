@@ -59,8 +59,8 @@ export function visibleText(field: Locator): Promise<string> {
 
 /**
  * Whether `text` renders bold, judged by its computed font weight — never by
- * markup. Frontends render bold however they like (the mock frontend
- * deliberately uses <span style="font-weight: bold">, not <strong>), so a test
+ * markup. Frontends render bold however they like (one may use
+ * <span style="font-weight: bold">, not <strong>), so a test
  * must not assume an element.
  */
 export function rendersBold(field: Locator, text: string): Promise<boolean> {

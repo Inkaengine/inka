@@ -86,9 +86,9 @@ export async function reachable(url: string): Promise<boolean> {
  * A dev-server frontend is slow on its FIRST real page load (Vite optimises
  * dependencies then), and whichever spec happens to run first pays for it:
  * `waitForIframeReady` gives up at 30s and its retries fire while the same
- * first compile is still running. On CI that made allowed-layouts fail three
- * times in a row as tests #1-#6 while all 851 later tests passed — a boot
- * race wearing the costume of a broken feature.
+ * first compile is still running. On CI that made a suite's first tests fail
+ * three times in a row while every later test passed — a boot race wearing
+ * the costume of a broken feature.
  *
  * This is not a wait-and-hope: it waits for the app's OWN signal (a block
  * carrying data-block-uid) and throws with the URL if that never arrives,
@@ -107,8 +107,8 @@ export async function warmFrontend(url: string): Promise<void> {
   } catch (error) {
     // BEST EFFORT, and deliberately so. This is a warm-up, not an assertion:
     // the tests remain the judge of whether the app works. A CI job whose
-    // frontend does not serve this particular path (the bridge jobs mount
-    // different content) must not be failed by the warm-up — that turned one
+    // frontend does not serve this particular path (it mounts different
+    // content) must not be failed by the warm-up — that turned one
     // boot race into two red jobs.
     console.log(
       `[SETUP] ⚠ could not warm ${url} (${(error as Error).message.split('\n')[0]}) — ` +

@@ -280,11 +280,12 @@ The Express mock server implements:
 
 ### Adding Mock Data
 
-Edit `tests-playwright/fixtures/api/content.json`:
+Each test page is a folder under `tests-playwright/fixtures/content/`, served under `/_test_data`: its `data.json` holds the page, and any files beside it (images) are its blobs. Add a folder, e.g. `fixtures/content/test-page/data.json`:
 
 ```json
 {
   "@id": "http://localhost:8888/test-page",
+  "id": "test-page",
   "@type": "Document",
   "title": "Test Page",
   "blocks": {
@@ -432,9 +433,9 @@ kill -9 <PID>
 
 ### Mock API 404 Errors
 
-Verify fixture file exists:
+Verify the page's fixture exists:
 ```bash
-cat tests-playwright/fixtures/api/content.json
+cat tests-playwright/fixtures/content/<page>/data.json
 ```
 
 Check mock server is loading it:

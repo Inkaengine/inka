@@ -38,15 +38,15 @@ Inka's mock API serves content as a Plone-style REST API, from Markdown files or
 The same checks can run against your site. The tests live in the Inka repository, so your CI checks out Inka next to your own code and runs them from there. Two pieces do the work:
 
 - **The mock API, serving your content.** Point `CONTENT_MOUNTS` at your content: a Markdown tree (see [Content as Markdown](./blockmd.md)) or a Plone export directory (with `__metadata__.json`). The format is `mountPath:directory`, comma-separated for more than one.
-- **The block sanity test, against your front end.** It reads your front end's block schemas through the bridge, finds every block in the served content, and checks each one renders with the annotations the editor needs. It lives in `tests-playwright/bridge/block-sanity.spec.ts`.
+- **The block sanity test, against your front end.** It reads your front end's block schemas through the bridge, finds every block in the served content, and checks each one renders with the annotations the editor needs. It's part of Inka's test harness, `@inka/testing` (`packages/testing/`), and Inka's own suite runs it from `tests-playwright/bridge/block-sanity.spec.ts`, which is what this job runs.
 
 What the run needs:
 
 - A checkout of the Inka repository, at the version you use, installed as in Inka's own workflow (Node.js 24, pnpm, `mrs-developer` for the Volto sources, and Playwright's Chromium).
 - Your front end running, reading content from the mock API's URL, and loading the bridge.
-- A parent page for the front end's iframe. The test uses `mock-parent.html` from Inka's test frontend. Serve it on a port other than `HYDRA_TEST_FRONTEND_PORT`, or the test will also check Inka's own test frontend against your content.
+- A parent page for the front end's iframe. The test uses `mock-parent.html` from `@inka/testing`, which Inka's test-frontend server serves. Serve it on a port other than `HYDRA_TEST_FRONTEND_PORT`, or the test will also check Inka's own test frontend against your content.
 - These variables for the test run: `DISCOVER_BLOCKS_API` (the mock API URL), `FRONTEND_URL` (your front end), `MOCK_PARENT_URL` (the parent page), and `NO_WEBSERVER=true` and `SKIP_VOLTO_CHECK=true`, because the test starts nothing itself and needs no editor.
-- Every `HYDRA_*_PORT` variable set. The test code reads them all and has no defaults, even for servers this run doesn't start.
+- A port block, `HYDRA_PORT_BASE`. Every test server's port is that plus a fixed offset, and Inka's `scripts/with-ports.mjs --print` exports them all as `HYDRA_*_PORT` variables. There are no defaults, even for servers this run doesn't start.
 - An example of every block type your front end registers, somewhere in the served content. A registered type with no example fails, by design: nothing would show it has stopped working. A type that only belongs inside a parent container can be marked `restricted` instead.
 
 This GitHub Actions job puts it together. Change the front-end steps and the content path to suit your project.
@@ -58,22 +58,8 @@ jobs:
   block-sanity:
     runs-on: ubuntu-latest
     env:
-      HYDRA_MOCK_API_PORT: 8888
-      HYDRA_TEST_FRONTEND_PORT: 8889   # left unused on purpose
-      HYDRA_MOCK_PARENT_PORT: 8891
-      HYDRA_VOLTO_SSR_PORT: 3001
-      HYDRA_VOLTO_WEBPACK_PORT: 3002
-      HYDRA_NUXT_PORT: 3003
-      HYDRA_REACT_DOC_PORT: 3004
-      HYDRA_VUE_DOC_PORT: 3005
-      HYDRA_SVELTE_DOC_PORT: 3006
-      HYDRA_NEXTJS_PORT: 3007
-      HYDRA_F7_PORT: 3008
-      HYDRA_ASTRO_DOC_PORT: 3009
-      HYDRA_VANILLA_DOC_PORT: 3010
-      HYDRA_SVELTE_QS_PORT: 3011
-      HYDRA_ASTRO_QS_PORT: 3012
-      PARENT_PORT: 8890
+      HYDRA_PORT_BASE: 8880   # the block: 8880 (mock API) up to 8894
+      PARENT_PORT: 8900       # the parent page, outside the block
       SITE_PORT: 4000
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +75,9 @@ jobs:
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium
+      - name: Port block
+        working-directory: inka
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Start the mock API on your content, and the parent page
         working-directory: inka
         run: |
@@ -118,7 +107,7 @@ jobs:
         run: pnpm exec playwright test block-sanity --project=mock
 ```
 
-`API_URL` and `npm run dev` stand for however your front end is told where its API is and how it starts. Keep your front end off the ports named above.
+`API_URL` and `npm run dev` stand for however your front end is told where its API is and how it starts. Keep your front end off the port block and the ports named above. The block's test-frontend port is left unused on purpose: the parent page runs on `PARENT_PORT` instead.
 
 To run the mock API and editor from a checkout of Inka itself, see [Previewing and testing content](./testing-content.md).
 

@@ -18,7 +18,7 @@ const test = playwrightTest.extend({
   page: async ({ page }, use, testInfo) => {
     // Session isolation is handled via auth tokens - each login generates a unique
     // token (based on timestamp) which the mock API uses as the session identifier.
-    // Both admin (Volto) and Nuxt SSR include Authorization headers, so they share
+    // The admin (Volto) and a frontend's SSR both include Authorization headers, so they share
     // the same session when using the same auth token.
 
     // Set run ID on admin page so parallel/repeated test logs can be filtered.
