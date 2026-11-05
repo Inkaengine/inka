@@ -44,7 +44,7 @@ What the run needs:
 
 - A checkout of the Inka repository, at the version you use, installed as in Inka's own workflow (Node.js 24, pnpm, `mrs-developer` for the Volto sources, and Playwright's Chromium).
 - Your front end running, reading content from the mock API's URL, and loading the bridge.
-- A parent page for the front end's iframe. The test uses `mock-parent.html` from `@inka/testing`, which Inka's test-frontend server serves. Serve it on a port other than `HYDRA_TEST_FRONTEND_PORT`, or the test will also check Inka's own test frontend against your content.
+- A parent page for the front end's iframe. The test uses `mock-parent.html` from `@inka/testing`, served by the package's `inka-mock-parent` command (`PORT=… inka-mock-parent`). Serve it on a port other than `HYDRA_TEST_FRONTEND_PORT`, or the test will also check Inka's own test frontend against your content.
 - These variables for the test run: `DISCOVER_BLOCKS_API` (the mock API URL), `FRONTEND_URL` (your front end), `MOCK_PARENT_URL` (the parent page), and `NO_WEBSERVER=true` and `SKIP_VOLTO_CHECK=true`, because the test starts nothing itself and needs no editor.
 - A port block, `HYDRA_PORT_BASE`. Every test server's port is that plus a fixed offset, and Inka's `scripts/with-ports.mjs --print` exports them all as `HYDRA_*_PORT` variables. There are no defaults, even for servers this run doesn't start.
 - An example of every block type your front end registers, somewhere in the served content. A registered type with no example fails, by design: nothing would show it has stopped working. A type that only belongs inside a parent container can be marked `restricted` instead.
@@ -83,8 +83,8 @@ jobs:
         run: |
           PORT=$HYDRA_MOCK_API_PORT CONTENT_MOUNTS="/:$GITHUB_WORKSPACE/site/content" \
             node packages/mock-api/mock-api-server.cjs &
-          HYDRA_TEST_FRONTEND_PORT=$PARENT_PORT \
-            npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
+          PORT=$PARENT_PORT API_URL=http://localhost:$HYDRA_MOCK_API_PORT \
+            pnpm exec inka-mock-parent &
       - name: Start your front end against the mock API
         working-directory: site
         run: |
