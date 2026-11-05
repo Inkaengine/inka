@@ -5984,16 +5984,17 @@ const Iframe = (props) => {
                 // the copy has no counterpart, and nothing lights up: that is
                 // itself worth seeing, because the block is new.
                 showBlock={counterpartOfSelected}
-                onSelectBlock={(uid) => {
-                  // Only when the editor is actually IN that pane. The pane
-                  // also echoes back the selection we drive into it from the
-                  // page being edited, and that must not take the sidebar.
-                  if (
-                    typeof document !== 'undefined' &&
-                    document.activeElement?.id !== 'translationSourceIframe'
-                  ) {
-                    return;
-                  }
+                onSelectBlock={(uid, { userInput }) => {
+                  // Only when the author chose it in that pane. The pane also
+                  // echoes back the selection we drive into it from the page
+                  // being edited, and that must not take the sidebar.
+                  //
+                  // Judged by the pane's own record of the author's key or
+                  // pointer (userInput), not by where focus is: the page being
+                  // edited, settling on a slow load, focuses a field on its
+                  // own, and when that landed between a click here and its
+                  // message, the click was lost.
+                  if (!userInput) return;
                   setSelectedPane('compare');
                   setCompareSelectedBlock(uid);
                 }}

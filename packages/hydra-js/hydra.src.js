@@ -4389,6 +4389,11 @@ export class Bridge {
    * The admin uses these to render combined outline and determine common parent.
    */
   _sendMultiBlockSelected() {
+    // The multi-selection takes over from the block selected until now: left
+    // running, its watchers would announce it as THE selection when it moves
+    // (a scroll), and the admin would drop the multi-selection for it. Its
+    // tracker's own stop only applies while that block is still selected.
+    this.stopTransitionTracking();
     const rects = {};
     for (const uid of this.multiSelectedBlockUids) {
       const el = this.queryBlockElement(uid);

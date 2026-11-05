@@ -34,6 +34,8 @@ const ViewPane = ({
   // every block of the content it is given is read-only, which is what stops
   // the bridge collecting a single editable field. See withAllBlocksReadOnly.
   selectable = false,
+  // onSelectBlock(uid, { userInput }): userInput says the author's own key or
+  // pointer chose it, not the bridge settling or echoing a selection.
   onSelectBlock,
   // Show this block: the counterpart of whatever is selected next door. The
   // bridge scrolls it into view as part of selecting it, which is what makes
@@ -87,7 +89,7 @@ const ViewPane = ({
       if (event.source !== ref.current?.contentWindow) return;
       if (event.data?.type === 'BLOCK_SELECTED') {
         // `blockUid`, which is what the bridge calls it.
-        onSelectBlockRef.current?.(event.data.blockUid);
+        onSelectBlockRef.current?.(event.data.blockUid, { userInput: event.data.userInput });
         return;
       }
       if (event.data?.type !== 'INIT') return;
