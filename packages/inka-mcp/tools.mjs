@@ -20,13 +20,30 @@ export class Locked extends Error {
   }
 }
 
+/**
+ * `value` with each link on the site's API (`apiPath`) as a path on the site. An
+ * address a person never sees, and one an agent copied into new links and warned
+ * about, though front ends draw the site's own links as paths either way.
+ */
+function withSitePaths(value, apiPath) {
+  const onSite = new RegExp(`${apiPath.replace(/[.*+?^\\${}()|[\]\\]/g, '\\$&')}(?![\\w.:-])(/?)`, 'g');
+  const walk = (v) => {
+    if (typeof v === 'string') return v.replace(onSite, '/');
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, inner]) => [k, walk(inner)]));
+    return v;
+  };
+  return walk(value);
+}
+
 /** The page in the agent format, with the version a later save is checked against. */
 export async function getPage(agent) {
-  const { path, version, formData, lockedBy } = await agent.getPage();
+  const { path, version, formData, lockedBy, apiPath } = await agent.getPage();
   const { page, types } = await agent.getBlockSchemas();
   const type = types[page.contentType];
   if (!type) throw new Error(`the page's content type "${page.contentType}" has no schema`);
-  return { path, version, ...(lockedBy && { lockedBy }), ...toAgentPage(formData, type) };
+  const asAgent = toAgentPage(formData, type);
+  return { path, version, ...(lockedBy && { lockedBy }), ...(apiPath ? withSitePaths(asAgent, apiPath) : asAgent) };
 }
 
 /**

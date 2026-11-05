@@ -504,3 +504,43 @@ describe('a new page given its first blocks', () => {
     expect(agent.did).toEqual(['insert', 'save']);
   });
 });
+
+describe("get_page shows the site's links as paths", () => {
+  const API = 'https://site-api.example';
+  const read = async (block) => {
+    const formData = {
+      '@type': 'Document', title: 'News', modified: 'v1',
+      blocks: { b: block }, blocks_layout: { items: ['b'] },
+    };
+    const page = await getPage({
+      getPage: async () => ({ path: '/news', version: 'v1', formData, lockedBy: null, apiPath: API }),
+      getBlockSchemas: async () => ({
+        page: { contentType: 'Document' },
+        types: {
+          Document: { title: 'Page', regions: [], blockSchema: { properties: { title: { title: 'Title' } } } },
+          slate: { title: 'Text', regions: [], blockSchema: { properties: { value: { widget: 'slate' } } } },
+          button: { title: 'Button', regions: [], blockSchema: { properties: { href: { widget: 'object_browser' }, title: {} } } },
+        },
+      }),
+    });
+    return page.blocks[0];
+  };
+  const link = (url) => ({ '@type': 'slate', value: [{ type: 'p', children: [{ type: 'link', data: { url }, children: [{ text: 'here' }] }] }] });
+
+  it('in rich text', async () => {
+    expect((await read(link(`${API}/blog/post`))).value.md).toBe('[here](/blog/post)');
+  });
+
+  it('in a link field', async () => {
+    expect((await read({ '@type': 'button', title: 'Go', href: [{ '@id': `${API}/contact` }] })).href).toEqual([{ '@id': '/contact' }]);
+  });
+
+  it('to the site root', async () => {
+    expect((await read({ '@type': 'button', title: 'Home', href: [{ '@id': API }] })).href).toEqual([{ '@id': '/' }]);
+  });
+
+  it('leaves another site alone, even one whose name starts the same', async () => {
+    expect((await read(link(`${API}.other.example/x`))).value.md).toBe(`[here](${API}.other.example/x)`);
+    expect((await read(link('https://inka.sh/pricing'))).value.md).toBe('[here](https://inka.sh/pricing)');
+  });
+});
