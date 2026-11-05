@@ -56,6 +56,8 @@ Detect the admin iframe and load the bridge only when needed. `window.name` is s
 - **\`hydra-edit:\<origin>\`** — edit mode (e.g., `hydra-edit:http://localhost:3001`)
 - **\`hydra-view:\<origin>\`** — view mode (e.g., `hydra-view:http://localhost:3001`)
 
+Start the bridge in both. An agent's preview through Inka's MCP server opens your front end in view mode and hands it the draft through the bridge, so a front end that starts the bridge only for `hydra-edit:` can't be previewed, and the agent is told so.
+
 This persists across SPA navigation within the iframe, allowing your frontend to detect it's in the admin even after client-side route changes. In view mode, render from your API immediately but still load the bridge for navigation tracking. In edit mode, wait for `onEditChange` before rendering.
 
 ### Javascript

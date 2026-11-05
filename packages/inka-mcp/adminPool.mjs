@@ -98,7 +98,8 @@ export function adminPool({ adminUrl, frontendUrl, size, waitMs, maxIdleMs }) {
               // (with `focus`, just that block of it), its picture in `maxChars`.
               render: async (draft, viewport, { maxChars, focus }) => {
                 const renderedOn = await frontendUrlOf(page);
-                const rendered = await previewDraft(page.context(), { frontendUrl: renderedOn, path, draft, viewport, focus, maxChars });
+                const blockPathMap = await agentOn(page).blockPathMapOf(draft);
+                const rendered = await previewDraft(page.context(), { frontendUrl: renderedOn, draft, blockPathMap, viewport, focus, maxChars });
                 return { ...rendered, renderedOn: new URL(renderedOn).origin };
               },
             });
