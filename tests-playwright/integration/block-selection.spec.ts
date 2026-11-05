@@ -2083,19 +2083,26 @@ test.describe('Multi-Block Selection', () => {
     await iframe.locator('[data-block-uid="block-3-uuid"]').click({ modifiers: ['ControlOrMeta'] });
     await helper.waitForMultiSelectOutlines(2);
 
-    // Scroll the page: the outlines are hidden while it moves, and back 150ms
-    // after it stops. One jump to the bottom was over, and the outlines back,
-    // before the admin drew a frame without them (a two-core CI runner, 1 in
-    // many): the hide and the outlines' return were handled together. So keep
-    // the page moving, as a hand on a wheel does, until they are seen hidden.
-    const outlines = page.locator('.volto-hydra-block-outline');
-    await iframe.locator('body').hover();
-    let down = true;
-    await expect(async () => {
-      await page.mouse.wheel(0, down ? 120 : -120);
-      down = !down;
-      await expect(outlines, 'outlines hidden while the page scrolls').toHaveCount(0, { timeout: 100 });
-    }).toPass();
+    // Scroll iframe down — outlines should disappear during scroll. They are
+    // back 150ms after the scroll stops, sooner than a poll may look, so the
+    // admin page notes the moment there are none.
+    await page.evaluate(() => {
+      (window as any).__outlinesHidden = new Promise<boolean>((resolve) => {
+        const none = () => document.querySelectorAll('.volto-hydra-block-outline').length === 0;
+        const observer = new MutationObserver(() => {
+          if (!none()) return;
+          observer.disconnect();
+          resolve(true);
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        setTimeout(() => {
+          observer.disconnect();
+          resolve(none());
+        }, 5000);
+      });
+    });
+    await iframe.locator('body').evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    expect(await page.evaluate(() => (window as any).__outlinesHidden), 'outlines hidden while the page scrolls').toBe(true);
 
     // Scroll back to top
     await iframe.locator('body').evaluate(() => window.scrollTo(0, 0));
