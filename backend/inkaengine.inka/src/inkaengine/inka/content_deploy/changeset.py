@@ -95,6 +95,51 @@ def _parent_path(data_json: Path) -> str:
     return json.loads(data_json.read_text())["@id"].rsplit("/", 1)[0]
 
 
+def item_data_files(content_dir: Path) -> list[Path]:
+    """Every item's data.json under `content_dir`, at any depth.
+
+    An export names each item's folder after its UID, one level deep. A layout
+    may name them by path instead, and then one item's folder sits inside
+    another's (`videos/` and `videos/intro/`): reading one level left every
+    nested item out of the delta.
+    """
+    return sorted(Path(content_dir).rglob("data.json"))
+
+
+def copy_item(src_dir: Path, dst_dir: Path) -> list[Path]:
+    """Copy one item's own files — its data.json and blobs — and none of the
+    items nested in its folder. Returns what it copied, relative to src_dir."""
+    nested = [p.parent for p in src_dir.rglob("data.json") if p.parent != src_dir]
+    copied: list[Path] = []
+    for f in sorted(src_dir.rglob("*")):
+        if not f.is_file() or any(n in f.parents for n in nested):
+            continue
+        rel = f.relative_to(src_dir)
+        (dst_dir / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, dst_dir / rel)
+        copied.append(rel)
+    return copied
+
+
+def _item_dirs(dist_content_dir: Path) -> dict[str, str]:
+    """Each item's directory under `dist_content_dir`, by its UID and by the
+    directory name itself.
+
+    plone.exportimport keys its metadata by the object's UID, not by where the
+    item's data.json sits: an export names every directory after the UID, but
+    a layout may name them by path (`videos/intro/`). A key in neither form
+    names an item the layout no longer holds.
+    """
+    dirs: dict[str, str] = {}
+    for data_json in item_data_files(dist_content_dir):
+        dirname = data_json.parent.relative_to(dist_content_dir).as_posix()
+        dirs[dirname] = dirname
+        uid = json.loads(data_json.read_text()).get("UID")
+        if uid:
+            dirs[uid] = dirname
+    return dirs
+
+
 def subset_metadata_setters(
     dist_content_dir: Path,
     kept_dirs: set[str],
@@ -121,11 +166,15 @@ def subset_metadata_setters(
     `default_page` is keyed by CONTAINER, not by the page, so it needs the
     other rule: keep it when its TARGET is here. The site root is almost never
     in a delta, and that entry is precisely the one that matters.
+
+    Every table is keyed by UID (_item_dirs); an entry for an item the layout
+    no longer holds is left out, since there is nothing here for it to set.
     """
     meta_path = Path(dist_content_dir) / "__metadata__.json"
     if not meta_path.is_file():
         return {}
     source = json.loads(meta_path.read_text())
+    dirs = _item_dirs(dist_content_dir)
 
     out: dict = {}
     for name in SUBSET_SETTERS:
@@ -153,7 +202,7 @@ def subset_metadata_setters(
             kept = {
                 key: value
                 for key, value in data.items()
-                if key in kept_dirs
+                if dirs.get(key) in kept_dirs
                 or (
                     isinstance(value, dict)
                     and value.get("default_page_uuid") in kept_uids
@@ -168,14 +217,22 @@ def subset_metadata_setters(
             # item is placed with it; the importer sorts by position, so the
             # folder's relative order is the export's.
             parent_of = {
-                key: _parent_path(dist_content_dir / key / "data.json") for key in data
+                key: _parent_path(dist_content_dir / dirs[key] / "data.json")
+                for key in data
+                if key in dirs
             }
-            folders = {parent_of[key] for key in kept_dirs if key in parent_of}
+            folders = {
+                parent for key, parent in parent_of.items() if dirs[key] in kept_dirs
+            }
             kept = {
-                key: value for key, value in data.items() if parent_of[key] in folders
+                key: value
+                for key, value in data.items()
+                if parent_of.get(key) in folders
             }
         else:
-            kept = {key: value for key, value in data.items() if key in kept_dirs}
+            kept = {
+                key: value for key, value in data.items() if dirs.get(key) in kept_dirs
+            }
         if kept:
             out[name] = kept
     return out
@@ -219,15 +276,11 @@ def build_subset_dir(
         uid = json.loads(data_json.read_text()).get("UID")
         if uid:
             kept_uids.add(uid)
-        dst_dir = content_out / dirname
-        if dst_dir.exists():
-            shutil.rmtree(dst_dir)
-        shutil.copytree(src_dir, dst_dir)
         entries.append((rel, dirname))
         # blob sidecars (image/<filename>, file/<filename>, ...) for this item
-        for f in sorted(src_dir.rglob("*")):
-            if f.is_file() and f.name != "data.json":
-                blob_files.append(f"{f.relative_to(dist_content_dir).as_posix()}")
+        for copied in copy_item(src_dir, content_out / dirname):
+            if copied.name != "data.json":
+                blob_files.append((Path(dirname) / copied).as_posix())
 
     # Parents before children BY CONTENT PATH (the rel), whatever the dirnames.
     entries.sort(key=lambda pair: data_sort_key(f"{pair[0]}/data.json"))

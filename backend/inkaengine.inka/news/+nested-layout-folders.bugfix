@@ -1,0 +1,1 @@
+content_deploy: items whose folders sit inside another item's (a layout named by path) are part of the delta and ship on their own; a file's export location (`blob_path`) and `parent` no longer count as content changes. @djay

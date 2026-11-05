@@ -149,3 +149,20 @@ def test_a_base_with_items_is_a_base(tmp_path):
     (prev / "content/aaa/data.json").write_text(json.dumps({"@id": "/a"}))
 
     assert base_from_live.base_holds_items(prev)
+
+
+def test_items_in_nested_folders_are_kept_on_their_own(tmp_path):
+    """A layout may name its folders by path, so `videos/intro/` sits inside
+    the `videos/` item. Each is kept or skipped as itself."""
+    layout = make_layout(tmp_path, {"videos": "/videos"})
+    intro = layout / "content" / "videos" / "intro"
+    intro.mkdir()
+    (intro / "data.json").write_text(json.dumps({"@id": "/videos/intro"}))
+    prev = tmp_path / "layout-prev"
+
+    report = base_from_live.write_base({"videos"}, layout, prev)
+
+    assert report["kept"] == 1
+    assert report["candidates"] == ["/videos/intro"]
+    assert (prev / "content" / "videos" / "data.json").is_file()
+    assert not (prev / "content" / "videos" / "intro").exists()

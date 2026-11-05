@@ -15,6 +15,7 @@ the caller records the layout it imported with record_base.
 
 from __future__ import annotations
 
+from .changeset import item_data_files
 from .delta import DeltaRefused
 from .delta import run_delta
 from BTrees.OOBTree import OOBTree
@@ -44,8 +45,8 @@ def record_base(site, layout: Path) -> int:
     """
     content = Path(layout) / "content"
     texts = {
-        data_file.parent.name: data_file.read_text()
-        for data_file in sorted(content.glob("*/data.json"))
+        data_file.parent.relative_to(content).as_posix(): data_file.read_text()
+        for data_file in item_data_files(content)
     }
     if not texts:
         raise ValueError(f"{content} holds no items: nothing to record as the base")

@@ -433,3 +433,50 @@ def test_the_whole_metadata_still_leaves_relations_alone():
             ChangeSet(creates=["a"]), dist, tmp / "subset", whole_metadata=True
         )
         assert "relations" not in meta
+
+
+def test_metadata_is_keyed_by_uid_whatever_the_folders_are_named():
+    """plone.exportimport keys `ordering`, `local_roles` and the rest by the
+    object's UID. A layout whose item folders are named by path, not UID,
+    matched none of them, and a key naming an item the layout no longer holds
+    stopped the subset with FileNotFoundError."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        dist = _make_dist_with_metadata(
+            tmp / "dist",
+            {
+                "videos/a": {"@id": "/videos/a", "UID": "uid-a"},
+                "videos/b": {"@id": "/videos/b", "UID": "uid-b"},
+                "other": {"@id": "/other", "UID": "uid-o"},
+            },
+            {
+                "ordering": {"uid-a": 1, "uid-b": 0, "uid-o": 5, "uid-gone": 2},
+                "local_roles": {"uid-a": {"editor": ["Editor"]}, "uid-gone": {}},
+            },
+        )
+        meta = build_subset_dir(ChangeSet(updates=["videos/a"]), dist, tmp / "subset")
+        assert meta["ordering"] == {"uid-a": 1, "uid-b": 0}
+        assert meta["local_roles"] == {"uid-a": {"editor": ["Editor"]}}
+
+
+def test_an_item_ships_without_the_items_nested_in_its_folder():
+    """`videos/` is an item, and so is `videos/intro/` inside it. Shipping the
+    folder must not carry its children's data and blobs along: they are other
+    items, and a video's blob can be large."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        dist = _make_dist(
+            tmp / "dist",
+            {
+                "videos": {"@id": "/videos", "UID": "uid-v"},
+                "videos/intro": {
+                    "@id": "/videos/intro",
+                    "UID": "uid-i",
+                    "__blobs__": {"file/intro.mp4": b"video"},
+                },
+            },
+        )
+        meta = build_subset_dir(ChangeSet(updates=["videos"]), dist, tmp / "subset")
+        assert meta["_data_files_"] == ["videos/data.json"]
+        assert meta["_blob_files_"] == []
+        assert not (tmp / "subset" / "content" / "videos" / "intro").exists()

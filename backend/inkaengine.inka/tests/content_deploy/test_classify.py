@@ -451,3 +451,46 @@ def test_fields_the_site_cannot_round_trip_do_not_warn():
     )
     assert plan.actions_for("news/x") == Action.UPDATE
     assert plan.warnings == []
+
+
+def test_items_in_nested_folders_are_part_of_the_tree(tmp_path):
+    """A layout may name its folders by path, so an item's folder can sit
+    inside another item's (`videos/` and `videos/intro/`). Reading one level
+    deep left every nested item out of the delta: a change to one never
+    deployed."""
+    import json as _json
+
+    for dirname, at_id in (("videos", "/videos"), ("videos/intro", "/videos/intro")):
+        (tmp_path / dirname).mkdir(parents=True)
+        (tmp_path / dirname / "data.json").write_text(
+            _json.dumps({"@id": at_id, "@type": "Document", "UID": dirname})
+        )
+    tree, dirs = _mod.load_exportimport_tree(tmp_path)
+    assert sorted(tree) == ["videos", "videos/intro"]
+    assert dirs == {"videos": "videos", "videos/intro": "videos/intro"}
+
+
+def test_where_a_blob_was_exported_is_not_content():
+    """`blob_path` is where an export put a file's bytes: the exporter writes
+    `<uid>/file/x.mp4`, a layout with path-named folders `videos/x/file/x.mp4`.
+    Same bytes, so the same content — but a real change to the file (its
+    size, its name, its type) still registers."""
+    layout = {
+        "@id": "/v",
+        "file": {"blob_path": "videos/v/file/v.mp4", "filename": "v.mp4", "size": 10},
+    }
+    live = {
+        "@id": "/v",
+        "file": {"blob_path": "0123abcd/file/v.mp4", "filename": "v.mp4", "size": 10},
+    }
+    assert _mod.content_key(layout) == _mod.content_key(live)
+    resized = {"@id": "/v", "file": {**live["file"], "size": 11}}
+    assert _mod.content_key(resized) != _mod.content_key(live)
+
+
+def test_parent_follows_from_the_path_and_is_not_content():
+    """The live exporter leaves `parent` out; a layout may carry it. It is
+    derived from `@id`, so a move still registers through `@id`."""
+    with_parent = {"@id": "/videos/v", "title": "V", "parent": {"@id": "/videos"}}
+    without = {"@id": "/videos/v", "title": "V"}
+    assert _mod.content_key(with_parent) == _mod.content_key(without)
