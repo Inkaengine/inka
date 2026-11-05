@@ -25,9 +25,18 @@ export class AdminUIHelper {
     return pacingUnitMs();
   }
 
+  /**
+   * The admin's address: the one given, else the harness's Volto. Read when
+   * used, so a suite that never opens the admin (block sanity, which drives
+   * the mock parent) needs no admin port.
+   */
+  get adminUrl(): string {
+    return this.givenAdminUrl ?? harnessUrls().voltoSsr;
+  }
+
   constructor(
     public readonly page: Page,
-    public readonly adminUrl: string = harnessUrls().voltoSsr,
+    private readonly givenAdminUrl?: string,
     public readonly contentPrefix: string = ''
   ) {
     // Capture browser console - all logs locally, only errors/warnings in CI
