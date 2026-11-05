@@ -30,18 +30,36 @@ export async function getPage(agent) {
 }
 
 /**
+ * A block that is only what the add form leaves to type in: its type has rich
+ * text, that is empty, and it holds nothing else, and it is no template's. A
+ * title block holds nothing either, but has no text of its own: it draws the
+ * page's title.
+ */
+function isLeftToTypeIn(block, type) {
+  const { '@uid': _uid, '@type': _type, ...held } = block;
+  if (held.fixed || held.readOnly) return false;
+  const fields = type.blockSchema.properties;
+  const text = Object.keys(fields).filter((name) => fields[name].widget === 'slate');
+  if (!text.length) return false;
+  return Object.entries(held).every(([name, value]) => value === undefined || value === null || value === ''
+    || (text.includes(name) && !(value.md ?? '').trim()));
+}
+
+/**
  * A page just created (open in its editor), given its first blocks: they go
- * after the blocks the page starts with (its title), and the page is saved.
+ * after the blocks the page starts with (its title), in place of the empty one
+ * the add form leaves to type in, and the page is saved.
  * Returns { path, version, ids } — ids maps each new block's own @uid.
  * `check` refuses blocks that would leave the page invalid, as editPage's does.
  */
 export async function fillNewPage(agent, { blocks, mintId, check }) {
   const created = await getPage(agent);
   if (!blocks?.length) return { path: created.path, version: created.version, ids: {} };
-  const last = created.blocks.at(-1)['@uid'];
-  const { version, ids } = await editPage(agent, {
-    ops: [{ op: 'add', after: last, blocks }], expectedVersion: created.version, mintId, check,
-  });
+  const last = created.blocks.at(-1);
+  const { types } = await agent.getBlockSchemas();
+  const ops = [{ op: 'add', after: last['@uid'], blocks }];
+  if (isLeftToTypeIn(last, types[last['@type']])) ops.push({ op: 'delete', id: last['@uid'] });
+  const { version, ids } = await editPage(agent, { ops, expectedVersion: created.version, mintId, check });
   return { path: created.path, version, ids };
 }
 

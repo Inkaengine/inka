@@ -168,9 +168,11 @@ test.describe('MCP tools', () => {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).json();
     expect(stored.title).toBe('Made by the MCP');
-    // The page keeps the blocks it starts with (its title block), and ours follow.
+    // The page keeps the blocks it starts with (its title block), and ours
+    // follow. The empty block the add form leaves to type in is gone: ours are
+    // what goes there, and a post that starts with a blank line looks broken.
+    expect(stored.blocks_layout.items).toEqual([stored.blocks_layout.items[0], made.ids.intro]);
     expect(stored.blocks[stored.blocks_layout.items[0]]['@type']).toBe('title');
-    expect(stored.blocks_layout.items.at(-1)).toBe(made.ids.intro);
     expect(stored.blocks[made.ids.intro]['@type']).toBe('slate');
   });
 
