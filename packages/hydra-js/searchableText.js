@@ -4,6 +4,7 @@ import {
   slateNodesText,
   translatableFieldIds,
 } from '@volto-hydra/helpers';
+import { getBlockSchema } from './buildBlockPathMap.js';
 import { isObjectListRegion } from './regionWidgets.js';
 
 /**
@@ -125,6 +126,27 @@ function withText(block, options) {
   if (out.blocks?.constructor === Object) out = withBlockTexts(out, options);
   if (out.data?.blocks) out = { ...out, data: withBlockTexts(out.data, options) };
   return out;
+}
+
+// Inka holds the core text block's schema, not a frontend's config.
+const SLATE_SCHEMA = { properties: { value: { widget: 'slate' } } };
+
+/**
+ * What `withSearchableText` needs for a page, from a blocks config.
+ *
+ * @param {Object} blocksConfig - the site's block definitions
+ * @param {Object} intl - { formatMessage }
+ * @param {Object} page - the page, for rules that read it
+ */
+export function searchTextOptions(blocksConfig, intl, page) {
+  return {
+    schemaFor: (block) => {
+      const type = block['@type'];
+      if (!blocksConfig[type]) return type === 'slate' ? SLATE_SCHEMA : null;
+      return getBlockSchema(type, intl, blocksConfig, block, page) ?? (type === 'slate' ? SLATE_SCHEMA : {});
+    },
+    fieldsFor: (type) => blocksConfig[type]?.searchableFields,
+  };
 }
 
 /**

@@ -1052,4 +1052,4 @@ const initBlocks = {
 };
 ```
 
-Content that never passes through the editor, such as an import, has no `searchableText` until it's saved.
+Content that never passes through the editor, such as an import, has no `searchableText` until it's saved. To fill it, run `plone-content search-text <content-dir> --schemas <schemas>` over the content before importing it.

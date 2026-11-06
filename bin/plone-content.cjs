@@ -7,6 +7,10 @@
  *                                            — every block field no schema declares, and
  *                                              everything the editor would refuse or rewrite
  *   plone-content all      [<content-dir>]   — validate + check (+ schema with --schemas)
+ *   plone-content search-text [<content-dir>] --schemas <schemas.json>
+ *                                            — writes each block's searchableText into the
+ *                                              content, as the editor does on save: for
+ *                                              content that doesn't pass through the editor
  *   --allow-missing-blobs                    — a blob with no bytes on disk is a warning, not
  *                                              an error: generated media (a recorded clip,
  *                                              a screenshot) that CI makes after the change
@@ -39,7 +43,7 @@ const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChoo
 
 function usage() {
   console.error(
-    'Usage: plone-content <validate|check|schema|all> [<content-dir>] ' +
+    'Usage: plone-content <validate|check|schema|all|search-text> [<content-dir>] ' +
       '[--schemas <schemas.json>] [--exempt-slot <slot>]... [--json <report.json>] [--allow-missing-blobs]\n' +
       '       plone-content served   (reads CONTENT_MOUNTS)',
   );
@@ -86,7 +90,28 @@ const schemas = schemasPath ? await loadSchemas(schemasPath) : null;
 const [cmd, dirArg] = argv;
 // Anything left over is a flag this CLI does not know: ignoring it would run a
 // different check from the one asked for.
-if (!cmd || !['validate', 'check', 'schema', 'all'].includes(cmd) || argv.length > 2) usage();
+if (!cmd || !['validate', 'check', 'schema', 'all', 'search-text'].includes(cmd) || argv.length > 2) usage();
+if (cmd === 'search-text') {
+  if (!schemas) {
+    console.error('search-text needs --schemas <schemas.json>');
+    process.exit(2);
+  }
+  const { searchTextOptions, withSearchableText } = require('../packages/hydra-js/searchableText.js');
+  const intl = { formatMessage: (m) => m?.defaultMessage || '' };
+  const contentRoot = path.resolve(dirArg || 'content');
+  let pages = 0;
+  for (const entry of fs.readdirSync(contentRoot, { withFileTypes: true })) {
+    const file = path.join(contentRoot, entry.name, 'data.json');
+    if (!entry.isDirectory() || !fs.existsSync(file)) continue;
+    const page = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!page.blocks) continue;
+    const written = withSearchableText(page, searchTextOptions(schemas, intl, page));
+    fs.writeFileSync(file, `${JSON.stringify(written, null, 2)}\n`);
+    pages += 1;
+  }
+  console.log(`search-text: ${pages} page(s) written`);
+  return;
+}
 if (cmd === 'schema' && !schemas && !fieldsPath) {
   console.error('schema needs --schemas <schemas.json>');
   process.exit(2);
