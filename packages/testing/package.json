@@ -47,6 +47,7 @@
     "!playwright/*.test.*",
     "ports.ts",
     "selectablePoint.ts",
+    "slate-styles.js",
     "text-style-coverage.ts"
   ],
   "dependencies": {

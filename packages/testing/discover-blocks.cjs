@@ -1342,6 +1342,37 @@ function isContainmentExempt(entry, blockData, rules = { slots: [] }, pagePath =
   return !!slotId && (rules.slots || []).includes(slotId);
 }
 
+const { slateStyles } = require('./slate-styles.js');
+
+/** The text styles in every slate field of a block. */
+function stylesOfBlock(blockData) {
+  const out = [];
+  for (const value of Object.values(blockData || {})) {
+    if (Array.isArray(value)) out.push(...slateStyles(value).keys());
+  }
+  return out;
+}
+
+/**
+ * A case for each text style the block cases never show.
+ *
+ * A block type's example is usually a plain paragraph, so the styles content
+ * really uses — headings, lists, a design system's own — would go unmeasured,
+ * and the style coverage would only ever speak for `p`. `candidates` maps each
+ * style to the first block carrying it. A style already in one of `cases`'
+ * blocks needs nothing more, and one added example covers every style it holds.
+ */
+function styleExampleCases(cases, candidates) {
+  const covered = new Set(cases.flatMap((c) => stylesOfBlock(c.blockData)));
+  const added = [];
+  for (const [style, example] of candidates) {
+    if (covered.has(style)) continue;
+    for (const s of stylesOfBlock(example.blockData)) covered.add(s);
+    added.push({ ...example, kind: `style:${style}`, forStyle: style, isListing: false });
+  }
+  return added;
+}
+
 async function discoverBlocks(
   apiUrl,
   maxPages = Infinity,
@@ -1417,6 +1448,9 @@ async function discoverBlocks(
   // After the rich/simple pass, we use this to ensure every allowedBlocks
   // sub-type has at least one parent covering it in the final test set.
   const subTypeExamples = new Map();
+
+  // style -> the first block carrying it, for styleExampleCases.
+  const styleCandidates = new Map();
 
   // Step 1: Get all content paths via @search (b_size=9999 to avoid pagination)
   const searchUrl = `${apiUrl}/@search?b_size=9999&metadata_fields=UID`;
@@ -1593,6 +1627,18 @@ async function discoverBlocks(
           }
         }
 
+        for (const style of stylesOfBlock(blockData)) {
+          if (!styleCandidates.has(style)) {
+            styleCandidates.set(style, {
+              blockType: blockType || entry.blockType,
+              variation: variationOf(blockData),
+              blockId,
+              pagePath,
+              blockData,
+            });
+          }
+        }
+
         // Only add real @type blocks to the dedup set used for sanity tests.
         // Object_list sub-items get their widget-shape check above but don't
         // need separate sanity test cases — they're covered by their parent
@@ -1714,6 +1760,10 @@ async function discoverBlocks(
     if (!byUid.has(entry.blockId)) byUid.set(entry.blockId, entry);
   }
   const result = Array.from(byUid.values()).map(({ _score, ...rest }) => rest);
+  for (const styleCase of styleExampleCases(result, styleCandidates)) {
+    console.log(`[DISCOVER] Found ${styleCase.blockType} block "${styleCase.blockId}" on ${styleCase.pagePath} (adds text style ${styleCase.forStyle})`);
+    result.push(styleCase);
+  }
   console.log(`[DISCOVER] Discovered ${result.length} unique (blockType, variation, kind) pairs from ${fetched} pages`);
 
   if (missingSubTypes.length) {
@@ -1949,6 +1999,7 @@ async function discoverBlocks(
 module.exports = {
   paragraphShapeOf,
   editableInstance,
+  styleExampleCases,
   // Exported so the content validator asks the same question this does — a
   // second list of "fields that are not schema fields" would drift, and the
   // drift would show up as a validator shouting about `slotId` on every block.

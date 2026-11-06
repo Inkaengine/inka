@@ -85,6 +85,8 @@ The **block sanity** test is the safety net for content. It does not hard-code a
 
 That is the working rule: **every block type needs an example somewhere in the content**, and a block type with no example is treated as a gap to fix, not something to skip.
 
+Text styles are covered the same way. A block type's example is usually a plain paragraph, so discovery also takes an example of each text style in the content that no block example already shows: a heading, a list, a style your design system adds. The run fails if a style's text renders nowhere, or renders just like body text.
+
 The test runs each discovered block against several frontends. A core set — the mock frontend, Nuxt, and Next.js — is **enforced**: a block that fails to render there fails the suite. The remaining example frontends carry partial coverage on purpose and are checked on a best-effort basis.
 
 Run it from the root of the Inka checkout, with every `HYDRA_*_PORT` variable set (the full list is in the [CI example](./index.md#test-your-blocks-in-your-own-ci)):

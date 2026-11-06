@@ -26,7 +26,7 @@
  *
  * Works against any Plone API — mock or remote.
  */
-import { test as playwrightTest } from '@playwright/test';
+import { test as playwrightTest, type FrameLocator } from '@playwright/test';
 import { test as base, expect } from './fixtures';
 import { AdminUIHelper } from './AdminUIHelper';
 import { verifyBlockRendering, revealBlock } from './BlockVerificationHelper';
@@ -105,6 +105,36 @@ interface DiscoveredBlock {
   integrityIssue?: boolean;
   unexercisedOption?: boolean;
   undeclaredField?: boolean;
+  /** Here only to show this text style, which no block case carries. */
+  forStyle?: string;
+}
+
+/**
+ * Measure how each text style in a block's slate fields renders, and record it
+ * for the coverage reporter (TEXT-STYLE COVERAGE, #295). A style the author can
+ * apply has to render, and has to render DIFFERENTLY from body text — otherwise
+ * picking it does nothing visible and nothing says why. Measured by APPEARANCE,
+ * never by markup: the frontend picks its own tags (it may render `strong` as a
+ * styled span), so we locate the style's text, take a signature of how it
+ * actually looks, and compare against body text on the same page. The coverage
+ * reporter does the judging, over every worker.
+ */
+async function measureBlockStyles(iframe: FrameLocator, block: DiscoveredBlock): Promise<void> {
+  for (const [field, value] of Object.entries(block.blockData || {})) {
+    if (!Array.isArray(value)) continue;
+    const wanted = [...slateStyles(value)].map(([style, text]) => ({ style, text }));
+    if (wanted.length === 0) continue;
+    // The FIELD name, not just the block's: a field the design system draws
+    // elsewhere is revealed by the handle that names it
+    // (`data-block-selector="uid#field"`).
+    const measured = await measureTextStyles(
+      iframe.locator(`[data-block-uid="${block.blockId}"]`).first(),
+      wanted,
+      block.blockId,
+      field,
+    );
+    recordTextStyles(block.blockType, block.pagePath, value, measured.out, measured.baseline);
+  }
 }
 
 /**
@@ -270,6 +300,22 @@ export function defineBlockSanityTests(options: SanityOptions): void {
               `${block.pagePath}) but its schema does not declare it — the field can't be ` +
               `edited in the sidebar. Add it to the block schema, or remove the stray data.`,
           );
+        });
+        continue;
+      }
+      // A block here only to show a text style no block case carries. Its type is
+      // checked by its own case, so this one only measures the style.
+      if (block.forStyle) {
+        test(`text style "${block.forStyle}" renders (${block.blockType} on ${block.pagePath})${src}`, async ({ page, helper }, testInfo) => {
+          test.skip(!belongsHere(testInfo.project.name), `discovered via ${block.frontend}`);
+          const frontendUrl = where.frontend(testInfo.project.name);
+          const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
+          await page.goto(
+            `${where.mockParent()}?api_path=${encodeURIComponent(`${where.api()}${block.pagePath}`)}${frontend}`,
+          );
+          await helper.waitForIframeReady();
+          await helper.waitForBridgeConnected();
+          await measureBlockStyles(helper.getIframe(), block);
         });
         continue;
       }
@@ -452,35 +498,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
           checkEditTextClicks: true,
         });
 
-        // TEXT-STYLE COVERAGE (#295). A style the author can apply has to render,
-        // and has to render DIFFERENTLY from body text — otherwise picking it does
-        // nothing visible and nothing says why. Measured by APPEARANCE, never by
-        // markup: the frontend picks its own tags (it may render `strong` as a
-        // styled span), so we locate the style's text, take a
-        // signature of how it actually looks, and compare against body text on the
-        // same page. The coverage reporter does the judging, over every worker.
-        for (const [field, value] of Object.entries(block.blockData || {})) {
-          if (!Array.isArray(value)) continue;
-          const wanted = [...slateStyles(value)].map(([style, text]) => ({ style, text }));
-          if (wanted.length === 0) continue;
-          // The FIELD name, not just the block's: a field the design system draws
-          // elsewhere is revealed by the handle that names it
-          // (`data-block-selector="uid#field"`).
-          const measured = await measureTextStyles(
-            iframe.locator(`[data-block-uid="${block.blockId}"]`).first(),
-            wanted,
-            block.blockId,
-            field,
-          );
-
-          recordTextStyles(
-            block.blockType,
-            block.pagePath,
-            value,
-            measured.out,
-            measured.baseline,
-          );
-        }
+        await measureBlockStyles(iframe, block);
 
         // Accessibility pass (axe-core) over the WHOLE rendered fixture page —
         // not scoped to this one block — so document-outline rules (heading-order)
