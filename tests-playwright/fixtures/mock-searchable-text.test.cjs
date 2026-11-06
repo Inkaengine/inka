@@ -123,12 +123,12 @@ describe('SearchableText', () => {
       headers: headers(token),
       body: JSON.stringify({
         '@type': 'Document', id: 'unsaved-table', title: 'A table',
-        blocks: { t: { '@type': 'grid', table: { rows: [{ key: 'r', cells: [{ '@type': 'slate', value: slate('Cellword') }] }] } } },
+        blocks: { t: { '@type': 'grid', table: { rows: [{ key: 'r', cells: [{ '@type': 'slate', value: slate('Unreachedword') }] }] } } },
         blocks_layout: { items: ['t'] },
       }),
     });
     assert.equal(res.status, 201);
-    assert.deepEqual(await found(token, 'Cellword'), []);
+    assert.deepEqual(await found(token, 'Unreachedword'), []);
   });
 
   it("finds a page by the text in its blocks, nested ones included", async () => {
