@@ -66,18 +66,21 @@ function isLeftToTypeIn(block, type) {
  * A page just created (open in its editor), given its first blocks: they go
  * after the blocks the page starts with (its title), in place of the empty one
  * the add form leaves to type in, and the page is saved.
- * Returns { path, version, ids } — ids maps each new block's own @uid.
+ * Returns { path, version, reviewState, ids } — ids maps each new block's own @uid.
  * `check` refuses blocks that would leave the page invalid, as editPage's does.
  */
 export async function fillNewPage(agent, { blocks, mintId, check }) {
   const created = await getPage(agent);
-  if (!blocks?.length) return { path: created.path, version: created.version, ids: {} };
+  if (!blocks?.length) {
+    const { formData } = await agent.getPage();
+    return { path: created.path, version: created.version, reviewState: formData.review_state, ids: {} };
+  }
   const last = created.blocks.at(-1);
   const { types } = await agent.getBlockSchemas();
   const ops = [{ op: 'add', after: last['@uid'], blocks }];
   if (isLeftToTypeIn(last, types[last['@type']])) ops.push({ op: 'delete', id: last['@uid'] });
-  const { version, ids } = await editPage(agent, { ops, expectedVersion: created.version, mintId, check });
-  return { path: created.path, version, ids };
+  const { version, reviewState, ids } = await editPage(agent, { ops, expectedVersion: created.version, mintId, check });
+  return { path: created.path, version, reviewState, ids };
 }
 
 /**

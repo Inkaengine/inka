@@ -162,6 +162,8 @@ test.describe('MCP tools', () => {
     const blocks = [{ '@uid': 'intro', '@type': 'slate', value: 'Written *by an agent*' }];
     const made = await fillNewPage(agentOn(page), { blocks, mintId, check: draftCheck(agentOn(page), siteOn(page)) });
     expect(made.path).toBe(path);
+    // Whether visitors can see it: it says, as a save does.
+    expect(made.reviewState).toBeTruthy();
 
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
     const stored = await (await fetch(`${urls.mockApi}${path}`, {

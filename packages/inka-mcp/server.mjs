@@ -93,7 +93,7 @@ const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based
 - A page is a block of its content type (a Page is "Document"): its own fields (title, summary and the rest of its content type's fields) and its regions, which hold its blocks. Blocks have types (Text, Image, Hero, …; list_block_types gives each type's title, fields and regions), and some hold blocks of their own. In the editor, blocks are known by those titles and fields by their labels; ids and JSON are never shown.
 - The site's own front end draws every page. view_page shows a page as visitors see it; preview_layout (a whole proposed layout) and edit_blocks with dryRun and preview (a change to the page) show the result the same way. None of them saves anything. In clients that show them, the person sees these pictures too. A long page's picture may show only its top ("cropped" says how much); its text ("renderedText") is all there.
 - Some blocks come from a template that many pages share (they carry "templateId"; "readOnly" ones are locked, as the editor shows them). A change to one is a change to the template, and so to every page that uses it: edit_blocks with changeTemplates. In the editor, unlocking a template warns of the same.
-- Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page) changes the site itself: visitors of a published page see the change straight away; there is no separate publishing step.
+- Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet, and it is published from the editor, not from here.
 - search finds pages by their title, their summary and the text of their Text blocks. Text in other blocks' fields (a hero's heading, a teaser's title) may not be searched.`;
 
 /**
@@ -319,7 +319,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
 
   server.registerTool('create_page', {
     title: 'Create a page',
-    description: 'Add a page inside a section, as an editor does through the admin\'s add form, and save it. Optional "blocks" (in the get_page format, each with your own "@uid" if you will refer to it) are added after the blocks the page starts with. For an item that is a file, such as an Image or a File, "file" is the media id of a file you staged (stage_media), and the item is made of it: the result\'s "media" gives the item, which the id names from then on. Returns the new page\'s path, its version for edit_blocks, and the ids of your blocks.',
+    description: 'Add a page inside a section, as an editor does through the admin\'s add form, and save it. Optional "blocks" (in the get_page format, each with your own "@uid" if you will refer to it) are added after the blocks the page starts with. For an item that is a file, such as an Image or a File, "file" is the media id of a file you staged (stage_media), and the item is made of it: the result\'s "media" gives the item, which the id names from then on. Returns the new page\'s path, its version for edit_blocks, its "reviewState" (a new page may be private, so visitors can\'t see it yet) and the ids of your blocks.',
     inputSchema: {
       parent: z.string().describe('The section to add it to, e.g. /docs'),
       title: z.string().describe('The page title'),
@@ -342,12 +342,12 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     if (held.uploaded) throw new MediaRefused(`${file} is already on the site, as ${held.uploaded}: use that item`);
     const { name, type: fileType, data } = held;
     const made = await adminFor(extra).withNewPage({ parent, type, title, file: { name, type: fileType, data } }, async (_, { site, created }) => ({
-      ...created, version: (await site.status(created.path)).version,
+      ...created, version: (await site.status(created.path)).version, reviewState: (await site.get(created.path)).review_state,
     }));
     // The media id names the item from now on, as one a save uploaded does.
     const code = file.slice(MEDIA_PREFIX.length);
     await media.update(code, { user: userOf(extra), name, type: fileType, uploaded: made.url });
-    return asResult({ path: made.path, version: made.version, media: { [file]: made.url } });
+    return asResult({ path: made.path, version: made.version, reviewState: made.reviewState, media: { [file]: made.url } });
   });
 
   registerAppTool(server, 'edit_blocks', {

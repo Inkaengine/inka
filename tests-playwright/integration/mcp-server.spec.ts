@@ -70,6 +70,11 @@ test.describe('MCP server', () => {
     expect(instructions).toMatch(/saves anything|saves nothing/);
     expect(instructions).toMatch(/a change to the template, and so to every page that uses it/);
     expect(instructions).toMatch(/visitors of a published page see the change straight away/);
+    // A new page may be private: an agent told there was no publishing step
+    // said a post was live when no visitor could see it.
+    expect(instructions).not.toMatch(/no separate publishing step/);
+    expect(instructions).toMatch(/reviewState/);
+    expect(instructions).toMatch(/published from the editor/);
     expect(instructions).toMatch(/search finds pages by their title, their summary and the text of their Text blocks/);
     // Never how to behave: that is the agent's and its host's, not the site's.
     expect(instructions).not.toMatch(/\b(Never|Do not|only when asked|tell the person|Talk the way)\b/);
@@ -279,6 +284,7 @@ test.describe('MCP server', () => {
 
     const image = (await call('create_page', { parent: '/_test_data', type: 'Image', title: 'Team photo', file: photo.media })).json();
     expect(image.version).toBeTruthy();
+    expect(image.reviewState).toBeTruthy();
     const madeImage = await stored(image.path);
     expect(madeImage['@type']).toBe('Image');
     expect(madeImage.title).toBe('Team photo');
