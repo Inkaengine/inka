@@ -1990,7 +1990,7 @@ export function cloneBlocksWithNewIds(
  * Clone a block, recursively filtering nested blocks without template markers.
  * Only nested blocks with `slotId` or `templateId` are included. Storage-agnostic: iterates
  * EVERY child field via getChildFields (blocks_layout regions AND object_list arrays) and reads/
- * writes through the funnel — the same region-aware pattern as fillContainerInto. Handling only
+ * writes through the funnel — the same region-aware pattern as leaveRegionsWaiting. Handling only
  * blocks_layout left a nested object_list (a slider's `slides`) with its template-internal blocks
  * and original ids on insert.
  *
@@ -2010,10 +2010,7 @@ export function cloneBlockFilteringNested(block, uuidGenerator) {
 
   // blocks_layout regions share cloned.blocks — reset it once so template-internal blocks don't
   // linger; object_list fields are independent arrays, rewritten in place per field.
-  if (fields.some((f) => !f.isObjectList)) {
-    cloned.blocks = {};
-    cloned.blocks_layout = {};
-  }
+  clearRegions(cloned, fields);
 
   for (const field of fields) {
     const kept = [];
@@ -2110,10 +2107,7 @@ function cloneBlockForTranslation(
 
   // Regions share one `blocks` map, so it is rebuilt once; object_list fields
   // are independent arrays, rewritten per field.
-  if (fields.some((f) => !f.isObjectList)) {
-    cloned.blocks = {};
-    cloned.blocks_layout = {};
-  }
+  clearRegions(cloned, fields);
 
   for (const field of fields) {
     const copies = [];
@@ -2226,10 +2220,6 @@ function markBlockReadOnly(block, idFieldMap) {
     const children = [];
     for (const { id, block: child } of getChildBlockEntries(block, field)) {
       children.push({ id, block: markBlockReadOnly(child, idFieldMap) });
-    }
-    if (!field.isObjectList) {
-      // Regions share one map; rebuild it rather than mutating the original's.
-      marked.blocks = { ...marked.blocks };
     }
     setChildBlockEntries(marked, field, children);
   }
@@ -2627,7 +2617,6 @@ export function restampTranslatedBlocks(blocks, initialBlocks, sourceBlocks, opt
       }
       if (children.length) {
         if (out === block) out = { ...block };
-        if (!field.isObjectList) out.blocks = { ...out.blocks };
         setChildBlockEntries(out, field, children);
       }
     }
@@ -2777,7 +2766,9 @@ const NON_TEXT_KEYS = new Set([
 /** The words an editor types into this block — not its children's. */
 function blockText(block, idFieldMap) {
   const childFields = new Set(
-    getChildFields(block, idFieldMap, { allObjectLists: true }).map((f) => f.region),
+    getChildFields(block, idFieldMap, { allObjectLists: true })
+      .filter((f) => !f.regionPath)
+      .map((f) => f.region),
   );
   const parts = [];
   for (const [key, value] of Object.entries(block || {})) {
@@ -3098,43 +3089,72 @@ export function getChildBlockEntries(parentBlock, descriptor = {}) {
  */
 export function getChildFields(block, idFieldMap = null, options = {}) {
   const fields = [];
-  if (block?.blocks && isBlocksMap(block.blocks)) {
-    for (const [region] of blocksLayoutRegions(block.blocks_layout)) {
-      fields.push({ region });
-    }
-  }
   // An object_list field is keyed by its idField (a form's subblocks by `field_id`, a table's
   // rows by `key`, …) — NOT `@id`. The idField is a per-(blockType, field) fact the CALLER
   // resolves once and passes as `idFieldMap` ({ type: { field: idField } }): the admin derives
   // it from the schema, a frontend passes it as a literal hint. Read + write both key off the
   // descriptor's idField, so a missing hint (fallback `@id`) mints a bogus id — hence the hint
   // is required whenever a template contains an object_list keyed by anything but `@id`.
+  // A field inside a widget:'object' is named by its /-path (`table/rows`).
   const typeIds = block?.['@type'] ? idFieldMap?.[block['@type']] : null;
-  for (const [key, val] of Object.entries(block || {})) {
-    if (!Array.isArray(val) || val.length === 0) continue;
-    // What makes an array field a region is the SCHEMA saying so: the
-    // idFieldMap names the field for this block type, and names the key its
-    // items are addressed by. That is the only detection a caller should need.
-    //
-    // `templateChildren` is the merge's exception, and only the merge's. When
-    // inserting a template the question is narrower — which items are the
-    // TEMPLATE's own — and `templateId` on the items answers it without a
-    // schema. It used to be unconditional, so it also decided region-ness for
-    // callers that are not merging, which is wrong twice over: a field the
-    // schema never declared was walked anyway, and the id for it fell back to
-    // `@id` when the real key might be `field_type` or `key` — the API's own
-    // note for that case is "mints a bogus id".
-    const isTemplateList = !!(options.templateChildren && val[0]?.templateId);
-    const isDeclaredList = !!(options.allObjectLists && typeIds?.[key]);
-    if (isTemplateList || isDeclaredList) {
-      fields.push({
-        isObjectList: true,
-        region: key, // top-level array field; regionPath defaults to []
-        idField: typeIds?.[key] || '@id',
-      });
+  // A widget:'object' is transparent: a region inside one is the block's region,
+  // with the object's path as its regionPath. The objects are found from the data,
+  // as the blocks_layout regions are: this has no schema.
+  const visit = (node, regionPath) => {
+    const at = regionPath.length ? { regionPath } : {};
+    if (node?.blocks && isBlocksMap(node.blocks)) {
+      for (const [region] of blocksLayoutRegions(node.blocks_layout)) {
+        fields.push({ region, ...at });
+      }
     }
-  }
+    for (const [key, val] of Object.entries(node || {})) {
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        // `blocks` holds child blocks, which are their own containers.
+        if (key !== 'blocks' && key !== 'blocks_layout') visit(val, [...regionPath, key]);
+        continue;
+      }
+      if (!Array.isArray(val) || val.length === 0) continue;
+      // What makes an array field a region is the SCHEMA saying so: the
+      // idFieldMap names the field for this block type, and names the key its
+      // items are addressed by. That is the only detection a caller should need.
+      //
+      // `templateChildren` is the merge's exception, and only the merge's. When
+      // inserting a template the question is narrower — which items are the
+      // TEMPLATE's own — and `templateId` on the items answers it without a
+      // schema. It used to be unconditional, so it also decided region-ness for
+      // callers that are not merging, which is wrong twice over: a field the
+      // schema never declared was walked anyway, and the id for it fell back to
+      // `@id` when the real key might be `field_type` or `key` — the API's own
+      // note for that case is "mints a bogus id".
+      const idField = typeIds?.[[...regionPath, key].join('/')];
+      const isTemplateList = !!(options.templateChildren && val[0]?.templateId);
+      const isDeclaredList = !!(options.allObjectLists && idField);
+      if (isTemplateList || isDeclaredList) {
+        fields.push({
+          isObjectList: true,
+          region: key,
+          ...at,
+          idField: idField || '@id',
+        });
+      }
+    }
+  };
+  visit(block, []);
   return fields;
+}
+
+/**
+ * Empty every blocks_layout region in `fields`, ready to be written again. Regions
+ * share their container's `blocks` map, and each container (the block itself, or an
+ * object in it) has its own. The original's maps are left alone.
+ */
+function clearRegions(block, fields) {
+  for (const field of fields) {
+    if (field.isObjectList) continue;
+    const container = ensureMutablePath(block, field.regionPath || []);
+    container.blocks = {};
+    container.blocks_layout = {};
+  }
 }
 
 /**
@@ -3168,12 +3188,12 @@ export function setChildBlockEntries(parentBlock, descriptor, entries) {
   // widget:'object' wrapper (regionPath). Clone each level so the object's own
   // dict is written (never the block root) and sibling object fields survive.
   const container = ensureMutablePath(parentBlock, regionPath);
+  container.blocks = { ...container.blocks };
   for (const { id, block } of entries) {
     // Callers that manage the shared blocks dict themselves (e.g. the admin's
     // full-dict setContainerItems, whose blocksObj already reflects adds/deletes)
     // omit `block` — only write into the dict when a block is actually provided.
     if (block !== undefined) {
-      if (!container.blocks) container.blocks = {};
       container.blocks[id] = block;
     }
   }
@@ -3718,7 +3738,7 @@ export function collectContentFromTree(
 
   // Capture ONE child block by slot/instance, then recurse into it. Shared by the blocks_layout
   // (shared `blocks` dict) and object_list (inline array) branches so both storages capture the
-  // same way — the apply path already treats them uniformly (fillContainerInto).
+  // same way — filling a region treats them uniformly (fillRegionEntries).
   const processBlock = (blockId, block, regionSlotId) => {
     if (!block) return;
     // A template the page inserted (a snippet, a template-owned form), sitting
@@ -3826,8 +3846,8 @@ export function collectContentFromTree(
  *     block again. A page cannot rename its own slot.
  *   - fixed / readOnly: the template's declaration of who owns the block. A lock
  *     added to the template later has to take hold on pages already using it.
- *   - blocks / blocks_layout: a container's children are re-derived per region
- *     by fillContainerInto, region by region.
+ *   - blocks / blocks_layout: a container's children are re-derived per region,
+ *     by that container's own call (fillWaitingRegion).
  *   - nextSlotId / prevSlotId / childSlotIds / fieldPlaceholders: hints
  *     recomputed on every apply — an absent one is DELETED, so a hint captured
  *     into a template from an older layout cannot outlive it.
@@ -3879,18 +3899,11 @@ function mintChildBlockId(instanceId, tplChildId) {
 }
 
 // The block, and its descendants that `own` picks, marked as `instanceId`'s.
-function markInstance(block, own, instanceId, idFieldMap) {
+function markInstance(block, own, instanceId) {
   if (!own(block)) return block;
   const out = { ...block, templateInstanceId: instanceId, ...(block.blocks && { blocks: { ...block.blocks } }) };
-  for (const field of getChildFields(block, idFieldMap, { templateChildren: true })) {
-    setChildBlockEntries(
-      out,
-      field,
-      getChildBlockEntries(block, field).map(({ id, block: child }) => ({
-        id,
-        block: markInstance(child, own, instanceId, idFieldMap),
-      })),
-    );
+  for (const field of getChildFields(block, null, { templateChildren: true })) {
+    mapChildBlocks(out, block, field, (child) => markInstance(child, own, instanceId));
   }
   return out;
 }
@@ -3914,10 +3927,10 @@ export function isUnlabelledDefinition(doc, idFieldMap = null) {
 }
 
 // The names of a template's slots, fixed ones included, at every depth.
-function templateSlotIds(template, idFieldMap) {
+function templateSlotIds(template) {
   const slots = new Set();
   const visit = (container) => {
-    for (const field of getChildFields(container, idFieldMap, { templateChildren: true })) {
+    for (const field of getChildFields(container, null, { templateChildren: true })) {
       for (const { block } of getChildBlockEntries(container, field)) {
         if (!block?.templateId) continue;
         slots.add(block.slotId || 'default');
@@ -3960,7 +3973,9 @@ function fillRegionEntries(entries, templateState, options) {
     if (child.fixed) {
       const editable = !child.readOnly && !!child.slotId;
       const existingFixed = takeFixedBlock(ctx?.existingFixedBlockIds, child.slotId);
-      const outId = existingFixed?.blockId || mintChildBlockId(instanceId, tplChildId);
+      const outId = existingFixed
+        ? existingFixed.blockId || objectListItemId(existingFixed.block, options.idField)
+        : mintChildBlockId(instanceId, tplChildId);
       if (child.blocks && isBlocksMap(child.blocks) && !hasNestedBlocksLayout(child)) {
         throw new Error(
           `expandTemplatesSync: template block "${tplChildId}" has nested ` +
@@ -4014,7 +4029,7 @@ function fillRegionEntries(entries, templateState, options) {
         const placeholders = extractFieldPlaceholders(child);
         if (Object.keys(placeholders).length > 0) stamped.fieldPlaceholders = placeholders;
       }
-      fillContainerInto(stamped, child, templateState, options);
+      leaveRegionsWaiting(stamped, child, ctx);
       out.push({ id: outId, block: stamped });
       continue;
     }
@@ -4043,7 +4058,8 @@ function fillRegionEntries(entries, templateState, options) {
     }
 
     for (let u = 0; u < content.length; u++) {
-      const { blockId, block, orphaned } = content[u];
+      const { blockId: storedId, block, orphaned } = content[u];
+      const blockId = storedId || objectListItemId(block, options.idField);
       // A nested template reference (a snippet, a template-owned form, a page built
       // on a multi-block template) keeps its own marks and is EXPANDED here, in the
       // same pass: the admin merges once and the editor frame does not expand again.
@@ -4064,8 +4080,9 @@ function fillRegionEntries(entries, templateState, options) {
           content[u + 1].block.templateInstanceId === block.templateInstanceId
         ) {
           u += 1;
-          run[content[u].blockId] = content[u].block;
-          runIds.push(content[u].blockId);
+          const nextId = content[u].blockId || objectListItemId(content[u].block, options.idField);
+          run[nextId] = content[u].block;
+          runIds.push(nextId);
         }
         const outer = {
           instanceId: templateState.instanceId,
@@ -4100,33 +4117,119 @@ function fillRegionEntries(entries, templateState, options) {
   return out;
 }
 /**
- * Fully expand a container's child regions IN PLACE onto `stamped` at APPLY time.
- * Storage-agnostic: enumerate every child field (getChildFields), read each (
- * getChildBlockEntries), fill it (fillRegionEntries), and write it back
- * (setChildBlockEntries) — ONE loop, no branch on blocks_layout vs object_list. After
- * this the children are COMPLETE, so the renderer's re-entry only recognizes the minted
- * templateInstanceId and passes them through — no deferred re-derivation and no
- * object-identity Map (which missed whenever the caller handed back a Vue reactive
- * proxy / clone / postMessage copy of the dict → infinite re-application).
+ * A region's blocks, each passed through `fn`, written to `target`. An object_list's
+ * items are mapped in place, so this doesn't need to know their id field.
  */
-function fillContainerInto(stamped, tplBlock, templateState, options) {
-  // Merge: the question is which items are the TEMPLATE's own, which
-  // `templateId` answers without a schema.
-  const fields = getChildFields(tplBlock, options?.idFieldMap, { templateChildren: true });
-  if (fields.length === 0) return;
-  // blocks_layout regions share stamped.blocks — reset it once so stale template blocks
-  // don't linger (object_list fields are independent arrays, written in place).
-  if (fields.some((f) => !f.isObjectList)) {
-    stamped.blocks = {};
-    stamped.blocks_layout = {};
+function mapChildBlocks(target, source, field, fn) {
+  if (field.isObjectList) {
+    const path = field.regionPath || [];
+    ensureMutablePath(target, path)[field.region] = getAtPath(source, path)[field.region].map(fn);
+    return;
   }
+  setChildBlockEntries(
+    target,
+    field,
+    getChildBlockEntries(source, field).map(({ id, block }) => ({ id, block: fn(block) })),
+  );
+}
+
+/**
+ * What identifies a list across calls: its content, which survives the caller handing it
+ * back as a clone or a reactive proxy. An object_list item's id is in its content; a
+ * blocks_layout child's is beside it.
+ */
+function regionKey(entries) {
+  return JSON.stringify(entries.map(({ id, block }) => {
+    const { '@uid': _uid, ...content } = block;
+    return [id, content];
+  }));
+}
+
+/**
+ * A fixed block's regions are its own to expand: the merge has no schema, and only the
+ * block's code knows its regions and an object_list's id field. So they are left as the
+ * template has them, in this instance, and the instance's state records them as waiting
+ * for the block's call to the merge (fillWaitingRegion). Read
+ * docs/frontend-guide/templates.md "Expand every container" before changing this.
+ */
+function leaveRegionsWaiting(stamped, tplBlock, ctx) {
+  const fields = getChildFields(tplBlock, null, { templateChildren: true });
+  clearRegions(stamped, fields);
   for (const field of fields) {
-    const filled = fillRegionEntries(
-      getChildBlockEntries(tplBlock, field),
-      templateState,
-      options,
+    const inInstance = (block) => ({ ...block, templateInstanceId: ctx.instanceId });
+    mapChildBlocks(stamped, tplBlock, field, inInstance);
+    const entries = getChildBlockEntries(tplBlock, field).map(({ id, block }) => ({
+      id: field.isObjectList ? null : id,
+      block: inInstance(block),
+    }));
+    if (entries.length === 0) continue;
+    ctx.waitingRegions.set(regionKey(entries), {
+      blockType: tplBlock['@type'],
+      region: [...(field.regionPath || []), field.region].join('/'),
+      filled: null,
+    });
+  }
+}
+
+/**
+ * The region a block's call to the merge has brought, if it is one still waiting (or
+ * already filled, when it is rendered again) in this state.
+ */
+function waitingRegion(blocks, layout, isObjectList, templateState) {
+  const ctx = templateState.instances[blocks[layout[0]]?.templateInstanceId];
+  if (!ctx?.waitingRegions?.size) return null;
+  const entries = layout.map((id) => ({ id: isObjectList ? null : id, block: blocks[id] }));
+  return ctx.waitingRegions.get(regionKey(entries)) ?? null;
+}
+
+/**
+ * Fill a region its template left waiting, by the same rules as any region, from the
+ * content collected when the template was applied. A region can be rendered more than
+ * once (a double render, a re-computed property), and its content is consumed by the
+ * fill, so the result is kept.
+ */
+function fillWaitingRegion(region, blocks, layout, isObjectList, idField, templateState, options) {
+  if (!region.filled) {
+    const instanceId = blocks[layout[0]].templateInstanceId;
+    const outer = { instanceId: templateState.instanceId, templateId: templateState.templateId };
+    templateState.instanceId = instanceId;
+    templateState.templateId = templateState.instances[instanceId].templateId;
+    const entries = layout.map((id) => {
+      const { '@uid': _uid, ...block } = blocks[id];
+      return { id, block };
+    });
+    const filled = fillRegionEntries(entries, templateState, { ...options, idField });
+    templateState.instanceId = outer.instanceId;
+    templateState.templateId = outer.templateId;
+    region.filled = filled.map(({ id, block }) => ({
+      ...block,
+      ...(isObjectList ? { [idField]: id } : {}),
+      '@uid': id,
+    }));
+  }
+  return region.filled;
+}
+
+/**
+ * Throws if any region a template left waiting was never expanded in this render: a
+ * container that renders its children without passing them through the merge, or that
+ * passes them with a different templateState. The merge can't see a call that never
+ * happens, so this is for the end of a render, where a test or a dev build can ask.
+ *
+ * @param {Object} templateState - The state shared by every call in the render
+ */
+export function assertAllExpanded(templateState) {
+  const missed = [];
+  for (const ctx of Object.values(templateState.instances || {})) {
+    for (const { blockType, region, filled } of ctx.waitingRegions?.values() || []) {
+      if (!filled) missed.push(`"${blockType}" region "${region}" of template "${ctx.templateId}"`);
+    }
+  }
+  if (missed.length) {
+    throw new Error(
+      `Never passed through the merge: ${missed.join(', ')}. Every container hands its children ` +
+        'to expandTemplatesSync, with the same templateState. See "Expand every container" in the templates guide.',
     );
-    setChildBlockEntries(stamped, field, filled);
   }
 }
 
@@ -4502,14 +4605,14 @@ export async function expandTemplates(inputItems, options = {}) {
  *  its `slotId`, and the content MOVES to wherever the slot sits in the target —
  *  even deep inside a fixed container. The source content is collected ONCE, deeply,
  *  by slotId into the instance state (`ctx.pendingContent`, via collectContentFromTree)
- *  when the template is encountered, then the WHOLE template is expanded in that ONE
- *  pass: the top-level call fills the top slots and, for every nested container,
- *  recurses (fillContainerInto → fillRegionEntries) to fill that container's slots
- *  too — ALL levels, up front. A fixed-but-NON-readOnly block takes the source's
- *  edited value + block id from `ctx.existingFixedBlockIds` (the editable-fixed flow);
- *  readOnly keeps the template's content. Each slot's content is consumed as it fills,
- *  so it lands exactly once. The renderer's per-container re-entry then only RECOGNIZES
- *  the already-expanded children (below) and passes them through — no second fill.
+ *  when the template is encountered. Each call then expands ONE list: the top-level call
+ *  fills the top slots and records each fixed block's regions as waiting in the instance
+ *  state (leaveRegionsWaiting). The block's own call fills them (fillWaitingRegion →
+ *  fillRegionEntries), naming an object_list's idField; the merge has no schema, so only
+ *  the block's code can. A fixed-but-NON-readOnly block takes the source's edited value +
+ *  block id from `ctx.existingFixedBlockIds` (the editable-fixed flow); readOnly keeps the
+ *  template's content. Each slot's content is consumed as it fills, so it lands exactly
+ *  once, and a region's result is kept for when it is rendered again.
  *
  * ── RECOGNIZING ALREADY-EXPANDED CONTENT (pure data, no object identity) ───────
  *  This merge is pure JSON-in / JSON-out. On the first encounter of a fresh
@@ -4520,7 +4623,8 @@ export async function expandTemplates(inputItems, options = {}) {
  *  THIS pass) is finished CONTENT → emit as-is. A `templateId` that is not a live
  *  instance is an unexpanded reference → apply. blocks_layout and object_list are ONE
  *  concept (an ordered list of blocks, differing only in storage) and share this single
- *  path — no special-casing.
+ *  path — no special-casing. A list the instance's state has as waiting is filled instead,
+ *  checked first.
  *
  *  Why data and not object identity: an earlier design kept a Map keyed by the
  *  blocks-dict OBJECT REFERENCE. It missed the instant the caller passed a
@@ -4546,9 +4650,8 @@ export async function expandTemplates(inputItems, options = {}) {
  *
  * This function is called recursively: the top-level BlocksRenderer calls it for
  * the page layout, and the expanded result may contain container blocks (columns,
- * accordions, etc.) whose child BlocksRenderers call it again. The apply pass expands
- * every level up front; each re-entry is recognized by its minted templateInstanceId
- * (present in templateState.instances) and passed through as-is — no re-derivation.
+ * accordions, etc.) whose child BlocksRenderers call it again. Each call expands one
+ * list: a region its template left waiting is filled by that region's own call.
  *
  * templateState is shared across all BlocksRenderer instances on the page (via
  * Vue provide/inject or similar). It must be a fresh {} for each page render to
@@ -4591,7 +4694,8 @@ function objectListItemId(item, idField) {
   if (!id) {
     throw new Error(
       `expandTemplatesSync: object_list item has no "${idField}" (type ${item['@type'] ?? 'unknown'}). ` +
-        'Every item needs its own id; content imported from markdown gets one minted on import.',
+        'Every item needs its own id: if this list is keyed by another field, pass its idField. ' +
+        'Content imported from markdown gets one minted on import.',
     );
   }
   return id;
@@ -4612,10 +4716,16 @@ export function expandTemplatesSync(inputItems, options = {}) {
     templates,
     allowedLayouts,
     loadTemplate,
-    idField, // For object_list arrays: field name used as item ID (e.g. '@id', 'key')
-    idFieldMap, // { blockType: { field: idField } } — caller-resolved, so the merge never walks schemas
+    idField = '@id', // For object_list arrays: field name used as item ID (e.g. 'key')
     editMode: editModeOverride, // explicit edit-mode signal for SSR frontends that have no window.name
   } = options;
+
+  if (options.idFieldMap) {
+    throw new Error(
+      'expandTemplatesSync has no idFieldMap: it expands one list per call, so pass that ' +
+        'list\'s idField. See "Expand every container" in the templates guide.',
+    );
+  }
 
   const items = [];
   const addItem = (block, blockId) => {
@@ -4690,6 +4800,14 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // Initialize global state structures if needed
   if (!templateState.instances) {
     templateState.instances = {};
+  }
+
+  if (layout.length > 0 && !allowedLayouts?.length) {
+    const isObjectList = typeof inputItems[0] !== 'string';
+    const region = waitingRegion(blocks, layout, isObjectList, templateState);
+    if (region) {
+      return fillWaitingRegion(region, blocks, layout, isObjectList, idField, templateState, options);
+    }
   }
 
   // Re-entry recognized from DATA (no object identity) — the SAME check for object_list
@@ -4863,7 +4981,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
       ownTemplate?.blocks &&
       templateBlockIds.length > 0 &&
       templateBlockIds.every((id) => {
-        const own = findBlockAnywhere(ownTemplate.blocks, id, idFieldMap, {
+        const own = findBlockAnywhere(ownTemplate.blocks, id, null, {
           allObjectLists: true,
           templateChildren: true,
         });
@@ -4945,8 +5063,8 @@ export function expandTemplatesSync(inputItems, options = {}) {
     }
   }
 
-  // Shared on templateState so the apply-time recursion (fillContainerInto) sees the
-  // current template + instance while filling nested containers.
+  // Shared on templateState so filling a region (fillRegionEntries) sees the current
+  // template + instance.
   templateState.templateId = templateId;
   templateState.instanceId = instanceId;
 
@@ -4968,6 +5086,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
       instanceId,
       emittedSlotIds: new Set(),
       pendingContent: new Map(),
+      waitingRegions: new Map(),
       existingFixedBlockIds: new Map(),
       leadingStandaloneBlocks: [],
       trailingStandaloneBlocks: [],
@@ -5073,7 +5192,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
           const own = (b) =>
             b?.templateId && templateIdsMatch(b.templateId, templateId) && !b.templateInstanceId;
           collectContentFromTree(
-            { blocks: { [blockId]: markInstance(block, own, instanceId, idFieldMap) }, blocks_layout: { items: [blockId] } },
+            { blocks: { [blockId]: markInstance(block, own, instanceId) }, blocks_layout: { items: [blockId] } },
             instanceId,
             ctx.pendingContent,
             [],
@@ -5148,7 +5267,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // slot this template doesn't have goes to its default slot, else the bottom slot
   // outside the last fixed block, else the top one; else it is dropped. Content in a
   // fixed block's slot is that block's copy: the fixed block replaces it.
-  const slots = templateSlotIds(template, idFieldMap);
+  const slots = templateSlotIds(template);
   ctx.leftovers = [];
   for (const [slotId, content] of pendingContent) {
     if (!slots.has(slotId)) {

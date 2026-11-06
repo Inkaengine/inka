@@ -66,7 +66,7 @@ function restoreInstance(current, snapshot, instanceId, idFieldMap) {
       );
     }
     for (const field of fields) {
-      const key = `${path}/${field.region}`;
+      const key = `${path}/${[...(field.regionPath || []), field.region].join('/')}`;
       const restored = (saved.regions[key] || []).map((id) => ({ id, block: saved.blocks[id] }));
       const next = [];
       let spliced = false;
@@ -1554,10 +1554,12 @@ const Iframe = (props) => {
   // Resolve each object_list field's idField ONCE from the schema (a form's subblocks are keyed
   // by field_id, not @id) and pass it to every merge — so the merge stamps item ids into the
   // right field instead of minting a bogus @id. A frontend passes this same shape as a hint.
-  const idFieldMap = useMemo(
-    () => buildIdFieldMap(config.blocks.blocksConfig, intl),
-    [intl],
-  );
+  // Built each render: the frontend's schemas reach config.blocks.blocksConfig over the
+  // bridge, after this component mounts. Memoized on what it holds, so its identity only
+  // changes when they do.
+  const builtIdFieldMap = buildIdFieldMap(config.blocks.blocksConfig, intl);
+  const builtIdFieldMapKey = JSON.stringify(builtIdFieldMap);
+  const idFieldMap = useMemo(() => builtIdFieldMap, [builtIdFieldMapKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
 

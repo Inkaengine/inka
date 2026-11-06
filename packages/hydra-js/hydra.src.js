@@ -16131,8 +16131,3 @@ export { canContain, findConversionPath, mapLayoutItems } from './containerOps.j
 // in-page navigation block) build the hierarchy from ONE source.
 export { buildAnchorTree } from './linkableAnchors.js';
 
-// buildIdFieldMap derives the merge's `idFieldMap` ({ blockType: { field: idField } }) from a
-// blocks config — the same one a frontend passes to initBridge. Re-exported so frontends
-// build it from their own block schemas exactly as the admin does: it is a fact about the
-// frontend's schemas, which the backend (and so the @templates endpoint) never sees.
-export { buildIdFieldMap } from './buildBlockPathMap.js';

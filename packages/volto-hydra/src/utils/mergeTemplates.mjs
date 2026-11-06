@@ -8,7 +8,9 @@
 import {
   expandTemplates,
   adoptTemplate,
+  assertAllExpanded,
   getChildFields,
+  ensureMutablePath,
   getChildBlockEntries,
   setChildBlockEntries,
   isUnlabelledDefinition,
@@ -134,7 +136,6 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
     preloadedTemplates,
     uuidGenerator,
     firstInsert,
-    idFieldMap, // { blockType: { field: idField } } — admin-resolved from the schema
   });
 
   // READ docs/architecture.md "Merging templates: every container is expanded, by
@@ -150,7 +151,7 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
   // are not applied twice. Regions are read and written through the helpers'
   // storage-agnostic accessors (blocks_layout regions and object_list arrays alike).
   async function expandContainers(block, templateState) {
-    const fields = getChildFields(block, idFieldMap, { allObjectLists: true });
+    const fields = getChildFields(block, idFieldMap, { allObjectLists: true, templateChildren: true });
     if (fields.length === 0) return block;
     // setChildBlockEntries writes into its argument; INITIAL_DATA arrives frozen.
     const out = { ...block, ...(block.blocks ? { blocks: { ...block.blocks } } : {}) };
@@ -169,6 +170,15 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
       const expanded = [];
       for (const { '@uid': id, ...child } of items) {
         expanded.push({ id, block: await expandContainers(child, templateState) });
+      }
+      // A filled region's blocks replace the template's, which waited under other ids.
+      if (!field.isObjectList) {
+        const kept = new Set(expanded.map(({ id }) => id));
+        const container = ensureMutablePath(out, field.regionPath || []);
+        container.blocks = { ...container.blocks };
+        for (const { id } of entries) {
+          if (!kept.has(id)) delete container.blocks[id];
+        }
       }
       setChildBlockEntries(out, field, expanded);
     }
@@ -263,6 +273,7 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
       allowedLayouts,
       templateState
     );
+    assertAllExpanded(templateState);
 
     // Remove old field blocks dropped during template processing, then merge in
     // the new blocks. Blocks from other fields must remain.
@@ -303,11 +314,12 @@ export function instanceContent(formData, instanceId, idFieldMap) {
   const visit = (container, path) => {
     for (const field of getChildFields(container, idFieldMap, { allObjectLists: true })) {
       const entries = getChildBlockEntries(container, field);
-      layouts[`${path}/${field.region}`] = entries.map((entry) => entry.id);
+      const key = `${path}/${[...(field.regionPath || []), field.region].join('/')}`;
+      layouts[key] = entries.map((entry) => entry.id);
       const own = entries
         .filter((entry) => entry.block?.templateInstanceId === instanceId)
         .map((entry) => entry.id);
-      if (own.length) regions[`${path}/${field.region}`] = own;
+      if (own.length) regions[key] = own;
       for (const { id, block } of entries) {
         if (block?.templateInstanceId === instanceId) blocks[id] = block;
         else if (block) visit(block, `${path}/${id}`);
