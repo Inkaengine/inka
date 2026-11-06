@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import type { Page } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
+import { HARNESS_OFFSETS } from '../ports';
 
 /**
  * The admin's address is read when a test uses it, not when the helper is
@@ -31,11 +32,11 @@ describe('AdminUIHelper adminUrl', () => {
   });
 
   test('the address given wins', () => {
-    expect(new AdminUIHelper(fakePage(), 'http://localhost:1234').adminUrl).toBe('http://localhost:1234');
+    expect(new AdminUIHelper(fakePage(), 'https://admin.example.org').adminUrl).toBe('https://admin.example.org');
   });
 
   test('without one, the harness Volto from the port block', () => {
     process.env.HYDRA_PORT_BASE = '9000';
-    expect(new AdminUIHelper(fakePage()).adminUrl).toBe('http://localhost:9003');
+    expect(new AdminUIHelper(fakePage()).adminUrl).toBe(`http://localhost:${9000 + HARNESS_OFFSETS.voltoSsr}`);
   });
 });
