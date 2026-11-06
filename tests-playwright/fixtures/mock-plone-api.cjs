@@ -702,8 +702,8 @@ function searchableTextOperations() {
  * match only where the reader typed `*`. Contrast `contains`, whose munging
  * turns every word into a required prefix (matchSearchableText below).
  */
-function matchRawSearch(searchTerm, item) {
-  const text = [item.title, item.description, item.id]
+function matchRawSearch(searchTerm, item, blocksText = '') {
+  const text = [item.title, item.description, item.id, blocksText]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
@@ -747,19 +747,28 @@ function matchSearchableText(searchTerm, item, blocksText = '') {
 
 /**
  * The text of a page's blocks, as plone.restapi's blocks indexer adds it to
- * SearchableText: every Text (slate) value, in containers too. (Other block
- * types are indexed only where a site registers an indexer for them.)
+ * SearchableText (plone/restapi/indexers.py, blocks.py). It visits the blocks in a block's
+ * `blocks` and `data.blocks`, children first, listed in a layout or not, and takes each
+ * one's `searchableText`, else a Text block's `plaintext`. So object lists are not visited,
+ * and other block types are found only by `searchableText`. A real save writes `plaintext`
+ * from `value`; here `value` is read directly, which is what that would be.
+ * test_search_text.py holds real Plone to the same cases (search-text-cases.json).
  */
 function blocksSearchableText(blocks) {
   const texts = [];
-  const isSlate = (v) => Array.isArray(v) && v.length > 0 && v.every((n) => n && typeof n === 'object' && Array.isArray(n.children));
-  const slateText = (nodes) => nodes.map((n) => (typeof n.text === 'string' ? n.text : '') + slateText(n.children || [])).join(' ');
-  const walk = (v) => {
-    if (isSlate(v)) texts.push(slateText(v));
-    else if (Array.isArray(v)) v.forEach(walk);
-    else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  const slateText = (nodes) =>
+    nodes.map((n) => (typeof n?.text === 'string' ? n.text : '') + slateText(n?.children || [])).join(' ');
+  const isMap = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  const visit = (block) => {
+    if (!isMap(block)) return;
+    if (isMap(block.data?.blocks)) Object.values(block.data.blocks).forEach(visit);
+    if (isMap(block.blocks)) Object.values(block.blocks).forEach(visit);
+    if (block.searchableText) texts.push(block.searchableText);
+    else if (block['@type'] === 'slate') {
+      texts.push(Array.isArray(block.value) ? slateText(block.value) : block.plaintext || '');
+    }
   };
-  walk(blocks);
+  Object.values(blocks || {}).forEach(visit);
   return texts.join(' ');
 }
 
@@ -5414,14 +5423,21 @@ app.post('*/@querystring-search', (req, res) => {
       (operation.includes('string.contains') ||
         operation.includes('string.search'))
     ) {
-      // Full-text search across title/description/id. `contains` mirrors
+      // Full-text search across title/description/id and the blocks' text, as the
+      // catalog has it for this session. `contains` mirrors
       // Plone 6.2's plone.app.querystring 3.0.0 munging — each word must
       // prefix-match a word token. `search` exists only in fork mode (see
       // searchableTextOperations; stock mode 400s it above) and keeps the raw
       // term's operators (matchRawSearch).
       if (value) {
         const matches = operation === TEXT_SEARCH ? matchRawSearch : matchSearchableText;
-        allItems = allItems.filter((item) => matches(value, item));
+        allItems = allItems.filter((item) =>
+          matches(
+            value,
+            item,
+            blocksSearchableText(getContent(new URL(item['@id']).pathname, getSessionId(req))?.blocks),
+          ),
+        );
       }
     } else if (index === 'Title' && operation.includes('string.contains')) {
       // The Title index is its own catalog index, distinct from SearchableText.

@@ -16,94 +16,10 @@ import subprocess
 import transaction
 
 
-CLI = Path(__file__).resolve().parents[4] / "bin" / "plone-content.cjs"
-
-SCHEMAS = {
-    "card": {
-        "id": "card",
-        "blockSchema": {
-            "properties": {
-                "title": {"type": "string"},
-                "href": {"widget": "url"},
-            }
-        },
-    },
-    "section": {
-        "id": "section",
-        "blockSchema": {
-            "properties": {
-                "heading": {"type": "string"},
-                "items": {"widget": "blocks_layout"},
-            }
-        },
-    },
-    "panels": {
-        "id": "panels",
-        "blockSchema": {
-            "properties": {
-                "data": {
-                    "widget": "object",
-                    "schema": {"properties": {"items": {"widget": "blocks_layout"}}},
-                }
-            }
-        },
-    },
-    "grid": {
-        "id": "grid",
-        "blockSchema": {
-            "properties": {
-                "table": {
-                    "widget": "object",
-                    "schema": {
-                        "properties": {
-                            "rows": {
-                                "widget": "object_list",
-                                "idField": "key",
-                                "schema": {"properties": {"label": {"type": "string"}}},
-                            }
-                        }
-                    },
-                }
-            }
-        },
-    },
-}
-
-
-def slate(text: str) -> dict:
-    return {"@type": "slate", "value": [{"type": "p", "children": [{"text": text}]}], "plaintext": text}
-
-
-PAGE = {
-    "@type": "Document",
-    "id": "searched",
-    "title": "Searched",
-    "blocks": {
-        "c": {"@type": "card", "title": "Cardword", "href": "https://example.com/Linkword"},
-        "s": {
-            "@type": "section",
-            "heading": "Headingword",
-            "blocks": {"n": slate("Nestedword")},
-            "blocks_layout": {"items": ["n"]},
-        },
-        "p": {
-            "@type": "panels",
-            "data": {
-                "blocks": {"i": {"@type": "card", "title": "Panelword"}},
-                "blocks_layout": {"items": ["i"]},
-            },
-        },
-        "g": {"@type": "grid", "table": {"rows": [{"key": "r", "label": "Rowword"}]}},
-        "t": {
-            "@type": "card",
-            "title": "Sharedword",
-            "templateId": "/t",
-            "fixed": True,
-            "readOnly": True,
-        },
-    },
-    "blocks_layout": {"items": ["c", "s", "p", "g", "t"]},
-}
+INKA = Path(__file__).resolve().parents[4]
+CLI = INKA / "bin" / "plone-content.cjs"
+# The mock API is held to the same cases (mock-searchable-text.test.cjs).
+CASES = json.loads((INKA / "tests-playwright/fixtures/search-text-cases.json").read_text())
 
 
 def with_search_text(page: dict, tmp_path: Path) -> dict:
@@ -115,7 +31,7 @@ def with_search_text(page: dict, tmp_path: Path) -> dict:
     data = tmp_path / "content" / "page" / "data.json"
     data.write_text(json.dumps(page))
     schemas = tmp_path / "schemas.json"
-    schemas.write_text(json.dumps(SCHEMAS))
+    schemas.write_text(json.dumps(CASES["schemas"]))
     subprocess.run(
         ["node", str(CLI), "search-text", str(tmp_path / "content"), "--schemas", str(schemas)],
         check=True,
@@ -128,7 +44,7 @@ def blocks_page(portal, api_session, tmp_path):
     fti = portal.portal_types.Document
     fti.behaviors = (*fti.behaviors, "volto.blocks")
     transaction.commit()
-    response = api_session.post("/", json=with_search_text(PAGE, tmp_path))
+    response = api_session.post("/", json=with_search_text(CASES["page"], tmp_path))
     assert response.status_code == 201, response.text
     transaction.commit()
     yield
@@ -140,15 +56,12 @@ def found(word: str) -> list[str]:
     return [brain.getId for brain in api.content.find(SearchableText=word)]
 
 
-@pytest.mark.parametrize(
-    "word",
-    ["Cardword", "Headingword", "Nestedword", "Panelword", "Rowword"],
-)
+@pytest.mark.parametrize("word", CASES["found"])
 def test_a_page_is_found_by_the_text_of_each_block(blocks_page, word):
     assert found(word) == ["searched"]
 
 
-@pytest.mark.parametrize("word", ["Linkword", "Sharedword"])
+@pytest.mark.parametrize("word", CASES["notFound"])
 def test_it_is_not_found_by_links_or_a_template_s_blocks(blocks_page, word):
     assert found(word) == []
 
