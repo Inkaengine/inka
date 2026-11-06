@@ -328,10 +328,10 @@ describe('mock API content validation', () => {
 
 });
 
-describe('plone-content served', () => {
-  const CLI = path.join(__dirname, '..', '..', 'bin', 'plone-content.cjs');
+describe('inka-mock-api --check', () => {
+  const SERVER = path.join(__dirname, 'mock-api-server.cjs');
   const served = (mounts) =>
-    spawnSync(process.execPath, [CLI, 'served'], {
+    spawnSync(process.execPath, [SERVER, '--check'], {
       env: { ...process.env, CONTENT_MOUNTS: mounts },
       encoding: 'utf8',
       timeout: 60_000,

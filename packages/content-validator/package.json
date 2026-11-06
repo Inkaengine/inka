@@ -15,8 +15,12 @@
   "exports": {
     ".": "./plone-content-validator.cjs"
   },
+  "bin": {
+    "plone-content": "./plone-content.cjs"
+  },
   "files": [
-    "plone-content-validator.cjs"
+    "plone-content-validator.cjs",
+    "plone-content.cjs"
   ],
   "dependencies": {
     "@volto-hydra/helpers": "workspace:*"

@@ -2,10 +2,10 @@
  * Conversion graph: which block types can become which, and whether that graph
  * is actually navigable.
  *
- * Pure module — no React, no Volto config, no DOM. That matters: the block-
- * sanity gate in a consuming frontend imports this straight from Playwright,
- * the same way it imports @volto-hydra/helpers/schemaValidation.js. blockSync.js re-exports every
- * name here for backward compat; THIS file is the SSOT.
+ * Pure module — no React, no Volto config, no DOM. That matters: a consuming
+ * frontend's block-sanity gate imports it straight from Playwright
+ * (@volto-hydra/helpers/conversionValidation.js). The admin's blockSync.js
+ * re-exports every name here; THIS file is the SSOT.
  */
 
 export const DEFAULT_TYPE_FIELDS = new Set([

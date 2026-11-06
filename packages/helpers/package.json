@@ -16,6 +16,7 @@
   "exports": {
     ".": "./index.js",
     "./buildBlockPathMap.js": "./buildBlockPathMap.js",
+    "./conversionValidation.js": "./conversionValidation.js",
     "./fieldRules.js": "./fieldRules.js",
     "./formDataValidation.js": "./formDataValidation.js",
     "./mergeTemplates.js": "./mergeTemplates.js",
@@ -25,6 +26,7 @@
   },
   "files": [
     "buildBlockPathMap.js",
+    "conversionValidation.js",
     "fieldRules.js",
     "formDataValidation.js",
     "index.js",

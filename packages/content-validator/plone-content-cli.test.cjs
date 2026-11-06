@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const CLI = path.join(__dirname, '..', '..', 'bin', 'plone-content.cjs');
+const CLI = path.join(__dirname, 'plone-content.cjs');
 
 /**
  * A content export with one File whose bytes are not on disk — generated media

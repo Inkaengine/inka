@@ -15,9 +15,6 @@
  *                                              blocks in that template slot
  *   --json <report.json>                     — also write the report as data:
  *                                              { <check>: { errors, warnings, stats } }
- *   plone-content served                     — the whole site the mock API serves for
- *                                              CONTENT_MOUNTS (every mount together), the
- *                                              same check that stops the mock starting
  *
  * <content-dir> defaults to cwd/content. `--schemas` takes the site's block
  * schemas -- the JS module (default export) or JSON file its frontend config
@@ -33,32 +30,17 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require(
-  path.join(__dirname, '..', 'packages', 'content-validator', 'plone-content-validator.cjs'),
-);
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
 
 function usage() {
   console.error(
     'Usage: plone-content <validate|check|schema|all> [<content-dir>] ' +
-      '[--schemas <schemas.json>] [--exempt-slot <slot>]... [--json <report.json>] [--allow-missing-blobs]\n' +
-      '       plone-content served   (reads CONTENT_MOUNTS)',
+      '[--schemas <schemas.json>] [--exempt-slot <slot>]... [--json <report.json>] [--allow-missing-blobs]',
   );
   process.exit(2);
 }
 
 const argv = process.argv.slice(2);
-
-if (argv[0] === 'served') {
-  // Loading the mock runs the check; it rejects `ready` with the problems
-  // already listed on stderr. Exit explicitly: its content watchers would
-  // otherwise keep the process alive.
-  const { ready } = require(path.join(__dirname, '..', 'packages', 'mock-api', 'mock-plone-api.cjs'));
-  ready.then(
-    () => { console.log('[content-check] served content is valid'); process.exit(0); },
-    (err) => { console.error(`[content-check] ${err.message}`); process.exit(1); },
-  );
-  return;
-}
 
 const takeFlag = (name) => {
   const i = argv.indexOf(name);

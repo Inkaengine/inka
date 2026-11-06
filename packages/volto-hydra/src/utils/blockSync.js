@@ -82,21 +82,21 @@ import {
 } from '@volto-hydra/helpers/schemaValidation.js';
 import { PULL_FROM_KEY } from './copyFromTargetMapping';
 
-// Conversion-graph logic lives in conversionValidation.mjs so it stays free of
-// the React context barrel (a Playwright gate imports it directly).
-// Re-exported here for backward compat; conversionValidation.mjs is the SSOT.
+// Conversion-graph logic lives in @volto-hydra/helpers/conversionValidation.js
+// so it stays free of the React context barrel (a Playwright gate imports it
+// directly). Re-exported here for backward compat; that module is the SSOT.
 export {
   DEFAULT_TYPE_FIELDS,
   hasValidDefault,
   shapeSignature,
   getConvertibleTypes,
   validateConversionRegistry,
-} from './conversionValidation.mjs';
+} from '@volto-hydra/helpers/conversionValidation.js';
 import {
   DEFAULT_TYPE_FIELDS,
   getConvertibleTypes,
   hasValidDefault,
-} from './conversionValidation.mjs';
+} from '@volto-hydra/helpers/conversionValidation.js';
 
 // Re-export getBlockTypeSchema from blockPath for convenience
 export { getBlockTypeSchema };
