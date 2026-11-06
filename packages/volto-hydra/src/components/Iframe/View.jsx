@@ -66,7 +66,7 @@ function restoreInstance(current, snapshot, instanceId, idFieldMap) {
       );
     }
     for (const field of fields) {
-      const key = `${path}/${field.region}`;
+      const key = `${path}/${[...(field.regionPath || []), field.region].join('/')}`;
       const restored = (saved.regions[key] || []).map((id) => ({ id, block: saved.blocks[id] }));
       const next = [];
       let spliced = false;

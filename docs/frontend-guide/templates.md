@@ -194,6 +194,7 @@ The merge identifies object_list items by their **id field**, and it varies per 
 import { buildIdFieldMap } from '@hydra-js/hydra.js';
 
 // Once, from your block definitions: { form: { subblocks: 'field_id' }, slider: { slides: '@id' }, … }
+// A field inside a widget:'object' is named by its path: { table: { 'table/rows': 'key' } }
 const idFieldMap = buildIdFieldMap(blocksConfig);
 
 const items = expandTemplatesSync(layout, {
@@ -250,6 +251,8 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 **Pass the children of every container through the merge** — every `blocks_layout` region and every object_list field, in every container block you render, at every depth — with the same `templateState` the page-level call used.
 
 An editor can place a template anywhere a block can go: inside a grid, a column, an accordion panel, a slider. The merge has no block schema, so it cannot find your containers by itself. It fills the regions of a template it applies, but a template placed inside a plain container stays exactly as stored — stale fixed content, no instance — until that container hands its children to the merge. A container that renders its children directly is a place where templates silently don't work.
+
+A region inside a `widget: 'object'` is a region of the block like any other. `getChildFields` returns it with the object's path as its `regionPath`, and `getChildBlockEntries` / `setChildBlockEntries` read and write it there.
 
 The page-level call is no exception: each of the page's own blocks fields (`items`, a `footer` region, …) goes through the merge too.
 

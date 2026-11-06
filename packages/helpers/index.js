@@ -2010,10 +2010,7 @@ export function cloneBlockFilteringNested(block, uuidGenerator) {
 
   // blocks_layout regions share cloned.blocks — reset it once so template-internal blocks don't
   // linger; object_list fields are independent arrays, rewritten in place per field.
-  if (fields.some((f) => !f.isObjectList)) {
-    cloned.blocks = {};
-    cloned.blocks_layout = {};
-  }
+  clearRegions(cloned, fields);
 
   for (const field of fields) {
     const kept = [];
@@ -2110,10 +2107,7 @@ function cloneBlockForTranslation(
 
   // Regions share one `blocks` map, so it is rebuilt once; object_list fields
   // are independent arrays, rewritten per field.
-  if (fields.some((f) => !f.isObjectList)) {
-    cloned.blocks = {};
-    cloned.blocks_layout = {};
-  }
+  clearRegions(cloned, fields);
 
   for (const field of fields) {
     const copies = [];
@@ -2226,10 +2220,6 @@ function markBlockReadOnly(block, idFieldMap) {
     const children = [];
     for (const { id, block: child } of getChildBlockEntries(block, field)) {
       children.push({ id, block: markBlockReadOnly(child, idFieldMap) });
-    }
-    if (!field.isObjectList) {
-      // Regions share one map; rebuild it rather than mutating the original's.
-      marked.blocks = { ...marked.blocks };
     }
     setChildBlockEntries(marked, field, children);
   }
@@ -2627,7 +2617,6 @@ export function restampTranslatedBlocks(blocks, initialBlocks, sourceBlocks, opt
       }
       if (children.length) {
         if (out === block) out = { ...block };
-        if (!field.isObjectList) out.blocks = { ...out.blocks };
         setChildBlockEntries(out, field, children);
       }
     }
@@ -2777,7 +2766,9 @@ const NON_TEXT_KEYS = new Set([
 /** The words an editor types into this block — not its children's. */
 function blockText(block, idFieldMap) {
   const childFields = new Set(
-    getChildFields(block, idFieldMap, { allObjectLists: true }).map((f) => f.region),
+    getChildFields(block, idFieldMap, { allObjectLists: true })
+      .filter((f) => !f.regionPath)
+      .map((f) => f.region),
   );
   const parts = [];
   for (const [key, value] of Object.entries(block || {})) {
@@ -3098,43 +3089,72 @@ export function getChildBlockEntries(parentBlock, descriptor = {}) {
  */
 export function getChildFields(block, idFieldMap = null, options = {}) {
   const fields = [];
-  if (block?.blocks && isBlocksMap(block.blocks)) {
-    for (const [region] of blocksLayoutRegions(block.blocks_layout)) {
-      fields.push({ region });
-    }
-  }
   // An object_list field is keyed by its idField (a form's subblocks by `field_id`, a table's
   // rows by `key`, …) — NOT `@id`. The idField is a per-(blockType, field) fact the CALLER
   // resolves once and passes as `idFieldMap` ({ type: { field: idField } }): the admin derives
   // it from the schema, a frontend passes it as a literal hint. Read + write both key off the
   // descriptor's idField, so a missing hint (fallback `@id`) mints a bogus id — hence the hint
   // is required whenever a template contains an object_list keyed by anything but `@id`.
+  // A field inside a widget:'object' is named by its /-path (`table/rows`).
   const typeIds = block?.['@type'] ? idFieldMap?.[block['@type']] : null;
-  for (const [key, val] of Object.entries(block || {})) {
-    if (!Array.isArray(val) || val.length === 0) continue;
-    // What makes an array field a region is the SCHEMA saying so: the
-    // idFieldMap names the field for this block type, and names the key its
-    // items are addressed by. That is the only detection a caller should need.
-    //
-    // `templateChildren` is the merge's exception, and only the merge's. When
-    // inserting a template the question is narrower — which items are the
-    // TEMPLATE's own — and `templateId` on the items answers it without a
-    // schema. It used to be unconditional, so it also decided region-ness for
-    // callers that are not merging, which is wrong twice over: a field the
-    // schema never declared was walked anyway, and the id for it fell back to
-    // `@id` when the real key might be `field_type` or `key` — the API's own
-    // note for that case is "mints a bogus id".
-    const isTemplateList = !!(options.templateChildren && val[0]?.templateId);
-    const isDeclaredList = !!(options.allObjectLists && typeIds?.[key]);
-    if (isTemplateList || isDeclaredList) {
-      fields.push({
-        isObjectList: true,
-        region: key, // top-level array field; regionPath defaults to []
-        idField: typeIds?.[key] || '@id',
-      });
+  // A widget:'object' is transparent: a region inside one is the block's region,
+  // with the object's path as its regionPath. The objects are found from the data,
+  // as the blocks_layout regions are: this has no schema.
+  const visit = (node, regionPath) => {
+    const at = regionPath.length ? { regionPath } : {};
+    if (node?.blocks && isBlocksMap(node.blocks)) {
+      for (const [region] of blocksLayoutRegions(node.blocks_layout)) {
+        fields.push({ region, ...at });
+      }
     }
-  }
+    for (const [key, val] of Object.entries(node || {})) {
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        // `blocks` holds child blocks, which are their own containers.
+        if (key !== 'blocks' && key !== 'blocks_layout') visit(val, [...regionPath, key]);
+        continue;
+      }
+      if (!Array.isArray(val) || val.length === 0) continue;
+      // What makes an array field a region is the SCHEMA saying so: the
+      // idFieldMap names the field for this block type, and names the key its
+      // items are addressed by. That is the only detection a caller should need.
+      //
+      // `templateChildren` is the merge's exception, and only the merge's. When
+      // inserting a template the question is narrower — which items are the
+      // TEMPLATE's own — and `templateId` on the items answers it without a
+      // schema. It used to be unconditional, so it also decided region-ness for
+      // callers that are not merging, which is wrong twice over: a field the
+      // schema never declared was walked anyway, and the id for it fell back to
+      // `@id` when the real key might be `field_type` or `key` — the API's own
+      // note for that case is "mints a bogus id".
+      const idField = typeIds?.[[...regionPath, key].join('/')];
+      const isTemplateList = !!(options.templateChildren && val[0]?.templateId);
+      const isDeclaredList = !!(options.allObjectLists && idField);
+      if (isTemplateList || isDeclaredList) {
+        fields.push({
+          isObjectList: true,
+          region: key,
+          ...at,
+          idField: idField || '@id',
+        });
+      }
+    }
+  };
+  visit(block, []);
   return fields;
+}
+
+/**
+ * Empty every blocks_layout region in `fields`, ready to be written again. Regions
+ * share their container's `blocks` map, and each container (the block itself, or an
+ * object in it) has its own. The original's maps are left alone.
+ */
+function clearRegions(block, fields) {
+  for (const field of fields) {
+    if (field.isObjectList) continue;
+    const container = ensureMutablePath(block, field.regionPath || []);
+    container.blocks = {};
+    container.blocks_layout = {};
+  }
 }
 
 /**
@@ -3168,12 +3188,12 @@ export function setChildBlockEntries(parentBlock, descriptor, entries) {
   // widget:'object' wrapper (regionPath). Clone each level so the object's own
   // dict is written (never the block root) and sibling object fields survive.
   const container = ensureMutablePath(parentBlock, regionPath);
+  container.blocks = { ...container.blocks };
   for (const { id, block } of entries) {
     // Callers that manage the shared blocks dict themselves (e.g. the admin's
     // full-dict setContainerItems, whose blocksObj already reflects adds/deletes)
     // omit `block` — only write into the dict when a block is actually provided.
     if (block !== undefined) {
-      if (!container.blocks) container.blocks = {};
       container.blocks[id] = block;
     }
   }
@@ -4114,12 +4134,9 @@ function fillContainerInto(stamped, tplBlock, templateState, options) {
   // `templateId` answers without a schema.
   const fields = getChildFields(tplBlock, options?.idFieldMap, { templateChildren: true });
   if (fields.length === 0) return;
-  // blocks_layout regions share stamped.blocks — reset it once so stale template blocks
-  // don't linger (object_list fields are independent arrays, written in place).
-  if (fields.some((f) => !f.isObjectList)) {
-    stamped.blocks = {};
-    stamped.blocks_layout = {};
-  }
+  // blocks_layout regions share their container's blocks — reset them so stale template
+  // blocks don't linger (object_list fields are independent arrays, written in place).
+  clearRegions(stamped, fields);
   for (const field of fields) {
     const filled = fillRegionEntries(
       getChildBlockEntries(tplBlock, field),

@@ -303,11 +303,12 @@ export function instanceContent(formData, instanceId, idFieldMap) {
   const visit = (container, path) => {
     for (const field of getChildFields(container, idFieldMap, { allObjectLists: true })) {
       const entries = getChildBlockEntries(container, field);
-      layouts[`${path}/${field.region}`] = entries.map((entry) => entry.id);
+      const key = `${path}/${[...(field.regionPath || []), field.region].join('/')}`;
+      layouts[key] = entries.map((entry) => entry.id);
       const own = entries
         .filter((entry) => entry.block?.templateInstanceId === instanceId)
         .map((entry) => entry.id);
-      if (own.length) regions[`${path}/${field.region}`] = own;
+      if (own.length) regions[key] = own;
       for (const { id, block } of entries) {
         if (block?.templateInstanceId === instanceId) blocks[id] = block;
         else if (block) visit(block, `${path}/${id}`);
