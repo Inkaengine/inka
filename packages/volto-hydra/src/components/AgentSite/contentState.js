@@ -6,6 +6,11 @@
  *   get(path)       { state, transitions, effective } — the cheap part
  *   getForms(path)  { [transition id]: { schema, data } } — what it can set
  *   transition({ path, id, data })  null, or { redirect } if the page moved
+ *   draftOf(path)   the path of the page's draft, or null
+ *
+ * A page has at most one draft, and having one is part of its state: `draft`
+ * in get(), with publishing and discarding it on offer on the page itself. In
+ * Plone a draft is a working copy at another path; draftOf(path) finds it.
  *
  * "update" is the transition that stays where it is: who can reach the page,
  * its address, whether it is listed. Its form is offered to whoever may share.
@@ -86,23 +91,34 @@ const transitionId = (t) => lastSegment(t['@id']);
 export function contentState({ fetchJson, toPath }) {
   const at = (path, service) => `${path.replace(/\/$/, '')}/${service}`;
 
+  /** The path of `page`'s draft, or null. A copy names itself as working_copy too, as well as what it is a copy of. */
+  const draftPathOf = (page) => (page.working_copy && !page.working_copy_of ? toPath(page.working_copy['@id']) : null);
+
+  const draftOf = async (path) => draftPathOf(await fetchJson(path));
+
   async function get(path) {
-    const [actions, workflow] = await Promise.all([fetchJson(at(path, '@actions')), fetchJson(at(path, '@workflow'))]);
+    const [actions, workflow, draft] = await Promise.all([
+      fetchJson(at(path, '@actions')), fetchJson(at(path, '@workflow')), draftOf(path),
+    ]);
+    // Only the copy offers checking in, so that is who is asked.
+    const draftActions = draft && await fetchJson(at(draft, '@actions'));
     // Categories as plone.restapi records them: these two are not the same list.
     const has = (id) => actions.object.some((a) => a.id === id);
     const hasButton = (id) => actions.object_buttons.some((a) => a.id === id);
+    const canCheckIn = hasButton('iterate_checkin') || draftActions?.object_buttons.some((a) => a.id === 'iterate_checkin');
     const transitions = workflow.transitions.map((t) => ({ id: transitionId(t), label: t.title }));
     // Checking out a copy IS a state change: the page gains a draft only its
     // author sees, while the published version stays put.
     if (hasButton('iterate_checkout')) {
       transitions.push({ id: 'checkout', label: 'Work on a draft copy', relocates: true });
     }
-    if (hasButton('iterate_checkin')) {
+    if (canCheckIn) {
       transitions.push({ id: 'checkin', label: 'Publish the draft', relocates: true });
       transitions.push({ id: 'cancel-checkout', label: 'Discard the draft', relocates: true });
     }
     return {
       state: { name: workflow.state.id, label: workflow.state.title },
+      ...(draft && { draft: { path: draft } }),
       transitions,
       effective: {
         canEdit: has('edit'),
@@ -215,13 +231,13 @@ export function contentState({ fetchJson, toPath }) {
       const copy = await fetchJson(at(path, '@workingcopy'), { method: 'POST' });
       return { redirect: toPath(copy['@id']) };
     }
-    if (id === 'checkin') return endWorkingCopy(path, 'PATCH');
-    if (id === 'cancel-checkout') return endWorkingCopy(path, 'DELETE');
+    if (id === 'checkin') return endWorkingCopy(await draftOf(path) ?? path, 'PATCH');
+    if (id === 'cancel-checkout') return endWorkingCopy(await draftOf(path) ?? path, 'DELETE');
 
     await fetchJson(at(path, `@workflow/${id}`), { method: 'POST', body: pick(data, Object.keys(WORKFLOW_FIELDS)) });
     // After the transition, so that addresses a path that still exists.
     return writePageFields(path, data);
   }
 
-  return { get, getForms, transition };
+  return { get, getForms, transition, draftOf };
 }

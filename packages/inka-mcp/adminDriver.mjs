@@ -281,5 +281,6 @@ export function siteOn(page) {
     state: (path) => call('state', path),
     stateForms: (path) => call('stateForms', path),
     transition: (op) => call('transition', op),
+    draftOf: (path) => call('draftOf', path),
   };
 }

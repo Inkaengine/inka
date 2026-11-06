@@ -91,7 +91,7 @@ describe('a page someone else is editing', () => {
   });
 
   it('move, rename and delete refuse it too', async () => {
-    const site = { status: async () => ({ version: 'v1', lockedBy: jane }) };
+    const site = { status: async () => ({ version: 'v1', lockedBy: jane }), draftOf: async () => null };
     for (const act of [
       () => movePage(site, { path: '/news', target: '/archive', expectedVersion: 'v1' }),
       () => renamePage(site, { path: '/news', title: 'Old news', expectedVersion: 'v1' }),
@@ -564,6 +564,7 @@ describe('transitions', () => {
       status: async () => ({ version: 'v1', lockedBy: null }),
       transition: async (op) => { did.push(op); return null; },
       get: async () => ({ review_state: 'published', modified: 'v2' }),
+      draftOf: async () => null,
       ...over,
     };
   };
@@ -576,7 +577,7 @@ describe('transitions', () => {
     expect(got).not.toHaveProperty('may');
     expect(got.transitions).toEqual([
       { id: 'publish', label: 'Publish', takes: FORM.schema.properties, current: {} },
-      { id: 'checkout', label: 'Work on a draft copy', relocates: true, takes: {}, current: {} },
+      { id: 'checkout', label: 'Work on a draft copy', takes: {}, current: {} },
       { id: 'update', label: 'Update — stays Private', takes: { Reader: { title: 'Can view' } }, current: { Reader: ['staff'] } },
     ]);
   });
@@ -592,12 +593,12 @@ describe('transitions', () => {
   it('reports the path a transition moved the page to', async () => {
     const reads = [];
     const s = site({
-      transition: async () => ({ redirect: '/copy_of_news' }),
-      get: async (path) => { reads.push(path); return { review_state: 'private', modified: 'v9' }; },
+      transition: async () => ({ redirect: '/latest' }),
+      get: async (path) => { reads.push(path); return { review_state: 'published', modified: 'v9' }; },
     });
-    expect(await transitionPage(s, { path: '/news', id: 'checkout', expectedVersion: 'v1' }))
-      .toEqual({ path: '/copy_of_news', reviewState: 'private', version: 'v9' });
-    expect(reads).toEqual(['/copy_of_news']);
+    expect(await transitionPage(s, { path: '/news', id: 'publish', data: { id: 'latest' }, expectedVersion: 'v1' }))
+      .toEqual({ path: '/latest', reviewState: 'published', version: 'v9' });
+    expect(reads).toEqual(['/latest']);
   });
 
   it('refuses a page that has changed since it was read, and takes nothing', async () => {
@@ -610,5 +611,51 @@ describe('transitions', () => {
     const s = site({ status: async () => ({ version: 'v1', lockedBy: { user: 'Ann', since: 'now' } }) });
     await expect(transitionPage(s, { path: '/news', id: 'publish', expectedVersion: 'v1' })).rejects.toThrow(/Ann/);
     expect(s.did).toEqual([]);
+  });
+
+  describe('on a page with a draft', () => {
+    const versions = { '/news': 'live-v', '/copy_of_news': 'draft-v' };
+    const withDraft = (over = {}) => site({
+      state: async () => ({
+        state: { name: 'published', label: 'Published' },
+        draft: { path: '/copy_of_news' },
+        transitions: [{ id: 'checkin', label: 'Publish the draft', relocates: true }],
+      }),
+      stateForms: async () => ({ checkin: { schema: { properties: {} }, data: {} } }),
+      status: async (path) => ({ version: versions[path], lockedBy: null }),
+      draftOf: async (path) => (path === '/news' ? '/copy_of_news' : null),
+      ...over,
+    });
+
+    it('lists it as the page\'s state, with the draft\'s version, which is what gets edited', async () => {
+      const got = await getTransitions(withDraft(), { path: '/news' });
+      expect(got).toMatchObject({ path: '/news', version: 'draft-v', draft: { path: '/copy_of_news' } });
+      expect(got.transitions[0]).not.toHaveProperty('relocates');
+    });
+
+    it('checks the draft\'s version when taking a transition', async () => {
+      await expect(transitionPage(withDraft(), { path: '/news', id: 'checkin', expectedVersion: 'live-v' })).rejects.toThrow(/has changed since/);
+      const s = withDraft({ transition: async () => ({ redirect: '/news' }) });
+      await transitionPage(s, { path: '/news', id: 'checkin', expectedVersion: 'draft-v' });
+    });
+
+    it('stays on the page after making a draft, reporting the draft and its version to edit', async () => {
+      let drafted = false;
+      const made = site({
+        transition: async () => { drafted = true; return { redirect: '/copy_of_news' }; },
+        draftOf: async () => (drafted ? '/copy_of_news' : null),
+        status: async (path) => ({ version: path === '/copy_of_news' ? 'draft-v' : 'v1', lockedBy: null }),
+      });
+      expect(await transitionPage(made, { path: '/news', id: 'checkout', expectedVersion: 'v1' }))
+        .toEqual({ path: '/news', reviewState: 'published', version: 'draft-v', draft: { path: '/copy_of_news' } });
+    });
+
+    it.each([
+      ['move', movePage, { path: '/news', target: '/archive', expectedVersion: 'draft-v' }],
+      ['rename', renamePage, { path: '/news', id: 'latest', expectedVersion: 'draft-v' }],
+      ['delete', deletePage, { path: '/news', expectedVersion: 'draft-v' }],
+    ])('refuses to %s it until the draft is published or discarded', async (_what, tool, args) => {
+      await expect(tool(withDraft(), args)).rejects.toThrow(/has a draft/);
+    });
   });
 });

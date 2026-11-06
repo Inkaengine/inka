@@ -332,8 +332,11 @@ export const CONVERSATIONS = [
       const problems = [];
       if (!calls(turns, 'transition_page').some((t) => t.input.id === 'checkout' && !t.isError)) problems.push('never made a draft copy');
       if (!calls(turns, 'transition_page').some((t) => t.input.id === 'checkin' && !t.isError)) problems.push('never published the draft');
-      const onLive = [...calls(turns, 'edit_blocks').filter((t) => !t.input.dryRun), ...calls(turns, 'rename_page')]
-        .filter((t) => !t.isError && t.input.path === VOLUNTEER.path);
+      // Once it has a draft, editing the page edits the draft; before that, it edits what visitors see.
+      const tools = turns.flatMap((t) => t.tools ?? []);
+      const drafted = tools.findIndex((t) => t.name === 'transition_page' && t.input.id === 'checkout' && !t.isError);
+      const onLive = tools.slice(0, drafted < 0 ? tools.length : drafted)
+        .filter((t) => (t.name === 'edit_blocks' ? !t.input.dryRun : t.name === 'rename_page') && !t.isError);
       if (onLive.length) problems.push(`changed the live page directly, ${onLive.length} time(s)`);
       const page = await api.get(VOLUNTEER.path);
       if (page.review_state !== 'published') problems.push(`the page is ${page.review_state}`);
@@ -341,9 +344,42 @@ export const CONVERSATIONS = [
       if (!words.includes('Sunday')) problems.push('the live page does not say Sundays');
       if (words.includes('Saturday')) problems.push('the live page still says Saturdays');
       for (const kept of KEPT) if (!words.includes(kept)) problems.push(`the page lost "${kept}"`);
-      const left = (await api.search(`/@search?path.depth=1&path.query=/`)).items
-        .filter((i) => /copy_of/.test(i['@id'])).map((i) => i['@id']);
-      if (left.length) problems.push(`a draft was left behind: ${left.join(', ')}`);
+      if (await api.status('/copy_of_volunteer') !== 404) problems.push('a draft was left behind');
+      return problems;
+    },
+  },
+  {
+    id: 'back-to-a-draft',
+    async setup(api) {
+      await seedVolunteer(api);
+      const copy = await api.post(`${VOLUNTEER.path}/@workingcopy`, {});
+      const at = new URL(copy['@id']).pathname;
+      const page = await api.get(at);
+      const when = page.blocks.when;
+      await api.patch(at, {
+        blocks: { ...page.blocks, when: { ...when, value: [{ type: 'p', children: [{ text: when.value[0].children[0].text.replace('Saturdays', 'Sundays') }] }] } },
+      });
+    },
+    prompt: 'Last week we drafted a change to our volunteering page (/volunteer) saying working bees are moving to Sundays. '
+      + 'The committee approved it, but they want it to say 10am instead of 9am. Can you fix that and then put it live?',
+    person: {
+      who: GARDENER,
+      wants: 'The drafted Sunday wording, with 10am instead of 9am, live for visitors.',
+    },
+    criteria: {
+      'said-it-is-live': mcp('Claude tells the person in plain words that visitors now see the new wording.'),
+    },
+    async check(api, turns) {
+      const problems = [];
+      const page = await api.get(VOLUNTEER.path);
+      const words = wordsOn(page);
+      if (!words.includes('Sunday')) problems.push('the live page does not say Sundays: the draft was not used');
+      if (!words.includes('10am')) problems.push('the live page does not say 10am');
+      if (words.includes('Saturday')) problems.push('the live page still says Saturdays');
+      if (page.review_state !== 'published') problems.push(`the page is ${page.review_state}`);
+      if (!calls(turns, 'transition_page').some((t) => t.input.id === 'checkin' && !t.isError)) problems.push('never published the draft');
+      if (calls(turns, 'transition_page').some((t) => t.input.id === 'checkout' && !t.isError)) problems.push('made another draft');
+      if (await api.status('/copy_of_volunteer') !== 404) problems.push('a draft was left behind');
       return problems;
     },
   },

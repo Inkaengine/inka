@@ -113,8 +113,16 @@ async function checkVersion(site, path, expectedVersion) {
   }
 }
 
+/** The page and its draft are one page, so it stays put until the draft is done with. */
+async function refuseWithDraft(site, path) {
+  if (await site.draftOf(path)) {
+    throw new Error(`${path} has a draft: publish or discard the draft first (get_transitions)`);
+  }
+}
+
 /** Move a page into another section. Returns its new path. */
 export async function movePage(site, { path, target, expectedVersion }) {
+  await refuseWithDraft(site, path);
   await checkVersion(site, path, expectedVersion);
   return { path: await site.move({ path, target }) };
 }
@@ -122,12 +130,14 @@ export async function movePage(site, { path, target, expectedVersion }) {
 /** Change a page's short name (the last part of its path) and/or its title. Returns its path. */
 export async function renamePage(site, { path, id, title, expectedVersion }) {
   if (!id && !title) throw new Error('rename_page needs a new "id" or "title"');
+  await refuseWithDraft(site, path);
   await checkVersion(site, path, expectedVersion);
   return { path: await site.rename({ path, id, title }) };
 }
 
 /** Delete a page. */
 export async function deletePage(site, { path, expectedVersion }) {
+  await refuseWithDraft(site, path);
   await checkVersion(site, path, expectedVersion);
   await site.remove(path);
   return { deleted: path };
@@ -137,11 +147,12 @@ export async function deletePage(site, { path, expectedVersion }) {
  * A page's state and what can be done to it: each transition with what it can
  * set at the same time ("takes") and what those are now ("current"). "update"
  * stays in the same state, for what can change without moving: who has access,
- * the address, the listing.
+ * the address, the listing. A page with a draft says so ("draft"), and its
+ * "version" is the draft's, as that is what get_page and edit_blocks work on.
  */
 export async function getTransitions(site, { path }) {
-  const [{ state, transitions }, forms, { version, lockedBy }] = await Promise.all([
-    site.state(path), site.stateForms(path), site.status(path),
+  const [{ state, draft, transitions }, forms, { version, lockedBy }] = await Promise.all([
+    site.state(path), site.stateForms(path), site.status(await site.draftOf(path) ?? path),
   ]);
   const update = forms.update ? [{ id: 'update', label: `Update — stays ${state.label}` }] : [];
   return {
@@ -149,7 +160,8 @@ export async function getTransitions(site, { path }) {
     version,
     ...(lockedBy && { lockedBy }),
     state,
-    transitions: [...transitions, ...update].map((t) => ({
+    ...(draft && { draft }),
+    transitions: [...transitions, ...update].map(({ relocates: _relocates, ...t }) => ({
       ...t,
       takes: forms[t.id].schema.properties,
       current: forms[t.id].data,
@@ -157,13 +169,22 @@ export async function getTransitions(site, { path }) {
   };
 }
 
-/** Take a transition offered by getTransitions. Returns where the page now is, and its state there. */
+/**
+ * Take a transition offered by getTransitions. Returns the page's path and state,
+ * and its draft if it has one. Making a draft leaves the page where it is: it is
+ * the same page, now with a draft, so only a move changes the path.
+ */
 export async function transitionPage(site, { path, id, data, expectedVersion }) {
-  await checkVersion(site, path, expectedVersion);
+  await checkVersion(site, await site.draftOf(path) ?? path, expectedVersion);
   const moved = await site.transition({ path, id, data });
-  const now = moved?.redirect ?? path;
-  const page = await site.get(now);
-  return { path: now, reviewState: page.review_state, version: page.modified };
+  const now = id === 'checkout' ? path : moved?.redirect ?? path;
+  const [page, draft] = await Promise.all([site.get(now), site.draftOf(now)]);
+  return {
+    path: now,
+    reviewState: page.review_state,
+    version: draft ? (await site.status(draft)).version : page.modified,
+    ...(draft && { draft: { path: draft } }),
+  };
 }
 
 /** The block types this page can hold, their fields, and where child blocks go. */

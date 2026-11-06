@@ -52,6 +52,42 @@ test.describe('MCP server', () => {
     } };
   };
 
+  test('a page with a draft: reading and editing it reach the draft, visitors keep the page', async () => {
+    test.setTimeout(180000);
+    const path = '/_test_data/another-page-2';
+    const before = (await call('get_page', { path })).json();
+    expect(before).not.toHaveProperty('draft');
+    const made = (await call('transition_page', { path, id: 'checkout', expectedVersion: before.version })).json();
+    expect(made.path).toBe(path);
+
+    // Same page, same path: the edit lands on the draft.
+    const reading = (await call('get_page', { path })).json();
+    expect(reading).toMatchObject({ path, draft: true });
+    const edited = (await call('edit_blocks', {
+      path,
+      expectedVersion: reading.version,
+      ops: [{ op: 'update', id: '_page', set: { title: 'Title on the draft' } }],
+    })).json();
+    expect(edited.draft).toBe(true);
+    expect((await call('get_page', { path })).json().title).toBe('Title on the draft');
+
+    // Visitors still see the page as it was, unless the draft is asked for.
+    expect((await call('view_page', { path })).json().renderedText).not.toContain('Title on the draft');
+    const shown = (await call('view_page', { path, draft: true })).json();
+    expect(shown).toMatchObject({ path, draft: true });
+    expect(shown.renderedText).toContain('Title on the draft');
+
+    // Published: the page takes it, at the same path, and has no draft now.
+    const offered = (await call('get_transitions', { path })).json();
+    const done = (await call('transition_page', { path, id: 'checkin', expectedVersion: offered.version })).json();
+    expect(done.path).toBe(path);
+    expect(done).not.toHaveProperty('draft');
+    const after = (await call('get_page', { path })).json();
+    expect(after.title).toBe('Title on the draft');
+    expect(after).not.toHaveProperty('draft');
+    expect((await call('view_page', { path, draft: true })).text).toMatch(/has no draft/);
+  });
+
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
     // `picture` and `stage_dropped` are for the views alone: a client lists them to a view, not the model.

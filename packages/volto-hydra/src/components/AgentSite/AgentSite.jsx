@@ -118,6 +118,9 @@ export function siteApi(dispatch, history, token) {
     /** What each transition on offer can set at the same time (contentState). */
     stateForms: (path) => state.getForms(path),
 
+    /** The path of the page's draft, or null (contentState). */
+    draftOf: (path) => state.draftOf(path),
+
     /** Take a transition; resolves to null, or { redirect } if the page moved (contentState). */
     transition: (op) => state.transition(op),
 

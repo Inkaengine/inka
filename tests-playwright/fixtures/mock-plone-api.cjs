@@ -2373,8 +2373,17 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
   const isFolderish = transformed.is_folderish !== undefined ? transformed.is_folderish : true;
   const childItems = isFolderish ? getFolderChildItems(cleanPath, baseUrl) : [];
 
+  // As plone.restapi's serializer has them, and Volto's toasts read them: a page
+  // with a copy out names it; the copy names itself and what it is a copy of.
+  const copyOut = copyOutOf(cleanPath, sessionId);
+  const copyOf = workingCopyOf(cleanPath, sessionId);
+  const workingCopyFields = {
+    working_copy: copyOut || copyOf ? { '@id': `${baseUrl}${copyOut || cleanPath}` } : null,
+    working_copy_of: copyOf ? { '@id': `${baseUrl}${copyOf}` } : null,
+  };
   const enriched = {
     ...transformed,
+    ...workingCopyFields,
     '@id': fullUrl,
     'UID': transformed.UID || `${transformed.id || urlPath.replace(/\//g, '-')}-uid`,
     'review_state': transformed.review_state || 'published',

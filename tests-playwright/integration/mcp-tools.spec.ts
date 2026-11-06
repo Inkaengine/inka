@@ -234,31 +234,39 @@ test.describe('MCP tools', () => {
 
     // A draft copy: a transition that moves to the copy, and back when it is discarded.
     const copy = await transitionPage(site, { path, id: 'checkout', expectedVersion: after.version });
-    expect(copy.path).toBe('/_test_data/copy_of_another-page');
-    const onCopy = await getTransitions(site, { path: copy.path });
-    expect(offered(onCopy)).toEqual(expect.arrayContaining(['checkin', 'cancel-checkout']));
+    expect(copy.path).toBe(path);
+    expect(copy.reviewState).toBe('published');
+    const draftAt = '/_test_data/copy_of_another-page';
+    expect(copy.draft).toEqual({ path: draftAt });
+    const withDraft = await getTransitions(site, { path });
+    expect(withDraft.draft).toEqual({ path: draftAt });
+    expect(offered(withDraft)).toEqual(expect.arrayContaining(['checkin', 'cancel-checkout']));
+    expect(offered(withDraft)).not.toContain('checkout');
+    await expect(movePage(site, { path, target: '/_test_data/accordion-test-page', expectedVersion: withDraft.version })).rejects.toThrow(/has a draft/);
     const live = (await stored(path)).title;
-    await site.rename({ path: copy.path, title: 'Retitled on the copy' });
+    await site.rename({ path: draftAt, title: 'Retitled on the copy' });
     expect((await stored(path)).title).toBe(live);
-    const discarded = await transitionPage(site, { path: copy.path, id: 'cancel-checkout', expectedVersion: (await site.status(copy.path)).version });
+    const discarded = await transitionPage(site, { path, id: 'cancel-checkout', expectedVersion: (await getTransitions(site, { path })).version });
     expect(discarded.path).toBe(path);
+    expect(discarded).not.toHaveProperty('draft');
     const gone = async (p: string) => (await fetch(`${urls.mockApi}${p}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).status;
-    expect(await gone(copy.path)).toBe(404);
+    expect(await gone(draftAt)).toBe(404);
     expect((await stored(path)).title).toBe(live);
 
     // Again, and this time apply it: the original takes what the copy holds, and stays published.
     const original = await getTransitions(site, { path });
     expect(offered(original)).toContain('checkout');
     const second = await transitionPage(site, { path, id: 'checkout', expectedVersion: original.version });
-    expect(second.reviewState).toBe('private');
-    expect(offered(await getTransitions(site, { path }))).not.toContain('checkout');
-    await site.rename({ path: second.path, title: 'Retitled on the copy' });
-    const applied = await transitionPage(site, { path: second.path, id: 'checkin', expectedVersion: (await site.status(second.path)).version });
+    expect(second.draft).toEqual({ path: draftAt });
+    expect((await stored(draftAt)).review_state).toBe('private');
+    await site.rename({ path: draftAt, title: 'Retitled on the copy' });
+    const applied = await transitionPage(site, { path, id: 'checkin', expectedVersion: (await getTransitions(site, { path })).version });
     expect(applied).toMatchObject({ path, reviewState: 'published' });
     expect((await stored(path)).title).toBe('Retitled on the copy');
-    expect(await gone(second.path)).toBe(404);
+    expect(applied).not.toHaveProperty('draft');
+    expect(await gone(draftAt)).toBe(404);
   });
 
   test('move_page, rename_page and delete_page, version-checked', async ({ page, urls }) => {

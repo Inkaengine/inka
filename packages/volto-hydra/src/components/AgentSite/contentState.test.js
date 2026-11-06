@@ -9,6 +9,7 @@ function plone({
   buttons = ['delete', 'iterate_checkout'],
   baseline = null,
   globalReviewer = false,
+  draft = false,
 } = {}) {
   const wrote = [];
   const site = 'https://api.example';
@@ -18,7 +19,11 @@ function plone({
       state: { id: review, title: review === 'private' ? 'Private' : 'Published' },
       transitions: transitions.map(([id, title]) => ({ '@id': `${site}/news/@workflow/${id}`, title })),
     },
-    '/news': { id: 'news', exclude_from_nav: true },
+    '/news': { id: 'news', exclude_from_nav: true, ...(draft && { working_copy: { '@id': `${site}/copy_of_news` }, working_copy_of: null }) },
+    // The copy names both, as Volto's toasts read them.
+    '/copy_of_news': { id: 'copy_of_news', working_copy: { '@id': `${site}/copy_of_news` }, working_copy_of: { '@id': `${site}/news` } },
+    '/copy_of_news/@actions': { object: [], object_buttons: [{ id: 'iterate_checkin' }] },
+    '/copy_of_news/@workingcopy': { working_copy: { '@id': `${site}/copy_of_news` }, working_copy_of: { '@id': `${site}/news` } },
     '/news/@sharing': {
       available_roles: [
         { id: 'Reader', title: 'Can view' },
@@ -175,5 +180,36 @@ describe('taking a transition', () => {
     const cms = plone({ buttons: ['iterate_checkin'], baseline: '/news-original' });
     expect(await stateOf(cms).transition({ path: '/news', id })).toEqual({ redirect: '/news-original' });
     expect(cms.wrote).toEqual([[method, '/news/@workingcopy']]);
+  });
+});
+
+describe('a page with a draft', () => {
+  const withDraft = () => plone({ draft: true, buttons: ['delete'], review: 'published', transitions: [['retract', 'Retract']] });
+
+  it('says so, as part of its state, and where the draft is', async () => {
+    expect((await stateOf(withDraft()).get('/news')).draft).toEqual({ path: '/copy_of_news' });
+    expect(await stateOf(withDraft()).draftOf('/news')).toBe('/copy_of_news');
+  });
+
+  it('says nothing of a draft when it has none', async () => {
+    expect((await stateOf(plone()).get('/news')).draft).toBeUndefined();
+    expect(await stateOf(plone()).draftOf('/news')).toBeNull();
+  });
+
+  it('does not call a draft its own draft', async () => {
+    expect(await stateOf(withDraft()).draftOf('/copy_of_news')).toBeNull();
+  });
+
+  it('offers publishing and discarding the draft on the page itself', async () => {
+    const got = await stateOf(withDraft()).get('/news');
+    expect(got.transitions.map((t) => t.id)).toEqual(['retract', 'checkin', 'cancel-checkout']);
+    const forms = await stateOf(withDraft()).getForms('/news');
+    expect(forms.checkin.schema.properties).toEqual({});
+  });
+
+  it.each([['checkin', 'PATCH'], ['cancel-checkout', 'DELETE']])('%s from the page acts on its draft, and stays on the page', async (id, method) => {
+    const cms = withDraft();
+    expect(await stateOf(cms).transition({ path: '/news', id })).toEqual({ redirect: '/news' });
+    expect(cms.wrote).toEqual([[method, '/copy_of_news/@workingcopy']]);
   });
 });
