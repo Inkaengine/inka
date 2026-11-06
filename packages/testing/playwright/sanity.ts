@@ -315,7 +315,15 @@ export function defineBlockSanityTests(options: SanityOptions): void {
           );
           await helper.waitForIframeReady();
           await helper.waitForBridgeConnected();
-          await measureBlockStyles(helper.getIframe(), block);
+          const iframe = helper.getIframe();
+          // The example can sit where the page doesn't show it at first: a later
+          // page of a paged grid, a slide out of view.
+          await revealBlock(iframe, block.blockId);
+          await expect(
+            iframe.locator(`[data-block-uid="${block.blockId}"]`).first(),
+            `${block.blockType} [${block.blockId}], the example of "${block.forStyle}", did not render on ${block.pagePath}`,
+          ).toBeAttached({ timeout: 15000 });
+          await measureBlockStyles(iframe, block);
         });
         continue;
       }

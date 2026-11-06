@@ -1627,18 +1627,6 @@ async function discoverBlocks(
           }
         }
 
-        for (const style of stylesOfBlock(blockData)) {
-          if (!styleCandidates.has(style)) {
-            styleCandidates.set(style, {
-              blockType: blockType || entry.blockType,
-              variation: variationOf(blockData),
-              blockId,
-              pagePath,
-              blockData,
-            });
-          }
-        }
-
         // Only add real @type blocks to the dedup set used for sanity tests.
         // Object_list sub-items get their widget-shape check above but don't
         // need separate sanity test cases — they're covered by their parent
@@ -1660,6 +1648,15 @@ async function discoverBlocks(
         // render + editing checks (see editableInstance).
         const editable = editableInstance(content, blockData);
         if (!editable) continue;
+
+        // A text style's example comes from a block the render checks would
+        // take too: a locked copy stamped onto another page renders as its
+        // template's current blocks, so its own uid may not be on the page.
+        for (const style of stylesOfBlock(blockData)) {
+          if (!styleCandidates.has(style)) {
+            styleCandidates.set(style, { blockType, variation, blockId, pagePath, blockData });
+          }
+        }
 
         for (const kind of ['rich', 'simple']) {
           const key = `${blockType}:${variation}:${kind}`;

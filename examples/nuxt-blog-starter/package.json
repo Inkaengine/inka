@@ -2,6 +2,7 @@
   "name": "nuxt-blog-starter",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.34.1",
   "scripts": {
     "sync-hydra": "pnpm -F @volto-hydra/hydra-js build && mkdir -p ./packages && cp ../../packages/hydra-js/hydra.js ./packages/hydra.js",
     "prebuild": "pnpm run sync-hydra",
