@@ -1053,4 +1053,3 @@ const initBlocks = {
 ```
 
 Content that never passes through the editor, such as an import, has no `searchableText`, and is read as plone.restapi reads it, until it's saved.
-
