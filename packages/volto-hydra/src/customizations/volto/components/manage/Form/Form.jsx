@@ -67,6 +67,10 @@ import {
   getBlockTypeSchema,
   getBlockById,
 } from '../../../../../utils/blockPath';
+import {
+  searchTextOptions,
+  withSearchableText,
+} from '../../../../../../../hydra-js/searchableText.js';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
 import { updateContent } from '@plone/volto/actions/content/content';
@@ -862,6 +866,11 @@ class Form extends Component {
         toast.error(<Toast error title="Can't save yet" content={error.message} />);
         return;
       }
+      // What the page is found by, from the blocks as they are saved (Inka #634).
+      pageFormData = withSearchableText(
+        pageFormData,
+        searchTextOptions(config.blocks.blocksConfig, this.props.intl, pageFormData),
+      );
       if (this.props.isEditForm) {
         this.props.onSubmit(this.getOnlyFormModifiedValues(pageFormData));
       } else {

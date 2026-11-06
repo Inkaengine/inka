@@ -12,6 +12,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const { searchTextOptions, withSearchableText } = require('../../packages/hydra-js/searchableText.js');
+
 const slate = (text) => [{ type: 'p', children: [{ text }] }];
 
 /** A site with one page whose body (not its title) says "marigolds", inside a container. */
@@ -38,8 +40,16 @@ function distribution() {
     },
     blocks_layout: { items: ['cols'] },
   });
+  // What real Plone is tested with (test_search_text.py), through the editor's own function.
+  const page = withSearchableText(
+    { ...CASES.page, '@id': '/searched', UID: 'searchtext-case-0001', review_state: 'published' },
+    searchTextOptions(CASES.schemas, { formatMessage: (m) => m?.defaultMessage || '' }, CASES.page),
+  );
+  item('searched', page);
   return content;
 }
+
+const CASES = JSON.parse(fs.readFileSync(path.join(__dirname, 'search-text-cases.json'), 'utf8'));
 
 process.env.CONTENT_MOUNTS = `/:${distribution()}`;
 const { app, ready } = require('./mock-plone-api.cjs');
@@ -80,7 +90,47 @@ async function found(token, text) {
   return (await res.json()).items.map((i) => new URL(i['@id']).pathname).sort();
 }
 
+/** The paths @querystring-search finds, as a search block asks. */
+async function foundByQuery(token, text) {
+  const res = await fetch(`${baseUrl}/@querystring-search`, {
+    method: 'POST',
+    headers: headers(token),
+    body: JSON.stringify({
+      query: [{ i: 'SearchableText', o: 'plone.app.querystring.operation.string.contains', v: text }],
+    }),
+  });
+  assert.equal(res.status, 200);
+  return (await res.json()).items.map((i) => new URL(i['@id']).pathname).sort();
+}
+
 describe('SearchableText', () => {
+  for (const [route, search] of [['@search', found], ['@querystring-search', foundByQuery]]) {
+    it(`${route} finds what real Plone finds, and not what it doesn't`, async () => {
+      const token = await login();
+      for (const word of CASES.found) {
+        assert.deepEqual(await search(token, word), ['/searched'], word);
+      }
+      for (const word of CASES.notFound) {
+        assert.deepEqual(await search(token, word), [], word);
+      }
+    });
+  }
+
+  it("doesn't look where restapi doesn't: an object list's text without searchableText", async () => {
+    const token = await login();
+    const res = await fetch(`${baseUrl}/`, {
+      method: 'POST',
+      headers: headers(token),
+      body: JSON.stringify({
+        '@type': 'Document', id: 'unsaved-table', title: 'A table',
+        blocks: { t: { '@type': 'grid', table: { rows: [{ key: 'r', cells: [{ '@type': 'slate', value: slate('Unreachedword') }] }] } } },
+        blocks_layout: { items: ['t'] },
+      }),
+    });
+    assert.equal(res.status, 201);
+    assert.deepEqual(await found(token, 'Unreachedword'), []);
+  });
+
   it("finds a page by the text in its blocks, nested ones included", async () => {
     assert.deepEqual(await found(await login(), 'marigolds'), ['/beds']);
   });

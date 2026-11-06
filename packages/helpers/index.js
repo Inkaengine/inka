@@ -2751,6 +2751,7 @@ function sameBlockContent(a, b, idFieldMap) {
 // selecting a block in the sidebar, which would otherwise make simply LOOKING
 // at a copy count as translating it.
 const NON_TEXT_KEYS = new Set([
+  'searchableText',
   'styles',
   'href',
   'url',

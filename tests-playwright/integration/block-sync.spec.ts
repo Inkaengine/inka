@@ -511,16 +511,19 @@ test.describe('Block Sync - Search Block with Listing Container', () => {
     // Find the search input and enter a search term
     const searchInput = searchBlock.locator('input[name="SearchableText"]');
     await expect(searchInput).toBeVisible();
-    await searchInput.fill('accordion');
+    // Words from a page's body, not its title, and in few pages: search finds pages by their
+    // blocks' text, so a common word ("accordion") matches much of the docs.
+    const term = 'hidden panel two';
+    await searchInput.fill(term);
 
-    // Submit the search form - this navigates iframe to ?SearchableText=accordion
+    // Submit the search form - this navigates iframe to ?SearchableText=<term>
     const searchButton = searchBlock.locator('button.search-submit-button');
     await searchButton.click();
 
     // Wait for iframe to reload by waiting for the search input to have the value
     // (indicates the page reloaded and read the URL param)
     const searchInputAfter = iframe.locator('[data-block-uid="search-block-1"] input[name="SearchableText"]');
-    await expect(searchInputAfter).toHaveValue('accordion', { timeout: 10000 });
+    await expect(searchInputAfter).toHaveValue(term, { timeout: 10000 });
 
     const filteredResults = iframe.locator('[data-block-uid="search-block-1"] .search-results [data-block-uid]');
 
@@ -540,7 +543,7 @@ test.describe('Block Sync - Search Block with Listing Container', () => {
         {
           timeout: 10000,
           message:
-            `search for "accordion" never settled on a filtered set (started at ${initialCount})`,
+            `search for "${term}" never settled on a filtered set (started at ${initialCount})`,
         },
       )
       .toBe('filtered');
