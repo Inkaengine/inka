@@ -133,6 +133,40 @@ export async function deletePage(site, { path, expectedVersion }) {
   return { deleted: path };
 }
 
+/**
+ * A page's state and what can be done to it: each transition with what it can
+ * set at the same time ("takes") and what those are now ("current"). "update"
+ * stays in the same state, for what can change without moving: who has access,
+ * the address, the listing.
+ */
+export async function getTransitions(site, { path }) {
+  const [{ state, transitions, effective }, forms, { version, lockedBy }] = await Promise.all([
+    site.state(path), site.stateForms(path), site.status(path),
+  ]);
+  const update = forms.update ? [{ id: 'update', label: `Update — stays ${state.label}` }] : [];
+  return {
+    path,
+    version,
+    ...(lockedBy && { lockedBy }),
+    state,
+    may: effective,
+    transitions: [...transitions, ...update].map((t) => ({
+      ...t,
+      takes: forms[t.id].schema.properties,
+      current: forms[t.id].data,
+    })),
+  };
+}
+
+/** Take a transition offered by getTransitions. Returns where the page now is, and its state there. */
+export async function transitionPage(site, { path, id, data, expectedVersion }) {
+  await checkVersion(site, path, expectedVersion);
+  const moved = await site.transition({ path, id, data });
+  const now = moved?.redirect ?? path;
+  const page = await site.get(now);
+  return { path: now, reviewState: page.review_state, version: page.modified };
+}
+
 /** The block types this page can hold, their fields, and where child blocks go. */
 export async function listBlockTypes(agent) {
   return describeBlockTypes(await agent.getBlockSchemas());

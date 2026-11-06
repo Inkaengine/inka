@@ -55,10 +55,10 @@ test.describe('MCP server', () => {
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
     // `picture` and `stage_dropped` are for the views alone: a client lists them to a view, not the model.
-    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_dropped', 'stage_media', 'view_page']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_dropped', 'stage_media', 'transition_page', 'view_page']);
     // Those that change nothing say so, so a client need not ask the person every time.
     expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
-      .toEqual(['ask_for_files', 'describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
+      .toEqual(['ask_for_files', 'describe_block', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
     expect(tools.find((t) => t.name === 'delete_page')!.annotations).toMatchObject({ destructiveHint: true });
   });
 
@@ -74,7 +74,8 @@ test.describe('MCP server', () => {
     // said a post was live when no visitor could see it.
     expect(instructions).not.toMatch(/no separate publishing step/);
     expect(instructions).toMatch(/reviewState/);
-    expect(instructions).toMatch(/published from the editor/);
+    expect(instructions).toMatch(/get_transitions/);
+    expect(instructions).toMatch(/Publish only when the person has asked/);
     expect(instructions).toMatch(/search finds pages by their title, their summary and the text of their Text blocks/);
     // Never how to behave: that is the agent's and its host's, not the site's.
     expect(instructions).not.toMatch(/\b(Never|Do not|only when asked|tell the person|Talk the way)\b/);

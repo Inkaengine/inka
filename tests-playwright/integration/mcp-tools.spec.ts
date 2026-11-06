@@ -8,7 +8,7 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { freshPage, tokenFor, whileEditing } from '../helpers/otherUser';
 import { agentOn, waitForAgent, discardEdits, createPage, siteOn, openAdmin } from '../../packages/inka-mcp/adminDriver.mjs';
 import {
-  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
+  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage, getTransitions, transitionPage,
 } from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
 import { draftCheck } from '../../packages/inka-mcp/checkDraft.mjs';
@@ -184,6 +184,64 @@ test.describe('MCP tools', () => {
     await openAdmin(page, { adminUrl: helper.adminUrl });
     await expect(createPage(page, { parent: '/_test_data', type: 'Document', title: '' }))
       .rejects.toThrow(/add form refused it/);
+  });
+
+  test('transitions: what is on offer and what each can set, then taking them', async ({ page, urls }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const site = siteOn(page);
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
+    const stored = async (path: string) => (await fetch(`${urls.mockApi}${path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    const offered = (found: { transitions: { id: string }[] }) => found.transitions.map((t) => t.id);
+    const path = '/_test_data/another-page';
+
+    // Published to begin with: retracting is on offer and publishing is not.
+    const published = await getTransitions(site, { path });
+    expect(published.state.name).toBe('published');
+    expect(offered(published)).toEqual(expect.arrayContaining(['retract', 'checkout', 'update']));
+    expect(offered(published)).not.toContain('publish');
+    expect(Object.keys(published.transitions.find((t) => t.id === 'update').takes)).toEqual(expect.arrayContaining(['Reader', 'id', 'inherit']));
+
+    // Not on offer, and a setting it does not take: refused, nothing changes.
+    await expect(transitionPage(site, { path, id: 'publish', expectedVersion: published.version })).rejects.toThrow(/no transition 'publish'/);
+    await expect(transitionPage(site, { path, id: 'retract', data: { nonsense: 1 }, expectedVersion: published.version })).rejects.toThrow(/does not take nonsense/);
+    expect((await stored(path)).review_state).toBe('published');
+
+    // Retract, and then publish with a publishing date and an expiry.
+    const retracted = await transitionPage(site, { path, id: 'retract', expectedVersion: published.version });
+    expect(retracted).toMatchObject({ path, reviewState: 'private' });
+    expect((await stored(path)).review_state).toBe('private');
+    const privatePage = await getTransitions(site, { path });
+    expect(offered(privatePage)).toContain('publish');
+    expect(Object.keys(privatePage.transitions.find((t) => t.id === 'publish').takes)).toEqual(expect.arrayContaining(['effective', 'expires', 'comment', 'id']));
+    const dates = { effective: '2027-01-01T09:00:00', expires: '2027-06-01T09:00:00' };
+    const republished = await transitionPage(site, { path, id: 'publish', data: dates, expectedVersion: privatePage.version });
+    expect(republished).toMatchObject({ path, reviewState: 'published' });
+    expect(await stored(path)).toMatchObject({ review_state: 'published', ...dates });
+
+    // Share it: a new reader, stated role by role.
+    const before = await getTransitions(site, { path });
+    const shared = await transitionPage(site, { path, id: 'update', data: { Reader: ['editors-of-news'] }, expectedVersion: before.version });
+    expect(shared.path).toBe(path);
+    const after = await getTransitions(site, { path });
+    expect(after.transitions.find((t) => t.id === 'update').current.Reader).toEqual(['editors-of-news']);
+    expect(after.state.name).toBe('published');
+
+    // A draft copy: a transition that moves to the copy, and back when it is discarded.
+    const copy = await transitionPage(site, { path, id: 'checkout', expectedVersion: after.version });
+    expect(copy.path).toBe('/_test_data/copy_of_another-page');
+    const onCopy = await getTransitions(site, { path: copy.path });
+    expect(offered(onCopy)).toEqual(expect.arrayContaining(['checkin', 'cancel-checkout']));
+    const back = await transitionPage(site, { path: copy.path, id: 'cancel-checkout', expectedVersion: onCopy.version });
+    expect(back.path).toBe(path);
+    expect((await fetch(`${urls.mockApi}${copy.path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).status).toBe(404);
   });
 
   test('move_page, rename_page and delete_page, version-checked', async ({ page, urls }) => {

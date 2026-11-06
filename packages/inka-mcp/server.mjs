@@ -24,6 +24,7 @@ import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from
 import { draftCheck } from './checkDraft.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
+  getTransitions, transitionPage,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
@@ -93,7 +94,7 @@ const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based
 - A page is a block of its content type (a Page is "Document"): its own fields (title, summary and the rest of its content type's fields) and its regions, which hold its blocks. Blocks have types (Text, Image, Hero, …; list_block_types gives each type's title, fields and regions), and some hold blocks of their own. In the editor, blocks are known by those titles and fields by their labels; ids and JSON are never shown.
 - The site's own front end draws every page. view_page shows a page as visitors see it; preview_layout (a whole proposed layout) and edit_blocks with dryRun and preview (a change to the page) show the result the same way. None of them saves anything. In clients that show them, the person sees these pictures too. A long page's picture may show only its top ("cropped" says how much); its text ("renderedText") is all there.
 - Some blocks come from a template that many pages share (they carry "templateId"; "readOnly" ones are locked, as the editor shows them). A change to one is a change to the template, and so to every page that uses it: edit_blocks with changeTemplates. In the editor, unlocking a template warns of the same.
-- Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet, and it is published from the editor, not from here.
+- Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page, transition_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet. get_transitions says what can be done to a page and what each can set at the same time (a publishing date, an expiry); publishing, working on a draft copy of a published page and changing who has access are all transitions, taken with transition_page. Publish only when the person has asked for it.
 - search finds pages by their title, their summary and the text of their Text blocks. Text in other blocks' fields (a hero's heading, a teaser's title) may not be searched.`;
 
 /**
@@ -278,6 +279,24 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     description: 'Delete a page and everything inside it. This cannot be undone here.',
     inputSchema: { path: z.string().describe('The page to delete'), expectedVersion: version },
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => deletePage(site, args))));
+
+  server.registerTool('get_transitions', {
+    title: 'What can be done to a page',
+    annotations: SAVES_NOTHING,
+    description: 'A page\'s workflow state ("state"), what the signed-in user may do ("may"), its "version", and the "transitions" on offer now. Each transition has an "id", a "label", "takes" (the settings it can make at the same time, such as a publishing date or an expiry: a field\'s "type" says what value it wants) and "current" (what those settings are now). Working on a draft copy of a published page is a transition ("relocates": it moves you to the copy, until the copy is published or discarded); so is "update", which stays in the same state and changes who has access (a field per role, listing the people and groups who hold it), the address and the menu listing.',
+    inputSchema: { path: z.string().describe('The page, e.g. /about/team') },
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => getTransitions(site, args))));
+
+  server.registerTool('transition_page', {
+    title: 'Take a transition',
+    description: 'Take one of the transitions get_transitions offers, such as publishing the page, with any of the settings it "takes". Publishing makes the page visible to visitors, or at its publishing date. Returns the page\'s "path" (changed if the transition moved it: to the draft copy, back from it, or to a new address), its "reviewState" and its new "version". A transition not on offer, or a setting it does not take, is refused and nothing changes.',
+    inputSchema: {
+      path: z.string().describe('The page, e.g. /about/team'),
+      id: z.string().describe('The transition\'s id, as get_transitions gives it, e.g. publish'),
+      data: z.record(z.string(), z.unknown()).optional().describe('Settings to make at the same time, named as in its "takes", e.g. {"effective": "2027-01-01T09:00:00"}'),
+      expectedVersion: z.string().describe('The version get_transitions or get_page returned; refused if the page has changed since'),
+    },
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => transitionPage(site, args))));
 
   server.registerTool('list_block_types', {
     title: 'List block types',

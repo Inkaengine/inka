@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search } from './tools.mjs';
+import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, getTransitions, transitionPage } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -542,5 +542,70 @@ describe("get_page shows the site's links as paths", () => {
   it('leaves another site alone, even one whose name starts the same', async () => {
     expect((await read(link(`${API}.other.example/x`))).value.md).toBe(`[here](${API}.other.example/x)`);
     expect((await read(link('https://inka.sh/pricing'))).value.md).toBe('[here](https://inka.sh/pricing)');
+  });
+});
+
+describe('transitions', () => {
+  const FORM = { schema: { properties: { effective: { title: 'Publishing date' } } }, data: {} };
+  const site = (over = {}) => {
+    const did = [];
+    return {
+      did,
+      state: async () => ({
+        state: { name: 'private', label: 'Private' },
+        transitions: [{ id: 'publish', label: 'Publish' }, { id: 'checkout', label: 'Work on a draft copy', relocates: true }],
+        effective: { canPublish: true },
+      }),
+      stateForms: async () => ({
+        publish: FORM,
+        checkout: { schema: { properties: {} }, data: {} },
+        update: { schema: { properties: { Reader: { title: 'Can view' } } }, data: { Reader: ['staff'] } },
+      }),
+      status: async () => ({ version: 'v1', lockedBy: null }),
+      transition: async (op) => { did.push(op); return null; },
+      get: async () => ({ review_state: 'published', modified: 'v2' }),
+      ...over,
+    };
+  };
+
+  it('lists each with what it can set, and sharing as staying in the same state', async () => {
+    const got = await getTransitions(site(), { path: '/news' });
+    expect(got).toMatchObject({ path: '/news', version: 'v1', state: { name: 'private' }, may: { canPublish: true } });
+    expect(got.transitions).toEqual([
+      { id: 'publish', label: 'Publish', takes: FORM.schema.properties, current: {} },
+      { id: 'checkout', label: 'Work on a draft copy', relocates: true, takes: {}, current: {} },
+      { id: 'update', label: 'Update — stays Private', takes: { Reader: { title: 'Can view' } }, current: { Reader: ['staff'] } },
+    ]);
+  });
+
+  it('takes one, with its settings, and says where the page now stands', async () => {
+    const s = site();
+    const data = { effective: '2027-01-01T09:00:00' };
+    expect(await transitionPage(s, { path: '/news', id: 'publish', data, expectedVersion: 'v1' }))
+      .toEqual({ path: '/news', reviewState: 'published', version: 'v2' });
+    expect(s.did).toEqual([{ path: '/news', id: 'publish', data }]);
+  });
+
+  it('reports the path a transition moved the page to', async () => {
+    const reads = [];
+    const s = site({
+      transition: async () => ({ redirect: '/copy_of_news' }),
+      get: async (path) => { reads.push(path); return { review_state: 'private', modified: 'v9' }; },
+    });
+    expect(await transitionPage(s, { path: '/news', id: 'checkout', expectedVersion: 'v1' }))
+      .toEqual({ path: '/copy_of_news', reviewState: 'private', version: 'v9' });
+    expect(reads).toEqual(['/copy_of_news']);
+  });
+
+  it('refuses a page that has changed since it was read, and takes nothing', async () => {
+    const s = site();
+    await expect(transitionPage(s, { path: '/news', id: 'publish', expectedVersion: 'v0' })).rejects.toThrow(/has changed since/);
+    expect(s.did).toEqual([]);
+  });
+
+  it('refuses a page someone else is editing, and takes nothing', async () => {
+    const s = site({ status: async () => ({ version: 'v1', lockedBy: { user: 'Ann', since: 'now' } }) });
+    await expect(transitionPage(s, { path: '/news', id: 'publish', expectedVersion: 'v1' })).rejects.toThrow(/Ann/);
+    expect(s.did).toEqual([]);
   });
 });

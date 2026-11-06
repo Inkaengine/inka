@@ -1,6 +1,7 @@
 /**
  * window.__inkaSite — the site-wide half of what an MCP server drives in a
- * headless admin: finding pages, and moving, renaming and deleting them.
+ * headless admin: finding pages, moving, renaming and deleting them, and what
+ * state they are in and taking them to another.
  * Mounted on every admin page (appExtras), so none of it needs an editor
  * open — an open editor locks its page, and a locked page can't be moved or
  * deleted. Every call dispatches the admin's own action, so it goes wherever
@@ -15,6 +16,7 @@ import { moveContent } from '@plone/volto/actions/clipboard/clipboard';
 import { deleteContent, getContent, updateContent } from '@plone/volto/actions/content/content';
 import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from './lockedBy';
+import { contentState } from './contentState';
 
 /** A rejected action's error as an Error naming the call. */
 const failure = (what, error) => new Error(
@@ -29,6 +31,16 @@ export function siteApi(dispatch, history, token) {
       throw failure(what, error);
     }
   };
+  // No action of the admin's sends all a transition can set (its own workflow
+  // action sends only include_children), so a plain request, through the same
+  // connection and sign-in.
+  const state = contentState({
+    fetchJson: (path, { method = 'GET', body } = {}) => run(`${method} ${path}`, {
+      type: 'INKA_AGENT_STATE',
+      request: { op: method === 'DELETE' ? 'del' : method.toLowerCase(), path, data: body },
+    }),
+    toPath: flattenToAppURL,
+  });
   const summary = (item) => ({
     path: flattenToAppURL(item['@id']),
     title: item.title,
@@ -99,6 +111,15 @@ export function siteApi(dispatch, history, token) {
     async remove(path) {
       await run(`delete ${path}`, deleteContent(path));
     },
+
+    /** Its state, the transitions on offer and what the user may do (contentState). */
+    state: (path) => state.get(path),
+
+    /** What each transition on offer can set at the same time (contentState). */
+    stateForms: (path) => state.getForms(path),
+
+    /** Take a transition; resolves to null, or { redirect } if the page moved (contentState). */
+    transition: (op) => state.transition(op),
 
     /**
      * Go to `path` in the admin as its own links do: the app stays loaded,
