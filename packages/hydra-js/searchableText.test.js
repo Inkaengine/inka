@@ -68,6 +68,10 @@ const schemas = {
       box: { widget: 'object', schema: { properties: { items: { widget: 'blocks_layout' } } } },
     },
   },
+  pdf: {
+    searchableFields: ['file'],
+    properties: { file: { widget: 'object_browser' } },
+  },
   ordered: {
     searchableFields: ['second', 'first'],
     properties: { first: { type: 'string' }, second: { type: 'string' }, third: { type: 'string' } },
@@ -184,6 +188,13 @@ describe('the text of a block', () => {
 
   test('a block type can name its fields, in the order it wants', () => {
     expect(textOf({ '@type': 'ordered', first: 'One', second: 'Two', third: 'Three' })).toBe('Two One');
+  });
+
+  test('a named field holding a picked item reads as its title', () => {
+    expect(textOf({
+      '@type': 'pdf',
+      file: [{ '@id': '/files/report', title: 'Annual report', getObjSize: '2 MB' }],
+    })).toBe('Annual report');
   });
 
   test('a field it names that this block is not showing is still left out', () => {

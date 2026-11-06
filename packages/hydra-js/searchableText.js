@@ -22,9 +22,14 @@ import { isObjectListRegion } from './regionWidgets.js';
 
 const joined = (parts) => parts.map((part) => part.trim()).filter(Boolean).join(' ');
 
+// A string, slate, or what a block names from a picked item (`[{ '@id', title }]`).
 function fieldText(value) {
   if (typeof value === 'string') return value;
-  return Array.isArray(value) ? slateNodesText(value) : '';
+  if (!Array.isArray(value)) return '';
+  if (value.some((node) => typeof node?.title === 'string')) {
+    return value.map((node) => node?.title ?? '').join(' ');
+  }
+  return slateNodesText(value);
 }
 
 // A block the template owns: it is on every page using it, so it finds none of them.
