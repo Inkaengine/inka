@@ -4608,7 +4608,8 @@ function objectListItemId(item, idField) {
   if (!id) {
     throw new Error(
       `expandTemplatesSync: object_list item has no "${idField}" (type ${item['@type'] ?? 'unknown'}). ` +
-        'Every item needs its own id; content imported from markdown gets one minted on import.',
+        'Every item needs its own id: if this list is keyed by another field, pass its idField. ' +
+        'Content imported from markdown gets one minted on import.',
     );
   }
   return id;
@@ -4629,7 +4630,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
     templates,
     allowedLayouts,
     loadTemplate,
-    idField, // For object_list arrays: field name used as item ID (e.g. '@id', 'key')
+    idField = '@id', // For object_list arrays: field name used as item ID (e.g. 'key')
     idFieldMap, // { blockType: { field: idField } } — caller-resolved, so the merge never walks schemas
     editMode: editModeOverride, // explicit edit-mode signal for SSR frontends that have no window.name
   } = options;
