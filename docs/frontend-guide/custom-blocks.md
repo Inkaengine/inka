@@ -1039,7 +1039,7 @@ The saved `fieldMapping` is read at render time by `expandListingBlocks` — no 
 
 A page is found by the text of its blocks. When the page is saved, Inka stores each block's text as its `searchableText`, which plone.restapi's indexer reads. It visits a block's `blocks` and `data.blocks` itself, so a block carries only its own text, plus whatever that visit can't reach: object lists, such as table cells and form questions, and regions in any other object. Search text belongs to the page, so a block a template owns (`fixed` and `readOnly`) gets none.
 
-A block's own text is the fields a person writes, in schema order: fields with no widget or a `text`, `textarea` or `slate` widget, with no fixed set of choices and not marked `multilingual_options.language_independent`. Mark a plain string that holds a token, such as a width or an anchor, with that flag. A field its `fieldRules` hide is left out. If another order suits your block, or its text is in a picked item's title, name its fields:
+A block's own text is the fields a person writes, in schema order: fields with no widget or a `text`, `textarea` or `slate` widget, with no fixed set of choices and not marked `multilingual_options.language_independent`. Mark a plain string that holds a token, such as a width or an anchor, with that flag. A field its `fieldRules` hide is left out. If another order suits your block, or its text is in a picked item's title or a list of strings, name its fields:
 
 ### Javascript
 
