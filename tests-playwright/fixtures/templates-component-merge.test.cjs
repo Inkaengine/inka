@@ -16,12 +16,12 @@ const { app } = require('./mock-api-server.cjs');
 
 let server;
 let baseUrl;
-let expandTemplatesSync;
+let expandEveryContainer;
 let idFieldMap;
 
 before(async () => {
   // ESM helper from a CJS test.
-  ({ expandTemplatesSync } = await import('../../packages/helpers/index.js'));
+  ({ expandEveryContainer } = await import('../../packages/hydra-js/expandEveryContainer.testutil.js'));
   // The object_list id fields, derived from the block schemas the way a frontend does it —
   // the endpoint carries templates only. Same registry the frontends register from.
   const { buildIdFieldMap } = await import('../../packages/hydra-js/buildBlockPathMap.js');
@@ -55,8 +55,8 @@ async function fetchPage(contentPath, extra = null) {
 
 /**
  * Render a page through the merge the way a frontend does: templates ONLY from what the
- * endpoint returned (no separately fetched template), and the idFieldMap derived from the
- * block schemas. If the endpoint under-delivers, this throws or renders empty, which is
+ * endpoint returned (no separately fetched template), each container passing its children
+ * through the merge, with the id fields its block code would name. If the endpoint under-delivers, this throws or renders empty, which is
  * the point.
  *
  * editMode: false because expandTemplatesSync otherwise passes blocks through untouched
@@ -65,7 +65,7 @@ async function fetchPage(contentPath, extra = null) {
  */
 function render(page, allowedLayouts) {
   const { templates } = page['@components'].templates;
-  return expandTemplatesSync(page.blocks_layout.items, {
+  return expandEveryContainer(page.blocks_layout.items, {
     blocks: page.blocks,
     templates,
     idFieldMap,
@@ -127,8 +127,8 @@ describe('@templates feeds the merge', () => {
   });
 
   it('expands an object_list container inside a template', async () => {
-    // The template's slider holds its slides as an inline array — the storage the
-    // idFieldMap exists for. Its items must survive with ids intact.
+    // The template's slider holds its slides as an inline array, expanded by the slider's
+    // own call. Its items must survive with ids intact.
     const page = await fetchPage(PAGE);
     const items = render(page);
     const slider = items.find((i) => i['@type'] === 'slider');

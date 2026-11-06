@@ -257,8 +257,8 @@ class TestNoIdFieldMap:
 
     Which object_list field a block keys by `field_id` rather than `@id` is a fact about
     the FRONTEND's block schemas, which Plone never sees. It used to be hardcoded here and
-    could only drift from them. Frontends derive it from their own block config with
-    `buildIdFieldMap(blocksConfig)`, exactly as the admin does.
+    could only drift from them. A frontend's block code names it when it passes the list
+    to the merge.
     """
 
     def test_component_has_no_id_field_map(self, api_session, page_using_template):
