@@ -278,5 +278,11 @@ export function siteOn(page) {
     move: (op) => call('move', op),
     rename: (op) => call('rename', op),
     remove: (path) => call('remove', path),
+    state: (path) => call('state', path),
+    stateForms: (path) => call('stateForms', path),
+    transition: (op) => call('transition', op),
+    draftOf: (path) => call('draftOf', path),
+    pagesWithDrafts: () => call('pagesWithDrafts'),
+    adminUrl: (path) => call('adminUrl', path),
   };
 }

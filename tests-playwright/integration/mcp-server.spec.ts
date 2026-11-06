@@ -52,13 +52,85 @@ test.describe('MCP server', () => {
     } };
   };
 
+  test('a page with a draft: reading and editing it reach the draft, visitors keep the page', async () => {
+    test.setTimeout(180000);
+    const path = '/_test_data/another-page-2';
+    const before = (await call('get_page', { path })).json();
+    expect(before).not.toHaveProperty('draft');
+    const made = (await call('transition_page', { path, id: 'checkout', expectedVersion: before.version })).json();
+    expect(made.path).toBe(path);
+
+    // Same page, same path: the edit lands on the draft.
+    const reading = (await call('get_page', { path })).json();
+    expect(reading.path).toBe(path);
+    expect(reading.draft.url).toMatch(/^http.*\/_test_data\/copy_of_another-page-2$/);
+    expect(reading.draft).not.toHaveProperty('path');
+
+    // Found by its state, and as the page: the copy is not a page of its own.
+    const drafted = (await call('search', { hasDraft: true })).json();
+    expect(drafted.items.map((i: { path: string }) => i.path)).toEqual([path]);
+    expect(drafted.items[0].hasDraft).toBe(true);
+    const unseen = (await call('search', { reviewState: ['private'], path: '/_test_data' })).json();
+    expect(unseen.items.map((i: { path: string }) => i.path)).not.toContain('/_test_data/copy_of_another-page-2');
+    const listed = (await call('list_children', { path: '/_test_data', limit: 100 })).json();
+    expect(listed.items.find((i: { path: string }) => i.path === path).hasDraft).toBe(true);
+    expect(listed.items.map((i: { path: string }) => i.path)).not.toContain('/_test_data/copy_of_another-page-2');
+    const edited = (await call('edit_blocks', {
+      path,
+      expectedVersion: reading.version,
+      ops: [{ op: 'update', id: '_page', set: { title: 'Title on the draft' } }],
+    })).json();
+    expect(edited.draft).toEqual(reading.draft);
+    expect((await call('get_page', { path })).json().title).toBe('Title on the draft');
+
+    // Visitors still see the page as it was, unless the draft is asked for.
+    expect((await call('view_page', { path })).json().renderedText).not.toContain('Title on the draft');
+    const shown = (await call('view_page', { path, draft: true })).json();
+    expect(shown).toMatchObject({ path, draft: reading.draft });
+    expect(shown.renderedText).toContain('Title on the draft');
+
+    // An emergency: an edit can choose the live page, and is told the draft hasn't got it.
+    const live = (await call('get_page', { path, live: true })).json();
+    expect(live).toMatchObject({ path, live: true });
+    expect(live.title).not.toBe('Title on the draft');
+    const fixed = (await call('edit_blocks', {
+      path,
+      live: true,
+      expectedVersion: live.version,
+      ops: [{ op: 'update', id: '_page', set: { description: 'Fixed on the live page' } }],
+    })).json();
+    expect(fixed.live).toBe(true);
+    expect(fixed.warning).toMatch(/draft does not have this change/);
+    expect((await call('get_page', { path, live: true })).json().description).toBe('Fixed on the live page');
+    expect((await call('get_page', { path })).json().description).not.toBe('Fixed on the live page');
+
+    // Published: the page takes it, at the same path, and has no draft now.
+    const offered = (await call('get_transitions', { path })).json();
+    const done = (await call('transition_page', { path, id: 'checkin', expectedVersion: offered.version })).json();
+    expect(done.path).toBe(path);
+    expect(done).not.toHaveProperty('draft');
+    expect((await call('search', { hasDraft: true })).json().items).toEqual([]);
+    const after = (await call('get_page', { path })).json();
+    expect(after.title).toBe('Title on the draft');
+    // What the warning said: publishing the draft replaces the live page, the fix included.
+    expect(after.description).not.toBe('Fixed on the live page');
+    expect(after).not.toHaveProperty('draft');
+    expect((await call('view_page', { path, draft: true })).text).toMatch(/has no draft/);
+    // With no draft, there is only the live page to edit, and nothing to warn of.
+    const plain = (await call('get_page', { path, live: true })).json();
+    const edited2 = (await call('edit_blocks', {
+      path, live: true, expectedVersion: plain.version, ops: [{ op: 'update', id: '_page', set: { description: 'Plain' } }],
+    })).json();
+    expect(edited2).not.toHaveProperty('warning');
+  });
+
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
     // `picture` and `stage_dropped` are for the views alone: a client lists them to a view, not the model.
-    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_dropped', 'stage_media', 'view_page']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_dropped', 'stage_media', 'transition_page', 'view_page']);
     // Those that change nothing say so, so a client need not ask the person every time.
     expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
-      .toEqual(['ask_for_files', 'describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
+      .toEqual(['ask_for_files', 'describe_block', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
     expect(tools.find((t) => t.name === 'delete_page')!.annotations).toMatchObject({ destructiveHint: true });
   });
 
@@ -74,7 +146,9 @@ test.describe('MCP server', () => {
     // said a post was live when no visitor could see it.
     expect(instructions).not.toMatch(/no separate publishing step/);
     expect(instructions).toMatch(/reviewState/);
-    expect(instructions).toMatch(/published from the editor/);
+    expect(instructions).toMatch(/get_transitions/);
+    expect(instructions).toMatch(/"live"/);
+    expect(instructions).toMatch(/Publish only when the person has asked/);
     expect(instructions).toMatch(/search finds pages by their title, their summary and the text of their Text blocks/);
     // Never how to behave: that is the agent's and its host's, not the site's.
     expect(instructions).not.toMatch(/\b(Never|Do not|only when asked|tell the person|Talk the way)\b/);

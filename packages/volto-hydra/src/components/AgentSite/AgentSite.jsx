@@ -1,6 +1,7 @@
 /**
  * window.__inkaSite — the site-wide half of what an MCP server drives in a
- * headless admin: finding pages, and moving, renaming and deleting them.
+ * headless admin: finding pages, moving, renaming and deleting them, and what
+ * state they are in and taking them to another.
  * Mounted on every admin page (appExtras), so none of it needs an editor
  * open — an open editor locks its page, and a locked page can't be moved or
  * deleted. Every call dispatches the admin's own action, so it goes wherever
@@ -15,10 +16,11 @@ import { moveContent } from '@plone/volto/actions/clipboard/clipboard';
 import { deleteContent, getContent, updateContent } from '@plone/volto/actions/content/content';
 import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from './lockedBy';
+import { contentState } from './contentState';
 
 /** A rejected action's error as an Error naming the call. */
 const failure = (what, error) => new Error(
-  `${what}: ${error?.response?.body?.message || error?.message || error?.status || 'failed'}`,
+  `${what}: ${error?.response?.body?.error?.message || error?.response?.body?.message || error?.message || error?.status || 'failed'}`,
 );
 
 export function siteApi(dispatch, history, token) {
@@ -29,12 +31,23 @@ export function siteApi(dispatch, history, token) {
       throw failure(what, error);
     }
   };
+  // No action of the admin's sends all a transition can set (its own workflow
+  // action sends only include_children), so a plain request, through the same
+  // connection and sign-in.
+  const state = contentState({
+    fetchJson: (path, { method = 'GET', body } = {}) => run(`${method} ${path}`, {
+      type: 'INKA_AGENT_STATE',
+      request: { op: method === 'DELETE' ? 'del' : method.toLowerCase(), path, data: body },
+    }),
+    toPath: flattenToAppURL,
+  });
   const summary = (item) => ({
     path: flattenToAppURL(item['@id']),
     title: item.title,
     type: item['@type'],
     description: item.description,
     reviewState: item.review_state,
+    ...(item.is_working_copy && { isDraft: true }),
   });
   return {
     /**
@@ -42,14 +55,18 @@ export function siteApi(dispatch, history, token) {
      * text; `types` narrows by content type; `depth: 1` lists the direct
      * children of `path`, in their order; `blockTypes` finds the pages that
      * use those block types (plone.volto's block_types index); `uid` finds the
-     * item with that UID. Paths come back site-relative.
+     * item with that UID; `reviewState` narrows by workflow state. Paths come
+     * back site-relative. Which results are drafts is metadata, not an index, so
+     * it is shown on a result but can't be searched for.
      */
-    async search({ path = '/', text, types, blockTypes, uid, depth, limit = 25, start = 0 }) {
+    async search({ path = '/', text, types, blockTypes, uid, reviewState, depth, limit = 25, start = 0 }) {
       const response = await run('search', searchContent(path === '/' ? '' : path, {
         SearchableText: text,
         UID: uid,
         portal_type: types,
         block_types: blockTypes,
+        review_state: reviewState,
+        metadata_fields: 'is_working_copy',
         'path.depth': depth,
         ...(depth === 1 && { sort_on: 'getObjPositionInParent' }),
         b_size: limit,
@@ -99,6 +116,24 @@ export function siteApi(dispatch, history, token) {
     async remove(path) {
       await run(`delete ${path}`, deleteContent(path));
     },
+
+    /** Its state, the transitions on offer and what the user may do (contentState). */
+    state: (path) => state.get(path),
+
+    /** What each transition on offer can set at the same time (contentState). */
+    stateForms: (path) => state.getForms(path),
+
+    /** The path of the page's draft, or null (contentState). */
+    draftOf: (path) => state.draftOf(path),
+
+    /** The pages that have a draft, across the site, as search results (contentState). */
+    pagesWithDrafts: async () => (await state.pagesWithDrafts()).map(summary),
+
+    /** The address of `path` in this admin, for a person to open. */
+    adminUrl: (path) => `${window.location.origin}${path}`,
+
+    /** Take a transition; resolves to null, or { redirect } if the page moved (contentState). */
+    transition: (op) => state.transition(op),
 
     /**
      * Go to `path` in the admin as its own links do: the app stays loaded,

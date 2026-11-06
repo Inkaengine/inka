@@ -90,16 +90,60 @@ export async function fillNewPage(agent, { blocks, mintId, check }) {
 /** What a text search looks in: Plone's SearchableText, with the text of Text blocks (plone.restapi's blocks indexer). */
 const SEARCHED = 'titles, summaries and the text of Text blocks; other blocks\' fields may not be searched';
 
-export async function search(site, { text, types, path, limit, start }) {
-  if (!text && !types) throw new Error('search needs "text" or "types"; to browse a section use list_children');
-  const found = await site.search({ text, types, path, limit, start });
+export async function search(site, { text, types, reviewState, hasDraft, path, limit, start }) {
+  if (!text && !types && !reviewState && !hasDraft) throw new Error('search needs "text", "types", "reviewState" or "hasDraft"; to browse a section use list_children');
+  if (hasDraft && (text || types)) throw new Error('"hasDraft" goes with "reviewState" alone: it finds pages by their state');
+  if (hasDraft) return findByState(site, { reviewState, path, limit, start });
+  const found = await asPages(site, await site.search({ text, types, reviewState, path, limit, start }));
   return text ? { ...found, searched: SEARCHED } : found;
+}
+
+/**
+ * A page and its draft are one page, whatever the CMS stores. So a draft is not
+ * listed, and the page it belongs to says it has one. The draft comes out after
+ * the query, so a page of results can run short by the drafts on it.
+ */
+async function asPages(site, found) {
+  const drafted = new Set((await site.pagesWithDrafts()).map((page) => page.path));
+  const pages = found.items.filter((item) => !item.isDraft);
+  return {
+    ...found,
+    total: found.total - (found.items.length - pages.length),
+    items: pages.map((item) => (drafted.has(item.path) ? { ...item, hasDraft: true } : item)),
+  };
+}
+
+/** Pages with a draft, then any pages in `reviewState`, each once. */
+async function findByState(site, { reviewState, path, limit, start }) {
+  const inSection = (page) => !path || path === '/' || page.path === path || page.path.startsWith(`${path}/`);
+  const drafted = (await site.pagesWithDrafts()).filter(inSection).map((page) => ({ ...page, hasDraft: true }));
+  if (!reviewState) return { total: drafted.length, items: drafted };
+  const found = await asPages(site, await site.search({ reviewState, path, limit, start }));
+  const others = found.items.filter((item) => !item.hasDraft);
+  return { total: drafted.length + others.length, items: [...drafted, ...others] };
 }
 
 /** The pages directly inside `path`, in their order. */
 export async function listChildren(site, { path, limit, start }) {
-  return site.search({ path, depth: 1, limit, start });
+  return asPages(site, await site.search({ path, depth: 1, limit, start }));
 }
+
+/** The page's draft: `path`, where it is stored, and the `url` a person can open it at; null if it has none. */
+export async function draftInfo(site, path) {
+  const draft = await site.draftOf(path);
+  return draft && { path: draft, url: await site.adminUrl(draft) };
+}
+
+/** A draft as an agent is told of it: it works by the page's own path, so a person's link is all it needs. */
+export const draftForAgent = ({ url }) => ({ url });
+
+/** What reading or editing a page reaches: its draft if it has one, unless the live page is asked for. */
+export const editTarget = (path, draft, live) => (draft && !live ? draft.path : path);
+
+/** Publishing a draft copies all of it over the live page, so a fix made only on the live page goes. */
+export const LIVE_EDIT_WARNING = 'The page\'s draft does not have this change, and publishing the draft replaces the live page with it. '
+  + 'Make the same change on the draft too, or it will be lost when the draft is published.';
+
 
 /** Refuse to act on a page someone else is editing, or one that has changed since the agent read it. */
 async function checkVersion(site, path, expectedVersion) {
@@ -113,8 +157,16 @@ async function checkVersion(site, path, expectedVersion) {
   }
 }
 
+/** The page and its draft are one page, so it stays put until the draft is done with. */
+async function refuseWithDraft(site, path) {
+  if (await site.draftOf(path)) {
+    throw new Error(`${path} has a draft: publish or discard the draft first (get_transitions)`);
+  }
+}
+
 /** Move a page into another section. Returns its new path. */
 export async function movePage(site, { path, target, expectedVersion }) {
+  await refuseWithDraft(site, path);
   await checkVersion(site, path, expectedVersion);
   return { path: await site.move({ path, target }) };
 }
@@ -122,15 +174,62 @@ export async function movePage(site, { path, target, expectedVersion }) {
 /** Change a page's short name (the last part of its path) and/or its title. Returns its path. */
 export async function renamePage(site, { path, id, title, expectedVersion }) {
   if (!id && !title) throw new Error('rename_page needs a new "id" or "title"');
+  await refuseWithDraft(site, path);
   await checkVersion(site, path, expectedVersion);
   return { path: await site.rename({ path, id, title }) };
 }
 
 /** Delete a page. */
 export async function deletePage(site, { path, expectedVersion }) {
+  await refuseWithDraft(site, path);
   await checkVersion(site, path, expectedVersion);
   await site.remove(path);
   return { deleted: path };
+}
+
+/**
+ * A page's state and what can be done to it: each transition with what it can
+ * set at the same time ("takes") and what those are now ("current"). "update"
+ * stays in the same state, for what can change without moving: who has access,
+ * the address, the listing. A page with a draft says so ("draft"), and its
+ * "version" is the draft's, as that is what get_page and edit_blocks work on.
+ */
+export async function getTransitions(site, { path }) {
+  const draft = await draftInfo(site, path);
+  const [{ state, transitions }, forms, { version, lockedBy }] = await Promise.all([
+    site.state(path), site.stateForms(path), site.status(draft?.path ?? path),
+  ]);
+  const update = forms.update ? [{ id: 'update', label: `Update — stays ${state.label}` }] : [];
+  return {
+    path,
+    version,
+    ...(lockedBy && { lockedBy }),
+    state,
+    ...(draft && { draft: draftForAgent(draft) }),
+    transitions: [...transitions, ...update].map(({ relocates: _relocates, ...t }) => ({
+      ...t,
+      takes: forms[t.id].schema.properties,
+      current: forms[t.id].data,
+    })),
+  };
+}
+
+/**
+ * Take a transition offered by getTransitions. Returns the page's path and state,
+ * and its draft if it has one. Making a draft leaves the page where it is: it is
+ * the same page, now with a draft, so only a move changes the path.
+ */
+export async function transitionPage(site, { path, id, data, expectedVersion }) {
+  await checkVersion(site, await site.draftOf(path) ?? path, expectedVersion);
+  const moved = await site.transition({ path, id, data });
+  const now = id === 'checkout' ? path : moved?.redirect ?? path;
+  const [page, draft] = await Promise.all([site.get(now), draftInfo(site, now)]);
+  return {
+    path: now,
+    reviewState: page.review_state,
+    version: draft ? (await site.status(draft.path)).version : page.modified,
+    ...(draft && { draft: draftForAgent(draft) }),
+  };
 }
 
 /** The block types this page can hold, their fields, and where child blocks go. */

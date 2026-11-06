@@ -24,6 +24,7 @@ import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from
 import { draftCheck } from './checkDraft.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
+  getTransitions, transitionPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
@@ -93,8 +94,10 @@ const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based
 - A page is a block of its content type (a Page is "Document"): its own fields (title, summary and the rest of its content type's fields) and its regions, which hold its blocks. Blocks have types (Text, Image, Hero, …; list_block_types gives each type's title, fields and regions), and some hold blocks of their own. In the editor, blocks are known by those titles and fields by their labels; ids and JSON are never shown.
 - The site's own front end draws every page. view_page shows a page as visitors see it; preview_layout (a whole proposed layout) and edit_blocks with dryRun and preview (a change to the page) show the result the same way. None of them saves anything. In clients that show them, the person sees these pictures too. A long page's picture may show only its top ("cropped" says how much); its text ("renderedText") is all there.
 - Some blocks come from a template that many pages share (they carry "templateId"; "readOnly" ones are locked, as the editor shows them). A change to one is a change to the template, and so to every page that uses it: edit_blocks with changeTemplates. In the editor, unlocking a template warns of the same.
-- Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet, and it is published from the editor, not from here.
-- search finds pages by their title, their summary and the text of their Text blocks. Text in other blocks' fields (a hero's heading, a teaser's title) may not be searched.`;
+- Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page, transition_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet. get_transitions says what can be done to a page and what each can set at the same time (a publishing date, an expiry); publishing, making a draft of a published page and changing who has access are all transitions, taken with transition_page. Publish only when the person has asked for it.
+- A page has at most one draft, and it stays the same page at the same path. While it has one ("draft" in get_transitions and get_page), get_page and edit_blocks work on the draft and visitors keep seeing the page as it was, until the draft is published. view_page shows what visitors see unless asked for the draft. In an emergency, get_page and edit_blocks with "live" change what visitors see now, without publishing the draft; but publishing the draft replaces the live page, so make the same change on the draft too or it will be lost. To show someone the draft, give them its "url": they sign in to see it, and it is only at that address, not the page's.
+- search finds pages by their title, their summary and the text of their Text blocks. Text in other blocks' fields (a hero's heading, a teaser's title) may not be searched.
+- To find what isn't live yet, use search rather than going through pages one by one: "hasDraft" finds live pages with a draft waiting (the change isn't live), "reviewState" (such as ["private", "pending"]) finds pages visitors can't see at all. They can be asked together.`;
 
 /**
  * For a tool that changes nothing on the site: a client may then let the
@@ -171,12 +174,22 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     return file;
   });
 
+  /** The page's draft, which is what reading and editing it reach; null if it has none. */
+  const draftOf = (extra, path) => adminFor(extra).withSite((site) => draftInfo(site, path));
+
   server.registerTool('get_page', {
     title: 'Read a page',
     annotations: SAVES_NOTHING,
     description: 'Read a page. The page is itself a block of its content type: "@uid" "_page", "@type" its content type (e.g. "Document"), its own fields (title, description — the summary — and the rest of its content type\'s fields), and its regions as lists of blocks ("blocks", and any others such as a footer). Each block has "@uid" and "@type"; containers hold their child blocks in lists named for the region; rich text is {"md": "..."}. Change the page\'s own fields with edit_blocks, an "update" on "_page". Keep "version" — edit_blocks needs it.',
-    inputSchema: { path: z.string().describe('The page path, e.g. /about') },
-  }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, getPage)));
+    inputSchema: {
+      path: z.string().describe('The page path, e.g. /about'),
+      live: z.boolean().optional().describe('If the page has a draft: read what visitors see now, not the draft'),
+    },
+  }, async ({ path, live }, extra) => {
+    const draft = await draftOf(extra, path);
+    const read = await adminFor(extra).withEditor(editTarget(path, draft, live), getPage);
+    return asResult(draft ? { ...read, path, draft: draftForAgent(draft), ...(live && { live: true }) } : read);
+  });
 
   registerAppTool(server, 'preview_layout', {
     title: 'Try a layout',
@@ -210,16 +223,19 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     inputSchema: {
       path: z.string().describe('The page path, e.g. /about'),
       viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
+      draft: z.boolean().optional().describe('Show the page\'s draft rather than what visitors see now'),
     },
-  }, async ({ path, viewport = 'desktop' }, extra) => {
+  }, async ({ path, viewport = 'desktop', draft: wantsDraft }, extra) => {
+    const draft = wantsDraft && await draftOf(extra, path);
+    if (wantsDraft && !draft) throw new Error(`${path} has no draft`);
     const rendered = await adminFor(extra).withEditor(
-      path, async (agent, { render }) => render(await agent.getDraft(), viewport, { maxChars: IMAGE_CHARS }),
+      draft?.path ?? path, async (agent, { render }) => render(await agent.getDraft(), viewport, { maxChars: IMAGE_CHARS }),
     );
     const { text, renderedOn, cropped } = rendered;
     const kept = await keep(extra, [rendered]);
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ path, viewport, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
+        { type: 'text', text: JSON.stringify({ path, ...(draft && { draft: draftForAgent(draft) }), viewport, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
         asImage(rendered),
       ],
     };
@@ -233,10 +249,12 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('search', {
     title: 'Search the site',
     annotations: SAVES_NOTHING,
-    description: 'Find pages by their text, narrowed by content type and to a section. Returns the total and a page of results: path, title, type, description and workflow state. Use a result\'s path with get_page.',
+    description: 'Find pages by their text, content type or state (workflow state, or having a draft), narrowed to a section. Returns the total and a page of results: path, title, type, description and workflow state ("reviewState"). A page with a draft says "hasDraft". Use a result\'s path with get_page.',
     inputSchema: {
       text: z.string().optional().describe('Words to find (each word matches as a prefix)'),
       types: z.array(z.string()).optional().describe('Content types, e.g. ["Document"]'),
+      reviewState: z.array(z.string()).optional().describe('Workflow states, e.g. ["private", "pending"] to find what visitors can\'t see yet'),
+      hasDraft: z.boolean().optional().describe('Find pages with a draft waiting. With "reviewState", pages in either state. Not with "text" or "types"'),
       path: z.string().optional().describe('Only inside this section, e.g. /news'),
       ...paging,
     },
@@ -245,7 +263,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('list_children', {
     title: 'List a section',
     annotations: SAVES_NOTHING,
-    description: 'The pages directly inside a section, in their order: path, title, type, description and workflow state. "/" lists the top of the site.',
+    description: 'The pages directly inside a section, in their order: path, title, type, description, workflow state and "hasDraft" if it has a draft. "/" lists the top of the site.',
     inputSchema: { path: z.string().describe('The section, e.g. / or /docs'), ...paging },
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => listChildren(site, args))));
 
@@ -278,6 +296,24 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     description: 'Delete a page and everything inside it. This cannot be undone here.',
     inputSchema: { path: z.string().describe('The page to delete'), expectedVersion: version },
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => deletePage(site, args))));
+
+  server.registerTool('get_transitions', {
+    title: 'What can be done to a page',
+    annotations: SAVES_NOTHING,
+    description: 'A page\'s workflow state ("state"), its "version", and the "transitions" the signed-in user can take now: one not listed can\'t be taken from this state or by this user. Each transition has an "id", a "label" (call it that to the person), "takes" (the settings it can make at the same time, such as a publishing date or an expiry: a field\'s "type" says what value it wants) and "current" (what those settings are now). Making a draft of a published page is a transition, and so are publishing and discarding it; a page with a draft says so ("draft"). "update" is one too: it stays in the same state and changes who has access (a field per role, listing the people and groups who hold it), the address and the menu listing.',
+    inputSchema: { path: z.string().describe('The page, e.g. /about/team') },
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => getTransitions(site, args))));
+
+  server.registerTool('transition_page', {
+    title: 'Take a transition',
+    description: 'Take one of the transitions get_transitions offers, such as publishing the page, with any of the settings it "takes". Publishing makes the page visible to visitors, or at its publishing date. Returns the page\'s "path" (changed only if the transition gave it a new address), its "reviewState", its new "version" and its "draft" if it has one. A transition not on offer, or a setting it does not take, is refused and nothing changes.',
+    inputSchema: {
+      path: z.string().describe('The page, e.g. /about/team'),
+      id: z.string().describe('The transition\'s id, as get_transitions gives it, e.g. publish'),
+      data: z.record(z.string(), z.unknown()).optional().describe('Settings to make at the same time, named as in its "takes", e.g. {"effective": "2027-01-01T09:00:00"}'),
+      expectedVersion: z.string().describe('The version get_transitions or get_page returned; refused if the page has changed since'),
+    },
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => transitionPage(site, args))));
 
   server.registerTool('list_block_types', {
     title: 'List block types',
@@ -358,13 +394,15 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       path: z.string().describe('The page path, e.g. /about'),
       expectedVersion: z.string().describe('The version get_page returned'),
       ops: z.array(z.object({ op: z.enum(['update', 'add', 'move', 'delete']) }).passthrough()),
+      live: z.boolean().optional().describe('If the page has a draft: change what visitors see now, not the draft. Only for an emergency, with a version from get_page with "live"'),
       dryRun: z.boolean().optional().describe('Show the result without saving'),
       preview: z.enum(['desktop', 'mobile']).optional().describe('With dryRun: render the result at this width'),
       changeTemplates: z.boolean().optional().describe('Allow changing blocks that belong to a template (marked "templateId"; locked ones are "readOnly"). '
         + 'The template is changed, so the change appears on every page that uses it.'),
     },
-  }, async ({ path, expectedVersion, ops, dryRun, preview, changeTemplates }, extra) => {
-    const result = await adminFor(extra).withEditor(path, (agent, { site, render }) => editPage(agent, {
+  }, async ({ path, live, expectedVersion, ops, dryRun, preview, changeTemplates }, extra) => {
+    const draft = await draftOf(extra, path);
+    const result = await adminFor(extra).withEditor(editTarget(path, draft, live), (agent, { site, render }) => editPage(agent, {
       ops, expectedVersion, dryRun, changeTemplates, mintId: randomUUID, check: draftCheck(agent, site), heldFile: heldFile(extra),
       render: preview && ((draft) => render(draft, preview, { maxChars: IMAGE_CHARS })),
     }));
@@ -374,13 +412,14 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       const { user, name, type } = await media.peek(code);
       await media.update(code, { user, name, type, uploaded: url });
     }
-    if (!result.rendered) return asResult(result);
+    const onDraft = draft ? { draft: draftForAgent(draft), ...(live && { live: true, ...(!dryRun && { warning: LIVE_EDIT_WARNING }) }) } : {};
+    if (!result.rendered) return asResult({ ...result, ...onDraft });
     const { rendered, ...rest } = result;
     const { text, renderedOn, cropped } = rendered;
     const kept = await keep(extra, [rendered]);
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ ...rest, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
+        { type: 'text', text: JSON.stringify({ ...rest, ...onDraft, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
         asImage(rendered),
       ],
     };

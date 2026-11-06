@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search } from './tools.mjs';
+import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -91,7 +91,7 @@ describe('a page someone else is editing', () => {
   });
 
   it('move, rename and delete refuse it too', async () => {
-    const site = { status: async () => ({ version: 'v1', lockedBy: jane }) };
+    const site = { status: async () => ({ version: 'v1', lockedBy: jane }), draftOf: async () => null };
     for (const act of [
       () => movePage(site, { path: '/news', target: '/archive', expectedVersion: 'v1' }),
       () => renamePage(site, { path: '/news', title: 'Old news', expectedVersion: 'v1' }),
@@ -253,22 +253,61 @@ describe('get_page: the page is a block of its content type', () => {
 
 describe('what the results say of the site', () => {
   it('a text search says what it looked in, as Plone searches it', async () => {
-    const site = { search: async () => ({ total: 0, items: [] }) };
+    const site = { search: async () => ({ total: 0, items: [] }), pagesWithDrafts: async () => [] };
     expect(await search(site, { text: 'Riverside' })).toMatchObject({
       total: 0, searched: 'titles, summaries and the text of Text blocks; other blocks\' fields may not be searched',
     });
     expect(await search(site, { types: ['Event'] })).not.toHaveProperty('searched');
   });
 
-  it('a save says the page\'s state, so whether visitors see it now', async () => {
-    const formData = { '@type': 'Document', title: 'News', modified: 'v1', review_state: 'published', blocks: {}, blocks_layout: { items: [] } };
-    const agent = {
-      getPage: async () => ({ path: '/news', version: 'v1', formData, blockPathMap: {}, lockedBy: null }),
-      getBlockSchemas: async () => ({ page: { regions: [], contentType: 'Document' }, types: {} }),
-      save: async () => ({ version: 'v2' }),
-      getDraft: async () => formData,
-    };
-    expect(await editPage(agent, { ops: [], expectedVersion: 'v1', check: passes })).toMatchObject({ version: 'v2', reviewState: 'published' });
+  it('searches by state alone, for what is not live yet', async () => {
+    const asked = [];
+    const site = { search: async (query) => { asked.push(query); return { total: 0, items: [] }; }, pagesWithDrafts: async () => [] };
+    await search(site, { reviewState: ['private'] });
+    expect(asked[0].reviewState).toEqual(['private']);
+    await expect(search(site, {})).rejects.toThrow(/"text", "types", "reviewState" or "hasDraft"/);
+  });
+
+  describe('a page with a draft', () => {
+    const news = { path: '/news', title: 'News', reviewState: 'published' };
+    const site = (found = {}) => ({
+      search: async () => ({
+        total: 2,
+        items: [{ path: '/copy_of_news', title: 'News', isDraft: true, reviewState: 'private' }, news, { path: '/about', title: 'About', reviewState: 'published' }],
+        ...found,
+      }),
+      pagesWithDrafts: async () => [news],
+    });
+
+    it.each([['search', search, { text: 'x' }], ['list_children', listChildren, { path: '/' }]])('%s lists it once, as the page, saying it has one', async (_name, tool, args) => {
+      const { items, total } = await tool(site({ total: 3 }), args);
+      expect(items).toEqual([{ ...news, hasDraft: true }, { path: '/about', title: 'About', reviewState: 'published' }]);
+      expect(total).toBe(2);
+    });
+
+    it('is found by that state alone', async () => {
+      const asked = [];
+      const s = { ...site(), search: async (q) => { asked.push(q); return { total: 0, items: [] }; } };
+      expect(await search(s, { hasDraft: true })).toEqual({ total: 1, items: [{ ...news, hasDraft: true }] });
+      expect(asked).toEqual([]);
+    });
+
+    it('is found alongside other states, each page once', async () => {
+      const newPage = { path: '/open-day', title: 'Open day', reviewState: 'private' };
+      const s = site({ total: 2, items: [{ path: '/copy_of_news', title: 'News', isDraft: true, reviewState: 'private' }, newPage] });
+      const { items, total } = await search(s, { hasDraft: true, reviewState: ['private'] });
+      expect(items).toEqual([{ ...news, hasDraft: true }, newPage]);
+      expect(total).toBe(2);
+    });
+
+    it('is narrowed to a section', async () => {
+      expect(await search(site(), { hasDraft: true, path: '/archive' })).toEqual({ total: 0, items: [] });
+      expect((await search(site(), { hasDraft: true, path: '/' })).total).toBe(1);
+    });
+
+    it('can\'t be combined with text or types', async () => {
+      await expect(search(site(), { hasDraft: true, text: 'x' })).rejects.toThrow(/"hasDraft" goes with "reviewState"/);
+    });
   });
 });
 
@@ -542,5 +581,135 @@ describe("get_page shows the site's links as paths", () => {
   it('leaves another site alone, even one whose name starts the same', async () => {
     expect((await read(link(`${API}.other.example/x`))).value.md).toBe(`[here](${API}.other.example/x)`);
     expect((await read(link('https://inka.sh/pricing'))).value.md).toBe('[here](https://inka.sh/pricing)');
+  });
+});
+
+describe('transitions', () => {
+  const FORM = { schema: { properties: { effective: { title: 'Publishing date' } } }, data: {} };
+  const site = (over = {}) => {
+    const did = [];
+    return {
+      did,
+      state: async () => ({
+        state: { name: 'private', label: 'Private' },
+        transitions: [{ id: 'publish', label: 'Publish' }, { id: 'checkout', label: 'Work on a draft copy', relocates: true }],
+        effective: { canPublish: true },
+      }),
+      stateForms: async () => ({
+        publish: FORM,
+        checkout: { schema: { properties: {} }, data: {} },
+        update: { schema: { properties: { Reader: { title: 'Can view' } } }, data: { Reader: ['staff'] } },
+      }),
+      status: async () => ({ version: 'v1', lockedBy: null }),
+      transition: async (op) => { did.push(op); return null; },
+      get: async () => ({ review_state: 'published', modified: 'v2' }),
+      draftOf: async () => null,
+      adminUrl: async (path) => `https://admin.example${path}`,
+      ...over,
+    };
+  };
+
+  it('lists each with what it can set, and sharing as staying in the same state', async () => {
+    const got = await getTransitions(site(), { path: '/news' });
+    expect(got).toMatchObject({ path: '/news', version: 'v1', state: { name: 'private' } });
+    // What is on offer is the whole answer: "may publish" read false on a published page, and an agent
+    // told a person they couldn't publish, then did.
+    expect(got).not.toHaveProperty('may');
+    expect(got.transitions).toEqual([
+      { id: 'publish', label: 'Publish', takes: FORM.schema.properties, current: {} },
+      { id: 'checkout', label: 'Work on a draft copy', takes: {}, current: {} },
+      { id: 'update', label: 'Update — stays Private', takes: { Reader: { title: 'Can view' } }, current: { Reader: ['staff'] } },
+    ]);
+  });
+
+  it('takes one, with its settings, and says where the page now stands', async () => {
+    const s = site();
+    const data = { effective: '2027-01-01T09:00:00' };
+    expect(await transitionPage(s, { path: '/news', id: 'publish', data, expectedVersion: 'v1' }))
+      .toEqual({ path: '/news', reviewState: 'published', version: 'v2' });
+    expect(s.did).toEqual([{ path: '/news', id: 'publish', data }]);
+  });
+
+  it('reports the path a transition moved the page to', async () => {
+    const reads = [];
+    const s = site({
+      transition: async () => ({ redirect: '/latest' }),
+      get: async (path) => { reads.push(path); return { review_state: 'published', modified: 'v9' }; },
+    });
+    expect(await transitionPage(s, { path: '/news', id: 'publish', data: { id: 'latest' }, expectedVersion: 'v1' }))
+      .toEqual({ path: '/latest', reviewState: 'published', version: 'v9' });
+    expect(reads).toEqual(['/latest']);
+  });
+
+  it('refuses a page that has changed since it was read, and takes nothing', async () => {
+    const s = site();
+    await expect(transitionPage(s, { path: '/news', id: 'publish', expectedVersion: 'v0' })).rejects.toThrow(/has changed since/);
+    expect(s.did).toEqual([]);
+  });
+
+  it('refuses a page someone else is editing, and takes nothing', async () => {
+    const s = site({ status: async () => ({ version: 'v1', lockedBy: { user: 'Ann', since: 'now' } }) });
+    await expect(transitionPage(s, { path: '/news', id: 'publish', expectedVersion: 'v1' })).rejects.toThrow(/Ann/);
+    expect(s.did).toEqual([]);
+  });
+
+  describe('on a page with a draft', () => {
+    const versions = { '/news': 'live-v', '/copy_of_news': 'draft-v' };
+    const withDraft = (over = {}) => site({
+      state: async () => ({
+        state: { name: 'published', label: 'Published' },
+        draft: { path: '/copy_of_news' },
+        transitions: [{ id: 'checkin', label: 'Publish the draft', relocates: true }],
+      }),
+      stateForms: async () => ({ checkin: { schema: { properties: {} }, data: {} } }),
+      status: async (path) => ({ version: versions[path], lockedBy: null }),
+      draftOf: async (path) => (path === '/news' ? '/copy_of_news' : null),
+      ...over,
+    });
+
+    it('lists it as the page\'s state, with the draft\'s version, which is what gets edited', async () => {
+      const got = await getTransitions(withDraft(), { path: '/news' });
+      expect(got).toMatchObject({ path: '/news', version: 'draft-v', draft: { url: 'https://admin.example/copy_of_news' } });
+      expect(got.transitions[0]).not.toHaveProperty('relocates');
+    });
+
+    it('checks the draft\'s version when taking a transition', async () => {
+      await expect(transitionPage(withDraft(), { path: '/news', id: 'checkin', expectedVersion: 'live-v' })).rejects.toThrow(/has changed since/);
+      const s = withDraft({ transition: async () => ({ redirect: '/news' }) });
+      await transitionPage(s, { path: '/news', id: 'checkin', expectedVersion: 'draft-v' });
+    });
+
+    it('stays on the page after making a draft, reporting the draft and its version to edit', async () => {
+      let drafted = false;
+      const made = site({
+        transition: async () => { drafted = true; return { redirect: '/copy_of_news' }; },
+        draftOf: async () => (drafted ? '/copy_of_news' : null),
+        status: async (path) => ({ version: path === '/copy_of_news' ? 'draft-v' : 'v1', lockedBy: null }),
+      });
+      expect(await transitionPage(made, { path: '/news', id: 'checkout', expectedVersion: 'v1' }))
+        .toEqual({ path: '/news', reviewState: 'published', version: 'draft-v', draft: { url: 'https://admin.example/copy_of_news' } });
+    });
+
+    it.each([
+      ['move', movePage, { path: '/news', target: '/archive', expectedVersion: 'draft-v' }],
+      ['rename', renamePage, { path: '/news', id: 'latest', expectedVersion: 'draft-v' }],
+      ['delete', deletePage, { path: '/news', expectedVersion: 'draft-v' }],
+    ])('refuses to %s it until the draft is published or discarded', async (_what, tool, args) => {
+      await expect(tool(withDraft(), args)).rejects.toThrow(/has a draft/);
+    });
+  });
+});
+
+describe('what an edit reaches', () => {
+  const draft = { path: '/copy_of_news', url: 'https://admin.example/copy_of_news' };
+
+  it('is the draft if there is one, unless the live page is asked for', () => {
+    expect(editTarget('/news', draft)).toBe('/copy_of_news');
+    expect(editTarget('/news', draft, true)).toBe('/news');
+  });
+
+  it('is the page if it has no draft', () => {
+    expect(editTarget('/news', null)).toBe('/news');
+    expect(editTarget('/news', null, true)).toBe('/news');
   });
 });

@@ -7,7 +7,7 @@
 
 const TOOL_PREFIX = 'mcp__inka__';
 /** Tools that change the site whenever they run (edit_blocks only without dryRun). */
-const SAVING = ['create_page', 'delete_page', 'move_page', 'rename_page'];
+const SAVING = ['create_page', 'delete_page', 'move_page', 'rename_page', 'transition_page'];
 
 const textOf = (content) => (typeof content === 'string' ? content
   : content.filter((c) => c.type === 'text').map((c) => c.text).join('\n'));
