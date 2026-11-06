@@ -1,3 +1,4 @@
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplates, expandTemplatesSync } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
 
@@ -903,7 +904,7 @@ describe('multiple template instances with shared templateState', () => {
     const templateState = {};
 
     // First call: expand main blocks with main template
-    const mainItems = expandTemplatesSync(mainLayout, {
+    const mainItems = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -911,7 +912,7 @@ describe('multiple template instances with shared templateState', () => {
     });
 
     // Second call: expand footer blocks with footer template (same templateState)
-    const footerItems = expandTemplatesSync(footerLayout, {
+    const footerItems = expandEveryContainer(footerLayout, {
       blocks: footerBlocks,
       templateState,
       templates,
@@ -1010,7 +1011,7 @@ describe('multiple template instances with shared templateState', () => {
     const templateState = {};
 
     // First call: main blocks with template
-    const mainItems = expandTemplatesSync(mainLayout, {
+    const mainItems = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -1018,7 +1019,7 @@ describe('multiple template instances with shared templateState', () => {
     });
 
     // Second call: footer blocks WITHOUT template
-    const footerItems = expandTemplatesSync(footerLayout, {
+    const footerItems = expandEveryContainer(footerLayout, {
       blocks: footerBlocks,
       templateState,
       templates,
@@ -1043,7 +1044,7 @@ describe('multiple template instances with shared templateState', () => {
     const templateState = {};
 
     // First call
-    const items1 = expandTemplatesSync(mainLayout, {
+    const items1 = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -1051,7 +1052,7 @@ describe('multiple template instances with shared templateState', () => {
     });
 
     // Second call with same data (simulates re-render)
-    const items2 = expandTemplatesSync(mainLayout, {
+    const items2 = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,

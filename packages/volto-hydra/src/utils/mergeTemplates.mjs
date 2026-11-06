@@ -9,6 +9,7 @@ import {
   expandTemplates,
   adoptTemplate,
   getChildFields,
+  ensureMutablePath,
   getChildBlockEntries,
   setChildBlockEntries,
   isUnlabelledDefinition,
@@ -134,7 +135,6 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
     preloadedTemplates,
     uuidGenerator,
     firstInsert,
-    idFieldMap, // { blockType: { field: idField } } — admin-resolved from the schema
   });
 
   // READ docs/architecture.md "Merging templates: every container is expanded, by
@@ -150,7 +150,7 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
   // are not applied twice. Regions are read and written through the helpers'
   // storage-agnostic accessors (blocks_layout regions and object_list arrays alike).
   async function expandContainers(block, templateState) {
-    const fields = getChildFields(block, idFieldMap, { allObjectLists: true });
+    const fields = getChildFields(block, idFieldMap, { allObjectLists: true, templateChildren: true });
     if (fields.length === 0) return block;
     // setChildBlockEntries writes into its argument; INITIAL_DATA arrives frozen.
     const out = { ...block, ...(block.blocks ? { blocks: { ...block.blocks } } : {}) };
@@ -169,6 +169,14 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
       const expanded = [];
       for (const { '@uid': id, ...child } of items) {
         expanded.push({ id, block: await expandContainers(child, templateState) });
+      }
+      // The template's own blocks, as they waited in this region, are replaced.
+      if (!field.isObjectList) {
+        const container = ensureMutablePath(out, field.regionPath || []);
+        container.blocks = { ...container.blocks };
+        for (const { id, block: child } of entries) {
+          if (child.templatePending) delete container.blocks[id];
+        }
       }
       setChildBlockEntries(out, field, expanded);
     }

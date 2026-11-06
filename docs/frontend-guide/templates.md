@@ -186,23 +186,17 @@ of block objects, each identified by an **id field** (`@id` by default).
 
 Everything else is identical: every object_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
 
-The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas, so whenever you expand a template or layout that contains an object_list container you MUST tell it each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Build it from the same blocks config you pass to `initBridge` with `buildIdFieldMap`, exactly as the admin does, rather than writing it by hand. Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
+The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas. Your block's code knows its own field, so it passes `idField` when it hands the list to the merge. Without it the merge takes `@id`, and throws if an item doesn't have one.
 
 ### Javascript
 
 ```javascript
-import { buildIdFieldMap } from '@hydra-js/hydra.js';
-
-// Once, from your block definitions: { form: { subblocks: 'field_id' }, slider: { slides: '@id' }, … }
-// A field inside a widget:'object' is named by its path: { table: { 'table/rows': 'key' } }
-const idFieldMap = buildIdFieldMap(blocksConfig);
-
-const items = expandTemplatesSync(layout, {
-    blocks, templateState, templates, idFieldMap,
+// In the form block's code: its fields are keyed on field_id.
+const fields = expandTemplatesSync(block.subblocks, {
+    templateState, templates, idField: 'field_id',
 });
+// Each field carries its id in field_id, and in @uid.
 ```
-
-(When you re-enter to expand a **single** object_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
 
 ## allowedTemplates vs allowedLayouts
 
@@ -250,13 +244,19 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 
 **Pass the children of every container through the merge** — every `blocks_layout` region and every object_list field, in every container block you render, at every depth — with the same `templateState` the page-level call used.
 
-An editor can place a template anywhere a block can go: inside a grid, a column, an accordion panel, a slider. The merge has no block schema, so it cannot find your containers by itself. It fills the regions of a template it applies, but a template placed inside a plain container stays exactly as stored — stale fixed content, no instance — until that container hands its children to the merge. A container that renders its children directly is a place where templates silently don't work.
+An editor can place a template anywhere a block can go: inside a grid, a column, an accordion panel, a slider. The merge has no block schema, so it cannot find your containers by itself. **Each call expands one list.** That is as true of a template's own containers as of plain ones: a fixed block's children wait, as the template has them, until that block hands them to the merge. A container that renders its children directly is a place where templates don't work.
 
-A region inside a `widget: 'object'` is a region of the block like any other. `getChildFields` returns it with the object's path as its `regionPath`, and `getChildBlockEntries` / `setChildBlockEntries` read and write it there.
+The merge throws when it can tell it isn't being used this way:
+
+- A list whose items have no id: pass the list's `idField`.
+- A block waiting for a template instance this `templateState` has not seen: share one `templateState` across a render.
+- An `idFieldMap` option: there isn't one. Each call names its own list's `idField`.
+
+A region inside a `widget: 'object'` is a region of the block like any other: your block's code passes its children to the merge in the same way.
 
 The page-level call is no exception: each of the page's own blocks fields (`items`, a `footer` region, …) goes through the merge too.
 
-The Inka editor follows the same contract for the page it edits (see [Merging templates](../architecture.md#merging-templates-every-container-is-expanded-by-whoever-renders)).
+The Inka editor follows the same contract for the page it edits. It has no block code to do this for it, so it walks every container itself, taking each list's id field from the schema with `buildIdFieldMap` (see [Merging templates](../architecture.md#merging-templates-every-container-is-expanded-by-whoever-renders)).
 
 ## Pre-loading with loadTemplates
 

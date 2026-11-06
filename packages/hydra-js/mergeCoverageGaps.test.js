@@ -1,3 +1,4 @@
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 /**
@@ -28,7 +29,7 @@ describe('gap #2 — object_list slot placeholder filled from user content', () 
       s1: { '@id': 's1', '@type': 'slide', slotId: 'slides', title: 'User Slide 1' },
       s2: { '@id': 's2', '@type': 'slide', slotId: 'slides', title: 'User Slide 2' },
     };
-    const result = expandTemplatesSync(['s1', 's2'], {
+    const result = expandEveryContainer(['s1', 's2'], {
       blocks: pageBlocks, templates: { '/t/slider': template }, templateState: {}, allowedLayouts: ['/t/slider'],
     });
     const slider = result.find((b) => b['@type'] === 'slider');
@@ -62,7 +63,7 @@ describe('gap #3 — multi-region container: every blocks_layout region is fille
       'u-main': { '@type': 'slate', slotId: 'main', value: [{ text: 'MAIN' }] },
       'u-foot': { '@type': 'slate', slotId: 'foot', value: [{ text: 'FOOT' }] },
     };
-    const result = expandTemplatesSync(['u-main', 'u-foot'], {
+    const result = expandEveryContainer(['u-main', 'u-foot'], {
       blocks: pageBlocks, templates: { '/t/multi': template }, templateState: {}, allowedLayouts: ['/t/multi'],
     });
     const box = result.find((b) => b['@type'] === 'box');
@@ -108,7 +109,7 @@ describe('gap #4 — a loaded (prior-pass) instance is re-applied, not passed th
         blocks_layout: { items: ['t', 'b'] },
       },
     };
-    const result = expandTemplatesSync(['box'], {
+    const result = expandEveryContainer(['box'], {
       blocks: pageBlocks, templates: { '/t/box': template }, templateState: {},
     });
     const box = result.find((b) => b['@type'] === 'box');
@@ -145,7 +146,7 @@ describe("a template's definition is not a use of it — in every region, both s
     blocks_layout: { items: ['cols', 'slider'] },
   };
   const expand = (items, options) =>
-    expandTemplatesSync(items, { templates: { '/t/def': template }, templateState: {}, editMode: false, ...options })
+    expandEveryContainer(items, { templates: { '/t/def': template }, templateState: {}, editMode: false, ...options })
       .map((b) => b['@uid']);
 
   test('a nested blocks_layout region of the definition is left as it is', () => {

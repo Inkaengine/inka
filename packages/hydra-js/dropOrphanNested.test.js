@@ -1,3 +1,4 @@
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 /**
@@ -31,7 +32,7 @@ describe('expandTemplatesSync — a template sub-block without templateId is dro
   };
 
   test('the orphan (no templateId) is dropped from the emitted nested blocks + layout', () => {
-    const out = expandTemplatesSync([], {
+    const out = expandEveryContainer([], {
       blocks: {},
       templates: { '/t/drop': template },
       templateState: {},

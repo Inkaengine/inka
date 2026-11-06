@@ -1,3 +1,4 @@
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 /**
@@ -66,7 +67,7 @@ const page = (nav) => ({
 });
 
 const expand = (blocks) =>
-  expandTemplatesSync(['layout'], {
+  expandEveryContainer(['layout'], {
     blocks,
     templates: { [TPL]: template },
     templateState: {},

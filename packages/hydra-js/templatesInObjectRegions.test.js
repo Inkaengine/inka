@@ -183,43 +183,52 @@ describe('instanceContent finds an instance inside an object', () => {
 });
 
 describe('a template whose own block holds a region inside an object', () => {
-  test('the public merge fills it, with no schema, and leaves nothing behind', () => {
-    const own = { fixed: true, readOnly: true, placeholder: 'head', templateId: '/t/s' };
+  test('the container\'s call fills it, with no schema, and leaves nothing behind', () => {
+    const own = { fixed: true, readOnly: true, templateId: '/t/s' };
     const definition = {
       '@id': '/t/s',
       blocks: {
         acc: {
           ...own,
+          slotId: 'acc',
           '@type': 'acc',
           templateInstanceId: 'def',
           data: {
-            blocks: { head: { ...own, '@type': 'slate', templateInstanceId: 'def', value: 'CURRENT' } },
+            blocks: { head: { ...own, slotId: 'head', '@type': 'slate', templateInstanceId: 'def', value: 'CURRENT' } },
             blocks_layout: { items: ['head'] },
           },
         },
       },
       blocks_layout: { items: ['acc'] },
     };
+    const templateState = {};
+    const templates = { '/t/s': definition };
     const [out] = expandTemplatesSync(['acc'], {
       blocks: {
         acc: {
           ...own,
+          slotId: 'acc',
           '@type': 'acc',
           templateInstanceId: 'inst-1',
           data: {
-            blocks: { old: { ...own, '@type': 'slate', templateInstanceId: 'inst-1', value: 'STALE' } },
+            blocks: { old: { ...own, slotId: 'head', '@type': 'slate', templateInstanceId: 'inst-1', value: 'STALE' } },
             blocks_layout: { items: ['old'] },
           },
         },
       },
-      templateState: {},
-      templates: { '/t/s': definition },
+      templateState,
+      templates,
     });
-
-    expect(shown(out.data)).toEqual(['CURRENT']);
-    expect(Object.keys(out.data.blocks)).toEqual(out.data.blocks_layout.items);
     expect(out.blocks).toBeUndefined();
     expect(out.blocks_layout).toBeUndefined();
+
+    const children = expandTemplatesSync(out.data.blocks_layout.items, {
+      blocks: out.data.blocks,
+      templateState,
+      templates,
+    });
+    expect(children.map((child) => child.value)).toEqual(['CURRENT']);
+    expect(children[0]['@uid']).toBe('old');
   });
 });
 
