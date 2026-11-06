@@ -3091,10 +3091,10 @@ export function getChildFields(block, idFieldMap = null, options = {}) {
   const fields = [];
   // An object_list field is keyed by its idField (a form's subblocks by `field_id`, a table's
   // rows by `key`, …) — NOT `@id`. The idField is a per-(blockType, field) fact the CALLER
-  // resolves once and passes as `idFieldMap` ({ type: { field: idField } }): the admin derives
-  // it from the schema, a frontend passes it as a literal hint. Read + write both key off the
-  // descriptor's idField, so a missing hint (fallback `@id`) mints a bogus id — hence the hint
-  // is required whenever a template contains an object_list keyed by anything but `@id`.
+  // resolves once and passes as `idFieldMap` ({ type: { field: idField } }): whatever holds the
+  // schema, the admin and the content tools, derives it. A frontend has no map: its block's code
+  // names the field when it passes the list to the merge. Read + write both key off the
+  // descriptor's idField, so a list keyed by anything but `@id` needs its entry here.
   // A field inside a widget:'object' is named by its /-path (`table/rows`).
   const typeIds = block?.['@type'] ? idFieldMap?.[block['@type']] : null;
   // A widget:'object' is transparent: a region inside one is the block's region,
@@ -4468,11 +4468,11 @@ export async function loadTemplates(
  * Async version of expandTemplates.
  * Loads templates on-demand using loadTemplates callback, then delegates to expandTemplatesSync.
  *
- * Expands ONE list of blocks. It fills the regions of a template it applies, but it
- * has no schema: a template placed inside a plain container is expanded only when the
- * caller passes that container's children through here too. Every renderer — each
- * frontend AND the admin — re-enters every container. Read docs/frontend-guide/
- * templates.md "Expand every container" before changing how this is called.
+ * Expands ONE list of blocks. It has no schema, so a container's children, a template's
+ * own or a plain container's, are expanded only when the caller passes them through
+ * here too, naming an object_list's idField. Every renderer — each frontend AND the
+ * admin — re-enters every container. Read docs/frontend-guide/templates.md "Expand
+ * every container" before changing how this is called.
  *
  * The merge's rules are docs/frontend-guide/templates.md "How the Merge Works":
  * change that section, this code and packages/volto-hydra/src/utils/mergeTemplates.rules.test.js together.
@@ -4701,11 +4701,11 @@ function objectListItemId(item, idField) {
   return id;
 }
 
-// Expands ONE list of blocks. It fills the regions of a template it applies, but it
-// has no schema: a template placed inside a plain container is expanded only when the
-// caller passes that container's children through here too. Every renderer — each
-// frontend AND the admin — re-enters every container. Read docs/frontend-guide/
-// templates.md "Expand every container" before changing how this is called.
+// Expands ONE list of blocks. It has no schema, so a container's children, a template's
+// own or a plain container's, are expanded only when the caller passes them through
+// here too, naming an object_list's idField. Every renderer — each frontend AND the
+// admin — re-enters every container. Read docs/frontend-guide/templates.md "Expand
+// every container" before changing how this is called.
 //
 // The merge's rules are docs/frontend-guide/templates.md "How the Merge Works":
 // change that section, this code and packages/volto-hydra/src/utils/mergeTemplates.rules.test.js together.

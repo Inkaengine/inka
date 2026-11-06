@@ -19,9 +19,8 @@ import {
 /**
  * Merge templates into page data. Expands template references in every blocks field via
  * the public merge (expandTemplates), then re-enters every container the result holds,
- * as a frontend does: the merge fills the regions of a template it APPLIES, but a
- * template placed inside a plain container is only expanded when that container is
- * re-entered.
+ * as a frontend does: the merge expands one list per call, so a container's children, a
+ * template's own or a plain container's, are only expanded when it is re-entered.
  *
  * The rules: docs/frontend-guide/templates.md "How the Merge Works". The reverse
  * direction is mergeInstanceIntoTemplate, the same merge. Both are checked by
@@ -142,13 +141,10 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
   // whoever renders" before changing this. Do not remove it as redundant.
   //
   // Re-enter every container of a block, at every depth — the frontend contract,
-  // which the admin keeps too. The merge has no schema, so it fills only the regions
-  // of a template it applies; a template placed inside a PLAIN container (a snippet
-  // in a grid, a column, a panel) is expanded only when that container is re-entered.
-  // Nobody knows in advance where a snippet will be placed, so every container is.
-  // The SAME templateState throughout: content this pass already expanded is
-  // recognised by its instance id and passed through, so a template's own regions
-  // are not applied twice. Regions are read and written through the helpers'
+  // which the admin keeps too. The merge has no schema and expands one list per call,
+  // so a container's children are expanded only when it is re-entered, a template's
+  // own containers included. The SAME templateState throughout: it holds what each
+  // template left waiting, and recognises what is already expanded. Regions are read and written through the helpers'
   // storage-agnostic accessors (blocks_layout regions and object_list arrays alike).
   async function expandContainers(block, templateState) {
     const fields = getChildFields(block, idFieldMap, { allObjectLists: true, templateChildren: true });
