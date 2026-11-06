@@ -26,8 +26,8 @@ import {
   getPageAllowedBlocksFromRestricted,
   getResolvedSchema,
   buildIdFieldMap,
-} from '../../../hydra-js/buildBlockPathMap.js';
-import { isObjectListRegion } from '../../../hydra-js/regionWidgets.js';
+} from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
 // From the dep-free slateMerge (NOT slateTransforms) so the offline block-path
 // evaluator's esbuild bundle stays free of @plone/volto-slate / registry.
 import { mergeBlockValues } from './slateMerge.js';

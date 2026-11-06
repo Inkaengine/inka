@@ -1,13 +1,4 @@
 {
-  "name": "@volto-hydra/testing",
-  "type": "module",
-  "exports": {
-    "./helpers/*": "./helpers/*"
-  },
-  "peerDependencies": {
-    "@playwright/test": "^1.58.2"
-  },
-  "peerDependenciesMeta": {
-    "@playwright/test": { "optional": false }
-  }
+  "private": true,
+  "type": "module"
 }

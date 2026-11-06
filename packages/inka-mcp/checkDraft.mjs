@@ -11,10 +11,9 @@
  * brings is refused: a problem the page already had is not the agent's to fix
  * before it may change anything else.
  */
-import validator from '../../lib/plone-content-validator.cjs';
-import { buildIdFieldMap } from '../hydra-js/buildBlockPathMap.js';
+import validator from '@inka/content-validator';
 
-const { checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = validator;
+const { checkContent } = validator;
 
 /** The change would leave the page invalid: what the validator says, one line each. */
 export class DraftInvalid extends Error {}
@@ -40,15 +39,13 @@ async function onSite({ kind, value }, site) {
 
 /** What the validator finds wrong with `data`, the page at `path`. */
 async function problems(data, { path, blocksConfig, templates, site, held }) {
-  const idFieldMap = buildIdFieldMap(blocksConfig, { formatMessage: (m) => m?.defaultMessage || '' });
   const items = [{ rel: path, data: { ...data, '@id': path } }, ...templates];
-  const integrity = checkIntegrity(items, { schemasFor: () => blocksConfig, idFieldMap, elsewhere: true, held });
+  const checked = checkContent(items, { schemas: blocksConfig, elsewhere: true, held });
   const missing = [];
-  for (const reference of integrity.elsewhere) {
+  for (const reference of checked.elsewhere) {
     if (!(await onSite(reference, site))) missing.push(reference.message);
   }
-  const schemas = checkBlockSchemas([items[0]], fieldMapFromSchemas(blocksConfig), { idFieldMap });
-  return [...integrity.errors, ...missing, ...schemas.errors]
+  return [...checked.errors, ...missing]
     // Only the page's own problems: the templates are checked for what the page needs of them.
     .filter((line) => line.trim().startsWith(`${path}:`))
     .map((line) => line.trim());

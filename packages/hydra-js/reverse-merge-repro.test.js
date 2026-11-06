@@ -1,4 +1,4 @@
-import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';

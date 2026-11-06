@@ -1,0 +1,642 @@
+/**
+ * slate-md -- the markdown layer under the prototype engine
+ * (prototype-mapping.mjs). Pure conversion: mdast <-> slate, the <block> tag
+ * scanner and attribute writer (tagOf/fmtTagAttrs), and GFM tables.
+ */
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkStringify from 'remark-stringify';
+import remarkGfm from 'remark-gfm';
+import remarkDefinitionList from 'remark-definition-list';
+import remarkGridTables from '@adobe/remark-gridtables';
+import { Parser as HtmlParser } from 'htmlparser2';
+import { toHast } from 'mdast-util-to-hast';
+import { toHtml } from 'hast-util-to-html';
+import { fromHtml } from 'hast-util-from-html';
+import { toMdast } from 'hast-util-to-mdast';
+import { toMarkdown, defaultHandlers } from 'mdast-util-to-markdown';
+
+/**
+ * A `richtext` WIDGET stores HTML, not slate — the Volto/plone.restapi shape
+ * `{data: "<html>", "content-type": "text/html", encoding: "utf-8"}`. These two
+ * convert between that HTML and markdown so a richtext field can still be
+ * authored as prose: an mdast node -> its HTML, and HTML back to markdown.
+ */
+export function mdastToHtml(node) {
+  return toHtml(toHast(node));
+}
+export function htmlToMd(html) {
+  return toMarkdown(toMdast(fromHtml(html, { fragment: true }))).trim();
+}
+/** Wrap an HTML string as a Volto RichText field value. */
+export function htmlRichtext(html) {
+  return { 'content-type': 'text/html', data: html, encoding: 'utf-8' };
+}
+
+// Grid tables (`+---+` row separators) carry cells whose content is blocks (a
+// list, several paragraphs) -- what a GFM cell, one line of inline content,
+// cannot. They are read into the same table shape a GFM table is.
+export const mdParser = unified().use(remarkParse).use(remarkGfm).use(remarkDefinitionList).use(remarkGridTables);
+/**
+ * mdast-util-to-markdown escapes EVERY `_` in phrasing content, because one can
+ * open emphasis. In CommonMark one cannot when it sits between two word
+ * characters -- `object_list` is literal -- so escaping it there only rewrites
+ * the author's prose as `object\_list` on every re-emit. The markdown IS the
+ * source here, so that churn is a change to a file under version control, and
+ * the parent site's round-trip gate fails on it.
+ *
+ * Underscores that could open or close emphasis keep their escape.
+ */
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+function relaxIntrawordUnderscores(out) {
+  let s = '';
+  for (let i = 0; i < out.length; i += 1) {
+    if (out[i] === '\\' && out[i + 1] === '_'
+        && WORD_CHAR.test(s[s.length - 1] || '') && WORD_CHAR.test(out[i + 2] || '')) {
+      s += '_';
+      i += 1;
+      continue;
+    }
+    s += out[i];
+  }
+  return s;
+}
+
+export const mdSerializer = unified()
+  .use(remarkStringify, {
+    bullet: '-', emphasis: '*', strong: '*', fences: true, rule: '-',
+    handlers: {
+      text: (node, parent, state, info) =>
+        relaxIntrawordUnderscores(defaultHandlers.text(node, parent, state, info)),
+    },
+  })
+  .use(remarkGfm)
+  .use(remarkDefinitionList)
+  .use(remarkGridTables);
+
+const MARK_KEYS = { strong: 'bold', emphasis: 'italic', delete: 'strikethrough' };
+
+/**
+ * Inline custom mark: `<mark name="stylename">…</mark>`. A design system's own
+ * text styles are configurable and open-ended, so there is no fixed vocabulary;
+ * each is a leaf mark `style-<stylename>: true` — the shape volto-slate's
+ * StyleMenu stores for an inline style (`toggleStyle` on a text selection, read
+ * back as a `style-*` mark). `<mark>` is parsed by remark as inline HTML, so it
+ * arrives here as separate open/close `html` nodes around its content.
+ */
+function markTagOf(html) {
+  const t = (html || '').trim();
+  const open = /^<mark\s+name="([^"<>]+)"\s*>$/.exec(t);
+  if (open) return { kind: 'open', name: open[1] };
+  if (/^<\/mark\s*>$/.test(t)) return { kind: 'close' };
+  return null;
+}
+
+/** Add each active `style-<name>` mark to every text leaf in a node. */
+function applyStyleMarks(node, marks) {
+  if (!marks.length || !node || typeof node !== 'object') return node;
+  if (node.text !== undefined && !node.type) {
+    const out = { ...node };
+    for (const s of marks) out[`style-${s}`] = true;
+    return out;
+  }
+  if (node.children) return { ...node, children: node.children.map((c) => applyStyleMarks(c, marks)) };
+  return node;
+}
+
+/**
+ * Whether an inline-HTML node is a `<br>` — HTML's line break.
+ *
+ * Markdown allows inline HTML, and <br> is how anyone pasting HTML, or writing
+ * it by habit, puts a line break in a paragraph. It means exactly what a
+ * CommonMark hard break means, so both readers treat it as one.
+ */
+export const isBrTag = (html) => /^<br\s*\/?>$/i.test((html || '').trim());
+
+/** mdast inline nodes -> slate children. */
+export function inlineToSlate(nodes) {
+  const out = [];
+  // Active inline marks from `<mark name="X">` … `</mark>` (a balanced stack).
+  const marks = [];
+  const stamp = (node) => applyStyleMarks(node, marks);
+  // A line break is a "\n" inside the text leaf: that is Volto's own form —
+  // its editor does editor.insertText('\n') on Shift+Enter and renders it as
+  // <br/>. Folded into the previous leaf so the text node matches what the
+  // editor stores rather than splitting into several leaves.
+  const pushBreak = () => {
+    const prev = out[out.length - 1];
+    if (prev && prev.text !== undefined && !prev.type) prev.text += '\n';
+    else out.push({ text: '\n' });
+  };
+  for (const n of nodes || []) {
+    switch (n.type) {
+      case 'html': {
+        if (isBrTag(n.value)) {
+          pushBreak();
+          break;
+        }
+        const tag = markTagOf(n.value);
+        if (tag?.kind === 'open') marks.push(tag.name);
+        else if (tag?.kind === 'close') marks.pop();
+        // Any other inline HTML is left alone; if it carried meaning the block
+        // fails the round-trip check and falls back to data-json.
+        break;
+      }
+      case 'text':
+        // A newline inside a text node is always a SOFT break — remark gives a
+        // hard break its own `break` node, handled below. CommonMark renders a
+        // soft break as a space and drops the spaces around the line ending, so
+        // hard-wrapped markdown reads as the running prose it is. Copying the
+        // "\n" through put a newline in the middle of a sentence: something no
+        // editor produces, and which block-sanity rightly rejects.
+        out.push(stamp({ text: n.value.replace(/[ \t]*\n[ \t]*/g, ' ') }));
+        break;
+      case 'inlineCode':
+        // Stored content uses a code NODE (859 of them) not a {code:true}
+        // mark. Both exist in the data; emit the dominant form.
+        out.push(stamp({ type: 'code', children: [{ text: n.value }] }));
+        break;
+      case 'strong':
+        out.push(stamp({ type: 'strong', children: inlineToSlate(n.children) }));
+        break;
+      case 'emphasis':
+        out.push(stamp({ type: 'em', children: inlineToSlate(n.children) }));
+        break;
+      case 'delete':
+        out.push(stamp({ type: 'del', children: inlineToSlate(n.children) }));
+        break;
+      case 'link':
+        out.push(stamp({ type: 'link', data: { url: n.url }, children: inlineToSlate(n.children) }));
+        break;
+      case 'break':
+        pushBreak();
+        break;
+      default:
+        if (n.children) out.push(...inlineToSlate(n.children).map(stamp));
+        else if (n.value != null) out.push(stamp({ text: String(n.value) }));
+    }
+  }
+  // Merge adjacent plain leaves. Folding hard breaks back into text produces
+  // several leaves where storage had one, which is semantically identical but
+  // does not compare equal.
+  const merged = [];
+  for (const n of out) {
+    const prev = merged[merged.length - 1];
+    if (prev && prev.text !== undefined && !prev.type && n.text !== undefined && !n.type
+        && Object.keys(prev).length === 1 && Object.keys(n).length === 1) {
+      prev.text += n.text;
+    } else merged.push(n);
+  }
+  return merged.length ? merged : [{ text: '' }];
+}
+
+function listToSlate(node) {
+  const items = (node.children || []).map((li) => {
+    // A list item's children are usually a single paragraph.
+    const kids = (li.children || []).flatMap((c) =>
+      c.type === 'paragraph' ? inlineToSlate(c.children) : blockToSlate(c));
+    return { type: 'li', children: kids.length ? kids : [{ text: '' }] };
+  });
+  return { type: node.ordered ? 'ol' : 'ul', children: items };
+}
+
+/** One mdast block node -> one slate top-level node. */
+export function blockToSlate(n, shift = 0) {
+  switch (n.type) {
+    case 'paragraph':
+      return [{ type: 'p', children: inlineToSlate(n.children) }];
+    case 'heading':
+      // `shift` undoes the offset the emitter applied inside a repeating
+      // container; see mdToSlate.
+      return [{ type: `h${Math.min(6, Math.max(1, n.depth - shift))}`,
+                children: inlineToSlate(n.children) }];
+    case 'list':
+      return [listToSlate(n)];
+    case 'blockquote':
+      // Slate stores blockquote text as inline children, so unwrap a wrapping
+      // paragraph (the inverse of slateBlockToMdast); keep other block children.
+      return [{ type: 'blockquote', children: (n.children || []).flatMap((c) => (
+        c.type === 'paragraph' ? inlineToSlate(c.children) : blockToSlate(c, shift))) }];
+    case 'code':
+      return [{ type: 'p', children: [{ type: 'code', children: [{ text: n.value ?? '' }] }] }];
+    case 'thematicBreak':
+      return [];
+    default:
+      return n.children ? [{ type: 'p', children: inlineToSlate(n.children) }] : [];
+  }
+}
+
+/**
+ * markdown -> slate value.
+ *
+ * Returns a LIST of top-level nodes. docs/visual-editing.md says a slate value
+ * always holds exactly one; stored content disagrees (43 of 997 hold more —
+ * grid cards are a bold lead-in plus a body paragraph), so this does not
+ * enforce the invariant.
+ */
+/**
+ * markdown -> slate value.
+ *
+ * `shift` is the heading offset applied by the enclosing repeating container.
+ * Inside `::::panels[object_list]{repeat="h2" …}` a child's own `## heading`
+ * would be indistinguishable from the boundary that starts the next panel, so
+ * the emitter writes it two levels deeper and the reader lifts it back. That
+ * makes nesting unambiguous by construction rather than by hoping the author
+ * kept their headings below the split.
+ */
+export function mdToSlate(md, shift = 0) {
+  const tree = mdParser.parse(md);
+  const out = (tree.children || []).flatMap((n) => blockToSlate(n, shift));
+  return out.length ? out : [{ type: 'p', children: [{ text: '' }] }];
+}
+
+// slate -> mdast
+function slateInlineToMdast(nodes) {
+  const out = [];
+  for (const n of nodes || []) {
+    if (n.text !== undefined && !n.type) {
+      // A newline inside a text leaf would reparse as a paragraph break.
+      // markdown's hard break keeps it inside the same node.
+      if (n.text.includes('\n') && !n.code) {
+        const parts = n.text.split('\n');
+        // Drop a trailing empty part: a newline at the very end of a paragraph
+        // carries no meaning and would serialise to a dangling "\" that
+        // reparses as a literal backslash.
+        while (parts.length > 1 && parts[parts.length - 1] === '') parts.pop();
+        parts.forEach((part, idx) => {
+          if (idx) out.push({ type: 'break' });
+          if (part) out.push({ type: 'text', value: part });
+        });
+        continue;
+      }
+      let node = { type: 'text', value: n.text };
+      // Marks nest outward; order is fixed so serialisation is stable.
+      for (const [mdType, slateKey] of Object.entries(MARK_KEYS)) {
+        if (n[slateKey]) node = { type: mdType, children: [node] };
+      }
+      if (n.code) node = { type: 'inlineCode', value: n.text };
+      // Inline custom marks (`style-<name>: true`) wrap the leaf in
+      // `<mark name="name">…</mark>` inline HTML, the inverse of markTagOf above.
+      const styles = Object.keys(n).filter((k) => k.startsWith('style-') && n[k]).map((k) => k.slice(6));
+      if (styles.length) {
+        out.push(
+          ...styles.map((s) => ({ type: 'html', value: `<mark name="${s}">` })),
+          node,
+          ...styles.map(() => ({ type: 'html', value: '</mark>' })),
+        );
+      } else {
+        out.push(node);
+      }
+      continue;
+    }
+    // An inline element with no content serialises to a bare "**" or "*",
+    // which markdown reads back as literal asterisks. Stored content contains
+    // several of these (empty strong/em left behind by editing).
+    if (n.children && !plaintextOf(n.children) && n.type !== 'link' && n.type !== 'a') continue;
+    switch (n.type) {
+      case 'strong': case 'b':
+        out.push({ type: 'strong', children: slateInlineToMdast(n.children) }); break;
+      case 'em': case 'i':
+        out.push({ type: 'emphasis', children: slateInlineToMdast(n.children) }); break;
+      case 'del':
+        out.push({ type: 'delete', children: slateInlineToMdast(n.children) }); break;
+      case 'code':
+        out.push({ type: 'inlineCode', value: plaintextOf(n.children) }); break;
+      case 'link': case 'a':
+        out.push({ type: 'link', url: n.data?.url ?? n.url ?? '',
+                   children: slateInlineToMdast(n.children) }); break;
+      default:
+        out.push(...slateInlineToMdast(n.children));
+    }
+  }
+  return out;
+}
+
+/**
+ * A list item's children, in the order they are stored: each run of inline
+ * nodes becomes one paragraph, and each block child is written where it sits.
+ *
+ * Partitioning them into inline-then-block instead moved a sentence written
+ * AFTER a sub-list into the item's FIRST paragraph, so the item came back
+ * reordered and the whole list fell out to raw slate (docs/architecture.md's
+ * numbered placement rule is exactly that shape).
+ */
+const IS_LI_BLOCK_CHILD = (c) => /^(p|ul|ol|blockquote)$/.test(c?.type || '');
+
+function listItemChildren(kids, shift) {
+  const out = [];
+  let run = [];
+  const flushRun = () => {
+    if (!run.length) return;
+    out.push({ type: 'paragraph', children: slateInlineToMdast(run) });
+    run = [];
+  };
+  for (const child of kids) {
+    if (IS_LI_BLOCK_CHILD(child)) {
+      flushRun();
+      out.push(slateBlockToMdast(child, shift));
+    } else {
+      run.push(child);
+    }
+  }
+  flushRun();
+  // An item must hold at least one block for markdown to write a bullet.
+  return out.length ? out : [{ type: 'paragraph', children: slateInlineToMdast([{ text: '' }]) }];
+}
+
+export function slateBlockToMdast(n, shift = 0) {
+  const t = n.type;
+  if (/^h[1-6]$/.test(t)) {
+    return { type: 'heading', depth: Math.min(6, +t[1] + shift),
+             children: slateInlineToMdast(n.children) };
+  }
+  if (t === 'ul' || t === 'ol') {
+    return {
+      type: 'list', ordered: t === 'ol', spread: false,
+      children: (n.children || []).map((li) => {
+        const children = listItemChildren(li.children || [], shift);
+        // Blank lines between an item's parts are needed only for a paragraph
+        // that FOLLOWS a block child: written tight, it would be read back as a
+        // lazy continuation of the sub-list's last item instead of its own
+        // paragraph. An item that is a paragraph followed by sub-lists stays
+        // tight, which is how such items are written throughout the docs.
+        const spread = children.some((c, i) => i > 0 && c.type === 'paragraph');
+        return { type: 'listItem', spread, children };
+      }),
+    };
+  }
+  if (t === 'blockquote') {
+    // Slate stores a blockquote's text as INLINE children directly; markdown
+    // requires block content, so wrap inline children in a paragraph. (A
+    // blockquote that already holds block children keeps them.)
+    const kids = n.children || [];
+    const isBlock = (c) => /^(p|h[1-6]|ul|ol|blockquote)$/.test(c.type || '');
+    const children = kids.length && kids.every(isBlock)
+      ? kids.map((c) => slateBlockToMdast(c, shift))
+      : [{ type: 'paragraph', children: slateInlineToMdast(kids) }];
+    return { type: 'blockquote', children };
+  }
+  return { type: 'paragraph', children: slateInlineToMdast(n.children) };
+}
+
+export function slateToMd(value, shift = 0) {
+  const tree = { type: 'root', children: (value || []).map((n) => slateBlockToMdast(n, shift)) };
+  return mdSerializer.stringify(tree).trim();
+}
+
+
+/**
+ * Does this slate value survive a markdown round-trip?
+ *
+ * Not all valid slate can be written as markdown. An editor can produce
+ * adjacent emphasis nodes, a text leaf containing a bare "*", emphasis
+ * boundaries that no markdown delimiters can reproduce. Those are legal slate
+ * and the format must not lose them.
+ *
+ * So rather than enumerate markdown's limitations, the emitter CHECKS: if the
+ * prose does not come back identical, that block falls back to raw slate in
+ * the escape hatch. Losslessness becomes a property of the design instead of a
+ * statistic we measure afterwards.
+ */
+export function plaintextOf(v) {
+  let s = '';
+  const walk = (n) => {
+    if (Array.isArray(n)) n.forEach(walk);
+    else if (n && typeof n === 'object') {
+      if (typeof n.text === 'string') s += n.text;
+      (n.children || []).forEach(walk);
+    }
+  };
+  walk(v);
+  return s;
+}
+
+// ------------------------------------------------------------ attributes ---
+/** A value that can live in {attrs}: scalar, single-line, not enormous. */
+export function tagOf(line) {
+  const t = line.trim();
+  if (!t.startsWith('<') || !t.endsWith('>')) return null;
+  // htmlparser2 discards an unmatched closing tag without emitting anything,
+  // so that one case is recognised here. It carries no attributes, which is
+  // the only thing worth handing to a parser.
+  const close = /^<\/([A-Za-z][\w-]*)\s*>$/.exec(t);
+  if (close) return { kind: 'close', name: close[1], attrs: {} };
+  let out = null, texts = 0;
+  const parser = new HtmlParser({
+    onopentag(name, attrs) { out = { kind: 'open', name, attrs }; },
+    onclosetag(name, implied) { if (!implied) out = out ?? { kind: 'close', name, attrs: {} }; },
+    ontext(x) { if (x.trim()) texts += 1; },
+  }, { lowerCaseAttributeNames: false, lowerCaseTags: false, recognizeSelfClosing: true });
+  parser.write(t);
+  parser.end();
+  if (!out || texts) return null;
+  if (out.kind === 'open' && /\/>$/.test(t)) out.kind = 'self';
+  return out;
+}
+
+/**
+ * Block fields -> HTML attributes.
+ *
+ * A string becomes an ordinary attribute; anything that is not a string goes
+ * into one `data` attribute as JSON. HTML attribute values are string-typed,
+ * so `collapsed="false"` could not say whether it meant the boolean or the
+ * word -- putting non-strings in JSON removes the question rather than
+ * inventing a convention to answer it.
+ *
+ * Attribute NAMES must be legal HTML. `@type` is not: GitHub escapes the whole
+ * tag and renders it as visible text, where an unknown-but-legal tag is
+ * stripped cleanly. So `@type` travels as `type` on the tag and stays `@type`
+ * inside the JSON.
+ */
+// A dict field encodes generically as one `field:key=value` attribute per entry
+// — split on the FIRST colon at decode, so a key that itself contains a colon
+// (`size:noprefix`) rides in the key. Values are typed exactly like any other
+// attribute (quoted string, or bare number/boolean/null). Only a FLAT dict of
+// attr-safe scalar entries can flatten; a nested/array value returns null and
+// the block tier-3s to data-json instead.
+const ATTR_SAFE = /^[\w@.$:-]+$/;
+/** A string a double-quoted attribute can hold: no `"` to end it early, no
+ *  newline to break the tag. Length doesn't matter — a long value is no easier
+ *  to read as JSON. */
+export const cleanAttrStr = (v) => typeof v === 'string' && !v.includes('"') && !v.includes('\n');
+const scalarAttrValue = (v) => cleanAttrStr(v) || typeof v === 'number' || typeof v === 'boolean' || v === null;
+export function isFlatDict(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+    && Object.keys(v).length > 0
+    && Object.entries(v).every(([k, x]) => ATTR_SAFE.test(`${k}`) && scalarAttrValue(x));
+}
+export function flatDictAttrs(field, obj) {
+  if (!ATTR_SAFE.test(field) || !isFlatDict(obj)) return null;
+  return Object.entries(obj).map(([k, v]) =>
+    cleanAttrStr(v) ? `${field}:${k}="${v}"` : `${field}:${k}=${v}`);
+}
+
+export function fmtTagAttrs(fields) {
+  const attrs = [], data = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined) continue;          // an absent field is not an empty one
+    if (cleanAttrStr(v)) {
+      attrs.push(`${k}="${v}"`);
+    } else if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) {
+      attrs.push(`${k}=${v}`);              // unquoted -> read back as JSON (fixed=false, n=3)
+    } else if (isFlatDict(v)) {
+      attrs.push(...flatDictAttrs(k, v));   // a dict field -> `field:key=value` attrs
+    } else data[k] = v;
+  }
+  if (Object.keys(data).length) {
+    // The attribute is single-quoted so the JSON's own double quotes need no
+    // escaping; an apostrophe inside the data would otherwise close it early
+    // (one slateTable's text contains "editor's" and truncated the whole
+    // block). `&` first, or the escapes escape each other.
+    const json = JSON.stringify(data).replace(/&/g, '&amp;').replace(/'/g, '&#39;');
+    attrs.push(`data-json='${json}'`);
+  }
+  return attrs.join(' ');
+}
+
+/**
+ * GFM tables. A markdown table cell is one line of inline content, but a cell
+ * may hold blocks (a heading above its text). Those are written as inline HTML,
+ * which a cell allows — `| <h2>Heading</h2>Text **bold** |` — and read back as
+ * real block nodes, so a cell is a container of blocks like any other. GFM's
+ * header is its first row: its cells are `tableHeaderCell` nodes (`th`).
+ */
+const CELL_BLOCK_TAG = /^<(\/?)(h[1-6]|p)\s*>$/i;
+const cellTag = (n) => (n.type === 'html' ? (n.value || '').trim().match(CELL_BLOCK_TAG) : null);
+const isEmptyInline = (nodes) => nodes.every((c) => c.type === 'text' && c.value === '');
+
+/** A cell's inline nodes -> the block nodes they write. Without block tags the
+ *  cell is one paragraph; with them each `<hN>…</hN>` / `<p>…</p>` is a block
+ *  and each bare run between them a paragraph (whitespace-only is spacing). */
+function cellBlocks(nodes) {
+  if (!nodes.some(cellTag)) return [{ type: 'paragraph', children: nodes }];
+  const out = [];
+  let run = [];
+  let open = null;
+  const block = (tag, children) => (tag === 'p' ? { type: 'paragraph', children }
+    : { type: 'heading', depth: Number(tag[1]), children });
+  const flushBare = () => {
+    if (run.some((n) => n.type !== 'text' || n.value.trim() !== '')) out.push(block('p', run));
+    run = [];
+  };
+  for (const n of nodes) {
+    const m = cellTag(n);
+    if (!m) { run.push(n); continue; }
+    const [, close, name] = m;
+    const tag = name.toLowerCase();
+    if (!close) {
+      if (open) throw new Error(`table cell: <${tag}> inside <${open}>`);
+      flushBare();
+      open = tag;
+    } else {
+      if (open !== tag) throw new Error(`table cell: </${tag}> closes ${open ? `<${open}>` : 'nothing'}`);
+      out.push(block(tag, run));
+      run = [];
+      open = null;
+    }
+  }
+  if (open) throw new Error(`table cell: <${open}> is never closed`);
+  flushBare();
+  return out;
+}
+
+/** A cell whose blocks have no GFM form (a list, a quote, a tagged block): the
+ *  table is written as a grid table instead. */
+export class NoCellForm extends Error {}
+
+/** A cell's block nodes -> its inline nodes (the inverse of cellBlocks). A lone
+ *  paragraph is bare; otherwise a heading is an `<hN>` tag and a paragraph
+ *  stays bare unless it is empty or follows a bare one it would merge into.
+ *  Throws for a block with no cell form (a list, a quote). */
+function cellInline(blocks) {
+  if (blocks.length === 1 && blocks[0].type === 'paragraph') return blocks[0].children;
+  const out = [];
+  let prevBare = false;
+  for (const b of blocks) {
+    let tag;
+    if (b.type === 'heading') tag = `h${b.depth}`;
+    else if (b.type === 'paragraph') tag = 'p';
+    else throw new NoCellForm(`a ${b.type} has no table-cell form`);
+    const bare = tag === 'p' && !isEmptyInline(b.children) && !prevBare;
+    if (bare) out.push(...b.children);
+    else out.push({ type: 'html', value: `<${tag}>` }, ...b.children, { type: 'html', value: `</${tag}>` });
+    prevBare = bare;
+  }
+  return out;
+}
+
+/** A grid table -> the table shape a normalised GFM table has: header-section
+ *  rows first, their cells `tableHeaderCell`; a grid cell's children are already
+ *  block nodes, so they stay as they are. */
+function gridToTable(grid) {
+  const rows = [];
+  for (const section of grid.children) {
+    const header = section.type === 'gtHeader';
+    for (const row of section.children) {
+      rows.push({ type: 'tableRow', children: row.children.map((cell) => ({
+        type: header ? 'tableHeaderCell' : 'tableCell', children: cell.children,
+      })) });
+    }
+  }
+  // `grid`: already normalised -- its cells hold blocks, which the GFM pass
+  // below would wrap in a paragraph as if they were inline content.
+  return { type: 'table', grid: true, children: rows };
+}
+
+/** Normalise every table in a parsed tree: a GFM table's first-row cells become
+ *  `tableHeaderCell` and each cell's inline content its block nodes; a grid
+ *  table becomes that same shape. */
+export function normaliseTables(node) {
+  if (node.type === 'gridTable') return gridToTable(node);
+  if (node.children) node.children = node.children.map((c) => (c.type === 'gridTable' ? gridToTable(c) : c));
+  if (node.type === 'table' && node.grid) return node;
+  if (node.type === 'table') {
+    node.children.forEach((row, i) => row.children.forEach((cell) => {
+      if (i === 0) cell.type = 'tableHeaderCell';
+      cell.children = cellBlocks(cell.children);
+    }));
+    return node;
+  }
+  (node.children || []).forEach(normaliseTables);
+  return node;
+}
+
+/** A table node (as normaliseTables leaves it) -> GFM markdown. GFM can only
+ *  say "the first row is the header", so header cells anywhere else — or data
+ *  cells in the first row — have no table form, and this throws. */
+export function tableToMd(table, { html = true } = {}) {
+  const rows = table.children;
+  if (!rows.length) throw new Error('a table needs at least one row');
+  const lines = [];
+  for (const [i, row] of rows.entries()) {
+    const want = i === 0 ? 'tableHeaderCell' : 'tableCell';
+    const cells = row.children.map((cell) => {
+      if (cell.type !== want) throw new Error(`row ${i + 1} has a ${cell.type}; GFM's header is exactly the first row`);
+      // Without `html` a cell must be one line of inline content already.
+      const single = cell.children.length === 0 || (cell.children.length === 1 && cell.children[0].type === 'paragraph');
+      if (!html && !single) throw new NoCellForm(`a cell of ${cell.children.length} blocks has no plain table-cell form`);
+      const md = mdSerializer.stringify({ type: 'root', children: [{ type: 'paragraph', children: cellInline(cell.children) }] }).trim();
+      return md.replace(/\n/g, ' ').replace(/\|/g, '\\|');
+    });
+    lines.push(`| ${cells.join(' | ')} |`);
+    if (i === 0) lines.push(`| ${cells.map(() => '---').join(' | ')} |`);
+  }
+  return lines.join('\n');
+}
+
+/** A table node (as normaliseTables leaves it) -> a grid table: for a table
+ *  whose cells hold blocks a GFM cell cannot (a list, a quote). The first row is
+ *  its header section, as in GFM. */
+export function gridTableToMd(table) {
+  const rows = table.children;
+  if (!rows.length) throw new Error('a table needs at least one row');
+  const row = (r) => ({ type: 'gtRow', children: r.children.map((cell) => ({ type: 'gtCell', children: cell.children })) });
+  const grid = { type: 'gridTable', children: [
+    { type: 'gtHeader', children: [row(rows[0])] },
+    ...(rows.length > 1 ? [{ type: 'gtBody', children: rows.slice(1).map(row) }] : []),
+  ] };
+  return mdSerializer.stringify({ type: 'root', children: [grid] }).trim();
+}
+
+/** Build the markdown for one construct from its parts. */

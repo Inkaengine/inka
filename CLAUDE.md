@@ -83,8 +83,9 @@ pnpm exec playwright show-report
 ## Test Architecture
 
 The Playwright tests use:
-- **Mock API server** (`tests-playwright/fixtures/mock-api-server.cjs`) - Serves both mock Plone API and test frontend on port 8888
-- **Test frontend** (`tests-playwright/fixtures/test-frontend/`) - Simple HTML/JS frontend that loads the real Hydra bridge
+- **Mock API server** (`packages/mock-api/mock-api-server.cjs`) - Serves the mock Plone API (`HYDRA_MOCK_API_PORT`)
+- **Test frontend** (`tests-playwright/fixtures/test-frontend/`) - Simple HTML/JS frontend that loads the real Hydra bridge, served by Vite (`HYDRA_TEST_FRONTEND_PORT`), which also serves `mock-parent.html` from `@inka/testing`
+- **Test harness** (`packages/testing/`, `@inka/testing`) - AdminUIHelper and the other Playwright helpers, block discovery, the sanity suites and mock-parent
 - **Real Hydra bridge** (`packages/hydra-js/hydra.js`) - Production bridge code for iframe-Admin UI communication
 - **Admin UI** - Runs on port 3001 (auto-started by Playwright via `webServer` config)
 
@@ -113,7 +114,7 @@ The health endpoint (`core/packages/volto/razzle.config.js`) returns:
 
 List all AdminUIHelper methods:
 ```bash
-grep -E '^\s+(async\s+)?[a-zA-Z_]+\(' tests-playwright/helpers/AdminUIHelper.ts | grep -v 'if\s*(' | grep -v 'for\s*(' | sed 's/^\s*//' | awk -F'(' '{print $1}' | sed 's/async //' | sort -u
+grep -E '^\s+(async\s+)?[a-zA-Z_]+\(' packages/testing/playwright/AdminUIHelper.ts | grep -v 'if\s*(' | grep -v 'for\s*(' | sed 's/^\s*//' | awk -F'(' '{print $1}' | sed 's/async //' | sort -u
 ```
 
 ## Manual Development Server

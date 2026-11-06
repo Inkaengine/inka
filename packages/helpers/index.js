@@ -182,7 +182,7 @@ export function buildQuerystringSearchBody(
   } else {
     // Default: the context's CONTENTS — its direct children (`.::1`), which is
     // what Volto shows for a listing with no criteria. `.` alone is the whole
-    // subtree: a converted LECC page listed 25 items (every language folder's
+    // subtree: a converted site's page listed 25 items (every language folder's
     // sub-pages) where the source listed its 7 languages. A listing that sets
     // its own `depth` keeps it (applied below).
     query = [
@@ -3945,7 +3945,7 @@ function templateSlotIds(template, idFieldMap) {
  *   (ctx.leftoverSlotId), else it is dropped.
  *
  * Each rule is checked in every kind of region and both directions by
- * packages/volto-hydra/src/utils/mergeTemplates.rules.test.js: a new case is a row there.
+ * packages/helpers/mergeTemplates.rules.test.js: a new case is a row there.
  */
 function fillRegionEntries(entries, templateState, options) {
   const { instanceId, templateId } = templateState;
@@ -4372,7 +4372,7 @@ export async function loadTemplates(
  * templates.md "Expand every container" before changing how this is called.
  *
  * The merge's rules are docs/frontend-guide/templates.md "How the Merge Works":
- * change that section, this code and packages/volto-hydra/src/utils/mergeTemplates.rules.test.js together.
+ * change that section, this code and packages/helpers/mergeTemplates.rules.test.js together.
  *
  * @param {Array} inputItems - Input items (block IDs or block objects)
  * @param {Object} options - Configuration options
@@ -4604,7 +4604,7 @@ function objectListItemId(item, idField) {
 // templates.md "Expand every container" before changing how this is called.
 //
 // The merge's rules are docs/frontend-guide/templates.md "How the Merge Works":
-// change that section, this code and packages/volto-hydra/src/utils/mergeTemplates.rules.test.js together.
+// change that section, this code and packages/helpers/mergeTemplates.rules.test.js together.
 export function expandTemplatesSync(inputItems, options = {}) {
   const {
     blocks: blocksDict,

@@ -16,8 +16,8 @@
  * This is the format agents got right most often in the format experiment, and
  * the one the edit_blocks operations address blocks in.
  */
-import { slateToMd, mdToSlate, plaintextOf } from '../../lib/slate-md.mjs';
-import { isObjectListRegion } from '../hydra-js/regionWidgets.js';
+import { slateToMd, mdToSlate, plaintextOf } from '@inka/blockmd/slate-md.mjs';
+import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
 
 /** A Slate value: an array of element nodes with `children`. */
 const isSlate = (v) => Array.isArray(v) && v.length > 0

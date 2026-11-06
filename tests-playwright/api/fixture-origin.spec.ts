@@ -24,7 +24,7 @@ import { fileURLToPath } from 'url';
  */
 
 const SPEC_DIR = path.dirname(fileURLToPath(import.meta.url));
-const SERVER = path.resolve(SPEC_DIR, '../fixtures/mock-api-server.cjs');
+const SERVER = path.resolve(SPEC_DIR, '../../packages/mock-api/mock-api-server.cjs');
 
 // A fixture whose block data carries a baked absolute image URL
 // (blocks['gallery-slider'].slides[1].url).

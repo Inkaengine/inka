@@ -76,7 +76,7 @@ const ALLOWED: Record<string, string> = {
   // The origin baked into saved fixture content, which the mock serves and
   // rewrites. A storage convention — the same one ports.ts puts out of scope
   // for the data files — and this is where it is declared once in code.
-  'tests-playwright/fixtures/mock-plone-api.cjs':
+  'packages/mock-api/mock-plone-api.cjs':
     'FIXTURE_ORIGIN: the origin stored IN fixture content, not a port anything binds',
   'tests-playwright/api/fixture-origin.spec.ts':
     'asserts that stored origin never reaches a response; the literal is the thing under test',
@@ -92,7 +92,7 @@ const ALLOWED: Record<string, string> = {
     'URL composition cases: frontend urls in, proxy/canvas urls out',
   'packages/volto-hydra/src/utils/linkItem.test.js':
     'link normalisation cases',
-  'packages/volto-hydra/src/utils/mergeTemplates.unlabelled-definition.test.js':
+  'packages/helpers/mergeTemplates.unlabelled-definition.test.js':
     'template merge cases that carry absolute urls',
   'packages/volto-hydra/src/components/Widgets/VocabularySelectWidget.test.js':
     'vocabulary term urls as the widget receives them',

@@ -3,7 +3,7 @@
  * nuxt-* spec, so it runs where the Nuxt front end is started (nuxt-specific).
  */
 import { test, expect } from '../fixtures';
-import { mintToken } from '../fixtures/mock-tokens.cjs';
+import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
 import { connect, CALL } from '../helpers/mcpClient';
 
 const PAGE = '/_test_data/test-page';

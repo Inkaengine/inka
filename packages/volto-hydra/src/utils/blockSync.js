@@ -18,7 +18,7 @@
  * one of two sources, both first-class (NOT a fallback chain):
  *
  *   1. **`args.blockId` / `args.blockPathMap`** — passed explicitly by
- *      `buildBlockPathMap` pass 2 in `packages/hydra-js/buildBlockPathMap.js`.
+ *      `buildBlockPathMap` pass 2 in `packages/helpers/buildBlockPathMap.js`.
  *      That code runs the enhancer outside any React tree to populate
  *      `pathMap._schemas` with fully-enhanced schemas.
  *
@@ -38,16 +38,16 @@
  * branch can be removed — until then, both branches are load-bearing.
  */
 import { getInjectedBlocksConfig, getSlateStyleGlobals, getSlateVocabulary } from './injectedVoltoConfig.js';
-import { normalizeSlateFields, undefinedSlateTypes } from '../../../hydra-js/slateStyles.js';
+import { normalizeSlateFields, undefinedSlateTypes } from '@volto-hydra/helpers/slateStyles.js';
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
   deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
-import { addableSiblingTypes, buildBlockPathMap, buildIdFieldMap } from '../../../hydra-js/buildBlockPathMap.js';
-import { isObjectListRegion } from '../../../hydra-js/regionWidgets.js';
+import { addableSiblingTypes, buildBlockPathMap, buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
 import {
   createFieldRulesEnhancer,
   evaluateFieldRule,
   setFieldRulesContextProvider,
-} from '../../../hydra-js/fieldRules.js';
+} from '@volto-hydra/helpers/fieldRules.js';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
   convertFieldValue,
@@ -67,19 +67,19 @@ setFieldRulesContextProvider({
   context: () => getHydraSchemaContext?.(),
   liveBlockData: (blockId, fallback) => getLiveBlockData?.(blockId, fallback),
 });
-// Pure validation/default-application logic lives in schemaValidation.js
+// Pure validation/default-application logic lives in @volto-hydra/helpers/schemaValidation.js
 // (no dependencies — safe to import from CI scripts and test runners).
-// Re-exported here for backward compat; schemaValidation.js is the SSOT.
+// Re-exported here for backward compat; that module is the SSOT.
 export {
   applySchemaDefaultsToBlock,
   applySchemaDefaultsToBlockWithContext,
-} from './schemaValidation.mjs';
+} from '@volto-hydra/helpers/schemaValidation.js';
 // The internal callers below need direct access (re-exports aren't visible
 // to module-local code in some bundler configs).
 import {
   applySchemaDefaultsToBlock,
   applySchemaDefaultsToBlockWithContext,
-} from './schemaValidation.mjs';
+} from '@volto-hydra/helpers/schemaValidation.js';
 import { PULL_FROM_KEY } from './copyFromTargetMapping';
 
 // Conversion-graph logic lives in conversionValidation.mjs so it stays free of

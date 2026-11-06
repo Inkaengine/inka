@@ -22,8 +22,8 @@
  */
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, rmSync, cpSync, statSync } from 'fs';
 import { join, dirname, relative, basename } from 'path';
-import { folderExcludes, resolveCodeExampleSources, schemaRegistryFromBlockDefinitions } from '../lib/markdown-mount.mjs';
-import { decodePage } from '../lib/prototype-mapping.mjs';
+import { folderExcludes, resolveCodeExampleSources, schemaRegistryFromBlockDefinitions } from '../packages/blockmd/markdown-mount.mjs';
+import { decodePage } from '../packages/blockmd/prototype-mapping.mjs';
 import { sharedBlocksConfig } from '../tests-playwright/fixtures/shared-block-schemas.js';
 
 const [SRC, OUT] = process.argv.slice(2);

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { isContainmentExempt } = require('../helpers/discover-blocks.cjs');
+const { isContainmentExempt } = require('@inka/testing/discover-blocks');
 
 /**
  * Which containers may hold a block "that doesn't belong there" is a decision

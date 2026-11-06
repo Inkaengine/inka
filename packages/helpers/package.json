@@ -1,13 +1,38 @@
 {
   "name": "@volto-hydra/helpers",
   "version": "1.0.0",
-  "description": "Pure data helpers extracted from hydra-js — safe to import server-side (no DOM / postMessage / Bridge).",
   "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./index.js"
+  "description": "Pure data helpers extracted from hydra-js — safe to import server-side (no DOM / postMessage / Bridge).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Inkaengine/inka.git",
+    "directory": "packages/helpers"
   },
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./buildBlockPathMap.js": "./buildBlockPathMap.js",
+    "./fieldRules.js": "./fieldRules.js",
+    "./formDataValidation.js": "./formDataValidation.js",
+    "./mergeTemplates.js": "./mergeTemplates.js",
+    "./regionWidgets.js": "./regionWidgets.js",
+    "./schemaValidation.js": "./schemaValidation.js",
+    "./slateStyles.js": "./slateStyles.js"
+  },
+  "files": [
+    "buildBlockPathMap.js",
+    "fieldRules.js",
+    "formDataValidation.js",
+    "index.js",
+    "mergeTemplates.js",
+    "regionWidgets.js",
+    "schemaValidation.js",
+    "slateStyles.js"
+  ],
   "keywords": [],
-  "author": "",
-  "license": "MIT"
+  "author": ""
 }

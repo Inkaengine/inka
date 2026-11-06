@@ -6,7 +6,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '../fixtures';
-import { mintToken } from '../fixtures/mock-tokens.cjs';
+import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
 import { freshPage, whileEditing } from '../helpers/otherUser';
 import { headlessAdmin } from '../../packages/inka-mcp/server.mjs';
 import { getPage, editPage, search, movePage } from '../../packages/inka-mcp/tools.mjs';

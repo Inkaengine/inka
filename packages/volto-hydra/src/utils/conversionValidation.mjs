@@ -4,7 +4,7 @@
  *
  * Pure module — no React, no Volto config, no DOM. That matters: the block-
  * sanity gate in a consuming frontend imports this straight from Playwright,
- * the same way it imports schemaValidation.mjs. blockSync.js re-exports every
+ * the same way it imports @volto-hydra/helpers/schemaValidation.js. blockSync.js re-exports every
  * name here for backward compat; THIS file is the SSOT.
  */
 

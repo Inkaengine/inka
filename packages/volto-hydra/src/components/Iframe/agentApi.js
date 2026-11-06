@@ -36,11 +36,11 @@ import {
 } from '../../utils/blockPath';
 import { stripFixedInsideSlots } from '@volto-hydra/helpers';
 import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
-import { getPageAllowedBlocksFromRestricted } from '../../../../hydra-js/buildBlockPathMap.js';
+import { getPageAllowedBlocksFromRestricted } from '@volto-hydra/helpers/buildBlockPathMap.js';
 import {
   collectFieldRules,
   describeFieldRules,
-} from '../../../../hydra-js/fieldRules.js';
+} from '@volto-hydra/helpers/fieldRules.js';
 import config from '@plone/volto/registry';
 import { getParentUrl } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from '../AgentSite/lockedBy';

@@ -33,8 +33,8 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, loadSchemas, formatReport } = require(
-  path.join(__dirname, '..', 'lib', 'plone-content-validator.cjs'),
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require(
+  path.join(__dirname, '..', 'packages', 'content-validator', 'plone-content-validator.cjs'),
 );
 
 function usage() {
@@ -52,7 +52,7 @@ if (argv[0] === 'served') {
   // Loading the mock runs the check; it rejects `ready` with the problems
   // already listed on stderr. Exit explicitly: its content watchers would
   // otherwise keep the process alive.
-  const { ready } = require(path.join(__dirname, '..', 'tests-playwright', 'fixtures', 'mock-plone-api.cjs'));
+  const { ready } = require(path.join(__dirname, '..', 'packages', 'mock-api', 'mock-plone-api.cjs'));
   ready.then(
     () => { console.log('[content-check] served content is valid'); process.exit(0); },
     (err) => { console.error(`[content-check] ${err.message}`); process.exit(1); },
@@ -131,11 +131,7 @@ if (cmd === 'validate' || cmd === 'all') {
 // items carry templateId, so a form's subblocks or a table's rows go
 // unchecked — and any id read from one is bogus. Derived from the site's own
 // schemas, so it is only as complete as --schemas.
-let idFieldMap = null;
-if (schemas) {
-  const { buildIdFieldMap } = require('../packages/hydra-js/buildBlockPathMap.js');
-  idFieldMap = buildIdFieldMap(schemas, { formatMessage: (m) => m?.defaultMessage || '' });
-}
+const idFieldMap = idFieldMapFor(schemas);
 
 if (cmd === 'check' || cmd === 'all') {
   if (cmd === 'all') console.log('');

@@ -116,7 +116,7 @@ describe('ploneFetchItems', () => {
   test('an error response fails loudly, not as zero results', async () => {
     // A stock Plone 6.2 answers an operation it lacks (string.search) with
     // 400 {"message": "Invalid query."}. That body has no `items`, so it was
-    // read as an empty result: the LECC search page said "No results found"
+    // read as an empty result: a site's search page said "No results found"
     // for every term and nothing anywhere said why.
     global.fetch = async () => ({
       ok: false,
