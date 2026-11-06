@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search } from './tools.mjs';
+import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -431,5 +431,76 @@ describe('files an agent staged (stage_media) in a page change', () => {
     await expect(previewLayout(editing(), {
       blocks: [{ '@type': 'image', url: 'media:a' }], mintId: () => 'x', check: passes, heldFile: null, render: async () => ({}),
     })).rejects.toThrow(/keeps no files/);
+  });
+});
+
+describe('a new page given its first blocks', () => {
+  const passes = async () => {};
+  /** A page in its editor, starting with `start` (uid: block), with text blocks and a title block. */
+  const created = (start) => {
+    const did = [];
+    const formData = { '@type': 'Document', title: 'New', modified: 'v1', blocks: { ...start }, blocks_layout: { items: Object.keys(start) } };
+    const blockType = { blockSchema: { properties: { value: { widget: 'slate' } } }, regions: [] };
+    return {
+      did,
+      formData,
+      getPage: async () => ({
+        path: '/new', version: 'v1', formData, lockedBy: null,
+        blockPathMap: { _page: { blockType: 'Document' }, ...Object.fromEntries(Object.entries(formData.blocks).map(([uid, b]) => [uid, { blockType: b['@type'] }])) },
+      }),
+      getDraft: async () => formData,
+      getBlockSchemas: async () => ({
+        page: { regions: [{ region: 'items', allowedBlocks: ['slate', 'title'] }], contentType: 'Document' },
+        types: {
+          Document: { title: 'Page', regions: [{ region: 'items', allowedBlocks: ['slate', 'title'] }], blockSchema: { properties: { title: { title: 'Title' } } } },
+          slate: { title: 'Text', ...blockType },
+          title: { title: 'Title', blockSchema: { properties: {} }, regions: [] },
+        },
+      }),
+      insert: async ({ block }) => {
+        did.push('insert');
+        const uid = `added-${did.length}`;
+        formData.blocks[uid] = block;
+        formData.blocks_layout.items.push(uid);
+        return uid;
+      },
+      remove: async (uid) => {
+        did.push(`remove ${uid}`);
+        delete formData.blocks[uid];
+        formData.blocks_layout.items = formData.blocks_layout.items.filter((id) => id !== uid);
+      },
+      save: async () => { did.push('save'); return { version: 'v2', uploaded: {} }; },
+    };
+  };
+  const fill = (agent) => fillNewPage(agent, { blocks: [{ '@uid': 'intro', '@type': 'slate', value: 'Hello' }], mintId: () => 'minted', check: passes });
+
+  it('replaces the empty block the add form leaves to type in', async () => {
+    const agent = created({ title: { '@type': 'title' }, empty: { '@type': 'slate', value: [{ type: 'p', children: [{ text: '' }] }] } });
+    await fill(agent);
+    expect(agent.did).toEqual(['insert', 'remove empty', 'save']);
+  });
+
+  it('replaces one with no value yet, as a type with no starting blocks gets', async () => {
+    const agent = created({ empty: { '@type': 'slate' } });
+    await fill(agent);
+    expect(agent.did).toEqual(['insert', 'remove empty', 'save']);
+  });
+
+  it('keeps a title block, which holds nothing but draws the title', async () => {
+    const agent = created({ title: { '@type': 'title' } });
+    await fill(agent);
+    expect(agent.did).toEqual(['insert', 'save']);
+  });
+
+  it('keeps a block with something in it', async () => {
+    const agent = created({ text: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Kept' }] }] } });
+    await fill(agent);
+    expect(agent.did).toEqual(['insert', 'save']);
+  });
+
+  it("keeps a template's empty block", async () => {
+    const agent = created({ slot: { '@type': 'slate', fixed: true, slotId: 'a', templateId: '/t', value: [{ type: 'p', children: [{ text: '' }] }] } });
+    await fill(agent);
+    expect(agent.did).toEqual(['insert', 'save']);
   });
 });
