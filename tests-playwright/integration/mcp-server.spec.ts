@@ -62,20 +62,40 @@ test.describe('MCP server', () => {
 
     // Same page, same path: the edit lands on the draft.
     const reading = (await call('get_page', { path })).json();
-    expect(reading).toMatchObject({ path, draft: true });
+    expect(reading).toMatchObject({ path, draft: { path: '/_test_data/copy_of_another-page-2' } });
+    expect(reading.draft.url).toMatch(/^http.*\/_test_data\/copy_of_another-page-2$/);
+
+    // Found by what it is, not by going through the site: it names its page.
+    const waiting = (await call('search', { reviewState: ['private'], path: '/_test_data' })).json();
+    expect(waiting.items.find((i: { path: string }) => i.path === reading.draft.path).draftOf).toBe(path);
     const edited = (await call('edit_blocks', {
       path,
       expectedVersion: reading.version,
       ops: [{ op: 'update', id: '_page', set: { title: 'Title on the draft' } }],
     })).json();
-    expect(edited.draft).toBe(true);
+    expect(edited.draft).toEqual(reading.draft);
     expect((await call('get_page', { path })).json().title).toBe('Title on the draft');
 
     // Visitors still see the page as it was, unless the draft is asked for.
     expect((await call('view_page', { path })).json().renderedText).not.toContain('Title on the draft');
     const shown = (await call('view_page', { path, draft: true })).json();
-    expect(shown).toMatchObject({ path, draft: true });
+    expect(shown).toMatchObject({ path, draft: reading.draft });
     expect(shown.renderedText).toContain('Title on the draft');
+
+    // An emergency: an edit can choose the live page, and is told the draft hasn't got it.
+    const live = (await call('get_page', { path, live: true })).json();
+    expect(live).toMatchObject({ path, live: true });
+    expect(live.title).not.toBe('Title on the draft');
+    const fixed = (await call('edit_blocks', {
+      path,
+      live: true,
+      expectedVersion: live.version,
+      ops: [{ op: 'update', id: '_page', set: { description: 'Fixed on the live page' } }],
+    })).json();
+    expect(fixed.live).toBe(true);
+    expect(fixed.warning).toMatch(/draft does not have this change/);
+    expect((await call('get_page', { path, live: true })).json().description).toBe('Fixed on the live page');
+    expect((await call('get_page', { path })).json().description).not.toBe('Fixed on the live page');
 
     // Published: the page takes it, at the same path, and has no draft now.
     const offered = (await call('get_transitions', { path })).json();
@@ -84,8 +104,16 @@ test.describe('MCP server', () => {
     expect(done).not.toHaveProperty('draft');
     const after = (await call('get_page', { path })).json();
     expect(after.title).toBe('Title on the draft');
+    // What the warning said: publishing the draft replaces the live page, the fix included.
+    expect(after.description).not.toBe('Fixed on the live page');
     expect(after).not.toHaveProperty('draft');
     expect((await call('view_page', { path, draft: true })).text).toMatch(/has no draft/);
+    // With no draft, there is only the live page to edit, and nothing to warn of.
+    const plain = (await call('get_page', { path, live: true })).json();
+    const edited2 = (await call('edit_blocks', {
+      path, live: true, expectedVersion: plain.version, ops: [{ op: 'update', id: '_page', set: { description: 'Plain' } }],
+    })).json();
+    expect(edited2).not.toHaveProperty('warning');
   });
 
   test('lists its tools', async () => {
@@ -111,6 +139,7 @@ test.describe('MCP server', () => {
     expect(instructions).not.toMatch(/no separate publishing step/);
     expect(instructions).toMatch(/reviewState/);
     expect(instructions).toMatch(/get_transitions/);
+    expect(instructions).toMatch(/"live"/);
     expect(instructions).toMatch(/Publish only when the person has asked/);
     expect(instructions).toMatch(/search finds pages by their title, their summary and the text of their Text blocks/);
     // Never how to behave: that is the agent's and its host's, not the site's.

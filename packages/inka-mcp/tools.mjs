@@ -90,15 +90,36 @@ export async function fillNewPage(agent, { blocks, mintId, check }) {
 /** What a text search looks in: Plone's SearchableText, with the text of Text blocks (plone.restapi's blocks indexer). */
 const SEARCHED = 'titles, summaries and the text of Text blocks; other blocks\' fields may not be searched';
 
-export async function search(site, { text, types, path, limit, start }) {
-  if (!text && !types) throw new Error('search needs "text" or "types"; to browse a section use list_children');
-  const found = await site.search({ text, types, path, limit, start });
+export async function search(site, { text, types, reviewState, path, limit, start }) {
+  if (!text && !types && !reviewState) throw new Error('search needs "text", "types" or "reviewState"; to browse a section use list_children');
+  const found = await namingDrafts(site, await site.search({ text, types, reviewState, path, limit, start }));
   return text ? { ...found, searched: SEARCHED } : found;
+}
+
+/** A draft in a list says whose it is: it is that page, not another one. */
+async function namingDrafts(site, found) {
+  const items = await Promise.all(found.items.map(async ({ isDraft, ...item }) => (
+    isDraft ? { ...item, draftOf: await site.originalOf(item.path) } : item
+  )));
+  return { ...found, items };
 }
 
 /** The pages directly inside `path`, in their order. */
 export async function listChildren(site, { path, limit, start }) {
-  return site.search({ path, depth: 1, limit, start });
+  return namingDrafts(site, await site.search({ path, depth: 1, limit, start }));
+}
+
+/** What reading or editing a page reaches: its draft if it has one, unless the live page is asked for. */
+export const editTarget = (path, draft, live) => (draft && !live ? draft.path : path);
+
+/** Publishing a draft copies all of it over the live page, so a fix made only on the live page goes. */
+export const LIVE_EDIT_WARNING = 'The page\'s draft does not have this change, and publishing the draft replaces the live page with it. '
+  + 'Make the same change on the draft too, or it will be lost when the draft is published.';
+
+/** The page's draft, with the address a person can open it at; null if it has none. */
+export async function draftInfo(site, path) {
+  const draft = await site.draftOf(path);
+  return draft && { path: draft, url: await site.adminUrl(draft) };
 }
 
 /** Refuse to act on a page someone else is editing, or one that has changed since the agent read it. */
@@ -151,8 +172,9 @@ export async function deletePage(site, { path, expectedVersion }) {
  * "version" is the draft's, as that is what get_page and edit_blocks work on.
  */
 export async function getTransitions(site, { path }) {
-  const [{ state, draft, transitions }, forms, { version, lockedBy }] = await Promise.all([
-    site.state(path), site.stateForms(path), site.status(await site.draftOf(path) ?? path),
+  const draft = await draftInfo(site, path);
+  const [{ state, transitions }, forms, { version, lockedBy }] = await Promise.all([
+    site.state(path), site.stateForms(path), site.status(draft?.path ?? path),
   ]);
   const update = forms.update ? [{ id: 'update', label: `Update — stays ${state.label}` }] : [];
   return {
@@ -178,12 +200,12 @@ export async function transitionPage(site, { path, id, data, expectedVersion }) 
   await checkVersion(site, await site.draftOf(path) ?? path, expectedVersion);
   const moved = await site.transition({ path, id, data });
   const now = id === 'checkout' ? path : moved?.redirect ?? path;
-  const [page, draft] = await Promise.all([site.get(now), site.draftOf(now)]);
+  const [page, draft] = await Promise.all([site.get(now), draftInfo(site, now)]);
   return {
     path: now,
     reviewState: page.review_state,
-    version: draft ? (await site.status(draft)).version : page.modified,
-    ...(draft && { draft: { path: draft } }),
+    version: draft ? (await site.status(draft.path)).version : page.modified,
+    ...(draft && { draft }),
   };
 }
 

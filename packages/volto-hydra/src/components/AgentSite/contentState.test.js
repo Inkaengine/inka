@@ -22,6 +22,11 @@ function plone({
     '/news': { id: 'news', exclude_from_nav: true, ...(draft && { working_copy: { '@id': `${site}/copy_of_news` }, working_copy_of: null }) },
     // The copy names both, as Volto's toasts read them.
     '/copy_of_news': { id: 'copy_of_news', working_copy: { '@id': `${site}/copy_of_news` }, working_copy_of: { '@id': `${site}/news` } },
+    '/copy_of_news/@workflow': {
+      state: { id: 'private', title: 'Private' },
+      transitions: [{ '@id': `${site}/copy_of_news/@workflow/publish`, title: 'Publish' }],
+    },
+    '/copy_of_news/@sharing': { available_roles: [], entries: [], inherit: true },
     '/copy_of_news/@actions': { object: [], object_buttons: [{ id: 'iterate_checkin' }] },
     '/copy_of_news/@workingcopy': { working_copy: { '@id': `${site}/copy_of_news` }, working_copy_of: { '@id': `${site}/news` } },
     '/news/@sharing': {
@@ -211,5 +216,23 @@ describe('a page with a draft', () => {
     const cms = withDraft();
     expect(await stateOf(cms).transition({ path: '/news', id })).toEqual({ redirect: '/news' });
     expect(cms.wrote).toEqual([[method, '/copy_of_news/@workingcopy']]);
+  });
+
+  it('offers no workflow on the draft itself: publishing it there would be a second public page', async () => {
+    const got = await stateOf(withDraft()).get('/copy_of_news');
+    expect(got.transitions.map((t) => t.id)).toEqual(['checkin', 'cancel-checkout']);
+  });
+
+  it('names the page a draft belongs to', async () => {
+    expect(await stateOf(withDraft()).originalOf('/copy_of_news')).toBe('/news');
+    await expect(stateOf(withDraft()).originalOf('/news')).rejects.toThrow(/not a draft/);
+  });
+
+  it('offers no address or listing while the page has a draft: Plone has locked the page', async () => {
+    const forms = await stateOf(plone({ draft: true, buttons: ['delete'] })).getForms('/news');
+    expect(Object.keys(forms.publish.schema.properties)).toEqual(['comment', 'effective', 'expires', 'include_children']);
+    expect(forms.publish.data).toEqual({});
+    expect(Object.keys(forms.update.schema.properties)).toEqual(['Reader', 'Editor', 'inherit']);
+    expect(forms.update.data).toEqual({ Reader: ['staff'], Editor: ['ann'], inherit: true });
   });
 });

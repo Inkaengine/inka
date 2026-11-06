@@ -282,5 +282,7 @@ export function siteOn(page) {
     stateForms: (path) => call('stateForms', path),
     transition: (op) => call('transition', op),
     draftOf: (path) => call('draftOf', path),
+    originalOf: (path) => call('originalOf', path),
+    adminUrl: (path) => call('adminUrl', path),
   };
 }

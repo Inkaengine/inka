@@ -228,6 +228,15 @@ function lockOn(path) {
   return locks[path];
 }
 
+/**
+ * plone.app.iterate's lock on a page with a copy out, for as long as it is out,
+ * per session like the copy. Its rules are plone.locking's: lock() leaves a locked
+ * page as it is, @lock's DELETE can't remove a lock of another type, and a save
+ * must carry its token.
+ */
+const sessionIterateLocks = {};
+const iterateLockOn = (path, sessionId) => sessionIterateLocks[sessionId]?.[path];
+
 /** Is `path` locked by someone other than the user making `req`? */
 function lockedAgainst(req, path) {
   const lock = lockOn(path);
@@ -902,6 +911,7 @@ function formatSearchItem(content, baseUrl) {
     'title': content.title,
     'description': content.description || '',
     'review_state': content.review_state || 'published',
+    'is_working_copy': content.is_working_copy === true,
     'UID': content.UID,
     'is_folderish': content.is_folderish !== undefined ? content.is_folderish : true,
     'hasPreviewImage': hasPreviewImage,
@@ -2392,7 +2402,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     'exclude_from_nav': transformed.exclude_from_nav || false,
     'created': transformed.created || '2025-01-01T12:00:00+00:00',
     'modified': transformed.modified || '2025-01-01T12:00:00+00:00',
-    'lock': lockOn(cleanPath) || transformed.lock || UNLOCKED,
+    'lock': iterateLockOn(cleanPath, sessionId) || lockOn(cleanPath) || transformed.lock || UNLOCKED,
     'parent': parent,
     // Plone serialises `language` as a vocabulary term, never the bare code a
     // fixture writes — and Volto reads `content.language.token` throughout its
@@ -4628,9 +4638,25 @@ app.post(/.*\/@workingcopy$/, (req, res) => {
 
   // A copy goes through the workflow from its start, whatever its original's
   // state: visitors can't see it, while the published original stays put.
-  setSessionContent(sessionId, copyPath, { ...content, id: `copy_of_${id}`, review_state: 'private', workflow_history: {} });
+  setSessionContent(sessionId, copyPath, { ...content, id: `copy_of_${id}`, review_state: 'private', workflow_history: {}, is_working_copy: true });
   if (!sessionWorkingCopies[sessionId]) sessionWorkingCopies[sessionId] = {};
   sessionWorkingCopies[sessionId][copyPath] = cleanPath;
+  const time = Date.now() / 1000;
+  sessionIterateLocks[sessionId] = {
+    ...sessionIterateLocks[sessionId],
+    [cleanPath]: {
+      locked: true,
+      stealable: false,
+      name: 'iterate.lock',
+      creator: requestUser(req),
+      creator_name: requestUser(req),
+      creator_url: `${req.protocol}://${req.get('host')}/author/${requestUser(req)}`,
+      time,
+      created: new Date(Math.floor(time) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      token: `mock-iterate-lock-${Math.random().toString(36).slice(2)}`,
+      timeout: 31557600,
+    },
+  };
 
   res.status(201).json({ '@id': `http://localhost:${PORT}${copyPath}` });
 });
@@ -4656,12 +4682,13 @@ function endWorkingCopy(req, res) {
     });
   }
   delete sessionWorkingCopies[sessionId][cleanPath];
+  delete sessionIterateLocks[sessionId]?.[baseline];
 
   // Checking in (PATCH) puts what the copy holds on the original, which keeps
   // its own address, state and trail. Discarding (DELETE) leaves it as it was.
   if (req.method === 'PATCH') {
     const original = getContent(baseline, sessionId);
-    const { id: _id, review_state: _state, workflow_history: _trail, ...held } = getContent(cleanPath, sessionId);
+    const { id: _id, review_state: _state, workflow_history: _trail, is_working_copy: _copy, ...held } = getContent(cleanPath, sessionId);
     setSessionContent(sessionId, baseline, { ...original, ...held, modified: new Date().toISOString() });
   }
 
@@ -5550,7 +5577,8 @@ app.get('*/@search', (req, res) => {
   // block_types: plone.volto's KeywordIndex of every block's @type on a page,
   // container children included.
   const blockTypes = req.query.block_types === undefined ? null : [req.query.block_types].flat();
-  if (searchableText || titleQuery || blockTypes) {
+  const reviewStates = req.query.review_state === undefined ? null : [req.query.review_state].flat();
+  if (searchableText || titleQuery || blockTypes || reviewStates) {
     // The site as this session has it, as Plone's catalog does: its own new
     // and edited pages included, by the text in their blocks too.
     items = allContentPaths(getSessionId(req))
@@ -5578,6 +5606,8 @@ app.get('*/@search', (req, res) => {
       const types = Array.isArray(portalType) ? portalType : [portalType];
       items = items.filter((item) => types.includes(item['@type']));
     }
+    // The catalog indexes review_state, so a search can be by that alone.
+    if (reviewStates) items = items.filter((item) => reviewStates.includes(item.review_state));
   }
   // Handle path.query with path.depth=0 (exact match for specific content)
   else
@@ -6223,6 +6253,8 @@ app.post('*/@lock', (req, res) => {
   const contentPath = req.path.replace(/\/@lock$/, '') || '/';
   const user = requestUser(req);
   if (!user) return res.status(401).json({ error: { type: 'Unauthorized', message: 'Locking needs a logged-in user.' } });
+  const iterateLock = iterateLockOn(contentPath, getSessionId(req));
+  if (iterateLock) return res.json(iterateLock);
   // Plone's lock() leaves another user's lock as it is, and answers with it.
   if (!lockedAgainst(req, contentPath)) {
     // plone.restapi's lock_info: `time` in epoch seconds, `created` the same
@@ -6250,6 +6282,8 @@ app.post('*/@lock', (req, res) => {
  */
 app.delete('*/@lock', (req, res) => {
   const contentPath = req.path.replace(/\/@lock$/, '') || '/';
+  const iterateLock = iterateLockOn(contentPath, getSessionId(req));
+  if (iterateLock) return res.json(iterateLock);
   if (!lockedAgainst(req, contentPath) || req.body?.force) delete locks[contentPath];
   res.json(lockOn(contentPath) || UNLOCKED);
 });
@@ -6671,7 +6705,9 @@ app.patch('*', (req, res) => {
   console.log(logMsg);
 
   // Plone refuses to change a page another user holds the lock on.
-  if (lockedAgainst(req, cleanPath.replace(/\/$/, '') || '/')) {
+  // A page with a working copy out is locked, unless the save carries the token.
+  const iterateLock = iterateLockOn(cleanPath.replace(/\/$/, '') || '/', sessionId);
+  if (lockedAgainst(req, cleanPath.replace(/\/$/, '') || '/') || (iterateLock && req.get('Lock-Token') !== iterateLock.token)) {
     return res.status(403).json({ error: { type: 'Forbidden', message: 'Resource is locked.' } });
   }
 

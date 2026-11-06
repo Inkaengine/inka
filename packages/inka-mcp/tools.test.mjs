@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, getTransitions, transitionPage } from './tools.mjs';
+import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -258,6 +258,27 @@ describe('what the results say of the site', () => {
       total: 0, searched: 'titles, summaries and the text of Text blocks; other blocks\' fields may not be searched',
     });
     expect(await search(site, { types: ['Event'] })).not.toHaveProperty('searched');
+  });
+
+  it('searches by state alone, for what is not live yet', async () => {
+    const asked = [];
+    const site = { search: async (query) => { asked.push(query); return { total: 0, items: [] }; } };
+    await search(site, { reviewState: ['private'] });
+    expect(asked[0].reviewState).toEqual(['private']);
+    await expect(search(site, {})).rejects.toThrow(/"text", "types" or "reviewState"/);
+  });
+
+  it.each([['search', search, { text: 'x' }], ['list_children', listChildren, { path: '/' }]])('%s names the page a draft belongs to', async (_name, tool, args) => {
+    const site = {
+      search: async () => ({
+        total: 2,
+        items: [{ path: '/copy_of_news', title: 'News', isDraft: true, reviewState: 'private' }, { path: '/about', title: 'About', reviewState: 'published' }],
+      }),
+      originalOf: async (path) => (path === '/copy_of_news' ? '/news' : null),
+    };
+    const { items } = await tool(site, args);
+    expect(items[0]).toEqual({ path: '/copy_of_news', title: 'News', draftOf: '/news', reviewState: 'private' });
+    expect(items[1]).toEqual({ path: '/about', title: 'About', reviewState: 'published' });
   });
 
   it('a save says the page\'s state, so whether visitors see it now', async () => {
@@ -565,6 +586,7 @@ describe('transitions', () => {
       transition: async (op) => { did.push(op); return null; },
       get: async () => ({ review_state: 'published', modified: 'v2' }),
       draftOf: async () => null,
+      adminUrl: async (path) => `https://admin.example${path}`,
       ...over,
     };
   };
@@ -629,7 +651,7 @@ describe('transitions', () => {
 
     it('lists it as the page\'s state, with the draft\'s version, which is what gets edited', async () => {
       const got = await getTransitions(withDraft(), { path: '/news' });
-      expect(got).toMatchObject({ path: '/news', version: 'draft-v', draft: { path: '/copy_of_news' } });
+      expect(got).toMatchObject({ path: '/news', version: 'draft-v', draft: { path: '/copy_of_news', url: 'https://admin.example/copy_of_news' } });
       expect(got.transitions[0]).not.toHaveProperty('relocates');
     });
 
@@ -647,7 +669,7 @@ describe('transitions', () => {
         status: async (path) => ({ version: path === '/copy_of_news' ? 'draft-v' : 'v1', lockedBy: null }),
       });
       expect(await transitionPage(made, { path: '/news', id: 'checkout', expectedVersion: 'v1' }))
-        .toEqual({ path: '/news', reviewState: 'published', version: 'draft-v', draft: { path: '/copy_of_news' } });
+        .toEqual({ path: '/news', reviewState: 'published', version: 'draft-v', draft: { path: '/copy_of_news', url: 'https://admin.example/copy_of_news' } });
     });
 
     it.each([
@@ -657,5 +679,19 @@ describe('transitions', () => {
     ])('refuses to %s it until the draft is published or discarded', async (_what, tool, args) => {
       await expect(tool(withDraft(), args)).rejects.toThrow(/has a draft/);
     });
+  });
+});
+
+describe('what an edit reaches', () => {
+  const draft = { path: '/copy_of_news', url: 'https://admin.example/copy_of_news' };
+
+  it('is the draft if there is one, unless the live page is asked for', () => {
+    expect(editTarget('/news', draft)).toBe('/copy_of_news');
+    expect(editTarget('/news', draft, true)).toBe('/news');
+  });
+
+  it('is the page if it has no draft', () => {
+    expect(editTarget('/news', null)).toBe('/news');
+    expect(editTarget('/news', null, true)).toBe('/news');
   });
 });

@@ -7,6 +7,7 @@
  *   getForms(path)  { [transition id]: { schema, data } } — what it can set
  *   transition({ path, id, data })  null, or { redirect } if the page moved
  *   draftOf(path)   the path of the page's draft, or null
+ *   originalOf(path)  the page a draft belongs to
  *
  * A page has at most one draft, and having one is part of its state: `draft`
  * in get(), with publishing and discarding it on offer on the page itself. In
@@ -96,17 +97,26 @@ export function contentState({ fetchJson, toPath }) {
 
   const draftOf = async (path) => draftPathOf(await fetchJson(path));
 
+  async function originalOf(path) {
+    const { working_copy_of: original } = await fetchJson(path);
+    if (!original) throw new Error(`${path} is not a draft`);
+    return toPath(original['@id']);
+  }
+
   async function get(path) {
-    const [actions, workflow, draft] = await Promise.all([
-      fetchJson(at(path, '@actions')), fetchJson(at(path, '@workflow')), draftOf(path),
+    const [actions, workflow, page] = await Promise.all([
+      fetchJson(at(path, '@actions')), fetchJson(at(path, '@workflow')), fetchJson(path),
     ]);
+    const draft = draftPathOf(page);
     // Only the copy offers checking in, so that is who is asked.
     const draftActions = draft && await fetchJson(at(draft, '@actions'));
     // Categories as plone.restapi records them: these two are not the same list.
     const has = (id) => actions.object.some((a) => a.id === id);
     const hasButton = (id) => actions.object_buttons.some((a) => a.id === id);
     const canCheckIn = hasButton('iterate_checkin') || draftActions?.object_buttons.some((a) => a.id === 'iterate_checkin');
-    const transitions = workflow.transitions.map((t) => ({ id: transitionId(t), label: t.title }));
+    // A draft goes live by being checked in. Taking it through the workflow
+    // would make it a second public page, beside the one it is a draft of.
+    const transitions = page.working_copy_of ? [] : workflow.transitions.map((t) => ({ id: transitionId(t), label: t.title }));
     // Checking out a copy IS a state change: the page gains a draft only its
     // author sees, while the published version stays put.
     if (hasButton('iterate_checkout')) {
@@ -130,8 +140,11 @@ export function contentState({ fetchJson, toPath }) {
     };
   }
 
-  /** Sharing, one field per role (Plone's @sharing has one row per person), with the page's own fields. */
-  async function updateForm(path, page) {
+  /**
+   * Sharing, one field per role (Plone's @sharing has one row per person), with
+   * `pageFields`, the page's own fields it can set.
+   */
+  async function updateForm(path, pageFields) {
     const sharing = await fetchJson(at(path, '@sharing'));
     const properties = {};
     const data = {};
@@ -147,31 +160,33 @@ export function contentState({ fetchJson, toPath }) {
     return formOf(
       {
         ...properties,
-        ...ADDRESS_FIELDS,
+        ...(pageFields && ADDRESS_FIELDS),
         inherit: {
           title: 'Inherit permissions from parent',
           description: 'On, people given access further up the tree also have it here.',
           type: 'boolean',
         },
       },
-      { ...data, id: page.id, exclude_from_nav: Boolean(page.exclude_from_nav), inherit: sharing.inherit },
+      { ...data, ...pageFields, inherit: sharing.inherit },
     );
   }
 
   async function getForms(path) {
     const { transitions, effective } = await get(path);
     const page = await fetchJson(path);
-    const pageFields = { id: page.id, exclude_from_nav: Boolean(page.exclude_from_nav) };
+    // Checking out locks the page against saves, so while it has a draft its
+    // own fields can't be written (the draft's title and the like are edited there).
+    const pageFields = draftPathOf(page) ? null : { id: page.id, exclude_from_nav: Boolean(page.exclude_from_nav) };
     const forms = {};
     for (const { id, relocates } of transitions) {
       // Working copies take no body at all (neither PATCH nor DELETE does).
       if (relocates) forms[id] = FORM_WITH_NOTHING;
       // The moment a page becomes visible is when its address and whether it
       // is listed matter. Retracting asks for neither.
-      else if (id === 'publish') forms[id] = formOf({ ...ADDRESS_FIELDS, ...WORKFLOW_FIELDS }, pageFields);
+      else if (id === 'publish' && pageFields) forms[id] = formOf({ ...ADDRESS_FIELDS, ...WORKFLOW_FIELDS }, pageFields);
       else forms[id] = formOf(WORKFLOW_FIELDS, {});
     }
-    if (effective.canShare) forms.update = await updateForm(path, page);
+    if (effective.canShare) forms.update = await updateForm(path, pageFields);
     return forms;
   }
 
@@ -239,5 +254,5 @@ export function contentState({ fetchJson, toPath }) {
     return writePageFields(path, data);
   }
 
-  return { get, getForms, transition, draftOf };
+  return { get, getForms, transition, draftOf, originalOf };
 }

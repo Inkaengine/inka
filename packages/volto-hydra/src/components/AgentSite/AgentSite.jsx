@@ -20,7 +20,7 @@ import { contentState } from './contentState';
 
 /** A rejected action's error as an Error naming the call. */
 const failure = (what, error) => new Error(
-  `${what}: ${error?.response?.body?.message || error?.message || error?.status || 'failed'}`,
+  `${what}: ${error?.response?.body?.error?.message || error?.response?.body?.message || error?.message || error?.status || 'failed'}`,
 );
 
 export function siteApi(dispatch, history, token) {
@@ -47,6 +47,7 @@ export function siteApi(dispatch, history, token) {
     type: item['@type'],
     description: item.description,
     reviewState: item.review_state,
+    ...(item.is_working_copy && { isDraft: true }),
   });
   return {
     /**
@@ -54,14 +55,18 @@ export function siteApi(dispatch, history, token) {
      * text; `types` narrows by content type; `depth: 1` lists the direct
      * children of `path`, in their order; `blockTypes` finds the pages that
      * use those block types (plone.volto's block_types index); `uid` finds the
-     * item with that UID. Paths come back site-relative.
+     * item with that UID; `reviewState` narrows by workflow state. Paths come
+     * back site-relative. Which results are drafts is metadata, not an index, so
+     * it is shown on a result but can't be searched for.
      */
-    async search({ path = '/', text, types, blockTypes, uid, depth, limit = 25, start = 0 }) {
+    async search({ path = '/', text, types, blockTypes, uid, reviewState, depth, limit = 25, start = 0 }) {
       const response = await run('search', searchContent(path === '/' ? '' : path, {
         SearchableText: text,
         UID: uid,
         portal_type: types,
         block_types: blockTypes,
+        review_state: reviewState,
+        metadata_fields: 'is_working_copy',
         'path.depth': depth,
         ...(depth === 1 && { sort_on: 'getObjPositionInParent' }),
         b_size: limit,
@@ -120,6 +125,12 @@ export function siteApi(dispatch, history, token) {
 
     /** The path of the page's draft, or null (contentState). */
     draftOf: (path) => state.draftOf(path),
+
+    /** The page a draft belongs to (contentState). */
+    originalOf: (path) => state.originalOf(path),
+
+    /** The address of `path` in this admin, for a person to open. */
+    adminUrl: (path) => `${window.location.origin}${path}`,
 
     /** Take a transition; resolves to null, or { redirect } if the page moved (contentState). */
     transition: (op) => state.transition(op),
