@@ -151,7 +151,7 @@ export {
  * function's return shape: block OBJECTS for object_list, block IDs for blocks_layout.
  *
  * @param {Object} parentBlock - The parent block containing the container
- * @param {Object} containerConfig - Container configuration with fieldName, isObjectList, dataPath
+ * @param {Object} containerConfig - Container configuration with fieldName, isObjectList, regionPath
  * @returns {Array} The items array (copy for object_list, items array for blocks)
  */
 export function getContainerItems(parentBlock, containerConfig) {
@@ -236,12 +236,12 @@ function setContainerItems(
  * getAllContainerFields) and get back ordered `{ id, type, data }` entries,
  * without knowing whether the container is a blocks_layout region (ids in a
  * shared `blocks` dict) or an object_list (inline item array), or which region
- * / dataPath the items live at. Storage shape stays inside this module.
+ * / regionPath the items live at. Storage shape stays inside this module.
  *
  * Presentation (titles, icons) is intentionally left to the caller.
  *
  * @param {Object} parentBlock - The block (or page formData) holding the container
- * @param {Object} containerConfig - { fieldName, region?, isObjectList?, dataPath?, idField?, typeField? }
+ * @param {Object} containerConfig - { fieldName, region?, isObjectList?, regionPath?, idField?, typeField? }
  * @returns {Array<{id: string, type: string, data: Object}>}
  */
 export function listContainerChildren(parentBlock, containerConfig) {
@@ -697,8 +697,8 @@ export function getAllContainerFields(
   // Collect container fields, descending transparently through widget:'object'
   // wrappers (the same way buildBlockPathMap's processItem does). A container
   // nested inside an object — e.g. `rows` inside a `table` object — is block-
-  // relative at [...objectPath, fieldName], exactly the dataPath the pathMap
-  // stores, so the ops navigate it without any config-level dataPath.
+  // relative at [...objectPath, fieldName], exactly where the pathMap puts it,
+  // so the ops navigate it from the object prefix alone.
   // Title-case a schema field name for display (the object wrapper's own label
   // when it declares no title): 'table' → 'Table'.
   const titleize = (name) =>

@@ -1351,12 +1351,11 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
 describe('mergeTemplatesIntoPage: object_list write-back on frozen input', () => {
   // INITIAL_DATA arrives deep-frozen, and mergeTemplatesIntoPage only
   // shallow-copies each block — so its nested objects are still the frozen
-  // originals. Writing an expanded object_list back through a multi-level
-  // `dataPath` (slateTable's rows live at `table.rows`) descended into that
+  // originals. Writing an expanded object_list back when it sits inside an
+  // object (slateTable's rows live at `table.rows`) descended into that
   // frozen child and threw "Cannot assign to read only property 'rows'".
-  // slateTable is the only shipped block with a depth-2 dataPath, and the
-  // only fixture pairing it with a template is docs/examples/table — which
-  // no functional test loaded, so the crash shipped unnoticed.
+  // The only fixture pairing slateTable with a template is docs/examples/table
+  // — which no functional test loaded, so the crash shipped unnoticed.
 
   /** Recursively Object.freeze an object graph, mirroring INITIAL_DATA. */
   function deepFreeze(value) {
@@ -1370,20 +1369,26 @@ describe('mergeTemplatesIntoPage: object_list write-back on frozen input', () =>
   }
 
   // slateTable schema as registered in packages/volto-hydra/src/index.js:
-  // `rows` is an object_list whose data lives at block.table.rows — a
-  // depth-2 dataPath, the shape that triggers the frozen-write crash.
+  // `rows` is an object_list inside the `table` object, at block.table.rows —
+  // the shape that triggers the frozen-write crash.
   const blocksConfig = {
     slateTable: {
       blockSchema: {
         properties: {
-          rows: {
-            widget: 'object_list',
-            idField: 'key',
-            dataPath: ['table', 'rows'],
+          table: {
+            widget: 'object',
             schema: {
-              fieldsets: [{ id: 'default', title: 'Default', fields: ['cells'] }],
               properties: {
-                cells: { widget: 'object_list', idField: 'key', schema: { properties: {} } },
+                rows: {
+                  widget: 'object_list',
+                  idField: 'key',
+                  schema: {
+                    fieldsets: [{ id: 'default', title: 'Default', fields: ['cells'] }],
+                    properties: {
+                      cells: { widget: 'object_list', idField: 'key', schema: { properties: {} } },
+                    },
+                  },
+                },
               },
             },
           },
@@ -1423,7 +1428,7 @@ describe('mergeTemplatesIntoPage: object_list write-back on frozen input', () =>
     intl: { formatMessage: ({ defaultMessage }) => defaultMessage || '' },
   });
 
-  test('writes a slateTable rows object_list back through a depth-2 dataPath without throwing', async () => {
+  test('writes a slateTable rows object_list back inside its object without throwing', async () => {
     const page = deepFreeze(makeTablePage());
 
     const { merged } = await mergeTemplatesIntoPage(page, mergeOptions());

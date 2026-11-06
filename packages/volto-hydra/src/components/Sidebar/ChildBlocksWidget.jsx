@@ -47,7 +47,6 @@ const messages = defineMessages({
 /**
  * Get child blocks for a specific container field
  * Supports both standard containers (blocks + blocks_layout) and object_list (array with @id)
- * @param {Array|null} dataPath - Path to actual data location (e.g., ['table', 'rows'])
  */
 // Presentation: derive a display title from a storage-agnostic child
 // descriptor ({ id, type, data }) produced by listContainerChildren.
@@ -66,7 +65,7 @@ const childDisplayTitle = (child, isObjectList, index) => {
 };
 
 // Children of a selected block's container. Storage shape (region / object_list
-// / dataPath) is hidden by listContainerChildren; we only add the display title.
+// / regionPath) is hidden by listContainerChildren; we only add the display title.
 const getChildBlocks = (blockData, containerConfig) =>
   listContainerChildren(blockData, containerConfig).map((child, index) => ({
     ...child,
