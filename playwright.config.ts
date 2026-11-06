@@ -56,6 +56,7 @@ export default defineConfig({
     // does) override this list; the ones that don't — the doc-asset capture in
     // the inka-site deploy, the demo capture — printed nothing but "Command
     // failed", so a broken screenshot could not be told from any other.
+    ...(process.env.CI ? [['github'] as const] : []),
     ['list'],
     ['html', { open: 'never' }],
     // Aggregates block-sanity field/text-style coverage across all parallel

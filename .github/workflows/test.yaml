@@ -230,7 +230,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro --reporter=github,list,html
+        run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro
         env:
           CI: true
           NO_WEBSERVER: true
@@ -359,7 +359,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-mock --reporter=github,list,html
+        run: pnpm exec playwright test --project=admin-mock
         env:
           CI: true
           NO_WEBSERVER: true
@@ -485,7 +485,7 @@ jobs:
           echo "All servers ready"
       - name: Run tests
         run: >-
-          pnpm exec playwright test --project=admin-nextjs --reporter=github,list,html
+          pnpm exec playwright test --project=admin-nextjs
           tests-playwright/integration/inline-editing-basic.spec.ts
           tests-playwright/integration/inline-editing-formatting.spec.ts
           tests-playwright/integration/inline-editing-clipboard.spec.ts
@@ -597,7 +597,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=nuxt --project=nuxt-firefox --reporter=github,list,html
+        run: pnpm exec playwright test --project=nuxt --project=nuxt-firefox
         env:
           CI: true
           NO_WEBSERVER: true
@@ -734,7 +734,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-nuxt --project=nuxt-specific --reporter=github,list,html
+        run: pnpm exec playwright test --project=admin-nuxt --project=nuxt-specific
         env:
           CI: true
           NO_WEBSERVER: true
@@ -865,7 +865,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=nextjs --project=nextjs-firefox --project=f7 --project=vanilla --project=svelte-qs --project=astro-qs --reporter=github,list,html
+        run: pnpm exec playwright test --project=nextjs --project=nextjs-firefox --project=f7 --project=vanilla --project=svelte-qs --project=astro-qs
         env:
           CI: true
           NO_WEBSERVER: true
