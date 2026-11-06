@@ -135,6 +135,8 @@ else:
     transaction.commit()
 ```
 
+A site that already holds its content, and that nobody edits, can skip that full import: `deploy_content(site, request, layout, commit=True, seed_from_live=True)` starts from what the site holds. The layout then wins everywhere, as a full import would, so an editor's change is overwritten and content the layout lacks is deleted. A site that has a base keeps it.
+
 `layout` is the folder that holds `content/`, and `redirects.json`, `relations.json`, `principals.json` or `site-settings.json` if the layout has them.
 
 A deploy refuses to overwrite a page an editor changed on the site since the base was recorded, and lists it under `must_merge` in the report. Bring that change into the layout and deploy again. A field your site's schema cannot hold looks like an edit on every page that has it, because no export can carry it back; name such fields in `ignored_fields`.

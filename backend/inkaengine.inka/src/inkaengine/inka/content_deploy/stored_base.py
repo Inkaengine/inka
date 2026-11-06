@@ -9,21 +9,26 @@ transaction as the apply. A committed deploy advances it; a dry run, a refusal
 or a failure leaves it as it was — the base can never describe content the
 site does not hold.
 
-A site with no base is refused. Its first deploy is a full import, after which
-the caller records the layout it imported with record_base.
+A site with no base is refused. Either its first deploy is a full import, after
+which the caller records the layout it imported with record_base, or, for a site
+that already holds content and that nobody edits, the deploy starts from what
+the site holds (seed_from_live).
 """
 
 from __future__ import annotations
 
+from .base_from_live import live_content_rels
 from .changeset import item_data_files
 from .delta import DeltaRefused
 from .delta import run_delta
+from .delta import serialize_live_candidates
 from BTrees.OOBTree import OOBTree
 from pathlib import Path
 from persistent.mapping import PersistentMapping
 from typing import Any
 from zope.annotation.interfaces import IAnnotations
 
+import json
 import shutil
 import tempfile
 import transaction
@@ -67,12 +72,29 @@ def record_base(site, layout: Path) -> int:
     return len(texts)
 
 
+def _seed_from_live(site, request) -> int:
+    """Take what the site holds now as its base; returns how many items.
+
+    Writes, never commits, like record_base. An item is then an update only
+    where the site really differs from the layout, and a change on the site is
+    indistinguishable from what the last deploy put there.
+    """
+    live = serialize_live_candidates(
+        site, request, {}, {}, extra=sorted(live_content_rels(site))
+    )
+    IAnnotations(site)[ANNOTATION_KEY] = PersistentMapping(
+        items=OOBTree({rel: json.dumps(data) for rel, data in live.items()}),
+        redirects=None,
+    )
+    return len(live)
+
+
 def _write_base(site, where: Path) -> None:
     """The stored base as a layout tree, for run_delta to read."""
     stored = IAnnotations(site)[ANNOTATION_KEY]
     for dirname, text in stored["items"].items():
         item = where / "content" / dirname
-        item.mkdir(parents=True)
+        item.mkdir(parents=True, exist_ok=True)
         (item / "data.json").write_text(text)
     if stored.get("redirects") is not None:
         (where / "redirects.json").write_text(stored["redirects"])
@@ -85,6 +107,7 @@ def deploy_content(
     *,
     commit: bool,
     ignored_fields: frozenset[str] = frozenset(),
+    seed_from_live: bool = False,
 ) -> dict[str, Any]:
     """Apply what `layout` changed since the last deploy, in one transaction,
     and advance the stored base with it.
@@ -92,7 +115,16 @@ def deploy_content(
     `commit=False` is a dry run: every step runs and nothing persists.
     Refused (nothing written) when the site has no base, and by the apply's
     own gates when an editor changed a page this would overwrite.
+
+    seed_from_live: a site with no base starts from what it holds, so a site
+    already imported in full moves to deploying in place without being deleted
+    once more. The layout then wins everywhere, as a full import would: an
+    editor's change is overwritten, and content the layout lacks is deleted. So
+    this is for a site nobody edits. A site that has a base keeps it.
     """
+    seeded = None
+    if seed_from_live and not has_base(site):
+        seeded = _seed_from_live(site, request)
     if not has_base(site):
         raise DeltaRefused(
             "no base recorded on the site: import the layout in full, then "
@@ -108,6 +140,7 @@ def deploy_content(
             Path(layout),
             base_dir,
             commit=commit,
+            with_relations=True,
             ignored_fields=ignored_fields,
         )
     finally:
@@ -117,4 +150,6 @@ def deploy_content(
         # still pending, and must not leave it for anyone to commit.
         transaction.abort()
     report["base_recorded"] = recorded if report["apply"]["committed"] else 0
+    if seeded is not None:
+        report["seeded_from_live"] = seeded
     return report

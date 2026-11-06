@@ -170,3 +170,117 @@ def test_items_in_nested_folders_are_in_the_base(integration, tmp_path):
     intro.mkdir()
     (intro / "data.json").write_text(json.dumps({"@id": "/videos/intro"}))
     assert record_base(integration["portal"], layout) == 3
+
+
+@pytest.fixture
+def undeployed(functional, tmp_path):
+    """A site imported in full before it kept a base: the site holds what the
+    last deploy's layout said, and that layout is gone."""
+    portal, request = functional["portal"], functional["request"]
+    with api.env.adopt_roles(["Manager"]):
+        for name, title in (
+            ("kept", "Kept"),
+            ("changed", "Before"),
+            ("removed", "Gone"),
+        ):
+            api.content.create(container=portal, type="Document", id=name, title=title)
+        transaction.commit()
+        items = serialize_live_candidates(
+            portal, request, {}, {}, extra=("kept", "changed", "removed")
+        )
+    transaction.commit()
+    return portal, request, items
+
+
+def test_a_site_with_no_base_can_start_from_what_it_holds(undeployed, tmp_path):
+    """Its first deploy need not delete it: what the site holds is the base,
+    so everything still goes through one transaction, and only what really
+    differs from the layout changes."""
+    portal, request, items = undeployed
+    kept_before = portal["kept"]._p_serial
+    with api.env.adopt_roles(["Manager"]):
+        report = deploy_content(
+            portal,
+            request,
+            second_layout(tmp_path, items),
+            commit=True,
+            seed_from_live=True,
+        )
+    assert report["apply"]["committed"] is True, report["apply"]
+    assert report["clobber_warnings"] == []
+    assert report["seeded_from_live"] == 3
+    assert report["plan"]["updates"] == ["changed"]
+    assert report["plan"]["deletes"] == ["removed"]
+    assert "added" in report["plan"]["creates"]
+    assert portal["changed"].title == "After"
+    assert portal["added"].title == "Added"
+    assert "removed" not in portal
+    assert portal["kept"]._p_serial == kept_before
+    assert has_base(portal)
+
+
+def test_the_deploy_after_starting_from_the_site_has_nothing_to_do(
+    undeployed, tmp_path
+):
+    portal, request, items = undeployed
+    second = second_layout(tmp_path, items)
+    with api.env.adopt_roles(["Manager"]):
+        deploy_content(portal, request, second, commit=True, seed_from_live=True)
+        again = deploy_content(portal, request, second, commit=False)
+    plan = again["plan"]
+    assert (plan["creates"], plan["updates"], plan["deletes"]) == ([], [], [])
+
+
+def test_a_dry_run_from_the_site_keeps_no_base(undeployed, tmp_path):
+    portal, request, items = undeployed
+    with api.env.adopt_roles(["Manager"]):
+        dry = deploy_content(
+            portal,
+            request,
+            second_layout(tmp_path, items),
+            commit=False,
+            seed_from_live=True,
+        )
+    assert dry["plan"]["updates"] == ["changed"]
+    assert dry["apply"]["committed"] is False
+    assert not has_base(portal)
+    assert portal["changed"].title == "Before"
+
+
+def test_a_site_with_a_base_is_not_started_again(deployed, tmp_path):
+    """Asking to start from the site must not throw away a real base: that is
+    what tells an editor's change from the layout's."""
+    portal, request, _, items = deployed
+    portal["changed"].title = "Edited on the site"
+    transaction.commit()
+    with api.env.adopt_roles(["Manager"]):
+        refused = deploy_content(
+            portal,
+            request,
+            second_layout(tmp_path, items),
+            commit=True,
+            seed_from_live=True,
+        )
+    assert refused["apply"]["must_merge"] == ["changed"]
+    assert "seeded_from_live" not in refused
+
+
+def test_a_layouts_relations_are_applied(deployed, tmp_path):
+    """plone.exportimport keeps relations in relations.json, outside each
+    item, so a deploy that only imports items never sets them."""
+    portal, request, _, items = deployed
+    layout = second_layout(tmp_path, items)
+    (layout / "relations.json").write_text(
+        json.dumps([
+            {
+                "from_uuid": portal["kept"].UID(),
+                "to_uuid": portal["changed"].UID(),
+                "from_attribute": "relatedItems",
+            }
+        ])
+    )
+    with api.env.adopt_roles(["Manager"]):
+        report = deploy_content(portal, request, layout, commit=True)
+    assert report["apply"]["relations"]["restored"] == 1
+    related = [rel.to_object for rel in portal["kept"].relatedItems]
+    assert related == [portal["changed"]]
