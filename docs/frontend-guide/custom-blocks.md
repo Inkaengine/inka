@@ -1034,3 +1034,23 @@ When a parent block has `mappingField` set in its `inheritSchemaFrom` recipe, th
 - Saves the result as `fieldMapping` (singular) on the block data.
 
 The saved `fieldMapping` is read at render time by `expandListingBlocks` — no block registry access needed at render time.
+
+## Search text
+
+A page is found by the text of its blocks. When the page is saved, Inka stores the text of each top-level block's whole subtree as that block's `searchableText`: its children in layout order, object list items included, leaving out blocks a region doesn't list. Plone's index reads that field, in the page's layout order, and doesn't look inside the block. Search text belongs to the page, so a block a template owns (`fixed` and `readOnly`) is left out, and page content in a slot inside it counts.
+
+A block's own text is the fields a person writes, in schema order: not links, tokens or fields with a fixed set of choices, and not a field its `fieldRules` hide. If another order suits your block, name its fields. The block's children still follow:
+
+### Javascript
+
+```javascript
+const initBlocks = {
+  card: {
+    searchableFields: ['title', 'description'],
+    // ...
+  },
+};
+```
+
+Content that never passes through the editor, such as an import, has no `searchableText`, and is read as plone.restapi reads it, until it's saved.
+

@@ -67,6 +67,8 @@ import {
   getBlockTypeSchema,
   getBlockById,
 } from '../../../../../utils/blockPath';
+import { getBlockSchema } from '../../../../../../../hydra-js/buildBlockPathMap.js';
+import { withSearchableText } from '../../../../../../../hydra-js/searchableText.js';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
 import { updateContent } from '@plone/volto/actions/content/content';
@@ -324,6 +326,19 @@ class Form extends Component {
     // Ref for Iframe to provide template save function
     this.saveTemplatesRef = { current: null };
     this.flushEditsRef = { current: null };
+  }
+
+  // What a block's search text comes from: its resolved schema, and what its type names.
+  searchTextOptions(page) {
+    const { blocksConfig } = config.blocks;
+    return {
+      schemaFor: (block) => {
+        const type = block['@type'];
+        if (!blocksConfig[type]) return null;
+        return getBlockSchema(type, this.props.intl, blocksConfig, block, page) ?? {};
+      },
+      fieldsFor: (type) => blocksConfig[type]?.searchableFields,
+    };
   }
 
   /**
@@ -862,6 +877,8 @@ class Form extends Component {
         toast.error(<Toast error title="Can't save yet" content={error.message} />);
         return;
       }
+      // What the page is found by, from the blocks as they are saved (Inka #634).
+      pageFormData = withSearchableText(pageFormData, this.searchTextOptions(pageFormData));
       if (this.props.isEditForm) {
         this.props.onSubmit(this.getOnlyFormModifiedValues(pageFormData));
       } else {

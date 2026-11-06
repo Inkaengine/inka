@@ -1,0 +1,9 @@
+<configure xmlns="http://namespaces.zope.org/zope">
+
+  <!-- Replaces plone.restapi's walk for blocks text. See indexers.py. -->
+  <adapter
+      factory=".indexers.BlocksSearchableTextExtender"
+      name="IBlocks"
+      />
+
+</configure>
