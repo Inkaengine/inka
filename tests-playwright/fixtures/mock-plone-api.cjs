@@ -322,6 +322,8 @@ function setSessionContent(sessionId, urlPath, content) {
     sessionContent[sessionId] = {};
   }
   sessionContent[sessionId][urlPath] = content;
+  // Written again after a delete, it exists again.
+  sessionDeletions[sessionId]?.delete(urlPath);
 }
 
 /**
@@ -1503,9 +1505,13 @@ function buildActionsComponent(cleanPath, baseUrl, sessionId) {
       ...(isRoot ? [] : [action('redirection', 'URL Management', `${fullUrl}/@@manage-aliases`)]),
       // plone.app.iterate's, and the ids Volto gates its working-copy buttons
       // on. NOT in actions_get.resp, which records a site without it.
+      // A page with a copy out offers neither: only its copy can be checked in.
       ...(workingCopyOf(cleanPath, sessionId)
         ? [action('iterate_checkin', 'Check in', `${fullUrl}/@@content-checkin`)]
-        : [action('iterate_checkout', 'Check out', `${fullUrl}/@@content-checkout`)]),
+        : []),
+      ...(!workingCopyOf(cleanPath, sessionId) && !copyOutOf(cleanPath, sessionId)
+        ? [action('iterate_checkout', 'Check out', `${fullUrl}/@@content-checkout`)]
+        : []),
     ],
     portal_tabs: [],
     site_actions: [
@@ -1719,6 +1725,12 @@ const sessionWorkingCopies = {};
 
 function workingCopyOf(cleanPath, sessionId) {
   return sessionWorkingCopies[sessionId]?.[cleanPath] ?? null;
+}
+
+/** The working copy checked out of `cleanPath`, or null. */
+function copyOutOf(cleanPath, sessionId) {
+  const copies = Object.entries(sessionWorkingCopies[sessionId] ?? {});
+  return copies.find(([, baseline]) => baseline === cleanPath)?.[0] ?? null;
 }
 
 function noRoles() {
@@ -4605,7 +4617,9 @@ app.post(/.*\/@workingcopy$/, (req, res) => {
   const id = segments.pop();
   const copyPath = [...segments, `copy_of_${id}`].join('/') || '/';
 
-  setSessionContent(sessionId, copyPath, { ...content, id: `copy_of_${id}` });
+  // A copy goes through the workflow from its start, whatever its original's
+  // state: visitors can't see it, while the published original stays put.
+  setSessionContent(sessionId, copyPath, { ...content, id: `copy_of_${id}`, review_state: 'private', workflow_history: {} });
   if (!sessionWorkingCopies[sessionId]) sessionWorkingCopies[sessionId] = {};
   sessionWorkingCopies[sessionId][copyPath] = cleanPath;
 
@@ -4614,9 +4628,11 @@ app.post(/.*\/@workingcopy$/, (req, res) => {
 
 app.get(/.*\/@workingcopy$/, (req, res) => {
   const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@workingcopy$/, '') || '/').replace(/\/+$/, '') || '/';
-  const baseline = workingCopyOf(cleanPath, getSessionId(req));
+  const sessionId = getSessionId(req);
+  const baseline = workingCopyOf(cleanPath, sessionId);
+  const copy = copyOutOf(cleanPath, sessionId);
   res.json({
-    working_copy: null,
+    working_copy: copy ? { '@id': `http://localhost:${PORT}${copy}` } : null,
     working_copy_of: baseline ? { '@id': `http://localhost:${PORT}${baseline}` } : null,
   });
 });
@@ -4632,6 +4648,14 @@ function endWorkingCopy(req, res) {
   }
   delete sessionWorkingCopies[sessionId][cleanPath];
 
+  // Checking in (PATCH) puts what the copy holds on the original, which keeps
+  // its own address, state and trail. Discarding (DELETE) leaves it as it was.
+  if (req.method === 'PATCH') {
+    const original = getContent(baseline, sessionId);
+    const { id: _id, review_state: _state, workflow_history: _trail, ...held } = getContent(cleanPath, sessionId);
+    setSessionContent(sessionId, baseline, { ...original, ...held, modified: new Date().toISOString() });
+  }
+
   // The copy stops existing. Applying it merges it into the baseline and
   // discarding it throws it away — either way there is no document left at
   // this path, and leaving one behind put a stray `copy_of_*` in every listing
@@ -4640,9 +4664,8 @@ function endWorkingCopy(req, res) {
   if (!sessionDeletions[sessionId]) sessionDeletions[sessionId] = new Set();
   sessionDeletions[sessionId].add(cleanPath);
 
-  res.json({
-    working_copy_of: { '@id': `http://localhost:${PORT}${baseline}` },
-  });
+  // Plone answers neither with a body.
+  res.status(204).end();
 }
 
 app.patch(/.*\/@workingcopy$/, endWorkingCopy);

@@ -570,7 +570,10 @@ describe('transitions', () => {
 
   it('lists each with what it can set, and sharing as staying in the same state', async () => {
     const got = await getTransitions(site(), { path: '/news' });
-    expect(got).toMatchObject({ path: '/news', version: 'v1', state: { name: 'private' }, may: { canPublish: true } });
+    expect(got).toMatchObject({ path: '/news', version: 'v1', state: { name: 'private' } });
+    // What is on offer is the whole answer: "may publish" read false on a published page, and an agent
+    // told a person they couldn't publish, then did.
+    expect(got).not.toHaveProperty('may');
     expect(got.transitions).toEqual([
       { id: 'publish', label: 'Publish', takes: FORM.schema.properties, current: {} },
       { id: 'checkout', label: 'Work on a draft copy', relocates: true, takes: {}, current: {} },

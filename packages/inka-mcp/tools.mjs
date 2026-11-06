@@ -140,7 +140,7 @@ export async function deletePage(site, { path, expectedVersion }) {
  * the address, the listing.
  */
 export async function getTransitions(site, { path }) {
-  const [{ state, transitions, effective }, forms, { version, lockedBy }] = await Promise.all([
+  const [{ state, transitions }, forms, { version, lockedBy }] = await Promise.all([
     site.state(path), site.stateForms(path), site.status(path),
   ]);
   const update = forms.update ? [{ id: 'update', label: `Update — stays ${state.label}` }] : [];
@@ -149,7 +149,6 @@ export async function getTransitions(site, { path }) {
     version,
     ...(lockedBy && { lockedBy }),
     state,
-    may: effective,
     transitions: [...transitions, ...update].map((t) => ({
       ...t,
       takes: forms[t.id].schema.properties,

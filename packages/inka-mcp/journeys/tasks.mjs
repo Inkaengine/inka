@@ -129,6 +129,12 @@ const KEPT = ['volunteers@riversidegarden.org.au', 'market stall', 'school group
 
 const seedVolunteer = (api) => api.post('/', VOLUNTEER.doc);
 
+/** The volunteering page, not yet visible to visitors. */
+async function seedPrivateVolunteer(api) {
+  await seedVolunteer(api);
+  await api.post(`${VOLUNTEER.path}/@workflow/retract`, {});
+}
+
 const SHOWED_NOT_TOLD = mcp('When Claude suggests how the page could look, it shows the person pictures of each suggestion '
   + '(tool results with pictures) rather than only describing them in words.');
 
@@ -258,6 +264,86 @@ export const CONVERSATIONS = [
       if (calls(turns, 'edit_blocks').some((t) => t.input.changeTemplates && !t.input.dryRun && !t.isError)) {
         problems.push('changed a template');
       }
+      return problems;
+    },
+  },
+  {
+    id: 'publish-finished-page',
+    setup: seedPrivateVolunteer,
+    prompt: 'I have finished our volunteering page (/volunteer). Can you put it live so people can see it?',
+    person: {
+      who: GARDENER,
+      wants: 'The page live for visitors, as it is, with no changes to what it says.',
+    },
+    criteria: {
+      'said-it-is-live': mcp('Claude tells the person in plain words that visitors can now see the page.'),
+    },
+    async check(api, turns) {
+      const problems = [];
+      const page = await api.get(VOLUNTEER.path);
+      if (page.review_state !== 'published') problems.push(`the page is ${page.review_state}`);
+      if (!calls(turns, 'transition_page').some((t) => !t.isError)) problems.push('never took a transition');
+      const words = wordsOn(page);
+      for (const kept of KEPT) if (!words.includes(kept)) problems.push(`the page lost "${kept}"`);
+      if (calls(turns, 'edit_blocks').some((t) => !t.input.dryRun && !t.isError)) problems.push('edited a page it was only asked to publish');
+      return problems;
+    },
+  },
+  {
+    id: 'publish-on-a-date',
+    setup: seedPrivateVolunteer,
+    prompt: 'Our volunteering page (/volunteer) is ready, but it is about our autumn program, so it should only appear '
+      + 'on the site from 1 March 2027 and come down after 31 March 2027. Can you set that up?',
+    person: {
+      who: GARDENER,
+      wants: 'The page set to appear on 1 March 2027 and disappear after 31 March 2027, with no changes to what it says.',
+    },
+    criteria: {
+      'explained-the-dates': mcp('Claude tells the person in plain words the dates the page will appear and come down.'),
+    },
+    async check(api) {
+      const problems = [];
+      const page = await api.get(VOLUNTEER.path);
+      if (page.review_state !== 'published') problems.push(`the page is ${page.review_state}: a date only takes effect once published`);
+      if (!String(page.effective).startsWith('2027-03-01')) problems.push(`it appears from ${page.effective}`);
+      if (!/^2027-(03-31|04-01)/.test(String(page.expires))) problems.push(`it comes down at ${page.expires}`);
+      return problems;
+    },
+  },
+  {
+    id: 'draft-for-approval',
+    setup: seedVolunteer,
+    prompt: 'Our working bees are moving from Saturdays to Sundays next term, so our volunteering page (/volunteer) needs to '
+      + 'say so. Our committee has to approve the wording first and they do not meet until next week, so can you make the '
+      + 'change and keep it somewhere I can show them? Visitors must keep seeing the current page until they approve it.',
+    person: {
+      who: GARDENER,
+      wants: 'The change saved somewhere you can show the committee, with the live page unchanged. Once Claude says it is '
+        + 'ready, ask to see it. Your next message, once you have seen it, says that a week has passed, the committee met and '
+        + 'approved it, and it should go live now. You are not done until Claude says visitors see the new wording.',
+    },
+    criteria: {
+      'said-live-is-unchanged': mcp('Before the person says it is approved, Claude tells them in plain words that visitors still see the current page.'),
+      'said-where-the-draft-is': mcp('Claude tells the person where the draft is, or how to show it to the committee.'),
+      'said-it-is-live': mcp('After the approval, Claude tells the person in plain words that visitors now see the new wording.'),
+      'asked-before-going-live': agent('Claude put the change live only after the person said the committee had approved it.'),
+    },
+    async check(api, turns) {
+      const problems = [];
+      if (!calls(turns, 'transition_page').some((t) => t.input.id === 'checkout' && !t.isError)) problems.push('never made a draft copy');
+      if (!calls(turns, 'transition_page').some((t) => t.input.id === 'checkin' && !t.isError)) problems.push('never published the draft');
+      const onLive = [...calls(turns, 'edit_blocks').filter((t) => !t.input.dryRun), ...calls(turns, 'rename_page')]
+        .filter((t) => !t.isError && t.input.path === VOLUNTEER.path);
+      if (onLive.length) problems.push(`changed the live page directly, ${onLive.length} time(s)`);
+      const page = await api.get(VOLUNTEER.path);
+      if (page.review_state !== 'published') problems.push(`the page is ${page.review_state}`);
+      const words = wordsOn(page);
+      if (!words.includes('Sunday')) problems.push('the live page does not say Sundays');
+      if (words.includes('Saturday')) problems.push('the live page still says Saturdays');
+      for (const kept of KEPT) if (!words.includes(kept)) problems.push(`the page lost "${kept}"`);
+      const left = (await api.search(`/@search?path.depth=1&path.query=/`)).items
+        .filter((i) => /copy_of/.test(i['@id'])).map((i) => i['@id']);
+      if (left.length) problems.push(`a draft was left behind: ${left.join(', ')}`);
       return problems;
     },
   },
