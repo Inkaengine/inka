@@ -1037,9 +1037,9 @@ The saved `fieldMapping` is read at render time by `expandListingBlocks` — no 
 
 ## Search text
 
-A page is found by the text of its blocks. When the page is saved, Inka stores the text of each top-level block's whole subtree as that block's `searchableText`: its children in layout order, object list items included, leaving out blocks a region doesn't list. Plone's index reads that field, in the page's layout order, and doesn't look inside the block. Search text belongs to the page, so a block a template owns (`fixed` and `readOnly`) is left out, and page content in a slot inside it counts.
+A page is found by the text of its blocks. When the page is saved, Inka stores each block's text as its `searchableText`, which plone.restapi's indexer reads. It visits a block's `blocks` and `data.blocks` itself, so a block carries only its own text, plus whatever that visit can't reach: object lists, such as table cells and form questions, and regions in any other object. Search text belongs to the page, so a block a template owns (`fixed` and `readOnly`) gets none.
 
-A block's own text is the fields a person writes, in schema order: not links, tokens or fields with a fixed set of choices, and not a field its `fieldRules` hide. If another order suits your block, name its fields. The block's children still follow:
+A block's own text is the fields a person writes, in schema order: not links, tokens or fields with a fixed set of choices, and not a field its `fieldRules` hide. If another order suits your block, name its fields:
 
 ### Javascript
 
@@ -1052,4 +1052,4 @@ const initBlocks = {
 };
 ```
 
-Content that never passes through the editor, such as an import, has no `searchableText`, and is read as plone.restapi reads it, until it's saved.
+Content that never passes through the editor, such as an import, has no `searchableText` until it's saved.

@@ -7,15 +7,16 @@ import {
 import { isObjectListRegion } from './regionWidgets.js';
 
 /**
- * What a page is found by: the text of each top-level block's whole subtree, stored as
- * that block's `searchableText`. plone.restapi prefers that field to any adapter; the
- * backend walks top-level blocks in layout order and stops at it. See the frontend guide,
- * "Search text".
+ * What a page is found by. plone.restapi's indexer visits every block in a block's `blocks` or
+ * `data.blocks`, and reads each one's `searchableText` if it has one. So each block it visits
+ * carries its own text, plus the text of whatever it can't reach: object lists (table cells,
+ * form questions) and regions in any other object. Nothing is indexed twice. See the frontend
+ * guide, "Search text".
  *
- * A block's own text: the fields a person writes, as the schema for that block resolves
- * them (translatableFieldIds, the same answer a translator gets), so a field it isn't showing
- * is left out. A block type that needs another order names its fields (`searchableFields`
- * in its config: plain data, because a frontend's config crosses the bridge as JSON).
+ * A block's own text: the fields a person writes, as the schema for that block resolves them
+ * (translatableFieldIds, the same answer a translator gets), so a field it isn't showing is
+ * left out. A block type that needs another order names its fields (`searchableFields` in its
+ * config: plain data, because a frontend's config crosses the bridge as JSON).
  */
 
 const joined = (parts) => parts.map((part) => part.trim()).filter(Boolean).join(' ');
@@ -28,19 +29,26 @@ function fieldText(value) {
 // A block the template owns: it is on every page using it, so it finds none of them.
 const templateOwned = (block) => block.fixed && block.readOnly;
 
-function blockText(block, options, parts) {
-  const type = block['@type'];
-  if (type === 'empty') return;
+function schemaOf(block, options) {
   const schema = options.schemaFor(block);
   if (!schema) {
-    throw new Error(`Search text: no schema for block type "${type}"`);
+    throw new Error(`Search text: no schema for block type "${block['@type']}"`);
   }
-  nodeText(block, schema, !templateOwned(block), options, parts, undefined, options.fieldsFor?.(type));
+  return schema;
 }
 
-// A block, or an object or item inside one. `own` is whether its fields are the page's;
-// its children decide for themselves.
-function nodeText(node, schema, own, options, parts, idField, namedFields) {
+// The text of a block no visit will reach, and of everything in it.
+function unreachedBlockText(block, options, parts) {
+  const type = block['@type'];
+  if (type === 'empty') return;
+  nodeText(block, schemaOf(block, options), !templateOwned(block), options, parts, {
+    namedFields: options.fieldsFor?.(type),
+  });
+}
+
+// A block, or an object or item inside one. `own` is whether its fields are the page's; its
+// children decide for themselves. `visited` is a node whose regions restapi walks itself.
+function nodeText(node, schema, own, options, parts, { idField, namedFields, visited } = {}) {
   const properties = schema.properties || {};
   if (own) {
     const fields = namedFields?.filter((id) => id in properties) ?? translatableFieldIds(schema);
@@ -50,22 +58,24 @@ function nodeText(node, schema, own, options, parts, idField, namedFields) {
   }
   for (const [field, def] of Object.entries(properties)) {
     if (def?.widget === 'object' && def.schema) {
-      if (node[field]) nodeText(node[field], def.schema, own, options, parts);
+      if (node[field]) {
+        nodeText(node[field], def.schema, own, options, parts, { visited: visited && field === 'data' });
+      }
     } else if (isObjectListRegion(def)) {
       for (const item of node[field] || []) {
         const type = item[def.typeField || '@type'];
-        if (type) blockText({ ...item, '@type': type }, options, parts);
-        else if (def.schema) nodeText(item, def.schema, own, options, parts, def.idField);
+        if (type) unreachedBlockText({ ...item, '@type': type }, options, parts);
+        else if (def.schema) nodeText(item, def.schema, own, options, parts, { idField: def.idField });
         else throw new Error(`Search text: no type or schema for an item of "${field}"`);
       }
-    } else if (def?.widget === 'blocks_layout') {
+    } else if (def?.widget === 'blocks_layout' && !visited) {
       regionText(node, field, options, parts);
     }
   }
   // Regions the schema doesn't declare (a container's default `items`). Its objects'
   // are reached through the objects above.
   for (const field of getChildFields(node)) {
-    if (!field.regionPath && !(field.region in properties)) {
+    if (!field.regionPath && !(field.region in properties) && !visited) {
       regionText(node, field.region, options, parts);
     }
   }
@@ -73,44 +83,62 @@ function nodeText(node, schema, own, options, parts, idField, namedFields) {
 
 function regionText(node, region, options, parts) {
   for (const { block } of getChildBlockEntries(node, { region })) {
-    blockText(block, options, parts);
+    unreachedBlockText(block, options, parts);
   }
 }
 
-// Only a top-level block carries text: nested, it would be indexed twice.
-function withoutNestedText(value) {
-  if (Array.isArray(value)) return value.map(withoutNestedText);
+// A copy with no search text at any depth: what follows sets it where it belongs.
+function withoutText(value) {
+  if (Array.isArray(value)) return value.map(withoutText);
   if (!value || typeof value !== 'object') return value;
   const out = {};
   for (const [key, child] of Object.entries(value)) {
-    if (key !== 'searchableText') out[key] = withoutNestedText(child);
+    if (key !== 'searchableText') out[key] = withoutText(child);
   }
   return out;
 }
 
+// The blocks in a map, each with its text. Unlisted ones are left: they aren't on the page.
+function withBlockTexts(container, options) {
+  const blocks = { ...container.blocks };
+  for (const field of getChildFields(container)) {
+    if (field.regionPath || field.isObjectList) continue;
+    for (const { id, block } of getChildBlockEntries(container, field)) {
+      blocks[id] = withText(block, options);
+    }
+  }
+  return { ...container, blocks };
+}
+
+function withText(block, options) {
+  const type = block['@type'];
+  if (type === 'empty') return block;
+  const parts = [];
+  nodeText(block, schemaOf(block, options), !templateOwned(block), options, parts, {
+    namedFields: options.fieldsFor?.(type),
+    visited: true,
+  });
+  const text = joined(parts);
+  let out = block;
+  // A slate block's text is what restapi reads from it anyway.
+  if (text && text !== block.plaintext) out = { ...out, searchableText: text };
+  if (out.blocks?.constructor === Object) out = withBlockTexts(out, options);
+  if (out.data?.blocks) out = { ...out, data: withBlockTexts(out.data, options) };
+  return out;
+}
+
 /**
- * The page with `searchableText` set on each top-level block, in every region. A block with
- * no text has none. Blocks no region lists are left as they are: they aren't on the page.
+ * The page with `searchableText` set on each block plone.restapi's indexer will visit. A block
+ * with no text has none.
  *
  * @param {Object} formData - the page
  * @param {Object} options
  * @param {function(Object): Object|null} options.schemaFor - this block's resolved schema;
  *   null for a type nothing registers, which throws: we can't say what such a block holds
  * @param {function(string): string[]|undefined} [options.fieldsFor] - the fields a block type
- *   names for its text, in order, in place of the default; its children still follow
+ *   names for its text, in order, in place of the default
  * @returns {Object} a new page; the input is not changed
  */
 export function withSearchableText(formData, options) {
-  const blocks = { ...formData.blocks };
-  for (const field of getChildFields(formData)) {
-    if (field.regionPath) continue;
-    for (const { id, block } of getChildBlockEntries(formData, field)) {
-      const parts = [];
-      blockText(block, options, parts);
-      const text = joined(parts);
-      const clean = withoutNestedText(block);
-      blocks[id] = text ? { ...clean, searchableText: text } : clean;
-    }
-  }
-  return { ...formData, blocks };
+  return withBlockTexts({ ...formData, blocks: withoutText(formData.blocks) }, options);
 }

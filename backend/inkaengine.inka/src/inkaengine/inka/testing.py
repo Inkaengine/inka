@@ -5,7 +5,6 @@ from plone.app.testing import FunctionalTesting
 from plone.app.testing import IntegrationTesting
 from plone.app.testing import PloneSandboxLayer
 from plone.testing.zope import WSGI_SERVER_FIXTURE
-from zope.configuration import xmlconfig
 
 import inkaengine.inka
 
@@ -21,9 +20,6 @@ class Layer(PloneSandboxLayer):
 
         self.loadZCML(package=plone.restapi)
         self.loadZCML(package=inkaengine.inka)
-        # plone.autoinclude loads this in a running site, and not here.
-        xmlconfig.includeOverrides(configurationContext, "overrides.zcml", inkaengine.inka)
-        configurationContext.execute_actions()
 
     def setUpPloneSite(self, portal):
         applyProfile(portal, "inkaengine.inka:default")

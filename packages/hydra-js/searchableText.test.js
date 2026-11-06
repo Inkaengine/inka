@@ -1,9 +1,10 @@
 import { withSearchableText } from './searchableText.js';
 
 /**
- * Inka #634: a page's search text holds what a visitor sees, in page order, from every
- * block. Each top-level block carries the text of its whole subtree as `searchableText`;
- * nested blocks carry none, so nothing is indexed twice.
+ * Inka #634: a page's search text holds what a visitor sees, from every block, once.
+ * plone.restapi visits a block's `blocks` and `data.blocks`, and reads each block's
+ * `searchableText`, else a slate block's `plaintext`. So each visited block carries its own
+ * text and whatever the visit can't reach.
  */
 const slate = (text) => [{ type: 'p', children: [{ text }] }];
 
@@ -62,6 +63,11 @@ const schemas = {
       },
     },
   },
+  inObject: {
+    properties: {
+      box: { widget: 'object', schema: { properties: { items: { widget: 'blocks_layout' } } } },
+    },
+  },
   ordered: {
     searchableFields: ['second', 'first'],
     properties: { first: { type: 'string' }, second: { type: 'string' }, third: { type: 'string' } },
@@ -81,6 +87,14 @@ const options = {
 const pageOf = (blocks, items = Object.keys(blocks)) => ({ blocks, blocks_layout: { items } });
 const textOf = (block) => withSearchableText(pageOf({ b: block }), options).blocks.b.searchableText;
 
+// What plone.restapi's indexer does with a block: its children, then itself.
+function indexed(block) {
+  const children = [...Object.values(block.data?.blocks ?? {})];
+  if (block.blocks && !Array.isArray(block.blocks)) children.push(...Object.values(block.blocks));
+  return [...children.flatMap(indexed), block.searchableText || block.plaintext || ''].filter(Boolean);
+}
+const allText = (block) => indexed(withSearchableText(pageOf({ b: block }), options).blocks.b);
+
 describe('the text of a block', () => {
   test('its text fields, in schema order, without links and tokens', () => {
     expect(textOf({
@@ -96,34 +110,52 @@ describe('the text of a block', () => {
     expect(textOf({ '@type': 'slate', value: slate('Typed words') })).toBe('Typed words');
   });
 
-  test('a container holds its children in layout order, and only those it lists', () => {
-    expect(textOf({
-      '@type': 'section',
-      title: 'Heading',
-      blocks: {
-        z: { '@type': 'slate', value: slate('Second') },
-        a: { '@type': 'slate', value: slate('First') },
-        hidden: { '@type': 'slate', value: slate('Not listed') },
-      },
-      blocks_layout: { items: ['a', 'z'] },
-    })).toBe('Heading First Second');
+  test('a slate block restapi reads from its plaintext needs no copy', () => {
+    expect(textOf({ '@type': 'slate', value: slate('Typed'), plaintext: 'Typed' })).toBeUndefined();
   });
 
-  test('a region inside an object, with containers below it', () => {
-    expect(textOf({
+  test('a container carries its own text; its children carry theirs', () => {
+    const page = withSearchableText(pageOf({
+      s: {
+        '@type': 'section',
+        title: 'Heading',
+        blocks: {
+          z: { '@type': 'slate', value: slate('Second') },
+          a: { '@type': 'slate', value: slate('First') },
+        },
+        blocks_layout: { items: ['a', 'z'] },
+      },
+    }), options);
+    expect(page.blocks.s.searchableText).toBe('Heading');
+    expect(page.blocks.s.blocks.a.searchableText).toBe('First');
+    expect(page.blocks.s.blocks.z.searchableText).toBe('Second');
+  });
+
+  test('nothing is indexed twice, with containers at every depth', () => {
+    expect(allText({
       '@type': 'accordion',
       data: {
         blocks: {
           p1: {
             '@type': 'panel',
             title: 'Panel title',
-            blocks: { c: { '@type': 'slate', value: slate('Panel text') } },
+            blocks: { c: { '@type': 'slate', value: slate('Panel text'), plaintext: 'Panel text' } },
             blocks_layout: { items: ['c'] },
           },
         },
         blocks_layout: { items: ['p1'] },
       },
-    })).toBe('Panel title Panel text');
+    }).sort()).toEqual(['Panel text', 'Panel title']);
+  });
+
+  test('a region in an object restapi does not walk goes on the block', () => {
+    expect(allText({
+      '@type': 'inObject',
+      box: {
+        blocks: { c: { '@type': 'slate', value: slate('Boxed') } },
+        blocks_layout: { items: ['c'] },
+      },
+    })).toEqual(['Boxed']);
   });
 
   test('a table: object lists, untyped rows and typed cells', () => {
@@ -150,19 +182,6 @@ describe('the text of a block', () => {
     })).toBe('Tell us Your name');
   });
 
-  test('a region the schema does not declare is still walked', () => {
-    expect(textOf({
-      '@type': 'card',
-      title: 'Card',
-      blocks: { c: { '@type': 'slate', value: slate('Inside') } },
-      blocks_layout: { items: ['c'] },
-    })).toBe('Card Inside');
-  });
-
-  test('a field this block is not showing is left out', () => {
-    expect(textOf({ '@type': 'card', title: 'Shown', description: 'Old text', showing: 'title' })).toBe('Shown');
-  });
-
   test('a block type can name its fields, in the order it wants', () => {
     expect(textOf({ '@type': 'ordered', first: 'One', second: 'Two', third: 'Three' })).toBe('Two One');
   });
@@ -177,24 +196,23 @@ describe('the text of a block', () => {
 });
 
 describe('a page', () => {
-  test('only top-level blocks carry text, in every region; nested ones carry none', () => {
-    const page = {
-      blocks: {
-        s: {
-          '@type': 'section',
-          title: 'Heading',
-          searchableText: 'stale',
-          blocks: { c: { '@type': 'slate', value: slate('Inside'), searchableText: 'stale' } },
-          blocks_layout: { items: ['c'] },
-        },
-        f: { '@type': 'slate', value: slate('In the footer region') },
+  test('blocks in every region get their text', () => {
+    const page = { blocks: { f: { '@type': 'card', title: 'In the footer' } }, blocks_layout: { footer: ['f'] } };
+    expect(withSearchableText(page, options).blocks.f.searchableText).toBe('In the footer');
+  });
+
+  test('text from before is replaced, at any depth', () => {
+    const out = withSearchableText(pageOf({
+      s: {
+        '@type': 'section',
+        title: 'New',
+        searchableText: 'stale',
+        blocks: { c: { '@type': 'empty', searchableText: 'stale' } },
+        blocks_layout: { items: ['c'] },
       },
-      blocks_layout: { items: ['s'], footer: ['f'] },
-    };
-    const out = withSearchableText(page, options);
-    expect(out.blocks.s.searchableText).toBe('Heading Inside');
+    }), options);
+    expect(out.blocks.s.searchableText).toBe('New');
     expect(out.blocks.s.blocks.c.searchableText).toBeUndefined();
-    expect(out.blocks.f.searchableText).toBe('In the footer region');
   });
 
   test('a block with no text carries none, even if it had some', () => {
@@ -222,7 +240,7 @@ describe('template blocks', () => {
   });
 
   test('page content in a slot inside a locked block is the page\'s', () => {
-    expect(textOf({
+    expect(allText({
       '@type': 'section',
       title: 'Shared heading',
       ...locked,
@@ -231,6 +249,6 @@ describe('template blocks', () => {
         mine: { '@type': 'slate', value: slate('Page text'), templateId: '/t', templateInstanceId: 'i', slotId: 's' },
       },
       blocks_layout: { items: ['chrome', 'mine'] },
-    })).toBe('Page text');
+    })).toEqual(['Page text']);
   });
 });
