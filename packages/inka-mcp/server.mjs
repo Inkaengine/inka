@@ -24,7 +24,7 @@ import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from
 import { draftCheck } from './checkDraft.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
-  getTransitions, transitionPage, draftInfo, editTarget, LIVE_EDIT_WARNING,
+  getTransitions, transitionPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
@@ -95,9 +95,9 @@ const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based
 - The site's own front end draws every page. view_page shows a page as visitors see it; preview_layout (a whole proposed layout) and edit_blocks with dryRun and preview (a change to the page) show the result the same way. None of them saves anything. In clients that show them, the person sees these pictures too. A long page's picture may show only its top ("cropped" says how much); its text ("renderedText") is all there.
 - Some blocks come from a template that many pages share (they carry "templateId"; "readOnly" ones are locked, as the editor shows them). A change to one is a change to the template, and so to every page that uses it: edit_blocks with changeTemplates. In the editor, unlocking a template warns of the same.
 - Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page, transition_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet. get_transitions says what can be done to a page and what each can set at the same time (a publishing date, an expiry); publishing, making a draft of a published page and changing who has access are all transitions, taken with transition_page. Publish only when the person has asked for it.
-- A page has at most one draft, and it stays the same page at the same path. While it has one ("draft" in get_transitions and get_page), get_page and edit_blocks work on the draft and visitors keep seeing the page as it was, until the draft is published. view_page shows what visitors see unless asked for the draft. In an emergency, get_page and edit_blocks with "live" change what visitors see now, without publishing the draft; but publishing the draft replaces the live page, so make the same change on the draft too or it will be lost. To show someone the draft, give them its "url": they sign in to see it, and it is only at that address, not the page's. Use the page's own path with these tools, even if a list shows the draft separately ("draftOf" names its page).
-- To find what isn't live yet, use search with "reviewState" (such as ["private", "pending"]) rather than going through pages one by one: a result with "draftOf" is a draft of a page visitors can already see; any other is a page they can't.
-- search finds pages by their title, their summary and the text of their Text blocks. Text in other blocks' fields (a hero's heading, a teaser's title) may not be searched.`;
+- A page has at most one draft, and it stays the same page at the same path. While it has one ("draft" in get_transitions and get_page), get_page and edit_blocks work on the draft and visitors keep seeing the page as it was, until the draft is published. view_page shows what visitors see unless asked for the draft. In an emergency, get_page and edit_blocks with "live" change what visitors see now, without publishing the draft; but publishing the draft replaces the live page, so make the same change on the draft too or it will be lost. To show someone the draft, give them its "url": they sign in to see it, and it is only at that address, not the page's.
+- search finds pages by their title, their summary and the text of their Text blocks. Text in other blocks' fields (a hero's heading, a teaser's title) may not be searched.
+- To find what isn't live yet, use search rather than going through pages one by one: "hasDraft" finds live pages with a draft waiting (the change isn't live), "reviewState" (such as ["private", "pending"]) finds pages visitors can't see at all. They can be asked together.`;
 
 /**
  * For a tool that changes nothing on the site: a client may then let the
@@ -188,7 +188,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   }, async ({ path, live }, extra) => {
     const draft = await draftOf(extra, path);
     const read = await adminFor(extra).withEditor(editTarget(path, draft, live), getPage);
-    return asResult(draft ? { ...read, path, draft, ...(live && { live: true }) } : read);
+    return asResult(draft ? { ...read, path, draft: draftForAgent(draft), ...(live && { live: true }) } : read);
   });
 
   registerAppTool(server, 'preview_layout', {
@@ -235,7 +235,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     const kept = await keep(extra, [rendered]);
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ path, ...(draft && { draft }), viewport, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
+        { type: 'text', text: JSON.stringify({ path, ...(draft && { draft: draftForAgent(draft) }), viewport, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
         asImage(rendered),
       ],
     };
@@ -249,11 +249,12 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('search', {
     title: 'Search the site',
     annotations: SAVES_NOTHING,
-    description: 'Find pages by their text, content type or workflow state, narrowed to a section. Returns the total and a page of results: path, title, type, description and workflow state ("reviewState"). A result with "draftOf" is the draft of that page, so use that page\'s path. Use a result\'s path with get_page.',
+    description: 'Find pages by their text, content type or state (workflow state, or having a draft), narrowed to a section. Returns the total and a page of results: path, title, type, description and workflow state ("reviewState"). A page with a draft says "hasDraft". Use a result\'s path with get_page.',
     inputSchema: {
       text: z.string().optional().describe('Words to find (each word matches as a prefix)'),
       types: z.array(z.string()).optional().describe('Content types, e.g. ["Document"]'),
       reviewState: z.array(z.string()).optional().describe('Workflow states, e.g. ["private", "pending"] to find what visitors can\'t see yet'),
+      hasDraft: z.boolean().optional().describe('Find pages with a draft waiting. With "reviewState", pages in either state. Not with "text" or "types"'),
       path: z.string().optional().describe('Only inside this section, e.g. /news'),
       ...paging,
     },
@@ -262,7 +263,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('list_children', {
     title: 'List a section',
     annotations: SAVES_NOTHING,
-    description: 'The pages directly inside a section, in their order: path, title, type, description and workflow state. "/" lists the top of the site.',
+    description: 'The pages directly inside a section, in their order: path, title, type, description, workflow state and "hasDraft" if it has a draft. "/" lists the top of the site.',
     inputSchema: { path: z.string().describe('The section, e.g. / or /docs'), ...paging },
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => listChildren(site, args))));
 
@@ -411,7 +412,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       const { user, name, type } = await media.peek(code);
       await media.update(code, { user, name, type, uploaded: url });
     }
-    const onDraft = draft ? { draft, ...(live && { live: true, ...(!dryRun && { warning: LIVE_EDIT_WARNING }) }) } : {};
+    const onDraft = draft ? { draft: draftForAgent(draft), ...(live && { live: true, ...(!dryRun && { warning: LIVE_EDIT_WARNING }) }) } : {};
     if (!result.rendered) return asResult({ ...result, ...onDraft });
     const { rendered, ...rest } = result;
     const { text, renderedOn, cropped } = rendered;

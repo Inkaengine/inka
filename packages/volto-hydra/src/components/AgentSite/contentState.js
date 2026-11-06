@@ -7,7 +7,7 @@
  *   getForms(path)  { [transition id]: { schema, data } } — what it can set
  *   transition({ path, id, data })  null, or { redirect } if the page moved
  *   draftOf(path)   the path of the page's draft, or null
- *   originalOf(path)  the page a draft belongs to
+ *   pagesWithDrafts()  the pages in that state, across the site
  *
  * A page has at most one draft, and having one is part of its state: `draft`
  * in get(), with publishing and discarding it on offer on the page itself. In
@@ -97,11 +97,14 @@ export function contentState({ fetchJson, toPath }) {
 
   const draftOf = async (path) => draftPathOf(await fetchJson(path));
 
-  async function originalOf(path) {
-    const { working_copy_of: original } = await fetchJson(path);
-    if (!original) throw new Error(`${path} is not a draft`);
-    return toPath(original['@id']);
+  /** Plone's relation catalog, one kind of relation: [{ source, target }] the user can see both ends of. */
+  async function relations(name) {
+    const found = await fetchJson(`/@relations?relation=${name}`);
+    return found.relations[name].items;
   }
+
+  /** plone.app.iterate records a page's working copy as a relation, so no search of the content is needed. */
+  const pagesWithDrafts = async () => (await relations('iterate-working-copy')).map(({ source }) => source);
 
   async function get(path) {
     const [actions, workflow, page] = await Promise.all([
@@ -254,5 +257,5 @@ export function contentState({ fetchJson, toPath }) {
     return writePageFields(path, data);
   }
 
-  return { get, getForms, transition, draftOf, originalOf };
+  return { get, getForms, transition, draftOf, pagesWithDrafts };
 }

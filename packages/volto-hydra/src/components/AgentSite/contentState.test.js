@@ -51,6 +51,9 @@ function plone({
         // Applying or discarding a copy answers nothing: plone.restapi's is a 204.
         return method === 'POST' && path.endsWith('/@workingcopy') ? { '@id': `${site}/copy_of_news` } : undefined;
       }
+      if (path === '/@relations?relation=iterate-working-copy') {
+        return { relations: { 'iterate-working-copy': { items: draft ? [{ source: { '@id': `${site}/news`, title: 'News', review_state: 'published' }, target: { '@id': `${site}/copy_of_news` } }] : [], items_total: draft ? 1 : 0 } } };
+      }
       if (!(path in answers)) throw new Error(`no ${path} here`);
       return answers[path];
     },
@@ -223,16 +226,16 @@ describe('a page with a draft', () => {
     expect(got.transitions.map((t) => t.id)).toEqual(['checkin', 'cancel-checkout']);
   });
 
-  it('names the page a draft belongs to', async () => {
-    expect(await stateOf(withDraft()).originalOf('/copy_of_news')).toBe('/news');
-    await expect(stateOf(withDraft()).originalOf('/news')).rejects.toThrow(/not a draft/);
-  });
-
   it('offers no address or listing while the page has a draft: Plone has locked the page', async () => {
     const forms = await stateOf(plone({ draft: true, buttons: ['delete'] })).getForms('/news');
     expect(Object.keys(forms.publish.schema.properties)).toEqual(['comment', 'effective', 'expires', 'include_children']);
     expect(forms.publish.data).toEqual({});
     expect(Object.keys(forms.update.schema.properties)).toEqual(['Reader', 'Editor', 'inherit']);
     expect(forms.update.data).toEqual({ Reader: ['staff'], Editor: ['ann'], inherit: true });
+  });
+
+  it('finds the pages that have one, as the pages', async () => {
+    expect(await stateOf(withDraft()).pagesWithDrafts()).toEqual([expect.objectContaining({ '@id': 'https://api.example/news', title: 'News' })]);
+    expect(await stateOf(plone()).pagesWithDrafts()).toEqual([]);
   });
 });

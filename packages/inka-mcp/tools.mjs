@@ -90,24 +90,52 @@ export async function fillNewPage(agent, { blocks, mintId, check }) {
 /** What a text search looks in: Plone's SearchableText, with the text of Text blocks (plone.restapi's blocks indexer). */
 const SEARCHED = 'titles, summaries and the text of Text blocks; other blocks\' fields may not be searched';
 
-export async function search(site, { text, types, reviewState, path, limit, start }) {
-  if (!text && !types && !reviewState) throw new Error('search needs "text", "types" or "reviewState"; to browse a section use list_children');
-  const found = await namingDrafts(site, await site.search({ text, types, reviewState, path, limit, start }));
+export async function search(site, { text, types, reviewState, hasDraft, path, limit, start }) {
+  if (!text && !types && !reviewState && !hasDraft) throw new Error('search needs "text", "types", "reviewState" or "hasDraft"; to browse a section use list_children');
+  if (hasDraft && (text || types)) throw new Error('"hasDraft" goes with "reviewState" alone: it finds pages by their state');
+  if (hasDraft) return findByState(site, { reviewState, path, limit, start });
+  const found = await asPages(site, await site.search({ text, types, reviewState, path, limit, start }));
   return text ? { ...found, searched: SEARCHED } : found;
 }
 
-/** A draft in a list says whose it is: it is that page, not another one. */
-async function namingDrafts(site, found) {
-  const items = await Promise.all(found.items.map(async ({ isDraft, ...item }) => (
-    isDraft ? { ...item, draftOf: await site.originalOf(item.path) } : item
-  )));
-  return { ...found, items };
+/**
+ * A page and its draft are one page, whatever the CMS stores. So a draft is not
+ * listed, and the page it belongs to says it has one. The draft comes out after
+ * the query, so a page of results can run short by the drafts on it.
+ */
+async function asPages(site, found) {
+  const drafted = new Set((await site.pagesWithDrafts()).map((page) => page.path));
+  const pages = found.items.filter((item) => !item.isDraft);
+  return {
+    ...found,
+    total: found.total - (found.items.length - pages.length),
+    items: pages.map((item) => (drafted.has(item.path) ? { ...item, hasDraft: true } : item)),
+  };
+}
+
+/** Pages with a draft, then any pages in `reviewState`, each once. */
+async function findByState(site, { reviewState, path, limit, start }) {
+  const inSection = (page) => !path || path === '/' || page.path === path || page.path.startsWith(`${path}/`);
+  const drafted = (await site.pagesWithDrafts()).filter(inSection).map((page) => ({ ...page, hasDraft: true }));
+  if (!reviewState) return { total: drafted.length, items: drafted };
+  const found = await asPages(site, await site.search({ reviewState, path, limit, start }));
+  const others = found.items.filter((item) => !item.hasDraft);
+  return { total: drafted.length + others.length, items: [...drafted, ...others] };
 }
 
 /** The pages directly inside `path`, in their order. */
 export async function listChildren(site, { path, limit, start }) {
-  return namingDrafts(site, await site.search({ path, depth: 1, limit, start }));
+  return asPages(site, await site.search({ path, depth: 1, limit, start }));
 }
+
+/** The page's draft: `path`, where it is stored, and the `url` a person can open it at; null if it has none. */
+export async function draftInfo(site, path) {
+  const draft = await site.draftOf(path);
+  return draft && { path: draft, url: await site.adminUrl(draft) };
+}
+
+/** A draft as an agent is told of it: it works by the page's own path, so a person's link is all it needs. */
+export const draftForAgent = ({ url }) => ({ url });
 
 /** What reading or editing a page reaches: its draft if it has one, unless the live page is asked for. */
 export const editTarget = (path, draft, live) => (draft && !live ? draft.path : path);
@@ -116,11 +144,6 @@ export const editTarget = (path, draft, live) => (draft && !live ? draft.path : 
 export const LIVE_EDIT_WARNING = 'The page\'s draft does not have this change, and publishing the draft replaces the live page with it. '
   + 'Make the same change on the draft too, or it will be lost when the draft is published.';
 
-/** The page's draft, with the address a person can open it at; null if it has none. */
-export async function draftInfo(site, path) {
-  const draft = await site.draftOf(path);
-  return draft && { path: draft, url: await site.adminUrl(draft) };
-}
 
 /** Refuse to act on a page someone else is editing, or one that has changed since the agent read it. */
 async function checkVersion(site, path, expectedVersion) {
@@ -182,7 +205,7 @@ export async function getTransitions(site, { path }) {
     version,
     ...(lockedBy && { lockedBy }),
     state,
-    ...(draft && { draft }),
+    ...(draft && { draft: draftForAgent(draft) }),
     transitions: [...transitions, ...update].map(({ relocates: _relocates, ...t }) => ({
       ...t,
       takes: forms[t.id].schema.properties,
@@ -205,7 +228,7 @@ export async function transitionPage(site, { path, id, data, expectedVersion }) 
     path: now,
     reviewState: page.review_state,
     version: draft ? (await site.status(draft.path)).version : page.modified,
-    ...(draft && { draft }),
+    ...(draft && { draft: draftForAgent(draft) }),
   };
 }
 

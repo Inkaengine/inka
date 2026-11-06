@@ -410,7 +410,8 @@ export const CONVERSATIONS = [
       const tools = turns.flatMap((t) => t.tools ?? []).length;
       // One ran to 254 calls going through the site page by page, when search had no way to ask.
       if (tools > 25) problems.push(`took ${tools} calls`);
-      if (!calls(turns, 'search').some((t) => t.input.reviewState && !t.isError)) problems.push('never searched by state');
+      if (!calls(turns, 'search').some((t) => t.input.hasDraft && !t.isError)) problems.push('never searched for pages with a draft');
+      if (!calls(turns, 'search').some((t) => t.input.reviewState && !t.isError)) problems.push('never searched for pages visitors can\'t see');
       return problems;
     },
   },

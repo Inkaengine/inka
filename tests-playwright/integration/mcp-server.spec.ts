@@ -62,12 +62,19 @@ test.describe('MCP server', () => {
 
     // Same page, same path: the edit lands on the draft.
     const reading = (await call('get_page', { path })).json();
-    expect(reading).toMatchObject({ path, draft: { path: '/_test_data/copy_of_another-page-2' } });
+    expect(reading.path).toBe(path);
     expect(reading.draft.url).toMatch(/^http.*\/_test_data\/copy_of_another-page-2$/);
+    expect(reading.draft).not.toHaveProperty('path');
 
-    // Found by what it is, not by going through the site: it names its page.
-    const waiting = (await call('search', { reviewState: ['private'], path: '/_test_data' })).json();
-    expect(waiting.items.find((i: { path: string }) => i.path === reading.draft.path).draftOf).toBe(path);
+    // Found by its state, and as the page: the copy is not a page of its own.
+    const drafted = (await call('search', { hasDraft: true })).json();
+    expect(drafted.items.map((i: { path: string }) => i.path)).toEqual([path]);
+    expect(drafted.items[0].hasDraft).toBe(true);
+    const unseen = (await call('search', { reviewState: ['private'], path: '/_test_data' })).json();
+    expect(unseen.items.map((i: { path: string }) => i.path)).not.toContain('/_test_data/copy_of_another-page-2');
+    const listed = (await call('list_children', { path: '/_test_data', limit: 100 })).json();
+    expect(listed.items.find((i: { path: string }) => i.path === path).hasDraft).toBe(true);
+    expect(listed.items.map((i: { path: string }) => i.path)).not.toContain('/_test_data/copy_of_another-page-2');
     const edited = (await call('edit_blocks', {
       path,
       expectedVersion: reading.version,
@@ -102,6 +109,7 @@ test.describe('MCP server', () => {
     const done = (await call('transition_page', { path, id: 'checkin', expectedVersion: offered.version })).json();
     expect(done.path).toBe(path);
     expect(done).not.toHaveProperty('draft');
+    expect((await call('search', { hasDraft: true })).json().items).toEqual([]);
     const after = (await call('get_page', { path })).json();
     expect(after.title).toBe('Title on the draft');
     // What the warning said: publishing the draft replaces the live page, the fix included.

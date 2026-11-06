@@ -147,7 +147,7 @@ test.describe('MCP tools', () => {
     const next = await listChildren(agent, { path: '/_test_data', limit: 5, start: 5 });
     expect(next.items.map((i) => i.path)).not.toContain(children.items[0].path);
 
-    await expect(search(agent, {})).rejects.toThrow(/needs "text", "types" or "reviewState"/);
+    await expect(search(agent, {})).rejects.toThrow(/needs "text", "types", "reviewState" or "hasDraft"/);
   });
 
   test('create_page: through the add form, then its first blocks, saved', async ({ page, urls }) => {
@@ -237,9 +237,9 @@ test.describe('MCP tools', () => {
     expect(copy.path).toBe(path);
     expect(copy.reviewState).toBe('published');
     const draftAt = '/_test_data/copy_of_another-page';
-    expect(copy.draft.path).toBe(draftAt);
+    expect(copy.draft.url.endsWith(draftAt)).toBe(true);
     const withDraft = await getTransitions(site, { path });
-    expect(withDraft.draft.path).toBe(draftAt);
+    expect(withDraft.draft.url.endsWith(draftAt)).toBe(true);
     // Plone has locked the page: its own fields can't be offered, and a save is refused.
     expect(Object.keys(withDraft.transitions.find((t) => t.id === 'update').takes)).not.toContain('exclude_from_nav');
     await expect(site.rename({ path, title: 'On the locked page' })).rejects.toThrow(/locked/i);
@@ -262,7 +262,7 @@ test.describe('MCP tools', () => {
     const original = await getTransitions(site, { path });
     expect(offered(original)).toContain('checkout');
     const second = await transitionPage(site, { path, id: 'checkout', expectedVersion: original.version });
-    expect(second.draft.path).toBe(draftAt);
+    expect(second.draft.url.endsWith(draftAt)).toBe(true);
     expect((await stored(draftAt)).review_state).toBe('private');
     await site.rename({ path: draftAt, title: 'Retitled on the copy' });
     const applied = await transitionPage(site, { path, id: 'checkin', expectedVersion: (await getTransitions(site, { path })).version });

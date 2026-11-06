@@ -126,8 +126,8 @@ export function siteApi(dispatch, history, token) {
     /** The path of the page's draft, or null (contentState). */
     draftOf: (path) => state.draftOf(path),
 
-    /** The page a draft belongs to (contentState). */
-    originalOf: (path) => state.originalOf(path),
+    /** The pages that have a draft, across the site, as search results (contentState). */
+    pagesWithDrafts: async () => (await state.pagesWithDrafts()).map(summary),
 
     /** The address of `path` in this admin, for a person to open. */
     adminUrl: (path) => `${window.location.origin}${path}`,

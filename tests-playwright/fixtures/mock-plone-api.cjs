@@ -4661,6 +4661,28 @@ app.post(/.*\/@workingcopy$/, (req, res) => {
   res.status(201).json({ '@id': `http://localhost:${PORT}${copyPath}` });
 });
 
+// The relation catalog, as plone.restapi's @relations answers it for one kind.
+// plone.app.iterate's working copies are the only relations this mock keeps.
+app.get('*/@relations', (req, res) => {
+  const name = req.query.relation;
+  const sessionId = getSessionId(req);
+  const summary = (path) => {
+    const content = getContent(path, sessionId);
+    return {
+      '@id': `http://localhost:${PORT}${path}`,
+      '@type': content['@type'],
+      title: content.title,
+      description: content.description || '',
+      review_state: content.review_state || 'published',
+      UID: content.UID,
+    };
+  };
+  const items = name === 'iterate-working-copy'
+    ? Object.entries(sessionWorkingCopies[sessionId] ?? {}).map(([copy, baseline]) => ({ source: summary(baseline), target: summary(copy) }))
+    : [];
+  res.json({ relations: { [name]: { items, items_total: items.length } } });
+});
+
 app.get(/.*\/@workingcopy$/, (req, res) => {
   const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@workingcopy$/, '') || '/').replace(/\/+$/, '') || '/';
   const sessionId = getSessionId(req);
