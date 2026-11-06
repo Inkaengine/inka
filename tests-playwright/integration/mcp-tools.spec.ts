@@ -90,12 +90,12 @@ test.describe('MCP tools', () => {
     const agent = agentOn(page);
     const read = await getPage(agent);
     const frontendUrl = await frontendUrlOf(page);
-    expect(new URL(frontendUrl).searchParams.has('_edit')).toBe(false);
+    expect(new URL(frontendUrl).searchParams.get('_edit')).toBe('false');
 
     const ops = [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@type': 'slate', value: 'Previewed *draft* text' }] }];
     const dry = await editPage(agent, { check: draftCheck(agent, siteOn(page)),
       ops, expectedVersion: read.version, dryRun: true, mintId,
-      render: (draft) => previewDraft(page.context(), { frontendUrl, path: '/_test_data/test-page', draft, maxChars: 100_000 }),
+      render: async (draft) => previewDraft(page.context(), { frontendUrl, draft, blockPathMap: await agent.blockPathMapOf(draft), maxChars: 100_000 }),
     });
     expect(dry.rendered.text).toContain('Previewed draft text');
     expect(dry.rendered.mimeType).toMatch(/^image\/(png|jpeg)$/);
@@ -156,7 +156,7 @@ test.describe('MCP tools', () => {
     await helper.login();
     await openAdmin(page, { adminUrl: helper.adminUrl });
 
-    const path = await createPage(page, { parent: '/_test_data', type: 'Document', title: 'Made by the MCP' });
+    const { path } = await createPage(page, { parent: '/_test_data', type: 'Document', title: 'Made by the MCP' });
     expect(path).toMatch(/^\/_test_data\/made-by-the-mcp/);
 
     const blocks = [{ '@uid': 'intro', '@type': 'slate', value: 'Written *by an agent*' }];
@@ -250,7 +250,7 @@ test.describe('MCP tools', () => {
 
     const callout = await describeBlock(agent, site, {
       type: 'callout',
-      render: (draft, uid) => previewDraft(page.context(), { frontendUrl, path: '/_test_data/test-page', draft, focus: uid, maxChars: 50_000 }),
+      render: async (draft, uid) => previewDraft(page.context(), { frontendUrl, draft, blockPathMap: await agent.blockPathMapOf(draft), focus: uid, maxChars: 50_000 }),
     });
     expect(callout.guidance).toMatch(/aside/);
     // Declared by the front end as stored blocks, given in the agent format.

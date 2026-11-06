@@ -25,6 +25,20 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
  */
 
 /** Open the page's More menu and follow one of its entries. */
+/**
+ * Click the block showing `text` in the other language's pane until the
+ * sidebar shows its fields. A click before the pane has the admin's page
+ * selects nothing, as it would for a person, who would click again; what is
+ * waited on is what they would see, the sidebar.
+ */
+async function clickInOtherLanguageUntilSidebarFollows(page: import('@playwright/test').Page, text: string) {
+  const block = page.frameLocator('#translationSourceIframe').locator('[data-block-uid]').filter({ hasText: text }).last();
+  await expect(async () => {
+    await block.click();
+    await expect(page.locator('.compare-language-fields'), 'the sidebar follows the pane that was clicked').toBeVisible();
+  }).toPass();
+}
+
 async function fromMoreMenu(page: import('@playwright/test').Page, entry: RegExp) {
   await page.locator('#toolbar-body .more').click();
   const link = page.getByRole('link', { name: entry });
@@ -92,6 +106,8 @@ test.describe('Multilingual editing', () => {
     // A Document is folderish, as Plone serves it, so clicking its row browses
     // into it; the select control is what picks it.
     await helper.objectBrowserSelectItem(browser, /Dienstleistungen/);
+    // The table shows the link once it is made.
+    await expect(row).toContainText('/de/dienstleistungen');
 
     // Linked, both ways — the point of a translation group.
     const token = helper.authToken;
@@ -101,11 +117,7 @@ test.describe('Multilingual editing', () => {
           headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         })
       ).json();
-    await expect
-      .poll(async () => (await translations('/en/services')).items.map((i: any) => i.language), {
-        timeout: 20000,
-      })
-      .toEqual(['de']);
+    expect((await translations('/en/services')).items.map((i: any) => i.language)).toEqual(['de']);
     expect((await translations('/de/dienstleistungen')).items[0].language).toBe('en');
 
     // And unlinked again, from the same table — re-entered through the
@@ -118,11 +130,9 @@ test.describe('Multilingual editing', () => {
     });
     await expect(linkedRow).toContainText('/de/dienstleistungen', { timeout: 15000 });
     await linkedRow.getByRole('button', { name: /unlink/i }).click();
-    await expect
-      .poll(async () => (await translations('/en/services')).items.length, {
-        timeout: 20000,
-      })
-      .toBe(0);
+    // The table shows the link gone once it is.
+    await expect(linkedRow).not.toContainText('/de/dienstleistungen');
+    expect((await translations('/en/services')).items).toHaveLength(0);
   });
 
   test('a language-independent field is inherited, not asked for again', async ({
@@ -349,9 +359,8 @@ test.describe('Multilingual editing', () => {
     await helper.enableMultilingual();
 
     await page.goto(`${helper.adminUrl}/en/about/edit`);
-    const compare = page.locator('.compare-languages');
-    await expect(compare).toBeVisible({ timeout: 20000 });
-    await compare.getByRole('button', { name: 'de' }).click();
+    await helper.waitForIframeReady();
+    await page.locator('.compare-languages').getByRole('button', { name: 'de' }).click();
 
     // One sidebar, two panes — the same bargain Volto strikes with its two
     // forms: whichever you select is the one the sidebar belongs to.
@@ -361,25 +370,36 @@ test.describe('Multilingual editing', () => {
     // Clicking a block in the other language selects it there — the pane is an
     // editing frame whose blocks are all read-only — and the sidebar shows
     // that block, read-only.
-    const german = page.frameLocator('#translationSourceIframe');
-    // Wait for the pane's bridge to have finished its handshake before
-    // clicking: node ids are stamped when the admin's data arrives, and until
-    // they are there a click selects nothing.
-    await expect(german.locator('[data-node-id]').first()).toBeAttached({
-      timeout: 20000,
-    });
-    await german
-      .locator('[data-block-uid]')
-      .filter({ hasText: 'Über uns' })
-      .last()
-      .click();
-    await expect(fields, "the sidebar follows the pane that was clicked").toBeVisible({
-      timeout: 15000,
-    });
+    await clickInOtherLanguageUntilSidebarFollows(page, 'Über uns');
 
     // Working in the page being edited takes the sidebar back.
     await helper.getIframe().locator('[data-block-uid]').first().click();
     await expect(fields).toHaveCount(0);
+  });
+
+  // The page being edited, loading slowly, settles AFTER a click in the
+  // other language: its bridge focuses a field on its own, so by the time the
+  // click's BLOCK_SELECTED is handled the editing frame has focus. The click
+  // was the author's all the same; judged by focus, it was lost (CI, 1 in
+  // many). This page moves focus to the editing frame at exactly that moment.
+  test('a click in the other language counts even if the page being edited takes focus as it is handled', async ({ page }) => {
+    await page.addInitScript(() => {
+      // Registered before the admin's own handler, so it runs first.
+      window.addEventListener('message', (event) => {
+        const pane = document.getElementById('translationSourceIframe') as HTMLIFrameElement | null;
+        if (event.data?.type !== 'BLOCK_SELECTED' || !pane || event.source !== pane.contentWindow) return;
+        (document.getElementById('previewIframe') as HTMLIFrameElement).focus();
+      });
+    });
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.enableMultilingual();
+
+    await page.goto(`${helper.adminUrl}/en/about/edit`);
+    await helper.waitForIframeReady();
+    await page.locator('.compare-languages').getByRole('button', { name: 'de' }).click();
+    // Before the fix every click was lost here, so this never passed.
+    await clickInOtherLanguageUntilSidebarFollows(page, 'Über uns');
   });
 
   test('a block in the other language can be inspected, but not changed', async ({
@@ -395,19 +415,10 @@ test.describe('Multilingual editing', () => {
     await compare.getByRole('button', { name: 'de' }).click();
 
     const german = page.frameLocator('#translationSourceIframe');
-    const block = german.locator('[data-block-uid]').filter({ hasText: 'Über uns' }).last();
-    await expect(block).toBeVisible({ timeout: 20000 });
-    // Wait for the pane's bridge to have finished its handshake before
-    // clicking: node ids are stamped when the admin's data arrives, and until
-    // they are there a click selects nothing.
-    await expect(german.locator('[data-node-id]').first()).toBeAttached({
-      timeout: 20000,
-    });
-    await block.click();
+    await clickInOtherLanguageUntilSidebarFollows(page, 'Über uns');
 
     // The sidebar shows what was picked, by its type — a block, not the page.
     const fields = page.locator('.compare-language-fields');
-    await expect(fields).toBeVisible({ timeout: 15000 });
     await expect(fields).toContainText(/\(de\)/);
 
     // Inspectable, not editable: the bridge collects no editable field for a
@@ -434,12 +445,8 @@ test.describe('Multilingual editing', () => {
     await expect(compare).toBeVisible({ timeout: 20000 });
     await compare.getByRole('button', { name: 'de' }).click();
 
-    const german = page.frameLocator('#translationSourceIframe');
-    const block = german.locator('[data-block-uid]').filter({ hasText: 'Über uns' }).last();
-    await expect(german.locator('[data-node-id]').first()).toBeAttached({ timeout: 20000 });
-    await block.click();
+    await clickInOtherLanguageUntilSidebarFollows(page, 'Über uns');
     const fields = page.locator('.compare-language-fields');
-    await expect(fields).toBeVisible({ timeout: 15000 });
 
     // What the editor's settling does: select its opening block, focusing
     // its field, from script.
@@ -497,23 +504,14 @@ test.describe('Multilingual editing', () => {
     expect(canonicalOfSelected, 'the copy records where it came from').toBeTruthy();
 
     const teaser = helper.getIframe().locator(`[data-block-uid="${teaserUid}"]`).first();
-    await expect(teaser).toBeVisible({ timeout: 20000 });
-    // Rendered is not ready: node ids are stamped when the admin's data
-    // arrives, and a click before that selects nothing — the compare pane then
-    // sits on whatever was selected when the page loaded, which is the title.
-    // The heavier the frontend, the more often the click lands first.
-    await expect(
-      helper.getIframe().locator('[data-node-id]').first(),
-    ).toBeAttached({ timeout: 20000 });
-    await teaser.click();
-
-    // The other pane shows the block this one was copied from. Polled, and
-    // generously: selection settles a beat after the click, and a frontend in
-    // dev can take its time.
+    // The other pane shows the block this one was copied from. A click before
+    // the page has the admin's data selects nothing (the pane then sits on the
+    // title, selected when the page loaded), so click until it shows.
     const pane = page.locator('.source-preview-pane');
-    await expect
-      .poll(async () => pane.getAttribute('data-showing-block'), { timeout: 30000 })
-      .toBe(canonicalOfSelected);
+    await expect(async () => {
+      await teaser.click();
+      await expect(pane).toHaveAttribute('data-showing-block', canonicalOfSelected);
+    }).toPass();
   });
 
   test('a block with no counterpart in the other language says so', async ({ page }) => {
@@ -579,23 +577,19 @@ test.describe('Multilingual editing', () => {
       .locator('[data-block-uid]')
       .filter({ hasText: 'We design in English.' })
       .last();
-    await expect(teaser).toBeVisible({ timeout: 20000 });
-    // Rendered is not ready: until node ids are stamped the click selects
-    // nothing, no blind opens, and the marker this test is about never
-    // renders. Its two sibling tests wait for exactly this.
-    await expect(
-      helper.getIframe().locator('[data-node-id]').first(),
-    ).toBeAttached({ timeout: 20000 });
-    await teaser.click();
-
     const marker = page
       .locator('.parent-block-section')
       .filter({ has: page.locator('.nav-title', { hasText: /^Grid$/ }) })
       .locator('.nested-status[data-nested-status="untranslated"]');
-    await expect(
-      marker.first(),
-      "the container's blind marks that blocks inside still read as the original",
-    ).toBeVisible({ timeout: 10000 });
+    // A click before the page has the admin's data selects nothing, no blind
+    // opens, and the marker never renders: click until it shows.
+    await expect(async () => {
+      await teaser.click();
+      await expect(
+        marker.first(),
+        "the container's blind marks that blocks inside still read as the original",
+      ).toBeVisible();
+    }).toPass();
     // Both teasers, counted — the marker is a roll-up, not a flag.
     await expect(marker.first()).toHaveAttribute('data-nested-count', '2');
   });
@@ -622,7 +616,7 @@ test.describe('Multilingual editing', () => {
     // The English tree, and only it: a language root folder is the navigation
     // root for everything inside it, which is what keeps one site's two
     // languages out of each other's menus.
-    await expect.poll(menus, { timeout: 15000 }).toContain('Services');
+    await expect(helper.getIframe().locator('nav').filter({ hasText: 'Services' }).first()).toBeVisible({ timeout: 15000 });
     expect(
       await menus(),
       'the German pages belong to the German menu',
@@ -730,20 +724,15 @@ test.describe('Multilingual editing', () => {
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen$/, { timeout: 20000 });
 
-    // What was typed is what was saved.
-    await expect
-      .poll(
-        async () =>
-          JSON.stringify((await read('/de/dienstleistungen')).blocks[slateId!].value),
-        { timeout: 15000 },
-      )
-      .toContain('Was wir machen, auf Deutsch.');
-
-    // And it reads that way on the page, not just in the API.
+    // It reads that way on the page...
     await helper.waitForIframeReady();
     await expect(helper.getIframe().locator('body')).toContainText(
       'Was wir machen, auf Deutsch.',
       { timeout: 15000 },
+    );
+    // ...because what was typed is what was saved.
+    expect(JSON.stringify((await read('/de/dienstleistungen')).blocks[slateId!].value)).toContain(
+      'Was wir machen, auf Deutsch.',
     );
 
     // The English page is untouched — the copy has ids of its own, so typing
@@ -1092,20 +1081,17 @@ test.describe('Multilingual editing', () => {
       .locator('[data-block-uid]')
       .filter({ hasText: 'We design in English.' })
       .last();
-    await expect(teaser).toBeVisible({ timeout: 20000 });
-    await expect(
-      helper.getIframe().locator('[data-node-id]').first(),
-    ).toBeAttached({ timeout: 20000 });
-    await teaser.click();
-
     const marker = page
       .locator('.parent-block-section')
       .filter({ has: page.locator('.nav-title', { hasText: /^Grid$/ }) })
       .locator('.nested-status[data-nested-status="untranslated"]');
-    await expect(
-      marker.first(),
-      'the copies are flagged without anyone opening the other language',
-    ).toBeVisible({ timeout: 10000 });
+    await expect(async () => {
+      await teaser.click();
+      await expect(
+        marker.first(),
+        'the copies are flagged without anyone opening the other language',
+      ).toBeVisible();
+    }).toPass();
     await expect(marker.first()).toHaveAttribute('data-nested-count', '2');
   });
 

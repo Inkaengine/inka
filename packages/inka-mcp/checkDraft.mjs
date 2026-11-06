@@ -38,9 +38,9 @@ async function onSite({ kind, value }, site) {
 }
 
 /** What the validator finds wrong with `data`, the page at `path`. */
-async function problems(data, { path, blocksConfig, templates, site }) {
+async function problems(data, { path, blocksConfig, templates, site, held }) {
   const items = [{ rel: path, data: { ...data, '@id': path } }, ...templates];
-  const checked = checkContent(items, { schemas: blocksConfig, elsewhere: true });
+  const checked = checkContent(items, { schemas: blocksConfig, elsewhere: true, held });
   const missing = [];
   for (const reference of checked.elsewhere) {
     if (!(await onSite(reference, site))) missing.push(reference.message);
@@ -56,8 +56,8 @@ async function problems(data, { path, blocksConfig, templates, site }) {
  * for the page open in `agent`'s editor, looking references up on `site`.
  */
 export function draftCheck(agent, site) {
-  return async ({ path, saved, draft }) => checkDraft({
-    path, saved, draft, blocksConfig: (await agent.getBlockSchemas()).types, site,
+  return async ({ path, saved, draft, held }) => checkDraft({
+    path, saved, draft, blocksConfig: (await agent.getBlockSchemas()).types, site, held,
   });
 }
 
@@ -65,15 +65,17 @@ export function draftCheck(agent, site) {
  * Check `draft` (the page at `path` as the change leaves it, stored shape)
  * against `saved` (as it was): DraftInvalid with each problem the change
  * brings. `blocksConfig` is the page's block schemas (getBlockSchemas().types);
- * `site` the admin's site API.
+ * `site` the admin's site API. `held`: the references of the files the editor
+ * holds for this change (holdFile), which the save uploads first: a link to one
+ * is good, and only to one of these.
  */
-export async function checkDraft({ path, saved, draft, blocksConfig, site }) {
+export async function checkDraft({ path, saved, draft, blocksConfig, site, held = new Set() }) {
   const templates = [];
   for (const ref of templateRefs([saved, draft])) {
     const at = await pathOf(ref, site);
     if (at) templates.push({ rel: at, data: { ...(await site.get(at)), '@id': at } });
   }
-  const context = { path, blocksConfig, templates, site };
+  const context = { path, blocksConfig, templates, site, held };
   const before = new Set(await problems(saved, context));
   const brought = (await problems(draft, context)).filter((line) => !before.has(line));
   if (brought.length) {

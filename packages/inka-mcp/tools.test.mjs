@@ -271,3 +271,165 @@ describe('what the results say of the site', () => {
     expect(await editPage(agent, { ops: [], expectedVersion: 'v1', check: passes })).toMatchObject({ version: 'v2', reviewState: 'published' });
   });
 });
+
+describe('files an agent staged (stage_media) in a page change', () => {
+  const PNG = { name: 'a.png', type: 'image/png', data: 'iVBORw0KGgo' };
+  const PDF = { name: 'r.pdf', type: 'application/pdf', data: 'JVBERg==' };
+  const files = { 'media:a': PNG, 'media:b': PDF };
+  const heldFile = async (id) => files[id];
+
+  /** An agent whose editor holds what it is handed, as `inka-pending:<n>`, and keeps the page's blocks. */
+  const editing = () => {
+    const did = [];
+    const formData = {
+      '@type': 'Document', title: 'News', modified: 'v1', review_state: 'private',
+      blocks: { img: { '@type': 'image', url: '' } }, blocks_layout: { items: ['img'] },
+    };
+    let n = 0;
+    const held = {};
+    return {
+      did,
+      formData,
+      getPage: async () => ({ path: '/news', version: 'v1', formData, blockPathMap: { _page: { blockType: 'Document' }, img: { blockType: 'image' } }, lockedBy: null }),
+      getDraft: async () => formData,
+      getBlockSchemas: async () => ({
+        page: { regions: [{ region: 'items', allowedBlocks: ['image'] }], contentType: 'Document' },
+        types: {
+          Document: {
+            title: 'Page', regions: [{ region: 'items', allowedBlocks: ['image'] }],
+            // Its lead image, as Plone describes a file field (volto.preview_image).
+            blockSchema: { properties: { title: { title: 'Title' }, preview_image: { type: 'object', factory: 'Image', widget: 'file' } } },
+          },
+          image: { title: 'Image', blockSchema: { properties: { url: { widget: 'image' }, href: { widget: 'object_browser' } } }, regions: [] },
+        },
+      }),
+      // Save uploads each held file beside the page, by its own name.
+      holdFile: async (file) => { did.push(`hold ${file.name}`); const ref = `inka-pending:${++n}`; held[ref] = `http://site/news/${file.name}`; return ref; },
+      update: async ({ id, fields }) => { did.push(`update ${id}`); Object.assign(id === '_page' ? formData : formData.blocks[id], fields); },
+      insert: async ({ block }) => { did.push('insert'); formData.blocks.added = block; formData.blocks_layout.items.push('added'); return 'added'; },
+      save: async () => { did.push('save'); return { version: 'v2', uploaded: held }; },
+    };
+  };
+  const ops = [
+    { op: 'update', id: 'img', set: { url: 'media:a' } },
+    { op: 'add', after: 'img', blocks: [{ '@type': 'image', url: 'media:a', href: [{ '@id': 'media:b' }] }] },
+  ];
+
+  it("holds each file the operations name once, and runs them with the editor's references", async () => {
+    const agent = editing();
+    let checked;
+    await editPage(agent, { ops, expectedVersion: 'v1', dryRun: true, check: async ({ held }) => { checked = held; }, heldFile });
+    expect(agent.did).toEqual(['hold a.png', 'hold r.pdf', 'update img', 'insert']);
+    // The check is told which references the save makes real, and only those.
+    expect([...checked]).toEqual(['inka-pending:1', 'inka-pending:2']);
+    expect(agent.formData.blocks.img.url).toBe('inka-pending:1');
+    expect(agent.formData.blocks.added).toMatchObject({ url: 'inka-pending:1', href: [{ '@id': 'inka-pending:2' }] });
+  });
+
+  it('a dry run shows the agent its own media ids, not the editor\'s references', async () => {
+    const dry = await editPage(editing(), { ops, expectedVersion: 'v1', dryRun: true, check: passes, heldFile });
+    const page = JSON.stringify(dry.page);
+    expect(page).toContain('"media:a"');
+    expect(page).toContain('"media:b"');
+    expect(page).not.toContain('inka-pending:');
+  });
+
+  it('a save says which item each file became, for the agent to use from then on', async () => {
+    const agent = editing();
+    const saved = await editPage(agent, { ops, expectedVersion: 'v1', check: passes, heldFile });
+    expect(agent.did.at(-1)).toBe('save');
+    expect(saved.media).toEqual({ 'media:a': 'http://site/news/a.png', 'media:b': 'http://site/news/r.pdf' });
+  });
+
+  it('a preview shows new files: the front end is handed each as a data: URL, in place of its reference', async () => {
+    const agent = editing();
+    let drafted;
+    const dry = await editPage(agent, {
+      ops, expectedVersion: 'v1', dryRun: true, check: passes, heldFile,
+      render: async (draft) => { drafted = draft; return { image: 'png', text: '' }; },
+    });
+    expect(dry.rendered).toEqual({ image: 'png', text: '' });
+    expect(drafted.blocks.img.url).toBe(`data:image/png;base64,${PNG.data}`);
+    expect(drafted.blocks.added.href).toEqual([{ '@id': `data:application/pdf;base64,${PDF.data}` }]);
+    expect(JSON.stringify(drafted)).not.toContain('inka-pending:');
+    // The editor still names them by reference; only the picture's draft is swapped.
+    expect(agent.formData.blocks.img.url).toBe('inka-pending:1');
+  });
+
+  it('a file a save already uploaded is that item from then on: nothing is held or uploaded again', async () => {
+    const agent = editing();
+    const uploaded = async (id) => (id === 'media:a'
+      ? { name: 'a.png', type: 'image/png', uploaded: 'http://site/news/a.png' }
+      : heldFile(id));
+    const saved = await editPage(agent, { ops, expectedVersion: 'v1', check: passes, heldFile: uploaded });
+    expect(agent.did).toEqual(['hold r.pdf', 'update img', 'insert', 'save']);
+    expect(agent.formData.blocks.img.url).toBe('http://site/news/a.png');
+    expect(saved.media).toEqual({ 'media:a': 'http://site/news/a.png', 'media:b': 'http://site/news/r.pdf' });
+  });
+
+  it('a server that keeps no files says so', async () => {
+    await expect(editPage(editing(), { ops, expectedVersion: 'v1', check: passes, heldFile: null }))
+      .rejects.toThrow(/keeps no files/);
+  });
+
+  it('preview_layout shows new files too, each as a data: URL', async () => {
+    let drafted;
+    await previewLayout(editing(), {
+      blocks: [{ '@type': 'image', url: 'media:a' }], mintId: () => 'x', check: passes, heldFile,
+      render: async (draft) => { drafted = draft; return {}; },
+    });
+    expect(drafted.blocks.x.url).toBe(`data:image/png;base64,${PNG.data}`);
+  });
+
+  // A page's own file field (its lead image) keeps the file in the page, as
+  // Plone does: the field takes the file itself, nothing is held or uploaded.
+  describe("a page's own file field", () => {
+    const lead = [{ op: 'update', id: '_page', set: { preview_image: 'media:a' } }];
+
+    it('takes the file itself, as the edit form sets it', async () => {
+      const agent = editing();
+      const saved = await editPage(agent, { ops: lead, expectedVersion: 'v1', check: passes, heldFile });
+      expect(agent.did).toEqual(['update _page', 'save']);
+      expect(agent.formData.preview_image).toEqual({ data: PNG.data, encoding: 'base64', 'content-type': 'image/png', filename: 'a.png' });
+      // It became no item of its own.
+      expect(saved.media).toEqual({});
+    });
+
+    it('a dry run shows the agent its media id, not the file', async () => {
+      const dry = await editPage(editing(), { ops: lead, expectedVersion: 'v1', dryRun: true, check: passes, heldFile });
+      expect(dry.page.preview_image).toBe('media:a');
+      expect(JSON.stringify(dry.page)).not.toContain(PNG.data);
+    });
+
+    it('a preview hands the front end the file as a stored one reads, its download a data: URL', async () => {
+      let drafted;
+      await editPage(editing(), {
+        ops: lead, expectedVersion: 'v1', dryRun: true, check: passes, heldFile,
+        render: async (draft) => { drafted = draft; return { image: 'png', text: '' }; },
+      });
+      expect(drafted.preview_image).toEqual({ filename: 'a.png', 'content-type': 'image/png', download: `data:image/png;base64,${PNG.data}` });
+    });
+
+    it('a file a save made an item of is refused: the field needs the file again', async () => {
+      const uploaded = async () => ({ name: 'a.png', type: 'image/png', uploaded: 'http://site/news/a.png' });
+      await expect(editPage(editing(), { ops: lead, expectedVersion: 'v1', check: passes, heldFile: uploaded }))
+        .rejects.toThrow(/media:a is already on the site, as http:\/\/site\/news\/a\.png.*stage it again/);
+    });
+  });
+
+  it('preview_layout shows a file an earlier save uploaded as that item', async () => {
+    let drafted;
+    await previewLayout(editing(), {
+      blocks: [{ '@type': 'image', url: 'media:a' }], mintId: () => 'x', check: passes,
+      heldFile: async () => ({ name: 'a.png', type: 'image/png', uploaded: 'http://site/news/a.png' }),
+      render: async (draft) => { drafted = draft; return {}; },
+    });
+    expect(drafted.blocks.x.url).toBe('http://site/news/a.png');
+  });
+
+  it('preview_layout on a server that keeps no files says so', async () => {
+    await expect(previewLayout(editing(), {
+      blocks: [{ '@type': 'image', url: 'media:a' }], mintId: () => 'x', check: passes, heldFile: null, render: async () => ({}),
+    })).rejects.toThrow(/keeps no files/);
+  });
+});

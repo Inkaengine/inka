@@ -3,7 +3,8 @@ import { createServer, request } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { hostedServer, codesFrom, replayBy, forwardTo } from './http.mjs';
 import { sealer } from './sealed.mjs';
-import { localCodes, sealedCodes, localPictures } from './codes.mjs';
+import { localCodes, sealedCodes, localPictures, localMedia } from './codes.mjs';
+import { MAX_FILE_BYTES } from './server.mjs';
 
 
 /**
@@ -108,7 +109,7 @@ const exchange = (on, { client, verifier, code }) => call(`${on}/token`, {
 describe('a sign-in code across instances', () => {
   it('sealed: any instance takes it', async () => {
     const secret = randomBytes(32).toString('base64');
-    const [one, two] = await instances(2, () => ({ secret, codes: sealedCodes({ box: sealer(secret) }), pictures: null }));
+    const [one, two] = await instances(2, () => ({ secret, codes: sealedCodes({ box: sealer(secret) }), pictures: null, media: null }));
     const answer = await exchange(two, await signIn(one));
     expect(answer.status).toBe(200);
     expect(await answer.json()).toHaveProperty('access_token');
@@ -119,6 +120,7 @@ describe('a sign-in code across instances', () => {
     const [one, two] = await instances(2, (port) => ({
       secret,
       pictures: null,
+      media: null,
       codes: localCodes({ instance: String(port), now: Date.now }),
       route: { instance: String(port), send: forwardTo('http://127.0.0.1:{instance}') },
     }));
@@ -135,6 +137,7 @@ describe('a sign-in code across instances', () => {
     const [one, two] = await instances(2, (port) => ({
       secret,
       pictures: null,
+      media: null,
       codes: localCodes({ instance: `m${port}`, now: Date.now }),
       route: { instance: `m${port}`, send: replayBy('X-Replay-To', 'machine={instance};path=/token') },
     }));
@@ -147,6 +150,7 @@ describe('a sign-in code across instances', () => {
     const [one] = await instances(1, (port) => ({
       secret,
       pictures: null,
+      media: null,
       codes: localCodes({ instance: `m${port}`, now: Date.now }),
       route: { instance: `m${port}`, send: forwardTo('http://127.0.0.1:{instance}') },
     }));
@@ -168,7 +172,9 @@ async function callTool(on, accessToken, name, args) {
   const text = await answer.text();
   // Streamable HTTP answers as an event stream: the message is its data line.
   const data = text.split('\n').find((line) => line.startsWith('data: '));
-  return { status: answer.status, headers: answer.headers, message: data && JSON.parse(data.slice(6)) };
+  // A call refused before it reaches the tools (routing) is answered as plain JSON.
+  const message = data ? JSON.parse(data.slice(6)) : answer.headers.get('content-type')?.startsWith('application/json') && JSON.parse(text);
+  return { status: answer.status, headers: answer.headers, message };
 }
 
 const PICTURE = { mimeType: 'image/png', data: 'iVBORw0KGgo' };
@@ -182,16 +188,19 @@ describe('a picture across instances', () => {
   async function twoInstances(send, nameOf = (port) => `m${port}`) {
     const secret = randomBytes(32).toString('base64');
     const pictures = {};
+    const media = {};
     const urls = await instances(2, (port) => {
       pictures[port] = localPictures({ instance: nameOf(port), now: Date.now });
+      media[port] = localMedia({ instance: nameOf(port), now: Date.now });
       return {
         secret,
         codes: localCodes({ instance: nameOf(port), now: Date.now }),
         pictures: pictures[port],
+        media: media[port],
         route: { instance: nameOf(port), send },
       };
     });
-    return { urls, picturesOn: (url) => pictures[new URL(url).port] };
+    return { urls, picturesOn: (url) => pictures[new URL(url).port], mediaOn: (url) => media[new URL(url).port] };
   }
 
   it('local, forwarded: another instance passes the ask to the one holding the picture', async () => {
@@ -221,10 +230,79 @@ describe('a picture across instances', () => {
   });
 });
 
+describe('a file an agent staged, across instances', () => {
+  // A call naming a file (a media id, anywhere in its arguments) goes to the
+  // instance holding it, as a picture's does; so does stage_media from a picture.
+  async function twoInstances() {
+    const secret = randomBytes(32).toString('base64');
+    const held = {};
+    const urls = await instances(2, (port) => {
+      const instance = `m${port}`;
+      held[port] = { pictures: localPictures({ instance, now: Date.now }), media: localMedia({ instance, now: Date.now }) };
+      return {
+        secret, codes: localCodes({ instance, now: Date.now }), ...held[port],
+        route: { instance, send: replayBy('X-Replay-To', 'machine={instance}') },
+      };
+    });
+    return { urls, on: (url) => held[new URL(url).port] };
+  }
+  const FILE = { user: 'jane', name: 'a.png', type: 'image/png', data: 'iVBORw0KGgo' };
+
+  it('a change naming a file is handed to the instance holding it', async () => {
+    const { urls: [one, two], on } = await twoInstances();
+    const { access_token: token } = await (await exchange(one, await signIn(one))).json();
+    const id = `media:${await on(one).media.issue(FILE)}`;
+    const { headers } = await callTool(two, token, 'edit_blocks', {
+      path: '/news', expectedVersion: 'v1', ops: [{ op: 'update', id: 'b1', set: { url: id } }],
+    });
+    expect(headers.get('x-replay-to')).toBe(`machine=m${new URL(one).port}`);
+  });
+
+  it('stage_media from a picture is handed to the instance holding the picture', async () => {
+    const { urls: [one, two], on } = await twoInstances();
+    const { access_token: token } = await (await exchange(one, await signIn(one))).json();
+    const picture = await on(one).pictures.issue({ user: 'jane', ...PICTURE });
+    const { headers } = await callTool(two, token, 'stage_media', { files: [{ picture }] });
+    expect(headers.get('x-replay-to')).toBe(`machine=m${new URL(one).port}`);
+  });
+
+  it('a change naming files held on two instances is refused, saying to add them again', async () => {
+    const { urls: [one, two], on } = await twoInstances();
+    const { access_token: token } = await (await exchange(one, await signIn(one))).json();
+    const ops = [
+      { op: 'update', id: 'b1', set: { url: `media:${await on(one).media.issue(FILE)}` } },
+      { op: 'update', id: 'b2', set: { url: `media:${await on(two).media.issue(FILE)}` } },
+    ];
+    const { status, message } = await callTool(one, token, 'edit_blocks', { path: '/news', expectedVersion: 'v1', ops });
+    expect(status).toBe(400);
+    expect(message.error.message).toMatch(/held on different instances: add them again/);
+  });
+  // A file the person drops in the drop view comes in one call, base64: the
+  // body parser's default limit (100 KB) refused a photo.
+  it('takes a dropped file as large as a file may be staged', async () => {
+    const { urls: [one] } = await twoInstances();
+    const { access_token: token } = await (await exchange(one, await signIn(one))).json();
+    const data = Buffer.alloc(MAX_FILE_BYTES).toString('base64');
+    const { status, message } = await callTool(one, token, 'stage_dropped', { name: 'photo.jpg', type: 'image/jpeg', data });
+    expect(status).toBe(200);
+    expect(message.result.structuredContent.files[0]).toMatchObject({ name: 'photo.jpg', bytes: MAX_FILE_BYTES });
+  });
+});
+
 describe('hostedServer', () => {
   it('refuses to start without a code store', () => {
     expect(() => hostedServer({ adminUrl: ADMIN, publicUrl: 'http://127.0.0.1:1', secret: randomBytes(32).toString('base64'), poolSize: 1, pageIdleMs: 60_000 }))
       .toThrow(/codes/);
+  });
+
+  // DNS rebinding: a page on another site whose name resolves here can't
+  // drive the server, since its requests name that site's host.
+  it('refuses a request naming another host', async () => {
+    const [one] = await instances(1, (port) => ({
+      secret: randomBytes(32).toString('base64'), codes: localCodes({ instance: `h${port}`, now: Date.now }), pictures: null, media: null,
+    }));
+    const answer = await call(`${one}/mcp`, { method: 'POST', headers: { Host: 'evil.example', 'Content-Type': 'application/json' }, body: '{}' });
+    expect(answer.status).toBe(403);
   });
 });
 
@@ -297,6 +375,21 @@ describe('INKA_MCP_CODES', () => {
   it('sealed: no pictures are kept (nothing is held, and a picture is too big for its id)', async () => {
     const { pictures } = await codesFrom({ INKA_MCP_CODES: 'sealed' }, secret);
     expect(pictures).toBeNull();
+  });
+
+  it('files an agent stages are kept where pictures are, and not at all when sealed', async () => {
+    const route = { instance: 'm-1', send: replayBy('fly-replay', 'instance={instance}') };
+    const { media } = await codesFrom({ INKA_MCP_CODES: 'memory' }, secret, { route });
+    expect((await media.issue({ user: 'jane', name: 'a.png', type: 'image/png', data: 'x' })).startsWith('m-1~')).toBe(true);
+    const held = new Map();
+    const makeStore = () => ({
+      async put(key, value) { held.set(key, value); },
+      async get(key) { return held.get(key) ?? null; },
+      async take(key) { const v = held.get(key) ?? null; held.delete(key); return v; },
+    });
+    await (await codesFrom({ INKA_MCP_CODES: 'stored' }, secret, { makeStore })).media.issue({ user: 'jane', name: 'a.png', type: 'image/png', data: 'x' });
+    expect([...held.keys()]).toEqual([expect.stringMatching(/^inka-mcp:media:/)]);
+    expect((await codesFrom({ INKA_MCP_CODES: 'sealed' }, secret)).media).toBeNull();
   });
 
   it('routes only codes held in memory', async () => {

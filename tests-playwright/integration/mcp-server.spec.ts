@@ -54,11 +54,11 @@ test.describe('MCP server', () => {
 
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
-    // `picture` is for the screenshot view alone: a client lists it to the view, not the model.
-    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'view_page']);
+    // `picture` and `stage_dropped` are for the views alone: a client lists them to a view, not the model.
+    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_dropped', 'stage_media', 'view_page']);
     // Those that change nothing say so, so a client need not ask the person every time.
     expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
-      .toEqual(['describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'view_page']);
+      .toEqual(['ask_for_files', 'describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
     expect(tools.find((t) => t.name === 'delete_page')!.annotations).toMatchObject({ destructiveHint: true });
   });
 
@@ -206,6 +206,119 @@ test.describe('MCP server', () => {
     expect(refused.isError).toBe(true);
     expect(refused.text).toMatch(/path not in content: \/_test_data\/no-such-page/);
     expect((await call('get_page', { path: PAGE })).json().version).toBe(read.version);
+  });
+
+  test('stage_media: a picture added to a page change, previewed, and uploaded beside the page when it is saved', async ({ urls }) => {
+    test.setTimeout(180000);
+    // Where the test front end sets deferImageUploads.
+    const DEFERRED = '/_test_data/deferred-images-page';
+    const viewed = (await call('view_page', { path: DEFERRED })).json();
+    const held = (await call('stage_media', { files: [{ picture: viewed.pictures[0], name: 'from-the-agent.png' }] })).json();
+    // Said plainly: staged here, not on the site, and for how long.
+    expect(held).toMatchObject({ staged: true, onSite: false });
+    expect(Date.parse(held.keptUntil) - Date.now()).toBeGreaterThan(110 * 60_000);
+    const [added] = held.files;
+    expect(added).toMatchObject({ media: expect.stringMatching(/^media:/), name: 'from-the-agent.png', type: expect.stringMatching(/^image\/(png|jpeg)$/) });
+    // If any file can't be had, none are staged.
+    const refused = await call('stage_media', { files: [{ picture: viewed.pictures[0] }, { picture: 'made-up' }] });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/file 2 \(made-up\).*Nothing was staged/);
+
+    const read = (await call('get_page', { path: DEFERRED })).json();
+    const ops = [{ op: 'update', id: 'image', set: { url: added.media } }];
+
+    // A preview shows the new file: the front end is handed it as a data: URL.
+    const previewed = await client.callTool({
+      name: 'edit_blocks', arguments: { path: DEFERRED, expectedVersion: read.version, ops, dryRun: true, preview: 'desktop' },
+    }, undefined, CALL);
+    expect(previewed.isError, JSON.stringify(previewed.content).slice(0, 300)).toBeFalsy();
+    const [, picture] = previewed.content as any[];
+    expect(picture).toMatchObject(PICTURE);
+    // MCP_PREVIEW_PNG=<file> keeps the screenshot to look at.
+    if (process.env.MCP_PREVIEW_PNG) writeFileSync(process.env.MCP_PREVIEW_PNG, Buffer.from(picture.data, 'base64'));
+    expect((await call('get_page', { path: DEFERRED })).json().version, 'a preview saves nothing').toBe(read.version);
+    // A dry run without one shows the change, naming the file by the agent's id.
+    const dry = (await call('edit_blocks', { path: DEFERRED, expectedVersion: read.version, ops, dryRun: true })).json();
+    expect(JSON.stringify(dry.page.blocks.find((b: any) => b['@uid'] === 'image'))).toContain(added.media);
+    expect(JSON.stringify(dry.page)).not.toContain('inka-pending:');
+
+    const saved = (await call('edit_blocks', { path: DEFERRED, expectedVersion: read.version, ops })).json();
+    const item = saved.media[added.media];
+    expect(item, 'the save says which item the file became').toMatch(/uploaded-image-\d+$/);
+    const stored = await (await fetch(`${urls.mockApi}${DEFERRED}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    const block = JSON.stringify(stored.blocks.image);
+    expect(block).toContain(new URL(item).pathname);
+    expect(block).toContain('"image_scales"');
+    expect(block).not.toContain('media:');
+
+    // The id names that item from then on: used again, it is not uploaded again.
+    const again = (await call('edit_blocks', { path: DEFERRED, expectedVersion: saved.version, ops: [{ op: 'update', id: 'image', set: { url: added.media } }] })).json();
+    expect(again.media[added.media]).toBe(item);
+
+    // A file no one added is refused, and so is one in a new page, for now.
+    const unknown = await call('edit_blocks', { path: DEFERRED, expectedVersion: again.version, ops: [{ op: 'update', id: 'image', set: { url: 'media:made-up' } }] });
+    expect(unknown.text).toMatch(/add it again/);
+    const newPage = await call('create_page', { parent: '/_test_data', title: 'With a file', blocks: [{ '@type': 'image', url: added.media }] });
+    expect(newPage.isError).toBe(true);
+    expect(newPage.text).toMatch(/create the page first/);
+  });
+
+  test('create_page: an Image or a File item made from a staged file, as the add form makes one', async ({ urls }) => {
+    test.setTimeout(180000);
+    const viewed = (await call('view_page', { path: PAGE })).json();
+    const { files: [photo, report, spare] } = (await call('stage_media', { files: [
+      { picture: viewed.pictures[0], name: 'team.png' },
+      { picture: viewed.pictures[0], name: 'report.png' },
+      { picture: viewed.pictures[0], name: 'spare.png' },
+    ] })).json();
+    const stored = async (path: string) => (await fetch(`${urls.mockApi}${path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+
+    const image = (await call('create_page', { parent: '/_test_data', type: 'Image', title: 'Team photo', file: photo.media })).json();
+    expect(image.version).toBeTruthy();
+    const madeImage = await stored(image.path);
+    expect(madeImage['@type']).toBe('Image');
+    expect(madeImage.title).toBe('Team photo');
+    expect(madeImage.image_scales.image[0]).toMatchObject({ filename: 'team.png', 'content-type': photo.type });
+    // The id names the item from then on.
+    expect(new URL(image.media[photo.media]).pathname).toBe(image.path);
+
+    const file = (await call('create_page', { parent: '/_test_data', type: 'File', title: 'Annual report', file: report.media })).json();
+    const madeFile = await stored(file.path);
+    expect(madeFile['@type']).toBe('File');
+    expect(madeFile.file).toMatchObject({ filename: 'report.png', 'content-type': report.type });
+
+    // A file already on the site is that item: a second one is not made of it.
+    const twice = await call('create_page', { parent: '/_test_data', type: 'Image', title: 'Again', file: photo.media });
+    expect(twice.isError).toBe(true);
+    expect(twice.text).toMatch(/is already on the site, as .*: use that item/);
+    // A type whose add form has no file to fill takes none.
+    const page = await call('create_page', { parent: '/_test_data', title: 'A page', file: spare.media });
+    expect(page.isError).toBe(true);
+    expect(page.text).toMatch(/a Document has no file field/);
+  });
+
+  test("edit_blocks: a staged file in a page's own lead image is kept in the page, as the edit form keeps it", async ({ urls }) => {
+    test.setTimeout(180000);
+    const NEWS = '/_test_data/news-test-page';
+    const viewed = (await call('view_page', { path: NEWS })).json();
+    const { files: [lead] } = (await call('stage_media', { files: [{ picture: viewed.pictures[0], name: 'lead.png' }] })).json();
+    const read = (await call('get_page', { path: NEWS })).json();
+    const ops = [{ op: 'update', id: '_page', set: { preview_image: lead.media } }];
+
+    const dry = (await call('edit_blocks', { path: NEWS, expectedVersion: read.version, ops, dryRun: true })).json();
+    expect(dry.page.preview_image).toBe(lead.media);
+
+    (await call('edit_blocks', { path: NEWS, expectedVersion: read.version, ops })).json();
+    const stored = await (await fetch(`${urls.mockApi}${NEWS}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    expect(stored.preview_image).toMatchObject({ filename: 'lead.png', 'content-type': lead.type });
+    expect(JSON.stringify(stored)).not.toContain('media:');
+    expect(JSON.stringify(stored)).not.toContain('inka-pending:');
   });
 
   test('reads, dry-runs, saves, and refuses a stale version', async ({ urls }) => {

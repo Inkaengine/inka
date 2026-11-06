@@ -27,7 +27,7 @@ const SAVED = page({ a: { '@type': 'slate', value: [{ type: 'p', children: [{ te
 const withBlock = (base, uid, block) => page({ ...base.blocks, [uid]: block });
 const teaserTo = (href) => ({ '@type': 'teaser', href: [{ '@id': href }] });
 
-const check = (saved, draft, site = siteWith()) => checkDraft({ path: '/news', saved, draft, blocksConfig: sharedBlocksConfig, site });
+const check = (saved, draft, site = siteWith(), held = new Set()) => checkDraft({ path: '/news', saved, draft, blocksConfig: sharedBlocksConfig, site, held });
 
 describe('checkDraft', () => {
   it('lets a change through that links to a page the site has', async () => {
@@ -51,6 +51,13 @@ describe('checkDraft', () => {
     const draft = withBlock(SAVED, 't', teaserTo('../resolveuid/events-uid'));
     await expect(check(SAVED, draft, siteWith({ uids: { 'events-uid': '/events' } }))).resolves.toBeUndefined();
     await expect(check(SAVED, draft)).rejects.toThrow(/broken resolveuid\/events-uid/);
+  });
+
+  it('lets a link to a file the change holds until it is saved through, and only one it holds', async () => {
+    // stage_media: the editor holds the file, and Save uploads it before the page.
+    const draft = withBlock(SAVED, 't', teaserTo('inka-pending:1'));
+    await expect(check(SAVED, draft, siteWith(), new Set(['inka-pending:1']))).resolves.toBeUndefined();
+    await expect(check(SAVED, draft)).rejects.toThrow(/unrecognized reference form: inka-pending:1/);
   });
 
   it('does not blame the change for a problem the page already had', async () => {

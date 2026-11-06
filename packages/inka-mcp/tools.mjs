@@ -8,6 +8,7 @@
  */
 import { toAgentPage, toAgentBlock, toStoredBlocks } from './pageFormat.mjs';
 import { editBlocks } from './editBlocks.mjs';
+import { mediaIn, withMedia, dataUrlOf } from './media.mjs';
 import { describeBlockTypes, describeBlockType } from './blockTypes.mjs';
 
 export class StaleVersion extends Error {}
@@ -161,10 +162,22 @@ const EXAMPLE_UID = 'example';
  * changes on every page that uses it. `check({ path, saved, draft })` refuses a
  * change that would leave the page invalid (checkDraft.mjs), before anything
  * is rendered or saved.
+ *
+ * The operations may name files an agent staged (`media:<id>`, media.mjs):
+ * `heldFile(id)` gives each one's `{ name, type, data }`, and the editor holds
+ * it until Save (holdFile), so the operations run with the editor's
+ * references. A dry run's page names the files by the agent's ids again; a
+ * save says which item each file it uploaded became (`media`). A file an
+ * earlier save uploaded (`uploaded`, its URL) is that item: it isn't held
+ * again. A file the page no longer uses is not uploaded, and not in `media`.
+ * A preview hands the front end each file as a data: URL, in place of its
+ * reference: the promise a front end makes by setting deferImageUploads.
  */
-export async function editPage(agent, { ops, expectedVersion, dryRun = false, changeTemplates = false, mintId, render, check }) {
+export async function editPage(agent, { ops, expectedVersion, dryRun = false, changeTemplates = false, mintId, render, check, heldFile }) {
   if (!check) throw new Error('editPage: `check` is required (checkDraft.mjs draftCheck)');
   if (render && !dryRun) throw new Error('a preview is for a dry run: add dryRun');
+  const named = mediaIn(ops);
+  if (named.size && !heldFile) throw new Error("this server keeps no files (stage_media), so a change can't add one");
   if (!expectedVersion) throw new Error('edit_blocks needs the expectedVersion get_page returned');
   const { path, version: loaded, lockedBy, formData } = await agent.getPage();
   if (lockedBy && !dryRun) throw new Locked(path, lockedBy);
@@ -173,19 +186,71 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
       `the page has changed since it was read (read at ${expectedVersion}, now ${loaded}). Read it again and reapply.`,
     );
   }
-  const blocksConfig = (await agent.getBlockSchemas()).types;
-  const { results, ids } = await editBlocks(agent, ops, { blocksConfig, mintId, changeTemplates });
-  await check({ path, saved: formData, draft: await agent.getDraft() });
+  const { page: { contentType }, types: blocksConfig } = await agent.getBlockSchemas();
+  // A file in one of the page's own file fields (a lead image) is kept in the
+  // page, as Plone keeps it: the field takes the file itself, as the edit
+  // form's file widget sets it, and nothing is held or uploaded.
+  const inFields = new Map(); // a page field → the agent's media id in it
+  const fileFields = named.size ? Object.entries(blocksConfig[contentType].blockSchema.properties)
+    .filter(([, field]) => ['Image', 'File'].includes(field.factory)).map(([name]) => name) : [];
+  for (const op of ops) {
+    if (op.op !== 'update' || op.id !== '_page' || !op.set) continue;
+    for (const field of fileFields) if (mediaIn(op.set[field] ?? null).size) inFields.set(field, op.set[field]);
+  }
+  for (const [field, id] of inFields) {
+    const file = await heldFile(id);
+    if (file.uploaded) {
+      throw new Error(`${id} is already on the site, as ${file.uploaded}: the page's ${field} keeps a file of its own, so stage it again`);
+    }
+    ops = ops.map((op) => (op.op === 'update' && op.id === '_page' && op.set?.[field] === id
+      ? { ...op, set: { ...op.set, [field]: { data: file.data, encoding: 'base64', 'content-type': file.type, filename: file.name } } }
+      : op));
+  }
+  const swaps = new Map(); // an agent's media id → what the operations name the file by
+  const refs = new Map(); // an agent's media id → the editor's reference, for a file not uploaded yet
+  const dataUrls = new Map(); // the editor's reference → the file as a data: URL, for a preview
+  for (const id of mediaIn(ops)) {
+    const file = await heldFile(id);
+    // A file a save already uploaded is that item now.
+    if (file.uploaded) {
+      swaps.set(id, file.uploaded);
+      continue;
+    }
+    const ref = await agent.holdFile(file);
+    swaps.set(id, ref);
+    refs.set(id, ref);
+    dataUrls.set(ref, dataUrlOf(file));
+  }
+  const { results, ids } = await editBlocks(agent, withMedia(ops, swaps), { blocksConfig, mintId, changeTemplates });
+  await check({ path, saved: formData, draft: await agent.getDraft(), held: new Set(refs.values()) });
   if (dryRun) {
-    const dry = { dryRun: true, results, ids, ...(lockedBy && { lockedBy }), page: await getPage(agent) };
-    if (render) dry.rendered = await render(await agent.getDraft());
+    const asNamed = new Map([...refs].map(([id, ref]) => [ref, id]));
+    const page = withMedia(await getPage(agent), asNamed);
+    for (const [field, id] of inFields) page[field] = id;
+    const dry = { dryRun: true, results, ids, ...(lockedBy && { lockedBy }), page };
+    if (render) {
+      const draft = withMedia(await agent.getDraft(), dataUrls);
+      // A front end reads a stored file field's download URL.
+      for (const [field, id] of inFields) {
+        const file = await heldFile(id);
+        draft[field] = { filename: file.name, 'content-type': file.type, download: dataUrlOf(file) };
+      }
+      dry.rendered = await render(draft);
+    }
     return dry;
   }
   // Templates are saved as their lock does it ("Change on all pages"), before the page.
   const templatesChanged = changeTemplates ? await agent.lockTemplates() : [];
-  const { version } = await agent.save({ expectedVersion });
+  const { version, uploaded } = await agent.save({ expectedVersion });
+  // Each file now on the site: one this save uploaded, or one an earlier save had.
+  const media = Object.fromEntries([...swaps]
+    .filter(([id, to]) => !refs.has(id) || to in uploaded)
+    .map(([id, to]) => [id, refs.has(id) ? uploaded[to] : to]));
   // Its workflow state: a published page's visitors see the change now.
-  return { results, ids, version, reviewState: formData.review_state, ...(changeTemplates && { templatesChanged }) };
+  return {
+    results, ids, version, reviewState: formData.review_state,
+    ...(changeTemplates && { templatesChanged }), ...(named.size && { media }),
+  };
 }
 
 /**
@@ -195,8 +260,17 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
  * one; `render(draft)` renders a draft of the page. `check` refuses a layout
  * that would leave the page invalid, as editPage's does.
  */
-export async function previewLayout(agent, { blocks, render, mintId, check }) {
+export async function previewLayout(agent, { blocks: proposedBlocks, render, mintId, check, heldFile }) {
   if (!check) throw new Error('previewLayout: `check` is required (checkDraft.mjs draftCheck)');
+  // Nothing is held or saved: each file the layout names is a data: URL in it.
+  const named = mediaIn(proposedBlocks);
+  if (named.size && !heldFile) throw new Error("this server keeps no files (stage_media), so a layout can't show one");
+  const shown = new Map(); // a media id → its item's URL once saved, else the file as a data: URL
+  for (const id of named) {
+    const file = await heldFile(id);
+    shown.set(id, file.uploaded ? file.uploaded : dataUrlOf(file));
+  }
+  const blocks = withMedia(proposedBlocks, shown);
   const blocksConfig = (await agent.getBlockSchemas()).types;
   for (const block of blocks) {
     if (!blocksConfig[block['@type']]) {

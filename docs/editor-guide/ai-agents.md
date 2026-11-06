@@ -65,12 +65,21 @@ claude mcp add inka --env INKA_ADMIN_URL=https://admin.example.org -- node /path
 
 The first call opens your browser to sign in, as above. The sign-in is kept in `~/.config/inka-mcp/tokens.json`, readable only by you, so you aren't asked again until it runs out.
 
+To let it add files from your computer to a page, name the folders it may read, separated by `:` (`;` on Windows). It reads nothing outside them:
+
+### Shell
+
+```shell
+claude mcp add inka --env INKA_ADMIN_URL=https://admin.example.org --env INKA_MEDIA_FOLDERS=$HOME/Pictures/site -- node /path/to/inka/packages/inka-mcp/stdio.mjs
+```
+
 ## What the assistant can do
 
 - Find pages by their text, and list what is in a section.
 - Read a page, and see it as a visitor sees it.
 - Add, change, move and remove blocks, and change a page's own fields such as its title and summary.
 - Preview a change as a visitor would see it before saving it.
+- Add images and other files to a page: from a web address, a screenshot it took, a file you drop into the conversation when it asks for one, or, when it runs on your computer, a folder you allowed. A file goes onto the site only when the change that uses it is saved. The site's front end has to support this; if it doesn't, the assistant says so.
 - Add, move, rename and delete pages.
 - Change a template's locked blocks on every page that uses it, but only when you ask for that.
 

@@ -14,7 +14,8 @@
  *   INKA_MCP_SECRET      the sealing key: 32 random bytes, base64
  *   INKA_MCP_CODES       where sign-in codes wait between sign-in and the client's
  *                        exchange, and where the pictures a client's view fetches
- *                        are kept (codes.mjs; sealed keeps no pictures): `memory`
+ *                        and the files an agent stages (stage_media) are kept
+ *                        (codes.mjs; sealed keeps neither): `memory`
  *                        (one instance, or several
  *                        with a route, below), `sealed` (any instance, nothing
  *                        held), or `stored` (a store of the deployment's own that
@@ -47,16 +48,18 @@
  */
 import { createServer as httpServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
+import express from 'express';
+import { hostHeaderValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { createServer } from './server.mjs';
+import { createServer, MAX_FILE_BYTES } from './server.mjs';
+import { mediaIn, MEDIA_PREFIX } from './media.mjs';
 import { adminPool } from './adminPool.mjs';
 import { oauthProvider } from './oauth.mjs';
 import { sealer } from './sealed.mjs';
 import {
-  localCodes, storedCodes, sealedCodes, localPictures, storedPictures, instanceOfCode,
+  localCodes, storedCodes, sealedCodes, localPictures, storedPictures, localMedia, storedMedia, instanceOfCode,
 } from './codes.mjs';
 import { renewThrough, watchSignOut } from './signIn.mjs';
 import { memoryLimit, poolSize as poolSizeFor } from './poolSize.mjs';
@@ -143,13 +146,15 @@ export function forwardTo(peerUrl) {
 /**
  * The server as an Express app (from the MCP SDK), and `close()` for its
  * browser. `publicUrl` is where clients reach it. `codes`: where sign-in
- * codes wait, and `pictures` where the pictures a view fetches are kept, or
- * null to keep none (codes.mjs). `route`: for local codes and pictures on
- * several instances, { instance, send } (see the configuration above).
+ * codes wait, `pictures` where the pictures a view fetches are kept and
+ * `media` where the files an agent stages are, each or null to keep none
+ * (codes.mjs). `route`: for local codes, pictures and files on several
+ * instances, { instance, send } (see the configuration above).
  */
-export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, route, poolSize, pageIdleMs, frontendUrl }) {
+export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, media, route, poolSize, pageIdleMs, frontendUrl }) {
   if (!codes) throw new Error('hostedServer: `codes` is required, where sign-in codes wait (codes.mjs; codesFrom reads INKA_MCP_CODES)');
-  if (pictures === undefined) throw new Error('hostedServer: `pictures` is required, where pictures are kept, or null for none (codesFrom gives both)');
+  if (pictures === undefined) throw new Error('hostedServer: `pictures` is required, where pictures are kept, or null for none (codesFrom gives it)');
+  if (media === undefined) throw new Error('hostedServer: `media` is required, where the files an agent stages are kept, or null for none (codesFrom gives it)');
   if (route && !isInstanceName(route.instance)) {
     throw new Error(`a route's instance is its name: letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
@@ -166,8 +171,13 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, rou
   });
   const pool = adminPool({ adminUrl: admin, frontendUrl, size: poolSize, maxIdleMs: pageIdleMs });
 
-  // Requests must name this server's host (DNS rebinding protection).
-  const app = createMcpExpressApp({ allowedHosts: [base.hostname] });
+  // Requests must name this server's host (DNS rebinding protection), checked
+  // before a body is read, as the SDK's createMcpExpressApp does. Its body
+  // limit is express.json's default, 100 KB, and a file the person drops in
+  // the drop view comes in one call, base64.
+  const app = express();
+  app.use(hostHeaderValidation([base.hostname]));
+  app.use(express.json({ limit: Math.ceil(MAX_FILE_BYTES * 4 / 3) + 64 * 1024 }));
   // Each request, as it ends: method, path (never its query: codes travel
   // there) and status; for a refused sign-in step, the OAuth error answered
   // (an error code and description, nothing secret).
@@ -183,17 +193,26 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, rou
     next();
   });
   // A code exchange whose code another instance holds goes to that instance,
-  // and so does a view's ask for a picture another instance holds.
+  // and so does a tool call naming what another instance holds: a view's ask
+  // for a picture, stage_media from a picture, a change naming a file an agent
+  // added (heldIn).
   if (route) {
     app.post('/mcp', async (req, res, next) => {
       const { method, params } = req.body ?? {};
-      const owner = method === 'tools/call' && params?.name === 'picture' ? instanceOfCode(params.arguments?.id) : null;
-      if (owner === null || owner === route.instance) {
+      const refuse = (message) => res.status(400).json({ jsonrpc: '2.0', error: { code: -32602, message }, id: req.body.id ?? null });
+      const owners = new Set(method === 'tools/call' ? heldIn(params).map(instanceOfCode) : []);
+      owners.delete(null);
+      if (owners.size > 1) {
+        refuse('this call names files held on different instances: add them again, then make the change');
+        return;
+      }
+      const [owner] = owners;
+      if (owner === undefined || owner === route.instance) {
         next();
         return;
       }
       if (!isInstanceName(owner)) {
-        res.status(400).json({ jsonrpc: '2.0', error: { code: -32602, message: 'not a picture this server took' }, id: req.body.id ?? null });
+        refuse('not something this server holds');
         return;
       }
       await route.send(owner, req, res);
@@ -252,7 +271,8 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, rou
     const server = createServer(({ authInfo: { extra: { user, plone } } }) => watchSignOut(
       pool.forUser(async () => ({ id: user, token: plone })),
       () => provider.signedOut(plone),
-    ), { pictures, userOf: ({ authInfo }) => authInfo.extra.user });
+    // A hosted server reads no one's computer: a file comes by URL or picture.
+    ), { pictures, media, localFiles: null, userOf: ({ authInfo }) => authInfo.extra.user });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {
       transport.close();
@@ -271,6 +291,21 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, rou
   return { app, close: () => pool.close() };
 }
 
+/**
+ * The ids of what an instance holds that a tool call names: the picture a
+ * view asks for, the pictures stage_media holds, and every file an agent staged
+ * that its arguments name (media ids, anywhere in them).
+ */
+function heldIn(params) {
+  const args = params?.arguments ?? {};
+  const ids = [...mediaIn(args)].map((id) => id.slice(MEDIA_PREFIX.length));
+  if (params?.name === 'picture' && args.id) ids.push(args.id);
+  if (params?.name === 'stage_media') {
+    for (const file of args.files ?? []) if (file?.picture) ids.push(file.picture);
+  }
+  return ids;
+}
+
 function required(env, name) {
   const value = env[name];
   if (!value) throw new Error(`inka-mcp: ${name} is not set`);
@@ -287,22 +322,33 @@ export async function codesFrom(env, secret, { makeStore, route } = {}) {
   if (route && kind !== 'memory') {
     throw new Error(`a route routes codes held in memory; INKA_MCP_CODES is ${kind}, which any instance can take`);
   }
-  if (kind === 'sealed') return { codes: sealedCodes({ box: sealer(secret) }), pictures: null };
+  if (kind === 'sealed') return { codes: sealedCodes({ box: sealer(secret) }), pictures: null, media: null };
   if (kind === 'stored') {
     if (!makeStore) {
       throw new Error('INKA_MCP_CODES=stored needs your store: start the server from your own entry, with `await main(process.env, { makeStore })`');
     }
     const store = await makeStore(env);
-    return { codes: storedCodes({ store, now: Date.now }), pictures: storedPictures({ store, now: Date.now }) };
+    return {
+      codes: storedCodes({ store, now: Date.now }),
+      pictures: storedPictures({ store, now: Date.now }),
+      media: storedMedia({ store, now: Date.now }),
+    };
   }
   if (kind !== 'memory') throw new Error(`INKA_MCP_CODES is memory, sealed or stored, not ${JSON.stringify(kind)}`);
-  if (!route) return { codes: localCodes({ instance: null, now: Date.now }), pictures: localPictures({ instance: null, now: Date.now }) };
+  if (!route) {
+    return {
+      codes: localCodes({ instance: null, now: Date.now }),
+      pictures: localPictures({ instance: null, now: Date.now }),
+      media: localMedia({ instance: null, now: Date.now }),
+    };
+  }
   if (!isInstanceName(route.instance)) {
     throw new Error(`a route's instance is its name: letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
   return {
     codes: localCodes({ instance: route.instance, now: Date.now }),
     pictures: localPictures({ instance: route.instance, now: Date.now }),
+    media: localMedia({ instance: route.instance, now: Date.now }),
     route,
   };
 }
