@@ -2226,25 +2226,12 @@ function markBlockReadOnly(block, idFieldMap) {
   return marked;
 }
 
-// Fields that LOOK like text and are not prose: a link target, a token, a
-// date, a colour. Translating one breaks rendering rather than the sentence —
-// `variation: "summary"` becoming "Zusammenfassung" stops the block resolving —
-// and a change to one is no reason to re-read a translation.
-const NON_PROSE_WIDGETS = new Set([
-  'object_browser',
-  'url',
-  'email',
-  'date',
-  'datetime',
-  'time',
-  'color',
-  'icon',
-  'json',
-  'copyFromTargetField',
-]);
-
-// Fields that hold OTHER BLOCKS. They have fingerprints of their own.
-const CHILD_WIDGETS = new Set(['blocksid_list', 'object_list']);
+// The widgets a person writes sentences in. Only these, or none: a widget otherwise holds a
+// link, a token, a date, a colour, a size or something a frontend invented. Translating one
+// breaks rendering rather than the sentence — `variation: "summary"` becoming
+// "Zusammenfassung" stops the block resolving — and a change to one is no reason to re-read a
+// translation.
+const PROSE_WIDGETS = new Set(['text', 'textarea', 'slate']);
 
 /**
  * The fields of a block a translator would rewrite.
@@ -2254,7 +2241,8 @@ const CHILD_WIDGETS = new Set(['blocksid_list', 'object_list']);
  * `isTextEditableFieldType` already answers "can this be typed into" for inline
  * editing; translatable is that, minus what is shared between languages
  * (`multilingual_options.language_independent`, the same flag a content type's
- * fields use) and minus text-shaped fields that are not sentences.
+ * fields use: mark a plain string that holds a token with it) and minus fields whose widget
+ * isn't for writing.
  *
  * @param {Object} schema - the BLOCK TYPE's schema
  * @returns {string[]} field ids, in schema order
@@ -2269,8 +2257,7 @@ export function translatableFieldIds(schema) {
       // A field wrapped by another widget (copy-from-target keeps a teaser's
       // title and description under `baseWidget`) is still the field it wraps.
       const def = wrapper.baseWidget || wrapper;
-      if (CHILD_WIDGETS.has(def.widget)) return false;
-      if (NON_PROSE_WIDGETS.has(def.widget)) return false;
+      if (def.widget && !PROSE_WIDGETS.has(def.widget)) return false;
       // A field with a fixed set of values holds a token, not a sentence.
       if (def.choices || def.vocabulary) return false;
       return isTextEditableFieldType(getFieldTypeString(def));
