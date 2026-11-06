@@ -1,4 +1,4 @@
-import { expandTemplatesSync } from '@volto-hydra/helpers';
+import { assertAllExpanded, expandTemplatesSync } from '@volto-hydra/helpers';
 
 /**
  * docs/frontend-guide/templates.md "Expand every container": each call to the merge
@@ -142,6 +142,35 @@ describe('the merge expands one list per call', () => {
   });
 });
 
+describe('what is left to expand is in the state, not on the blocks', () => {
+  test('a waiting child carries nothing but its instance', () => {
+    const state = {};
+    const [form, col] = render(page('i1', 1), ['form1', 'col1'], state);
+    expect(Object.keys(form.subblocks[0]).sort()).toEqual(
+      ['@type', 'field_id', 'fixed', 'label', 'readOnly', 'slotId', 'templateId', 'templateInstanceId'],
+    );
+    expect(col.blocks.head.templateInstanceId).toBe('i1');
+  });
+
+  test('a clone of a waiting list is still recognised, as a frontend\'s state may hand back', () => {
+    const state = {};
+    const [form] = render(page('i1', 1), ['form1', 'col1'], state);
+    const out = expandTemplatesSync(JSON.parse(JSON.stringify(form.subblocks)), {
+      ...options(state),
+      idField: 'field_id',
+    });
+    expect(out.map((f) => f.label)).toEqual(['CURRENT', 'PAGE']);
+  });
+
+  test('the same template used twice keeps each instance\'s content', () => {
+    const state = {};
+    const blocks = { ...page('i1', 1), ...page('i2', 2) };
+    const [, col1, , col2] = render(blocks, ['form1', 'col1', 'form2', 'col2'], state);
+    expect(children(col1, state).map((b) => b['@uid'])).toEqual(['h1', 'm1']);
+    expect(children(col2, state).map((b) => b['@uid'])).toEqual(['h2', 'm2']);
+  });
+});
+
 describe('the merge fails loudly when it isn\'t used as documented', () => {
   test('an object_list\'s call without its id field', () => {
     const state = {};
@@ -149,9 +178,25 @@ describe('the merge fails loudly when it isn\'t used as documented', () => {
     expect(() => expandTemplatesSync(form.subblocks, options(state))).toThrow(/no "@id".*pass its idField/s);
   });
 
-  test('a container\'s call with a different templateState', () => {
-    const [, col] = render(page('i1', 1), ['form1', 'col1'], {});
-    expect(() => children(col, {})).toThrow(/same templateState/);
+  test('a container that was never expanded', () => {
+    const state = {};
+    const [form, col] = render(page('i1', 1), ['form1', 'col1'], state);
+    children(col, state);
+    expect(() => assertAllExpanded(state)).toThrow(/"form".*"subblocks"/s);
+    fields(form, state);
+    expect(() => assertAllExpanded(state)).not.toThrow();
+  });
+
+  test('a container\'s call with a different templateState leaves it unexpanded', () => {
+    const state = {};
+    const [form, col] = render(page('i1', 1), ['form1', 'col1'], state);
+    fields(form, state);
+    try {
+      children(col, {});
+    } catch {
+      // Whatever a state that hasn't seen the instance makes of it, this one still waits.
+    }
+    expect(() => assertAllExpanded(state)).toThrow(/"column".*"items"/s);
   });
 
   test('there is no idFieldMap option', () => {

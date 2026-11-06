@@ -8,6 +8,7 @@
 import {
   expandTemplates,
   adoptTemplate,
+  assertAllExpanded,
   getChildFields,
   ensureMutablePath,
   getChildBlockEntries,
@@ -170,12 +171,13 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
       for (const { '@uid': id, ...child } of items) {
         expanded.push({ id, block: await expandContainers(child, templateState) });
       }
-      // The template's own blocks, as they waited in this region, are replaced.
+      // A filled region's blocks replace the template's, which waited under other ids.
       if (!field.isObjectList) {
+        const kept = new Set(expanded.map(({ id }) => id));
         const container = ensureMutablePath(out, field.regionPath || []);
         container.blocks = { ...container.blocks };
-        for (const { id, block: child } of entries) {
-          if (child.templatePending) delete container.blocks[id];
+        for (const { id } of entries) {
+          if (!kept.has(id)) delete container.blocks[id];
         }
       }
       setChildBlockEntries(out, field, expanded);
@@ -271,6 +273,7 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
       allowedLayouts,
       templateState
     );
+    assertAllExpanded(templateState);
 
     // Remove old field blocks dropped during template processing, then merge in
     // the new blocks. Blocks from other fields must remain.

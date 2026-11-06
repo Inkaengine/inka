@@ -249,8 +249,9 @@ An editor can place a template anywhere a block can go: inside a grid, a column,
 The merge throws when it can tell it isn't being used this way:
 
 - A list whose items have no id: pass the list's `idField`.
-- A block waiting for a template instance this `templateState` has not seen: share one `templateState` across a render.
 - An `idFieldMap` option: there isn't one. Each call names its own list's `idField`.
+
+The merge can't see a call that never happens. So at the end of a render, ask: **\`assertAllExpanded(templateState)\`** throws, naming any template region no container passed through the merge in that `templateState`. Call it in your tests, and in dev if your frontend has a clear end of render. Don't call it in production: a block that deliberately doesn't draw a region would break the page.
 
 A region inside a `widget: 'object'` is a region of the block like any other: your block's code passes its children to the merge in the same way.
 

@@ -1990,7 +1990,7 @@ export function cloneBlocksWithNewIds(
  * Clone a block, recursively filtering nested blocks without template markers.
  * Only nested blocks with `slotId` or `templateId` are included. Storage-agnostic: iterates
  * EVERY child field via getChildFields (blocks_layout regions AND object_list arrays) and reads/
- * writes through the funnel — the same region-aware pattern as markRegionsPending. Handling only
+ * writes through the funnel — the same region-aware pattern as leaveRegionsWaiting. Handling only
  * blocks_layout left a nested object_list (a slider's `slides`) with its template-internal blocks
  * and original ids on insert.
  *
@@ -3847,7 +3847,7 @@ export function collectContentFromTree(
  *   - fixed / readOnly: the template's declaration of who owns the block. A lock
  *     added to the template later has to take hold on pages already using it.
  *   - blocks / blocks_layout: a container's children are re-derived per region,
- *     by that container's own call (fillPendingRegion).
+ *     by that container's own call (fillWaitingRegion).
  *   - nextSlotId / prevSlotId / childSlotIds / fieldPlaceholders: hints
  *     recomputed on every apply — an absent one is DELETED, so a hint captured
  *     into a template from an older layout cannot outlive it.
@@ -4029,7 +4029,7 @@ function fillRegionEntries(entries, templateState, options) {
         const placeholders = extractFieldPlaceholders(child);
         if (Object.keys(placeholders).length > 0) stamped.fieldPlaceholders = placeholders;
       }
-      markRegionsPending(stamped, child, instanceId);
+      leaveRegionsWaiting(stamped, child, ctx);
       out.push({ id: outId, block: stamped });
       continue;
     }
@@ -4134,62 +4134,103 @@ function mapChildBlocks(target, source, field, fn) {
 }
 
 /**
+ * What identifies a list across calls: its content, which survives the caller handing it
+ * back as a clone or a reactive proxy. An object_list item's id is in its content; a
+ * blocks_layout child's is beside it.
+ */
+function regionKey(entries) {
+  return JSON.stringify(entries.map(({ id, block }) => {
+    const { '@uid': _uid, ...content } = block;
+    return [id, content];
+  }));
+}
+
+/**
  * A fixed block's regions are its own to expand: the merge has no schema, and only the
  * block's code knows its regions and an object_list's id field. So they are left as the
- * template has them, marked as waiting for this instance; the block's call to the merge
- * fills them (fillPendingRegion). Read docs/frontend-guide/templates.md "Expand every
- * container" before changing this.
+ * template has them, in this instance, and the instance's state records them as waiting
+ * for the block's call to the merge (fillWaitingRegion). Read
+ * docs/frontend-guide/templates.md "Expand every container" before changing this.
  */
-function markRegionsPending(stamped, tplBlock, instanceId) {
+function leaveRegionsWaiting(stamped, tplBlock, ctx) {
   const fields = getChildFields(tplBlock, null, { templateChildren: true });
   clearRegions(stamped, fields);
   for (const field of fields) {
-    mapChildBlocks(stamped, tplBlock, field, (block) => ({
-      ...block,
-      templateInstanceId: instanceId,
-      templatePending: true,
+    const inInstance = (block) => ({ ...block, templateInstanceId: ctx.instanceId });
+    mapChildBlocks(stamped, tplBlock, field, inInstance);
+    const entries = getChildBlockEntries(tplBlock, field).map(({ id, block }) => ({
+      id: field.isObjectList ? null : id,
+      block: inInstance(block),
     }));
+    if (entries.length === 0) continue;
+    ctx.waitingRegions.set(regionKey(entries), {
+      blockType: tplBlock['@type'],
+      region: [...(field.regionPath || []), field.region].join('/'),
+      filled: null,
+    });
   }
 }
 
 /**
- * A block's call to the merge for a region its template left waiting: filled here by
- * the same rules as any region, from the content collected when the template was
- * applied. A region can be rendered more than once (a double render, a re-computed
- * property), and its content is consumed by the fill, so the result is kept.
+ * The region a block's call to the merge has brought, if it is one still waiting (or
+ * already filled, when it is rendered again) in this state.
  */
-function fillPendingRegion(blocks, layout, isObjectList, idField, templateState, options) {
-  const instanceId = blocks[layout[0]].templateInstanceId;
-  const ctx = templateState.instances[instanceId];
-  if (!ctx) {
-    throw new Error(
-      `expandTemplatesSync: these blocks wait for template instance "${instanceId}", which this ` +
-        'templateState has not seen. Pass the same templateState to every call in a render.',
-    );
-  }
-  if (!ctx.filledRegions) ctx.filledRegions = new Map();
-  const key = layout.join('|');
-  if (!ctx.filledRegions.has(key)) {
+function waitingRegion(blocks, layout, isObjectList, templateState) {
+  const ctx = templateState.instances[blocks[layout[0]]?.templateInstanceId];
+  if (!ctx?.waitingRegions?.size) return null;
+  const entries = layout.map((id) => ({ id: isObjectList ? null : id, block: blocks[id] }));
+  return ctx.waitingRegions.get(regionKey(entries)) ?? null;
+}
+
+/**
+ * Fill a region its template left waiting, by the same rules as any region, from the
+ * content collected when the template was applied. A region can be rendered more than
+ * once (a double render, a re-computed property), and its content is consumed by the
+ * fill, so the result is kept.
+ */
+function fillWaitingRegion(region, blocks, layout, isObjectList, idField, templateState, options) {
+  if (!region.filled) {
+    const instanceId = blocks[layout[0]].templateInstanceId;
     const outer = { instanceId: templateState.instanceId, templateId: templateState.templateId };
     templateState.instanceId = instanceId;
-    templateState.templateId = ctx.templateId;
+    templateState.templateId = templateState.instances[instanceId].templateId;
     const entries = layout.map((id) => {
-      const { templatePending: _pending, '@uid': _uid, ...block } = blocks[id];
+      const { '@uid': _uid, ...block } = blocks[id];
       return { id, block };
     });
     const filled = fillRegionEntries(entries, templateState, { ...options, idField });
     templateState.instanceId = outer.instanceId;
     templateState.templateId = outer.templateId;
-    ctx.filledRegions.set(
-      key,
-      filled.map(({ id, block }) => ({
-        ...block,
-        ...(isObjectList ? { [idField]: id } : {}),
-        '@uid': id,
-      })),
+    region.filled = filled.map(({ id, block }) => ({
+      ...block,
+      ...(isObjectList ? { [idField]: id } : {}),
+      '@uid': id,
+    }));
+  }
+  return region.filled;
+}
+
+/**
+ * Throws if any region a template left waiting was never expanded in this render: a
+ * container that renders its children without passing them through the merge, or that
+ * passes them with a different templateState. The merge can't see a call that never
+ * happens, so this is for the end of a render, where a test or a dev build can ask.
+ *
+ * @param {Object} templateState - The state shared by every call in the render
+ */
+export function assertAllExpanded(templateState) {
+  const missed = [];
+  for (const ctx of Object.values(templateState.instances || {})) {
+    for (const { blockType, region, filled } of ctx.waitingRegions?.values() || []) {
+      if (!filled) missed.push(`"${blockType}" region "${region}" of template "${ctx.templateId}"`);
+    }
+  }
+  if (missed.length) {
+    throw new Error(
+      `Never passed through the merge: ${missed.join(', ')}. Every container hands its children ` +
+        'to expandTemplatesSync, with the same templateState. See "Expand every container" in the templates guide.',
     );
   }
-  return ctx.filledRegions.get(key);
 }
 
 /**
@@ -4565,8 +4606,8 @@ export async function expandTemplates(inputItems, options = {}) {
  *  even deep inside a fixed container. The source content is collected ONCE, deeply,
  *  by slotId into the instance state (`ctx.pendingContent`, via collectContentFromTree)
  *  when the template is encountered. Each call then expands ONE list: the top-level call
- *  fills the top slots and leaves each fixed block's regions marked `templatePending`
- *  (markRegionsPending). The block's own call fills them (fillPendingRegion →
+ *  fills the top slots and records each fixed block's regions as waiting in the instance
+ *  state (leaveRegionsWaiting). The block's own call fills them (fillWaitingRegion →
  *  fillRegionEntries), naming an object_list's idField; the merge has no schema, so only
  *  the block's code can. A fixed-but-NON-readOnly block takes the source's edited value +
  *  block id from `ctx.existingFixedBlockIds` (the editable-fixed flow); readOnly keeps the
@@ -4582,7 +4623,7 @@ export async function expandTemplates(inputItems, options = {}) {
  *  THIS pass) is finished CONTENT → emit as-is. A `templateId` that is not a live
  *  instance is an unexpanded reference → apply. blocks_layout and object_list are ONE
  *  concept (an ordered list of blocks, differing only in storage) and share this single
- *  path — no special-casing. Blocks marked `templatePending` are a region still to fill,
+ *  path — no special-casing. A list the instance's state has as waiting is filled instead,
  *  checked first.
  *
  *  Why data and not object identity: an earlier design kept a Map keyed by the
@@ -4761,9 +4802,12 @@ export function expandTemplatesSync(inputItems, options = {}) {
     templateState.instances = {};
   }
 
-  if (layout.length > 0 && blocks[layout[0]]?.templatePending) {
+  if (layout.length > 0 && !allowedLayouts?.length) {
     const isObjectList = typeof inputItems[0] !== 'string';
-    return fillPendingRegion(blocks, layout, isObjectList, idField, templateState, options);
+    const region = waitingRegion(blocks, layout, isObjectList, templateState);
+    if (region) {
+      return fillWaitingRegion(region, blocks, layout, isObjectList, idField, templateState, options);
+    }
   }
 
   // Re-entry recognized from DATA (no object identity) — the SAME check for object_list
@@ -5042,6 +5086,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
       instanceId,
       emittedSlotIds: new Set(),
       pendingContent: new Map(),
+      waitingRegions: new Map(),
       existingFixedBlockIds: new Map(),
       leadingStandaloneBlocks: [],
       trailingStandaloneBlocks: [],
