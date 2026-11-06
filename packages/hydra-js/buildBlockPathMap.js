@@ -200,8 +200,9 @@ export function getBlockTypeSchema(blockType, intl, blocksConfig) {
 /**
  * Resolve the object_list idField for every block type ONCE, so the merge can stamp item ids
  * without re-walking schemas per block. Returns { blockType: { field: idField } }, a field in
- * a widget:'object' named by its /-path (`table/rows`). The admin
- * builds this from blocksConfig; a frontend passes the same shape as a literal hint.
+ * a widget:'object' named by its /-path (`table/rows`). For what holds the schema and walks
+ * every container itself: the admin and the content tools. A frontend's block code names its
+ * own list's idField when it calls the merge.
  */
 export function buildIdFieldMap(blocksConfig, intl) {
   const map = {};

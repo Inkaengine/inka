@@ -226,7 +226,7 @@ initBridge({
 
 Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched templates) to merge template content during rendering.
 
-- **Edit Mode**: These functions auto-detect edit mode via `isEditMode()` and pass blocks through unchanged (just adding `@uid`). The admin handles template merging and adds `nodeId` attributes for inline editing.
+- **Edit Mode**: These functions auto-detect edit mode via `isEditMode()` and pass blocks through unchanged (just adding `@uid`). The admin handles template merging and adds `nodeId` attributes for inline editing. Leave `editMode` unset unless you know better than the detection: `false` on the admin's blocks applies their template to them again, and a container comes back holding its template's top-level block, with no error. Don't merge the stored page in edit mode at all ([wait for `onEditChange`](./advanced.md#lazy-load-the-bridge)).
 - **SSR**: On SSR (no window), `isEditMode()` returns false so templates are expanded — this is correct since edit mode only exists in the browser iframe.
 
 **Sync vs Async**:

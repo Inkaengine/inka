@@ -60,6 +60,8 @@ Start the bridge in both. An agent's preview through Inka's MCP server opens you
 
 This persists across SPA navigation within the iframe, allowing your frontend to detect it's in the admin even after client-side route changes. In view mode, render from your API immediately but still load the bridge for navigation tracking. In edit mode, wait for `onEditChange` before rendering.
 
+**That covers everything in the frame, not just the page body.** Site chrome that comes from regions of the page, such as a footer or an announcement, also draws only from what `onEditChange` gives you. Don't render or merge the stored page first in edit mode: the admin has already merged what it sends, and a server render of the stored page has to match a browser render that hasn't got it yet. This is why a server-rendered frontend deploys [a separate, client-rendered build for editing](./build-a-frontend.md#ssg--ssr--production-speed--visual-editing).
+
 ### Javascript
 
 ```javascript

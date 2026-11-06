@@ -1552,8 +1552,8 @@ const Iframe = (props) => {
   }, []);
 
   // Resolve each object_list field's idField ONCE from the schema (a form's subblocks are keyed
-  // by field_id, not @id) and pass it to every merge — so the merge stamps item ids into the
-  // right field instead of minting a bogus @id. A frontend passes this same shape as a hint.
+  // by field_id, not @id) and pass it to every walk of the containers, which names each list's
+  // id field to the merge as a frontend's block code does.
   // Built each render: the frontend's schemas reach config.blocks.blocksConfig over the
   // bridge, after this component mounts. Memoized on what it holds, so its identity only
   // changes when they do.
