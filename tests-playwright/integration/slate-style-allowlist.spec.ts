@@ -200,8 +200,8 @@ test.describe('slate style allow-list', () => {
     await expect(target.locator('a')).toHaveCount(0);
   });
 
-  // The sidebar's slate editor is Volto's own, with its own toolbar and no
-  // per-region filtering, so a refused style can be made there and is visible
+  // The sidebar's slate editor is Volto's own. Its toolbar is filtered like the
+  // canvas's, but a refused style can still get in (pasted) and is visible
   // there until the page is saved. What must hold is what visitors get: the
   // saved value. Each test first checks the link really was made, or "not saved"
   // would also be true of a gesture that did nothing.
@@ -220,6 +220,29 @@ test.describe('slate style allow-list', () => {
     await sidebarEditor.press('ControlOrMeta+a');
     return sidebarEditor;
   }
+
+  test('a region denying links offers no link button in the sidebar either', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const toolbar = page.locator('.slate-inline-toolbar:not(.quanta-toolbar)');
+
+    // Where links are allowed, the sidebar offers the button — otherwise its
+    // absence below would prove nothing.
+    await helper.navigateToEdit('/test-page');
+    await helper.waitForIframeReady();
+    await selectAllInSidebar(helper, 'block-1-uuid');
+    await helper.waitForSidebarSlateToolbar();
+    await expect(toolbar.locator('[title*="Link" i]')).toBeVisible();
+
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+    await selectAllInSidebar(helper, 'target');
+    await helper.waitForSidebarSlateToolbar();
+    // The toolbar is there, with the buttons the region allows…
+    await expect(toolbar.locator('[title*="Italic" i]')).toBeVisible();
+    // …and without the one it refuses.
+    await expect(toolbar.locator('[title*="Link" i]')).toHaveCount(0);
+  });
 
   test('a link pasted into the sidebar is not saved, its words are', async ({ page }) => {
     const helper = new AdminUIHelper(page);
@@ -493,6 +516,28 @@ test.describe('style menu in the sidebar toolbar', () => {
       )
       .toContain('\u00AB');
     expect(toolbar).toBeTruthy();
+  });
+
+  test('offers no style the region refuses', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    // `deep` sits in a column whose allowedStyles name no design-system style,
+    // so there is nothing to offer and the menu goes, as it does on the canvas.
+    // The test above shows the same menu offered where the region allows it.
+    await helper.clickBlockInIframe('deep');
+    await helper.waitForSidebarOpen();
+    const sidebarEditor = helper.getSidebarSlateEditor('value');
+    await expect(sidebarEditor).toBeVisible({ timeout: 10000 });
+    await sidebarEditor.click();
+    await sidebarEditor.press('ControlOrMeta+a');
+    await helper.waitForSidebarSlateToolbar();
+
+    const toolbar = page.locator('.slate-inline-toolbar:not(.quanta-toolbar)');
+    await expect(toolbar.locator('[title*="Italic" i]')).toBeVisible();
+    await expect(toolbar.locator('#style-menu')).toHaveCount(0);
   });
 });
 

@@ -154,7 +154,7 @@ properties: {
 }
 ```
 
-`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. `link` is structural rather than styling: leaving it out of `allowedStyles` keeps it, because dropping one loses its href and an allow-list is not a request to do that. To refuse links, for text that is meant to stay plain, name it by its HTML name: `disallowedStyles: ['a']`. The link button goes from the toolbar, a hotkey a site has added for links does nothing, a pasted link arrives as its words, and a stored link unwraps when the page loads, keeping its words and losing its href. The sidebar's slate editor has no toolbar filtering of its own, so a style refused here can still be made and shown there until the save, which removes it. There is no markdown shortcut for a link, and a typed or pasted URL stays text.
+`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. `link` is structural rather than styling: leaving it out of `allowedStyles` keeps it, because dropping one loses its href and an allow-list is not a request to do that. To refuse links, for text that is meant to stay plain, name it by its HTML name: `disallowedStyles: ['a']`. The link button goes from the toolbar, on the canvas and in the sidebar, a hotkey a site has added for links does nothing, a pasted link arrives as its words, and a stored link unwraps when the page loads, keeping its words and losing its href. The sidebar's toolbar offers the same buttons and styles as the canvas's. Its editor is Volto's own, though, so a refused style that gets in there anyway (pasted, say) shows there until the save, which removes it. There is no markdown shortcut for a link, and a typed or pasted URL stays text.
 
 ### A design system's own styles
 
@@ -240,7 +240,7 @@ initBridge({
 });
 ```
 
-On the canvas toolbar, **paragraph styles are in the format dropdown**, after the formats. Choosing one makes the block the cursor is in a `p` (or the entry's `type`) carrying that class, replacing any other paragraph style; choosing a heading or Paragraph removes it. The **style menu** there holds the text (inline) styles only, and is not shown when there are none. The sidebar's toolbar, which has no format dropdown, offers both groups in its style menu.
+On the canvas toolbar, **paragraph styles are in the format dropdown**, after the formats. Choosing one makes the block the cursor is in a `p` (or the entry's `type`) carrying that class, replacing any other paragraph style; choosing a heading or Paragraph removes it. The **style menu** there holds the text (inline) styles only, and is not shown when there are none. The sidebar's toolbar, which has no format dropdown, offers both groups in its style menu, filtered by the region's rules the same way.
 
 A style for one **kind** of block declares the element types it is for, as `appliesTo` (a list style: `['ul', 'ol']`). It is offered in the format dropdown only while the cursor is in one of those blocks, and choosing it adds the class and leaves the block what it is: a list stays a list. (A paragraph style without `appliesTo`, chosen on a list, would turn it into a paragraph.)
 

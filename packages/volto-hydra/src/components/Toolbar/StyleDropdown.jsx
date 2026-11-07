@@ -11,6 +11,7 @@ import {
 } from '@plone/volto-slate/editor/plugins/StyleMenu/utils';
 import { isStyleAllowed } from '../../../../hydra-js/slateStyles.js';
 import { iconOf } from '../../utils/blockFormats';
+import { useRegionSlateRules } from './regionRules';
 
 /**
  * The design system's own text styles, as a dropdown that escapes the toolbar.
@@ -28,8 +29,9 @@ import { iconOf } from '../../utils/blockFormats';
  * positioned from the trigger. Same reason, same shape — a toolbar built for
  * buttons cannot contain a dropdown.
  */
-const StyleDropdown = ({ onMouseDownCapture, onClickCapture, slateRules, inlineOnly = false }) => {
+const StyleDropdown = ({ onMouseDownCapture, onClickCapture, slateRules: passedRules, inlineOnly = false }) => {
   const editor = useSlate();
+  const slateRules = useRegionSlateRules(passedRules);
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
