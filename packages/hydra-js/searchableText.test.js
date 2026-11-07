@@ -1,4 +1,4 @@
-import { withSearchableText } from './searchableText.js';
+import { searchTextOptions, withSearchableText } from './searchableText.js';
 
 /**
  * Inka #634: a page's search text holds what a visitor sees, from every block, once.
@@ -261,5 +261,86 @@ describe('template blocks', () => {
       },
       blocks_layout: { items: ['chrome', 'mine'] },
     })).toEqual(['Page text']);
+  });
+});
+
+describe('from a blocks config', () => {
+  const intl = { formatMessage: (message) => message?.defaultMessage ?? '' };
+  const textOf = (blocksConfig, page) =>
+    withSearchableText(page, searchTextOptions(blocksConfig, intl, page)).blocks;
+
+  const grid = {
+    id: 'grid',
+    blockSchema: {
+      properties: { elements: { type: 'array' }, items: { widget: 'blocks_layout' } },
+    },
+  };
+  const card = {
+    id: 'card',
+    schemaEnhancer: {
+      fieldRules: {
+        description: { when: { '../elements': { contains: 'copy' } }, else: false },
+      },
+    },
+    blockSchema: {
+      properties: { title: { type: 'string' }, description: { widget: 'textarea' } },
+    },
+  };
+  const gridPage = (elements) => ({
+    blocks: {
+      g: {
+        '@type': 'grid',
+        elements,
+        blocks: { c: { '@type': 'card', title: 'Title', description: 'Copy' } },
+        blocks_layout: { items: ['c'] },
+      },
+    },
+    blocks_layout: { items: ['g'] },
+  });
+
+  test('a rule that reads the parent sees the parent', () => {
+    expect(textOf({ grid, card }, gridPage(['copy'])).g.blocks.c.searchableText).toBe('Title Copy');
+  });
+
+  test('a field the parent hides is left out', () => {
+    expect(textOf({ grid, card }, gridPage([])).g.blocks.c.searchableText).toBe('Title');
+  });
+
+  const question = {
+    id: 'question',
+    searchableFields: ['label', 'options'],
+    blockSchema: {
+      properties: {
+        label: { type: 'string' },
+        options: { type: 'array', creatable: true },
+        answers: {
+          widget: 'object_list',
+          subBlocks: false,
+          schema: {
+            properties: {
+              label: { type: 'string' },
+              value: { type: 'string', multilingual_options: { language_independent: true } },
+            },
+          },
+        },
+      },
+    },
+  };
+  const questionPage = (block) => ({
+    blocks: { q: { '@type': 'question', ...block } },
+    blocks_layout: { items: ['q'] },
+  });
+
+  test('a named field holding a list of strings reads as them', () => {
+    const blocks = textOf({ question }, questionPage({ label: 'Pick', options: ['Red', 'Blue'] }));
+    expect(blocks.q.searchableText).toBe('Pick Red Blue');
+  });
+
+  test('a plain list of objects gives what people read of each', () => {
+    const blocks = textOf({ question }, questionPage({
+      label: 'Pick',
+      answers: [{ label: 'Green', value: 'token' }],
+    }));
+    expect(blocks.q.searchableText).toBe('Pick Green');
   });
 });

@@ -4,8 +4,7 @@ import {
   slateNodesText,
   translatableFieldIds,
 } from '@volto-hydra/helpers';
-import { getBlockSchema } from './buildBlockPathMap.js';
-import { isObjectListRegion } from './regionWidgets.js';
+import { buildBlockPathMap, getBlockSchema } from './buildBlockPathMap.js';
 
 /**
  * What a page is found by. plone.restapi's indexer visits every block in a block's `blocks` or
@@ -22,10 +21,12 @@ import { isObjectListRegion } from './regionWidgets.js';
 
 const joined = (parts) => parts.map((part) => part.trim()).filter(Boolean).join(' ');
 
-// A string, slate, or what a block names from a picked item (`[{ '@id', title }]`).
+// A string, slate, a list of strings, or what a block names from a picked item
+// (`[{ '@id', title }]`).
 function fieldText(value) {
   if (typeof value === 'string') return value;
   if (!Array.isArray(value)) return '';
+  if (value.every((node) => typeof node === 'string')) return value.join(' ');
   if (value.some((node) => typeof node?.title === 'string')) {
     return value.map((node) => node?.title ?? '').join(' ');
   }
@@ -35,8 +36,8 @@ function fieldText(value) {
 // A block the template owns: it is on every page using it, so it finds none of them.
 const templateOwned = (block) => block.fixed && block.readOnly;
 
-function schemaOf(block, options) {
-  const schema = options.schemaFor(block);
+function schemaOf(block, id, options) {
+  const schema = options.schemaFor(block, id);
   if (!schema) {
     throw new Error(`Search text: no schema for block type "${block['@type']}"`);
   }
@@ -44,10 +45,10 @@ function schemaOf(block, options) {
 }
 
 // The text of a block no visit will reach, and of everything in it.
-function unreachedBlockText(block, options, parts) {
+function unreachedBlockText(block, id, options, parts) {
   const type = block['@type'];
   if (type === 'empty') return;
-  nodeText(block, schemaOf(block, options), !templateOwned(block), options, parts, {
+  nodeText(block, schemaOf(block, id, options), !templateOwned(block), options, parts, {
     namedFields: options.fieldsFor?.(type),
   });
 }
@@ -67,10 +68,10 @@ function nodeText(node, schema, own, options, parts, { idField, namedFields, vis
       if (node[field]) {
         nodeText(node[field], def.schema, own, options, parts, { visited: visited && field === 'data' });
       }
-    } else if (isObjectListRegion(def)) {
+    } else if (def?.widget === 'object_list') {
       for (const item of node[field] || []) {
         const type = item[def.typeField || '@type'];
-        if (type) unreachedBlockText({ ...item, '@type': type }, options, parts);
+        if (type) unreachedBlockText({ ...item, '@type': type }, item[def.idField || '@id'], options, parts);
         else if (def.schema) nodeText(item, def.schema, own, options, parts, { idField: def.idField });
         else throw new Error(`Search text: no type or schema for an item of "${field}"`);
       }
@@ -88,8 +89,8 @@ function nodeText(node, schema, own, options, parts, { idField, namedFields, vis
 }
 
 function regionText(node, region, options, parts) {
-  for (const { block } of getChildBlockEntries(node, { region })) {
-    unreachedBlockText(block, options, parts);
+  for (const { id, block } of getChildBlockEntries(node, { region })) {
+    unreachedBlockText(block, id, options, parts);
   }
 }
 
@@ -110,17 +111,17 @@ function withBlockTexts(container, options) {
   for (const field of getChildFields(container)) {
     if (field.regionPath || field.isObjectList) continue;
     for (const { id, block } of getChildBlockEntries(container, field)) {
-      blocks[id] = withText(block, options);
+      blocks[id] = withText(block, id, options);
     }
   }
   return { ...container, blocks };
 }
 
-function withText(block, options) {
+function withText(block, id, options) {
   const type = block['@type'];
   if (type === 'empty') return block;
   const parts = [];
-  nodeText(block, schemaOf(block, options), !templateOwned(block), options, parts, {
+  nodeText(block, schemaOf(block, id, options), !templateOwned(block), options, parts, {
     namedFields: options.fieldsFor?.(type),
     visited: true,
   });
@@ -141,14 +142,15 @@ const SLATE_SCHEMA = { properties: { value: { widget: 'slate' } } };
  *
  * @param {Object} blocksConfig - the site's block definitions
  * @param {Object} intl - { formatMessage }
- * @param {Object} page - the page, for rules that read it
+ * @param {Object} page - the page, for rules that read it or a block's parent
  */
 export function searchTextOptions(blocksConfig, intl, page) {
+  const blockPathMap = buildBlockPathMap(page, blocksConfig, intl);
   return {
-    schemaFor: (block) => {
+    schemaFor: (block, id) => {
       const type = block['@type'];
       if (!blocksConfig[type]) return type === 'slate' ? SLATE_SCHEMA : null;
-      return getBlockSchema(type, intl, blocksConfig, block, page) ?? (type === 'slate' ? SLATE_SCHEMA : {});
+      return getBlockSchema(type, intl, blocksConfig, block, page, id, blockPathMap) ?? (type === 'slate' ? SLATE_SCHEMA : {});
     },
     fieldsFor: (type) => blocksConfig[type]?.searchableFields,
   };
@@ -160,7 +162,7 @@ export function searchTextOptions(blocksConfig, intl, page) {
  *
  * @param {Object} formData - the page
  * @param {Object} options
- * @param {function(Object): Object|null} options.schemaFor - this block's resolved schema;
+ * @param {function(Object, string): Object|null} options.schemaFor - this block's resolved schema;
  *   null for a type nothing registers, which throws: we can't say what such a block holds
  * @param {function(string): string[]|undefined} [options.fieldsFor] - the fields a block type
  *   names for its text, in order, in place of the default
