@@ -1,7 +1,6 @@
 import {
   getChildBlockEntries,
   getChildFields,
-  slateNodesText,
   translatableFieldIds,
 } from '../helpers/index.js';
 import { buildBlockPathMap, getBlockSchema } from './buildBlockPathMap.js';
@@ -21,6 +20,17 @@ import { buildBlockPathMap, getBlockSchema } from './buildBlockPathMap.js';
 
 const joined = (parts) => parts.map((part) => part.trim()).filter(Boolean).join(' ');
 
+// Slate's words. Its own shape says where one word can end: an element holds either
+// blocks (only elements: paragraphs, list items) or inline content (text leaves, with
+// any inline element between them). Blocks are separate words; inline content runs on,
+// so a bold syllable stays inside its word.
+function slateText(nodes) {
+  if (!Array.isArray(nodes)) return '';
+  const inline = nodes.some((node) => typeof node?.text === 'string');
+  const parts = nodes.map((node) => (typeof node?.text === 'string' ? node.text : slateText(node?.children)));
+  return inline ? parts.join('') : joined(parts);
+}
+
 // A string, slate, a list of strings, or what a block names from a picked item
 // (`[{ '@id', title }]`).
 function fieldText(value) {
@@ -30,7 +40,7 @@ function fieldText(value) {
   if (value.some((node) => typeof node?.title === 'string')) {
     return value.map((node) => node?.title ?? '').join(' ');
   }
-  return slateNodesText(value);
+  return slateText(value);
 }
 
 // A block the template owns: it is on every page using it, so it finds none of them.
