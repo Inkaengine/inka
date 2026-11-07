@@ -414,7 +414,7 @@ export default defineConfig({
       ? {
           // Production server (prebuilt in CI) - starts immediately, no webpack compilation
           name: 'Volto Admin UI (Production)',
-          command: `PORT=${PORTS.voltoSsr} RAZZLE_API_PATH=${URLS.mockApi} RAZZLE_DEFAULT_IFRAME_URL=${URLS.testFrontend} pnpm start:prod`,
+          command: `PORT=${PORTS.voltoSsr} RAZZLE_API_PATH=${URLS.mockApi} RAZZLE_DEFAULT_IFRAME_URL=${URLS.testFrontend} RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template pnpm start:prod`,
           url: URLS.voltoSsr, // Health check on SSR server directly
           timeout: 30 * 1000, // 30 seconds should be plenty for starting prebuilt server
           reuseExistingServer: true, // CI starts server in advance
@@ -430,6 +430,9 @@ export default defineConfig({
               URLS.testFrontend, URLS.nuxt, URLS.reactDoc, URLS.svelteDoc,
               URLS.vueDoc, URLS.nextjs, URLS.f7, URLS.astroDoc,
             ].join(','),
+            // Where "Make template" saves a new template, and as what type.
+            RAZZLE_TEMPLATES_PATH: '/templates',
+            RAZZLE_TEMPLATE_TYPE: 'Template',
             VOLTOCONFIG: process.cwd() + '/volto.config.js',
           },
         }
@@ -441,7 +444,7 @@ export default defineConfig({
           // Tests navigate to voltoSsr (SSR server for content)
           // Health check on voltoWebpack (webpack-dev-server) waits for compilation to complete
           name: 'Volto Admin UI (Dev)',
-          command: `PORT=${PORTS.voltoSsr} RAZZLE_API_PATH=${URLS.mockApi} RAZZLE_DEFAULT_IFRAME_URL=${URLS.testFrontend} VOLTOCONFIG=$(pwd)/volto.config.js razzle start`,
+          command: `PORT=${PORTS.voltoSsr} RAZZLE_API_PATH=${URLS.mockApi} RAZZLE_DEFAULT_IFRAME_URL=${URLS.testFrontend} RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template VOLTOCONFIG=$(pwd)/volto.config.js razzle start`,
           url: `${URLS.voltoWebpack}/health`, // Health check on webpack-dev-server (returns 200 when ready)
           timeout: 300 * 1000, // 5 minutes for initial webpack compilation
           reuseExistingServer: true, // Always reuse - local dev starts manually
@@ -456,6 +459,9 @@ export default defineConfig({
               URLS.testFrontend, URLS.nuxt, URLS.reactDoc, URLS.svelteDoc,
               URLS.vueDoc, URLS.nextjs, URLS.f7, URLS.astroDoc,
             ].join(','),
+            // Where "Make template" saves a new template, and as what type.
+            RAZZLE_TEMPLATES_PATH: '/templates',
+            RAZZLE_TEMPLATE_TYPE: 'Template',
             VOLTOCONFIG: process.cwd() + '/volto.config.js',
             // Prevent parcel from trying to access TTY (fixes segfault in background process)
             CI: process.env.CI || 'true',

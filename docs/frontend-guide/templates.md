@@ -331,6 +331,14 @@ const { templates, errors } = await loadTemplates(
 - **A template the backend couldn't return** (missing, or one the visitor isn't allowed to view) is listed in `errors` and isn't requested again.
 - **Only list the layouts your rules actually force in view mode.** Every template named in `extra` is included in every page response it's added to.
 
+## Keeping templates out of search
+
+Templates are content, so a visitor could find one on its own. The `inkaengine.inka` backend addon adds a **Template** content type for them: a copy of the site's Document type, so it has the same fields and behaviours. **Make Template** in the editor saves new templates as the type its deployment names (see [Configuration](../deploy-and-secure.md#configuration)). Templates aren't tied to a folder: the editor can save one anywhere.
+
+- **Site search leaves them out.** Template is in the site's "types not searched", so any search made with the site's search settings (`use_site_search_settings`) skips them. Build your sitemap from such a search and templates stay out of it too.
+- **Your front end marks them noindex.** A template page can still be opened by its URL. Send `<meta name="robots" content="noindex">` for content whose `@type` is `Template`.
+- **Sites made before the type** get it from the addon's upgrade step. The step also turns each Document a page uses as a template into a Template, found by the references in pages' blocks, wherever it is saved. A page that references a template that isn't there stops the upgrade and is named, so fix or remove that reference and run it again.
+
 ## How the Merge Works
 
 A merge puts a template's blocks into a **target** document. Opening a page merges the template into the page. **Change on all pages** merges the page's instance into the stored template. Both directions follow the same rules, and every rule applies in every region: the page's own blocks fields, and every region inside a block (`blocks_layout` or object_list), at any depth.
