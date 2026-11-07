@@ -114,6 +114,24 @@ describe('the text of a block', () => {
     expect(textOf({ '@type': 'slate', value: slate('Typed words') })).toBe('Typed words');
   });
 
+  test('blocks inside slate stay separate words: list items, paragraphs', () => {
+    const li = (text) => ({ type: 'li', children: [{ text }] });
+    const value = [
+      { type: 'p', children: [{ text: 'Intro' }] },
+      { type: 'ul', children: [li('first item; and'), li('the second')] },
+    ];
+    expect(textOf({ '@type': 'slate', value })).toBe('Intro first item; and the second');
+  });
+
+  test('inline elements inside slate run on with the text around them', () => {
+    const value = [{
+      type: 'p',
+      children: [{ text: 'un' }, { type: 'strong', children: [{ text: 'believ' }] }, { text: 'able ' },
+        { type: 'link', data: { url: '/x' }, children: [{ text: 'here' }] }, { text: '' }],
+    }];
+    expect(textOf({ '@type': 'slate', value })).toBe('unbelievable here');
+  });
+
   test('a slate block restapi reads from its plaintext needs no copy', () => {
     expect(textOf({ '@type': 'slate', value: slate('Typed'), plaintext: 'Typed' })).toBeUndefined();
   });
