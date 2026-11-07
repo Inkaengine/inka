@@ -79,6 +79,20 @@ describe('applySchemaDefaultsToFormData — slate styles', () => {
     ]);
   });
 
+  test('a refused link unwraps in the same pass, however it got there', () => {
+    const out = run({ ...REGION, disallowedStyles: [...(REGION.disallowedStyles || []), 'a'] }, [
+      {
+        type: 'p',
+        children: [
+          { text: 'see ' },
+          { type: 'link', data: { url: '/x' }, children: [{ text: 'here' }] },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(out.blocks.s1.value)).not.toContain('/x');
+    expect(out.blocks.s1.value[0].children.map((c) => c.text).join('')).toBe('see here');
+  });
+
   test('an allowed value is left strictly alone — same form object back', () => {
     const blocksConfig = cfg(REGION);
     const data = form([{ type: 'p', children: [{ text: 'fine' }] }]);
