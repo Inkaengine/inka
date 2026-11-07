@@ -326,6 +326,7 @@ import { createPortal, flushSync } from 'react-dom';
 import { usePopper } from 'react-popper';
 import { useSelector, useDispatch } from 'react-redux';
 import { getURlsFromEnv } from '../../utils/getSavedURLs';
+import { newTemplateSettings } from '../../utils/newTemplateSettings';
 import { setSidebarTab } from '@plone/volto/actions';
 import blockSVG from '@plone/volto/icons/block.svg';
 import columnAfterSVG from '@plone/volto/icons/column-after.svg';
@@ -1505,7 +1506,8 @@ const Iframe = (props) => {
     if (!template) return;
     try {
       if (template._isNew) {
-        // New template: POST to parent folder so Plone creates the Document and
+        // New template: POST to parent folder so Plone creates it (as the type
+        // Make template gave it, newTemplateSettings) and
         // populates server-side fields (UID, created, …). The id goes in the body
         // so Plone keeps our slug instead of deriving one from the title.
         const lastSlash = templateId.lastIndexOf('/');
@@ -1527,7 +1529,7 @@ const Iframe = (props) => {
         }
         await api.post(parentFolder, {
           data: {
-            '@type': 'Document',
+            '@type': template['@type'],
             id,
             title: template.title || id,
             blocks: template.blocks,
@@ -6693,17 +6695,22 @@ const Iframe = (props) => {
               const blockData = getBlockById(properties, iframeSyncState.blockPathMap, selectedBlock);
               if (!blockData) return;
 
-              // Generate a unique template ID and instance ID. Parent folder
-              // comes from config (default '/templates') so consumers can
-              // host templates anywhere in the content tree without forking
-              // the bridge. The user can also retarget the save location
-              // via the sidebar 'folder' field after creation.
+              // Generate a unique template ID and instance ID. The folder it
+              // starts in and its content type are the deployment's settings
+              // (newTemplateSettings); the user can save it elsewhere via the
+              // sidebar 'folder' field after creation.
+              let settings;
+              try {
+                settings = newTemplateSettings();
+              } catch (e) {
+                toast.error(<Toast error title="Couldn't make a template" content={e.message} />);
+                return;
+              }
               const templateCount = Object.values(properties.blocks || {})
                 .filter(b => b.templateInstanceId === b.templateId)
                 .length;
               const defaultName = `untitled-template-${templateCount + 1}`;
-              const templatesFolder = config.settings.templatesPath || '/templates';
-              const newTemplateId = `${templatesFolder.replace(/\/$/, '')}/${defaultName}`;
+              const newTemplateId = `${settings.folder}/${defaultName}`;
               const newInstanceId = newTemplateId; // For new template, templateInstanceId === templateId
 
               // Add template fields to the block
@@ -6728,7 +6735,7 @@ const Iframe = (props) => {
               // saveTemplatesRef would PATCH-only and 404 on a real Plone.
               templateCacheRef.current[newTemplateId] = {
                 '@id': newTemplateId,
-                '@type': 'Document',
+                '@type': settings.type,
                 'title': defaultName,
                 'blocks': {
                   [selectedBlock]: updatedBlock,
