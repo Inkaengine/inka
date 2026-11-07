@@ -1326,6 +1326,8 @@ const SyncedSlateToolbar = ({
     // but this is the one the author sees.
     const format = buttonFormat(Btn);
     if (format && !isStyleAllowed(format, slateRules)) return;
+    // The link button opens the link editor and names no format of its own.
+    if (name === 'link' && !isStyleAllowed('link', slateRules)) return;
 
     // Create element for later rendering. The region's rules go to every
     // button: a plain format button is already gated by name above, but the

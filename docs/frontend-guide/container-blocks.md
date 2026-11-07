@@ -154,7 +154,7 @@ properties: {
 }
 ```
 
-`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. `link` is structural rather than styling and is never restrictable: dropping it would lose an href.
+`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. `link` is structural rather than styling: leaving it out of `allowedStyles` keeps it, because dropping one loses its href and an allow-list is not a request to do that. To refuse links, for text that is meant to stay plain, name it: `disallowedStyles: ['link']`. The link button goes from the toolbar, a pasted link arrives as its words, and a stored link unwraps when the page loads, keeping its words and losing its href.
 
 ### A design system's own styles
 
@@ -256,7 +256,7 @@ Either kind may take an `icon`, in the same data shape as a format's. Stored con
 config.settings.slate.styleAliases = { b: 'strong', i: 'em', blockquote: 'p' };
 ```
 
-With no alias, a top-level node becomes `config.settings.slate.defaultBlockType` (`p`), and an inline one is unwrapped — its text stays, without the formatting. Nothing is ever deleted.
+With no alias, a top-level node becomes `config.settings.slate.defaultBlockType` (`p`), and an inline one is unwrapped — its text stays, without the formatting. Nothing is ever deleted, except the href of a link you have refused by name.
 
 A downgrade never changes how many top-level nodes a slate field holds, because [a field always holds exactly one](./visual-editing.md#one-top-level-node-per-slate-field) and renderers are told they may assume it. So a denied *wrapper* collapses rather than splitting: denying `ul` turns `ul > li, li` into a single paragraph holding both items' content, not two paragraphs. Inline children survive the collapse — a `strong` inside a denied `blockquote` is still bold afterwards.
 

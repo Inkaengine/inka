@@ -139,6 +139,48 @@ test.describe('slate style allow-list', () => {
     await expect(legacy).toContainText('was bold');
   });
 
+  test('a region denying links offers no link button', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+    await helper.clickBlockInIframe('target');
+    const toolbar = page.locator('.quanta-toolbar');
+    await expect(toolbar.locator('[data-toolbar-button="bold"]')).toHaveCount(1);
+    await expect(toolbar.locator('[data-toolbar-button="link"]')).toHaveCount(0);
+  });
+
+  test('a stored link the region denies unwraps when the page loads, its words kept', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    const linked = helper.getIframe().locator('[data-block-uid="linked"]');
+    await expect(linked).toHaveText('Read the guide today');
+    await expect(linked.locator('a')).toHaveCount(0);
+  });
+
+  test('a pasted link lands as its words', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    const editor = await helper.enterEditMode('target');
+    await helper.selectAllTextInEditor(editor);
+    await editor.evaluate((el: HTMLElement) => {
+      const dt = new DataTransfer();
+      dt.setData('text/html', '<p>go <a href="https://example.com/x">there</a> now</p>');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+
+    const target = helper.getIframe().locator('[data-block-uid="target"]');
+    await expect(target).toContainText('go there now');
+    await expect(target.locator('a')).toHaveCount(0);
+  });
+
   test('pasting a disallowed element lands as a paragraph, text intact', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();

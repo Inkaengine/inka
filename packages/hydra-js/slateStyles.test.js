@@ -59,8 +59,8 @@ describe('isStyleAllowed', () => {
     expect(isStyleAllowed('blockquote', undefined)).toBe(true);
   });
 
-  test('link is structural and is never restrictable', () => {
-    expect(isStyleAllowed('link', { allowedStyles: ['p'], disallowedStyles: ['link'] })).toBe(true);
+  test('link is structural: an allow-list leaving it out does not refuse it', () => {
+    expect(isStyleAllowed('link', { allowedStyles: ['p'] })).toBe(true);
   });
 });
 
@@ -273,3 +273,45 @@ describe('design-system styles (styleName)', () => {
     expect(isStyleAllowed('p', FOOTER_ONLY)).toBe(true);
   });
 });
+
+describe('a link is kept unless a region names it', () => {
+  const link = { type: 'link', data: { url: '/somewhere' }, children: [{ text: 'here' }] };
+
+  test('an allow-list that leaves it out keeps it: the href is content', () => {
+    expect(isStyleAllowed('link', { allowedStyles: ['p'] })).toBe(true);
+    const value = [{ type: 'p', children: [{ text: 'See ' }, link] }];
+    const { value: out, changes } = normalizeSlateValue(value, { allowedStyles: ['p'] });
+    expect(out).toBe(value);
+    expect(changes).toEqual([]);
+  });
+
+  test('disallowedStyles naming it is the explicit choice to refuse it', () => {
+    expect(isStyleAllowed('link', { disallowedStyles: ['link'] })).toBe(false);
+  });
+
+  test('a disallowed link unwraps: its words stay, with their own formatting', () => {
+    const value = [
+      {
+        type: 'p',
+        children: [
+          { text: 'See ' },
+          { type: 'link', data: { url: '/x' }, children: [{ type: 'strong', children: [{ text: 'here' }] }] },
+          { text: ' now' },
+        ],
+      },
+    ];
+    const { value: out, changes } = normalizeSlateValue(value, { disallowedStyles: ['link'] });
+    expect(out[0].type).toBe('p');
+    expect(JSON.stringify(out)).not.toContain('/x');
+    expect(out[0].children.map((c) => c.text ?? c.children[0].text).join('')).toBe('See here now');
+    expect(out[0].children.some((c) => c.type === 'strong')).toBe(true);
+    expect(changes).toEqual([expect.objectContaining({ from: 'link', to: null, kind: 'style-unwrap' })]);
+  });
+
+  test('a nested region cannot re-allow a link the page denied', () => {
+    const page = foldSlateStyleRules(null, { disallowedStyles: ['link'] });
+    const nested = foldSlateStyleRules(page, { allowedStyles: ['p', 'link'] });
+    expect(isStyleAllowed('link', nested)).toBe(false);
+  });
+});
+
