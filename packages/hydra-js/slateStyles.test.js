@@ -286,7 +286,7 @@ describe('a link is kept unless a region names it', () => {
   });
 
   test('disallowedStyles naming it is the explicit choice to refuse it', () => {
-    expect(isStyleAllowed('link', { disallowedStyles: ['link'] })).toBe(false);
+    expect(isStyleAllowed('link', { disallowedStyles: ['a'] })).toBe(false);
   });
 
   test('a disallowed link unwraps: its words stay, with their own formatting', () => {
@@ -300,7 +300,7 @@ describe('a link is kept unless a region names it', () => {
         ],
       },
     ];
-    const { value: out, changes } = normalizeSlateValue(value, { disallowedStyles: ['link'] });
+    const { value: out, changes } = normalizeSlateValue(value, { disallowedStyles: ['a'] });
     expect(out[0].type).toBe('p');
     expect(JSON.stringify(out)).not.toContain('/x');
     expect(out[0].children.map((c) => c.text ?? c.children[0].text).join('')).toBe('See here now');
@@ -309,7 +309,7 @@ describe('a link is kept unless a region names it', () => {
   });
 
   test('a nested region cannot re-allow a link the page denied', () => {
-    const page = foldSlateStyleRules(null, { disallowedStyles: ['link'] });
+    const page = foldSlateStyleRules(null, { disallowedStyles: ['a'] });
     const nested = foldSlateStyleRules(page, { allowedStyles: ['p', 'link'] });
     expect(isStyleAllowed('link', nested)).toBe(false);
   });

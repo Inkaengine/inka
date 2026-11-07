@@ -45,9 +45,12 @@
  * href, so leaving one out of an allow-list must not lose it: an allow-list
  * names the styles a frontend thought of, and nobody who wrote `['p', 'h2']`
  * meant "and remove every link". Refusing one is an explicit choice instead:
- * `disallowedStyles: ['link']`, for a field that is meant to stay plain text.
+ * `disallowedStyles: ['a']`, for a field that is meant to stay plain text.
+ *
+ * Rules use HTML names, and volto-slate stores a link as type `link`, so this
+ * maps the stored type to the name a rule uses for it.
  */
-const STRUCTURAL_TYPES = new Set(['link']);
+const STRUCTURAL_TYPES = new Map([['link', 'a']]);
 
 /**
  * Block-level slate types — the ones that cannot legally sit inside another
@@ -161,7 +164,8 @@ function permits(name, allowed, denied) {
  */
 export function isStyleAllowed(type, rules) {
   if (!rules) return true;
-  if (STRUCTURAL_TYPES.has(type)) return !rules.disallowedStyles?.includes(type);
+  const structural = STRUCTURAL_TYPES.get(type);
+  if (structural) return !rules.disallowedStyles?.includes(structural);
   return permits(type, rules.allowedStyles, rules.disallowedStyles);
 }
 

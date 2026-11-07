@@ -181,6 +181,25 @@ test.describe('slate style allow-list', () => {
     await expect(target.locator('a')).toHaveCount(0);
   });
 
+  test('a pasted URL and pasted markdown link stay text', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    const editor = await helper.enterEditMode('target');
+    await helper.selectAllTextInEditor(editor);
+    await editor.evaluate((el: HTMLElement) => {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', 'https://example.com/x and [guide](https://example.com/y)');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+
+    const target = helper.getIframe().locator('[data-block-uid="target"]');
+    await expect(target).toContainText('https://example.com/x');
+    await expect(target.locator('a')).toHaveCount(0);
+  });
+
   test('pasting a disallowed element lands as a paragraph, text intact', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
