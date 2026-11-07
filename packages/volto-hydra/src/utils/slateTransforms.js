@@ -79,7 +79,6 @@ export function createHeadlessEditor(value) {
 
 /**
  * Deserializes HTML to Slate-compatible JSON
- * (Re-export from existing toggleMark.js logic)
  *
  * @param {HTMLElement} el - DOM element to deserialize
  * @param {Object} markAttributes - Accumulated mark attributes
@@ -169,7 +168,7 @@ function isBlockElement(element) {
 }
 
 /**
- * Converts HTML to Slate value (compatibility wrapper for toggleMark)
+ * Converts HTML to Slate value (compatibility wrapper)
  * Note: nodeIds are managed by hydra.js, not by the Admin UI
  *
  * @param {string} html - HTML string

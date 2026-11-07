@@ -200,6 +200,61 @@ test.describe('slate style allow-list', () => {
     await expect(target.locator('a')).toHaveCount(0);
   });
 
+  // The sidebar's slate editor is Volto's own, with its own toolbar and no
+  // per-region filtering, so what a region refuses can still be typed there. The
+  // normalization pass is what has to hold, and it is checked from both ends:
+  // what the sidebar's form holds, and what the page draws.
+  test('a link made with the sidebar toolbar does not survive', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    await helper.clickBlockInIframe('target');
+    await helper.waitForSidebarOpen();
+    const sidebarEditor = helper.getSidebarSlateEditor('value');
+    await expect(sidebarEditor).toBeVisible({ timeout: 10000 });
+    await sidebarEditor.click();
+    await sidebarEditor.press('ControlOrMeta+a');
+
+    const toolbar = await helper.waitForSidebarSlateToolbar();
+    const button = await helper.getSidebarToolbarButton(toolbar, 'link');
+    await button.click();
+    const input = await helper.getLinkEditorUrlInput();
+    await input.fill('https://example.com/from-the-sidebar');
+    await input.press('Enter');
+
+    const target = helper.getIframe().locator('[data-block-uid="target"]');
+    await expect(target).toContainText('paste here');
+    await expect(sidebarEditor).toContainText('paste here');
+    await expect(sidebarEditor.locator('a')).toHaveCount(0);
+    await expect(target.locator('a')).toHaveCount(0);
+  });
+
+  test('a link pasted into the sidebar lands as its words', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    await helper.clickBlockInIframe('target');
+    await helper.waitForSidebarOpen();
+    const sidebarEditor = helper.getSidebarSlateEditor('value');
+    await expect(sidebarEditor).toBeVisible({ timeout: 10000 });
+    await sidebarEditor.click();
+    await sidebarEditor.press('ControlOrMeta+a');
+    await sidebarEditor.evaluate((el: HTMLElement) => {
+      const dt = new DataTransfer();
+      dt.setData('text/html', '<p>side <a href="https://example.com/s">linked</a> text</p>');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+
+    const target = helper.getIframe().locator('[data-block-uid="target"]');
+    await expect(target).toContainText('side linked text');
+    await expect(target.locator('a')).toHaveCount(0);
+    await expect(sidebarEditor.locator('a')).toHaveCount(0);
+  });
+
   test('pasting a disallowed element lands as a paragraph, text intact', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
