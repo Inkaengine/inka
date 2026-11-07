@@ -1525,6 +1525,36 @@ export function resolveEffectiveBlockSchema(blockId, formData, blockPathMap, blo
 }
 
 /**
+ * The page as it may be saved: every slate value inside its region's style
+ * rules (#295).
+ *
+ * applySchemaDefaultsToFormData cleans what the canvas is sent, not the form the
+ * save reads, and the sidebar's slate editor writes to that form with no rules
+ * of its own, so what a region refuses could be made there and saved. Run at the
+ * save rather than on each change, so opening a page with old content does not
+ * mark it as edited.
+ *
+ * @returns {Object} the form, or the same one when nothing changed
+ */
+export function normalizeSlateStylesForSave(formData, blockPathMap, blocksConfig, intl) {
+  let result = formData;
+  const globals = getSlateStyleGlobals();
+  for (const blockId of Object.keys(blockPathMap || {})) {
+    const rules = blockPathMap[blockId]?.slateRules;
+    if (!rules) continue;
+    const blockData = getBlockById(result, blockPathMap, blockId);
+    if (!blockData) continue;
+    const schema = resolveEffectiveBlockSchema(blockId, result, blockPathMap, blocksConfig, intl);
+    if (!schema) continue;
+    const { block } = normalizeSlateFields(blockData, schema, rules, globals);
+    if (block !== blockData) {
+      result = updateBlockById(result, blockPathMap, blockId, block);
+    }
+  }
+  return result;
+}
+
+/**
  * Every slate node the page's regions disallow, and what it would become (#295).
  *
  * The same walk `applySchemaDefaultsToFormData` does, but reporting instead of

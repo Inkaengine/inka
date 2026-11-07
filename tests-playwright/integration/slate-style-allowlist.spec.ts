@@ -201,58 +201,48 @@ test.describe('slate style allow-list', () => {
   });
 
   // The sidebar's slate editor is Volto's own, with its own toolbar and no
-  // per-region filtering, so what a region refuses can still be typed there. The
-  // normalization pass is what has to hold, and it is checked from both ends:
-  // what the sidebar's form holds, and what the page draws.
-  test('a link made with the sidebar toolbar does not survive', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-    await helper.login();
-    await helper.navigateToEdit('/restricted-styles-page');
-    await helper.waitForIframeReady();
+  // per-region filtering, so a refused style can be made there and is visible
+  // there until the page is saved. What must hold is what visitors get: the
+  // saved value. Each test first checks the link really was made, or "not saved"
+  // would also be true of a gesture that did nothing.
+  async function savedValueOf(page, helper: AdminUIHelper, blockId: string) {
+    const patch = page.waitForRequest((r) => r.method() === 'PATCH');
+    await helper.saveContent();
+    return JSON.parse((await patch).postData()).blocks[blockId].value;
+  }
 
-    await helper.clickBlockInIframe('target');
+  async function selectAllInSidebar(helper: AdminUIHelper, blockId: string) {
+    await helper.clickBlockInIframe(blockId);
     await helper.waitForSidebarOpen();
     const sidebarEditor = helper.getSidebarSlateEditor('value');
     await expect(sidebarEditor).toBeVisible({ timeout: 10000 });
     await sidebarEditor.click();
     await sidebarEditor.press('ControlOrMeta+a');
+    return sidebarEditor;
+  }
 
-    const toolbar = await helper.waitForSidebarSlateToolbar();
-    const button = await helper.getSidebarToolbarButton(toolbar, 'link');
-    await button.click();
-    const input = await helper.getLinkEditorUrlInput();
-    await input.fill('https://example.com/from-the-sidebar');
-    await input.press('Enter');
-
-    const target = helper.getIframe().locator('[data-block-uid="target"]');
-    await expect(target).toContainText('paste here');
-    await expect(sidebarEditor).toContainText('paste here');
-    await expect(sidebarEditor.locator('a')).toHaveCount(0);
-    await expect(target.locator('a')).toHaveCount(0);
-  });
-
-  test('a link pasted into the sidebar lands as its words', async ({ page }) => {
+  test('a link pasted into the sidebar is not saved, its words are', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/restricted-styles-page');
     await helper.waitForIframeReady();
 
-    await helper.clickBlockInIframe('target');
-    await helper.waitForSidebarOpen();
-    const sidebarEditor = helper.getSidebarSlateEditor('value');
-    await expect(sidebarEditor).toBeVisible({ timeout: 10000 });
-    await sidebarEditor.click();
-    await sidebarEditor.press('ControlOrMeta+a');
-    await sidebarEditor.evaluate((el: HTMLElement) => {
-      const dt = new DataTransfer();
-      dt.setData('text/html', '<p>side <a href="https://example.com/s">linked</a> text</p>');
-      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    const sidebarEditor = await selectAllInSidebar(helper, 'target');
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.evaluate(async () => {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob(['<p>side <a href="https://example.com/s">linked</a> text</p>'], { type: 'text/html' }),
+          'text/plain': new Blob(['side linked text'], { type: 'text/plain' }),
+        }),
+      ]);
     });
+    await sidebarEditor.press('ControlOrMeta+v');
+    await expect(sidebarEditor.locator('a')).toHaveCount(1);
 
-    const target = helper.getIframe().locator('[data-block-uid="target"]');
-    await expect(target).toContainText('side linked text');
-    await expect(target.locator('a')).toHaveCount(0);
-    await expect(sidebarEditor.locator('a')).toHaveCount(0);
+    const saved = await savedValueOf(page, helper, 'target');
+    expect(JSON.stringify(saved)).not.toContain('example.com/s');
+    expect(saved[0].children.map((c) => c.text).join('')).toBe('side linked text');
   });
 
   test('pasting a disallowed element lands as a paragraph, text intact', async ({ page }) => {

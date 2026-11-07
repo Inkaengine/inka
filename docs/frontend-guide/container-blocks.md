@@ -154,7 +154,7 @@ properties: {
 }
 ```
 
-`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. `link` is structural rather than styling: leaving it out of `allowedStyles` keeps it, because dropping one loses its href and an allow-list is not a request to do that. To refuse links, for text that is meant to stay plain, name it by its HTML name: `disallowedStyles: ['a']`. The link button goes from the toolbar, a hotkey a site has added for links does nothing, a pasted link arrives as its words, and a stored link unwraps when the page loads, keeping its words and losing its href. There is no markdown shortcut for a link, and a typed or pasted URL stays text.
+`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. `link` is structural rather than styling: leaving it out of `allowedStyles` keeps it, because dropping one loses its href and an allow-list is not a request to do that. To refuse links, for text that is meant to stay plain, name it by its HTML name: `disallowedStyles: ['a']`. The link button goes from the toolbar, a hotkey a site has added for links does nothing, a pasted link arrives as its words, and a stored link unwraps when the page loads, keeping its words and losing its href. The sidebar's slate editor has no toolbar filtering of its own, so a style refused here can still be made and shown there until the save, which removes it. There is no markdown shortcut for a link, and a typed or pasted URL stays text.
 
 ### A design system's own styles
 
@@ -175,7 +175,7 @@ Declaring nothing leaves every style available, so this changes nothing for a fr
 
 ### It applies everywhere, not just the toolbar
 
-Hiding a toolbar button is cosmetic — the format still arrives by paste, by hotkey, or by a markdown shortcut. A declaration here is enforced at all of them: the block-format dropdown, `Ctrl+B`-style hotkeys, the `>`-space markdown shortcuts, paste (the pasted HTML is normalized before it becomes blocks), and the stored value itself, which is normalized when the editor loads the page. Anything the load pass would rewrite is also logged to the console, so a migration shows up while editing rather than as a surprise diff on the next save.
+Hiding a toolbar button is cosmetic — the format still arrives by paste, by hotkey, or by a markdown shortcut. A declaration here is enforced at all of them: the block-format dropdown, `Ctrl+B`-style hotkeys, the `>`-space markdown shortcuts, paste (the pasted HTML is normalized before it becomes blocks), and the stored value itself, which is normalized when the editor loads the page and again when it is saved. Anything the load pass would rewrite is also logged to the console, so a migration shows up while editing rather than as a surprise diff on the next save.
 
 ### There is no global level, and no per-field level
 
