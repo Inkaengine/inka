@@ -82,6 +82,7 @@ import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
 import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
+import { regionGatedLinkButton } from './components/Toolbar/regionRules';
 import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
 import { apiAcceptEncoding } from './express-middleware/apiAcceptEncoding';
@@ -960,6 +961,10 @@ config.settings.additionalToolbarComponents = {
     config.settings.slate.buttons = {
       ...config.settings.slate.buttons,
       styleMenu: (props) => <StyleDropdown {...props} />,
+      // The sidebar's toolbar is Volto's, which knows no region rules; this
+      // one hides the link button where the region refuses links, as the
+      // canvas toolbar does. See regionRules.
+      link: regionGatedLinkButton(config.settings.slate.buttons?.link),
       // Volto's Clear formatting is always enabled; Inka's is disabled when the
       // selection has nothing to clear. See ClearFormattingButton.
       clearformatting: (props) => (

@@ -1,0 +1,1 @@
+A region can refuse links in its text: disallowedStyles: ['a'] takes the link button away, on the canvas and in the sidebar, and a pasted or stored link keeps only its words. The sidebar's style menu now offers only the styles the region allows.

@@ -34,11 +34,9 @@ export const HydraSchemaProvider = ({ children, value }) => {
   // (useLayoutEffect hasn't run yet on first render)
   currentContextValue = value;
 
-  return (
-    <HydraSchemaContext.Provider value={value}>
-      {children}
-    </HydraSchemaContext.Provider>
-  );
+  // Plain JS rather than JSX: this is a .js file, and Vite (the unit tests)
+  // parses .js without JSX, so any component test that imported it failed.
+  return React.createElement(HydraSchemaContext.Provider, { value }, children);
 };
 
 /**

@@ -331,7 +331,6 @@ import blockSVG from '@plone/volto/icons/block.svg';
 import columnAfterSVG from '@plone/volto/icons/column-after.svg';
 import rowAfterSVG from '@plone/volto/icons/row-after.svg';
 import { setAllowedBlocksList } from '../../utils/allowedBlockList';
-import toggleMark from '../../utils/toggleMark';
 import slateTransforms from '../../utils/slateTransforms';
 // Note: Editor, Transforms, toggleInlineFormat, toggleBlock were removed
 // as applyFormat was replaced by SLATE_TRANSFORM_REQUEST handling
@@ -3094,40 +3093,6 @@ const Iframe = (props) => {
         case 'INLINE_EDIT_EXIT':
           
           break;
-
-        case 'TOGGLE_MARK': {
-          // console.log('TOGGLE_BOLD', event.data.html);
-
-          const deserializedHTMLData = toggleMark(event.data.html);
-          // console.log('deserializedHTMLData', deserializedHTMLData);
-          onChangeFormData({
-            ...form,
-            blocks: {
-              ...form.blocks,
-              [selectedBlock]: {
-                ...form.blocks[selectedBlock],
-                value: deserializedHTMLData,
-              },
-            },
-          });
-          event.source.postMessage(
-            {
-              type: 'TOGGLE_MARK_DONE',
-              data: {
-                ...form,
-                blocks: {
-                  ...form.blocks,
-                  [selectedBlock]: {
-                    ...form.blocks[selectedBlock],
-                    value: deserializedHTMLData,
-                  },
-                },
-              },
-            },
-            event.origin,
-          );
-          break;
-        }
 
         case 'SLATE_TRANSFORM_REQUEST':
           window._formatT0 = performance.now();
