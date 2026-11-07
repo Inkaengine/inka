@@ -154,7 +154,7 @@ properties: {
 }
 ```
 
-`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. `link` is structural rather than styling and is never restrictable: dropping it would lose an href.
+`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. `link` is structural rather than styling: leaving it out of `allowedStyles` keeps it, because dropping one loses its href and an allow-list is not a request to do that. To refuse links, for text that is meant to stay plain, name it by its HTML name: `disallowedStyles: ['a']`. The link button goes from the toolbar, on the canvas and in the sidebar, a hotkey a site has added for links does nothing, a pasted link arrives as its words, and a stored link unwraps when the page loads, keeping its words and losing its href. The sidebar's toolbar offers the same buttons and styles as the canvas's. Its editor is Volto's own, though, so a refused style that gets in there anyway (pasted, say) shows there until the save, which removes it. There is no markdown shortcut for a link, and a typed or pasted URL stays text.
 
 ### A design system's own styles
 
@@ -175,7 +175,7 @@ Declaring nothing leaves every style available, so this changes nothing for a fr
 
 ### It applies everywhere, not just the toolbar
 
-Hiding a toolbar button is cosmetic — the format still arrives by paste, by hotkey, or by a markdown shortcut. A declaration here is enforced at all of them: the block-format dropdown, `Ctrl+B`-style hotkeys, the `>`-space markdown shortcuts, paste (the pasted HTML is normalized before it becomes blocks), and the stored value itself, which is normalized when the editor loads the page. Anything the load pass would rewrite is also logged to the console, so a migration shows up while editing rather than as a surprise diff on the next save.
+Hiding a toolbar button is cosmetic — the format still arrives by paste, by hotkey, or by a markdown shortcut. A declaration here is enforced at all of them: the block-format dropdown, `Ctrl+B`-style hotkeys, the `>`-space markdown shortcuts, paste (the pasted HTML is normalized before it becomes blocks), and the stored value itself, which is normalized when the editor loads the page and again when it is saved. Anything the load pass would rewrite is also logged to the console, so a migration shows up while editing rather than as a surprise diff on the next save.
 
 ### There is no global level, and no per-field level
 
@@ -240,7 +240,7 @@ initBridge({
 });
 ```
 
-On the canvas toolbar, **paragraph styles are in the format dropdown**, after the formats. Choosing one makes the block the cursor is in a `p` (or the entry's `type`) carrying that class, replacing any other paragraph style; choosing a heading or Paragraph removes it. The **style menu** there holds the text (inline) styles only, and is not shown when there are none. The sidebar's toolbar, which has no format dropdown, offers both groups in its style menu.
+On the canvas toolbar, **paragraph styles are in the format dropdown**, after the formats. Choosing one makes the block the cursor is in a `p` (or the entry's `type`) carrying that class, replacing any other paragraph style; choosing a heading or Paragraph removes it. The **style menu** there holds the text (inline) styles only, and is not shown when there are none. The sidebar's toolbar, which has no format dropdown, offers both groups in its style menu, filtered by the region's rules the same way.
 
 A style for one **kind** of block declares the element types it is for, as `appliesTo` (a list style: `['ul', 'ol']`). It is offered in the format dropdown only while the cursor is in one of those blocks, and choosing it adds the class and leaves the block what it is: a list stays a list. (A paragraph style without `appliesTo`, chosen on a list, would turn it into a paragraph.)
 
@@ -256,7 +256,7 @@ Either kind may take an `icon`, in the same data shape as a format's. Stored con
 config.settings.slate.styleAliases = { b: 'strong', i: 'em', blockquote: 'p' };
 ```
 
-With no alias, a top-level node becomes `config.settings.slate.defaultBlockType` (`p`), and an inline one is unwrapped — its text stays, without the formatting. Nothing is ever deleted.
+With no alias, a top-level node becomes `config.settings.slate.defaultBlockType` (`p`), and an inline one is unwrapped — its text stays, without the formatting. Nothing is ever deleted, except the href of a link you have refused by name.
 
 A downgrade never changes how many top-level nodes a slate field holds, because [a field always holds exactly one](./visual-editing.md#one-top-level-node-per-slate-field) and renderers are told they may assume it. So a denied *wrapper* collapses rather than splitting: denying `ul` turns `ul > li, li` into a single paragraph holding both items' content, not two paragraphs. Inline children survive the collapse — a `strong` inside a denied `blockquote` is still bold afterwards.
 

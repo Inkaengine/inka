@@ -139,6 +139,135 @@ test.describe('slate style allow-list', () => {
     await expect(legacy).toContainText('was bold');
   });
 
+  test('a region denying links offers no link button', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+    await helper.clickBlockInIframe('target');
+    const toolbar = page.locator('.quanta-toolbar');
+    await expect(toolbar.locator('[data-toolbar-button="bold"]')).toHaveCount(1);
+    await expect(toolbar.locator('[data-toolbar-button="link"]')).toHaveCount(0);
+  });
+
+  test('a stored link the region denies unwraps when the page loads, its words kept', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    const linked = helper.getIframe().locator('[data-block-uid="linked"]');
+    await expect(linked).toHaveText('Read the guide today');
+    await expect(linked.locator('a')).toHaveCount(0);
+  });
+
+  test('a pasted link lands as its words', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    const editor = await helper.enterEditMode('target');
+    await helper.selectAllTextInEditor(editor);
+    await editor.evaluate((el: HTMLElement) => {
+      const dt = new DataTransfer();
+      dt.setData('text/html', '<p>go <a href="https://example.com/x">there</a> now</p>');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+
+    const target = helper.getIframe().locator('[data-block-uid="target"]');
+    await expect(target).toContainText('go there now');
+    await expect(target.locator('a')).toHaveCount(0);
+  });
+
+  test('a pasted URL and pasted markdown link stay text', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    const editor = await helper.enterEditMode('target');
+    await helper.selectAllTextInEditor(editor);
+    await editor.evaluate((el: HTMLElement) => {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', 'https://example.com/x and [guide](https://example.com/y)');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+
+    const target = helper.getIframe().locator('[data-block-uid="target"]');
+    await expect(target).toContainText('https://example.com/x');
+    await expect(target.locator('a')).toHaveCount(0);
+  });
+
+  // The sidebar's slate editor is Volto's own. Its toolbar is filtered like the
+  // canvas's, but a refused style can still get in (pasted) and is visible
+  // there until the page is saved. What must hold is what visitors get: the
+  // saved value. Each test first checks the link really was made, or "not saved"
+  // would also be true of a gesture that did nothing.
+  async function savedValueOf(page, helper: AdminUIHelper, blockId: string) {
+    const patch = page.waitForRequest((r) => r.method() === 'PATCH');
+    await helper.saveContent();
+    return JSON.parse((await patch).postData()).blocks[blockId].value;
+  }
+
+  async function selectAllInSidebar(helper: AdminUIHelper, blockId: string) {
+    await helper.clickBlockInIframe(blockId);
+    await helper.waitForSidebarOpen();
+    const sidebarEditor = helper.getSidebarSlateEditor('value');
+    await expect(sidebarEditor).toBeVisible({ timeout: 10000 });
+    await sidebarEditor.click();
+    await sidebarEditor.press('ControlOrMeta+a');
+    return sidebarEditor;
+  }
+
+  test('a region denying links offers no link button in the sidebar either', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const toolbar = page.locator('.slate-inline-toolbar:not(.quanta-toolbar)');
+
+    // Where links are allowed, the sidebar offers the button — otherwise its
+    // absence below would prove nothing.
+    await helper.navigateToEdit('/test-page');
+    await helper.waitForIframeReady();
+    await selectAllInSidebar(helper, 'block-1-uuid');
+    await helper.waitForSidebarSlateToolbar();
+    await expect(toolbar.locator('[title*="Link" i]')).toBeVisible();
+
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+    await selectAllInSidebar(helper, 'target');
+    await helper.waitForSidebarSlateToolbar();
+    // The toolbar is there, with the buttons the region allows…
+    await expect(toolbar.locator('[title*="Italic" i]')).toBeVisible();
+    // …and without the one it refuses.
+    await expect(toolbar.locator('[title*="Link" i]')).toHaveCount(0);
+  });
+
+  test('a link pasted into the sidebar is not saved, its words are', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    const sidebarEditor = await selectAllInSidebar(helper, 'target');
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.evaluate(async () => {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob(['<p>side <a href="https://example.com/s">linked</a> text</p>'], { type: 'text/html' }),
+          'text/plain': new Blob(['side linked text'], { type: 'text/plain' }),
+        }),
+      ]);
+    });
+    await sidebarEditor.press('ControlOrMeta+v');
+    await expect(sidebarEditor.locator('a')).toHaveCount(1);
+
+    const saved = await savedValueOf(page, helper, 'target');
+    expect(JSON.stringify(saved)).not.toContain('example.com/s');
+    expect(saved[0].children.map((c) => c.text).join('')).toBe('side linked text');
+  });
+
   test('pasting a disallowed element lands as a paragraph, text intact', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -387,6 +516,28 @@ test.describe('style menu in the sidebar toolbar', () => {
       )
       .toContain('\u00AB');
     expect(toolbar).toBeTruthy();
+  });
+
+  test('offers no style the region refuses', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/restricted-styles-page');
+    await helper.waitForIframeReady();
+
+    // `deep` sits in a column whose allowedStyles name no design-system style,
+    // so there is nothing to offer and the menu goes, as it does on the canvas.
+    // The test above shows the same menu offered where the region allows it.
+    await helper.clickBlockInIframe('deep');
+    await helper.waitForSidebarOpen();
+    const sidebarEditor = helper.getSidebarSlateEditor('value');
+    await expect(sidebarEditor).toBeVisible({ timeout: 10000 });
+    await sidebarEditor.click();
+    await sidebarEditor.press('ControlOrMeta+a');
+    await helper.waitForSidebarSlateToolbar();
+
+    const toolbar = page.locator('.slate-inline-toolbar:not(.quanta-toolbar)');
+    await expect(toolbar.locator('[title*="Italic" i]')).toBeVisible();
+    await expect(toolbar.locator('#style-menu')).toHaveCount(0);
   });
 });
 

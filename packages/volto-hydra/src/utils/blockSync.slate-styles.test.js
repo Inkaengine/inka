@@ -13,6 +13,7 @@ vi.mock('../context', () => ({
 
 import {
   applySchemaDefaultsToFormData,
+  normalizeSlateStylesForSave,
   reportDisallowedSlateNodes,
 } from './blockSync.js';
 import { setInjectedVoltoConfig } from './injectedVoltoConfig.js';
@@ -79,6 +80,20 @@ describe('applySchemaDefaultsToFormData — slate styles', () => {
     ]);
   });
 
+  test('a refused link unwraps in the same pass, however it got there', () => {
+    const out = run({ ...REGION, disallowedStyles: [...(REGION.disallowedStyles || []), 'a'] }, [
+      {
+        type: 'p',
+        children: [
+          { text: 'see ' },
+          { type: 'link', data: { url: '/x' }, children: [{ text: 'here' }] },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(out.blocks.s1.value)).not.toContain('/x');
+    expect(out.blocks.s1.value[0].children.map((c) => c.text).join('')).toBe('see here');
+  });
+
   test('an allowed value is left strictly alone — same form object back', () => {
     const blocksConfig = cfg(REGION);
     const data = form([{ type: 'p', children: [{ text: 'fine' }] }]);
@@ -95,6 +110,27 @@ describe('applySchemaDefaultsToFormData — slate styles', () => {
     expect(out.blocks.s1.value).toEqual([
       { type: 'blockquote', children: [{ text: 'quoted' }] },
     ]);
+  });
+});
+
+describe('normalizeSlateStylesForSave', () => {
+  test('a refused link in the form is gone from what is saved, its words kept', () => {
+    const region = { ...REGION, disallowedStyles: [...(REGION.disallowedStyles || []), 'a'] };
+    const blocksConfig = cfg(region);
+    const data = form([
+      { type: 'p', children: [{ text: 'see ' }, { type: 'link', data: { url: '/x' }, children: [{ text: 'here' }] }] },
+    ]);
+    const map = buildBlockPathMap(data, blocksConfig, intl);
+    const out = normalizeSlateStylesForSave(data, map, blocksConfig, intl);
+    expect(JSON.stringify(out.blocks.s1.value)).not.toContain('/x');
+    expect(out.blocks.s1.value[0].children.map((c) => c.text).join('')).toBe('see here');
+  });
+
+  test('a form with nothing to change comes back as the same form', () => {
+    const blocksConfig = cfg(REGION);
+    const data = form([{ type: 'p', children: [{ text: 'fine' }] }]);
+    const map = buildBlockPathMap(data, blocksConfig, intl);
+    expect(normalizeSlateStylesForSave(data, map, blocksConfig, intl)).toBe(data);
   });
 });
 

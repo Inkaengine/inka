@@ -1345,7 +1345,11 @@ const SyncedSlateToolbar = ({
     // isBlockButton compares element.type to imported BlockButton reference
     if (isBlockButton(Btn, BlockButton)) {
       blockButtons.push({ name, element });
-    } else {
+    } else if (name !== 'link' || isStyleAllowed('link', slateRules)) {
+      // The link button names no format, so it is gated here, by name. Not by
+      // returning earlier: its factory holds hooks and isBlockButton calls it
+      // during this render, and the rules can arrive after the first one, so
+      // skipping that call changes the hook count and crashes the toolbar.
       allInlineButtons.push({ name, element });
     }
   });

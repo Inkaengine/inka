@@ -71,6 +71,8 @@ import {
   searchTextOptions,
   withSearchableText,
 } from '../../../../../../../hydra-js/searchableText.js';
+import { normalizeSlateStylesForSave } from '../../../../../utils/blockSync';
+import { buildBlockPathMap } from '../../../../../../../hydra-js/buildBlockPathMap.js';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
 import { updateContent } from '@plone/volto/actions/content/content';
@@ -866,6 +868,14 @@ class Form extends Component {
         toast.error(<Toast error title="Can't save yet" content={error.message} />);
         return;
       }
+      // What a region refuses never reaches the server, however it got into the
+      // form: the sidebar's slate editor writes to it with no rules of its own.
+      pageFormData = normalizeSlateStylesForSave(
+        pageFormData,
+        buildBlockPathMap(pageFormData, config.blocks.blocksConfig, this.props.intl),
+        config.blocks.blocksConfig,
+        this.props.intl,
+      );
       // What the page is found by, from the blocks as they are saved (Inka #634).
       pageFormData = withSearchableText(
         pageFormData,
