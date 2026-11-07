@@ -3,7 +3,7 @@ import {
   getChildFields,
   slateNodesText,
   translatableFieldIds,
-} from '@volto-hydra/helpers';
+} from '../helpers/index.js';
 import { buildBlockPathMap, getBlockSchema } from './buildBlockPathMap.js';
 
 /**
