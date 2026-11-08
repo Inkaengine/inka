@@ -625,8 +625,10 @@ function transformBlobPaths(content, fullUrl) {
 
 /**
  * Generate placeholder image_scales for search results
- * Mimics Plone's image_scales structure - uses relative @@images paths
- * The mock server's @@images/* endpoint serves SVG placeholders
+ * Mimics Plone's image_scales structure - uses relative @@images paths.
+ * The metadata is invented, the bytes are not: @@images/* serves the item's own
+ * file (`<item>/<field>/`) and 404s without one, so an item listed with these
+ * scales must have that file.
  */
 function getPlaceholderImageScales(title, fieldName = 'image') {
   // Use a hash based on title for consistent URLs
