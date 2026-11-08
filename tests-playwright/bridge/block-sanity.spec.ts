@@ -21,7 +21,7 @@
  */
 import { test as base, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { verifyBlockRendering, revealBlock } from '../helpers/BlockVerificationHelper';
+import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage } from '../helpers/BlockVerificationHelper';
 import { drainFieldCoverage } from '../helpers/field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../helpers/text-style-coverage';
 import { drainImageSizeCoverage } from '../helpers/imageSizes.mjs';
@@ -56,6 +56,11 @@ interface DiscoveredBlock {
   allowedBlocksViolation?: boolean;
   parentType?: string;
   allowed?: string[];
+  integrityIssue?: boolean;
+  unexercisedOption?: boolean;
+  undeclaredField?: boolean;
+  // The frontend discovery found it on (one discovery per frontend).
+  frontend?: string;
 }
 
 // Read discovered blocks (written by globalSetup)
@@ -74,12 +79,31 @@ if (fs.existsSync(discoveredPath)) {
 // one fetches an external feed that only resolves against the mock. They're
 // covered by their own integration spec (admin-mock), not this render contract.
 const NON_CONTRACT_BLOCKS = new Set(['relatedItemsListing', 'searchShortcuts', 'rssFeed']);
+const outsideContract = (blockType: string) =>
+  blockType.startsWith('conv') || NON_CONTRACT_BLOCKS.has(blockType);
 const seenShapeTitles = new Map();
 discoveredBlocks = discoveredBlocks.filter(
   // a shape-issue discovery entry has no blockType — keep it (its test FAILS
   // with the issue text; dropping it here would hide a real content problem)
-  (b) => !(b.blockType ?? '').startsWith('conv') && !NON_CONTRACT_BLOCKS.has(b.blockType),
+  (b) => !outsideContract(b.blockType ?? ''),
 );
+
+// The render test that also checks every OTHER block on its page: the first
+// render sample on each page, per frontend. One per page, so a page's blocks
+// are checked once however many samples it holds, and always by the same test.
+const isRenderSample = (b: DiscoveredBlock) =>
+  !b.unregistered && !b.noExample && !b.allowedBlocksViolation && !b.integrityIssue &&
+  !b.shapeIssue && !b.slateIssue && !b.unexercisedOption && !b.undeclaredField;
+const checksItsPage = new Set<DiscoveredBlock>();
+{
+  const pages = new Set<string>();
+  for (const b of discoveredBlocks) {
+    const key = `${b.frontend ?? ''} ${b.pagePath}`;
+    if (!isRenderSample(b) || pages.has(key)) continue;
+    pages.add(key);
+    checksItsPage.add(b);
+  }
+}
 
 // Block sanity is the cross-cutting render contract. We only enforce it on
 // the three frontends that ship full block coverage and are the canonical
@@ -415,6 +439,14 @@ test.describe('Block sanity (auto-discovered)', () => {
         // DOM can carry every annotation and still be impossible to type into.
         checkEditTextClicks: true,
       });
+
+      // The page is drawn: check every other block on it too (see
+      // checkEveryBlockOnPage). Before the text-style and a11y passes, which
+      // judge the sample alone.
+      if (checksItsPage.has(block)) {
+        const others = await checkEveryBlockOnPage(iframe, block.blockId, outsideContract);
+        expect(others, `other blocks on ${block.pagePath} fail the per-block checks`).toEqual([]);
+      }
 
       // TEXT-STYLE COVERAGE (#295). A style the author can apply has to render,
       // and has to render DIFFERENTLY from body text — otherwise picking it does

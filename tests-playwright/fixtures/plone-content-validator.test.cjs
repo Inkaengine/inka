@@ -1335,6 +1335,53 @@ describe('plone-content-validator checkIntegrity()', () => {
     assert.equal(r.stats.linksOk, 2);
   });
 
+  // plone.restapi turns a uid reference back into a path on the way out only
+  // where it knows to look: an `@id` inside an object, or a bare string in a
+  // field NAMED url, href or preview_image (ResolveUIDSerializerBase.fields).
+  // A bare `resolveuid/<uid>` anywhere else reaches the frontend raw, and an
+  // <img> pointed at it loads the item's HTML page. The uid existing is not
+  // enough: it has to be stored where Plone will resolve it.
+  describe('a uid reference is stored where Plone resolves it', () => {
+    const IMAGE_CONFIG = {
+      banner: { blockSchema: { properties: { image: { widget: 'image' }, preview_image: { widget: 'image' } } } },
+      image: { blockSchema: { properties: { url: { widget: 'image' } } } },
+    };
+    const check = (block) => {
+      const { root, contentDir } = buildFixture({
+        pageA: {
+          '@id': '/page-a', '@type': 'Document', id: 'page-a', UID: 'pageauid1234567',
+          parent: { '@id': '/' },
+          blocks: { b: block },
+        },
+      });
+      const r = checkIntegrity(contentDir, { schemasFor: () => IMAGE_CONFIG });
+      cleanup(root);
+      return r.errors;
+    };
+
+    it('FAILS on a bare resolveuid string in an image field Plone does not resolve', () => {
+      for (const ref of ['resolveuid/pageauid1234567', '../resolveuid/pageauid1234567']) {
+        const errors = check({ '@type': 'banner', image: ref });
+        assert.ok(
+          errors.some((e) => e.includes('image') && e.includes('Plone does not resolve')),
+          `${ref}:\n${errors.join('\n')}`,
+        );
+      }
+    });
+
+    it('passes the same uid as an @id, in a field Plone resolves by name, or as a path', () => {
+      for (const block of [
+        { '@type': 'banner', image: { '@id': 'resolveuid/pageauid1234567' } },
+        { '@type': 'banner', image: [{ '@id': '../resolveuid/pageauid1234567' }] },
+        { '@type': 'banner', preview_image: 'resolveuid/pageauid1234567' },
+        { '@type': 'image', url: 'resolveuid/pageauid1234567' },
+        { '@type': 'banner', image: '/page-a' },
+      ]) {
+        assert.deepEqual(check(block), [], JSON.stringify(block));
+      }
+    });
+  });
+
   it('FAILS on a blocks_layout.items entry with no matching block', () => {
     // A uid listed in a container's blocks_layout but absent from its `blocks`
     // dict is a dangling reference — what a partial block deletion leaves (remove
