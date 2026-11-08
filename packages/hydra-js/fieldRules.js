@@ -29,6 +29,7 @@ import {
   slateNodesText,
 } from '../helpers/index.js';
 import { isObjectListRegion } from './regionWidgets.js';
+import { SLATE_SCHEMA, fieldTextOf } from './blockText.js';
 
 // Same value as PAGE_BLOCK_UID in hydra.js — defined locally to avoid
 // importing from @volto-hydra/hydra-js (which would pull in Volto deps).
@@ -531,6 +532,32 @@ function resolveWhenField(fieldPath, formData, args) {
   if (fieldName.endsWith('@styles')) {
     const value = block ? getFieldValue(block, fieldName.slice(0, -'@styles'.length)) : undefined;
     return { kind: 'array', value: slateElementTypes(value), fieldPath };
+  }
+
+  // `<field>@chars` / `<field>@words` — how long its text is, a number. A text,
+  // textarea or slate field is its own text, whole; a region is the text of
+  // everything in it, at any depth, read as search reads it (blockText.js).
+  // The blocks inside a region are resolved from the path map; without one
+  // (buildBlockPathMap's generic first pass) a region's length is unknown —
+  // unset, so no comparison holds.
+  const measured = fieldName.match(/^(.+)@(chars|words)$/);
+  if (measured) {
+    const [, field, unit] = measured;
+    const fieldDef = schema ? getFieldDef(schema, field) : undefined;
+    const isRegion =
+      isObjectListRegion(fieldDef) ||
+      fieldDef?.widget === 'blocks_layout' ||
+      Array.isArray(block?.blocks_layout?.[field]);
+    if (isRegion && !blockPathMap) return { kind: 'number', value: undefined, fieldPath };
+    const text = fieldTextOf(block, field, fieldDef, {
+      schemaFor: (child, id) => {
+        const ref = blockPathMap?.[id]?._schemaRef;
+        return (ref && blockPathMap._schemas?.[ref]) || (child['@type'] === 'slate' ? SLATE_SCHEMA : null);
+      },
+    });
+    const value =
+      unit === 'chars' ? [...text].length : text.split(/\s+/).filter(Boolean).length;
+    return { kind: 'number', value, fieldPath };
   }
 
   const def = schema ? getFieldDef(schema, fieldName) : undefined;

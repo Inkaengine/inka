@@ -59,8 +59,9 @@ describe('isStyleAllowed', () => {
     expect(isStyleAllowed('blockquote', undefined)).toBe(true);
   });
 
-  test('link is structural: an allow-list leaving it out does not refuse it', () => {
-    expect(isStyleAllowed('link', { allowedStyles: ['p'] })).toBe(true);
+  test('a link is a style like any other: an allow-list names it to keep it', () => {
+    expect(isStyleAllowed('link', { allowedStyles: ['p'] })).toBe(false);
+    expect(isStyleAllowed('link', { allowedStyles: ['p', 'a'] })).toBe(true);
   });
 });
 
@@ -138,8 +139,8 @@ describe('normalizeSlateValue', () => {
     expect(out.changes[0]).toMatchObject({ from: 'highlight', to: null, kind: 'mark' });
   });
 
-  test('a link survives an allow-list that does not mention it', () => {
-    const rules = foldSlateStyleRules(null, { allowedStyles: ['p'] });
+  test('a link survives an allow-list that names it', () => {
+    const rules = foldSlateStyleRules(null, { allowedStyles: ['p', 'a'] });
     const value = [p('see ', { type: 'link', data: { url: '/x' }, children: [{ text: 'x' }] })];
     expect(normalizeSlateValue(value, rules, OPTS).value).toBe(value);
   });
@@ -274,18 +275,24 @@ describe('design-system styles (styleName)', () => {
   });
 });
 
-describe('a link is kept unless a region names it', () => {
+describe('a link is a style', () => {
   const link = { type: 'link', data: { url: '/somewhere' }, children: [{ text: 'here' }] };
 
-  test('an allow-list that leaves it out keeps it: the href is content', () => {
-    expect(isStyleAllowed('link', { allowedStyles: ['p'] })).toBe(true);
+  test('an allow-list that names it keeps it, href and all', () => {
     const value = [{ type: 'p', children: [{ text: 'See ' }, link] }];
-    const { value: out, changes } = normalizeSlateValue(value, { allowedStyles: ['p'] });
+    const { value: out, changes } = normalizeSlateValue(value, { allowedStyles: ['p', 'a'] });
     expect(out).toBe(value);
     expect(changes).toEqual([]);
   });
 
-  test('disallowedStyles naming it is the explicit choice to refuse it', () => {
+  test('an allow-list that leaves it out unwraps it: its words stay', () => {
+    const value = [{ type: 'p', children: [{ text: 'See ' }, link] }];
+    const { value: out, changes } = normalizeSlateValue(value, { allowedStyles: ['p'] });
+    expect(JSON.stringify(out)).not.toContain('"link"');
+    expect(changes).toEqual([expect.objectContaining({ from: 'link', to: null, kind: 'style-unwrap' })]);
+  });
+
+  test('disallowedStyles can name it too', () => {
     expect(isStyleAllowed('link', { disallowedStyles: ['a'] })).toBe(false);
   });
 
@@ -310,7 +317,7 @@ describe('a link is kept unless a region names it', () => {
 
   test('a nested region cannot re-allow a link the page denied', () => {
     const page = foldSlateStyleRules(null, { disallowedStyles: ['a'] });
-    const nested = foldSlateStyleRules(page, { allowedStyles: ['p', 'link'] });
+    const nested = foldSlateStyleRules(page, { allowedStyles: ['p', 'a'] });
     expect(isStyleAllowed('link', nested)).toBe(false);
   });
 });
