@@ -24,6 +24,10 @@ defaults:
 # and those keep working.
 env:
   HYDRA_PORT_BASE: 8888
+  # The docs' screenshots and demo video are generated in the parent repo's
+  # deploy, not here (docs/.gitignore), so only they may fail to load; every
+  # other image and video must (PageIntegrityHelper.isAbsentAsset).
+  ABSENT_ASSETS: /docs/images/*.png /docs/static/hydra-demo.mp4 /docs/_static/hydra-demo.mp4
 
 jobs:
   # ── Build Volto and upload artifact ──────────────────────────────────────
@@ -241,12 +245,6 @@ jobs:
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
-          # The editor screenshots the docs embed are git-ignored and generated
-          # in the PARENT repo's deploy now, not recorded here — so they are
-          # legitimately absent in this checkout. Skip page-integrity's
-          # broken-image assertion (its link checks still run, so a typo'd path
-          # is still caught); see PageIntegrityHelper.skipBrokenImages.
-          SKIP_BROKEN_IMAGE_CHECK: true
           DISCOVER_BLOCKS_API: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           # Discovery needs a frontend: without one it is type-only, container
           # regions are invisible, and the schema-dependent checks measure less
@@ -610,12 +608,6 @@ jobs:
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
-          # The editor screenshots the docs embed are git-ignored and generated
-          # in the PARENT repo's deploy now, not recorded here — so they are
-          # legitimately absent in this checkout. Skip page-integrity's
-          # broken-image assertion (its link checks still run, so a typo'd path
-          # is still caught); see PageIntegrityHelper.skipBrokenImages.
-          SKIP_BROKEN_IMAGE_CHECK: true
           DISCOVER_BLOCKS_API: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           FRONTEND_URL: http://localhost:${{ env.HYDRA_NUXT_PORT }}
           # Discovery reads the frontend's INIT through mock-parent. Without it
@@ -879,12 +871,6 @@ jobs:
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
-          # The editor screenshots the docs embed are git-ignored and generated
-          # in the PARENT repo's deploy now, not recorded here — so they are
-          # legitimately absent in this checkout. Skip page-integrity's
-          # broken-image assertion (its link checks still run, so a typo'd path
-          # is still caught); see PageIntegrityHelper.skipBrokenImages.
-          SKIP_BROKEN_IMAGE_CHECK: true
           # Without this, discovery never runs here, so block-sanity and
           # page-integrity found no .discovered-blocks.json and skipped — the
           # nextjs project is inside block-sanity's own scope, so it had simply

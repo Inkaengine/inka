@@ -14,7 +14,7 @@ import { recordSlateFieldContainer, recordFieldEditable } from './field-coverage
 import {
   usesAvailableSizes, resolveImageEntry, availableWidths, isProportionate,
 } from './imageSizes.mjs';
-import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
+import { isAbsentAsset } from './PageIntegrityHelper';
 import { settledCount } from './settled-count';
 import { wordsWithNowhereToGo } from './elementless';
 import { isEmptySlate } from '../../packages/helpers/index.js';
@@ -499,7 +499,8 @@ export async function checkEditAnnotations(
           if ((i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth === 0) return true;
           return false;
         })
-        .map((i) => i.getAttribute('src') || '(empty)');
+        // The resolved URL, which ABSENT_ASSETS globs are matched against.
+        .map((i) => (i as HTMLImageElement).src || '(empty)');
 
       // Video/audio srcs must actually exist — an <img> reports its own failure
       // via naturalWidth, but a 404 <video> just renders an empty player. Fetch
@@ -509,13 +510,13 @@ export async function checkEditAnnotations(
       ]
         .map((n) => n.getAttribute('src') || '')
         .filter((s) => s && !s.startsWith('data:') && !s.startsWith('blob:'));
-      const brokenMedia: string[] = [];
-      for (const src of [...new Set(srcs)]) {
+      const brokenMedia: Array<{ src: string; why: string }> = [];
+      for (const src of [...new Set(srcs.map((s) => new URL(s, location.href).href))]) {
         try {
           const resp = await fetch(src, { method: 'HEAD' });
-          if (!resp.ok) brokenMedia.push(`${src} (HTTP ${resp.status})`);
+          if (!resp.ok) brokenMedia.push({ src, why: `HTTP ${resp.status}` });
         } catch (e) {
-          brokenMedia.push(`${src} (${(e as Error).message})`);
+          brokenMedia.push({ src, why: (e as Error).message });
         }
       }
 
@@ -650,17 +651,14 @@ export async function checkEditAnnotations(
   ).toEqual([]);
   expect(r.offSiteLinks, 'Links should not point to a different localhost service (e.g. the API)').toEqual([]);
   expect(r.imagesWithout, 'All non-decorative images should have data-edit-media').toEqual([]);
-  // The "asset bytes actually loaded" assertions — broken images AND broken
-  // video/audio — are only meaningful where the assets exist. hydra CI moved
-  // doc-asset generation to the parent repo, so a generated asset (e.g. the demo
-  // video hydra-demo.mp4) is legitimately absent here and its source 404s; that
-  // is not a content bug. Same env, same class as PageIntegrityHelper's image
-  // skip — the annotation/structure checks above still run, so a real broken
-  // reference (a typo'd path on a committed asset) is still caught elsewhere.
-  if (!SKIP_BROKEN_IMAGES_ENV) {
-    expect(r.brokenImages, 'All images should have valid src and load successfully').toEqual([]);
-    expect(r.brokenMedia, 'All video/audio sources should exist').toEqual([]);
-  }
+  // Every image and video/audio source must load, except an asset the run
+  // was told is missing (ABSENT_ASSETS, see isAbsentAsset).
+  const missing = (src: string) => src === '(empty)' || !isAbsentAsset(src);
+  expect(r.brokenImages.filter(missing), 'All images should have valid src and load successfully').toEqual([]);
+  expect(
+    r.brokenMedia.filter((m) => missing(m.src)).map((m) => `${m.src} (${m.why})`),
+    'All video/audio sources should exist',
+  ).toEqual([]);
   // An image field with a value must render something, and must not throw away
   // the sizes its data offers.
   //
