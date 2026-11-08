@@ -14,6 +14,7 @@ docs/deploy-and-secure.md ("Deploy a site's content") for the model.
 
 from __future__ import annotations
 
+from ..upgrades import TEMPLATE_TYPE
 from .changeset import item_data_files
 from dataclasses import dataclass
 from dataclasses import field
@@ -195,8 +196,13 @@ def cleaned_for_compare(
     # `layout: document_view` when it creates one, and a converted tree leaves
     # the key out, so every page a delta CREATED warned as a live edit the
     # first time a later delta updated it (72 pages and two layout templates on
-    # one conversion). Another view is an editor's choice and still counts.
-    if cleaned.get("@type") == "Document" and cleaned.get("layout") == "document_view":
+    # one conversion). A Template is a copy of Document with the same default
+    # view, and a site's templates become Templates in place, keeping no layout
+    # of their own. Another view is an editor's choice and still counts.
+    if (
+        cleaned.get("@type") in ("Document", TEMPLATE_TYPE)
+        and cleaned.get("layout") == "document_view"
+    ):
         cleaned.pop("layout")
     # A file's `blob_path` is where an export put its bytes: `<uid>/file/x` from
     # the exporter, `videos/x/file/x` in a layout whose folders are named by

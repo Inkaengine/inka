@@ -5,6 +5,7 @@ out of search and the sitemap, and have its front end mark them noindex. Templat
 saved in any folder, so nothing here is tied to one.
 """
 
+from inkaengine.inka.upgrades import post_install
 from inkaengine.inka.upgrades import templates_become_template_type
 from plone import api
 from plone.app.testing import setRoles
@@ -107,3 +108,15 @@ class TestExistingTemplatesBecomeTemplates:
         page.blocks = {"a": {"@type": "slate", "templateId": "/gone"}}
         with pytest.raises(LookupError, match="/gone"):
             templates_become_template_type(manager_portal)
+
+    def test_installing_on_a_site_with_templates_converts_them(self, manager_portal):
+        """A site made without Inka's profile has no upgrade to run: installing
+        the profile is what brings its templates onto the type."""
+        footer = api.content.create(manager_portal, "Document", id="footer")
+        page = api.content.create(manager_portal, "Document", id="page")
+        page.blocks = {"a": {"@type": "slate", "templateId": "/footer"}}
+
+        post_install(None)
+
+        assert footer.portal_type == "Template"
+        assert page.portal_type == "Document"
