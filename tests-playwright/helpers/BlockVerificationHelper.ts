@@ -1326,6 +1326,65 @@ export async function verifyPathMapCoverage(
 }
 
 /**
+ * The per-block checks (checkEditAnnotations: annotations, links, images and
+ * media that load, image fields drawn at a sensible size) on EVERY other block
+ * the page draws, once a sample on it has been verified.
+ *
+ * Discovery samples one block per (type, variation), but drawing the page is
+ * the cost, and the page holds every other block too. Checking only the sample
+ * let a broken image through on a block whose type had been sampled on a page
+ * where its image happened to load. These checks are one in-page read per
+ * block, so the whole page costs about what one container's sub-blocks do.
+ *
+ * The sample and its descendants are skipped (verifyBlockRendering did them).
+ * A block the page does not draw is skipped too: whether it should be drawn
+ * is the render test's question, and a block hidden in a closed panel has no
+ * loaded image to judge. Returns one line per failing check, naming every
+ * block it failed on — a broken image in a nested block fails its ancestors'
+ * checks too, so one finding lists them together instead of repeating.
+ */
+export async function checkEveryBlockOnPage(
+  iframe: FrameLocator,
+  verifiedUid: string,
+  // Block types the caller holds outside the render contract (test fixtures
+  // that are not real blocks): the sample tests skip them, so this does too.
+  outsideContract: (blockType: string) => boolean,
+): Promise<string[]> {
+  const blocks = await iframe.locator('body').evaluate((_b, sampleUid) => {
+    const b = (window as any).__hydraBridge;
+    if (!b?.blockPathMap) {
+      throw new Error('checkEveryBlockOnPage: __hydraBridge.blockPathMap not available');
+    }
+    const pathMap = b.blockPathMap;
+    const underSample = (uid: string): boolean => {
+      for (let cur: string | undefined = uid; cur; cur = pathMap[cur]?.parentId) {
+        if (cur === sampleUid) return true;
+      }
+      return false;
+    };
+    return Object.keys(pathMap)
+      .filter((uid) => !uid.startsWith('_') && !underSample(uid))
+      .map((uid) => ({ id: uid, data: b.getBlockData?.(uid) || null }))
+      .filter((s: { id: string; data: unknown }) => !!s.data && typeof s.data === 'object');
+  }, verifiedUid) as SubBlock[];
+
+  const failures = new Map<string, string[]>();
+  for (const { id, data } of blocks) {
+    if (outsideContract((data as { '@type'?: string })['@type'] ?? '')) continue;
+    const drawn = iframe.locator(`[data-block-uid="${id}"]`);
+    if ((await drawn.count()) === 0) continue;
+    try {
+      await checkEditAnnotations(drawn.first(), data);
+    } catch (e) {
+      if (!(e instanceof Error)) throw e;
+      const where = `${id} (${(data as { '@type'?: string })['@type'] ?? '?'})`;
+      failures.set(e.message, [...(failures.get(e.message) ?? []), where]);
+    }
+  }
+  return [...failures].map(([message, where]) => `${where.join(', ')}: ${message}`);
+}
+
+/**
  * Full block rendering verification: locate block, check text, check edit
  * annotations, verify sub-blocks, and click data-edit-text elements.
  *
