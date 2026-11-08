@@ -550,6 +550,10 @@ export async function checkEditAnnotations(
               const host = node.parentElement;
               if (!host) { ok = true; break; }
               if (host.closest('[data-block-readonly]')) { ok = true; break; }
+              // Text a form control draws (a textarea's starting text, a
+              // select's options) cannot be edited in place: the control owns
+              // it. Such a value is edited in the sidebar.
+              if (host.closest('textarea, select, option, input')) { ok = true; break; }
               const rendered = host.getClientRects().length > 0;
               const box = host.getBoundingClientRect();
               if (rendered && box.width < 2 && box.height < 2) { ok = true; break; }
@@ -594,7 +598,20 @@ export async function checkEditAnnotations(
           const host = [...el.querySelectorAll(`[data-edit-media="${field}"]`)]
             .find((n) => !n.closest('[data-block-readonly]'));
           if (!host) {
-            imageFields.push({ field, rendered: false, srcset: null });
+            // An image drawn as a CSS BACKGROUND is drawn, with nothing on the
+            // canvas to click: a band behind other blocks can't be the media
+            // field without taking their clicks, so it is picked in the
+            // sidebar. Recognised by its file: the field's path inside the
+            // url() of the block's, or a descendant's, background-image.
+            const ref = Array.isArray(value) ? value[0] : value;
+            const raw = typeof ref === 'string' ? ref : (ref as { '@id'?: string } | null)?.['@id'];
+            const path = raw ? new URL(raw, location.href).pathname.replace(/\/$/, '') : '';
+            const asBackground = !!path && [el, ...el.querySelectorAll('*')].some((n) => {
+              const bg = getComputedStyle(n).backgroundImage;
+              return bg !== 'none' && [...bg.matchAll(/url\("?([^")]+)"?\)/g)]
+                .some((m) => new URL(m[1], location.href).pathname.startsWith(path));
+            });
+            imageFields.push({ field, rendered: asBackground, srcset: null });
             continue;
           }
           // Only an <img> can carry a srcset. A frontend may render a media
