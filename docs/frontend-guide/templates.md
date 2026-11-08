@@ -337,7 +337,9 @@ Templates are content, so a visitor could find one on its own. The `inkaengine.i
 
 - **Site search leaves them out.** Template is in the site's "types not searched", so any search made with the site's search settings (`use_site_search_settings`) skips them. Build your sitemap from such a search and templates stay out of it too.
 - **Your front end marks them noindex.** A template page can still be opened by its URL. Send `<meta name="robots" content="noindex">` for content whose `@type` is `Template`.
-- **Sites made before the type** get it from the addon's upgrade step. The step also turns each Document a page uses as a template into a Template, found by the references in pages' blocks, wherever it is saved. A page that references a template that isn't there stops the upgrade and is named, so fix or remove that reference and run it again.
+- **Sites made before the type** get it from the addon's upgrade step, or, if they never installed the addon's profile, from installing it. Either way, it also turns each Document a page uses as a template into a Template, found by the references in pages' blocks, wherever it is saved. A page that references a template that isn't there stops it and is named, so fix or remove that reference and run it again.
+- **A template no page references isn't found.** One your front end forces by its path, and that is still empty, has no reference to find it by. Make it a Template yourself.
+- **Deploying content** (`inkaengine.inka.content_deploy`) treats a Template on its default view like a page on its default view: unset. So a template the upgrade converted doesn't read as an editor's edit. Write templates as `"@type": "Template"` in the content you deploy: a deploy updates an item in place and never changes its type.
 
 ## How the Merge Works
 

@@ -86,10 +86,12 @@ def templates_become_template_type(portal) -> list[str]:
 
 
 def post_install(context) -> None:
-    make_template_type(api.portal.get())
-
-
-def to_1001(context) -> None:
+    """A site that already has templates when it installs Inka has no upgrade
+    step to run, so installing brings them onto the type."""
     portal = api.portal.get()
     make_template_type(portal)
     templates_become_template_type(portal)
+
+
+def to_1001(context) -> None:
+    post_install(context)
