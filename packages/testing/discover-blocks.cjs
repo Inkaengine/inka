@@ -688,10 +688,8 @@ let isValidValueFn = null;
 // Hydra's REAL schema resolver, run offline. resolveEffectiveBlockSchema(blockId,
 // pageFormData, blockPathMap, blocksConfig, intl) returns a block's schema with
 // its schemaEnhancer applied — so `.required` is the DYNAMIC required set (a
-// card's `image` is required only when its grid enables it). blockSync.js /
-// blockPath.js are idiomatic Volto source (JSX, lodash CJS, extensionless imports)
-// that bare Node can't load, so we esbuild-bundle the offline API once (see
-// loadOfflineBlockSyncApi). null until loaded.
+// card's `image` is required only when its grid enables it). Loaded from
+// @volto-hydra/helpers (see loadOfflineBlockSyncApi). null until loaded.
 let resolveEffectiveSchemaFn = null;
 
 // Offline stub intl: block schemas call intl.formatMessage for titles; we only
@@ -1229,36 +1227,18 @@ function collectWidgetShapeIssues(
 const _enhancedConfigFor = new WeakMap();
 let _offlineApiModule = null;
 
-// esbuild-bundle Hydra's offline block-sync API once and wire it up: idiomatic
-// Volto source (JSX, lodash CJS, extensionless imports) can't load in bare Node,
-// so esbuild transpiles the small entry into one self-contained ESM module. Then
-// inject blocksConfig + install the child-block enhancers, exactly as the addon's
-// applyConfig does at init, so resolveEffectiveBlockSchema resolves dynamic
-// `required` (fieldRules / hideParentOwnedFields) the same way the editor does.
+// Load the editor's block-sync code from @volto-hydra/helpers once and wire it
+// up: inject blocksConfig + install the child-block enhancers, exactly as the
+// addon's applyConfig does at init, so resolveEffectiveBlockSchema resolves
+// dynamic `required` (fieldRules / hideParentOwnedFields) the same way the
+// editor does.
 async function loadOfflineBlockSyncApi(blocksConfig) {
   if (!_offlineApiModule) {
-    const path = require('path');
-    const os = require('os');
-    const { pathToFileURL } = require('url');
-    const esbuild = require('esbuild');
-    const entry = path.resolve(
-      __dirname,
-      '../volto-hydra/src/utils/offlineBlockSyncApi.js',
-    );
-    const outfile = path.join(
-      os.tmpdir(),
-      `hydra-offline-block-sync-${process.pid}.mjs`,
-    );
-    esbuild.buildSync({
-      entryPoints: [entry],
-      bundle: true,
-      format: 'esm',
-      platform: 'node',
-      outfile,
-      loader: { '.js': 'jsx' },
-      logLevel: 'silent',
-    });
-    _offlineApiModule = await import(pathToFileURL(outfile).href);
+    const [{ setInjectedVoltoConfig }, blockSync] = await Promise.all([
+      import('@volto-hydra/helpers/injectedVoltoConfig.js'),
+      import('@volto-hydra/helpers/blockSync.js'),
+    ]);
+    _offlineApiModule = { ...blockSync, setInjectedVoltoConfig };
   }
   const api = _offlineApiModule;
   let enhanced = _enhancedConfigFor.get(blocksConfig);
@@ -1394,7 +1374,7 @@ async function discoverBlocks(
     '@volto-hydra/helpers/schemaValidation.js'
   ));
 
-  // Load Hydra's real schema resolver offline (esbuild-bundled) and install the
+  // Load Hydra's real schema resolver offline and install the
   // child-block enhancers + inject blocksConfig, exactly as the addon does at
   // init. After this, resolveEffectiveSchemaFn gives the dynamic required set.
   await loadOfflineBlockSyncApi(blocksConfig);

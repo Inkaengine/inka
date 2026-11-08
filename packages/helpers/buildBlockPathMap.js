@@ -26,7 +26,7 @@ import { createFieldRulesEnhancer } from './fieldRules.js';
 
 // Same value as PAGE_BLOCK_UID in hydra.js — defined locally to avoid
 // importing from @volto-hydra/hydra-js (which would pull in Volto deps).
-const PAGE_BLOCK_UID = '_page';
+export const PAGE_BLOCK_UID = '_page';
 
 /**
  * The block types you can ADD into a container field — the single source of

@@ -32,7 +32,7 @@ const modules = () => ({
   [`${PREFIX}/merge-frontend-block.js`]: require.resolve('@volto-hydra/hydra-js/mergeFrontendBlock.js'),
   // The admin's region helpers, so block-sanity can empty a region exactly as an
   // editor's delete does (deleteBlockFromContainer + ensureEmptyBlockIfEmpty).
-  [`${PREFIX}/block-path.js`]: path.resolve(import.meta.dirname, '../../volto-hydra/src/utils/blockPath.js'),
+  [`${PREFIX}/block-path.js`]: require.resolve('@volto-hydra/helpers/blockPath.js'),
 });
 
 /**
