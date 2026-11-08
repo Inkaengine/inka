@@ -27,32 +27,38 @@ export interface PageIntegrityOptions {
   backendOriginMatches?: (origin: string) => boolean;
 
   /**
-   * Skip the broken-image check (verifyNoBrokenImages). The editor screenshots
-   * and demo assets the docs embed are git-ignored and GENERATED, not committed
-   * (docs/.gitignore); a checkout that has not recorded them — one where asset
-   * generation runs elsewhere (a parent repo's deploy) rather than in this CI —
-   * legitimately serves those pages with the `<img>` unresolved, and flagging
-   * that as broken is a false negative. Defaults to the SKIP_BROKEN_IMAGE_CHECK
-   * env var, so CI can set it once for a whole run without threading the option
-   * through every caller. The link checks still run — a typo'd path is still a
-   * bug — only the "did every image's bytes load" assertion is skipped.
+   * This checkout has not generated the docs' own assets, so an image or
+   * video that IS one of them may 404 (see {@link isGeneratedDocAsset}).
+   * Defaults to {@link GENERATED_ASSETS_ABSENT}. Every other image must load.
    */
-  skipBrokenImages?: boolean;
+  generatedAssetsAbsent?: boolean;
 }
 
 /**
- * The env fallback for {@link PageIntegrityOptions.skipBrokenImages}.
+ * The editor screenshots and demo video the docs embed are GENERATED, not
+ * committed (docs/.gitignore: `images/*.png`, `static/hydra-demo.mp4`,
+ * `_static/hydra-demo.mp4`), and a checkout whose deploy generates them
+ * elsewhere serves those pages with the file missing. Only those are excused:
+ * the exemption used to cover every image, and an example's image at a wrong
+ * path passed CI for as long as it existed.
  *
- * Exported because it gates the same class of assertion in block-sanity
- * (BlockVerificationHelper): the "did the asset bytes actually load" checks —
- * broken images AND broken video/audio sources — are invalid in an environment
- * that deliberately does not generate those assets (hydra CI moved doc-asset
- * generation to the parent repo). The name says IMAGE but the meaning is
- * "asset bytes may be absent here"; media is the same case, not a different one.
+ * Matched anywhere in the URL, so a scale (`…/x.png/@@images/image/large`) or
+ * an image proxy that carries the source URL in its path is still recognised.
  */
-export const SKIP_BROKEN_IMAGES_ENV =
-  process.env.SKIP_BROKEN_IMAGE_CHECK === '1' ||
-  process.env.SKIP_BROKEN_IMAGE_CHECK === 'true';
+const GENERATED_DOC_ASSET = /\/docs\/(?:images\/[^/?#]+\.png|_?static\/hydra-demo\.mp4)(?=[/?#\s]|$)/;
+
+export function isGeneratedDocAsset(url: string): boolean {
+  return GENERATED_DOC_ASSET.test(url);
+}
+
+/**
+ * Set GENERATED_DOC_ASSETS_ABSENT in a checkout that has not generated the
+ * docs' assets (Inka CI: the parent repo's deploy generates them). Exported
+ * for block-sanity's image and media checks, which excuse the same files.
+ */
+export const GENERATED_ASSETS_ABSENT =
+  process.env.GENERATED_DOC_ASSETS_ABSENT === '1' ||
+  process.env.GENERATED_DOC_ASSETS_ABSENT === 'true';
 
 /**
  * No *visible* rendered `<img>` should be broken (empty src, failed load).
@@ -73,7 +79,7 @@ export const SKIP_BROKEN_IMAGES_ENV =
  */
 export async function verifyNoBrokenImages(
   page: Page,
-  options: { settleTimeout?: number } = {},
+  options: { settleTimeout?: number; generatedAssetsAbsent?: boolean } = {},
 ): Promise<void> {
   const settleTimeout = options.settleTimeout ?? 10000;
 
@@ -133,8 +139,9 @@ export async function verifyNoBrokenImages(
     ? `\n(also still loading after ${settleTimeout}ms, not counted as broken:\n` +
       `${JSON.stringify(stillLoading, null, 2)})`
     : '';
+  const excused = options.generatedAssetsAbsent ?? GENERATED_ASSETS_ABSENT;
   expect(
-    broken,
+    broken.filter((img) => !(excused && isGeneratedDocAsset(img.src))),
     `Broken images on ${page.url()}:\n${JSON.stringify(broken, null, 2)}${note}`,
   ).toEqual([]);
 }
@@ -280,8 +287,7 @@ export async function verifyPageIntegrity(
   page: Page,
   options: PageIntegrityOptions & { alreadyChecked?: Set<string> } = {},
 ): Promise<void> {
-  const skipBrokenImages = options.skipBrokenImages ?? SKIP_BROKEN_IMAGES_ENV;
-  if (!skipBrokenImages) await verifyNoBrokenImages(page);
+  await verifyNoBrokenImages(page, { generatedAssetsAbsent: options.generatedAssetsAbsent });
   await verifyNoBackendLinks(page, options);
   await verifyNoDeadLinks(page, options);
 }

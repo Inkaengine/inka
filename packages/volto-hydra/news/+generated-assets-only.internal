@@ -1,0 +1,1 @@
+Tests: only the docs' generated screenshots and demo video may fail to load in CI; every other image must load. The exemption covered every image, which hid an example image whose bytes could not be decoded.
