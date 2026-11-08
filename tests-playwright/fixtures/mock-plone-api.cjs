@@ -3923,7 +3923,8 @@ app.post('/*', (req, res, next) => {
     return res.status(201).json(fileContent);
   }
 
-  if (contentType === 'Document') {
+  // A Template is a Document under another name (Inka's backend copies Document's type).
+  if (contentType === 'Document' || contentType === 'Template') {
     // Plone populates server-side fields (UID, created, modified,
     // effective, review_state, etc.) on create — the client only sends
     // title, blocks, blocks_layout (and an optional id, e.g. for
@@ -3938,7 +3939,7 @@ app.post('/*', (req, res, next) => {
     const now = new Date().toISOString();
     const baseUrl = `http://localhost:${PORT}`;
     const rawDoc = {
-      '@type': 'Document',
+      '@type': contentType,
       id,
       ...postedFields(body),
       title: body.title || id,
