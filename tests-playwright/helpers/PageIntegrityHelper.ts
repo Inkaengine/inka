@@ -27,38 +27,45 @@ export interface PageIntegrityOptions {
   backendOriginMatches?: (origin: string) => boolean;
 
   /**
-   * This checkout has not generated the docs' own assets, so an image or
-   * video that IS one of them may 404 (see {@link isGeneratedDocAsset}).
-   * Defaults to {@link GENERATED_ASSETS_ABSENT}. Every other image must load.
+   * URLs this run may serve without their file: assets the site generates
+   * rather than commits, in a checkout that has not generated them. Defaults
+   * to {@link ABSENT_ASSETS}. Every other image must load.
    */
-  generatedAssetsAbsent?: boolean;
+  absentAssets?: string[];
 }
 
 /**
- * The editor screenshots and demo video the docs embed are GENERATED, not
- * committed (docs/.gitignore: `images/*.png`, `static/hydra-demo.mp4`,
- * `_static/hydra-demo.mp4`), and a checkout whose deploy generates them
- * elsewhere serves those pages with the file missing. Only those are excused:
- * the exemption used to cover every image, and an example's image at a wrong
- * path passed CI for as long as it existed.
- *
- * Matched anywhere in the URL, so a scale (`…/x.png/@@images/image/large`) or
- * an image proxy that carries the source URL in its path is still recognised.
+ * ABSENT_ASSETS: space-separated URL path globs for the files a run knows are
+ * missing. The repo that generates them says which (Inka's CI names its docs'
+ * screenshots and demo video); these helpers know no site's layout. Unset,
+ * nothing is excused.
  */
-const GENERATED_DOC_ASSET = /\/docs\/(?:images\/[^/?#]+\.png|_?static\/hydra-demo\.mp4)(?=[/?#\s]|$)/;
-
-export function isGeneratedDocAsset(url: string): boolean {
-  return GENERATED_DOC_ASSET.test(url);
-}
+export const ABSENT_ASSETS: string[] = (process.env.ABSENT_ASSETS ?? '').split(/\s+/).filter(Boolean);
 
 /**
- * Set GENERATED_DOC_ASSETS_ABSENT in a checkout that has not generated the
- * docs' assets (Inka CI: the parent repo's deploy generates them). Exported
- * for block-sanity's image and media checks, which excuse the same files.
+ * A path glob as a RegExp: `**` crosses segments, `*` and `?` stay inside one.
+ * It matches the path and anything under it, so a scale of the file
+ * (`x.png/@@images/image/large`) is the file too.
  */
-export const GENERATED_ASSETS_ABSENT =
-  process.env.GENERATED_DOC_ASSETS_ABSENT === '1' ||
-  process.env.GENERATED_DOC_ASSETS_ABSENT === 'true';
+const globRegExp = (glob: string): RegExp =>
+  new RegExp(
+    '^' +
+      glob
+        .split(/(\*\*|\*|\?)/)
+        .map((part) =>
+          part === '**' ? '.*' : part === '*' ? '[^/]*' : part === '?' ? '[^/]'
+            : part.replace(/[.+^${}()|[\]\\]/g, '\\$&'),
+        )
+        .join('') +
+      '(/|$)',
+  );
+
+/** Is `url` (absolute) one of the assets this run was told are missing? */
+export function isAbsentAsset(url: string, globs: string[] = ABSENT_ASSETS): boolean {
+  if (!globs.length) return false;
+  const { pathname } = new URL(url);
+  return globs.some((glob) => globRegExp(glob).test(pathname));
+}
 
 /**
  * No *visible* rendered `<img>` should be broken (empty src, failed load).
@@ -79,7 +86,7 @@ export const GENERATED_ASSETS_ABSENT =
  */
 export async function verifyNoBrokenImages(
   page: Page,
-  options: { settleTimeout?: number; generatedAssetsAbsent?: boolean } = {},
+  options: { settleTimeout?: number; absentAssets?: string[] } = {},
 ): Promise<void> {
   const settleTimeout = options.settleTimeout ?? 10000;
 
@@ -139,9 +146,8 @@ export async function verifyNoBrokenImages(
     ? `\n(also still loading after ${settleTimeout}ms, not counted as broken:\n` +
       `${JSON.stringify(stillLoading, null, 2)})`
     : '';
-  const excused = options.generatedAssetsAbsent ?? GENERATED_ASSETS_ABSENT;
   expect(
-    broken.filter((img) => !(excused && isGeneratedDocAsset(img.src))),
+    broken.filter((img) => !isAbsentAsset(img.src, options.absentAssets)),
     `Broken images on ${page.url()}:\n${JSON.stringify(broken, null, 2)}${note}`,
   ).toEqual([]);
 }
@@ -287,7 +293,7 @@ export async function verifyPageIntegrity(
   page: Page,
   options: PageIntegrityOptions & { alreadyChecked?: Set<string> } = {},
 ): Promise<void> {
-  await verifyNoBrokenImages(page, { generatedAssetsAbsent: options.generatedAssetsAbsent });
+  await verifyNoBrokenImages(page, { absentAssets: options.absentAssets });
   await verifyNoBackendLinks(page, options);
   await verifyNoDeadLinks(page, options);
 }
