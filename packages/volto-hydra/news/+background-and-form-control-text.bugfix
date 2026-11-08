@@ -1,0 +1,1 @@
+Block sanity: an image drawn as a CSS background needs no element to click, and text a form control draws (a textarea's starting text, a select's options) need not be inline-editable. Both are edited in the sidebar.
