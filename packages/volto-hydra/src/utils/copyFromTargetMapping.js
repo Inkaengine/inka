@@ -111,14 +111,15 @@ export function linkFields(blockConfig) {
  * entry, which already states where the target's identity lands; else the one
  * link field, when a block has exactly one.
  *
- * A block with several link fields and no declaration THROWS. The old version
+ * Only a mapping pulls: a block with none has no source. A block that maps
+ * fields, has several link fields and declares none of them THROWS. The old version
  * took the first link field in schema order, which is not a rule — in a real
  * site config that picked a hero's *video file* over its button link, and a
  * button's dead `url: 'Link (legacy)'` over the `href` the author picks with.
  * Both were quiet only because a legacy string yields no `[0]['@id']`; tidying
  * the legacy field away would have woken them.
  *
- * Returns null for a block with no link field at all.
+ * Returns null for a block with no mapping or no link field.
  */
 export function getSourceField(blockConfig) {
   const declared = blockConfig?.fieldMappings?.['@target']?.['@source'];
@@ -128,6 +129,11 @@ export function getSourceField(blockConfig) {
     blockConfig?.fieldMappings?.['@default']?.['@id'],
   );
   if (fromDefault) return fromDefault;
+
+  // Only a mapping pulls, so a block without one has no source, however many
+  // link fields it has: a video's address and poster are both links, and
+  // neither is pulled from.
+  if (!getTargetMapping(blockConfig)) return null;
 
   const links = linkFields(blockConfig);
   if (links.length === 0) return null;
