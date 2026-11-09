@@ -18,6 +18,8 @@
  */
 import { FormValidation } from '@plone/volto/helpers';
 
+import { blockFieldErrors } from '../../../hydra-js/blockFieldErrors.js';
+
 import { buildBlockPathMap, getBlockById } from './blockPath';
 import { resolveEffectiveBlockSchema } from './blockSync';
 
@@ -40,39 +42,6 @@ const PAGE_BLOCK = '_page';
  *   building a second one, and without reaching into formData.blocks, which
  *   misses every nested block.
  */
-/**
- * Drop fields set to an empty string, so they read as NOT SET.
- *
- * Volto's checkFieldErrors skips a field only when it is `undefined` or `null`:
- *
- *     fieldData === undefined || fieldData === null ? null : criterion.method(...)
- *
- * So an empty string reaches the format validators — and an empty string is
- * not a valid url, nor a valid email. An image block whose image was never set,
- * or was CLEARED (which is how the field becomes ''), therefore reports "Input
- * must be valid url", and no value the author can type will satisfy it short of
- * a real url. Clearing the field is the very thing that triggers the error,
- * which is why it cannot be cleared away. This refused a save on a production
- * page, on a block the author could not reach.
- *
- * "Not set" and "set to nonsense" are different, and only the second is an
- * error. Required-ness is unaffected: validateRequiredFields walks the schema's
- * `required` list and treats a missing field exactly as it treats '', so a
- * field that genuinely must be filled still reports — pinned by tests.
- *
- * Scoped to blocks, the walk this module owns. The same shape sits under
- * Volto's content-field validation, where an empty url or email content field
- * behaves the same way; fixing that is a core change.
- */
-function withUnsetFieldsOmitted(blockData) {
-  const out = {};
-  for (const [key, value] of Object.entries(blockData)) {
-    if (value === '') continue;
-    out[key] = value;
-  }
-  return out;
-}
-
 export function validateBlocksAgainstSchemas(
   formData,
   { blocksConfig, intl, formatMessage },
@@ -117,22 +86,15 @@ export function validateBlocksAgainstSchemas(
     // author's to correct and must still be enforced.
     if (blockData.readOnly === true) continue;
 
-    const errors = FormValidation.validateFieldsPerFieldset({
+    // The same step the offline content check runs (hydra-js/blockFieldErrors.js):
+    // Volto's validators, with cleared ('') fields read as unset, and a rule's
+    // error on a region.
+    const errors = blockFieldErrors({
       schema,
-      formData: withUnsetFieldsOmitted(blockData),
+      blockData,
+      validateFieldsPerFieldset: FormValidation.validateFieldsPerFieldset,
       formatMessage,
     });
-    // A rule's error on a REGION. Volto runs a field's validators only when
-    // `formData[field]` holds a value, and a blocks_layout region's children
-    // are not there — they are in `blocks_layout[region]` — so a rule counting
-    // them ("a set of at least two") had its message on the field and nothing
-    // read it: the content validator reported it, the editor saved anyway.
-    // Only where Volto skipped the field, so a valued field is not told twice.
-    for (const [fieldName, field] of Object.entries(schema.properties)) {
-      if (field?.hydraRuleError && blockData[fieldName] == null && !errors[fieldName]) {
-        errors[fieldName] = [field.hydraRuleError];
-      }
-    }
     if (Object.keys(errors).length > 0) {
       blocksErrors[blockId] = errors;
       fieldTitles[blockId] = Object.fromEntries(
