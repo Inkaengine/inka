@@ -1,11 +1,12 @@
 /**
  * Where "Make template" saves a new template, and as what content type.
  *
- * Both are the deployment's choice, set as environment variables like the admin's other
- * settings (docs/deploy-and-secure.md): Inka has no folder or type of its own for
- * templates. The folder is only where a new template starts; the editor can save it
- * anywhere. A value set when the admin is built wins; otherwise the value at run time is
- * used. Unset is an error that names the setting, not a guess.
+ * Both are set as environment variables like the admin's other settings
+ * (docs/deploy-and-secure.md). The folder is the deployment's: Inka has none of its own,
+ * and unset is an error that names the setting. It is only where a new template starts;
+ * the editor can save it anywhere. The type is a plain Document, which every site has,
+ * unless the deployment names a type of its own in RAZZLE_TEMPLATE_TYPE. A value set
+ * when the admin is built wins; otherwise the value at run time is used.
  */
 const setting = (name) =>
   process.env[name] ||
@@ -15,14 +16,10 @@ const setting = (name) =>
 
 export function newTemplateSettings() {
   const folder = setting('RAZZLE_TEMPLATES_PATH').replace(/\/+$/, '');
-  const type = setting('RAZZLE_TEMPLATE_TYPE');
-  const missing = [
-    !folder && 'RAZZLE_TEMPLATES_PATH (the folder new templates are saved in)',
-    !type && 'RAZZLE_TEMPLATE_TYPE (the content type of a new template)',
-  ].filter(Boolean);
-  if (missing.length) {
+  const type = setting('RAZZLE_TEMPLATE_TYPE') || 'Document';
+  if (!folder) {
     throw new Error(
-      `Templates can't be made until the admin has ${missing.join(' and ')}.`,
+      "Templates can't be made until the admin has RAZZLE_TEMPLATES_PATH (the folder new templates are saved in).",
     );
   }
   return { folder, type };
