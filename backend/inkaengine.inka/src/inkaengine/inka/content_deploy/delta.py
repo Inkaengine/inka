@@ -27,13 +27,16 @@ from .base_from_live import BaseExists
 from .base_from_live import live_content_rels
 from .base_from_live import write_base
 from .classify import classify
+from .classify import CompareRules
 from .classify import cleaned_for_compare as cleaned
 from .classify import content_key
 from .classify import layout_redirects
 from .classify import load_exportimport_tree
+from .classify import NO_RULES
 from .classify import refresh_from_disk
 from collections.abc import Callable
 from pathlib import Path
+from types import MappingProxyType
 from plone.exportimport import settings as ei_settings
 from plone.exportimport import types as ei_types
 from plone.exportimport.exporters.content import ContentExporter
@@ -60,7 +63,7 @@ class DeltaRefused(Exception):
 
 
 def serialize_live_candidates(
-    site, request, base, disk, extra=(), ignored_fields=frozenset()
+    site, request, base, disk, extra=(), rules: CompareRules = NO_RULES
 ) -> dict[str, dict]:
     """LIVE truth for the rels the plan can touch, base for the rest.
 
@@ -81,9 +84,7 @@ def serialize_live_candidates(
 
     candidates = set(base) ^ set(disk)
     for rel in set(base) & set(disk):
-        if content_key(base[rel], ignored_fields) != content_key(
-            disk[rel], ignored_fields
-        ):
+        if content_key(base[rel], rules) != content_key(disk[rel], rules):
             candidates.add(rel)
     candidates.update(extra)
     # NEVER serialize the site root: the exporter keeps `items` for it
@@ -122,6 +123,12 @@ def serialize_live_candidates(
         logger.info("content-delta: serialized %s (%.1fs)", rel, time.monotonic() - t)
     shutil.rmtree(blob_scratch, ignore_errors=True)
     return live
+
+
+def default_views_of(site) -> dict[str, str]:
+    """Each content type's default view, from the site's type settings: an
+    item on it has no view of its own (classify.CompareRules)."""
+    return {fti.getId(): fti.default_view for fti in site.portal_types.listTypeInfo()}
 
 
 def _serialize_one(obj, request, exporter) -> dict:
@@ -182,7 +189,7 @@ def _make_exporter(site):
 
 
 def _clobber_diff_fields(
-    warnings, live, base, ignored_fields=frozenset()
+    warnings, live, base, rules: CompareRules
 ) -> dict[str, list[str]]:
     """For each warned rel, the fields whose cleaned DUMPS differ between LIVE
     and BASE. Dumps, not values: content_key compares canonical JSON, so two
@@ -195,8 +202,8 @@ def _clobber_diff_fields(
 
     diff_fields: dict[str, list[str]] = {}
     for rel in warnings[:10]:
-        lv = cleaned(live.get(rel, {}), ignored_fields)
-        bv = cleaned(base.get(rel, {}), ignored_fields)
+        lv = cleaned(live.get(rel, {}), rules)
+        bv = cleaned(base.get(rel, {}), rules)
         fields = sorted(
             k for k in set(lv) | set(bv) if dumped(lv.get(k)) != dumped(bv.get(k))
         )
@@ -291,16 +298,20 @@ def run_delta(
     logger.info("content-delta: site settings %s", early_settings["site_settings"])
     t1 = time.monotonic()
     refresh_rels = [path.strip("/") for path in refresh]
+    rules = CompareRules(
+        ignored_fields=ignored_fields,
+        default_views=MappingProxyType(default_views_of(site)),
+    )
     live = serialize_live_candidates(
-        site, request, base, disk, extra=refresh_rels, ignored_fields=ignored_fields
+        site, request, base, disk, extra=refresh_rels, rules=rules
     )
     logger.info(
         "content-delta: live candidates serialized (%.1fs)", time.monotonic() - t1
     )
 
-    plan = classify(base, disk, live, ignored_fields)
+    plan = classify(base, disk, live, rules)
     try:
-        refresh_from_disk(plan, refresh_rels, disk, live, ignored_fields)
+        refresh_from_disk(plan, refresh_rels, disk, live, rules)
     except ValueError as exc:
         raise DeltaRefused(str(exc)) from exc
     # The layout's own redirects: classify only makes redirects for the moves
@@ -336,7 +347,7 @@ def run_delta(
     if debug and plan.warnings:
         report["debug"] = {
             "clobber_diff_fields": _clobber_diff_fields(
-                plan.warnings, live, base, ignored_fields
+                plan.warnings, live, base, rules
             )
         }
     if review_changeset is not None:

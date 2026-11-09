@@ -87,10 +87,10 @@ Inka is configured with environment variables:
 - `RAZZLE_INTERNAL_API_PATH` (optional): the address the Inka server uses to reach the same API from inside your network.
 - `RAZZLE_DEFAULT_IFRAME_URL`: the front ends offered in the front-end switcher, as `Name|EditURL[|PublishURL],…`. The optional publish URL is for a public site on a different origin from its editing build. If this is set when the editor is built, that value is fixed into the browser code and wins; otherwise the value at run time is used.
 - `RAZZLE_TEMPLATES_PATH`: the folder **Make Template** saves a new template in, such as `/templates`. Editors can choose another folder for each template.
-- `RAZZLE_TEMPLATE_TYPE`: the content type of a new template. With the `inkaengine.inka` backend addon, use `Template` (see [Keeping templates out of search](./frontend-guide/templates.md#keeping-templates-out-of-search)).
+- `RAZZLE_TEMPLATE_TYPE` (optional): the content type of a new template. Unset, a template is a plain `Document`. Name a type your site adds for templates to keep them apart (see [Keeping templates out of search](./frontend-guide/templates.md#keeping-templates-out-of-search)).
 - `PORT`: the port the server listens on.
 
-Without the two template settings, **Make Template** tells the editor which one is missing and does nothing. As with `RAZZLE_DEFAULT_IFRAME_URL`, a value set when the editor is built wins.
+Without `RAZZLE_TEMPLATES_PATH`, **Make Template** tells the editor the setting is missing and does nothing. As with `RAZZLE_DEFAULT_IFRAME_URL`, a value set when the editor is built wins.
 
 Don't set `RAZZLE_PUBLIC_URL`. Inka follows whichever front end the editor has selected; pinning one public URL breaks link handling for the others. See [URL flattening](./architecture.md#url-flattening-and-publicurl).
 

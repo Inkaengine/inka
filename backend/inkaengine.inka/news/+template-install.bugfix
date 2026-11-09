@@ -1,1 +1,0 @@
-Installing Inka's profile on a site that already has templates turns them into Templates, as the upgrade step does. A content deploy no longer reads a converted template on its default view as an editor's edit. @djay

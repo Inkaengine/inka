@@ -30,9 +30,10 @@ const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('@volt
 // The template trio (templateId/templateInstanceId/slotId) is written by the
 // template machinery to bind a block to its template instance and slot; it is
 // not sidebar-editable, so it must not be reported as an undeclared field.
-const UNDECLARED_EXEMPT = new Set([
-  'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'searchableText', 'value',
-  'styles', 'override', 'block',
+// A block's template membership, stored on the block beside its own fields.
+// The merge reads these keys, so no block schema may name a field after one
+// (checkReservedFields).
+const TEMPLATE_MEMBERSHIP_KEYS = [
   'fixed', 'slotId', 'templateId', 'templateInstanceId', 'readOnly',
   // Written by the merge beside slotId when a fixed slot separates two groups
   // (apply-templates stamps it); hydra's bookkeeping, never sidebar-authored.
@@ -40,6 +41,20 @@ const UNDECLARED_EXEMPT = new Set([
   // (blockSync.js), and was missing here — so real content carrying it was
   // reported as an undeclared field.
   'nextSlotId', 'prevSlotId',
+];
+
+// Inka's own bookkeeping, also stored on the block: the words it indexes
+// (searchableText.js writes it on save), the text it labels a block by
+// (blockDisplayTitle), copy-from-target's record (_pullFrom, and _customFields
+// before it), the anchors the bridge harvests, and the block's identity
+// (`@type`, `@uid`, any `@` key). A field of one of these names would be
+// overwritten by Inka, or read by it as something it is not.
+const BLOCK_BOOKKEEPING_KEYS = ['searchableText', 'plaintext', '_pullFrom', '_customFields', '_linkableAnchors'];
+
+const UNDECLARED_EXEMPT = new Set([
+  'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'searchableText', 'value',
+  'styles', 'override', 'block',
+  ...TEMPLATE_MEMBERSHIP_KEYS,
   // codeExample selector directives (single-source example pages): `source`
   // names a block/@type on the page and `format` (json|schema) says what to
   // show; resolved to `tabs` at load/build, not sidebar-authored schema fields.
@@ -1630,6 +1645,33 @@ function checkChooserGroups(schemas) {
   return { errors, warnings: [], stats: { blocks: Object.keys(schemas || {}).length, ungrouped: errors.length } };
 }
 
+/**
+ * No block schema may declare a field named for template membership, or for
+ * the bookkeeping Inka keeps on every block (BLOCK_BOOKKEEPING_KEYS).
+ *
+ * Membership is stored on the block beside its own fields, so a field of the
+ * same name shares the key: a tabs block's "Fixed" option saved as
+ * `fixed: true` read, on a templated page, as a block the template fixes, and
+ * the merge took it off the page. Nothing in the content looks wrong, so this
+ * is a pass over the config, like checkChooserGroups.
+ */
+function checkReservedFields(schemas) {
+  const errors = [];
+  for (const [type, def] of Object.entries(schemas || {})) {
+    if (!def || typeof def !== 'object' || type.startsWith('_')) continue;
+    const properties = def.blockSchema?.properties;
+    if (!properties) continue; // not a block config
+    for (const field of Object.keys(properties)) {
+      if (TEMPLATE_MEMBERSHIP_KEYS.includes(field)) {
+        errors.push(`  ${type}: field "${field}" is a template-membership key, which the merge reads from every block — name the field something else`);
+      } else if (BLOCK_BOOKKEEPING_KEYS.includes(field) || field.startsWith('@')) {
+        errors.push(`  ${type}: field "${field}" is a key Inka keeps on every block for itself — name the field something else`);
+      }
+    }
+  }
+  return { errors, warnings: [], stats: { blocks: Object.keys(schemas || {}).length, reserved: errors.length } };
+}
+
 async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
   const exempt = new Set(exemptSlots);
   const { buildBlockPathMap } = await import('@volto-hydra/helpers/buildBlockPathMap.js');
@@ -1783,6 +1825,10 @@ function formatReport(title, result) {
     lines.push(
       `Chooser: ${result.stats.blocks} block types, ${result.stats.ungrouped} not offered under any heading`,
     );
+  } else if (title === 'reserved') {
+    lines.push(
+      `Reserved: ${result.stats.blocks} block types, ${result.stats.reserved} fields named for a key Inka reserves`,
+    );
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
   } else {
@@ -1901,4 +1947,4 @@ function checkExport(contentDir, { schemas = null, allowMissingBlobs = false } =
   return { errors: [...shape.errors, ...content.errors], warnings: [...shape.warnings, ...content.warnings] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, checkReservedFields, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };

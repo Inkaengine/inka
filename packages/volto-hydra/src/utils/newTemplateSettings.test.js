@@ -1,6 +1,7 @@
 /**
- * Where "Make template" saves a new template, and as what type: both come from the
- * deployment's settings, never from a folder or type written into Inka.
+ * Where "Make template" saves a new template, and as what type: the folder is the
+ * deployment's setting; the type is a plain Document unless the deployment names
+ * another.
  */
 import { newTemplateSettings } from './newTemplateSettings';
 
@@ -25,9 +26,11 @@ describe('newTemplateSettings', () => {
     expect(() => newTemplateSettings()).toThrow(/RAZZLE_TEMPLATES_PATH/);
   });
 
-  it('names the missing type setting', () => {
+  it('makes a new template a plain Document unless the site says otherwise', () => {
+    // Simple by default: every site has Document. A site that keeps its
+    // templates as a type of its own names it in RAZZLE_TEMPLATE_TYPE.
     process.env.RAZZLE_TEMPLATES_PATH = '/shared';
     delete process.env.RAZZLE_TEMPLATE_TYPE;
-    expect(() => newTemplateSettings()).toThrow(/RAZZLE_TEMPLATE_TYPE/);
+    expect(newTemplateSettings()).toEqual({ folder: '/shared', type: 'Document' });
   });
 });

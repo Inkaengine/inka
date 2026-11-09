@@ -34,7 +34,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkReservedFields, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
 
 function usage() {
   console.error(
@@ -175,6 +175,12 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
     report.chooser = chooser;
     console.log(formatReport('chooser', chooser));
     if (chooser.errors.length) hasErrors = true;
+
+    console.log('');
+    const reserved = checkReservedFields(schemas);
+    report.reserved = reserved;
+    console.log(formatReport('reserved', reserved));
+    if (reserved.errors.length) hasErrors = true;
   }
 }
 

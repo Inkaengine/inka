@@ -14,12 +14,13 @@ docs/deploy-and-secure.md ("Deploy a site's content") for the model.
 
 from __future__ import annotations
 
-from ..upgrades import TEMPLATE_TYPE
 from .changeset import item_data_files
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
+from typing import Mapping
 
 import enum
 import json
@@ -146,8 +147,30 @@ class Plan:
         }
 
 
+@dataclass(frozen=True)
+class CompareRules:
+    """What a site leaves out when the delta compares two copies of an item.
+
+    `ignored_fields`: the site's own fields it cannot round-trip. The import
+    can't set what no schema declares and the live export can't emit it, so
+    every touched page would warn forever. A capability gap is not an editor
+    edit; the tree keeps the data.
+
+    `default_views`: each content type's default view, as the site's type
+    settings give it (delta.default_views_of). An item on it has no view of its
+    own, whichever way a copy spells that."""
+
+    ignored_fields: frozenset[str] = frozenset()
+    default_views: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+
+
+NO_RULES = CompareRules()
+
+
 def cleaned_for_compare(
-    data: dict[str, Any], ignored_fields: frozenset[str] = frozenset()
+    data: dict[str, Any], rules: CompareRules = NO_RULES
 ) -> dict[str, Any]:
     """The fields that PARTICIPATE in the delta compare — the single filter
     content_key and the clobber-debug field diff share, so debug can never
@@ -165,10 +188,7 @@ def cleaned_for_compare(
     this — changeNote, rights, contributors, creators, subjects. A real
     clearing still registers here too: the filled side keeps the key.
 
-    `ignored_fields`: the site's own fields it cannot round-trip. The import
-    can't set what no schema declares and the live export can't emit it, so
-    every touched page would warn forever. A capability gap is not an editor
-    edit; the tree keeps the data."""
+    `rules`: what this site leaves out of the compare (CompareRules)."""
     cleaned = {
         k: v
         for k, v in data.items()
@@ -178,7 +198,7 @@ def cleaned_for_compare(
         and v != []
         and v != {}
         and k not in VOLATILE
-        and k not in ignored_fields
+        and k not in rules.ignored_fields
         and not k.startswith("exportimport.")
     }
     # A page with NO blocks: the live serializer says blocks {} (dropped as
@@ -192,17 +212,15 @@ def cleaned_for_compare(
     ):
         cleaned.pop("blocks", None)
         cleaned.pop("blocks_layout", None)
-    # A Document's default view is the same unset state: Plone sets
-    # `layout: document_view` when it creates one, and a converted tree leaves
-    # the key out, so every page a delta CREATED warned as a live edit the
-    # first time a later delta updated it (72 pages and two layout templates on
-    # one conversion). A Template is a copy of Document with the same default
-    # view, and a site's templates become Templates in place, keeping no layout
-    # of their own. Another view is an editor's choice and still counts.
-    if (
-        cleaned.get("@type") in ("Document", TEMPLATE_TYPE)
-        and cleaned.get("layout") == "document_view"
-    ):
+    # An item on its type's default view is the same unset state: Plone sets
+    # `layout: document_view` when it creates a page, and a converted tree
+    # leaves the key out, so every page a delta CREATED warned as a live edit
+    # the first time a later delta updated it (72 pages and two layout
+    # templates on one conversion). A site's own types count the same: an
+    # item whose type changes in place keeps no layout of its own. Another
+    # view is an editor's choice and still counts.
+    layout = cleaned.get("layout")
+    if layout is not None and layout == rules.default_views.get(cleaned.get("@type")):
         cleaned.pop("layout")
     # A file's `blob_path` is where an export put its bytes: `<uid>/file/x` from
     # the exporter, `videos/x/file/x` in a layout whose folders are named by
@@ -215,10 +233,10 @@ def cleaned_for_compare(
 
 
 def content_key(
-    data: dict[str, Any], ignored_fields: frozenset[str] = frozenset()
+    data: dict[str, Any], rules: CompareRules = NO_RULES
 ) -> str:
     """Canonical JSON of the meaningful content (volatile fields removed)."""
-    cleaned = cleaned_for_compare(data, ignored_fields)
+    cleaned = cleaned_for_compare(data, rules)
     # Author-date fields (created/effective) ARE synced, but the live export and
     # hand-maintained git serialize them with different sub-minute precision / tz
     # (e.g. "2023-07-12T21:29:00+00:00" vs "2023-07-12T21:29:42"). A 42-second
@@ -299,9 +317,9 @@ def layout_redirects(
 _PATH_FIELDS = ("@id", "id", "parent")
 
 
-def _moved_key(data: dict[str, Any], ignored_fields: frozenset[str]) -> str:
+def _moved_key(data: dict[str, Any], rules: CompareRules) -> str:
     return content_key(
-        {k: v for k, v in data.items() if k not in _PATH_FIELDS}, ignored_fields
+        {k: v for k, v in data.items() if k not in _PATH_FIELDS}, rules
     )
 
 
@@ -309,10 +327,10 @@ def classify(  # noqa: C901
     base: dict[str, dict],
     disk: dict[str, dict],
     live: dict[str, dict],
-    ignored_fields: frozenset[str] = frozenset(),
+    rules: CompareRules = NO_RULES,
 ) -> Plan:
     """Classify base->disk changes, annotated against live. See the table in
-    docs/deploy-and-secure.md ("Deploy a site's content"). `ignored_fields`: see
+    docs/deploy-and-secure.md ("Deploy a site's content"). `rules`: see
     cleaned_for_compare."""
     plan = Plan()
 
@@ -345,12 +363,12 @@ def classify(  # noqa: C901
                 # base advanced past it, so every later delta took the stale
                 # page for an editor's edit.
                 old = move_dst[rel]
-                kb = _moved_key(base[old], ignored_fields)
-                kd = _moved_key(disk[rel], ignored_fields)
+                kb = _moved_key(base[old], rules)
+                kd = _moved_key(disk[rel], rules)
                 if kb != kd:
                     plan.updates.append(rel)
                     plan._action[rel] = Action.UPDATE
-                    kl = _moved_key(live[old], ignored_fields) if old in live else None
+                    kl = _moved_key(live[old], rules) if old in live else None
                     if kl is not None and kl != kb and kl != kd:
                         plan.warnings.append(rel)
                 continue
@@ -365,9 +383,9 @@ def classify(  # noqa: C901
             continue
 
         # present in both base and disk
-        kb = content_key(base[rel], ignored_fields)
-        kd = content_key(disk[rel], ignored_fields)
-        kl = content_key(live[rel], ignored_fields) if rel in live else None
+        kb = content_key(base[rel], rules)
+        kd = content_key(disk[rel], rules)
+        kl = content_key(live[rel], rules) if rel in live else None
         live_diverged = kl is not None and kl != kb
 
         if kb == kd:
@@ -397,7 +415,7 @@ def refresh_from_disk(
     rels: list[str],
     disk: dict,
     live: dict,
-    ignored_fields: frozenset[str] = frozenset(),
+    rules: CompareRules = NO_RULES,
 ) -> None:
     """Take each of `rels` from disk wherever live differs, whatever base says.
 
@@ -411,8 +429,8 @@ def refresh_from_disk(
             raise ValueError(f"refresh {rel!r}: the layout has no such page")
         if rel not in live:
             raise ValueError(f"refresh {rel!r}: not on the site")
-        if content_key(live[rel], ignored_fields) == content_key(
-            disk[rel], ignored_fields
+        if content_key(live[rel], rules) == content_key(
+            disk[rel], rules
         ):
             continue
         for bucket in (plan.leaves, plan.noops, plan.warnings):
