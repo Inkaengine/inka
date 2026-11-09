@@ -6,7 +6,10 @@
  *  - a region's `allowedBlocks`
  *  - an ancestor's `disallowDescendantBlocks` (banned anywhere in its subtree)
  *  - a region's `maxLength`
- *  - a block schema's `required` fields
+ *  - every field the save refuses: Volto's own validators (required, lengths,
+ *    pattern, url, email, number limits, item counts) run through the save's
+ *    own step (@volto-hydra/helpers/blockFieldErrors.js) — validateBlocks.parity.test.js
+ *    holds the two together
  *  - a region's text styles (`allowedStyles` / `disallowedStyles`)
  *  - a block's `fieldRules`: an `error` is an error, a `warning` a warning
  *

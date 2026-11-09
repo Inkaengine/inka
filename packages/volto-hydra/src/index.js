@@ -86,21 +86,7 @@ import { regionGatedLinkButton } from './components/Toolbar/regionRules';
 import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
 import { apiAcceptEncoding } from './express-middleware/apiAcceptEncoding';
-
-// The field types a `hydraRuleError` can land on. Volto looks a validator up by
-// the field's declared type (`field.type || 'string'`), so the rule's error has
-// to be offered for each type a rule might mark — there is no "any type" key.
-const RULE_ERROR_FIELD_TYPES = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
-
-/**
- * Surface a field rule's `error` as a form error.
- *
- * `evaluateFieldRule` puts the message on the field DEFINITION when the rule
- * matches; this is what turns that into the things an author sees — the widget
- * red, the form's error summary, and a blocked save — all of which are Volto's
- * own, keyed on the field. Nothing here decides anything: the rule already did.
- */
-const hydraRuleErrorValidator = ({ field }) => field?.hydraRuleError || null;
+import { registerRuleErrorValidators } from '@volto-hydra/helpers/blockFieldErrors.js';
 
 const applyConfig = (config) => {
   // No shared cache keeps an editor's page (express-middleware/noStore.js).
@@ -114,14 +100,9 @@ const applyConfig = (config) => {
     ];
   }
 
-  for (const fieldType of RULE_ERROR_FIELD_TYPES) {
-    config.registerUtility({
-      name: `hydraRuleError-${fieldType}`,
-      type: 'validator',
-      dependencies: { fieldType },
-      method: hydraRuleErrorValidator,
-    });
-  }
+  // A fieldRules `error` refuses the save, as any Volto validator's does. The
+  // offline content check registers the same (@volto-hydra/helpers/blockFieldErrors.js).
+  registerRuleErrorValidators(config);
 
   // A text link picked from the object browser keeps the picked item beside
   // its url (data.item), so a frontend can draw it from the item (a file's type

@@ -15,6 +15,7 @@
   },
   "exports": {
     ".": "./index.js",
+    "./blockFieldErrors.js": "./blockFieldErrors.js",
     "./blockPath.js": "./blockPath.js",
     "./blockSync.js": "./blockSync.js",
     "./blockText.js": "./blockText.js",
@@ -33,6 +34,7 @@
     "./slateStyles.js": "./slateStyles.js"
   },
   "files": [
+    "blockFieldErrors.js",
     "blockPath.js",
     "blockSync.js",
     "blockText.js",

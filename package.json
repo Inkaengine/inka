@@ -13,6 +13,8 @@
   ],
   "scripts": {
     "preinstall": "npx only-allow pnpm",
+    "postinstall": "node scripts/build-volto-validation.mjs",
+    "build:volto-validation": "node scripts/build-volto-validation.mjs",
     "start": "VOLTOCONFIG=$(pwd)/volto.config.js razzle start",
     "start:test": "node scripts/with-ports.mjs --port=voltoSsr sh -c 'RAZZLE_API_PATH=http://localhost:$HYDRA_MOCK_API_PORT RAZZLE_DEFAULT_IFRAME_URL=\"Test frontend|http://localhost:$HYDRA_TEST_FRONTEND_PORT,Nuxt blog|http://localhost:$HYDRA_NUXT_PORT,F7 Mobile|http://localhost:$HYDRA_F7_PORT/#!,Next.js|http://localhost:$HYDRA_NEXTJS_PORT\" RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template VOLTOCONFIG=$(pwd)/volto.config.js razzle start'",
     "start:mock-api": "node scripts/with-ports.mjs --port=mockApi node --watch packages/mock-api/mock-api-server.cjs",

@@ -20,7 +20,8 @@
   },
   "files": [
     "plone-content-validator.cjs",
-    "plone-content.cjs"
+    "plone-content.cjs",
+    "volto-validation.cjs"
   ],
   "dependencies": {
     "@volto-hydra/helpers": "workspace:*"
