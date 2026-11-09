@@ -1,0 +1,350 @@
+/**
+ * The mock API must LOAD with a content mount that has a __metadata__.json.
+ *
+ * Startup content validation runs at module load for every mount that is an
+ * exportimport tree (it has __metadata__.json) — and it read `mdRuntime`
+ * seventy lines before `let mdRuntime` was declared. A `let` read before its
+ * declaration throws (the temporal dead zone), so the server died with
+ * "Cannot access 'mdRuntime' before initialization" before serving a request.
+ *
+ * Only mounts WITH __metadata__.json reach that line, and this repo's own test
+ * mounts had none, so every CI job stayed green while a consumer whose content
+ * is an exportimport distribution could not start the mock at all. Loading in a
+ * fresh process is the point: the crash happens at require time, and the
+ * in-process tests load the module once with the default mounts.
+ */
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const MODULE = path.join(__dirname, 'mock-plone-api.cjs');
+
+/**
+ * The smallest exportimport tree: a __metadata__.json and one item. Built here
+ * rather than borrowed — the docs site's old content tree is a leftover since
+ * the docs moved to markdown, and a test should not break the day someone
+ * deletes it.
+ */
+function exportTree() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-startup-'));
+  fs.writeFileSync(
+    path.join(dir, '__metadata__.json'),
+    JSON.stringify({ __version__: '1.0.0', _data_files_: ['page/data.json'], _blob_files_: [] }),
+  );
+  fs.mkdirSync(path.join(dir, 'page'));
+  fs.writeFileSync(
+    path.join(dir, 'page', 'data.json'),
+    JSON.stringify({ '@id': '/page', '@type': 'Document', UID: 'startup-page-0001', id: 'page', title: 'Page' }),
+  );
+  return dir;
+}
+
+describe('mock API startup', () => {
+  it('loads with a mount that is an exportimport tree (has __metadata__.json)', () => {
+    const run = spawnSync(
+      process.execPath,
+      ['-e', `require(${JSON.stringify(MODULE)}); process.exit(0);`],
+      {
+        env: {
+          ...process.env,
+          CONTENT_MOUNTS: `/:${exportTree()}`,
+        },
+        encoding: 'utf8',
+        timeout: 60_000,
+      },
+    );
+    assert.doesNotMatch(run.stderr, /before initialization/);
+    assert.equal(run.status, 0, `module failed to load:\n${run.stderr.slice(-2000)}`);
+  });
+});
+
+/**
+ * A plain JSON mount (no __metadata__.json — how the test fixtures are laid
+ * out) holding one page, with `extra` merged into its data.
+ */
+function jsonMount(extra) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-validate-'));
+  fs.mkdirSync(path.join(dir, 'page'));
+  fs.writeFileSync(
+    path.join(dir, 'page', 'data.json'),
+    JSON.stringify({ '@id': '/page', '@type': 'Document', UID: `validate-${path.basename(dir)}`, id: 'page', title: 'Page', ...extra }),
+  );
+  return dir;
+}
+
+const teaserTo = (href) => ({
+  blocks: { t1: { '@type': 'teaser', href: [{ '@id': href }] } },
+  blocks_layout: { items: ['t1'] },
+});
+
+/** Wait for the module's `ready`, then report how it settled. */
+function loadAndAwaitReady(mounts, env = {}) {
+  return spawnSync(
+    process.execPath,
+    ['-e', `require(${JSON.stringify(MODULE)}).ready.then(
+      () => process.exit(0),
+      (e) => { console.error('READY REJECTED: ' + e.message); process.exit(3); })`],
+    {
+      env: { ...process.env, CONTENT_MOUNTS: mounts, ...env },
+      encoding: 'utf8',
+      timeout: 60_000,
+    },
+  );
+}
+
+/**
+ * An exportimport tree with a File whose bytes are not on disk — a clip a
+ * pull request adds, which CI records only after the merge.
+ */
+function treeWithMissingBlob(extraItem) {
+  // A distribution: the exportimport tree in content/, the files Plone's
+  // importer also reads beside it.
+  const distribution = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-blob-'));
+  for (const name of ['discussions.json', 'portlets.json', 'principals.json', 'redirects.json']) {
+    fs.writeFileSync(path.join(distribution, name), '{}');
+  }
+  const dir = path.join(distribution, 'content');
+  fs.mkdirSync(dir);
+  const files = ['clip/data.json', ...(extraItem ? ['page/data.json'] : [])];
+  fs.writeFileSync(
+    path.join(dir, '__metadata__.json'),
+    JSON.stringify({ __version__: '1.0.0', _data_files_: files, _blob_files_: ['clip/file/clip.mp4'] }),
+  );
+  fs.mkdirSync(path.join(dir, 'clip'));
+  fs.writeFileSync(
+    path.join(dir, 'clip', 'data.json'),
+    JSON.stringify({
+      '@id': '/clip.mp4', '@type': 'File', UID: 'missing-blob-clip-0001', id: 'clip.mp4', title: 'Clip',
+      file: { blob_path: 'clip/file/clip.mp4', 'content-type': 'video/mp4', filename: 'clip.mp4' },
+    }),
+  );
+  if (extraItem) {
+    fs.mkdirSync(path.join(dir, 'page'));
+    fs.writeFileSync(path.join(dir, 'page', 'data.json'), JSON.stringify(extraItem));
+  }
+  return dir;
+}
+
+describe('mock API: blobs not on disk', () => {
+  it('refuses to start when a blob is missing', () => {
+    const run = loadAndAwaitReady(`/:${treeWithMissingBlob()}`);
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /clip\/file\/clip\.mp4/);
+  });
+
+  it('ALLOW_MISSING_BLOBS=true starts, and still says what is missing', () => {
+    const run = loadAndAwaitReady(`/:${treeWithMissingBlob()}`, { ALLOW_MISSING_BLOBS: 'true' });
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+    assert.match(`${run.stdout}${run.stderr}`, /clip\/file\/clip\.mp4/);
+  });
+
+  it('ALLOW_MISSING_BLOBS=true excuses missing bytes only', () => {
+    const run = loadAndAwaitReady(
+      `/:${treeWithMissingBlob({
+        '@id': '/page', '@type': 'Document', UID: 'missing-blob-page-0001', id: 'page', title: 'Page',
+        blocks: { t1: { '@type': 'teaser', href: [{ '@id': '/no-such-page' }] } },
+        blocks_layout: { items: ['t1'] },
+      })}`,
+      { ALLOW_MISSING_BLOBS: 'true' },
+    );
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /path not in content: \/no-such-page/);
+  });
+});
+
+describe('mock API content validation', () => {
+  it('refuses to become ready when served content links to nothing', () => {
+    const run = loadAndAwaitReady(`/:${jsonMount(teaserTo('/no-such-page'))}`);
+    assert.equal(run.status, 3, `expected ready to reject:\n${run.stdout.slice(-2000)}${run.stderr.slice(-2000)}`);
+    assert.match(run.stderr, /\/page: block t1 \(teaser\) href: path not in content: \/no-such-page/);
+  });
+
+  it('checks every mount, not only exportimport trees', () => {
+    // No __metadata__.json anywhere — the old startup check skipped these.
+    const run = loadAndAwaitReady(`/:${jsonMount(teaserTo('/gone'))}`);
+    assert.match(run.stderr, /path not in content: \/gone/);
+  });
+
+  it('resolves a link across mounts, as the served site does', () => {
+    const other = jsonMount({});
+    const run = loadAndAwaitReady(
+      `/other:${other},/:${jsonMount(teaserTo('/other/page'))}`,
+    );
+    assert.equal(run.status, 0, `valid cross-mount link rejected:\n${run.stderr.slice(-2000)}`);
+  });
+
+  it('becomes ready on clean content', () => {
+    const run = loadAndAwaitReady(`/:${jsonMount(teaserTo('/page'))}`);
+    assert.equal(run.status, 0, `clean content rejected:\n${run.stderr.slice(-2000)}`);
+  });
+
+  for (const server of ['mock-plone-api.cjs', 'mock-api-server.cjs']) it(`${server} exits non-zero on invalid content`, () => {
+    const run = spawnSync(process.execPath, [path.join(__dirname, server)], {
+      env: {
+        ...process.env,
+        CONTENT_MOUNTS: `/:${jsonMount(teaserTo('/no-such-page'))}`,
+        PORT: '0',
+      },
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+    assert.equal(run.status, 1, `server kept running or exited ${run.status}:\n${run.stderr.slice(-2000)}`);
+    assert.match(run.stderr, /path not in content: \/no-such-page/);
+  });
+
+  it("does not judge a consumer's blocks by hydra's test schemas", () => {
+    // hydra's shared-block-schemas describe ITS test frontend. A frontend that
+    // mounts its own content has its own `hero` — here one whose description is
+    // plain text, where hydra's test hero declares a slate field.
+    const run = loadAndAwaitReady(`/:${jsonMount({
+      blocks: { h: { '@type': 'hero', description: 'plain text' } },
+      blocks_layout: { items: ['h'] },
+    })}`);
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+  });
+
+  // A consumer's content is judged by ITS schemas when it says where they are:
+  // CONTENT_SCHEMAS names the JSON its frontend config loads.
+  const siteSchemas = () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'site-schemas-')), 'schemas.json');
+    fs.writeFileSync(file, JSON.stringify({
+      hero: { blockSchema: { properties: { heading: { type: 'string' }, description: { widget: 'slate' } } } },
+    }));
+    return file;
+  };
+  const heroPage = (hero) => jsonMount({ blocks: { h: { '@type': 'hero', ...hero } }, blocks_layout: { items: ['h'] } });
+
+  it("judges a consumer's blocks by its own schemas: field shapes and undeclared fields", () => {
+    const run = loadAndAwaitReady(`/:${heroPage({ description: 'plain text', url: '/x' })}`, { CONTENT_SCHEMAS: siteSchemas() });
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
+    assert.match(run.stderr, /hero\.url/);
+  });
+
+  it("is ready when a consumer's blocks match its schemas", () => {
+    const run = loadAndAwaitReady(
+      `/:${heroPage({ heading: 'H', description: [{ type: 'p', children: [{ text: 'x' }] }] })}`,
+      { CONTENT_SCHEMAS: siteSchemas() },
+    );
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+  });
+
+  it('takes the schemas as a JS module, whose shared pieces are written once', () => {
+    // A frontend keeps its schemas as plain JS data so a field set shared by
+    // several blocks is named once and spread into each -- no copy per block.
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'site-schemas-')), 'schemas.mjs');
+    fs.writeFileSync(file, [
+      "const SHARED = { description: { widget: 'slate' } };",
+      "export default {",
+      "  hero: { blockSchema: { properties: { heading: { type: 'string' }, ...SHARED } } },",
+      "};",
+    ].join('\n'));
+    const run = loadAndAwaitReady(`/:${heroPage({ description: 'plain text' })}`, { CONTENT_SCHEMAS: file });
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
+  });
+
+  it('judges content only by CONTENT_SCHEMAS, wherever it is mounted from', () => {
+    // Mounted from inside this checkout and named nothing: no schemas, so only
+    // the structural checks -- where content lives says nothing about its blocks.
+    const dir = fs.mkdtempSync(path.join(__dirname, '.content-check-'));
+    try {
+      fs.mkdirSync(path.join(dir, 'page'));
+      fs.writeFileSync(path.join(dir, 'page', 'data.json'), JSON.stringify({
+        '@id': '/page', '@type': 'Document', UID: 'owned-page', id: 'page', title: 'Page',
+        blocks: { h: { '@type': 'hero', description: 'plain text' } },
+        blocks_layout: { items: ['h'] },
+      }));
+      const run = loadAndAwaitReady(`/:${dir}`);
+      assert.equal(run.status, 0, run.stderr.slice(-2000));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("judges content by Inka's test-frontend schemas when CONTENT_SCHEMAS names them", () => {
+    // Inka's own content is checked the way any consumer's is: by being told
+    // the schemas. Its test hero declares `description` as slate.
+    const run = loadAndAwaitReady(`/:${heroPage({ description: 'plain text' })}`, {
+      CONTENT_SCHEMAS: path.join(__dirname, '../../tests-playwright/fixtures/shared-block-schemas.js'),
+    });
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
+  });
+
+  // A project's own settings: mock-api.env in the directory the mock starts in.
+  const startedIn = (dir, env = {}) => {
+    const { CONTENT_MOUNTS, CONTENT_SCHEMAS, ...rest } = process.env;
+    return spawnSync(
+      process.execPath,
+      ['-e', `require(${JSON.stringify(MODULE)}).ready.then(
+        () => process.exit(0),
+        (e) => { console.error('READY REJECTED: ' + e.message); process.exit(3); })`],
+      { cwd: dir, env: { ...rest, ...env }, encoding: 'utf8', timeout: 60_000 },
+    );
+  };
+  const projectWith = (settings) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-project-'));
+    fs.writeFileSync(path.join(dir, 'mock-api.env'), settings);
+    return dir;
+  };
+
+  it('reads its content and schemas from mock-api.env where it starts', () => {
+    const content = heroPage({ description: 'plain text' });
+    const run = startedIn(projectWith(`CONTENT_MOUNTS=/:${content}\nCONTENT_SCHEMAS=${siteSchemas()}\n`));
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /block h \(hero\) field "description" is widget:slate but its value is string/);
+  });
+
+  it("ignores mock-api.env when the environment names the content, schemas and all", () => {
+    const content = heroPage({ description: 'plain text' });
+    const dir = projectWith(`CONTENT_MOUNTS=/:${content}\nCONTENT_SCHEMAS=${siteSchemas()}\n`);
+    const run = startedIn(dir, { CONTENT_MOUNTS: `/:${content}` });
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+  });
+
+  it('refuses to start when nothing names the content', () => {
+    const run = startedIn(fs.mkdtempSync(path.join(os.tmpdir(), 'mock-project-')));
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /CONTENT_MOUNTS is required/);
+  });
+
+  // Nothing excuses a content problem: there is no list of "expected" errors.
+  // Content a test needs broken is made by that test, at runtime, where it can't
+  // be committed — never a fixture with an exemption beside it.
+  it('a file listing a problem as expected does not stop the mock refusing it', () => {
+    const dir = jsonMount(teaserTo('/no-such-page'));
+    fs.writeFileSync(
+      path.join(dir, 'expected-errors.json'),
+      JSON.stringify({ '/page': ['href: path not in content: /no-such-page'] }),
+    );
+    const run = loadAndAwaitReady(`/mnt:${dir},/:${jsonMount({})}`);
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /href: path not in content: \/no-such-page/);
+  });
+
+});
+
+describe('inka-mock-api --check', () => {
+  const SERVER = path.join(__dirname, 'mock-api-server.cjs');
+  const served = (mounts) =>
+    spawnSync(process.execPath, [SERVER, '--check'], {
+      env: { ...process.env, CONTENT_MOUNTS: mounts },
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+
+  it('fails, listing the problems, on the site CONTENT_MOUNTS describes', () => {
+    const run = served(`/:${jsonMount(teaserTo('/no-such-page'))}`);
+    assert.equal(run.status, 1, run.stderr.slice(-2000));
+    assert.match(run.stderr, /path not in content: \/no-such-page/);
+  });
+
+  it('passes a clean site', () => {
+    const run = served(`/:${jsonMount(teaserTo('/page'))}`);
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+  });
+});

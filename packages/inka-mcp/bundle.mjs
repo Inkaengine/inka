@@ -2,7 +2,7 @@
 /**
  * Bundle the hosted MCP server into one file, for its image (Dockerfile):
  * everything it imports — the MCP SDK, the markdown libraries, the repo's
- * lib/slate-md.mjs — except Playwright, which the image's base provides with
+ * packages/blockmd/slate-md.mjs — except Playwright, which the image's base provides with
  * its browser. Run from the repo, with its dependencies installed:
  *
  *   node packages/inka-mcp/bundle.mjs   → packages/inka-mcp/dist/inka-mcp-http.mjs

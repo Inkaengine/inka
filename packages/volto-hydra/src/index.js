@@ -86,7 +86,7 @@ import { regionGatedLinkButton } from './components/Toolbar/regionRules';
 import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
 import { apiAcceptEncoding } from './express-middleware/apiAcceptEncoding';
-import { registerRuleErrorValidators } from '../../hydra-js/blockFieldErrors.js';
+import { registerRuleErrorValidators } from '@volto-hydra/helpers/blockFieldErrors.js';
 
 const applyConfig = (config) => {
   // No shared cache keeps an editor's page (express-middleware/noStore.js).
@@ -101,7 +101,7 @@ const applyConfig = (config) => {
   }
 
   // A fieldRules `error` refuses the save, as any Volto validator's does. The
-  // offline content check registers the same (hydra-js/blockFieldErrors.js).
+  // offline content check registers the same (@volto-hydra/helpers/blockFieldErrors.js).
   registerRuleErrorValidators(config);
 
   // A text link picked from the object browser keeps the picked item beside

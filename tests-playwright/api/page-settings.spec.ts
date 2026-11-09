@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { URLS } from '../fixtures';
-import { mintToken } from '../fixtures/mock-tokens.cjs';
+import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
 
 /**
  * The two settings an author reaches for that are not on the canvas: keeping a

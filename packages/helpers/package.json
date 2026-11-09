@@ -1,13 +1,58 @@
 {
   "name": "@volto-hydra/helpers",
   "version": "1.0.0",
-  "description": "Pure data helpers extracted from hydra-js — safe to import server-side (no DOM / postMessage / Bridge).",
   "private": true,
-  "type": "module",
-  "exports": {
-    ".": "./index.js"
+  "description": "Pure data helpers extracted from hydra-js — safe to import server-side (no DOM / postMessage / Bridge).",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Inkaengine/inka.git",
+    "directory": "packages/helpers"
   },
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./blockFieldErrors.js": "./blockFieldErrors.js",
+    "./blockPath.js": "./blockPath.js",
+    "./blockSync.js": "./blockSync.js",
+    "./blockText.js": "./blockText.js",
+    "./buildBlockPathMap.js": "./buildBlockPathMap.js",
+    "./conversionValidation.js": "./conversionValidation.js",
+    "./copyFromTargetMapping.js": "./copyFromTargetMapping.js",
+    "./fieldRules.js": "./fieldRules.js",
+    "./formDataValidation.js": "./formDataValidation.js",
+    "./hydraSchemaContext.js": "./hydraSchemaContext.js",
+    "./injectedVoltoConfig.js": "./injectedVoltoConfig.js",
+    "./mergeTemplates.js": "./mergeTemplates.js",
+    "./regionWidgets.js": "./regionWidgets.js",
+    "./schemaValidation.js": "./schemaValidation.js",
+    "./searchableText.js": "./searchableText.js",
+    "./slateMerge.js": "./slateMerge.js",
+    "./slateStyles.js": "./slateStyles.js"
+  },
+  "files": [
+    "blockFieldErrors.js",
+    "blockPath.js",
+    "blockSync.js",
+    "blockText.js",
+    "buildBlockPathMap.js",
+    "conversionValidation.js",
+    "copyFromTargetMapping.js",
+    "fieldRules.js",
+    "formDataValidation.js",
+    "hydraSchemaContext.js",
+    "index.js",
+    "injectedVoltoConfig.js",
+    "mergeTemplates.js",
+    "regionWidgets.js",
+    "schemaValidation.js",
+    "searchableText.js",
+    "slateMerge.js",
+    "slateStyles.js"
+  ],
   "keywords": [],
-  "author": "",
-  "license": "MIT"
+  "author": ""
 }

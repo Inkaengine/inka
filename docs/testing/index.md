@@ -35,21 +35,104 @@ Inka's mock API serves content as a Plone-style REST API, from Markdown files or
 
 ## Test your blocks in your own CI
 
-The same checks can run against your site. The tests live in the Inka repository, so your CI checks out Inka next to your own code and runs them from there. Two pieces do the work:
+The same checks can run against your site, from your own repository. Two packages do the work:
 
-- **The mock API, serving your content.** Point `CONTENT_MOUNTS` at your content: a Markdown tree (see [Content as Markdown](./blockmd.md)) or a Plone export directory (with `__metadata__.json`). The format is `mountPath:directory`, comma-separated for more than one.
-- **The block sanity test, against your front end.** It reads your front end's block schemas through the bridge, finds every block in the served content, and checks each one renders with the annotations the editor needs. It lives in `tests-playwright/bridge/block-sanity.spec.ts`.
+- **`@inka/mock-api`** serves your content as a Plone REST API. Its `inka-mock-api` command reads `PORT` and `CONTENT_MOUNTS`: a Markdown tree (see [Content as Markdown](./blockmd.md)) or a Plone export directory (with `__metadata__.json`), as `mountPath:directory`, comma-separated for more than one. `inka-mock-api --check` checks that content the way the mock does before it starts, and exits.
+- **`@inka/testing`** is the test harness. Its block sanity suite reads your front end's block schemas through the bridge, finds an example of every block type, variation and text style in the served content, and checks each one renders with the annotations the editor needs. Its `inka-mock-parent` command serves `mock-parent.html`, the stand-in admin page your front end is loaded into for the test.
+
+Neither is published to npm yet. Add them from a checkout of the Inka repository (a git submodule, say) as members of your pnpm workspace, together with the Inka packages they depend on, and depend on them as `workspace:*` (see `pnpm-workspace.yaml` below). The Inka checkout needs no install of its own: the packages carry everything the test uses.
+
+`@inka/testing` takes `@playwright/test` as a peer, so your project depends on Playwright itself, and pins it for the whole workspace with an override (see `pnpm-workspace.yaml` below). pnpm installs a workspace member's own peers for it separately, so without the override `@inka/testing` can get a different Playwright from your config's, and the run stops with "Requiring @playwright/test second time". A package linked from the checkout keeps its own dependencies inside the checkout, so every install that links it (yours, another workspace's, the Inka checkout's own) points them at its own copies, and the last one wins. If you also install the Inka checkout itself, to work on Inka, run your workspace's install after it; otherwise Playwright loads twice and stops with "Requiring @playwright/test second time".
 
 What the run needs:
 
-- A checkout of the Inka repository, at the version you use, installed as in Inka's own workflow (Node.js 24, pnpm, `mrs-developer` for the Volto sources, and Playwright's Chromium).
-- Your front end running, reading content from the mock API's URL, and loading the bridge.
-- A parent page for the front end's iframe. The test uses `mock-parent.html` from Inka's test frontend. Serve it on a port other than `HYDRA_TEST_FRONTEND_PORT`, or the test will also check Inka's own test frontend against your content.
-- These variables for the test run: `DISCOVER_BLOCKS_API` (the mock API URL), `FRONTEND_URL` (your front end), `MOCK_PARENT_URL` (the parent page), and `NO_WEBSERVER=true` and `SKIP_VOLTO_CHECK=true`, because the test starts nothing itself and needs no editor.
-- Every `HYDRA_*_PORT` variable set. The test code reads them all and has no defaults, even for servers this run doesn't start.
+- Your front end running, reading content from the mock API, and loading the bridge.
+- The mock API on your content, and the mock parent, each on a port of your choosing.
+- A global setup that runs discovery, a spec that defines the suite, and the coverage reporter, as below. The reporter judges what no single test can: that every text style in the content renders, and renders differently from body text, and that every field and option has an example. Don't pass `--reporter` on the command line: it replaces the config's reporters, the coverage reporter with them.
+- `FRONTEND_URL` and `MOCK_PARENT_URL` in the environment as well as passed in. Discovery reads the style menu your front end offers only when both are set, and without it every styled paragraph fails as not an authorable style.
 - An example of every block type your front end registers, somewhere in the served content. A registered type with no example fails, by design: nothing would show it has stopped working. A type that only belongs inside a parent container can be marked `restricted` instead.
 
-This GitHub Actions job puts it together. Change the front-end steps and the content path to suit your project.
+### pnpm-workspace.yaml
+
+```text
+packages:
+  - .
+  - inka/packages/helpers
+  - inka/packages/hydra-js
+  - inka/packages/mock-api
+  - inka/packages/blockmd
+  - inka/packages/content-validator
+  - inka/packages/testing
+
+overrides:
+  '@playwright/test': 1.61.0   # the version your project depends on
+  playwright: 1.61.0
+```
+
+### Playwright config
+
+```text
+// tests/sanity/sanity.ts: where the servers are, shared by the files below
+export const PROJECT = 'block-sanity';
+export const API_URL = 'http://localhost:8891';
+export const MOCK_PARENT_URL = 'http://localhost:8892/mock-parent.html';
+export const FRONTEND_URL = 'http://localhost:3000';
+export const DISCOVERY_DIR = import.meta.dirname;
+
+// tests/sanity/global-setup.ts
+import { discoverForFrontends } from '@inka/testing/playwright/global-setup';
+import { API_URL, DISCOVERY_DIR, FRONTEND_URL, MOCK_PARENT_URL, PROJECT } from './sanity';
+
+export default () => discoverForFrontends({
+  discoveryDir: DISCOVERY_DIR,
+  frontends: { [PROJECT]: FRONTEND_URL },
+  apiUrl: API_URL,
+  mockParentUrl: MOCK_PARENT_URL,
+});
+
+// tests/sanity/block-sanity.spec.ts
+import { defineBlockSanityTests } from '@inka/testing/playwright/sanity';
+import { API_URL, DISCOVERY_DIR, FRONTEND_URL, MOCK_PARENT_URL, PROJECT } from './sanity';
+
+defineBlockSanityTests({
+  discoveryDir: DISCOVERY_DIR,
+  frontends: { [PROJECT]: FRONTEND_URL },
+  projects: [PROJECT],
+  apiUrl: API_URL,
+  mockParentUrl: MOCK_PARENT_URL,
+});
+
+// playwright.config.ts
+import { defineConfig } from '@playwright/test';
+import { API_URL, DISCOVERY_DIR, FRONTEND_URL, MOCK_PARENT_URL, PROJECT } from './tests/sanity/sanity';
+
+process.env.FRONTEND_URL ??= FRONTEND_URL;
+process.env.MOCK_PARENT_URL ??= MOCK_PARENT_URL;
+
+export default defineConfig({
+  globalSetup: './tests/sanity/global-setup.ts',
+  reporter: [
+    ['list'],
+    ['@inka/testing/playwright/coverage-reporter', { discoveryDir: DISCOVERY_DIR }],
+  ],
+  projects: [{ name: PROJECT, testDir: './tests/sanity', testMatch: /block-sanity\.spec\.ts/ }],
+  webServer: [
+    {
+      command: 'node_modules/.bin/inka-mock-api',
+      env: { PORT: '8891', CONTENT_MOUNTS: '/:content' },
+      url: `${API_URL}/health`,
+    },
+    {
+      command: 'node_modules/.bin/inka-mock-parent',
+      env: { PORT: '8892', API_URL, FRONTEND_URL },
+      url: MOCK_PARENT_URL,
+    },
+    { command: 'npm run dev -- --port 3000', url: FRONTEND_URL },
+  ],
+});
+```
+
+`npm run dev` stands for however your front end starts, told the mock API's URL as its API. The same module has `defineEmptyRegionTests`, `defineListingContainerTests` and `definePageIntegrityTests`, for the other checks on the rendered page.
 
 ### GitHub Actions
 
@@ -57,68 +140,21 @@ This GitHub Actions job puts it together. Change the front-end steps and the con
 jobs:
   block-sanity:
     runs-on: ubuntu-latest
-    env:
-      HYDRA_MOCK_API_PORT: 8888
-      HYDRA_TEST_FRONTEND_PORT: 8889   # left unused on purpose
-      HYDRA_MOCK_PARENT_PORT: 8891
-      HYDRA_VOLTO_SSR_PORT: 3001
-      HYDRA_VOLTO_WEBPACK_PORT: 3002
-      HYDRA_NUXT_PORT: 3003
-      HYDRA_REACT_DOC_PORT: 3004
-      HYDRA_VUE_DOC_PORT: 3005
-      HYDRA_SVELTE_DOC_PORT: 3006
-      HYDRA_NEXTJS_PORT: 3007
-      HYDRA_F7_PORT: 3008
-      HYDRA_ASTRO_DOC_PORT: 3009
-      HYDRA_VANILLA_DOC_PORT: 3010
-      HYDRA_SVELTE_QS_PORT: 3011
-      HYDRA_ASTRO_QS_PORT: 3012
-      PARENT_PORT: 8890
-      SITE_PORT: 4000
     steps:
       - uses: actions/checkout@v4
-        with: { path: site }
-      - uses: actions/checkout@v4
-        with: { repository: Inkaengine/inka, ref: main, path: inka }
+        with: { submodules: true }   # the Inka checkout at inka/
       - uses: actions/setup-node@v4
         with: { node-version: 24 }
-      - name: Install Inka's test tools
-        working-directory: inka
+      - name: Install
         run: |
           npm install -g corepack && corepack enable
-          pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium
-      - name: Start the mock API on your content, and the parent page
-        working-directory: inka
-        run: |
-          PORT=$HYDRA_MOCK_API_PORT CONTENT_MOUNTS="/:$GITHUB_WORKSPACE/site/content" \
-            node tests-playwright/fixtures/mock-api-server.cjs &
-          HYDRA_TEST_FRONTEND_PORT=$PARENT_PORT \
-            npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
-      - name: Start your front end against the mock API
-        working-directory: site
-        run: |
-          npm ci
-          API_URL=http://localhost:$HYDRA_MOCK_API_PORT npm run dev -- --port $SITE_PORT &
-      - name: Wait for the servers
-        run: |
-          for port in $HYDRA_MOCK_API_PORT $PARENT_PORT $SITE_PORT; do
-            for i in $(seq 1 60); do curl -s http://localhost:$port > /dev/null && break; sleep 2; done
-          done
       - name: Block sanity
-        working-directory: inka
-        env:
-          CI: true
-          NO_WEBSERVER: true
-          SKIP_VOLTO_CHECK: true
-          DISCOVER_BLOCKS_API: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
-          FRONTEND_URL: http://localhost:${{ env.SITE_PORT }}
-          MOCK_PARENT_URL: http://localhost:${{ env.PARENT_PORT }}/mock-parent.html
-        run: pnpm exec playwright test block-sanity --project=mock
+        run: pnpm exec playwright test --project=block-sanity
 ```
 
-`API_URL` and `npm run dev` stand for however your front end is told where its API is and how it starts. Keep your front end off the ports named above.
+Playwright starts the three servers from the config, so the job only installs and runs.
 
 To run the mock API and editor from a checkout of Inka itself, see [Previewing and testing content](./testing-content.md).
 

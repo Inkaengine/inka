@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-import { settledCount } from '../helpers/settled-count';
+import { settledCount } from '@inka/testing/playwright/settled-count';
 
 /**
  * How many elements a block maps to is read once its rendering has settled.

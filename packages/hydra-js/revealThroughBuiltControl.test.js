@@ -6,8 +6,8 @@ import { Bridge } from './hydra.src.js';
  *
  * `data-block-selector` goes on the element a frontend renders. A design
  * system's script then often turns that element into a shell around the
- * control it builds for itself: the NSW accordion empties its
- * `.nsw-accordion__title`, puts a `<button>` inside it, and binds the toggle —
+ * control it builds for itself: an accordion empties its
+ * `.ds-accordion__title`, puts a `<button>` inside it, and binds the toggle —
  * and `aria-expanded` — to that button.
  *
  * A person clicking the title hits the button: the event starts there and
@@ -18,13 +18,13 @@ import { Bridge } from './hydra.src.js';
  * does; asking the bridge instead is what showed it.
  */
 const ACCORDION = `<!DOCTYPE html>
-  <div class="nsw-accordion">
-    <div class="nsw-accordion__title" data-block-selector="panel-1 c2">
-      <button class="nsw-accordion__button" type="button" aria-expanded="false">
+  <div class="ds-accordion">
+    <div class="ds-accordion__title" data-block-selector="panel-1 c2">
+      <button class="ds-accordion__button" type="button" aria-expanded="false">
         The second panel
       </button>
     </div>
-    <div class="nsw-accordion__content" hidden>
+    <div class="ds-accordion__content" hidden>
       <p data-block-uid="c2">Content of the second panel.</p>
     </div>
   </div>`;
@@ -33,11 +33,11 @@ const ACCORDION = `<!DOCTYPE html>
 function accordion() {
   const { window } = new JSDOM(ACCORDION);
   const document = window.document;
-  const button = document.querySelector('.nsw-accordion__button');
-  const content = document.querySelector('.nsw-accordion__content');
+  const button = document.querySelector('.ds-accordion__button');
+  const content = document.querySelector('.ds-accordion__content');
   let shellClicks = 0;
   document
-    .querySelector('.nsw-accordion__title')
+    .querySelector('.ds-accordion__title')
     .addEventListener('click', (e) => {
       if (e.target === e.currentTarget) shellClicks += 1;
     });

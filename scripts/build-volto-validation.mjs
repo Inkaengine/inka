@@ -5,7 +5,7 @@
  * The editor's save refuses a block whose fields fail Volto's validators
  * (required, minLength/maxLength, pattern, url, email, number limits, item
  * counts — core's config/validation.ts). The content check
- * (lib/plone-content-validator.cjs) runs where Volto is not installed — a bare
+ * (@inka/content-validator) runs where Volto is not installed — a bare
  * Node with no npm packages — so it gets the same code as one dependency-free
  * file, built from Volto's source rather than copied from it:
  *
@@ -15,10 +15,12 @@
  *               the version mrs.developer.json pins.
  *   --registry  @plone/registry's entry module. Default: core/packages/registry/src/index.ts.
  *
- * Writes lib/volto-validation.cjs (not committed: it is built, like core is
- * fetched). Five Volto files and a few lodash helpers; the pop-up messages and
- * react-intl, which field validation does not use, are stubs
- * (scripts/volto-validation/).
+ * Writes packages/content-validator/volto-validation.cjs. It is not committed, and not built on
+ * install: only a site edited in the Volto admin needs it, and without it the check skips the
+ * field values and says so. `pnpm test` and `pnpm test:api` build it first.
+ *
+ * Five Volto files and a few lodash helpers; the pop-up messages and react-intl, which field
+ * validation does not use, are stubs (scripts/volto-validation/).
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +33,7 @@ const { values } = parseArgs({
   options: {
     volto: { type: 'string', default: path.join(root, 'core', 'packages', 'volto') },
     registry: { type: 'string', default: path.join(root, 'core', 'packages', 'registry', 'src', 'index.ts') },
-    out: { type: 'string', default: path.join(root, 'lib', 'volto-validation.cjs') },
+    out: { type: 'string', default: path.join(root, 'packages', 'content-validator', 'volto-validation.cjs') },
   },
 });
 

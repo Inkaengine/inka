@@ -40,15 +40,15 @@ Content is authored as Markdown — see [Content as Markdown](./blockmd.md). To 
 
 The mock API turns a content tree into a Plone REST API. It reads the `.md` files live, with no build step, so editing a page and refreshing the admin shows the change immediately.
 
-These commands run from a checkout of the Inka repository. By default the mock API mounts Inka's own content:
+These commands run from a checkout of the Inka repository, where the mock API serves Inka's own content, as `mock-api.env` at the repository root sets it:
 
 - **`/docs`** — the documentation pages (this site's own source).
 - **`/_test_data`** — fixtures used by the automated tests.
 - **`/`** — the demo site root.
 
-To serve your own content instead, set `CONTENT_MOUNTS`, for example `CONTENT_MOUNTS=/:/path/to/your/content`.
+The mock API itself has no default content: `CONTENT_MOUNTS` is required, in the environment or in a `mock-api.env` file in the directory it's started from (paths relative to that directory; the environment wins). To serve your own content, set it, for example `CONTENT_MOUNTS=/:/path/to/your/content`, or commit a `mock-api.env` of your own.
 
-Before it starts, the mock checks the content it will serve, and refuses to start on content with a broken link, a list item without an id, and the like. To have your own blocks checked against their schemas too (each field's value against its widget, and every field against what the block declares), set `CONTENT_SCHEMAS` to the file your frontend keeps its block schemas in: a JavaScript module (its default export, plain data your config also imports, so a field set shared by several blocks is written once) or a JSON file, shaped `{ "blockType": { "blockSchema": …, "schemaEnhancer": … } }`. `bin/plone-content.cjs served` runs the same check without starting a server.
+Before it starts, the mock checks the content it will serve, and refuses to start on content with a broken link, a list item without an id, and the like. To have your blocks checked against their schemas too (each field's value against its widget, and every field against what the block declares), set `CONTENT_SCHEMAS` to the file your frontend keeps its block schemas in: a JavaScript module (its default export, plain data your config also imports, so a field set shared by several blocks is written once) or a JSON file, shaped `{ "blockType": { "blockSchema": …, "schemaEnhancer": … } }`. The same schemas are used for every mount, for a code example that shows a block's schema, and to check what `@export` writes. Without it, the content gets only the structural checks. A `CONTENT_SCHEMAS` in `mock-api.env` is only used together with that file's `CONTENT_MOUNTS`: when the environment sets `CONTENT_MOUNTS`, the file is not read at all. `inka-mock-api --check` runs the same check without starting a server.
 
 The scripts take their ports from environment variables and have no defaults, so set them first:
 
@@ -84,6 +84,8 @@ The admin renders the page through whichever frontend you select and updates the
 The **block sanity** test is the safety net for content. It does not hard-code a list of blocks to check — instead it **discovers every block on the served content** and, for each one, verifies that it renders, that its sub-blocks render, and that its editable fields carry the annotations the admin needs. Because discovery reads the live content, authoring a new example is all it takes to put a block under test — there is no separate test to write.
 
 That is the working rule: **every block type needs an example somewhere in the content**, and a block type with no example is treated as a gap to fix, not something to skip.
+
+Text styles are covered the same way. A block type's example is usually a plain paragraph, so discovery also takes an example of each text style in the content that no block example already shows: a heading, a list, a style your design system adds. The run fails if a style's text renders nowhere, or renders just like body text.
 
 The test runs each discovered block against several frontends. A core set — the mock frontend, Nuxt, and Next.js — is **enforced**: a block that fails to render there fails the suite. The remaining example frontends carry partial coverage on purpose and are checked on a best-effort basis.
 

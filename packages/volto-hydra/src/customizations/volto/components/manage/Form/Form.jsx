@@ -70,9 +70,9 @@ import {
 import {
   searchTextOptions,
   withSearchableText,
-} from '../../../../../../../hydra-js/searchableText.js';
+} from '@volto-hydra/helpers/searchableText.js';
 import { normalizeSlateStylesForSave } from '../../../../../utils/blockSync';
-import { buildBlockPathMap } from '../../../../../../../hydra-js/buildBlockPathMap.js';
+import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
 import { updateContent } from '@plone/volto/actions/content/content';
@@ -89,7 +89,7 @@ import withSaveAsDraft from '@plone/volto/helpers/Utils/withSaveAsDraft';
 import SlotRenderer from '@plone/volto/components/theme/SlotRenderer/SlotRenderer';
 import Iframe from '../../../../../components/Iframe/View';
 import { ReadOnlyField } from '../../../../../components/Sidebar/ReadOnlyForm';
-import { validateTemplatePlaceholders } from '../../../../../utils/formDataValidation';
+import { validateTemplatePlaceholders } from '@volto-hydra/helpers/formDataValidation.js';
 import { validateBlocksAgainstSchemas } from '../../../../../utils/validateBlocks';
 import './styles.css';
 

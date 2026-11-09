@@ -18,7 +18,7 @@
  */
 import { FormValidation } from '@plone/volto/helpers';
 
-import { blockFieldErrors } from '../../../hydra-js/blockFieldErrors.js';
+import { blockFieldErrors } from '@volto-hydra/helpers/blockFieldErrors.js';
 
 import { buildBlockPathMap, getBlockById } from './blockPath';
 import { resolveEffectiveBlockSchema } from './blockSync';
@@ -86,7 +86,7 @@ export function validateBlocksAgainstSchemas(
     // author's to correct and must still be enforced.
     if (blockData.readOnly === true) continue;
 
-    // The same step the offline content check runs (hydra-js/blockFieldErrors.js):
+    // The same step the offline content check runs (@volto-hydra/helpers/blockFieldErrors.js):
     // Volto's validators, with cleared ('') fields read as unset, and a rule's
     // error on a region.
     const errors = blockFieldErrors({

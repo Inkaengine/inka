@@ -17,7 +17,7 @@ import transaction
 
 
 INKA = Path(__file__).resolve().parents[4]
-CLI = INKA / "bin" / "plone-content.cjs"
+CLI = INKA / "packages" / "content-validator" / "plone-content.cjs"
 # The mock API is held to the same cases (mock-searchable-text.test.cjs).
 CASES = json.loads((INKA / "tests-playwright/fixtures/search-text-cases.json").read_text())
 

@@ -3,14 +3,14 @@
  *
  * Content that never passes through the editor — a conversion, an import, a
  * fixture — is checked by the content validator (`plone-content schema|all`,
- * lib/plone-content-validator.cjs). It used to check only `required`, with its
+ * @inka/content-validator). It used to check only `required`, with its
  * own idea of empty, while the save runs every Volto validator: maxLength,
  * pattern, url, email, number limits, item counts. So content passed the check
  * and then refused to save in the editor, naming a field no one had touched.
  *
  * The check now runs Volto's own validation (bundled by
  * scripts/build-volto-validation.mjs) through the same per-block step as the
- * save (hydra-js/blockFieldErrors.js). This test holds them together: the same
+ * save (@volto-hydra/helpers/blockFieldErrors.js). This test holds them together: the same
  * pages through both, and the same block fields must be refused.
  */
 import { createRequire } from 'node:module';
@@ -22,12 +22,12 @@ vi.mock('../context', () => ({
   HydraSchemaProvider: ({ children }) => children,
 }));
 
-import { createFieldRulesEnhancer } from '../../../hydra-js/fieldRules.js';
+import { createFieldRulesEnhancer } from '@volto-hydra/helpers/fieldRules.js';
 
 import { validateBlocksAgainstSchemas } from './validateBlocks';
 
 const require = createRequire(import.meta.url);
-const { checkEditorRules } = require('../../../../lib/plone-content-validator.cjs');
+const { checkEditorRules } = require('@inka/content-validator');
 
 const formatMessage = (msg) => msg?.id || msg?.defaultMessage || 'error';
 

@@ -4,7 +4,7 @@ The logic behind the `@templates` endpoint, kept apart from the service wiring s
 be read and tested as plain functions.
 
 Ported from the reference implementation in the mock API
-(`tests-playwright/fixtures/mock-plone-api.cjs`), which was built first so the contract
+(`packages/mock-api/mock-plone-api.cjs`), which was built first so the contract
 could be settled cheaply against the real merge before any Python existed.
 """
 

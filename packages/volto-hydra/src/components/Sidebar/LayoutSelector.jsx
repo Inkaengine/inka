@@ -11,7 +11,7 @@ import React from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { v4 as uuid } from 'uuid';
 import { adoptTemplate, templateIdToPath } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage } from '../../utils/mergeTemplates.mjs';
+import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
 import Api from '@plone/volto/helpers/Api/Api';
 import config from '@plone/volto/registry';
 

@@ -48,10 +48,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -65,6 +61,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Check Volto customizations for upstream drift
         # Shadows are forks of upstream files, and forks go stale silently:
         # upstream fixes its copy and ours keeps the old behaviour. Runs right
@@ -136,10 +136,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Install dependencies
         # The addon's tests run against the SAME template fixtures as the JS suites: the
         # mock API exports them as a plone.exportimport distribution at test time, so the
@@ -148,6 +144,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Use Python
         uses: actions/setup-python@v5
         with:
@@ -191,10 +191,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -208,6 +204,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Start servers
         run: |
           # The servers outlive this step, but its stdout does not: in a container
@@ -216,7 +216,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           # Every interface (--host): in the container `localhost` is both
           # 127.0.0.1 and ::1, a server bound to "localhost" takes one, and the
@@ -237,7 +237,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro --reporter=github,list,html
+        run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro
         env:
           CI: true
           NO_WEBSERVER: true
@@ -310,10 +310,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -327,6 +323,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build workspace deps (@plone/registry, @plone/components)
         # pnpm start:prod loads these at runtime via workspace symlinks;
         # their dist/ output must exist or the SSR server fails to boot.
@@ -344,7 +344,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
@@ -361,7 +361,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-mock --reporter=github,list,html
+        run: pnpm exec playwright test --project=admin-mock
         env:
           CI: true
           NO_WEBSERVER: true
@@ -430,10 +430,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -447,6 +443,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build workspace deps (@plone/registry, @plone/components)
         # pnpm start:prod loads these at runtime via workspace symlinks;
         # their dist/ output must exist or the SSR server fails to boot.
@@ -468,7 +468,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
@@ -488,7 +488,7 @@ jobs:
           echo "All servers ready"
       - name: Run tests
         run: >-
-          pnpm exec playwright test --project=admin-nextjs --reporter=github,list,html
+          pnpm exec playwright test --project=admin-nextjs
           tests-playwright/integration/inline-editing-basic.spec.ts
           tests-playwright/integration/inline-editing-formatting.spec.ts
           tests-playwright/integration/inline-editing-clipboard.spec.ts
@@ -561,10 +561,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -578,6 +574,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Install and build Nuxt
         run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
       - name: Start servers
@@ -588,7 +588,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
           sleep 3
@@ -600,7 +600,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=nuxt --project=nuxt-firefox --reporter=github,list,html
+        run: pnpm exec playwright test --project=nuxt --project=nuxt-firefox
         env:
           CI: true
           NO_WEBSERVER: true
@@ -673,10 +673,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -690,6 +686,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build workspace deps (@plone/registry, @plone/components)
         # pnpm start:prod loads these at runtime via workspace symlinks;
         # their dist/ output must exist or the SSR server fails to boot.
@@ -714,7 +714,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
@@ -732,7 +732,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-nuxt --project=nuxt-specific --reporter=github,list,html
+        run: pnpm exec playwright test --project=admin-nuxt --project=nuxt-specific
         env:
           CI: true
           NO_WEBSERVER: true
@@ -796,10 +796,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -813,6 +809,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build Next.js example
         run: cd examples/hydra-nextjs && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
         env:
@@ -831,7 +831,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/hydra-nextjs && pnpm run start:test &
           cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} npx vite --port ${{ env.HYDRA_F7_PORT }} --strictPort --config vite.config.test.mjs &
@@ -863,7 +863,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=nextjs --project=nextjs-firefox --project=f7 --project=vanilla --project=svelte-qs --project=astro-qs --reporter=github,list,html
+        run: pnpm exec playwright test --project=nextjs --project=nextjs-firefox --project=f7 --project=vanilla --project=svelte-qs --project=astro-qs
         env:
           CI: true
           NO_WEBSERVER: true

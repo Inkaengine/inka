@@ -59,7 +59,7 @@ pnpm test:e2e:debug
 
 **Terminal 1** - Start Mock API:
 ```bash
-node tests-playwright/fixtures/mock-api-server.cjs
+node packages/mock-api/mock-api-server.cjs
 ```
 
 **Terminal 2** - Start Volto Dev Server:
@@ -112,7 +112,7 @@ When servers aren't already running, Playwright automatically starts both server
 
 1. **Mock Plone API** (`http://localhost:8888`)
    - Serves mock content, schemas, and authentication
-   - Loads data from `tests-playwright/fixtures/api/`
+   - Loads data from `packages/mock-api/api/`
 
 2. **Volto Admin UI** (`http://localhost:3001`)
    - Configured to use mock API via `RAZZLE_API_PATH`
@@ -244,12 +244,12 @@ test('custom interaction', async ({ page }) => {
 ```
 tests-playwright/
 ├── fixtures/
-│   ├── api/                      # Mock API data
-│   │   ├── content.json         # Sample page with blocks
-│   │   └── schema-document.json # Document schema
-│   └── mock-api-server.cjs       # Express mock server
+│   ├── content/                 # Test content, mounted at /_test_data
+│   ├── site-root/               # The test site root, mounted at /
+│   └── test-frontend/           # The test frontend
 ├── helpers/
-│   └── AdminUIHelper.ts         # Volto UI helper methods
+│   └── AdminUIHelper.ts         # The harness's AdminUIHelper, defaulting to /_test_data
+├── frontends.ts                 # The frontends the suites drive, and block-sanity's scope
 ├── integration/
 │   ├── block-selection.spec.ts  # Block selection tests
 │   └── inline-editing.spec.ts   # Inline editing tests
@@ -257,6 +257,12 @@ tests-playwright/
 ├── tsconfig.json                # TypeScript config
 └── README.md                    # This file
 ```
+
+The mock API server itself is `packages/mock-api/` (`mock-api-server.cjs`,
+with its content-type schemas in `api/`). The harness these suites are built
+on — AdminUIHelper and the other Playwright helpers, block discovery, the
+sanity suites, the coverage reporter, mock-parent.html and the port block — is
+`packages/testing/` (`@inka/testing`), which other frontends' suites use too.
 
 ## Mock API Endpoints
 
@@ -274,11 +280,12 @@ The Express mock server implements:
 
 ### Adding Mock Data
 
-Edit `tests-playwright/fixtures/api/content.json`:
+Each test page is a folder under `tests-playwright/fixtures/content/`, served under `/_test_data`: its `data.json` holds the page, and any files beside it (images) are its blobs. Add a folder, e.g. `fixtures/content/test-page/data.json`:
 
 ```json
 {
   "@id": "http://localhost:8888/test-page",
+  "id": "test-page",
   "@type": "Document",
   "title": "Test Page",
   "blocks": {
@@ -350,7 +357,7 @@ Key settings:
     screenshot: 'only-on-failure',
   },
   webServer: [
-    { command: 'node tests-playwright/fixtures/mock-api-server.cjs', port: 8888 },
+    { command: 'node packages/mock-api/mock-api-server.cjs', port: 8888 },
     { command: 'RAZZLE_API_PATH=http://localhost:8888 pnpm start', port: 3001 },
   ],
 }
@@ -426,14 +433,14 @@ kill -9 <PID>
 
 ### Mock API 404 Errors
 
-Verify fixture file exists:
+Verify the page's fixture exists:
 ```bash
-cat tests-playwright/fixtures/api/content.json
+cat tests-playwright/fixtures/content/<page>/data.json
 ```
 
 Check mock server is loading it:
 ```bash
-DEBUG=1 node tests-playwright/fixtures/mock-api-server.cjs
+DEBUG=1 node packages/mock-api/mock-api-server.cjs
 ```
 
 ### Volto Can't Connect to Mock API

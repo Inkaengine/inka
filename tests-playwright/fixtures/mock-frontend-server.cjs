@@ -10,7 +10,7 @@ const express = require('express');
 const path = require('path');
 
 const app = express();
-const { requiredPort, requiredOrigin } = require('./env-port.cjs');
+const { requiredPort, requiredOrigin } = require('../../packages/mock-api/env-port.cjs');
 
 const PORT = requiredPort('PORT');
 // Told which API it talks to, never assuming: see env-port.cjs.

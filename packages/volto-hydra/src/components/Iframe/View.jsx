@@ -18,13 +18,13 @@ import { Node } from 'slate';
 import {
   applyBlockDefaults,
 } from '@plone/volto/helpers';
-import { validateAndLog, validateTemplatePlaceholders } from '../../utils/formDataValidation';
+import { validateAndLog, validateTemplatePlaceholders } from '@volto-hydra/helpers/formDataValidation.js';
 import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
-import { mergeFrontendBlock } from '../../../../hydra-js/mergeFrontendBlock.js';
+import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
+import { mergeFrontendBlock } from '@volto-hydra/hydra-js/mergeFrontendBlock.js';
 import { registerAgentApi } from './agentApi';
 import {
   isSlateFieldType,
@@ -344,7 +344,7 @@ import { heldImages, onImageHeld } from '../../utils/pendingImages';
 import { withImageMetadata } from '../../utils/imageMetadata';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { adoptTemplate, canContainAll, getBlockAddability, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '../../utils/mergeTemplates.mjs';
+import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 import {
   applySchemaDefaultsToFormData,
   previewSchemaDefaultConversions,

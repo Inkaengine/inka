@@ -31,8 +31,8 @@ import {
 import { expelAllowedTypes, findOnlyEmptyChildUid } from './containerOps.js';
 import { acceptableAt } from './conversionMap.js';
 import { collectLinkableAnchors } from './linkableAnchors.js';
-import { isStyleAllowed } from './slateStyles.js';
-import { isRegionField } from './regionWidgets.js';
+import { isStyleAllowed } from '@volto-hydra/helpers/slateStyles.js';
+import { isRegionField } from '@volto-hydra/helpers/regionWidgets.js';
 
 /**
  * Has the frontend drawn the slate value it was given? `dom` is the DOM read
@@ -1082,7 +1082,7 @@ export class Bridge {
    *
    * A frontend annotates the element it renders. A design system's script then
    * often turns that element into a shell around the control it builds for
-   * itself: the NSW accordion empties its `.nsw-accordion__title`, puts a
+   * itself: an accordion empties its `.ds-accordion__title`, puts a
    * `<button>` inside it, and binds both the toggle and `aria-expanded` to that
    * button. A person clicking the title hits the button — the event starts
    * there and bubbles outward — but `shell.click()` starts at the shell and

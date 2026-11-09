@@ -1,7 +1,7 @@
 import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import fs from 'fs';
 import path from 'path';
-import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 
 const load = (p) => JSON.parse(fs.readFileSync(path.resolve(process.cwd(), '..', '..', p), 'utf-8'));
 const textOf = (b) =>

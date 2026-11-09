@@ -382,3 +382,5 @@ When mixing listings with static blocks in a shared pager, use `staticBlocks(ids
 ## Notes
 
 Expanded listing items share the listing block's `@uid`. Selecting any expanded item selects the parent listing block.
+
+A listing with no results still gives back one item while editing: `{ "@uid": <the listing's uid>, "@type": "empty", "readOnly": true }`, so the author has something to click to select the listing and fix its query. Published, it gives back none. Render items by their `@type`, as above, and your `empty` block draws it. A block that renders its items itself, without going through `Block` (chips, a list of links), has to draw an `empty` item as something an author can click, never as an empty link or label: an element with no size can't be selected.

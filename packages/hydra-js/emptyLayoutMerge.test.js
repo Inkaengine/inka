@@ -1,12 +1,12 @@
 /**
  * Repro: a forced layout whose template is EMPTY ("a layout with nothing in it")
- * — the NSW site announcement, empty by default.
+ * — a site announcement, empty by default.
  *
  * Merging an empty forced layout into an empty region must leave the region
  * empty (or hold a well-formed, typed block), never a dataless placeholder
  * (the admin logged "Block data undefined for <uid>").
  */
-import { mergeTemplatesIntoPage } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
 
 const EMPTY_TEMPLATE = {
   '@id': '/templates/site-announcement',

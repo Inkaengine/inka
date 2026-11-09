@@ -1,13 +1,11 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// HydraSchemaContext.js is JSX inside a .js file (the admin build uses babel; vitest
-// uses esbuild and can't parse it). The slotId-inheritance path doesn't touch the
-// schema context, so stub the module to keep the import graph parseable.
+// The schema context block sync reads, stubbed so each test chooses it.
 const { getHydraSchemaContext, getLiveBlockData } = vi.hoisted(() => ({
   getHydraSchemaContext: vi.fn(() => ({})),
   getLiveBlockData: vi.fn(() => undefined),
 }));
-vi.mock('../context', () => ({
+vi.mock('@volto-hydra/helpers/hydraSchemaContext.js', () => ({
   getHydraSchemaContext,
   setHydraSchemaContext: () => {},
   getLiveBlockData,
