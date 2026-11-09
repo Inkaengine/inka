@@ -550,6 +550,9 @@ export async function checkEditAnnotations(
               const host = node.parentElement;
               if (!host) { ok = true; break; }
               if (host.closest('[data-block-readonly]')) { ok = true; break; }
+              // An SVG's <title> and <desc> are its accessible name, never
+              // drawn on the page, so like sr-only text they are not shown.
+              if (host.closest('svg title, svg desc')) { ok = true; break; }
               // Text a form control draws (a textarea's starting text, a
               // select's options) cannot be edited in place: the control owns
               // it. Such a value is edited in the sidebar.

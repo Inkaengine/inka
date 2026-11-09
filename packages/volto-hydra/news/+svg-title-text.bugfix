@@ -1,0 +1,1 @@
+Block sanity: an SVG's title (its accessible name, never drawn) need not be inline-editable.

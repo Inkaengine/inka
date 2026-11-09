@@ -388,3 +388,60 @@ describe('checkEditorRules() does not report config defects', () => {
     );
   });
 });
+
+/**
+ * checkReservedFields(): a block's template membership — `templateId`,
+ * `templateInstanceId`, `slotId`, `fixed`, `readOnly` and the merge's
+ * `nextSlotId` / `prevSlotId` — is stored on the block beside its own fields.
+ * A schema field of the same name shares that key: a tabs block whose "Fixed"
+ * option was `fixed: true` read, on a templated page, as a block the template
+ * fixes, and the merge took it off the page and drew its tabs elsewhere as
+ * unknown blocks. Like the chooser, a defect in the config, not in any page.
+ */
+describe('checkReservedFields()', () => {
+  const { checkReservedFields } = require('../../lib/plone-content-validator.cjs');
+
+  it('passes a schema whose fields are its own', () => {
+    const r = checkReservedFields({ tabs: { blockSchema: { properties: { fixedTabs: { type: 'boolean' } } } } });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a field named for template membership', () => {
+    const r = checkReservedFields({ tabs: { blockSchema: { properties: { fixed: { type: 'boolean' } } } } });
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /tabs: field "fixed" is a template-membership key/);
+  });
+
+  it('reports every reserved name, on every block', () => {
+    const r = checkReservedFields({
+      a: { blockSchema: { properties: { slotId: {}, readOnly: {} } } },
+      b: { blockSchema: { properties: { templateId: {}, title: {} } } },
+    });
+    assert.equal(r.errors.length, 3);
+  });
+
+  // Inka's own bookkeeping, also stored on the block: the words it indexes,
+  // the text it labels a block by, copy-from-target's record, the bridge's
+  // anchors, and the block's identity.
+  it("reports a field named for Inka's own bookkeeping", () => {
+    const r = checkReservedFields({
+      a: { blockSchema: { properties: { searchableText: {}, plaintext: {}, _pullFrom: {} } } },
+      b: { blockSchema: { properties: { _customFields: {}, _linkableAnchors: {}, '@uid': {} } } },
+    });
+    assert.equal(r.errors.length, 6);
+    assert.match(r.errors.join('\n'), /a: field "searchableText" is a key Inka keeps on every block/);
+    assert.match(r.errors.join('\n'), /b: field "@uid" is a key Inka keeps on every block/);
+  });
+
+  it('passes the fields a block may declare though content carries them undeclared', () => {
+    const r = checkReservedFields({
+      x: { blockSchema: { properties: { variation: {}, styles: {}, value: {}, required: {}, blocks: {} } } },
+    });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('ignores an entry that is not a block config', () => {
+    const r = checkReservedFields({ _page: { fixed: true }, notABlock: {} });
+    assert.deepEqual(r.errors, []);
+  });
+});
