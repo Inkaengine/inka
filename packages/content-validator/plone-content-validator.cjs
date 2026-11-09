@@ -1543,7 +1543,9 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
  * its region's slate rules run through the same normalizeSlateFields the
  * editor applies on load. A block's fields are checked by the save's own step
  * (@volto-hydra/helpers/blockFieldErrors.js) with Volto's own validators, bundled from its
- * source (scripts/build-volto-validation.mjs). A region that names no
+ * source (scripts/build-volto-validation.mjs). That bundle is built only on
+ * request, for sites edited in the Volto admin: without it the field step is
+ * skipped and a warning says so. A region that names no
  * allowedBlocks (`allowedSiblingTypesDerived`) restricts nothing, so nothing
  * in it is reported.
  *
@@ -1677,17 +1679,12 @@ function checkReservedFields(schemas) {
 /**
  * Volto's field validation, as the editor's save runs it: built from Volto's
  * source into one dependency-free file (scripts/build-volto-validation.mjs),
- * because this check runs where Volto is not installed.
+ * because this check runs where Volto is not installed. Null when it has not
+ * been built.
  */
 function loadVoltoValidation() {
   const file = require('path').join(__dirname, 'volto-validation.cjs');
-  if (!require('fs').existsSync(file)) {
-    throw new Error(
-      `${file} is missing: the content check runs Volto's own field validation, ` +
-        'built from its source by `node scripts/build-volto-validation.mjs`',
-    );
-  }
-  return require(file);
+  return require('fs').existsSync(file) ? require(file) : null;
 }
 
 /** Volto's message, its {placeholders} filled, as the editor shows it. */
@@ -1695,14 +1692,13 @@ function formatVoltoMessage(message, values = {}) {
   return message.defaultMessage.replace(/\{(\w+)\}/g, (whole, key) => (key in values ? String(values[key]) : whole));
 }
 
-async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
+async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loadVoltoValidation() } = {}) {
   const exempt = new Set(exemptSlots);
   const { buildBlockPathMap } = await import('@volto-hydra/helpers/buildBlockPathMap.js');
   const { normalizeSlateFields } = await import('@volto-hydra/helpers/slateStyles.js');
   const { createFieldRulesEnhancer } = await import('@volto-hydra/helpers/fieldRules.js');
   const { blockFieldErrors, registerRuleErrorValidators } = await import('@volto-hydra/helpers/blockFieldErrors.js');
-  const volto = loadVoltoValidation();
-  registerRuleErrorValidators(volto.config);
+  if (volto) registerRuleErrorValidators(volto.config);
   // A schemas file carries schemaEnhancer RECIPES (plain data), and
   // buildBlockPathMap runs only enhancer FUNCTIONS — in the admin, blockSync
   // turns recipes into functions at init. Do the same for `fieldRules`, with
@@ -1721,6 +1717,14 @@ async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
     items: 0, blocks: 0, misplaced: 0, overfull: 0, fieldErrors: 0, restyled: 0,
     ruleErrors: 0, ruleWarnings: 0,
   };
+  if (!volto) {
+    stats.fieldErrors = null;
+    stats.ruleErrors = null;
+    warnings.push(
+      `  Field values were not checked: Volto's validators are not built. Build them in Inka with ` +
+        "`pnpm build:volto-validation` to check what the Volto admin's save refuses.",
+    );
+  }
   // A LAYOUT document holds the blocks of the region that names it in
   // `allowedLayouts` (a site footer's blocks are the footer region's, not the
   // page content's), so it is held to that region's rules: its own `items` are
@@ -1797,7 +1801,7 @@ async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
       // (required, lengths, pattern, url, email, number limits, item counts)
       // and a fieldRules `error` — the save's own step, with Volto's own code.
       const lockedCopy = blockData && blockData.readOnly === true && !ownTemplate.has(blockData.templateId);
-      if (schema && schema.properties && blockData && !lockedCopy) {
+      if (volto && schema && schema.properties && blockData && !lockedCopy) {
         const refused = blockFieldErrors({
           schema,
           blockData,
@@ -1842,6 +1846,11 @@ async function checkEditorRules(source, schemas, { exemptSlots = [] } = {}) {
   return { errors, warnings, stats };
 }
 
+/** A count, or that the check did not run (null). */
+function checked(count, what) {
+  return count === null ? `${what} not checked` : `${count} ${what}`;
+}
+
 function formatReport(title, result) {
   const lines = [];
   if (title === 'schema') {
@@ -1858,8 +1867,8 @@ function formatReport(title, result) {
     lines.push(`Content: ${result.stats.items} items, ${result.stats.blocks} blocks`);
     lines.push(
       `Rules:   ${result.stats.misplaced} misplaced, ${result.stats.overfull} over maxLength, ` +
-        `${result.stats.fieldErrors} field errors, ${result.stats.restyled} disallowed styles, ` +
-        `${result.stats.ruleErrors} rule errors, ${result.stats.ruleWarnings} rule warnings`,
+        `${checked(result.stats.fieldErrors, 'field errors')}, ${result.stats.restyled} disallowed styles, ` +
+        `${checked(result.stats.ruleErrors, 'rule errors')}, ${result.stats.ruleWarnings} rule warnings`,
     );
   } else if (title === 'chooser') {
     lines.push(

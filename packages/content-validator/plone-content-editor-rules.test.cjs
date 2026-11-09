@@ -236,6 +236,25 @@ describe('checkEditorRules()', () => {
     assert.match(r.errors[0], /picture.*\(p1\).*alt/);
   });
 
+  describe("without Volto's validators", () => {
+    it('skips the field values, and says so', async () => {
+      const r = await checkEditorRules(page({ c: { '@type': 'card', description: 'D' } }, ['c']), SCHEMAS, {
+        volto: null,
+      });
+      assert.deepEqual(r.errors, []);
+      assert.equal(r.warnings.length, 1);
+      assert.match(r.warnings[0], /not checked/);
+      assert.equal(r.stats.fieldErrors, null);
+    });
+
+    it('still applies every other rule', async () => {
+      const value = [{ type: 'h3', children: [{ text: 'A heading this region does not allow' }] }];
+      const r = await checkEditorRules(page({ t: { '@type': 'text', value } }, ['t']), SCHEMAS, { volto: null });
+      assert.equal(r.errors.length, 1);
+      assert.match(r.errors[0], /h3/);
+    });
+  });
+
   describe('exempt slots', () => {
     // A template slot can hold blocks deliberately placed where the editor
     // would not put them — a design system's documentation showing a component

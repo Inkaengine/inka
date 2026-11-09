@@ -15,10 +15,12 @@
  *               the version mrs.developer.json pins.
  *   --registry  @plone/registry's entry module. Default: core/packages/registry/src/index.ts.
  *
- * Writes packages/content-validator/volto-validation.cjs (not committed: it is built, like core is
- * fetched). Five Volto files and a few lodash helpers; the pop-up messages and
- * react-intl, which field validation does not use, are stubs
- * (scripts/volto-validation/).
+ * Writes packages/content-validator/volto-validation.cjs. It is not committed, and not built on
+ * install: only a site edited in the Volto admin needs it, and without it the check skips the
+ * field values and says so. `pnpm test` and `pnpm test:api` build it first.
+ *
+ * Five Volto files and a few lodash helpers; the pop-up messages and react-intl, which field
+ * validation does not use, are stubs (scripts/volto-validation/).
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
