@@ -42,7 +42,7 @@ The same checks can run against your site, from your own repository. Two package
 
 Neither is published to npm yet. Add them from a checkout of the Inka repository (a git submodule, say) as members of your pnpm workspace, together with the Inka packages they depend on, and depend on them as `workspace:*` (see `pnpm-workspace.yaml` below). The Inka checkout needs no install of its own: the packages carry everything the test uses.
 
-`@inka/testing` takes `@playwright/test` as a peer, so your project depends on Playwright itself. A package linked from the checkout keeps its own dependencies inside the checkout, so every install that links it (yours, another workspace's, the Inka checkout's own) points them at its own copies, and the last one wins. If you also install the Inka checkout itself, to work on Inka, run your workspace's install after it; otherwise Playwright loads twice and stops with "Requiring @playwright/test second time".
+`@inka/testing` takes `@playwright/test` as a peer, so your project depends on Playwright itself, and pins it for the whole workspace with an override (see `pnpm-workspace.yaml` below). pnpm installs a workspace member's own peers for it separately, so without the override `@inka/testing` can get a different Playwright from your config's, and the run stops with "Requiring @playwright/test second time". A package linked from the checkout keeps its own dependencies inside the checkout, so every install that links it (yours, another workspace's, the Inka checkout's own) points them at its own copies, and the last one wins. If you also install the Inka checkout itself, to work on Inka, run your workspace's install after it; otherwise Playwright loads twice and stops with "Requiring @playwright/test second time".
 
 What the run needs:
 
@@ -63,6 +63,10 @@ packages:
   - inka/packages/blockmd
   - inka/packages/content-validator
   - inka/packages/testing
+
+overrides:
+  '@playwright/test': 1.61.0   # the version your project depends on
+  playwright: 1.61.0
 ```
 
 ### Playwright config
