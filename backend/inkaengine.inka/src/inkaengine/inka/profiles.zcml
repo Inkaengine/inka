@@ -10,15 +10,6 @@
       description="Package to configure a new Inka site"
       provides="Products.GenericSetup.interfaces.EXTENSION"
       directory="profiles/default"
-      post_handler=".upgrades.post_install"
-      />
-
-  <genericsetup:upgradeStep
-      title="Add the Template type; templates pages use become Templates"
-      profile="inkaengine.inka:default"
-      source="1000"
-      destination="1001"
-      handler=".upgrades.to_1001"
       />
 
   <genericsetup:registerProfile

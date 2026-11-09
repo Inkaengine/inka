@@ -9,6 +9,7 @@ from __future__ import annotations
 from inkaengine.inka.content_deploy import changeset as _imod
 from inkaengine.inka.content_deploy import classify as _mod
 from inkaengine.inka.content_deploy.classify import cleaned_for_compare
+from inkaengine.inka.content_deploy.classify import CompareRules
 
 import copy
 
@@ -447,7 +448,7 @@ def test_fields_the_site_cannot_round_trip_do_not_warn():
         tree(("news/x", base)),
         tree(("news/x", disk)),
         tree(("news/x", live)),
-        ignored_fields=frozenset({"Finding"}),
+        CompareRules(ignored_fields=frozenset({"Finding"})),
     )
     assert plan.actions_for("news/x") == Action.UPDATE
     assert plan.warnings == []
@@ -496,22 +497,22 @@ def test_parent_follows_from_the_path_and_is_not_content():
     assert _mod.content_key(with_parent) == _mod.content_key(without)
 
 
-def test_a_page_or_template_on_its_default_view_is_unset():
-    """Plone reports a page's default view as `layout: document_view`, and a
-    converted tree leaves the key out. A Template is a copy of Document with the
-    same default view, so a template whose upgrade gave it the type must not read
-    as an editor's edit. Another view is an editor's choice and still counts."""
-    for portal_type in ("Document", "Template"):
-        live = doc(
-            "templates/footer",
-            UID_X,
-            **{"@type": portal_type, "layout": "document_view"},
-        )
+def test_an_item_on_its_types_default_view_is_unset():
+    """Plone reports an item's default view as `layout: <default view>`, and a
+    converted tree leaves the key out. That holds for any type the site has,
+    its own included, by the default view the site gives it. Another view is
+    an editor's choice and still counts."""
+    rules = CompareRules(
+        default_views={"Document": "document_view", "SiteOwnType": "own_view"}
+    )
+    for portal_type, default in (
+        ("Document", "document_view"),
+        ("SiteOwnType", "own_view"),
+    ):
+        live = doc("templates/footer", UID_X, **{"@type": portal_type, "layout": default})
         disk = doc("templates/footer", UID_X, **{"@type": portal_type})
-        assert cleaned_for_compare(live) == cleaned_for_compare(disk), portal_type
+        assert cleaned_for_compare(live, rules) == cleaned_for_compare(disk, rules)
         chosen = doc(
-            "templates/footer",
-            UID_X,
-            **{"@type": portal_type, "layout": "summary_view"},
+            "templates/footer", UID_X, **{"@type": portal_type, "layout": "summary_view"}
         )
-        assert cleaned_for_compare(chosen) != cleaned_for_compare(disk), portal_type
+        assert cleaned_for_compare(chosen, rules) != cleaned_for_compare(disk, rules)

@@ -262,3 +262,39 @@ def test_a_page_that_moves_into_a_new_folder_and_changes_is_refused(
     transaction.abort()
     assert portal["page"].title == "Before"
     assert "new-folder" not in portal
+
+
+def test_an_item_of_a_sites_own_type_on_its_default_view_is_not_an_edit(
+    functional, tmp_path
+):
+    """A site adds a type of its own and moves pages onto it in place. Plone
+    reports the page's view as its type's default; the layout has no view.
+    Changing the page then is an update, not a clobber of an editor's edit."""
+    portal = functional["portal"]
+    types = portal.portal_types
+    with api.env.adopt_roles(["Manager"]):
+        types.manage_pasteObjects(types.manage_copyObjects(["Document"]))
+        types.manage_renameObject("copy_of_Document", "SiteOwnType")
+        types["SiteOwnType"].manage_changeProperties(factory="SiteOwnType")
+        api.content.create(
+            container=portal, type="SiteOwnType", id="page", title="Before"
+        )
+    transaction.commit()
+    with api.env.adopt_roles(["Manager"]):
+        live = serialize_live_candidates(
+            portal, functional["request"], {}, {}, extra=("page",)
+        )
+    assert live["page"]["layout"] == "document_view"
+    # The layout as a conversion writes it: everything live has, but no view.
+    before = {k: v for k, v in live["page"].items() if k != "layout"}
+    base = write_layout(tmp_path / "layout-prev", {"root": ROOT, "page": before})
+    layout = write_layout(
+        tmp_path / "layout", {"root": ROOT, "page": {**before, "title": "After"}}
+    )
+
+    with api.env.adopt_roles(["Manager"]):
+        report = run_delta(
+            portal, functional["request"], layout, base, commit=False, debug=True
+        )
+    assert report["clobber_warnings"] == [], report.get("debug")
+    assert report["plan"]["updates"] == ["page"]
