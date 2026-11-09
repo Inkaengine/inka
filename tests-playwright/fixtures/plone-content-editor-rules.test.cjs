@@ -420,6 +420,26 @@ describe('checkReservedFields()', () => {
     assert.equal(r.errors.length, 3);
   });
 
+  // Inka's own bookkeeping, also stored on the block: the words it indexes,
+  // the text it labels a block by, copy-from-target's record, the bridge's
+  // anchors, and the block's identity.
+  it("reports a field named for Inka's own bookkeeping", () => {
+    const r = checkReservedFields({
+      a: { blockSchema: { properties: { searchableText: {}, plaintext: {}, _pullFrom: {} } } },
+      b: { blockSchema: { properties: { _customFields: {}, _linkableAnchors: {}, '@uid': {} } } },
+    });
+    assert.equal(r.errors.length, 6);
+    assert.match(r.errors.join('\n'), /a: field "searchableText" is a key Inka keeps on every block/);
+    assert.match(r.errors.join('\n'), /b: field "@uid" is a key Inka keeps on every block/);
+  });
+
+  it('passes the fields a block may declare though content carries them undeclared', () => {
+    const r = checkReservedFields({
+      x: { blockSchema: { properties: { variation: {}, styles: {}, value: {}, required: {}, blocks: {} } } },
+    });
+    assert.deepEqual(r.errors, []);
+  });
+
   it('ignores an entry that is not a block config', () => {
     const r = checkReservedFields({ _page: { fixed: true }, notABlock: {} });
     assert.deepEqual(r.errors, []);
