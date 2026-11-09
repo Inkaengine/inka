@@ -24,6 +24,10 @@ defaults:
 # and those keep working.
 env:
   HYDRA_PORT_BASE: 8888
+  # The docs' screenshots and demo video are generated in the parent repo's
+  # deploy, not here (docs/.gitignore), so only they may fail to load; every
+  # other image and video must (PageIntegrityHelper.isAbsentAsset).
+  ABSENT_ASSETS: /docs/images/*.png /docs/static/hydra-demo.mp4 /docs/_static/hydra-demo.mp4
 
 jobs:
   # ── Build Volto and upload artifact ──────────────────────────────────────
@@ -102,6 +106,9 @@ jobs:
           # video narrates ("Nuxt blog", "F7 Mobile") and give F7 its hash-router
           # suffix so the switch lands on a rendered page, not a blank one.
           RAZZLE_DEFAULT_IFRAME_URL: "Test frontend|http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},Nuxt blog|http://localhost:${{ env.HYDRA_NUXT_PORT }},http://localhost:${{ env.HYDRA_REACT_DOC_PORT }},http://localhost:${{ env.HYDRA_VUE_DOC_PORT }},http://localhost:${{ env.HYDRA_SVELTE_DOC_PORT }},http://localhost:${{ env.HYDRA_NEXTJS_PORT }},F7 Mobile|http://localhost:${{ env.HYDRA_F7_PORT }}/#!"
+          # Where "Make template" saves a new template, and as what type.
+          RAZZLE_TEMPLATES_PATH: /templates
+          RAZZLE_TEMPLATE_TYPE: Template
           VOLTOCONFIG: ${{ github.workspace }}/volto.config.js
       - name: Upload Volto build
         uses: actions/upload-artifact@v4
@@ -238,12 +245,6 @@ jobs:
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
-          # The editor screenshots the docs embed are git-ignored and generated
-          # in the PARENT repo's deploy now, not recorded here — so they are
-          # legitimately absent in this checkout. Skip page-integrity's
-          # broken-image assertion (its link checks still run, so a typo'd path
-          # is still caught); see PageIntegrityHelper.skipBrokenImages.
-          SKIP_BROKEN_IMAGE_CHECK: true
           DISCOVER_BLOCKS_API: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           # Discovery needs a frontend: without one it is type-only, container
           # regions are invisible, and the schema-dependent checks measure less
@@ -348,6 +349,7 @@ jobs:
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template \
             RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           sleep 3
@@ -471,6 +473,7 @@ jobs:
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template \
             RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           (cd examples/hydra-nextjs && pnpm run start:test) &
@@ -605,12 +608,6 @@ jobs:
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
-          # The editor screenshots the docs embed are git-ignored and generated
-          # in the PARENT repo's deploy now, not recorded here — so they are
-          # legitimately absent in this checkout. Skip page-integrity's
-          # broken-image assertion (its link checks still run, so a typo'd path
-          # is still caught); see PageIntegrityHelper.skipBrokenImages.
-          SKIP_BROKEN_IMAGE_CHECK: true
           DISCOVER_BLOCKS_API: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           FRONTEND_URL: http://localhost:${{ env.HYDRA_NUXT_PORT }}
           # Discovery reads the frontend's INIT through mock-parent. Without it
@@ -722,6 +719,7 @@ jobs:
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template \
             RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
@@ -873,12 +871,6 @@ jobs:
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
-          # The editor screenshots the docs embed are git-ignored and generated
-          # in the PARENT repo's deploy now, not recorded here — so they are
-          # legitimately absent in this checkout. Skip page-integrity's
-          # broken-image assertion (its link checks still run, so a typo'd path
-          # is still caught); see PageIntegrityHelper.skipBrokenImages.
-          SKIP_BROKEN_IMAGE_CHECK: true
           # Without this, discovery never runs here, so block-sanity and
           # page-integrity found no .discovered-blocks.json and skipped — the
           # nextjs project is inside block-sanity's own scope, so it had simply

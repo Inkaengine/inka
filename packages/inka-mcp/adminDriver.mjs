@@ -21,6 +21,8 @@ export async function openAdmin(page, { adminUrl }) {
 
 /** The admin page a session waits on between calls: the site's contents, no editor. */
 const PARKED = '/contents';
+/** How long the admin must stay parked to count: a frame's last word takes one render to land. */
+const PARKED_FOR_MS = 250;
 
 /** Move the admin to `path` as its own links do, without loading it afresh. */
 async function goTo(page, path) {
@@ -79,10 +81,24 @@ export async function openForEdit(page, { path }) {
  * holds the page (a locked page can't be moved or deleted).
  */
 export async function park(page) {
-  await goTo(page, PARKED);
-  await page.waitForFunction(() => !window.__inkaAgent && !!window.__inkaSite, null, { timeout: READY_MS });
-  const held = locksOf(page);
   const deadline = Date.now() + READY_MS;
+  // Until it has stayed there. A front end's frame on the way out can still say
+  // where it is, and the admin follows it back (an Image's view, just made):
+  // leaving it there would hold up whatever the next call opens.
+  let parkedSince = null;
+  await goTo(page, PARKED);
+  while (parkedSince === null || Date.now() - parkedSince < PARKED_FOR_MS) {
+    const { there, parked } = await page.evaluate((path) => ({
+      there: window.location.pathname === path,
+      parked: !window.__inkaAgent && !!window.__inkaSite,
+    }), PARKED);
+    if (!there) await goTo(page, PARKED);
+    if (there && parked) parkedSince ??= Date.now();
+    else parkedSince = null;
+    if (Date.now() > deadline) throw new Error(`the admin did not stay on ${PARKED} within ${READY_MS / 1000}s (it is on ${new URL(page.url()).pathname})`);
+    await page.waitForTimeout(50);
+  }
+  const held = locksOf(page);
   while (held.size) {
     if (Date.now() > deadline) throw new Error(`the editor did not let go of ${[...held].join(', ')}`);
     await page.waitForTimeout(50);
@@ -143,8 +159,13 @@ export async function createPage(page, { parent, type, title, file }) {
   const response = outcome.response;
   const url = (await response.json())['@id'];
   const path = new URL(url).pathname;
-  // An item that is a file has no blocks, and so no editor to go on to.
-  if (file) return { path, url };
+  // An item that is a file has no blocks, and so no editor to go on to: the
+  // admin goes to its view. Wait for that, or a move made next (back to the
+  // parked page) is undone when the admin's own arrives.
+  if (file) {
+    await page.waitForURL((at) => at.pathname === path, { timeout: READY_MS });
+    return { path, url };
+  }
   await page.waitForURL((at) => at.pathname === `${path}/edit`, { timeout: READY_MS });
   await waitForAgent(page);
   return { path, url };
@@ -158,11 +179,20 @@ export async function createPage(page, { parent, type, title, file }) {
 async function chooseFile(page, type, file) {
   // A file field's input comes with its drop area, which loads on its own
   // (loadable react-dropzone) after the form: wait for every required field's.
-  await page.waitForFunction(
-    () => [...document.querySelectorAll('.field.required')].every((field) => field.querySelector('input, textarea, select')),
-    null,
-    { timeout: READY_MS },
-  );
+  const unready = () => [...document.querySelectorAll('.field.required')]
+    .filter((field) => !field.querySelector('input, textarea, select'))
+    .map((field) => field.className);
+  try {
+    await page.waitForFunction(
+      () => document.querySelectorAll('.field.required').length > 0
+        && [...document.querySelectorAll('.field.required')].every((field) => field.querySelector('input, textarea, select')),
+      null,
+      { timeout: READY_MS },
+    );
+  } catch (error) {
+    if (error.name !== 'TimeoutError') throw error;
+    throw new Error(`create_page: the add form's required fields never drew their inputs (at ${page.url()}): ${JSON.stringify(await page.evaluate(unready))}`, { cause: error });
+  }
   const inputs = page.locator('.field.required input[type="file"]');
   const count = await inputs.count();
   if (count !== 1) {
@@ -248,5 +278,11 @@ export function siteOn(page) {
     move: (op) => call('move', op),
     rename: (op) => call('rename', op),
     remove: (path) => call('remove', path),
+    state: (path) => call('state', path),
+    stateForms: (path) => call('stateForms', path),
+    transition: (op) => call('transition', op),
+    draftOf: (path) => call('draftOf', path),
+    pagesWithDrafts: () => call('pagesWithDrafts'),
+    adminUrl: (path) => call('adminUrl', path),
   };
 }

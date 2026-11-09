@@ -572,7 +572,7 @@ Each operator is driven by the field's **declared type**, never the value shape.
 | surface | fields | operators |
 | --- | --- | --- |
 | **string** | text, textarea, url, Choice, **slate** (its plaintext) | `is`/`isNot`, `isSet`, `oneOf`/`notOneOf`, `contains`/`notContains` = **substring**, `regex`/`notRegex` |
-| **number** | integer, float, number | `is`/`isNot`, `oneOf`, `isSet`, `gt`/`gte`/`lt`/`lte` = compare |
+| **number** | integer, float, number, `<field>@chars` / `<field>@words` (its text's [length](#how-long-the-text-is)) | `is`/`isNot`, `oneOf`, `isSet`, `gt`/`gte`/`lt`/`lte` = compare |
 | **boolean** | boolean | `is`/`isNot`, `isSet` |
 | **array** | multiselect (its values), **region** (its child block **types**) | `isSet`, `is`/`isNot` = **set-equality**, `contains`/`notContains` = membership, `containsAny`/`containsAll` (+inverses), `gt`/`gte`/`lt`/`lte` = **count** |
 
@@ -814,6 +814,29 @@ fieldRules: {
 
 Without a block path map and the page's data (the generic schema pass), these fields are unset.
 
+### How long the text is
+
+Two more virtual fields measure a field's text, as a `number` surface, so `gt`, `gte`, `lt` and `lte` work on them:
+
+- **`<field>@chars`** — its text's length in characters.
+- **`<field>@words`** — its length in words.
+
+A text, textarea or slate field is measured whole: a textarea's line breaks count, and slate's paragraphs are a space apart. A **region** — a `blocks_layout` or an `object_list` — is measured as the text of everything in it, at any depth, a space between blocks. That text is a block's text as search reads it (see [Search text](#search-text)): the fields a person writes, so an image's URL or a token field is not counted, nor is text a locked template block owns. An empty field or region is `0`. A region needs the block path map to find what is in it, so in the generic schema pass its length is unset and no comparison holds.
+
+Use it for advice on length — a design system's "keep it under 170 characters" — on a field or on a whole region:
+
+### Javascript
+
+```javascript
+fieldRules: {
+    heading: { when: { 'heading@chars': { gt: 50 } },
+               warning: 'A heading should be short: 50 characters at most.' },
+    // A region of paragraphs, counted together.
+    intro: { when: { 'intro@chars': { gt: 170 } },
+             warning: 'An intro should be short: 170 characters at most in total.' },
+}
+```
+
 **Worked examples:** two blocks in the reference carry rules for their own reasons — the [Teaser Block](../examples/teaser.md) has nothing to ask for while it borrows the linked page's wording (`overwrite` off), and the [Image Block](../examples/image-block.md) offers no size for a full-width image, written as a list of rules with a bare `false` as the catch-all.
 
 ## Block conversion and fieldMappings
@@ -1034,3 +1057,22 @@ When a parent block has `mappingField` set in its `inheritSchemaFrom` recipe, th
 - Saves the result as `fieldMapping` (singular) on the block data.
 
 The saved `fieldMapping` is read at render time by `expandListingBlocks` — no block registry access needed at render time.
+
+## Search text
+
+A page is found by the text of its blocks. When the page is saved, Inka stores each block's text as its `searchableText`, which plone.restapi's indexer reads. It visits a block's `blocks` and `data.blocks` itself, so a block carries only its own text, plus whatever that visit can't reach: object lists, such as table cells and form questions, and regions in any other object. Search text belongs to the page, so a block a template owns (`fixed` and `readOnly`) gets none.
+
+A block's own text is the fields a person writes, in schema order: fields with no widget or a `text`, `textarea` or `slate` widget, with no fixed set of choices and not marked `multilingual_options.language_independent`. Mark a plain string that holds a token, such as a width or an anchor, with that flag. A field its `fieldRules` hide is left out. If another order suits your block, or its text is in a picked item's title or a list of strings, name its fields:
+
+### Javascript
+
+```javascript
+const initBlocks = {
+  card: {
+    searchableFields: ['title', 'description'],
+    // ...
+  },
+};
+```
+
+Content that never passes through the editor, such as an import, has no `searchableText` until it's saved. To fill it, run `plone-content search-text <content-dir> --schemas <schemas>` over the content before importing it.

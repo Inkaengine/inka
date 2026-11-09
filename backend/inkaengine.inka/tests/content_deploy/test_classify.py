@@ -494,3 +494,24 @@ def test_parent_follows_from_the_path_and_is_not_content():
     with_parent = {"@id": "/videos/v", "title": "V", "parent": {"@id": "/videos"}}
     without = {"@id": "/videos/v", "title": "V"}
     assert _mod.content_key(with_parent) == _mod.content_key(without)
+
+
+def test_a_page_or_template_on_its_default_view_is_unset():
+    """Plone reports a page's default view as `layout: document_view`, and a
+    converted tree leaves the key out. A Template is a copy of Document with the
+    same default view, so a template whose upgrade gave it the type must not read
+    as an editor's edit. Another view is an editor's choice and still counts."""
+    for portal_type in ("Document", "Template"):
+        live = doc(
+            "templates/footer",
+            UID_X,
+            **{"@type": portal_type, "layout": "document_view"},
+        )
+        disk = doc("templates/footer", UID_X, **{"@type": portal_type})
+        assert cleaned_for_compare(live) == cleaned_for_compare(disk), portal_type
+        chosen = doc(
+            "templates/footer",
+            UID_X,
+            **{"@type": portal_type, "layout": "summary_view"},
+        )
+        assert cleaned_for_compare(chosen) != cleaned_for_compare(disk), portal_type

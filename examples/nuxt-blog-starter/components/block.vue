@@ -31,10 +31,10 @@
                @nuxt/image emitting one URL at every width — the browser then
                downloads the full-size file on every viewport. -->
           <NuxtImg data-edit-media="url" :src="props.url" :srcset="props.srcset || undefined"
-                   :sizes="props.sizes || undefined" :width="props.width" :alt="block.alt" />
+                   :sizes="imageSizes(props)" :width="props.width" :alt="block.alt" />
         </a>
         <NuxtImg v-else data-edit-media="url" data-edit-link="href" :src="props.url"
-                 :srcset="props.srcset || undefined" :sizes="props.sizes || undefined"
+                 :srcset="props.srcset || undefined" :sizes="imageSizes(props)"
                  :width="props.width" :alt="block.alt" />
       </template>
       <img v-else-if="isInListing" data-edit-media="url" src="/placeholder.svg"
@@ -104,7 +104,7 @@
               <template v-for="item in items" :key="item['@uid']">
                 <template v-if="item.readOnly"><!-- hydra block-readonly --></template>
                 <Block :block_uid="item['@uid']" :block="item" :data="data" :contained="true" :is-in-listing="true"
-                       class="grid-cell p-4"
+                       :slot-sizes="gridCellSizes(block)" class="grid-cell p-4"
                        :style="!block.styles?.backgroundColor ? { backgroundColor: '#f1f5f9' } : {}" />
               </template>
             </template>
@@ -116,7 +116,7 @@
         <!-- Static child: filtered by paging window -->
         <template v-else v-for="item in entry.items" :key="item['@uid']">
           <Block :block_uid="item['@uid']" :block="item" :data="data" :contained="true"
-                 class="grid-cell p-4"
+                 :slot-sizes="gridCellSizes(block)" class="grid-cell p-4"
                  :style="!block.styles?.backgroundColor ? { backgroundColor: '#f1f5f9' } : {}" />
         </template>
       </template>
@@ -1022,11 +1022,19 @@ const props = defineProps({
   isInListing: {
     type: Boolean,
     default: false,
-  }
+  },
+  // How wide this block is drawn at each breakpoint, as NuxtImg `sizes`, from
+  // the container that lays it out. Without it an image guesses a third of
+  // the screen, and a cell of a four-column grid downloads three times the
+  // pixels it paints.
+  slotSizes: {
+    type: String,
+    default: '',
+  },
 });
 
 // Use toRefs to maintain reactivity (destructuring props directly can lose reactivity in Vue 3)
-const { block_uid, block, data, contained, apiUrl, isInListing } = toRefs(props);
+const { block_uid, block, data, contained, apiUrl, isInListing, slotSizes } = toRefs(props);
 
 const placeholderImage = '/placeholder.svg';
 
@@ -1380,6 +1388,26 @@ const responsiveColsClass = (count) => {
 };
 
 const gridColsClass = (block) => responsiveColsClass(block.blocks_layout?.items?.length);
+
+// The page's content column (pages/[...slug].vue: px-4 inside max-w-4xl) and a
+// grid cell's gap-4 and p-4, which gridCellSizes measures a cell from.
+const CONTENT_MAX = 896;
+const GAP = 16;
+const CELL_PADDING = 32;
+
+// NuxtImg `sizes` for a grid cell, following responsiveColsClass column by
+// column: one column on a phone, then up to 2 (sm), 3 (md) and the real count
+// (lg). From lg the content column is at its 896px cap, so the cell's width is
+// exact; below it a share of the screen, which never undershoots.
+const gridCellSizes = (block) => {
+  const cols = Math.min(block.blocks_layout?.items?.length || 4, 4);
+  const cell = Math.floor((CONTENT_MAX - (cols - 1) * GAP) / cols) - CELL_PADDING;
+  return `100vw sm:${Math.ceil(100 / Math.min(cols, 2))}vw md:${Math.ceil(100 / Math.min(cols, 3))}vw lg:${cell}px`;
+};
+
+// An image's `sizes`: the slot it is drawn in when its container says, or the
+// page-wide default imageProps gives a responsive image.
+const imageSizes = (props) => (props.sizes && slotSizes.value) || props.sizes || undefined;
 
 // Helper to extract YouTube video ID from various URL formats
 const getYouTubeId = (url) => {

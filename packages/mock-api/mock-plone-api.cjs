@@ -242,6 +242,15 @@ function lockOn(path) {
   return locks[path];
 }
 
+/**
+ * plone.app.iterate's lock on a page with a copy out, for as long as it is out,
+ * per session like the copy. Its rules are plone.locking's: lock() leaves a locked
+ * page as it is, @lock's DELETE can't remove a lock of another type, and a save
+ * must carry its token.
+ */
+const sessionIterateLocks = {};
+const iterateLockOn = (path, sessionId) => sessionIterateLocks[sessionId]?.[path];
+
 /** Is `path` locked by someone other than the user making `req`? */
 function lockedAgainst(req, path) {
   const lock = lockOn(path);
@@ -336,6 +345,8 @@ function setSessionContent(sessionId, urlPath, content) {
     sessionContent[sessionId] = {};
   }
   sessionContent[sessionId][urlPath] = content;
+  // Written again after a delete, it exists again.
+  sessionDeletions[sessionId]?.delete(urlPath);
 }
 
 /**
@@ -628,8 +639,10 @@ function transformBlobPaths(content, fullUrl) {
 
 /**
  * Generate placeholder image_scales for search results
- * Mimics Plone's image_scales structure - uses relative @@images paths
- * The mock server's @@images/* endpoint serves SVG placeholders
+ * Mimics Plone's image_scales structure - uses relative @@images paths.
+ * The metadata is invented, the bytes are not: @@images/* serves the item's own
+ * file (`<item>/<field>/`) and 404s without one, so an item listed with these
+ * scales must have that file.
  */
 function getPlaceholderImageScales(title, fieldName = 'image') {
   // Use a hash based on title for consistent URLs
@@ -705,8 +718,8 @@ function searchableTextOperations() {
  * match only where the reader typed `*`. Contrast `contains`, whose munging
  * turns every word into a required prefix (matchSearchableText below).
  */
-function matchRawSearch(searchTerm, item) {
-  const text = [item.title, item.description, item.id]
+function matchRawSearch(searchTerm, item, blocksText = '') {
+  const text = [item.title, item.description, item.id, blocksText]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
@@ -750,19 +763,28 @@ function matchSearchableText(searchTerm, item, blocksText = '') {
 
 /**
  * The text of a page's blocks, as plone.restapi's blocks indexer adds it to
- * SearchableText: every Text (slate) value, in containers too. (Other block
- * types are indexed only where a site registers an indexer for them.)
+ * SearchableText (plone/restapi/indexers.py, blocks.py). It visits the blocks in a block's
+ * `blocks` and `data.blocks`, children first, listed in a layout or not, and takes each
+ * one's `searchableText`, else a Text block's `plaintext`. So object lists are not visited,
+ * and other block types are found only by `searchableText`. A real save writes `plaintext`
+ * from `value`; here `value` is read directly, which is what that would be.
+ * test_search_text.py holds real Plone to the same cases (search-text-cases.json).
  */
 function blocksSearchableText(blocks) {
   const texts = [];
-  const isSlate = (v) => Array.isArray(v) && v.length > 0 && v.every((n) => n && typeof n === 'object' && Array.isArray(n.children));
-  const slateText = (nodes) => nodes.map((n) => (typeof n.text === 'string' ? n.text : '') + slateText(n.children || [])).join(' ');
-  const walk = (v) => {
-    if (isSlate(v)) texts.push(slateText(v));
-    else if (Array.isArray(v)) v.forEach(walk);
-    else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  const slateText = (nodes) =>
+    nodes.map((n) => (typeof n?.text === 'string' ? n.text : '') + slateText(n?.children || [])).join(' ');
+  const isMap = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  const visit = (block) => {
+    if (!isMap(block)) return;
+    if (isMap(block.data?.blocks)) Object.values(block.data.blocks).forEach(visit);
+    if (isMap(block.blocks)) Object.values(block.blocks).forEach(visit);
+    if (block.searchableText) texts.push(block.searchableText);
+    else if (block['@type'] === 'slate') {
+      texts.push(Array.isArray(block.value) ? slateText(block.value) : block.plaintext || '');
+    }
   };
-  walk(blocks);
+  Object.values(blocks || {}).forEach(visit);
   return texts.join(' ');
 }
 
@@ -914,6 +936,7 @@ function formatSearchItem(content, baseUrl) {
     'title': content.title,
     'description': content.description || '',
     'review_state': content.review_state || 'published',
+    'is_working_copy': content.is_working_copy === true,
     'UID': content.UID,
     'is_folderish': content.is_folderish !== undefined ? content.is_folderish : true,
     'hasPreviewImage': hasPreviewImage,
@@ -1517,9 +1540,13 @@ function buildActionsComponent(cleanPath, baseUrl, sessionId) {
       ...(isRoot ? [] : [action('redirection', 'URL Management', `${fullUrl}/@@manage-aliases`)]),
       // plone.app.iterate's, and the ids Volto gates its working-copy buttons
       // on. NOT in actions_get.resp, which records a site without it.
+      // A page with a copy out offers neither: only its copy can be checked in.
       ...(workingCopyOf(cleanPath, sessionId)
         ? [action('iterate_checkin', 'Check in', `${fullUrl}/@@content-checkin`)]
-        : [action('iterate_checkout', 'Check out', `${fullUrl}/@@content-checkout`)]),
+        : []),
+      ...(!workingCopyOf(cleanPath, sessionId) && !copyOutOf(cleanPath, sessionId)
+        ? [action('iterate_checkout', 'Check out', `${fullUrl}/@@content-checkout`)]
+        : []),
     ],
     portal_tabs: [],
     site_actions: [
@@ -1733,6 +1760,12 @@ const sessionWorkingCopies = {};
 
 function workingCopyOf(cleanPath, sessionId) {
   return sessionWorkingCopies[sessionId]?.[cleanPath] ?? null;
+}
+
+/** The working copy checked out of `cleanPath`, or null. */
+function copyOutOf(cleanPath, sessionId) {
+  const copies = Object.entries(sessionWorkingCopies[sessionId] ?? {});
+  return copies.find(([, baseline]) => baseline === cleanPath)?.[0] ?? null;
 }
 
 function noRoles() {
@@ -2375,8 +2408,17 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
   const isFolderish = transformed.is_folderish !== undefined ? transformed.is_folderish : true;
   const childItems = isFolderish ? getFolderChildItems(cleanPath, baseUrl) : [];
 
+  // As plone.restapi's serializer has them, and Volto's toasts read them: a page
+  // with a copy out names it; the copy names itself and what it is a copy of.
+  const copyOut = copyOutOf(cleanPath, sessionId);
+  const copyOf = workingCopyOf(cleanPath, sessionId);
+  const workingCopyFields = {
+    working_copy: copyOut || copyOf ? { '@id': `${baseUrl}${copyOut || cleanPath}` } : null,
+    working_copy_of: copyOf ? { '@id': `${baseUrl}${copyOf}` } : null,
+  };
   const enriched = {
     ...transformed,
+    ...workingCopyFields,
     '@id': fullUrl,
     'UID': transformed.UID || `${transformed.id || urlPath.replace(/\//g, '-')}-uid`,
     'review_state': transformed.review_state || 'published',
@@ -2385,7 +2427,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     'exclude_from_nav': transformed.exclude_from_nav || false,
     'created': transformed.created || '2025-01-01T12:00:00+00:00',
     'modified': transformed.modified || '2025-01-01T12:00:00+00:00',
-    'lock': lockOn(cleanPath) || transformed.lock || UNLOCKED,
+    'lock': iterateLockOn(cleanPath, sessionId) || lockOn(cleanPath) || transformed.lock || UNLOCKED,
     'parent': parent,
     // Plone serialises `language` as a vocabulary term, never the bare code a
     // fixture writes — and Volto reads `content.language.token` throughout its
@@ -3854,7 +3896,8 @@ app.post('/*', (req, res, next) => {
     return res.status(201).json(fileContent);
   }
 
-  if (contentType === 'Document') {
+  // A Template is a Document under another name (Inka's backend copies Document's type).
+  if (contentType === 'Document' || contentType === 'Template') {
     // Plone populates server-side fields (UID, created, modified,
     // effective, review_state, etc.) on create — the client only sends
     // title, blocks, blocks_layout (and an optional id, e.g. for
@@ -3869,7 +3912,7 @@ app.post('/*', (req, res, next) => {
     const now = new Date().toISOString();
     const baseUrl = `http://localhost:${PORT}`;
     const rawDoc = {
-      '@type': 'Document',
+      '@type': contentType,
       id,
       ...postedFields(body),
       title: body.title || id,
@@ -4576,18 +4619,60 @@ app.post(/.*\/@workingcopy$/, (req, res) => {
   const id = segments.pop();
   const copyPath = [...segments, `copy_of_${id}`].join('/') || '/';
 
-  setSessionContent(sessionId, copyPath, { ...content, id: `copy_of_${id}` });
+  // A copy goes through the workflow from its start, whatever its original's
+  // state: visitors can't see it, while the published original stays put.
+  setSessionContent(sessionId, copyPath, { ...content, id: `copy_of_${id}`, review_state: 'private', workflow_history: {}, is_working_copy: true });
   if (!sessionWorkingCopies[sessionId]) sessionWorkingCopies[sessionId] = {};
   sessionWorkingCopies[sessionId][copyPath] = cleanPath;
+  const time = Date.now() / 1000;
+  sessionIterateLocks[sessionId] = {
+    ...sessionIterateLocks[sessionId],
+    [cleanPath]: {
+      locked: true,
+      stealable: false,
+      name: 'iterate.lock',
+      creator: requestUser(req),
+      creator_name: requestUser(req),
+      creator_url: `${req.protocol}://${req.get('host')}/author/${requestUser(req)}`,
+      time,
+      created: new Date(Math.floor(time) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      token: `mock-iterate-lock-${Math.random().toString(36).slice(2)}`,
+      timeout: 31557600,
+    },
+  };
 
   res.status(201).json({ '@id': `http://localhost:${PORT}${copyPath}` });
 });
 
+// The relation catalog, as plone.restapi's @relations answers it for one kind.
+// plone.app.iterate's working copies are the only relations this mock keeps.
+app.get('*/@relations', (req, res) => {
+  const name = req.query.relation;
+  const sessionId = getSessionId(req);
+  const summary = (path) => {
+    const content = getContent(path, sessionId);
+    return {
+      '@id': `http://localhost:${PORT}${path}`,
+      '@type': content['@type'],
+      title: content.title,
+      description: content.description || '',
+      review_state: content.review_state || 'published',
+      UID: content.UID,
+    };
+  };
+  const items = name === 'iterate-working-copy'
+    ? Object.entries(sessionWorkingCopies[sessionId] ?? {}).map(([copy, baseline]) => ({ source: summary(baseline), target: summary(copy) }))
+    : [];
+  res.json({ relations: { [name]: { items, items_total: items.length } } });
+});
+
 app.get(/.*\/@workingcopy$/, (req, res) => {
   const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@workingcopy$/, '') || '/').replace(/\/+$/, '') || '/';
-  const baseline = workingCopyOf(cleanPath, getSessionId(req));
+  const sessionId = getSessionId(req);
+  const baseline = workingCopyOf(cleanPath, sessionId);
+  const copy = copyOutOf(cleanPath, sessionId);
   res.json({
-    working_copy: null,
+    working_copy: copy ? { '@id': `http://localhost:${PORT}${copy}` } : null,
     working_copy_of: baseline ? { '@id': `http://localhost:${PORT}${baseline}` } : null,
   });
 });
@@ -4602,6 +4687,15 @@ function endWorkingCopy(req, res) {
     });
   }
   delete sessionWorkingCopies[sessionId][cleanPath];
+  delete sessionIterateLocks[sessionId]?.[baseline];
+
+  // Checking in (PATCH) puts what the copy holds on the original, which keeps
+  // its own address, state and trail. Discarding (DELETE) leaves it as it was.
+  if (req.method === 'PATCH') {
+    const original = getContent(baseline, sessionId);
+    const { id: _id, review_state: _state, workflow_history: _trail, is_working_copy: _copy, ...held } = getContent(cleanPath, sessionId);
+    setSessionContent(sessionId, baseline, { ...original, ...held, modified: new Date().toISOString() });
+  }
 
   // The copy stops existing. Applying it merges it into the baseline and
   // discarding it throws it away — either way there is no document left at
@@ -4611,9 +4705,8 @@ function endWorkingCopy(req, res) {
   if (!sessionDeletions[sessionId]) sessionDeletions[sessionId] = new Set();
   sessionDeletions[sessionId].add(cleanPath);
 
-  res.json({
-    working_copy_of: { '@id': `http://localhost:${PORT}${baseline}` },
-  });
+  // Plone answers neither with a body.
+  res.status(204).end();
 }
 
 app.patch(/.*\/@workingcopy$/, endWorkingCopy);
@@ -5304,14 +5397,21 @@ app.post('*/@querystring-search', (req, res) => {
       (operation.includes('string.contains') ||
         operation.includes('string.search'))
     ) {
-      // Full-text search across title/description/id. `contains` mirrors
+      // Full-text search across title/description/id and the blocks' text, as the
+      // catalog has it for this session. `contains` mirrors
       // Plone 6.2's plone.app.querystring 3.0.0 munging — each word must
       // prefix-match a word token. `search` exists only in fork mode (see
       // searchableTextOperations; stock mode 400s it above) and keeps the raw
       // term's operators (matchRawSearch).
       if (value) {
         const matches = operation === TEXT_SEARCH ? matchRawSearch : matchSearchableText;
-        allItems = allItems.filter((item) => matches(value, item));
+        allItems = allItems.filter((item) =>
+          matches(
+            value,
+            item,
+            blocksSearchableText(getContent(new URL(item['@id']).pathname, getSessionId(req))?.blocks),
+          ),
+        );
       }
     } else if (index === 'Title' && operation.includes('string.contains')) {
       // The Title index is its own catalog index, distinct from SearchableText.
@@ -5489,7 +5589,8 @@ app.get('*/@search', (req, res) => {
   // block_types: plone.volto's KeywordIndex of every block's @type on a page,
   // container children included.
   const blockTypes = req.query.block_types === undefined ? null : [req.query.block_types].flat();
-  if (searchableText || titleQuery || blockTypes) {
+  const reviewStates = req.query.review_state === undefined ? null : [req.query.review_state].flat();
+  if (searchableText || titleQuery || blockTypes || reviewStates) {
     // The site as this session has it, as Plone's catalog does: its own new
     // and edited pages included, by the text in their blocks too.
     items = allContentPaths(getSessionId(req))
@@ -5517,6 +5618,8 @@ app.get('*/@search', (req, res) => {
       const types = Array.isArray(portalType) ? portalType : [portalType];
       items = items.filter((item) => types.includes(item['@type']));
     }
+    // The catalog indexes review_state, so a search can be by that alone.
+    if (reviewStates) items = items.filter((item) => reviewStates.includes(item.review_state));
   }
   // Handle path.query with path.depth=0 (exact match for specific content)
   else
@@ -6162,6 +6265,8 @@ app.post('*/@lock', (req, res) => {
   const contentPath = req.path.replace(/\/@lock$/, '') || '/';
   const user = requestUser(req);
   if (!user) return res.status(401).json({ error: { type: 'Unauthorized', message: 'Locking needs a logged-in user.' } });
+  const iterateLock = iterateLockOn(contentPath, getSessionId(req));
+  if (iterateLock) return res.json(iterateLock);
   // Plone's lock() leaves another user's lock as it is, and answers with it.
   if (!lockedAgainst(req, contentPath)) {
     // plone.restapi's lock_info: `time` in epoch seconds, `created` the same
@@ -6189,6 +6294,8 @@ app.post('*/@lock', (req, res) => {
  */
 app.delete('*/@lock', (req, res) => {
   const contentPath = req.path.replace(/\/@lock$/, '') || '/';
+  const iterateLock = iterateLockOn(contentPath, getSessionId(req));
+  if (iterateLock) return res.json(iterateLock);
   if (!lockedAgainst(req, contentPath) || req.body?.force) delete locks[contentPath];
   res.json(lockOn(contentPath) || UNLOCKED);
 });
@@ -6610,7 +6717,9 @@ app.patch('*', (req, res) => {
   console.log(logMsg);
 
   // Plone refuses to change a page another user holds the lock on.
-  if (lockedAgainst(req, cleanPath.replace(/\/$/, '') || '/')) {
+  // A page with a working copy out is locked, unless the save carries the token.
+  const iterateLock = iterateLockOn(cleanPath.replace(/\/$/, '') || '/', sessionId);
+  if (lockedAgainst(req, cleanPath.replace(/\/$/, '') || '/') || (iterateLock && req.get('Lock-Token') !== iterateLock.token)) {
     return res.status(403).json({ error: { type: 'Forbidden', message: 'Resource is locked.' } });
   }
 

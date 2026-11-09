@@ -1472,9 +1472,25 @@ function emitSegments(prototypes, blocks, depth = 2) {
     [[...parts, c].join('\n\n'), blocks.slice(0, i + 1)]);
 }
 
+/**
+ * Without the fields written from a block's other fields on save. Markdown never carries
+ * them: `searchableText` isn't authored, and as an unknown field it would turn a paragraph
+ * into a <block> wrapper and a container into a data-json blob. It's written again on save,
+ * or by `plone-content search-text` for content that skips the editor.
+ */
+function withoutDerivedFields(value) {
+  if (Array.isArray(value)) return value.map(withoutDerivedFields);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (key !== 'searchableText') out[key] = withoutDerivedFields(child);
+  }
+  return out;
+}
+
 /** Emit a block list as one markdown string (per-block segments, joined). */
 export function emitBlocks(prototypes, blocks, depth = 2) {
-  return emitSegments(prototypes, blocks, depth).join('\n\n');
+  return emitSegments(prototypes, withoutDerivedFields(blocks), depth).join('\n\n');
 }
 
 /**
@@ -1669,7 +1685,7 @@ function hoistFields(protos, blocks, depth = 2) {
 }
 
 export function emitPage(prototypes, keyed) {
-  const { blocks, assignments } = unkeyBlocks(keyed, prototypes);
+  const { blocks, assignments } = unkeyBlocks(withoutDerivedFields(keyed), prototypes);
   let markdown = emitBlocks(prototypes, blocks);
   // Prefer the hoisted form, but only if it still round-trips to the same blocks
   // (page-level verify-on-emit) AND is no less readable. Stripping a hoisted

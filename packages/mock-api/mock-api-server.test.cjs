@@ -688,8 +688,8 @@ describe('SearchableText operations: the querystring fork (MOCK_QUERYSTRING_SEAR
   });
 
   it('search prefixes only where the reader typed *', async () => {
-    const exact = ids(await (await textSearch(SEARCH, 'accordion')).json());
-    const prefixed = ids(await (await textSearch(SEARCH, 'accordion*')).json());
+    const exact = ids(await (await textSearch(SEARCH, 'accord')).json());
+    const prefixed = ids(await (await textSearch(SEARCH, 'accord*')).json());
     assert.ok(prefixed.length > exact.length);
   });
 

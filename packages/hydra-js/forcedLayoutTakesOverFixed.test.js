@@ -11,6 +11,7 @@
  * fixed slot never reads, and was dropped — the page's own heading lost, the
  * layout's default drawn in its place.
  */
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 const LAYOUT = '/templates/plain';
@@ -34,7 +35,7 @@ const TEMPLATE = {
 };
 
 function expand(blocks, items) {
-  const out = expandTemplatesSync(items, {
+  const out = expandEveryContainer(items, {
     blocks,
     templateState: {},
     templates: { [LAYOUT]: TEMPLATE },
@@ -142,7 +143,7 @@ describe("a forced layout keeps a snippet the page inserted", () => {
       blocks: { form: { '@type': 'form', title: 'From the snippet', fixed: true, readOnly: true, slotId: 'form' } },
       blocks_layout: { items: ['form'] },
     };
-    const out = expandTemplatesSync(['page-title', 'snip-form', 'body'], {
+    const out = expandEveryContainer(['page-title', 'snip-form', 'body'], {
       blocks,
       templateState: {},
       templates: { [LAYOUT]: TEMPLATE, '/templates/a-snippet': SNIPPET },
@@ -179,7 +180,7 @@ describe('a nested template in a layout slot survives a save', () => {
         blocks_layout: { heading: ['page-title'], main: ['rap', 'body'] },
       },
     };
-    const out = expandTemplatesSync(['inst::frame'], {
+    const out = expandEveryContainer(['inst::frame'], {
       blocks,
       templateState: {},
       templates: { [LAYOUT]: TEMPLATE, '/templates/rap': FORM_TEMPLATE },
@@ -199,7 +200,7 @@ describe('a nested template in a layout slot is expanded in the same pass', () =
   const formRef = { '@type': 'form', templateId: '/templates/rap', templateInstanceId: 'rap-a', slotId: 'form', fixed: true, readOnly: true };
 
   test('on first application', () => {
-    const out = expandTemplatesSync(['page-title', 'rap', 'body'], {
+    const out = expandEveryContainer(['page-title', 'rap', 'body'], {
       blocks: {
         'page-title': { '@type': 'title', templateId: LAYOUT, slotId: 'heading', fixed: true },
         rap: formRef,
@@ -217,7 +218,7 @@ describe('a nested template in a layout slot is expanded in the same pass', () =
   });
 
   test('after a save', () => {
-    const out = expandTemplatesSync(['inst::frame'], {
+    const out = expandEveryContainer(['inst::frame'], {
       blocks: {
         'inst::frame': {
           '@type': 'frame', fixed: true, readOnly: true, slotId: 'frame', templateId: LAYOUT, templateInstanceId: 'inst',
@@ -255,7 +256,7 @@ describe('a nested template of several blocks is expanded as one', () => {
   const mark = (slotId, extra = {}) => ({ templateId: '/templates/doc', templateInstanceId: 'doc-1', slotId, ...extra });
 
   test("the template's fixed headings stay between its slots", () => {
-    const out = expandTemplatesSync(['page-title', 'd-exh', 'd-ex', 'd-relh', 'd-rel'], {
+    const out = expandEveryContainer(['page-title', 'd-exh', 'd-ex', 'd-relh', 'd-rel'], {
       blocks: {
         'page-title': { '@type': 'title', templateId: LAYOUT, slotId: 'heading', fixed: true, readOnly: false },
         'd-exh': { '@type': 'slate', ...mark('ex-h', { fixed: true, readOnly: true }) },

@@ -205,6 +205,8 @@ export function registerAgentApi(live) {
         // The page is a block of its content type (see getBlockSchemas).
         blockPathMap: { ...blockPathMap, [PAGE_BLOCK_UID]: { ...blockPathMap[PAGE_BLOCK_UID], blockType: formData['@type'] } },
         lockedBy: lockedBy(contentLock, sessionToken),
+        // The site's API, which the CMS writes its own links on.
+        apiPath: config.settings.apiPath,
       };
     },
 

@@ -94,6 +94,10 @@ function apiFor(token) {
       if (!response.ok) throw new Error(`POST ${path}: ${response.status} ${await response.text()}`);
       return response.json();
     },
+    async patch(path, body) {
+      const response = await fetch(`${api}${path}`, { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!response.ok) throw new Error(`PATCH ${path}: ${response.status} ${await response.text()}`);
+    },
     async status(path) {
       return (await fetch(`${api}${path}`, { headers })).status;
     },

@@ -1,3 +1,4 @@
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 /**
@@ -24,7 +25,7 @@ describe('expandTemplatesSync: object_list item id stamping honours the idField'
     };
     // The caller-resolved idField hint (admin derives this from the schema; a frontend passes it literally).
     const idFieldMap = { form: { subblocks: 'field_id' } };
-    const result = expandTemplatesSync([], {
+    const result = expandEveryContainer([], {
       blocks: {}, templates: { '/t/form': template }, templateState: {}, allowedLayouts: ['/t/form'], idFieldMap,
     });
     const form = result.find((b) => b['@type'] === 'form');

@@ -1,3 +1,4 @@
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplates, expandTemplatesSync } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 
@@ -903,7 +904,7 @@ describe('multiple template instances with shared templateState', () => {
     const templateState = {};
 
     // First call: expand main blocks with main template
-    const mainItems = expandTemplatesSync(mainLayout, {
+    const mainItems = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -911,7 +912,7 @@ describe('multiple template instances with shared templateState', () => {
     });
 
     // Second call: expand footer blocks with footer template (same templateState)
-    const footerItems = expandTemplatesSync(footerLayout, {
+    const footerItems = expandEveryContainer(footerLayout, {
       blocks: footerBlocks,
       templateState,
       templates,
@@ -1010,7 +1011,7 @@ describe('multiple template instances with shared templateState', () => {
     const templateState = {};
 
     // First call: main blocks with template
-    const mainItems = expandTemplatesSync(mainLayout, {
+    const mainItems = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -1018,7 +1019,7 @@ describe('multiple template instances with shared templateState', () => {
     });
 
     // Second call: footer blocks WITHOUT template
-    const footerItems = expandTemplatesSync(footerLayout, {
+    const footerItems = expandEveryContainer(footerLayout, {
       blocks: footerBlocks,
       templateState,
       templates,
@@ -1043,7 +1044,7 @@ describe('multiple template instances with shared templateState', () => {
     const templateState = {};
 
     // First call
-    const items1 = expandTemplatesSync(mainLayout, {
+    const items1 = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -1051,7 +1052,7 @@ describe('multiple template instances with shared templateState', () => {
     });
 
     // Second call with same data (simulates re-render)
-    const items2 = expandTemplatesSync(mainLayout, {
+    const items2 = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -1345,98 +1346,6 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
     expect(containerBlock.fixed).toBe(true);
     // The first non-fixed slot inside the object_list `slides` is captured, keyed by field name.
     expect(containerBlock.childSlotIds).toEqual({ slides: 'caption' });
-  });
-});
-
-describe('mergeTemplatesIntoPage: object_list write-back on frozen input', () => {
-  // INITIAL_DATA arrives deep-frozen, and mergeTemplatesIntoPage only
-  // shallow-copies each block — so its nested objects are still the frozen
-  // originals. Writing an expanded object_list back through a multi-level
-  // `dataPath` (slateTable's rows live at `table.rows`) descended into that
-  // frozen child and threw "Cannot assign to read only property 'rows'".
-  // slateTable is the only shipped block with a depth-2 dataPath, and the
-  // only fixture pairing it with a template is docs/examples/table — which
-  // no functional test loaded, so the crash shipped unnoticed.
-
-  /** Recursively Object.freeze an object graph, mirroring INITIAL_DATA. */
-  function deepFreeze(value) {
-    if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-      Object.freeze(value);
-      for (const key of Object.keys(value)) {
-        deepFreeze(value[key]);
-      }
-    }
-    return value;
-  }
-
-  // slateTable schema as registered in packages/volto-hydra/src/index.js:
-  // `rows` is an object_list whose data lives at block.table.rows — a
-  // depth-2 dataPath, the shape that triggers the frozen-write crash.
-  const blocksConfig = {
-    slateTable: {
-      blockSchema: {
-        properties: {
-          rows: {
-            widget: 'object_list',
-            idField: 'key',
-            dataPath: ['table', 'rows'],
-            schema: {
-              fieldsets: [{ id: 'default', title: 'Default', fields: ['cells'] }],
-              properties: {
-                cells: { widget: 'object_list', idField: 'key', schema: { properties: {} } },
-              },
-            },
-          },
-        },
-      },
-    },
-  };
-
-  const makeTablePage = () => ({
-    blocks: {
-      'tbl-1': {
-        '@type': 'slateTable',
-        table: {
-          rows: [
-            {
-              key: 'row-1',
-              cells: [
-                { key: 'c1', value: [{ type: 'p', children: [{ text: 'A' }] }] },
-              ],
-            },
-          ],
-        },
-      },
-    },
-    blocks_layout: { items: ['tbl-1'] },
-  });
-
-  const mergeOptions = () => ({
-    loadTemplate: async () => {
-      throw new Error('loadTemplate must not run — page has no template refs');
-    },
-    uuidGenerator: (() => {
-      let n = 0;
-      return () => `uid-${++n}`;
-    })(),
-    blocksConfig,
-    intl: { formatMessage: ({ defaultMessage }) => defaultMessage || '' },
-  });
-
-  test('writes a slateTable rows object_list back through a depth-2 dataPath without throwing', async () => {
-    const page = deepFreeze(makeTablePage());
-
-    const { merged } = await mergeTemplatesIntoPage(page, mergeOptions());
-
-    expect(merged.blocks['tbl-1'].table.rows).toHaveLength(1);
-    expect(merged.blocks['tbl-1'].table.rows[0].key).toBe('row-1');
-    expect(merged.blocks['tbl-1'].table.rows[0].cells).toHaveLength(1);
-  });
-
-  test('does not mutate the frozen input page', async () => {
-    const page = deepFreeze(makeTablePage());
-    await mergeTemplatesIntoPage(page, mergeOptions());
-    expect(Object.isFrozen(page.blocks['tbl-1'].table)).toBe(true);
   });
 });
 

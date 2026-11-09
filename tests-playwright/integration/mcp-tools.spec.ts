@@ -8,7 +8,7 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { freshPage, tokenFor, whileEditing } from '../helpers/otherUser';
 import { agentOn, waitForAgent, discardEdits, createPage, siteOn, openAdmin } from '../../packages/inka-mcp/adminDriver.mjs';
 import {
-  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
+  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage, getTransitions, transitionPage,
 } from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
 import { draftCheck } from '../../packages/inka-mcp/checkDraft.mjs';
@@ -147,7 +147,7 @@ test.describe('MCP tools', () => {
     const next = await listChildren(agent, { path: '/_test_data', limit: 5, start: 5 });
     expect(next.items.map((i) => i.path)).not.toContain(children.items[0].path);
 
-    await expect(search(agent, {})).rejects.toThrow(/needs "text" or "types"/);
+    await expect(search(agent, {})).rejects.toThrow(/needs "text", "types", "reviewState" or "hasDraft"/);
   });
 
   test('create_page: through the add form, then its first blocks, saved', async ({ page, urls }) => {
@@ -162,15 +162,19 @@ test.describe('MCP tools', () => {
     const blocks = [{ '@uid': 'intro', '@type': 'slate', value: 'Written *by an agent*' }];
     const made = await fillNewPage(agentOn(page), { blocks, mintId, check: draftCheck(agentOn(page), siteOn(page)) });
     expect(made.path).toBe(path);
+    // Whether visitors can see it: it says, as a save does.
+    expect(made.reviewState).toBeTruthy();
 
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
     const stored = await (await fetch(`${urls.mockApi}${path}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     })).json();
     expect(stored.title).toBe('Made by the MCP');
-    // The page keeps the blocks it starts with (its title block), and ours follow.
+    // The page keeps the blocks it starts with (its title block), and ours
+    // follow. The empty block the add form leaves to type in is gone: ours are
+    // what goes there, and a post that starts with a blank line looks broken.
+    expect(stored.blocks_layout.items).toEqual([stored.blocks_layout.items[0], made.ids.intro]);
     expect(stored.blocks[stored.blocks_layout.items[0]]['@type']).toBe('title');
-    expect(stored.blocks_layout.items.at(-1)).toBe(made.ids.intro);
     expect(stored.blocks[made.ids.intro]['@type']).toBe('slate');
   });
 
@@ -180,6 +184,92 @@ test.describe('MCP tools', () => {
     await openAdmin(page, { adminUrl: helper.adminUrl });
     await expect(createPage(page, { parent: '/_test_data', type: 'Document', title: '' }))
       .rejects.toThrow(/add form refused it/);
+  });
+
+  test('transitions: what is on offer and what each can set, then taking them', async ({ page, urls }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const site = siteOn(page);
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
+    const stored = async (path: string) => (await fetch(`${urls.mockApi}${path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    const offered = (found: { transitions: { id: string }[] }) => found.transitions.map((t) => t.id);
+    const path = '/_test_data/another-page';
+
+    // Published to begin with: retracting is on offer and publishing is not.
+    const published = await getTransitions(site, { path });
+    expect(published.state.name).toBe('published');
+    expect(offered(published)).toEqual(expect.arrayContaining(['retract', 'checkout', 'update']));
+    expect(offered(published)).not.toContain('publish');
+    expect(Object.keys(published.transitions.find((t) => t.id === 'update').takes)).toEqual(expect.arrayContaining(['Reader', 'id', 'inherit']));
+
+    // Not on offer, and a setting it does not take: refused, nothing changes.
+    await expect(transitionPage(site, { path, id: 'publish', expectedVersion: published.version })).rejects.toThrow(/no transition 'publish'/);
+    await expect(transitionPage(site, { path, id: 'retract', data: { nonsense: 1 }, expectedVersion: published.version })).rejects.toThrow(/does not take nonsense/);
+    expect((await stored(path)).review_state).toBe('published');
+
+    // Retract, and then publish with a publishing date and an expiry.
+    const retracted = await transitionPage(site, { path, id: 'retract', expectedVersion: published.version });
+    expect(retracted).toMatchObject({ path, reviewState: 'private' });
+    expect((await stored(path)).review_state).toBe('private');
+    const privatePage = await getTransitions(site, { path });
+    expect(offered(privatePage)).toContain('publish');
+    expect(Object.keys(privatePage.transitions.find((t) => t.id === 'publish').takes)).toEqual(expect.arrayContaining(['effective', 'expires', 'comment', 'id']));
+    const dates = { effective: '2027-01-01T09:00:00', expires: '2027-06-01T09:00:00' };
+    const republished = await transitionPage(site, { path, id: 'publish', data: dates, expectedVersion: privatePage.version });
+    expect(republished).toMatchObject({ path, reviewState: 'published' });
+    expect(await stored(path)).toMatchObject({ review_state: 'published', ...dates });
+
+    // Share it: a new reader, stated role by role.
+    const before = await getTransitions(site, { path });
+    const shared = await transitionPage(site, { path, id: 'update', data: { Reader: ['editors-of-news'] }, expectedVersion: before.version });
+    expect(shared.path).toBe(path);
+    const after = await getTransitions(site, { path });
+    expect(after.transitions.find((t) => t.id === 'update').current.Reader).toEqual(['editors-of-news']);
+    expect(after.state.name).toBe('published');
+
+    // A draft copy: a transition that moves to the copy, and back when it is discarded.
+    const copy = await transitionPage(site, { path, id: 'checkout', expectedVersion: after.version });
+    expect(copy.path).toBe(path);
+    expect(copy.reviewState).toBe('published');
+    const draftAt = '/_test_data/copy_of_another-page';
+    expect(copy.draft.url.endsWith(draftAt)).toBe(true);
+    const withDraft = await getTransitions(site, { path });
+    expect(withDraft.draft.url.endsWith(draftAt)).toBe(true);
+    // Plone has locked the page: its own fields can't be offered, and a save is refused.
+    expect(Object.keys(withDraft.transitions.find((t) => t.id === 'update').takes)).not.toContain('exclude_from_nav');
+    await expect(site.rename({ path, title: 'On the locked page' })).rejects.toThrow(/locked/i);
+    expect(offered(withDraft)).toEqual(expect.arrayContaining(['checkin', 'cancel-checkout']));
+    expect(offered(withDraft)).not.toContain('checkout');
+    await expect(movePage(site, { path, target: '/_test_data/accordion-test-page', expectedVersion: withDraft.version })).rejects.toThrow(/has a draft/);
+    const live = (await stored(path)).title;
+    await site.rename({ path: draftAt, title: 'Retitled on the copy' });
+    expect((await stored(path)).title).toBe(live);
+    const discarded = await transitionPage(site, { path, id: 'cancel-checkout', expectedVersion: (await getTransitions(site, { path })).version });
+    expect(discarded.path).toBe(path);
+    expect(discarded).not.toHaveProperty('draft');
+    const gone = async (p: string) => (await fetch(`${urls.mockApi}${p}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).status;
+    expect(await gone(draftAt)).toBe(404);
+    expect((await stored(path)).title).toBe(live);
+
+    // Again, and this time apply it: the original takes what the copy holds, and stays published.
+    const original = await getTransitions(site, { path });
+    expect(offered(original)).toContain('checkout');
+    const second = await transitionPage(site, { path, id: 'checkout', expectedVersion: original.version });
+    expect(second.draft.url.endsWith(draftAt)).toBe(true);
+    expect((await stored(draftAt)).review_state).toBe('private');
+    await site.rename({ path: draftAt, title: 'Retitled on the copy' });
+    const applied = await transitionPage(site, { path, id: 'checkin', expectedVersion: (await getTransitions(site, { path })).version });
+    expect(applied).toMatchObject({ path, reviewState: 'published' });
+    expect((await stored(path)).title).toBe('Retitled on the copy');
+    expect(applied).not.toHaveProperty('draft');
+    expect(await gone(draftAt)).toBe(404);
   });
 
   test('move_page, rename_page and delete_page, version-checked', async ({ page, urls }) => {

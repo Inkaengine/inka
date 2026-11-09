@@ -11,7 +11,7 @@
  *
  *   items: {
  *     widget: 'blocks_layout',
- *     allowedStyles:    ['p', 'h2', 'h3', 'ul', 'ol', 'li', 'strong', 'em'],
+ *     allowedStyles:    ['p', 'h2', 'h3', 'ul', 'ol', 'li', 'strong', 'em', 'a'],
  *     disallowedStyles: ['blockquote'],
  *     allowedMarks:     null,
  *     disallowedMarks:  ['highlight'],
@@ -26,8 +26,8 @@
  * (`p`, `h2`, `ul`, `li`) AND the inline ones, because volto-slate models bold
  * and italic as inline ELEMENTS (`MarkElementButton` → `toggleInlineFormat`,
  * `editor/config.jsx`), not as leaf marks — one vocabulary, matching what the
- * toolbar actually toggles. `allowedMarks` covers true leaf marks
- * (`Editor.addMark`), which only plugins use.
+ * toolbar actually toggles. A link is one too (`a`). `allowedMarks` covers
+ * true leaf marks (`Editor.addMark`), which only plugins use.
  *
  * INHERITANCE — rules fold root → leaf: a deny ACCUMULATES (a ban at the page
  * level is final for the whole subtree), an allow REPLACES (a nested region
@@ -39,13 +39,6 @@
  * This file is Volto-free on purpose: the bridge, the addon and bare-node tests
  * all import it (same reason `buildBlockPathMap.js` lives here).
  */
-
-/**
- * Types that carry data, not styling. Retyping a `link` to `p` would drop its
- * href — normalization must never lose content, so these are exempt from the
- * allow-list rather than trusted to appear in every frontend's list.
- */
-const STRUCTURAL_TYPES = new Set(['link']);
 
 /**
  * Block-level slate types — the ones that cannot legally sit inside another
@@ -154,13 +147,19 @@ function permits(name, allowed, denied) {
 }
 
 /**
- * May a slate element carry this `type` here?
- * No rules (or a structural type) → yes.
+ * Rules name styles by their HTML names. They are slate's types too, but for
+ * the link: volto-slate stores one as `link`, and a rule names it `a`.
+ */
+const RULE_NAMES = new Map([['link', 'a']]);
+
+/**
+ * May a slate element carry this `type` here? No rules → yes. A link is a style
+ * like any other: its url is its setting, so an allow-list keeps it only by
+ * naming it (`a`).
  */
 export function isStyleAllowed(type, rules) {
   if (!rules) return true;
-  if (STRUCTURAL_TYPES.has(type)) return true;
-  return permits(type, rules.allowedStyles, rules.disallowedStyles);
+  return permits(RULE_NAMES.get(type) ?? type, rules.allowedStyles, rules.disallowedStyles);
 }
 
 /** May a slate leaf carry this mark key here? */

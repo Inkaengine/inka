@@ -110,7 +110,8 @@ test.describe('Template Creation', () => {
   // hand-crafted template fixtures end up with null timestamps.
   //
   // Expected behaviour: on save after make-template, a POST hits the
-  // template's parent folder with @type:'Document' and the block payload.
+  // template's parent folder with the admin's RAZZLE_TEMPLATE_TYPE (Template
+  // here, playwright.config.ts) as its @type and the block payload.
   // The folder path comes from the sidebar's 'folder' field, NOT from a
   // hard-coded '/templates/' prefix in the bridge (so consumers can host
   // templates anywhere in the content tree).
@@ -145,10 +146,10 @@ test.describe('Template Creation', () => {
     // dispatched as part of the save will have been observed by then.
     await helper.saveContent();
 
-    // EXPECTED: at least one POST whose body @type is Document — that's
+    // EXPECTED: at least one POST whose body @type is Template — that's
     // the new template being created. Path is the parent folder; client
     // doesn't set timestamps (Plone fills those server-side).
-    const templatePosts = contentPosts.filter((r) => r.body['@type'] === 'Document');
+    const templatePosts = contentPosts.filter((r) => r.body['@type'] === 'Template');
     expect(templatePosts.length,
       'expected the save flow to POST a new template document for the just-created template',
     ).toBeGreaterThanOrEqual(1);
@@ -180,7 +181,7 @@ test.describe('Template Creation', () => {
       if (!req.url().startsWith(urls.mockApi)) return;
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
-      if (req.method() === 'POST' && body?.['@type'] === 'Document') docPosts.push({ url: req.url(), body });
+      if (req.method() === 'POST' && body?.['@type'] === 'Template') docPosts.push({ url: req.url(), body });
       if (req.method() === 'PATCH' && /\/test-page$/.test(req.url().replace(/\/$/, '')) && body) pagePatches.push(body);
     });
 
@@ -1897,7 +1898,7 @@ test.describe('Template Edit Mode - Permissions', () => {
     await helper.login();
     await helper.navigateToEdit('/test-page');
 
-    // A new template create is a POST with @type Document — must NOT happen when denied.
+    // A new template create is a POST with @type Template — must NOT happen when denied.
     const templatePosts: Array<any> = [];
     page.on('request', (req) => {
       if (req.method() !== 'POST') return;
@@ -1907,7 +1908,7 @@ test.describe('Template Edit Mode - Permissions', () => {
       } catch {
         /* not JSON */
       }
-      if (body?.['@type'] === 'Document') templatePosts.push(body);
+      if (body?.['@type'] === 'Template') templatePosts.push(body);
     });
 
     // Make a template on a regular block, then attempt to save.

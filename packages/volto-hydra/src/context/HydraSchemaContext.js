@@ -34,11 +34,9 @@ export const HydraSchemaProvider = ({ children, value }) => {
   // @volto-hydra/helpers/hydraSchemaContext.js, for code outside React render.
   setHydraSchemaContext(value);
 
-  return (
-    <HydraSchemaContext.Provider value={value}>
-      {children}
-    </HydraSchemaContext.Provider>
-  );
+  // Plain JS rather than JSX: this is a .js file, and Vite (the unit tests)
+  // parses .js without JSX, so any component test that imported it failed.
+  return React.createElement(HydraSchemaContext.Provider, { value }, children);
 };
 
 /**

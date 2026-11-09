@@ -31,7 +31,7 @@ const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('@volt
 // template machinery to bind a block to its template instance and slot; it is
 // not sidebar-editable, so it must not be reported as an undeclared field.
 const UNDECLARED_EXEMPT = new Set([
-  'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'value',
+  'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'searchableText', 'value',
   'styles', 'override', 'block',
   'fixed', 'slotId', 'templateId', 'templateInstanceId', 'readOnly',
   // Written by the merge beside slotId when a fixed slot separates two groups
@@ -774,6 +774,17 @@ function imageDimensions(file) {
         const v = block[field];
         if (v == null) continue;
         if (REFERENCE_WIDGETS.has(def.widget)) {
+          // Where it is stored decides whether the frontend ever sees a path.
+          // A uid that exists is still a broken image or link if Plone hands
+          // it over as `resolveuid/<uid>`: store it as an `@id`.
+          if (typeof v === 'string' && /(^|\/)resolveuid\//.test(v) && !PLONE_RESOLVES_BY_NAME.has(field)) {
+            stats.linksBroken += 1;
+            errors.push(
+              `  ${rel}: block ${bid} (${block['@type']}) field "${field}" holds ${v} as a bare string, ` +
+                `which Plone does not resolve in a field of that name — store it as { "@id": "${v}" }`,
+            );
+            continue;
+          }
           // Every reference the field holds, in whichever shape it stores it.
           for (const ref of refStrings(v)) {
             const where = `  ${rel}: block ${bid} (${block['@type']}) ${field}`;
@@ -1549,6 +1560,12 @@ function looksLikeReference(ref) {
 }
 
 const REFERENCE_WIDGETS = new Set(['object_browser', 'url', 'image']);
+
+// The block fields plone.restapi resolves a BARE `resolveuid/<uid>` string in,
+// by name (ResolveUIDSerializerBase.fields). Inside an object it resolves the
+// `@id` whatever the field is called; a bare uid string in any other field
+// reaches the frontend unresolved.
+const PLONE_RESOLVES_BY_NAME = new Set(['url', 'href', 'preview_image']);
 
 /**
  * Every block stored under a container, at any depth — the ONE place the

@@ -2137,3 +2137,31 @@ describe('a block field named like a tag attribute (`type`)', () => {
     expect(matchBlocks(protos, md)).toEqual([block]);
   });
 });
+
+describe('search text is derived, and markdown never carries it', () => {
+  // `searchableText` is written from a block's fields on save, like `@uid` at render. A saved
+  // page's export has to read as the page reads: an unknown field turned a paragraph into a
+  // <block> wrapper and a callout into a data-json blob.
+  const protosP = import('./default-prototypes.mjs').then(({ DEFAULT_PROTOTYPES: D }) => [
+    ...parsePrototypes(D.matched), ...parsePrototypes(D.tagged, { explicit: true }),
+  ]);
+  const value = [{ type: 'p', children: [{ text: 'Hello' }] }];
+  const slate = { '@type': 'slate', value, plaintext: 'Hello' };
+
+  it('a block with it emits as the same block without it', async () => {
+    const protos = await protosP;
+    expect(emitBlocks(protos, [{ ...slate, searchableText: 'Hello' }])).toBe(emitBlocks(protos, [slate]));
+  });
+
+  it('at any depth', async () => {
+    const protos = await protosP;
+    const callout = (child, own) => ({
+      '@type': 'callout',
+      ...own,
+      blocks: { a: child },
+      blocks_layout: { items: ['a'] },
+    });
+    expect(emitBlocks(protos, [callout({ ...slate, searchableText: 'Hello' }, { searchableText: 'X' })]))
+      .toBe(emitBlocks(protos, [callout(slate, {})]));
+  });
+});

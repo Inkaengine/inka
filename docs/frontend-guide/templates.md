@@ -186,22 +186,17 @@ of block objects, each identified by an **id field** (`@id` by default).
 
 Everything else is identical: every object_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
 
-The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas, so whenever you expand a template or layout that contains an object_list container you MUST tell it each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Build it from the same blocks config you pass to `initBridge` with `buildIdFieldMap`, exactly as the admin does, rather than writing it by hand. Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
+The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas. Your block's code knows its own field, so it passes `idField` when it hands the list to the merge. Without it the merge takes `@id`, and throws if an item doesn't have one.
 
 ### Javascript
 
 ```javascript
-import { buildIdFieldMap } from '@hydra-js/hydra.js';
-
-// Once, from your block definitions: { form: { subblocks: 'field_id' }, slider: { slides: '@id' }, … }
-const idFieldMap = buildIdFieldMap(blocksConfig);
-
-const items = expandTemplatesSync(layout, {
-    blocks, templateState, templates, idFieldMap,
+// In the form block's code: its fields are keyed on field_id.
+const fields = expandTemplatesSync(block.subblocks, {
+    templateState, templates, idField: 'field_id',
 });
+// Each field carries its id in field_id, and in @uid.
 ```
-
-(When you re-enter to expand a **single** object_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
 
 ## allowedTemplates vs allowedLayouts
 
@@ -231,7 +226,7 @@ initBridge({
 
 Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched templates) to merge template content during rendering.
 
-- **Edit Mode**: These functions auto-detect edit mode via `isEditMode()` and pass blocks through unchanged (just adding `@uid`). The admin handles template merging and adds `nodeId` attributes for inline editing.
+- **Edit Mode**: These functions auto-detect edit mode via `isEditMode()` and pass blocks through unchanged (just adding `@uid`). The admin handles template merging and adds `nodeId` attributes for inline editing. Leave `editMode` unset unless you know better than the detection: `false` on the admin's blocks applies their template to them again, and a container comes back holding its template's top-level block, with no error. Don't merge the stored page in edit mode at all ([wait for `onEditChange`](./advanced.md#lazy-load-the-bridge)).
 - **SSR**: On SSR (no window), `isEditMode()` returns false so templates are expanded — this is correct since edit mode only exists in the browser iframe.
 
 **Sync vs Async**:
@@ -249,11 +244,20 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 
 **Pass the children of every container through the merge** — every `blocks_layout` region and every object_list field, in every container block you render, at every depth — with the same `templateState` the page-level call used.
 
-An editor can place a template anywhere a block can go: inside a grid, a column, an accordion panel, a slider. The merge has no block schema, so it cannot find your containers by itself. It fills the regions of a template it applies, but a template placed inside a plain container stays exactly as stored — stale fixed content, no instance — until that container hands its children to the merge. A container that renders its children directly is a place where templates silently don't work.
+An editor can place a template anywhere a block can go: inside a grid, a column, an accordion panel, a slider. The merge has no block schema, so it cannot find your containers by itself. **Each call expands one list.** That is as true of a template's own containers as of plain ones: a fixed block's children wait, as the template has them, until that block hands them to the merge. A container that renders its children directly is a place where templates don't work.
+
+The merge throws when it can tell it isn't being used this way:
+
+- A list whose items have no id: pass the list's `idField`.
+- An `idFieldMap` option: there isn't one. Each call names its own list's `idField`.
+
+The merge can't see a call that never happens. So at the end of a render, ask: **\`assertAllExpanded(templateState)\`** throws, naming any template region no container passed through the merge in that `templateState`. Call it in your tests, and in dev if your frontend has a clear end of render. Don't call it in production: a block that deliberately doesn't draw a region would break the page.
+
+A region inside a `widget: 'object'` is a region of the block like any other: your block's code passes its children to the merge in the same way.
 
 The page-level call is no exception: each of the page's own blocks fields (`items`, a `footer` region, …) goes through the merge too.
 
-The Inka editor follows the same contract for the page it edits (see [Merging templates](../architecture.md#merging-templates-every-container-is-expanded-by-whoever-renders)).
+The Inka editor follows the same contract for the page it edits. It has no block code to do this for it, so it walks every container itself, taking each list's id field from the schema with `buildIdFieldMap` (see [Merging templates](../architecture.md#merging-templates-every-container-is-expanded-by-whoever-renders)).
 
 ## Pre-loading with loadTemplates
 
@@ -326,6 +330,16 @@ const { templates, errors } = await loadTemplates(
 - **Without the addon it still works.** Plone ignores `expand=templates`, and `loadTemplates` fetches each template one at a time, as before. It's slower, not broken.
 - **A template the backend couldn't return** (missing, or one the visitor isn't allowed to view) is listed in `errors` and isn't requested again.
 - **Only list the layouts your rules actually force in view mode.** Every template named in `extra` is included in every page response it's added to.
+
+## Keeping templates out of search
+
+Templates are content, so a visitor could find one on its own. The `inkaengine.inka` backend addon adds a **Template** content type for them: a copy of the site's Document type, so it has the same fields and behaviours. **Make Template** in the editor saves new templates as the type its deployment names (see [Configuration](../deploy-and-secure.md#configuration)). Templates aren't tied to a folder: the editor can save one anywhere.
+
+- **Site search leaves them out.** Template is in the site's "types not searched", so any search made with the site's search settings (`use_site_search_settings`) skips them. Build your sitemap from such a search and templates stay out of it too.
+- **Your front end marks them noindex.** A template page can still be opened by its URL. Send `<meta name="robots" content="noindex">` for content whose `@type` is `Template`.
+- **Sites made before the type** get it from the addon's upgrade step, or, if they never installed the addon's profile, from installing it. Either way, it also turns each Document a page uses as a template into a Template, found by the references in pages' blocks, wherever it is saved. A page that references a template that isn't there stops it and is named, so fix or remove that reference and run it again.
+- **A template no page references isn't found.** One your front end forces by its path, and that is still empty, has no reference to find it by. Make it a Template yourself.
+- **Deploying content** (`inkaengine.inka.content_deploy`) treats a Template on its default view like a page on its default view: unset. So a template the upgrade converted doesn't read as an editor's edit. Write templates as `"@type": "Template"` in the content you deploy: a deploy updates an item in place and never changes its type.
 
 ## How the Merge Works
 

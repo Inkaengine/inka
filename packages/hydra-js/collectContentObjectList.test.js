@@ -8,7 +8,7 @@ import {
  * into the template on save. It descends into "blocks maps" (shared blocks_layout dicts), but
  * isBlocksMap() is false for arrays, so a nested OBJECT_LIST region (a slider's `slides`) was
  * skipped — a template whose slot content lives inside a slider lost the central edit on save.
- * The apply path (fillContainerInto) already treats both storages uniformly; the capture must
+ * Filling a region (fillRegionEntries) already treats both storages uniformly; the capture must
  * too. Same blocks_layout-only assumption removed from convert/wrap/unwrap.
  */
 test('collectContentFromTree captures user slot content inside an object_list region (slider slides)', () => {

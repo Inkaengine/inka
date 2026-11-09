@@ -195,6 +195,42 @@ describe('expandTemplatesSync: object_list items must carry their id', () => {
   });
 });
 
+describe('expandTemplatesSync: an object_list called with no idField is keyed by @id', () => {
+  // The items a caller hands over with no idField used to pass through unchecked:
+  // two rows keyed on `field_id` both came back as the second.
+  const rows = [
+    { '@type': 'row', field_id: 'a' },
+    { '@type': 'row', field_id: 'b' },
+  ];
+
+  test.each([false, true])('throws, naming the option to pass (editMode=%s)', (editMode) => {
+    expect(() => expandTemplatesSync(rows, { templateState: {}, templates: {}, editMode })).toThrow(
+      /no "@id".*pass its idField/s,
+    );
+  });
+
+  test('items with an @id get it as their @uid', () => {
+    const out = expandTemplatesSync([{ '@type': 'row', '@id': 'r1' }], {
+      templateState: {}, templates: {}, editMode: false,
+    });
+    expect(out.map((r) => r['@uid'])).toEqual(['r1']);
+  });
+
+  test('a repeated @id throws', () => {
+    const dup = [{ '@type': 'row', '@id': 'r1' }, { '@type': 'row', '@id': 'r1' }];
+    expect(() => expandTemplatesSync(dup, { templateState: {}, templates: {}, editMode: false })).toThrow(
+      /repeats "@id" "r1"/,
+    );
+  });
+
+  test('a list of block ids is unaffected', () => {
+    const out = expandTemplatesSync(['x'], {
+      blocks: { x: { '@type': 'slate' } }, templateState: {}, templates: {}, editMode: false,
+    });
+    expect(out.map((b) => b['@uid'])).toEqual(['x']);
+  });
+});
+
 describe('expandTemplatesSync: object_list ids must be unique', () => {
   // Two items sharing an id resolve to one item, the same collapse as a missing id.
   const dup = [{ '@type': 'row', key: 'r1' }, { '@type': 'row', key: 'r1' }];

@@ -14,7 +14,7 @@ import { recordSlateFieldContainer, recordFieldEditable } from '../field-coverag
 import {
   usesAvailableSizes, resolveImageEntry, availableWidths, isProportionate,
 } from '../imageSizes.mjs';
-import { SKIP_BROKEN_IMAGES_ENV } from './PageIntegrityHelper';
+import { isAbsentAsset } from './PageIntegrityHelper';
 import { settledCount } from './settled-count';
 import { wordsWithNowhereToGo } from '../elementless';
 import { isEmptySlate } from '@volto-hydra/helpers';
@@ -499,7 +499,8 @@ export async function checkEditAnnotations(
           if ((i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth === 0) return true;
           return false;
         })
-        .map((i) => i.getAttribute('src') || '(empty)');
+        // The resolved URL, which ABSENT_ASSETS globs are matched against.
+        .map((i) => (i as HTMLImageElement).src || '(empty)');
 
       // Video/audio srcs must actually exist — an <img> reports its own failure
       // via naturalWidth, but a 404 <video> just renders an empty player. Fetch
@@ -509,13 +510,13 @@ export async function checkEditAnnotations(
       ]
         .map((n) => n.getAttribute('src') || '')
         .filter((s) => s && !s.startsWith('data:') && !s.startsWith('blob:'));
-      const brokenMedia: string[] = [];
-      for (const src of [...new Set(srcs)]) {
+      const brokenMedia: Array<{ src: string; why: string }> = [];
+      for (const src of [...new Set(srcs.map((s) => new URL(s, location.href).href))]) {
         try {
           const resp = await fetch(src, { method: 'HEAD' });
-          if (!resp.ok) brokenMedia.push(`${src} (HTTP ${resp.status})`);
+          if (!resp.ok) brokenMedia.push({ src, why: `HTTP ${resp.status}` });
         } catch (e) {
-          brokenMedia.push(`${src} (${(e as Error).message})`);
+          brokenMedia.push({ src, why: (e as Error).message });
         }
       }
 
@@ -549,6 +550,10 @@ export async function checkEditAnnotations(
               const host = node.parentElement;
               if (!host) { ok = true; break; }
               if (host.closest('[data-block-readonly]')) { ok = true; break; }
+              // Text a form control draws (a textarea's starting text, a
+              // select's options) cannot be edited in place: the control owns
+              // it. Such a value is edited in the sidebar.
+              if (host.closest('textarea, select, option, input')) { ok = true; break; }
               const rendered = host.getClientRects().length > 0;
               const box = host.getBoundingClientRect();
               if (rendered && box.width < 2 && box.height < 2) { ok = true; break; }
@@ -593,7 +598,20 @@ export async function checkEditAnnotations(
           const host = [...el.querySelectorAll(`[data-edit-media="${field}"]`)]
             .find((n) => !n.closest('[data-block-readonly]'));
           if (!host) {
-            imageFields.push({ field, rendered: false, srcset: null });
+            // An image drawn as a CSS BACKGROUND is drawn, with nothing on the
+            // canvas to click: a band behind other blocks can't be the media
+            // field without taking their clicks, so it is picked in the
+            // sidebar. Recognised by its file: the field's path inside the
+            // url() of the block's, or a descendant's, background-image.
+            const ref = Array.isArray(value) ? value[0] : value;
+            const raw = typeof ref === 'string' ? ref : (ref as { '@id'?: string } | null)?.['@id'];
+            const path = raw ? new URL(raw, location.href).pathname.replace(/\/$/, '') : '';
+            const asBackground = !!path && [el, ...el.querySelectorAll('*')].some((n) => {
+              const bg = getComputedStyle(n).backgroundImage;
+              return bg !== 'none' && [...bg.matchAll(/url\("?([^")]+)"?\)/g)]
+                .some((m) => new URL(m[1], location.href).pathname.startsWith(path));
+            });
+            imageFields.push({ field, rendered: asBackground, srcset: null });
             continue;
           }
           // Only an <img> can carry a srcset. A frontend may render a media
@@ -650,17 +668,14 @@ export async function checkEditAnnotations(
   ).toEqual([]);
   expect(r.offSiteLinks, 'Links should not point to a different localhost service (e.g. the API)').toEqual([]);
   expect(r.imagesWithout, 'All non-decorative images should have data-edit-media').toEqual([]);
-  // The "asset bytes actually loaded" assertions — broken images AND broken
-  // video/audio — are only meaningful where the assets exist. hydra CI moved
-  // doc-asset generation to the parent repo, so a generated asset (e.g. the demo
-  // video hydra-demo.mp4) is legitimately absent here and its source 404s; that
-  // is not a content bug. Same env, same class as PageIntegrityHelper's image
-  // skip — the annotation/structure checks above still run, so a real broken
-  // reference (a typo'd path on a committed asset) is still caught elsewhere.
-  if (!SKIP_BROKEN_IMAGES_ENV) {
-    expect(r.brokenImages, 'All images should have valid src and load successfully').toEqual([]);
-    expect(r.brokenMedia, 'All video/audio sources should exist').toEqual([]);
-  }
+  // Every image and video/audio source must load, except an asset the run
+  // was told is missing (ABSENT_ASSETS, see isAbsentAsset).
+  const missing = (src: string) => src === '(empty)' || !isAbsentAsset(src);
+  expect(r.brokenImages.filter(missing), 'All images should have valid src and load successfully').toEqual([]);
+  expect(
+    r.brokenMedia.filter((m) => missing(m.src)).map((m) => `${m.src} (${m.why})`),
+    'All video/audio sources should exist',
+  ).toEqual([]);
   // An image field with a value must render something, and must not throw away
   // the sizes its data offers.
   //
@@ -1323,6 +1338,65 @@ export async function verifyPathMapCoverage(
       `declared (or is incompletely declared) in the frontend's block schema, so ` +
       `buildBlockPathMap never descended into it: ${orphans.join(', ')}`,
   ).toEqual([]);
+}
+
+/**
+ * The per-block checks (checkEditAnnotations: annotations, links, images and
+ * media that load, image fields drawn at a sensible size) on EVERY other block
+ * the page draws, once a sample on it has been verified.
+ *
+ * Discovery samples one block per (type, variation), but drawing the page is
+ * the cost, and the page holds every other block too. Checking only the sample
+ * let a broken image through on a block whose type had been sampled on a page
+ * where its image happened to load. These checks are one in-page read per
+ * block, so the whole page costs about what one container's sub-blocks do.
+ *
+ * The sample and its descendants are skipped (verifyBlockRendering did them).
+ * A block the page does not draw is skipped too: whether it should be drawn
+ * is the render test's question, and a block hidden in a closed panel has no
+ * loaded image to judge. Returns one line per failing check, naming every
+ * block it failed on — a broken image in a nested block fails its ancestors'
+ * checks too, so one finding lists them together instead of repeating.
+ */
+export async function checkEveryBlockOnPage(
+  iframe: FrameLocator,
+  verifiedUid: string,
+  // Block types the caller holds outside the render contract (test fixtures
+  // that are not real blocks): the sample tests skip them, so this does too.
+  outsideContract: (blockType: string) => boolean,
+): Promise<string[]> {
+  const blocks = await iframe.locator('body').evaluate((_b, sampleUid) => {
+    const b = (window as any).__hydraBridge;
+    if (!b?.blockPathMap) {
+      throw new Error('checkEveryBlockOnPage: __hydraBridge.blockPathMap not available');
+    }
+    const pathMap = b.blockPathMap;
+    const underSample = (uid: string): boolean => {
+      for (let cur: string | undefined = uid; cur; cur = pathMap[cur]?.parentId) {
+        if (cur === sampleUid) return true;
+      }
+      return false;
+    };
+    return Object.keys(pathMap)
+      .filter((uid) => !uid.startsWith('_') && !underSample(uid))
+      .map((uid) => ({ id: uid, data: b.getBlockData?.(uid) || null }))
+      .filter((s: { id: string; data: unknown }) => !!s.data && typeof s.data === 'object');
+  }, verifiedUid) as SubBlock[];
+
+  const failures = new Map<string, string[]>();
+  for (const { id, data } of blocks) {
+    if (outsideContract((data as { '@type'?: string })['@type'] ?? '')) continue;
+    const drawn = iframe.locator(`[data-block-uid="${id}"]`);
+    if ((await drawn.count()) === 0) continue;
+    try {
+      await checkEditAnnotations(drawn.first(), data);
+    } catch (e) {
+      if (!(e instanceof Error)) throw e;
+      const where = `${id} (${(data as { '@type'?: string })['@type'] ?? '?'})`;
+      failures.set(e.message, [...(failures.get(e.message) ?? []), where]);
+    }
+  }
+  return [...failures].map(([message, where]) => `${where.join(', ')}: ${message}`);
 }
 
 /**

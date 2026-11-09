@@ -67,6 +67,12 @@ import {
   getBlockTypeSchema,
   getBlockById,
 } from '../../../../../utils/blockPath';
+import {
+  searchTextOptions,
+  withSearchableText,
+} from '@volto-hydra/helpers/searchableText.js';
+import { normalizeSlateStylesForSave } from '../../../../../utils/blockSync';
+import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
 import { updateContent } from '@plone/volto/actions/content/content';
@@ -862,6 +868,19 @@ class Form extends Component {
         toast.error(<Toast error title="Can't save yet" content={error.message} />);
         return;
       }
+      // What a region refuses never reaches the server, however it got into the
+      // form: the sidebar's slate editor writes to it with no rules of its own.
+      pageFormData = normalizeSlateStylesForSave(
+        pageFormData,
+        buildBlockPathMap(pageFormData, config.blocks.blocksConfig, this.props.intl),
+        config.blocks.blocksConfig,
+        this.props.intl,
+      );
+      // What the page is found by, from the blocks as they are saved (Inka #634).
+      pageFormData = withSearchableText(
+        pageFormData,
+        searchTextOptions(config.blocks.blocksConfig, this.props.intl, pageFormData),
+      );
       if (this.props.isEditForm) {
         this.props.onSubmit(this.getOnlyFormModifiedValues(pageFormData));
       } else {

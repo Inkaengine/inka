@@ -1,0 +1,1 @@
+Templates have their own content type, Template, a copy of the site's Document. Site search and the sitemap leave it out. The upgrade step turns the Documents pages use as templates into Templates, wherever they are saved. @djay

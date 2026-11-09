@@ -1,0 +1,233 @@
+{
+  "schemas": {
+    "card": {
+      "id": "card",
+      "blockSchema": {
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "href": {
+            "widget": "url"
+          }
+        }
+      }
+    },
+    "section": {
+      "id": "section",
+      "blockSchema": {
+        "properties": {
+          "heading": {
+            "type": "string"
+          },
+          "items": {
+            "widget": "blocks_layout"
+          }
+        }
+      }
+    },
+    "panels": {
+      "id": "panels",
+      "blockSchema": {
+        "properties": {
+          "data": {
+            "widget": "object",
+            "schema": {
+              "properties": {
+                "items": {
+                  "widget": "blocks_layout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "grid": {
+      "id": "grid",
+      "blockSchema": {
+        "properties": {
+          "table": {
+            "widget": "object",
+            "schema": {
+              "properties": {
+                "rows": {
+                  "widget": "object_list",
+                  "idField": "key",
+                  "schema": {
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "cells": {
+                        "widget": "object_list",
+                        "idField": "key",
+                        "typeField": "@type"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "tableCell": {
+      "id": "tableCell",
+      "blockSchema": {
+        "properties": {
+          "blocks": {
+            "widget": "object_list",
+            "typeField": "@type"
+          }
+        }
+      }
+    },
+    "tableHeaderCell": {
+      "id": "tableHeaderCell",
+      "blockSchema": {
+        "properties": {
+          "value": {
+            "widget": "slate"
+          }
+        }
+      }
+    }
+  },
+  "page": {
+    "@type": "Document",
+    "id": "searched",
+    "title": "Searched",
+    "blocks": {
+      "c": {
+        "@type": "card",
+        "title": "Cardword",
+        "href": "https://example.com/Linkword"
+      },
+      "s": {
+        "@type": "section",
+        "heading": "Headingword",
+        "blocks": {
+          "n": {
+            "@type": "slate",
+            "value": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Nestedword"
+                  }
+                ]
+              }
+            ],
+            "plaintext": "Nestedword"
+          }
+        },
+        "blocks_layout": {
+          "items": [
+            "n"
+          ]
+        }
+      },
+      "p": {
+        "@type": "panels",
+        "data": {
+          "blocks": {
+            "i": {
+              "@type": "card",
+              "title": "Panelword"
+            }
+          },
+          "blocks_layout": {
+            "items": [
+              "i"
+            ]
+          }
+        }
+      },
+      "g": {
+        "@type": "grid",
+        "table": {
+          "rows": [
+            {
+              "key": "r0",
+              "cells": [
+                {
+                  "key": "c0",
+                  "@type": "tableHeaderCell",
+                  "value": [
+                    {
+                      "type": "p",
+                      "children": [
+                        {
+                          "text": "Headerword"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "key": "r",
+              "label": "Rowword",
+              "cells": [
+                {
+                  "key": "c1",
+                  "@type": "tableCell",
+                  "blocks": [
+                    {
+                      "@id": "cs",
+                      "@type": "slate",
+                      "value": [
+                        {
+                          "type": "p",
+                          "children": [
+                            {
+                              "text": "Cellword"
+                            }
+                          ]
+                        }
+                      ],
+                      "plaintext": "Cellword"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "t": {
+        "@type": "card",
+        "title": "Sharedword",
+        "templateId": "/t",
+        "fixed": true,
+        "readOnly": true
+      }
+    },
+    "blocks_layout": {
+      "items": [
+        "c",
+        "s",
+        "p",
+        "g",
+        "t"
+      ]
+    }
+  },
+  "found": [
+    "Cardword",
+    "Headingword",
+    "Nestedword",
+    "Panelword",
+    "Rowword",
+    "Headerword",
+    "Cellword"
+  ],
+  "notFound": [
+    "Linkword",
+    "Sharedword"
+  ]
+}

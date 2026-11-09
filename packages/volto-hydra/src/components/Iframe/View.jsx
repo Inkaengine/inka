@@ -66,7 +66,7 @@ function restoreInstance(current, snapshot, instanceId, idFieldMap) {
       );
     }
     for (const field of fields) {
-      const key = `${path}/${field.region}`;
+      const key = `${path}/${[...(field.regionPath || []), field.region].join('/')}`;
       const restored = (saved.regions[key] || []).map((id) => ({ id, block: saved.blocks[id] }));
       const next = [];
       let spliced = false;
@@ -326,12 +326,12 @@ import { createPortal, flushSync } from 'react-dom';
 import { usePopper } from 'react-popper';
 import { useSelector, useDispatch } from 'react-redux';
 import { getURlsFromEnv } from '../../utils/getSavedURLs';
+import { newTemplateSettings } from '../../utils/newTemplateSettings';
 import { setSidebarTab } from '@plone/volto/actions';
 import blockSVG from '@plone/volto/icons/block.svg';
 import columnAfterSVG from '@plone/volto/icons/column-after.svg';
 import rowAfterSVG from '@plone/volto/icons/row-after.svg';
 import { setAllowedBlocksList } from '../../utils/allowedBlockList';
-import toggleMark from '../../utils/toggleMark';
 import slateTransforms from '../../utils/slateTransforms';
 // Note: Editor, Transforms, toggleInlineFormat, toggleBlock were removed
 // as applyFormat was replaced by SLATE_TRANSFORM_REQUEST handling
@@ -1505,7 +1505,8 @@ const Iframe = (props) => {
     if (!template) return;
     try {
       if (template._isNew) {
-        // New template: POST to parent folder so Plone creates the Document and
+        // New template: POST to parent folder so Plone creates it (as the type
+        // Make template gave it, newTemplateSettings) and
         // populates server-side fields (UID, created, …). The id goes in the body
         // so Plone keeps our slug instead of deriving one from the title.
         const lastSlash = templateId.lastIndexOf('/');
@@ -1527,7 +1528,7 @@ const Iframe = (props) => {
         }
         await api.post(parentFolder, {
           data: {
-            '@type': 'Document',
+            '@type': template['@type'],
             id,
             title: template.title || id,
             blocks: template.blocks,
@@ -1552,12 +1553,14 @@ const Iframe = (props) => {
   }, []);
 
   // Resolve each object_list field's idField ONCE from the schema (a form's subblocks are keyed
-  // by field_id, not @id) and pass it to every merge — so the merge stamps item ids into the
-  // right field instead of minting a bogus @id. A frontend passes this same shape as a hint.
-  const idFieldMap = useMemo(
-    () => buildIdFieldMap(config.blocks.blocksConfig, intl),
-    [intl],
-  );
+  // by field_id, not @id) and pass it to every walk of the containers, which names each list's
+  // id field to the merge as a frontend's block code does.
+  // Built each render: the frontend's schemas reach config.blocks.blocksConfig over the
+  // bridge, after this component mounts. Memoized on what it holds, so its identity only
+  // changes when they do.
+  const builtIdFieldMap = buildIdFieldMap(config.blocks.blocksConfig, intl);
+  const builtIdFieldMapKey = JSON.stringify(builtIdFieldMap);
+  const idFieldMap = useMemo(() => builtIdFieldMap, [builtIdFieldMapKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
 
@@ -3092,40 +3095,6 @@ const Iframe = (props) => {
         case 'INLINE_EDIT_EXIT':
           
           break;
-
-        case 'TOGGLE_MARK': {
-          // console.log('TOGGLE_BOLD', event.data.html);
-
-          const deserializedHTMLData = toggleMark(event.data.html);
-          // console.log('deserializedHTMLData', deserializedHTMLData);
-          onChangeFormData({
-            ...form,
-            blocks: {
-              ...form.blocks,
-              [selectedBlock]: {
-                ...form.blocks[selectedBlock],
-                value: deserializedHTMLData,
-              },
-            },
-          });
-          event.source.postMessage(
-            {
-              type: 'TOGGLE_MARK_DONE',
-              data: {
-                ...form,
-                blocks: {
-                  ...form.blocks,
-                  [selectedBlock]: {
-                    ...form.blocks[selectedBlock],
-                    value: deserializedHTMLData,
-                  },
-                },
-              },
-            },
-            event.origin,
-          );
-          break;
-        }
 
         case 'SLATE_TRANSFORM_REQUEST':
           window._formatT0 = performance.now();
@@ -6691,17 +6660,22 @@ const Iframe = (props) => {
               const blockData = getBlockById(properties, iframeSyncState.blockPathMap, selectedBlock);
               if (!blockData) return;
 
-              // Generate a unique template ID and instance ID. Parent folder
-              // comes from config (default '/templates') so consumers can
-              // host templates anywhere in the content tree without forking
-              // the bridge. The user can also retarget the save location
-              // via the sidebar 'folder' field after creation.
+              // Generate a unique template ID and instance ID. The folder it
+              // starts in and its content type are the deployment's settings
+              // (newTemplateSettings); the user can save it elsewhere via the
+              // sidebar 'folder' field after creation.
+              let settings;
+              try {
+                settings = newTemplateSettings();
+              } catch (e) {
+                toast.error(<Toast error title="Couldn't make a template" content={e.message} />);
+                return;
+              }
               const templateCount = Object.values(properties.blocks || {})
                 .filter(b => b.templateInstanceId === b.templateId)
                 .length;
               const defaultName = `untitled-template-${templateCount + 1}`;
-              const templatesFolder = config.settings.templatesPath || '/templates';
-              const newTemplateId = `${templatesFolder.replace(/\/$/, '')}/${defaultName}`;
+              const newTemplateId = `${settings.folder}/${defaultName}`;
               const newInstanceId = newTemplateId; // For new template, templateInstanceId === templateId
 
               // Add template fields to the block
@@ -6726,7 +6700,7 @@ const Iframe = (props) => {
               // saveTemplatesRef would PATCH-only and 404 on a real Plone.
               templateCacheRef.current[newTemplateId] = {
                 '@id': newTemplateId,
-                '@type': 'Document',
+                '@type': settings.type,
                 'title': defaultName,
                 'blocks': {
                   [selectedBlock]: updatedBlock,

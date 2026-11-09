@@ -129,6 +129,24 @@ const KEPT = ['volunteers@riversidegarden.org.au', 'market stall', 'school group
 
 const seedVolunteer = (api) => api.post('/', VOLUNTEER.doc);
 
+/** The volunteering page, not yet visible to visitors. */
+async function seedPrivateVolunteer(api) {
+  await seedVolunteer(api);
+  await api.post(`${VOLUNTEER.path}/@workflow/retract`, {});
+}
+
+/** The volunteering page, live, with a draft of a change to Sundays. */
+async function seedVolunteerWithDraft(api) {
+  await seedVolunteer(api);
+  const copy = await api.post(`${VOLUNTEER.path}/@workingcopy`, {});
+  const at = new URL(copy['@id']).pathname;
+  const page = await api.get(at);
+  const { when } = page.blocks;
+  await api.patch(at, {
+    blocks: { ...page.blocks, when: { ...when, value: [{ type: 'p', children: [{ text: when.value[0].children[0].text.replace('Saturdays', 'Sundays') }] }] } },
+  });
+}
+
 const SHOWED_NOT_TOLD = mcp('When Claude suggests how the page could look, it shows the person pictures of each suggestion '
   + '(tool results with pictures) rather than only describing them in words.');
 
@@ -258,6 +276,172 @@ export const CONVERSATIONS = [
       if (calls(turns, 'edit_blocks').some((t) => t.input.changeTemplates && !t.input.dryRun && !t.isError)) {
         problems.push('changed a template');
       }
+      return problems;
+    },
+  },
+  {
+    id: 'publish-finished-page',
+    setup: seedPrivateVolunteer,
+    prompt: 'I have finished our volunteering page (/volunteer). Can you put it live so people can see it?',
+    person: {
+      who: GARDENER,
+      wants: 'The page live for visitors, as it is, with no changes to what it says.',
+    },
+    criteria: {
+      'said-it-is-live': mcp('Claude tells the person in plain words that visitors can now see the page.'),
+    },
+    async check(api, turns) {
+      const problems = [];
+      const page = await api.get(VOLUNTEER.path);
+      if (page.review_state !== 'published') problems.push(`the page is ${page.review_state}`);
+      if (!calls(turns, 'transition_page').some((t) => !t.isError)) problems.push('never took a transition');
+      const words = wordsOn(page);
+      for (const kept of KEPT) if (!words.includes(kept)) problems.push(`the page lost "${kept}"`);
+      if (calls(turns, 'edit_blocks').some((t) => !t.input.dryRun && !t.isError)) problems.push('edited a page it was only asked to publish');
+      return problems;
+    },
+  },
+  {
+    id: 'publish-on-a-date',
+    setup: seedPrivateVolunteer,
+    prompt: 'Our volunteering page (/volunteer) is ready, but it is about our autumn program, so it should only appear '
+      + 'on the site from 1 March 2027 and come down after 31 March 2027. Can you set that up?',
+    person: {
+      who: GARDENER,
+      wants: 'The page set to appear on 1 March 2027 and disappear after 31 March 2027, with no changes to what it says.',
+    },
+    criteria: {
+      'explained-the-dates': mcp('Claude tells the person in plain words the dates the page will appear and come down.'),
+    },
+    async check(api) {
+      const problems = [];
+      const page = await api.get(VOLUNTEER.path);
+      if (page.review_state !== 'published') problems.push(`the page is ${page.review_state}: a date only takes effect once published`);
+      if (!String(page.effective).startsWith('2027-03-01')) problems.push(`it appears from ${page.effective}`);
+      if (!/^2027-(03-31|04-01)/.test(String(page.expires))) problems.push(`it comes down at ${page.expires}`);
+      return problems;
+    },
+  },
+  {
+    id: 'draft-for-approval',
+    setup: seedVolunteer,
+    prompt: 'Our working bees are moving from Saturdays to Sundays next term, so our volunteering page (/volunteer) needs to '
+      + 'say so. Our committee has to approve the wording first and they do not meet until next week, so can you make the '
+      + 'change and keep it somewhere I can show them? Visitors must keep seeing the current page until they approve it.',
+    person: {
+      who: GARDENER,
+      wants: 'The change saved somewhere you can show the committee, with the live page unchanged. Once Claude says it is '
+        + 'ready, ask to see it. Your next message, once you have seen it, says that a week has passed, the committee met and '
+        + 'approved it, and it should go live now. You are not done until Claude says visitors see the new wording.',
+    },
+    criteria: {
+      'said-live-is-unchanged': mcp('Before the person says it is approved, Claude tells them in plain words that visitors still see the current page.'),
+      'said-where-the-draft-is': mcp('Claude tells the person where the draft is, or how to show it to the committee.'),
+      'said-it-is-live': mcp('After the approval, Claude tells the person in plain words that visitors now see the new wording.'),
+      'asked-before-going-live': agent('Claude put the change live only after the person said the committee had approved it.'),
+    },
+    async check(api, turns) {
+      const problems = [];
+      if (!calls(turns, 'transition_page').some((t) => t.input.id === 'checkout' && !t.isError)) problems.push('never made a draft copy');
+      if (!calls(turns, 'transition_page').some((t) => t.input.id === 'checkin' && !t.isError)) problems.push('never published the draft');
+      // Once it has a draft, editing the page edits the draft; before that, it edits what visitors see.
+      const tools = turns.flatMap((t) => t.tools ?? []);
+      const drafted = tools.findIndex((t) => t.name === 'transition_page' && t.input.id === 'checkout' && !t.isError);
+      const onLive = tools.slice(0, drafted < 0 ? tools.length : drafted)
+        .filter((t) => (t.name === 'edit_blocks' ? !t.input.dryRun : t.name === 'rename_page') && !t.isError);
+      if (onLive.length) problems.push(`changed the live page directly, ${onLive.length} time(s)`);
+      const page = await api.get(VOLUNTEER.path);
+      if (page.review_state !== 'published') problems.push(`the page is ${page.review_state}`);
+      const words = wordsOn(page);
+      if (!words.includes('Sunday')) problems.push('the live page does not say Sundays');
+      if (/\bon Saturdays/i.test(words)) problems.push('the live page still says Saturdays');
+      for (const kept of KEPT) if (!words.includes(kept)) problems.push(`the page lost "${kept}"`);
+      if (await api.status('/copy_of_volunteer') !== 404) problems.push('a draft was left behind');
+      return problems;
+    },
+  },
+  {
+    id: 'back-to-a-draft',
+    setup: seedVolunteerWithDraft,
+    prompt: 'Last week we drafted a change to our volunteering page (/volunteer) saying working bees are moving to Sundays. '
+      + 'The committee approved it, but they want it to say 10am instead of 9am. Can you fix that and then put it live?',
+    person: {
+      who: GARDENER,
+      wants: 'The drafted Sunday wording, with 10am instead of 9am, live for visitors.',
+    },
+    criteria: {
+      'said-it-is-live': mcp('Claude tells the person in plain words that visitors now see the new wording.'),
+    },
+    async check(api, turns) {
+      const problems = [];
+      const page = await api.get(VOLUNTEER.path);
+      const words = wordsOn(page);
+      if (!words.includes('Sunday')) problems.push('the live page does not say Sundays: the draft was not used');
+      if (!words.includes('10am')) problems.push('the live page does not say 10am');
+      if (/\bon Saturdays/i.test(words)) problems.push('the live page still says Saturdays');
+      if (page.review_state !== 'published') problems.push(`the page is ${page.review_state}`);
+      if (!calls(turns, 'transition_page').some((t) => t.input.id === 'checkin' && !t.isError)) problems.push('never published the draft');
+      if (calls(turns, 'transition_page').some((t) => t.input.id === 'checkout' && !t.isError)) problems.push('made another draft');
+      if (await api.status('/copy_of_volunteer') !== 404) problems.push('a draft was left behind');
+      return problems;
+    },
+  },
+  {
+    id: 'outstanding-drafts',
+    async setup(api) {
+      // One published page with a draft of a change, and one new page not published yet.
+      await seedVolunteer(api);
+      await api.post(`${VOLUNTEER.path}/@workingcopy`, {});
+      await api.post('/', { '@type': 'Document', id: 'open-day', title: 'Open day', blocks: {}, blocks_layout: { items: [] } });
+      await api.post('/open-day/@workflow/retract', {});
+    },
+    prompt: 'Have we got any drafts waiting to go live on the site?',
+    person: {
+      who: GARDENER,
+      wants: 'To know what is waiting to go live. You are not asking for anything to be changed or published.',
+    },
+    criteria: {
+      'found-the-draft': mcp('Claude tells the person there is a draft of a change to the "Volunteer with us" page, which is already live.'),
+      'found-the-new-page': mcp('Claude tells the person the "Open day" page is not published yet.'),
+      'told-them-apart': mcp('Claude does not present the draft of "Volunteer with us" as a separate new page: it says visitors already see that page, and the draft would replace it.'),
+    },
+    async check(api, turns) {
+      const problems = saves(turns).length ? [`changed the site: ${saves(turns).map((t) => t.name).join(', ')}`] : [];
+      const tools = turns.flatMap((t) => t.tools ?? []).length;
+      // One ran to 254 calls going through the site page by page, when search had no way to ask.
+      if (tools > 25) problems.push(`took ${tools} calls`);
+      if (!calls(turns, 'search').some((t) => t.input.hasDraft && !t.isError)) problems.push('never searched for pages with a draft');
+      if (!calls(turns, 'search').some((t) => t.input.reviewState && !t.isError)) problems.push('never searched for pages visitors can\'t see');
+      return problems;
+    },
+  },
+  {
+    id: 'emergency-live-fix',
+    setup: seedVolunteerWithDraft,
+    prompt: 'Urgent: the email address on our volunteering page (/volunteer) is wrong. It should be helpers@riversidegarden.org.au. '
+      + 'People are emailing the wrong place, so please fix it on the live page now. We also have a draft of that page saying working '
+      + 'bees move to Sundays, which is still waiting on our committee, so that must not go live yet.',
+    person: {
+      who: GARDENER,
+      wants: 'The email fixed for visitors straight away, with the Sunday change staying off the live page. Once Claude says it is fixed, '
+        + 'your next message says a week has passed, the committee approved the draft, and it should go live now. You are not done until '
+        + 'Claude says visitors see the Sunday wording.',
+    },
+    criteria: {
+      'kept-the-draft-right': mcp('Claude makes sure the draft has the corrected email too, or tells the person it must, before the draft goes live.'),
+    },
+    async check(api, turns) {
+      const problems = [];
+      const tools = turns.flatMap((t) => t.tools ?? []);
+      const fixedLive = tools.findIndex((t) => t.name === 'edit_blocks' && t.input.live && !t.input.dryRun && !t.isError);
+      const published = tools.findIndex((t) => t.name === 'transition_page' && t.input.id === 'checkin' && !t.isError);
+      if (fixedLive < 0) problems.push('never fixed the live page');
+      if (published < 0) problems.push('never published the draft');
+      if (published >= 0 && fixedLive > published) problems.push('fixed the live page only after publishing the draft');
+      const words = wordsOn(await api.get(VOLUNTEER.path));
+      if (!words.includes('helpers@riversidegarden.org.au')) problems.push('publishing the draft lost the corrected email');
+      if (words.includes('volunteers@riversidegarden.org.au')) problems.push('the live page still has the wrong email');
+      if (!words.includes('Sunday')) problems.push('the live page does not say Sundays');
       return problems;
     },
   },

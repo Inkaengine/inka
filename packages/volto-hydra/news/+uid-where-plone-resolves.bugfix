@@ -1,0 +1,1 @@
+The content validator refuses a `resolveuid/<uid>` stored as a bare string in a field Plone does not resolve (any but url, href and preview_image): the frontend gets it unresolved, and an image drawn from it loads the item's page. Store it as `{ "@id": ... }`.

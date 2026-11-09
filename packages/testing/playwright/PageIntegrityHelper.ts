@@ -27,32 +27,45 @@ export interface PageIntegrityOptions {
   backendOriginMatches?: (origin: string) => boolean;
 
   /**
-   * Skip the broken-image check (verifyNoBrokenImages). The editor screenshots
-   * and demo assets the docs embed are git-ignored and GENERATED, not committed
-   * (docs/.gitignore); a checkout that has not recorded them — one where asset
-   * generation runs elsewhere (a parent repo's deploy) rather than in this CI —
-   * legitimately serves those pages with the `<img>` unresolved, and flagging
-   * that as broken is a false negative. Defaults to the SKIP_BROKEN_IMAGE_CHECK
-   * env var, so CI can set it once for a whole run without threading the option
-   * through every caller. The link checks still run — a typo'd path is still a
-   * bug — only the "did every image's bytes load" assertion is skipped.
+   * URLs this run may serve without their file: assets the site generates
+   * rather than commits, in a checkout that has not generated them. Defaults
+   * to {@link ABSENT_ASSETS}. Every other image must load.
    */
-  skipBrokenImages?: boolean;
+  absentAssets?: string[];
 }
 
 /**
- * The env fallback for {@link PageIntegrityOptions.skipBrokenImages}.
- *
- * Exported because it gates the same class of assertion in block-sanity
- * (BlockVerificationHelper): the "did the asset bytes actually load" checks —
- * broken images AND broken video/audio sources — are invalid in an environment
- * that deliberately does not generate those assets (hydra CI moved doc-asset
- * generation to the parent repo). The name says IMAGE but the meaning is
- * "asset bytes may be absent here"; media is the same case, not a different one.
+ * ABSENT_ASSETS: space-separated URL path globs for the files a run knows are
+ * missing. The repo that generates them says which (Inka's CI names its docs'
+ * screenshots and demo video); these helpers know no site's layout. Unset,
+ * nothing is excused.
  */
-export const SKIP_BROKEN_IMAGES_ENV =
-  process.env.SKIP_BROKEN_IMAGE_CHECK === '1' ||
-  process.env.SKIP_BROKEN_IMAGE_CHECK === 'true';
+export const ABSENT_ASSETS: string[] = (process.env.ABSENT_ASSETS ?? '').split(/\s+/).filter(Boolean);
+
+/**
+ * A path glob as a RegExp: `**` crosses segments, `*` and `?` stay inside one.
+ * It matches the path and anything under it, so a scale of the file
+ * (`x.png/@@images/image/large`) is the file too.
+ */
+const globRegExp = (glob: string): RegExp =>
+  new RegExp(
+    '^' +
+      glob
+        .split(/(\*\*|\*|\?)/)
+        .map((part) =>
+          part === '**' ? '.*' : part === '*' ? '[^/]*' : part === '?' ? '[^/]'
+            : part.replace(/[.+^${}()|[\]\\]/g, '\\$&'),
+        )
+        .join('') +
+      '(/|$)',
+  );
+
+/** Is `url` (absolute) one of the assets this run was told are missing? */
+export function isAbsentAsset(url: string, globs: string[] = ABSENT_ASSETS): boolean {
+  if (!globs.length) return false;
+  const { pathname } = new URL(url);
+  return globs.some((glob) => globRegExp(glob).test(pathname));
+}
 
 /**
  * No *visible* rendered `<img>` should be broken (empty src, failed load).
@@ -73,7 +86,7 @@ export const SKIP_BROKEN_IMAGES_ENV =
  */
 export async function verifyNoBrokenImages(
   page: Page,
-  options: { settleTimeout?: number } = {},
+  options: { settleTimeout?: number; absentAssets?: string[] } = {},
 ): Promise<void> {
   const settleTimeout = options.settleTimeout ?? 10000;
 
@@ -134,7 +147,7 @@ export async function verifyNoBrokenImages(
       `${JSON.stringify(stillLoading, null, 2)})`
     : '';
   expect(
-    broken,
+    broken.filter((img) => !isAbsentAsset(img.src, options.absentAssets)),
     `Broken images on ${page.url()}:\n${JSON.stringify(broken, null, 2)}${note}`,
   ).toEqual([]);
 }
@@ -280,8 +293,7 @@ export async function verifyPageIntegrity(
   page: Page,
   options: PageIntegrityOptions & { alreadyChecked?: Set<string> } = {},
 ): Promise<void> {
-  const skipBrokenImages = options.skipBrokenImages ?? SKIP_BROKEN_IMAGES_ENV;
-  if (!skipBrokenImages) await verifyNoBrokenImages(page);
+  await verifyNoBrokenImages(page, { absentAssets: options.absentAssets });
   await verifyNoBackendLinks(page, options);
   await verifyNoDeadLinks(page, options);
 }

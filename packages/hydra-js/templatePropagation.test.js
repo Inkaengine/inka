@@ -1,3 +1,4 @@
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import fs from 'fs';
 import path from 'path';
 import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';

@@ -199,19 +199,26 @@ export function getBlockTypeSchema(blockType, intl, blocksConfig) {
 
 /**
  * Resolve the object_list idField for every block type ONCE, so the merge can stamp item ids
- * without re-walking schemas per block. Returns { blockType: { field: idField } }. The admin
- * builds this from blocksConfig; a frontend passes the same shape as a literal hint.
+ * without re-walking schemas per block. Returns { blockType: { field: idField } }, a field in
+ * a widget:'object' named by its /-path (`table/rows`). For what holds the schema and walks
+ * every container itself: the admin and the content tools. A frontend's block code names its
+ * own list's idField when it calls the merge.
  */
 export function buildIdFieldMap(blocksConfig, intl) {
   const map = {};
   for (const type of Object.keys(blocksConfig || {})) {
     let schema = null;
     try { schema = getBlockTypeSchema(type, intl, blocksConfig); } catch { schema = null; }
-    for (const [field, def] of Object.entries(schema?.properties || {})) {
-      if (isObjectListRegion(def)) {
-        (map[type] || (map[type] = {}))[field] = def.idField || '@id';
+    const visit = (properties, prefix) => {
+      for (const [field, def] of Object.entries(properties || {})) {
+        if (isObjectListRegion(def)) {
+          (map[type] || (map[type] = {}))[`${prefix}${field}`] = def.idField || '@id';
+        } else if (def.widget === 'object') {
+          visit(def.schema?.properties, `${prefix}${field}/`);
+        }
       }
-    }
+    };
+    visit(schema?.properties, '');
   }
   return map;
 }
@@ -618,14 +625,8 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
       if (fieldDef.widget === 'blocks_layout') {
         processBlocksContainer(item, itemId, itemPath, fieldName, fieldDef, disallow, slateRules);
       } else if (isObjectListRegion(fieldDef)) {
-        // Use dataPath if provided to find data in a different location
-        const dataPath = fieldDef.dataPath || [fieldName];
-        let fieldData = item;
-        for (const key of dataPath) {
-          fieldData = fieldData?.[key];
-        }
-        if (fieldData) {
-          processObjectListContainer(item, itemId, itemPath, fieldName, fieldDef, dataPath, disallow, slateRules);
+        if (item[fieldName]) {
+          processObjectListContainer(item, itemId, itemPath, fieldName, fieldDef, disallow, slateRules);
         }
       }
     });
@@ -662,7 +663,7 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
     // Empty when the blocks live directly on the owning block (the ordinary
     // case); [table] etc. when the blocks_layout is nested inside a
     // widget:'object' wrapper (#245). The ops navigate here via regionPath —
-    // the blocks_layout analogue of object_list's dataPath.
+    // the same prefix object_list's array sits under.
     const ownerPath = pathMap[parentId]?.path || [];
     const regionPath = parentPath.slice(ownerPath.length);
 
@@ -701,7 +702,7 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
       //
       // Assumption: container-field metadata (widget: 'blocks_layout' /
       // 'object_list', their allowedBlocks / maxLength / idField / typeField
-      // / dataPath / addMode) is STATIC per blockType — independent of the
+      // / addMode) is STATIC per blockType — independent of the
       // instance's formData and of enhancer runs. Pass 1 only reads container
       // metadata; if an enhancer or a blockSchema factory varied container
       // fields based on instance data, pass 1 would miss it. Volto's blocks
@@ -832,15 +833,9 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
   /**
    * Process a widget: 'object_list' container field.
    * Items are stored as array with configurable ID field.
-   * @param {Array} dataPath - Path to actual data location (defaults to [fieldName])
    */
-  function processObjectListContainer(parent, parentId, parentPath, fieldName, fieldDef, dataPath = null, disallow = null, inheritedSlateRules = null) {
-    // Navigate to actual data location using dataPath
-    const effectiveDataPath = dataPath || [fieldName];
-    let items = parent;
-    for (const key of effectiveDataPath) {
-      items = items?.[key];
-    }
+  function processObjectListContainer(parent, parentId, parentPath, fieldName, fieldDef, disallow = null, inheritedSlateRules = null) {
+    const items = parent[fieldName];
 
     // Handle both arrays and objects (Volto's form state can convert arrays to objects)
     let itemsArray;
@@ -897,7 +892,7 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
       if (!itemId) return;
 
       // Build path using numeric index (not string key) so getBlockByPath traversal works on arrays
-      const itemPath = [...parentPath, ...effectiveDataPath, index];
+      const itemPath = [...parentPath, fieldName, index];
 
       // Determine block type:
       // - If typeField is set, read type from item[typeField] (typed object_list)

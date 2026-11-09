@@ -122,12 +122,41 @@
         }
       ],
       "plaintext": "kept and kept"
+    },
+    "linked": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Read the "
+            },
+            {
+              "type": "link",
+              "data": {
+                "url": "https://example.com/guide"
+              },
+              "children": [
+                {
+                  "text": "guide"
+                }
+              ]
+            },
+            {
+              "text": " today"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Read the guide today"
     }
   },
   "blocks_layout": {
     "items": [
       "title-block",
       "legacy",
+      "linked",
       "target",
       "styled",
       "cols",

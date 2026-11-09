@@ -134,6 +134,12 @@ Editing a template changes its **definition** — the change will appear on **ev
 
 </block>
 
+## Making a template
+
+Select a block, open its `⋯` menu and choose **Make Template**. The block becomes the start of a new template, unlocked so you can add to it. Give it a **Name**, and choose its **Save Location** if it shouldn't go in your site's usual templates folder: a template can be saved in any folder you can add pages to. It is saved when you lock it.
+
+A template is saved as its own kind of page, a **Template**. Site search leaves templates out, and so do search engines: they are templates, not pages for visitors to find on their own.
+
 ## Editing content inside a template
 
 A template's own (fixed) blocks are **locked** by default — you can edit *this page's* content, but not the template. To change the template itself, **unlock** it: select one of its blocks and click the 🔒 on its **sidebar bar** ("Template: *name*"), on the block's **block toolbar**, or **Edit template** in the bar's `⋯` menu. The 🔒 becomes 🔓, and the template's blocks — plus its Name / Save Location — become editable.

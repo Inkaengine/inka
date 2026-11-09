@@ -82,6 +82,7 @@ import columnDeleteSVG from '@plone/volto/icons/column-delete.svg';
 import { applyBlockDefaults } from '@plone/volto/helpers';
 import { setInjectedVoltoConfig } from './utils/injectedVoltoConfig';
 import StyleDropdown from './components/Toolbar/StyleDropdown';
+import { regionGatedLinkButton } from './components/Toolbar/regionRules';
 import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
 import { apiAcceptEncoding } from './express-middleware/apiAcceptEncoding';
@@ -474,8 +475,6 @@ config.settings.additionalToolbarComponents = {
   // Configure slateTable block schema for buildBlockPathMap traversal
   // Structure: block.table.rows[].cells[] with 'key' as idField
   // Sidebar titles are derived from field names: "rows" -> "Row", "cells" -> "Cell"
-  // Note: We use dataPath to tell traversal where data lives WITHOUT nesting
-  // inside widget: 'object', which would cause applySchemaDefaults to corrupt array data.
   // disableCustomSidebarEditForm: TableBlockEdit expects specific data structures that don't
   // work well when rendered in sidebar - use schema form instead.
   config.blocks.blocksConfig.slateTable = {
@@ -489,7 +488,7 @@ config.settings.additionalToolbarComponents = {
         properties: {
           ...baseSchema.properties,
           // #245: rows nest inside the `table` object (block.table.rows) as a
-          // first-class widget:'object' — no dataPath. The pathMap recurses into
+          // first-class widget:'object'. The pathMap recurses into
           // the object and resolves the object_list relative to it.
           table: {
             widget: 'object',
@@ -962,6 +961,10 @@ config.settings.additionalToolbarComponents = {
     config.settings.slate.buttons = {
       ...config.settings.slate.buttons,
       styleMenu: (props) => <StyleDropdown {...props} />,
+      // The sidebar's toolbar is Volto's, which knows no region rules; this
+      // one hides the link button where the region refuses links, as the
+      // canvas toolbar does. See regionRules.
+      link: regionGatedLinkButton(config.settings.slate.buttons?.link),
       // Volto's Clear formatting is always enabled; Inka's is disabled when the
       // selection has nothing to clear. See ClearFormattingButton.
       clearformatting: (props) => (

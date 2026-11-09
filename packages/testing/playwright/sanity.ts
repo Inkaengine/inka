@@ -29,7 +29,7 @@
 import { test as playwrightTest, type FrameLocator } from '@playwright/test';
 import { test as base, expect } from './fixtures';
 import { AdminUIHelper } from './AdminUIHelper';
-import { verifyBlockRendering, revealBlock } from './BlockVerificationHelper';
+import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage } from './BlockVerificationHelper';
 import { verifyPageIntegrity } from './PageIntegrityHelper';
 import { drainFieldCoverage } from '../field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../text-style-coverage';
@@ -156,6 +156,23 @@ export function defineBlockSanityTests(options: SanityOptions): void {
   const discoveredBlocks: DiscoveredBlock[] = (readDiscovery<DiscoveredBlock>(options.discoveryDir, 'blocks') ?? [])
     .filter((b) => inContract(b.blockType, options));
   const seenShapeTitles = new Map();
+
+  // The render test that also checks every OTHER block on its page: the first
+  // render sample on each page, per frontend. One per page, so a page's blocks
+  // are checked once however many samples it holds, and always by the same test.
+  const isRenderSample = (b: DiscoveredBlock) =>
+    !b.unregistered && !b.noExample && !b.allowedBlocksViolation && !b.integrityIssue &&
+    !b.shapeIssue && !b.slateIssue && !b.unexercisedOption && !b.undeclaredField;
+  const checksItsPage = new Set<DiscoveredBlock>();
+  {
+    const pages = new Set<string>();
+    for (const b of discoveredBlocks) {
+      const key = `${b.frontend ?? ''} ${b.pagePath}`;
+      if (!isRenderSample(b) || pages.has(key)) continue;
+      pages.add(key);
+      checksItsPage.add(b);
+    }
+  }
 
   base.beforeEach(async ({}, testInfo) => {
     // Scope BEFORE environment: a project this spec doesn't cover is a decision,
@@ -505,6 +522,14 @@ export function defineBlockSanityTests(options: SanityOptions): void {
           // DOM can carry every annotation and still be impossible to type into.
           checkEditTextClicks: true,
         });
+
+        // The page is drawn: check every other block on it too (see
+        // checkEveryBlockOnPage). Before the text-style and a11y passes, which
+        // judge the sample alone.
+        if (checksItsPage.has(block)) {
+          const others = await checkEveryBlockOnPage(iframe, block.blockId, (type) => !inContract(type, options));
+          expect(others, `other blocks on ${block.pagePath} fail the per-block checks`).toEqual([]);
+        }
 
         await measureBlockStyles(iframe, block);
 

@@ -45,11 +45,9 @@ Three rules the mock encodes, each of which the addon must reproduce:
 3. **Name a missing template, don't throw.** One unresolvable id must not fail the page
    read; it appears in an `errors` array and the rest still arrive.
 
-The response carries **templates only**. The `idFieldMap` the merge needs (which
-`object_list` field a block keys by `field_id` rather than `@id`) is a fact about the
-**frontend's** block schemas, which Plone never sees. Frontends derive it from their own
-block config with `buildIdFieldMap(blocksConfig)` from `@hydra-js/hydra.js`, as the admin
-does.
+The response carries **templates only**. Which `object_list` field a block keys by
+`field_id` rather than `@id` is a fact about the **frontend's** block schemas, which Plone
+never sees. A frontend's block code names it when it passes the list to the merge.
 
 ## Running the backend
 

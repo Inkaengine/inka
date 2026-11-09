@@ -1445,10 +1445,20 @@ function renderTocBlock(block) {
  * @param {Object} block - Form block data
  * @returns {string} HTML string
  */
+// The contract (docs/frontend-guide/templates.md "Expand every container"): a form's
+// fields go through the merge, named by their id field.
+function expandFormFields(block) {
+    return window._expandTemplatesSync(block.subblocks || [], {
+        templateState: window._templateState,
+        templates: {},
+        idField: 'field_id',
+    });
+}
+
 function renderFormBlock(block) {
     const title = block.title || '';
     const description = block.description || '';
-    const subblocks = block.subblocks || [];
+    const subblocks = expandFormFields(block);
     const submitLabel = block.submit_label || 'Submit';
     const successMessage = block.send_message || 'Thank you, your form has been submitted.';
 
@@ -1507,7 +1517,7 @@ function renderFormBlock(block) {
  */
 function attachFormValidation(formEl, block) {
     if (!formEl) return;
-    const subblocks = block.subblocks || [];
+    const subblocks = expandFormFields(block);
     const submitBtn = formEl.querySelector('.form-submit');
     if (!submitBtn) return;
 

@@ -6,7 +6,7 @@ Read `docs/architecture.md` for the iframe ↔ admin bridge: Slate transforms, s
 
 Read `docs/architecture.md` ("Merging templates: every container is expanded, by whoever renders") and `docs/frontend-guide/templates.md` ("Expand every container") BEFORE changing anything that merges templates, renders containers, or walks a page's blocks.
 
-- The merge (`expandTemplates`/`expandTemplatesSync`) has no schema: it fills the regions of a template it APPLIES, never a template placed inside a plain container.
+- The merge (`expandTemplates`/`expandTemplatesSync`) has no schema and no `idFieldMap`: it expands one list per call. A container's children, a template's own or a plain container's, wait for that container's call.
 - Every renderer re-enters every container's children with the shared `templateState`: each frontend (the contract), AND the admin (`mergeTemplatesIntoPage` → `expandContainers`), because the admin merges the templates it edits itself.
 - Never remove the admin's re-entry as "redundant", and never render a container's children without passing them through the merge. A template can be anywhere a block can.
 - Test new template behaviour with the template placed at the top level AND inside a container.

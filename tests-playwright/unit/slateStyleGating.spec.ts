@@ -126,6 +126,16 @@ test.describe('slate style gating in the bridge', () => {
     expect(allowed.sent).toEqual([{ type: 'markdown', markdownType: 'inline', inlineType: 'strong' }]);
   });
 
+  test('markdown has no shortcut for a link: its markup stays text', async () => {
+    const iframe = helper.getIframe();
+    const denied = await withRules(iframe, {
+      text: '[guide](https://example.com)',
+      rules: { disallowedStyles: ['a'] },
+      action: 'space',
+    });
+    expect(denied.sent).toEqual([]);
+  });
+
   test('a format hotkey for a denied style sends nothing', async () => {
     const iframe = helper.getIframe();
     const allowed = await withRules(iframe, { text: 'x', rules: null, action: 'bold' });
