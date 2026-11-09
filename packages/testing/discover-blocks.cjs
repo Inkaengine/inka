@@ -918,9 +918,10 @@ function collectWidgetShapeIssues(
     // A URL/link value must live in a url/link widget so the editor gives a link
     // control and the frontend resolves it. Flag an absolute (http(s)://) or
     // site-relative (/path) string sitting in a plain text field. url,
-    // object_browser (incl. mode:'link'), image and file legitimately hold
-    // URLs/paths and are handled by their own branches.
-    const urlWidgets = ['url', 'object_browser', 'image', 'file'];
+    // internal_url (Volto's widget for a path on the site), object_browser
+    // (incl. mode:'link'), image and file legitimately hold URLs/paths and are
+    // handled by their own branches.
+    const urlWidgets = ['url', 'internal_url', 'object_browser', 'image', 'file'];
     const looksLikeUrl =
       typeof value === 'string' &&
       (/^https?:\/\//.test(value) || /^\/[^/]/.test(value));
@@ -1264,6 +1265,24 @@ async function loadOfflineBlockSyncApi(blocksConfig) {
     api.resolveEffectiveBlockSchema(blockId, formData, pathMap, enhanced, intl);
 }
 
+// Plone content types appear as @type on the page root (Document, etc.)
+// — skip these, they're not blocks.
+const PAGE_TYPES = new Set(['Document', 'Folder', 'Plone Site', 'News Item', 'Event']);
+
+/**
+ * A block @type the frontend does not register, so it renders as "Not
+ * implemented". `empty` is not one: it is the editor's placeholder for a
+ * region with nothing in it yet, which a frontend renders but never registers
+ * (it is not a type an author picks; docs/frontend-guide/container-blocks.md).
+ *
+ * @param {string|undefined} blockType
+ * @param {Set<string>} registered - the frontend's blocksConfig keys
+ */
+function isUnregisteredType(blockType, registered) {
+  return Boolean(blockType) && registered.size > 0 && !registered.has(blockType)
+    && blockType !== 'empty' && !PAGE_TYPES.has(blockType);
+}
+
 // Structural types: hydra's own plumbing, never a project's placement choice.
 // contentLayout: a structural page-layout block applied through the layout
 // picker (allowedLayouts) — it IS the content region's root, never a
@@ -1411,9 +1430,6 @@ async function discoverBlocks(
   // itemType → { pagePath, containerUid }
   const itemTypeExamples = new Map();
   const REGISTERED = new Set(Object.keys(blocksConfig || {}));
-  // Plone content types appear as @type on the page root (Document, etc.)
-  // — skip these, they're not blocks.
-  const PAGE_TYPES = new Set(['Document', 'Folder', 'Plone Site', 'News Item', 'Event']);
 
 
   const objectListFields = buildObjectListFieldsMap(blocksConfig);
@@ -1567,12 +1583,7 @@ async function discoverBlocks(
         // every unregistered @type at any depth (object_list sub-items whose
         // type is parent-controlled have no @type of their own, so they're
         // naturally excluded by the `blockType` guard).
-        if (
-          blockType &&
-          REGISTERED.size &&
-          !REGISTERED.has(blockType) &&
-          !PAGE_TYPES.has(blockType)
-        ) {
+        if (isUnregisteredType(blockType, REGISTERED)) {
           if (!unregisteredTypes.has(blockType)) unregisteredTypes.set(blockType, []);
           unregisteredTypes.get(blockType).push({ pagePath, blockId });
         }
@@ -1983,7 +1994,9 @@ module.exports = {
   collectFieldMappingIssues,
   loadMappingVocabularies,
   collectSlateIssues,
+  collectWidgetShapeIssues,
   discoverBlocks,
+  isUnregisteredType,
   extractBlocks,
   buildObjectListFieldsMap,
   buildEmptyRegionCases,
