@@ -35,6 +35,8 @@ function fakeAgent(initial) {
       return id;
     },
     async update({ id, fields }) { calls.push(['update', id]); Object.assign(page[at(id)][1], fields); },
+    async getBlock(id) { return structuredClone(page[at(id)][1]); },
+    async replace({ id, block }) { calls.push(['update', id]); page[at(id)][1] = block; },
     async remove(id) { calls.push(['remove', id]); page.splice(at(id), 1); },
     async move({ id, targetId, insertAfter }) {
       calls.push(['move', id, targetId, insertAfter]);
