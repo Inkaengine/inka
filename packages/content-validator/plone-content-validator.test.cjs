@@ -344,6 +344,20 @@ describe('plone-content-validator validate()', () => {
     assert.equal(reservedIdError('typography'), undefined);
   });
 
+  it('takes the site root from where the export keeps it, not from a site called Plone', () => {
+    // A site's id is its own (/lecc); the root is the item in
+    // plone_site_root. A page whose @id is /Plone is a page, and a page with
+    // no id aborts the import, so it is reported.
+    const { root, contentDir } = buildFixture({
+      rootItem: { '@id': '/lecc', '@type': 'SiteRootOfAnyType' },
+      pageA: { '@id': '/Plone', '@type': 'Document', UID: 'pageauid1234567', parent: { '@id': '/' } },
+    });
+    const r = checkIntegrity(contentDir);
+    cleanup(root);
+    assert.ok(r.errors.some((e) => e.includes('page-a: missing id')), r.errors.join('\n'));
+    assert.ok(!r.errors.some((e) => e.includes('plone_site_root: missing id')), r.errors.join('\n'));
+  });
+
   it('reports id starting with underscore', () => {
     const { root, contentDir } = buildFixture({
       dataFiles: ['plone_site_root/data.json', '_underscore/data.json'],

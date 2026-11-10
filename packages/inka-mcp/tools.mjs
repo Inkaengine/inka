@@ -124,6 +124,14 @@ async function findByState(site, { reviewState, path, limit, start }) {
 }
 
 /** The pages directly inside `path`, in their order. */
+/**
+ * The content types the site lets this user add in `path`, by id and title.
+ * Which types there are, and which go where, is each site's.
+ */
+export async function contentTypes(site, { path }) {
+  return { path, types: await site.addableTypes(path) };
+}
+
 export async function listChildren(site, { path, limit, start }) {
   return asPages(site, await site.search({ path, depth: 1, limit, start }));
 }

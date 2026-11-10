@@ -2000,6 +2000,47 @@ test.describe('Template Edit Mode - Lock affordance + metadata gating', () => {
     await expect(folderField.locator('button.action')).toBeVisible();
   });
 
+  // Content types are each site's: a template can be saved wherever the site
+  // lets the user add the template's type (that folder's @types), whatever
+  // the folder's own type (#663). "News" is a folderish Document that takes
+  // any type; "Media Only" takes images and files only.
+  test("a template is saved only where the site allows the template's type", async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
+    await helper.clickBlockInIframe(headerBlockId);
+    await helper.waitForSidebarOpen();
+    await helper.escapeToParent();
+    await page.locator('.sidebar-section-header[data-is-current="true"] .edit-template-toggle').click();
+    await page.locator('.template-unlock-modal .template-confirm').click();
+    await helper.waitForBlockEditable(headerBlockId);
+
+    const folderField = page.locator('.field').filter({ hasText: 'Save Location' });
+    // The template already has a location: clicking it opens the browser (the
+    // button beside it clears it, as Volto's object browser widget does).
+    await expect(folderField.locator('.selected-values')).not.toBeEmpty();
+    const values = folderField.locator('.selected-values');
+    const box = (await values.boundingBox())!;
+    await values.click({ position: { x: box.width - 4, y: box.height / 2 } });
+    const ob = await helper.waitForObjectBrowser();
+    // It opens on the page being edited; News is in the folder above.
+    await page.getByRole('button', { name: '_test_data' }).click();
+    const mediaOnly = page.locator('.object-listing li').filter({ hasText: /^Media Only$/ });
+    await mediaOnly.locator('.ob-select-control').click();
+    await expect(page.locator('.Toastify')).toContainText(
+      'can’t be saved in /_test_data/media-only',
+      { timeout: 5000 },
+    );
+    await expect(folderField).not.toContainText('media-only');
+
+    const news = page.locator('.object-listing li').filter({ hasText: /^News$/ });
+    await expect(news.locator('.ob-select-control')).toBeVisible({ timeout: 10000 });
+    await helper.objectBrowserSelectItem(ob, /^News$/);
+    await expect(folderField).toContainText('News', { timeout: 5000 });
+  });
+
   // A template's read-only (fixed/readonly) sub-blocks show their fields as read-only
   // text in the sidebar while the template is LOCKED — never editable inputs — and
   // become editable once the template is unlocked (edit mode).

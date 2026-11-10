@@ -86,6 +86,18 @@ export function siteApi(dispatch, history, token) {
       }
     },
 
+    /**
+     * The content types this user may add in `path` (Plone's @types there),
+     * by id and title. Which types go where is the site's.
+     */
+    async addableTypes(path) {
+      const types = await run(`types allowed in ${path}`, {
+        type: 'INKA_AGENT_TYPES',
+        request: { op: 'get', path: `${path === '/' ? '' : path}/@types` },
+      });
+      return types.filter((t) => t.addable).map(({ id, title }) => ({ id, title }));
+    },
+
     /** A page as the CMS has it now (stored shape). */
     async get(path) {
       return run(`get ${path}`, getContent(path, null, 'inka-agent-get'));

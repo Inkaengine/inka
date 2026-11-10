@@ -2602,7 +2602,7 @@ function loadMarkdownMount(mount) {
   const { mountPath, dirPath } = mount;
   // Pass the mountPath as the link prefix so hand-authored .md cross-links resolve
   // to the served @ids (a /docs mount serves its tree under /docs, not at root).
-  const { items, blobFiles, folderForm, order } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor });
+  const { items, blobFiles, folderForm, order } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor, isFolderish: isFolderishType });
   const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
   // The authored `order:` is a CURATED list (it may deliberately omit asset
   // folders like images/static). Keep it so a re-export writes it back verbatim
@@ -2733,6 +2733,16 @@ async function getEngine() {
   }
   return engine;
 }
+
+/**
+ * Which content types this mock site makes folderish, as Plone does: with
+ * plone.volto a Document, Event or News Item is folderish whether or not it
+ * holds anything (checked against a live Plone 6.2 + plone.volto: Document,
+ * Event, News Item true; Link, Image false); a file-like or link item is not.
+ * The mock stands in for the site, so it says; the markdown mount asks.
+ */
+const NOT_FOLDERISH_TYPES = new Set(['Image', 'File', 'Link', 'Collection']);
+const isFolderishType = (type) => !NOT_FOLDERISH_TYPES.has(type);
 
 async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);

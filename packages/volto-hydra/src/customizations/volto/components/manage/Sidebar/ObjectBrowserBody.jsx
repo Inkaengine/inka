@@ -28,6 +28,7 @@ import {
   holdImage,
   NotAllowedThere,
 } from '../../../../../utils/pendingImages';
+import { checkAddable } from '../../../../../utils/addableTypes';
 import Icon from '@plone/volto/components/theme/Icon/Icon';
 import { flattenToAppURL, isInternalURL } from '@plone/volto/helpers/Url/Url';
 import config from '@plone/volto/registry';
@@ -116,6 +117,7 @@ class ObjectBrowserBody extends Component {
     contextURL: PropTypes.string,
     searchableTypes: PropTypes.arrayOf(PropTypes.string),
     onlyFolderishSelectable: PropTypes.bool,
+    addableType: PropTypes.string,
   };
 
   /**
@@ -132,6 +134,7 @@ class ObjectBrowserBody extends Component {
     searchableTypes: null,
     maximumSelectionSize: null,
     onlyFolderishSelectable: false,
+    addableType: null,
   };
 
   /**
@@ -644,6 +647,29 @@ class ObjectBrowserBody extends Component {
   // can click a folder name to navigate into it AND independently select
   // the folder via its control (upstream couples these into one click).
   handleSelectItem = (item) => {
+    const { addableType } = this.props;
+    // A field that says which content type will be put in what it picks (a
+    // template's save location) takes only folders the site lets this user
+    // add that type to: their @types, not a type named in code.
+    if (addableType) {
+      const folder = flattenToAppURL(item['@id']);
+      checkAddable(
+        addableType,
+        folder,
+        (path) => new Api().get(`${path}/@types`),
+        (title, where) => `A ${title} can’t be saved in ${where}.`,
+      )
+        .then(() => this.selectItem(item))
+        .catch((error) => {
+          if (!(error instanceof NotAllowedThere)) throw error;
+          toast.error(<Toast error title="Can't save here" content={error.message} />);
+        });
+      return;
+    }
+    this.selectItem(item);
+  };
+
+  selectItem = (item) => {
     const { mode, maximumSelectionSize, data } = this.props;
 
     if (mode === 'multiple') {
