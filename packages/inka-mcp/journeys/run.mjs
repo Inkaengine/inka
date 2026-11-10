@@ -2,7 +2,8 @@
 /**
  * Agent journeys: give an agent that knows nothing about Inka a job in plain
  * words (tasks.mjs) and only the Inka MCP to do it with, then check the
- * result through the CMS API. Agents vary run to run, so each task runs
+ * result through the CMS API: the task's own check, and that the run left
+ * nothing on the site the validator refuses (siteCheck.mjs). Agents vary run to run, so each task runs
  * several times and the outcome is a pass rate, with the tool calls, errors,
  * time and cost of each run.
  *
@@ -35,6 +36,7 @@ import { runClaude } from './claude.mjs';
 import { agentTurn, asText, asRagas } from './conversation.mjs';
 import { nextFromPerson } from './person.mjs';
 import { judge } from './judge.mjs';
+import { siteProblems, broughtProblems } from './siteCheck.mjs';
 import mockTokens from '@inka/mock-api/tokens';
 
 const { mintToken } = mockTokens;
@@ -124,6 +126,8 @@ async function runOnce(task, n) {
   const token = mintToken('admin');
   const cms = apiFor(token);
   if (task.setup) await task.setup(cms);
+  // What the site already has wrong, so the run is held only to what it brings.
+  const before = await siteProblems(cms);
   const dir = mkdtempSync(join(tmpdir(), 'inka-journey-'));
   const config = join(dir, 'mcp.json');
   writeFileSync(config, JSON.stringify({
@@ -174,7 +178,12 @@ async function runOnce(task, n) {
   const down = turns.flatMap((t) => t.tools ?? []).find((t) => t.isError && STACK_DOWN.test(t.result));
   if (down) throw new Error(`${name}: the local stack went down during the run (${down.name}: ${down.result.split('\n')[0]}); it measured nothing`);
 
-  const problems = finished ? await task.check(cms, turns) : ['the agent never finished'];
+  const problems = finished
+    ? [
+      ...await task.check(cms, turns),
+      ...broughtProblems(before, await siteProblems(cms)).map((problem) => `left the site invalid: ${problem}`),
+    ]
+    : ['the agent never finished'];
   let verdicts = {};
   if (task.person && finished) {
     const judged = await judge({ turns, wants: task.person.wants, criteria: task.criteria, model: opts['judge-model'], cwd: dir });

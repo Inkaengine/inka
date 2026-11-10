@@ -113,6 +113,25 @@ export const TASKS = [
       return problems;
     },
   },
+  {
+    // A look, not words: a teaser's alignment is one of its styles, a field
+    // inside `styles`. An agent once wrote styles at the block's top level,
+    // where nothing reads them, and every check passed (inka#671, #672).
+    id: 'centre-a-teaser',
+    prompt: 'In the "Test Data" section, on the "Teaser image test page", centre the teaser titled "Image target". '
+      + `Leave the other teaser as it is.${GO_AHEAD}`,
+    async check(api) {
+      const page = await api.get('/_test_data/teaser-image-test-page');
+      const problems = [];
+      const centred = page.blocks['teaser-withimg'];
+      if (!centred) return ['the teaser "Image target" is gone'];
+      if (centred.styles?.align !== 'center') problems.push(`its alignment is ${JSON.stringify(centred.styles?.align)}`);
+      if (centred.title !== 'Image target') problems.push(`its title is "${centred.title}"`);
+      const other = page.blocks['teaser-noimg'];
+      if (!other || other.styles?.align || other.title !== 'Imageless target') problems.push('the other teaser changed');
+      return problems;
+    },
+  },
 ];
 
 const GARDENER = 'You coordinate volunteers at Riverside Community Garden and look after its website. '
