@@ -33,7 +33,7 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
-    "test:api": "pnpm build:volto-validation && node --test packages/mock-api/*.test.cjs packages/content-validator/*.test.cjs packages/testing/*.test.cjs tests-playwright/fixtures/*.test.cjs",
+    "test:api": "pnpm build:volto-validation && node --test packages/mock-api/*.test.cjs packages/content-validator/*.test.cjs packages/testing/*.test.cjs tests-playwright/fixtures/*.test.cjs docker/*.test.cjs",
     "check:content": "inka-mock-api --check",
     "check:docs": "node docs/examples/check-examples.mjs",
     "gen:myst": "node docs/gen-myst.mjs docs _myst-build",

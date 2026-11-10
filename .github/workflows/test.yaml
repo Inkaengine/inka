@@ -121,6 +121,125 @@ jobs:
   # The JS side of @templates (the mock's endpoint, the loadTemplates helper, the merge
   # consuming it) runs in `build` above. This covers the Python addon that serves it on
   # a real Plone.
+  build-admin-image:
+    # Nothing anywhere built the Volto admin image. That is how a change which
+    # left two webpack instances in the tree reached a consumer's PRODUCTION
+    # deploy, failing there as "You forgot to add 'mini-css-extract-plugin'
+    # plugin" -- a build error, found by a deploy, because no build ran.
+    #
+    # This builds it the way a consumer does: Inka vendored in a parent repo,
+    # the context rooted at that parent, so the INKA_PATH indirection and the
+    # dockerignore allow-list are exercised rather than assumed.
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The default path: Inka already declares these, so the install stays
+          # --frozen-lockfile and enabling them is a volto.config.js edit.
+          - name: declared plugins, frozen install
+            volto_plugins: '@plone-collective/volto-authomatic @plone-collective/volto-sentry'
+            extra_plugins: ''
+            expect_frozen: 'true'
+          # The EXTRA_PLUGINS path: a plugin is written into package.json before
+          # the install, which therefore cannot be frozen. It re-pins a plugin
+          # Inka already declares, at the version the lockfile holds, ON PURPOSE:
+          # that exercises the whole branch (add-plugins, the unfrozen install,
+          # enabling) without making this job depend on a third-party release.
+          - name: extra plugin, unfrozen install
+            volto_plugins: '@plone-collective/volto-authomatic'
+            extra_plugins: '@plone-collective/volto-sentry@1.0.1'
+            expect_frozen: 'false'
+    name: build-admin-image (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lay the checkout out as a consumer vendors it
+        run: |
+          mkdir -p "$RUNNER_TEMP/consumer/hydra"
+          rsync -a --exclude .git ./ "$RUNNER_TEMP/consumer/hydra/"
+          # A consumer's repo holds more than Inka. These stand in for it, and
+          # must NOT reach the image: the dockerignore allow-list is what keeps
+          # a consumer's context from carrying its whole repo (134 MB -> 15 MB
+          # in the one that was measured).
+          mkdir -p "$RUNNER_TEMP/consumer/api" "$RUNNER_TEMP/consumer/frontend"
+          head -c 3000000 /dev/urandom > "$RUNNER_TEMP/consumer/api/blob.bin"
+          echo 'consumer file' > "$RUNNER_TEMP/consumer/frontend/app.js"
+
+      - name: Build the admin image
+        working-directory: ${{ runner.temp }}/consumer
+        env:
+          DOCKER_BUILDKIT: '1'
+        run: |
+          set -o pipefail
+          docker build \
+            -f hydra/docker/admin.Dockerfile \
+            --build-arg INKA_PATH=hydra \
+            --build-arg VOLTO_PLUGINS="${{ matrix.volto_plugins }}" \
+            --build-arg EXTRA_PLUGINS="${{ matrix.extra_plugins }}" \
+            --progress=plain \
+            -t inka-admin:ci \
+            . 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Assert both bundles compiled
+        run: |
+          # The outage was a build that failed here. Razzle exits 0 on some
+          # partial failures, so assert the lines, not just the exit status.
+          for line in 'Compiled client default build successfully' \
+                      'Compiled server default build successfully'; do
+            grep -qF "$line" "$RUNNER_TEMP/build.log" \
+              || { echo "::error::missing from the build: $line"; exit 1; }
+          done
+
+      - name: Assert the install ran exactly once, on the expected footing
+        run: |
+          if [ '${{ matrix.expect_frozen }}' = 'true' ]; then
+            grep -qF 'EXTRA_PLUGINS set' "$RUNNER_TEMP/build.log" \
+              && { echo '::error::took the unfrozen path with no EXTRA_PLUGINS'; exit 1; }
+          else
+            grep -qF 'EXTRA_PLUGINS set' "$RUNNER_TEMP/build.log" \
+              || { echo '::error::EXTRA_PLUGINS given but the unfrozen path never ran'; exit 1; }
+            grep -qF 'add-plugins: +' "$RUNNER_TEMP/build.log" \
+              || { echo '::error::EXTRA_PLUGINS given but add-plugins wrote nothing'; exit 1; }
+          fi
+          # THE ONE RULE, as the thing that broke it: the copy that took down a
+          # production deploy added its plugins with `pnpm add -w` AFTER a frozen
+          # install. That second resolution pass is what left two webpack
+          # instances in the tree. Adding a package to package.json before the
+          # install is the supported way; `pnpm add` here never is.
+          # Comments must be stripped first: this Dockerfile EXPLAINS the bug,
+          # so it mentions both `pnpm add -w` and `pnpm install` in prose.
+          instructions=$(grep -vE '^[[:space:]]*#' hydra/docker/admin.Dockerfile)
+          printf '%s\n' "$instructions" | grep -nE 'pnpm +add' \
+            && { echo '::error::admin.Dockerfile re-resolves the workspace with pnpm add; inject into package.json before the install instead'; exit 1; }
+          installs=$(printf '%s\n' "$instructions" | grep -c 'pnpm install' || true)
+          [ "$installs" -eq 2 ] \
+            || { echo "::error::expected exactly 2 pnpm install lines (the frozen and unfrozen branches of one RUN), found $installs"; exit 1; }
+
+      - name: Assert the enabled plugins reached the image's config
+        run: |
+          addons=$(docker run --rm --entrypoint node inka-admin:ci \
+            -e "console.log(require('/app/volto.config.js').addons.join(' '))")
+          echo "addons: $addons"
+          for plugin in '@plone-collective/volto-authomatic' '@plone-collective/volto-sentry'; do
+            case " $addons " in
+              *" $plugin "*) ;;
+              *) echo "::error::$plugin was not enabled in the image"; exit 1 ;;
+            esac
+          done
+          # Enabling without installing would break at runtime, not at build.
+          for plugin in '@plone-collective/volto-authomatic' '@plone-collective/volto-sentry'; do
+            docker run --rm --entrypoint test inka-admin:ci \
+              -d "/app/node_modules/$plugin" \
+              || { echo "::error::$plugin is enabled but not installed"; exit 1; }
+          done
+
+      - name: Assert the consumer's own files stayed out of the context
+        run: |
+          docker run --rm --entrypoint sh inka-admin:ci -c '! test -e /app/api/blob.bin' \
+            || { echo '::error::the dockerignore allow-list let a consumer directory in'; exit 1; }
+
   test-backend-addon:
     runs-on: 'ubuntu-latest'
     timeout-minutes: 20
