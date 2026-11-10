@@ -243,6 +243,56 @@ jobs:
               || { echo "::error::$plugin is enabled but not installed"; exit 1; }
           done
 
+      - name: Report the image size
+        run: |
+          size=$(docker image inspect inka-admin:ci --format '{{.Size}}')
+          echo "admin image: $((size / 1024 / 1024)) MB"
+          echo "### admin image: $((size / 1024 / 1024)) MB" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assert the image actually STARTS
+        run: |
+          # The runtime tree is installed with --prod, so anything the built
+          # server still requires that lives in devDependencies is missing. That
+          # fails when the server starts, NOT when the image builds, so a green
+          # build proves nothing about it -- and before this step nothing
+          # anywhere started this image at all.
+          #
+          # A dummy API path only keeps the server from complaining about an
+          # unset one; nothing here talks to a backend. What is asserted is that
+          # the process stays up and answers HTTP. A missing module exits the
+          # container, which is the signal we want to catch.
+          docker run -d --name admin -p 3000:3000 \
+            -e RAZZLE_API_PATH=http://127.0.0.1:8080 \
+            inka-admin:ci
+          # The signal is the LISTENING PORT, not a rendered page. Binding the
+          # port means the server's module graph loaded, which is exactly what a
+          # --prod tree could break. Asserting a 200 instead would be a worse
+          # test: with no backend reachable, server-side rendering can sit
+          # waiting on the API, and a timed-out curl is indistinguishable from a
+          # server that never started.
+          for i in $(seq 1 60); do
+            if ! [ "$(docker inspect -f '{{.State.Running}}' admin)" = true ]; then
+              echo '::error::the admin container exited instead of serving'
+              docker logs admin 2>&1 | tail -40
+              exit 1
+            fi
+            if timeout 2 bash -c '</dev/tcp/127.0.0.1/3000' 2>/dev/null; then
+              echo "the server is listening after ~$((i * 2))s"
+              # Informational only, for whoever reads the log: with no backend
+              # this may be an error page, and that is not what is being tested.
+              echo "HTTP: $(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:3000/ || echo 'no response')"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo '::error::the admin never listened on 3000 within 120s'
+          docker logs admin 2>&1 | tail -40
+          exit 1
+
+      - name: Admin container logs (on failure)
+        if: failure()
+        run: docker logs admin 2>&1 | tail -60 || true
+
       - name: Assert the consumer's own files stayed out of the context
         run: |
           docker run --rm --entrypoint sh inka-admin:ci -c '! test -e /app/api/blob.bin' \
