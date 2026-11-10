@@ -1,0 +1,44 @@
+{
+  "@id": "/private-form-page",
+  "@type": "Document",
+  "UID": "private-form-page-0001",
+  "id": "private-form-page",
+  "title": "Private Form Page",
+  "description": "A form on a page that is not published yet",
+  "exclude_from_nav": true,
+  "review_state": "private",
+  "is_folderish": false,
+  "type_title": "Page",
+  "blocks": {
+    "private-form-block": {
+      "@type": "form",
+      "title": "Private Form",
+      "description": "Please fill out this form",
+      "default_to": "admin@example.com",
+      "default_from": "noreply@example.com",
+      "default_subject": "New form submission: ${field-subject}",
+      "submit_label": "Submit",
+      "show_cancel": true,
+      "cancel_label": "Reset",
+      "email_otp_verification": false,
+      "store": true,
+      "send": false,
+      "send_message": "Thank you, your form has been submitted.",
+      "remove_data_after_days": -1,
+      "subblocks": [
+        {
+          "field_id": "field-name",
+          "field_type": "text",
+          "label": "Full Name",
+          "plaintext": "Full Name",
+          "required": true
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "private-form-block"
+    ]
+  }
+}

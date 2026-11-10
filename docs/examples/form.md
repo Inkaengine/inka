@@ -43,9 +43,31 @@ A multi-field form with configurable field types, validation, and email submissi
 
 <block type="form" data-json='{"default_from":"noreply@plone.org","title":"A simple form","default_to":"admin@example.com","default_subject":"New form submission","captcha":"honeypot","lastChange":1710238630312,"remove_data_after_days":-1,"send_email":true,"show_cancel":false,"store":true,"subblocks":[{"field_id":"1709833577467","field_type":"text","id":"1709833577467","label":"Name","required":true},{"field_id":"1709833592544","field_type":"from","id":"1709833592544","label":"Email","required":false,"use_as_bcc":false,"use_as_reply_to":false},{"field_id":"1709833604677","field_type":"textarea","id":"1709833604677","label":"Message","required":false},{"field_id":"1709833616406","field_type":"multiple_choice","id":"1709833616406","input_values":["Red","Green","Blue"],"label":"Select field","required":false}]}' />
 
-<block type="slate">
+## Submitting a form
+
+A form is your frontend's: it draws the fields and, when a visitor submits, it posts the answers to the page's `@submit-form` endpoint (collective.volto.formsupport), which stores them and sends the email.
+
+That post is anonymous unless your frontend sends a login with it. Plone refuses an anonymous submission on a page the public can't view yet, and every new page starts private, so an author can't try a form before publishing it. If you want authors to be able to, send the editor's token with the submission. A public visitor has no token, so their submissions stay anonymous.
+
+In the browser, `getAuthHeaders()` from the bridge gives the token while the page is open in Inka, and nothing otherwise:
+
+<block type="codeExample">
+
+### Browser
+
+```js
+import { getAuthHeaders } from '@hydra-js/hydra.js';
+
+const response = await fetch(`${apiUrl}${pagePath}/@submit-form`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+  body: JSON.stringify({ block_id: blockId, data }),
+});
+```
 
 </block>
+
+If your frontend submits from its server, read the token from the `access_token` cookie the bridge sets instead. Either way, a submission made like this is the editor's, with the editor's permissions: see [How an editor's login reaches the front end](../deploy-and-secure.md#how-an-editors-login-reaches-the-front-end).
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form" fixed=false readOnly=false>
 

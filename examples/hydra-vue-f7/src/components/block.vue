@@ -686,6 +686,7 @@ import { inject, ref, reactive, computed, watch, unref } from 'vue';
 import RichText from './richtext.vue';
 import ListingBlock from './ListingBlock.vue';
 import { expandTemplatesSync, expandListingBlocks, ploneFetchItems, contentPath } from '@hydra-js/helpers';
+import { getAuthHeaders } from '@hydra-js/hydra.js';
 
 // Social icons SVG map (with name + svg for socialInfo())
 const SOCIAL_ICONS = {
@@ -1181,9 +1182,12 @@ export default {
 
       const apiUrl = unwrapRef(this.apiBase);
       const ctxPath = unwrapRef(this.contextPath);
+      // Sending the editor's token lets an author try a form on a page that
+      // isn't published yet: Plone refuses an anonymous submission there. A
+      // public visitor has no token, so getAuthHeaders() adds nothing for them.
       const response = await fetch(`${apiUrl}${ctxPath}/@submit-form`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           block_id: uid,
           data: submitData,
