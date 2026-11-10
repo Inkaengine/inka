@@ -490,7 +490,8 @@
         </p>
         <div v-if="block.showSortOn && block.sortOnOptions?.length" class="search-sort">
           <label class="text-sm text-gray-600 mr-2">Sort by:</label>
-          <select class="px-3 py-1 border border-gray-300 rounded text-sm" @change="handleSortChange" data-linkable-allow>
+          <select class="px-3 py-1 border border-gray-300 rounded text-sm" :value="shownSort(block)" @change="handleSortChange" data-linkable-allow>
+            <option value="" :disabled="!hasSearchKeyword(currentSearchText)">Relevance</option>
             <option v-for="opt in block.sortOnOptions" :key="opt" :value="opt">{{ opt }}</option>
           </select>
         </div>
@@ -567,7 +568,8 @@
             </p>
             <div v-if="block.showSortOn && block.sortOnOptions?.length" class="search-sort">
               <label class="text-sm text-gray-600 mr-2">Sort by:</label>
-              <select class="px-3 py-1 border border-gray-300 rounded text-sm" @change="handleSortChange" data-linkable-allow>
+              <select class="px-3 py-1 border border-gray-300 rounded text-sm" :value="shownSort(block)" @change="handleSortChange" data-linkable-allow>
+                <option value="" :disabled="!hasSearchKeyword(currentSearchText)">Relevance</option>
                 <option v-for="opt in block.sortOnOptions" :key="opt" :value="opt">{{ opt }}</option>
               </select>
             </div>
@@ -981,7 +983,7 @@
 <script setup>
 import { ref, reactive, watch, watchEffect, nextTick, computed, toRefs, inject, onMounted, unref } from 'vue';
 import { isEditMode, getAuthHeaders } from '@hydra-js/hydra.js';
-import { staticBlocks, expandTemplatesSync, isEmptySlate } from '@hydra-js/helpers';
+import { staticBlocks, expandTemplatesSync, isEmptySlate, hasSearchKeyword, keepsChosenSort } from '@hydra-js/helpers';
 import RichText from './richtext.vue';
 
 // Inject page-level context for nested components
@@ -1556,6 +1558,9 @@ const tocEntries = computed(() => {
   return result;
 });
 
+// How a search sorts (plone/volto#4000, Inka's helpers): a keyword is ranked
+// by relevance unless the reader chose a sort; with no keyword the listing's
+// own sort applies. A chosen sort goes when the keyword starts or ends.
 const handleSearchSubmit = (event) => {
   const formData = new FormData(event.target);
   const searchText = formData.get('SearchableText');
@@ -1566,12 +1571,34 @@ const handleSearchSubmit = (event) => {
   } else {
     delete query.SearchableText;
   }
+  if (!keepsChosenSort(route.query.SearchableText, searchText)) {
+    delete query.sort_on;
+    delete query.sort_order;
+  }
   navigateTo({ path: route.path, query });
 };
 
 const handleSortChange = (event) => {
   const route = useRoute();
-  navigateTo({ path: route.path, query: { ...route.query, sort_on: event.target.value } });
+  const query = { ...route.query };
+  if (event.target.value) {
+    query.sort_on = event.target.value;
+  } else {
+    // Relevance: no sort chosen.
+    delete query.sort_on;
+    delete query.sort_order;
+  }
+  navigateTo({ path: route.path, query });
+};
+
+// What the sort control shows: the sort chosen, else Relevance ("") with a
+// keyword, else the search's listing's own sort.
+const shownSort = (block) => {
+  const chosen = useRoute().query.sort_on;
+  if (chosen) return chosen;
+  if (hasSearchKeyword(currentSearchText.value)) return '';
+  const listingUid = block.blocks_layout?.listing?.[0];
+  return block.blocks?.[listingUid]?.querystring?.sort_on || '';
 };
 
 // Querystring metadata — fetched once globally, cached in Nuxt payload.

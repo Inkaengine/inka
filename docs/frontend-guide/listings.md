@@ -145,6 +145,22 @@ async function ListingItems({ id, blocks, paging, seen, fetchItems, onPaging }) 
 
 A listing with no `querystring` defaults to showing the current folder's contents in folder order.
 
+A search is sorted by the `sort_on` in `extraCriteria`, else by the listing's own, else by date (newest first). To rank the results by relevance, pass `sort_on: null` with a `SearchableText`: the request then names no sort, which is how Plone ranks a text search. Without a `SearchableText` there is nothing to rank, and `sort_on: null` throws.
+
+A search block usually sorts the way Volto's does (plone/volto#4000): a keyword is ranked by relevance unless the reader chose a sort; with no keyword the listing's own sort applies; and a sort the reader chose is dropped when the keyword starts or ends, but kept while one keyword changes to another. Three helpers answer those rules, wherever the frontend keeps the keyword and the chosen sort (the URL, component state):
+
+<block type="slateTable" table.fixed table.celled>
+
+| Helper | Answers |
+| --- | --- |
+| `hasSearchKeyword(text)` | Is there a keyword? Text with no letter or digit is none, since Plone's text index can't read it. A sort control can disable its Relevance choice without one. |
+| `keepsChosenSort(beforeText, nextText)` | Does the reader's chosen sort stay when the search text changes? Not when a keyword starts or ends. |
+| `searchSort(text, sortOn, sortOrder)` | The sort part of `extraCriteria`: the chosen sort, else `{ sort_on: null }` (relevance) with a keyword, else nothing (the listing's own). |
+
+</block>
+
+The Nuxt example's search block (`examples/nuxt-blog-starter`) uses all three: its sort control offers Relevance first, shows the chosen sort, else Relevance with a keyword, else the listing's own sort.
+
 `ploneFetchItems` also normalizes Plone's image data — packaging `image_field` + `image_scales` into a self-contained `image` object with `@id` duplicated inside (needed for URL resolution):
 
 ### Json

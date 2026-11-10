@@ -222,6 +222,58 @@ function combineQueries(...queries) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// How a search block sorts
+////////////////////////////////////////////////////////////////////////////////
+//
+// plone/volto#4000: a keyword is ranked by relevance unless the reader chose a
+// sort; with no keyword the listing's own sort applies (relevance has nothing
+// to rank). A sort the reader chose is dropped when the keyword starts or ends,
+// and kept while one keyword changes to another. A frontend keeps the keyword
+// and the chosen sort however it likes (URL, state); these answer the rules.
+
+/**
+ * Whether a search box's text is a keyword Plone can search for: it has a
+ * letter or a digit. A term without one (a lone `"`, `()`) makes Plone's text
+ * index fail, so a frontend drops it, and text of nothing else is no keyword.
+ *
+ * @param {string|null|undefined} text - The search box's text
+ * @returns {boolean}
+ */
+export function hasSearchKeyword(text) {
+  return /[\p{L}\p{N}]/u.test(text || '');
+}
+
+/**
+ * Whether a sort the reader chose stays when the search text changes: not when
+ * a keyword starts or ends. A new keyword is then ranked by relevance, and with
+ * the keyword gone the listing's own sort is back.
+ *
+ * @param {string|null|undefined} beforeText - The search text before
+ * @param {string|null|undefined} nextText - The search text now
+ * @returns {boolean}
+ */
+export function keepsChosenSort(beforeText, nextText) {
+  return hasSearchKeyword(beforeText) === hasSearchKeyword(nextText);
+}
+
+/**
+ * The sort criteria for buildQuerystringSearchBody's `extraCriteria`: the sort
+ * the reader chose, else relevance (`sort_on: null`) with a keyword, else none
+ * (the listing's own sort applies).
+ *
+ * @param {string|null|undefined} text - The search text
+ * @param {string|null|undefined} sortOn - The sort the reader chose, if any
+ * @param {string|null|undefined} [sortOrder] - Its order, if chosen
+ * @returns {{sort_on?: string|null, sort_order?: string}}
+ */
+export function searchSort(text, sortOn, sortOrder) {
+  if (sortOn) {
+    return sortOrder ? { sort_on: sortOn, sort_order: sortOrder } : { sort_on: sortOn };
+  }
+  return hasSearchKeyword(text) ? { sort_on: null } : {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // buildQuerystringSearchBody
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -239,7 +291,9 @@ function combineQueries(...queries) {
  * @param {number} [paging.b_size=10] - Number of items per page
  * @param {Object} [extraCriteria={}] - Additional query criteria (for search blocks)
  * @param {string} [extraCriteria.SearchableText] - Text search term
- * @param {string} [extraCriteria.sort_on] - Override sort field
+ * @param {string|null} [extraCriteria.sort_on] - Override sort field. `null` asks
+ *   for relevance: the body names no sort, so Plone ranks the SearchableText
+ *   matches (it needs a SearchableText; without one this throws).
  * @param {string} [extraCriteria.sort_order] - Override sort order
  * @param {string|string[]} [extraCriteria['facet.*']] - Facet filters (e.g., 'facet.portal_type': ['Document'])
  * @returns {Object} Request body for POST to @querystring-search
@@ -334,15 +388,29 @@ export function buildQuerystringSearchBody(
   // implicit effective-date sort. A listing that names its own sort_on without a
   // sort_order gets Plone's own default, ascending — forcing descending there
   // reversed every folder-order listing on real Plone.
+  //
+  // Relevance is no sort at all: Plone ranks a SearchableText search only when
+  // the request names no sort_on. `sort_on: null` asks for it, as a choice —
+  // unlike a missing sort_on, which takes the listing's own sort.
+  const relevance = extraCriteria.sort_on === null;
+  if (relevance && !extraCriteria.SearchableText) {
+    throw new Error(
+      'buildQuerystringSearchBody: relevance (sort_on: null) ranks SearchableText matches, and no SearchableText was given',
+    );
+  }
   const explicitSortOn = extraCriteria.sort_on || queryConfig?.sort_on;
   const defaultSort = hasQuery ? 'effective' : 'getObjPositionInParent';
   const defaultOrder = hasQuery && !explicitSortOn ? 'descending' : 'ascending';
 
   const body = {
     query,
-    sort_on: explicitSortOn || defaultSort,
-    sort_order:
-      extraCriteria.sort_order || queryConfig?.sort_order || defaultOrder,
+    ...(relevance
+      ? {}
+      : {
+          sort_on: explicitSortOn || defaultSort,
+          sort_order:
+            extraCriteria.sort_order || queryConfig?.sort_order || defaultOrder,
+        }),
     b_start,
     b_size,
     metadata_fields: '_all',
