@@ -5,6 +5,7 @@ import { hostedServer, codesFrom, replayBy, forwardTo } from './http.mjs';
 import { sealer } from './sealed.mjs';
 import { localCodes, sealedCodes, localPictures, localMedia } from './codes.mjs';
 import { MAX_FILE_BYTES } from './server.mjs';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
 
 /**
@@ -61,7 +62,8 @@ afterAll(() => new Promise((closed) => { admin.close(closed); }));
 
 const running = [];
 afterEach(async () => {
-  await Promise.all(running.splice(0).map(({ listening, close }) => new Promise((done) => listening.close(done)).then(close)));
+  // As the server stops: its streams end first, then the server stops listening.
+  await Promise.all(running.splice(0).map(({ listening, close }) => close().then(() => new Promise((done) => listening.close(done)))));
 });
 
 /** Instances of the server, each on a port of its own, made by `make(port)`, all reached at `public` by clients. */
@@ -303,6 +305,87 @@ describe('hostedServer', () => {
     }));
     const answer = await call(`${one}/mcp`, { method: 'POST', headers: { Host: 'evil.example', 'Content-Type': 'application/json' }, body: '{}' });
     expect(answer.status).toBe(403);
+  });
+});
+
+/** A fresh instance, signed in to: its URL, the instance (to stop) and the headers a signed-in request carries. */
+async function signedInTo() {
+  const secret = randomBytes(32).toString('base64');
+  const [one] = await instances(1, () => ({ secret, codes: sealedCodes({ box: sealer(secret) }), pictures: null, media: null }));
+  const { access_token: token } = await (await exchange(one, await signIn(one))).json();
+  return { one, instance: running.at(-1), headers: { Authorization: `Bearer ${token}` } };
+}
+
+/** A client on the 2026-07-28 revision, signed in to a fresh instance; and the instance. */
+async function signedInClient() {
+  const { one, instance, headers } = await signedInTo();
+  const client = new Client({ name: 'test', version: '0' }, { versionNegotiation: { mode: { pin: '2026-07-28' } } });
+  await client.connect(new StreamableHTTPClientTransport(new URL('/mcp', one), { requestInit: { headers } }));
+  return { client, instance };
+}
+
+/**
+ * A JSON-RPC request as a client of 2025 sends one (no per-request envelope),
+ * and its result: the answer may come as JSON or as an event stream.
+ */
+async function legacyCall(one, headers, id, method, params) {
+  const answer = await call(`${one}/mcp`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-06-18' },
+    body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+  });
+  expect(answer.status).toBe(200);
+  const text = await answer.text();
+  const json = answer.headers.get('content-type').startsWith('text/event-stream')
+    ? text.split('\n').filter((line) => line.startsWith('data:')).map((line) => JSON.parse(line.slice(5))).find((message) => message.id === id)
+    : JSON.parse(text);
+  expect(json.error).toBeUndefined();
+  return json.result;
+}
+
+/** Resolves with the first `method` notification `client` gets (a test's timeout ends the wait). */
+const nextNotice = (client, method) => new Promise((resolve) => { client.setNotificationHandler(method, resolve); });
+
+// A client keeps the tools it listed until it is told they changed. A deploy
+// changes them, and a client that went on with the old list called tools that
+// were gone and never saw new ones, until the person refreshed the connector
+// by hand. On 2026-07-28 a client listens (subscriptions/listen) and the
+// server tells it there.
+describe('clients learn the tools changed, without being refreshed by hand', () => {
+  it('serves the 2026-07-28 revision', async () => {
+    const { client } = await signedInClient();
+    expect(client.getProtocolEra()).toBe('modern');
+    const { tools } = await client.listTools();
+    expect(tools.map(({ name }) => name)).toContain('get_page');
+  });
+
+  // A deploy ends every stream, and the client listens again on the new
+  // server, which has no way to know which tools that client last listed:
+  // so each new listener is told at once to list them again.
+  it('tells a client that starts listening to list the tools again', async () => {
+    const { client } = await signedInClient();
+    const changed = nextNotice(client, 'notifications/tools/list_changed');
+    await client.listen({ toolsListChanged: true });
+    await changed;
+  });
+
+  // Ended gracefully, a client listens again straight away; a dropped stream
+  // counts against how often a client re-listens before it gives up for hours.
+  it('ends a listening client\'s stream gracefully when the server stops', async () => {
+    const { client, instance } = await signedInClient();
+    const listening = await client.listen({ toolsListChanged: true });
+    await instance.close();
+    expect(await listening.closed).toBe('graceful');
+  });
+
+  it('still serves a client of 2025', async () => {
+    const { one, headers } = await signedInTo();
+    const started = await legacyCall(one, headers, 1, 'initialize', {
+      protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' },
+    });
+    expect(started.protocolVersion).toBe('2025-06-18');
+    const { tools } = await legacyCall(one, headers, 2, 'tools/list', {});
+    expect(tools.map(({ name }) => name)).toContain('get_page');
   });
 });
 

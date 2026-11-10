@@ -20,7 +20,7 @@
  *                       without it, it reads no file on this computer
  */
 import { delimiter } from 'node:path';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { createServer, headlessAdmin, MAX_FILE_BYTES } from './server.mjs';
 import { signIn } from './signIn.mjs';
 import { localPictures, localMedia } from './codes.mjs';
@@ -33,14 +33,15 @@ async function main(env) {
   // waiting at startup while a person signs in.
   const admin = headlessAdmin({ adminUrl, auth: signIn(env, { adminUrl }), frontendUrl: env.INKA_FRONTEND_URL });
   // One person, one process: every picture is theirs.
-  const server = createServer(() => admin, {
-    pictures: localPictures({ instance: null, now: Date.now }),
-    media: localMedia({ instance: null, now: Date.now }),
-    localFiles: env.INKA_MEDIA_FOLDERS ? localFiles(env.INKA_MEDIA_FOLDERS.split(delimiter), { maxBytes: MAX_FILE_BYTES }) : null,
-    userOf: () => 'this-session',
-  });
-  server.server.onclose = () => admin.close();
-  await server.connect(new StdioServerTransport());
+  const pictures = localPictures({ instance: null, now: Date.now });
+  const media = localMedia({ instance: null, now: Date.now });
+  const files = env.INKA_MEDIA_FOLDERS ? localFiles(env.INKA_MEDIA_FOLDERS.split(delimiter), { maxBytes: MAX_FILE_BYTES }) : null;
+  // A server for the connection, on the protocol revision the host opens it
+  // with (2026-07-28, or 2025's); the SDK may make another to answer its
+  // probe, so the admin is not closed with a server.
+  serveStdio(() => createServer(() => admin, { pictures, media, localFiles: files, userOf: () => 'this-session' }));
+  // The host is gone when it closes this process's input.
+  process.stdin.on('close', () => admin.close());
 }
 
 await main(process.env);

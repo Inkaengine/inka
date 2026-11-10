@@ -92,6 +92,9 @@ function redirectUpstreamSuitesToShadows() {
   };
 }
 
+/** Tests of a server that runs on Node, which need Node's environment (the node-servers project below). */
+const NODE_SERVER_TESTS = ['packages/inka-mcp/http.test.mjs'];
+
 export default defineConfig({
   plugins: [redirectUpstreamSuitesToShadows()],
   resolve: {
@@ -138,6 +141,14 @@ export default defineConfig({
       // Volto's setup files initialise the bare config registry but don't
       // invoke addon applyConfig chains.
       path.resolve(__dirname, 'vitest-setup-hydra.js'),
+    ],
+    projects: [
+      { extends: true, test: { name: 'hydra', exclude: NODE_SERVER_TESTS } },
+      // Servers that run on Node, tested on Node: jsdom's globals (its
+      // AbortController among them) are not Node's, and Node's own fetch
+      // refuses them, so a server under test there fails where it never
+      // would. Volto's setup files need a window, so these go without.
+      { test: { name: 'node-servers', include: NODE_SERVER_TESTS, environment: 'node', globals: true } },
     ],
   },
 });

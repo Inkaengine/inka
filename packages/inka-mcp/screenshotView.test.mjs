@@ -5,8 +5,7 @@
  * result reached the model and never the person, who asked to see the page.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { createServer } from './server.mjs';
 import { SCREENSHOT_VIEW } from './screenshotView.mjs';
 import { localPictures } from './codes.mjs';

@@ -49,10 +49,11 @@
 import { createServer as httpServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import express from 'express';
-import { hostHeaderValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js';
-import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
-import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { createMcpHandler, InMemoryServerEventBus } from '@modelcontextprotocol/server';
+import { toNodeHandler, hostHeaderValidation } from '@modelcontextprotocol/node';
+// The SDK's OAuth authorization server, kept as it was (v2 left it in this
+// frozen copy): the sign-in clients already use is unchanged.
+import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl, requireBearerAuth } from '@modelcontextprotocol/server-legacy/auth';
 import { createServer, MAX_FILE_BYTES } from './server.mjs';
 import { mediaIn, MEDIA_PREFIX } from './media.mjs';
 import { adminPool } from './adminPool.mjs';
@@ -63,6 +64,31 @@ import {
 } from './codes.mjs';
 import { renewThrough, watchSignOut } from './signIn.mjs';
 import { memoryLimit, poolSize as poolSizeFor } from './poolSize.mjs';
+
+/**
+ * The bus a listening client (subscriptions/listen) hears changes on, telling
+ * each new listener at once that the tools changed. A deploy changes them, and
+ * ends every stream; the client listens again on the new server, which can't
+ * know which tools that client last listed, so it says to list them again.
+ * Otherwise a client went on with the old list, calling tools that were gone
+ * and never seeing new ones, until the person refreshed it by hand.
+ */
+function toldOnListening() {
+  const bus = new InMemoryServerEventBus((error) => console.log(`listen: ${error.message}`));
+  return {
+    publish: (event) => bus.publish(event),
+    subscribe(listener) {
+      const stop = bus.subscribe(listener);
+      let listening = true;
+      // After the listen is acknowledged, which the SDK does once this returns.
+      setImmediate(() => { if (listening) listener({ kind: 'tools_list_changed' }); });
+      return () => {
+        listening = false;
+        stop();
+      };
+    },
+  };
+}
 
 /** A form post's fields (the connect page posts application/x-www-form-urlencoded). */
 async function formFields(req) {
@@ -176,7 +202,8 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, med
   // limit is express.json's default, 100 KB, and a file the person drops in
   // the drop view comes in one call, base64.
   const app = express();
-  app.use(hostHeaderValidation([base.hostname]));
+  const hostIsOurs = hostHeaderValidation([base.hostname]);
+  app.use((req, res, next) => { if (hostIsOurs(req, res)) next(); });
   app.use(express.json({ limit: Math.ceil(MAX_FILE_BYTES * 4 / 3) + 64 * 1024 }));
   // Each request, as it ends: method, path (never its query: codes travel
   // there) and status; for a refused sign-in step, the OAuth error answered
@@ -264,31 +291,25 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, med
     verifier: provider,
     resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(mcpUrl),
   });
-  // Each request on its own (stateless): the tools act as the request's user.
-  app.post('/mcp', signedIn, async (req, res) => {
+  // Each request on its own (stateless), on the 2026-07-28 revision or a
+  // client's of 2025: the tools act as the request's user.
+  const mcp = createMcpHandler(({ authInfo: { extra: { user, plone } } }) => createServer(() => watchSignOut(
+    pool.forUser(async () => ({ id: user, token: plone })),
     // A sign-in a tool finds the site refusing is refused here from then on
     // (provider.signedOut), so the client is asked to sign in again.
-    const server = createServer(({ authInfo: { extra: { user, plone } } }) => watchSignOut(
-      pool.forUser(async () => ({ id: user, token: plone })),
-      () => provider.signedOut(plone),
-    // A hosted server reads no one's computer: a file comes by URL or picture.
-    ), { pictures, media, localFiles: null, userOf: ({ authInfo }) => authInfo.extra.user });
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    res.on('close', () => {
-      transport.close();
-      server.close();
-    });
-    await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+    () => provider.signedOut(plone),
+  // A hosted server reads no one's computer: a file comes by URL or picture.
+  ), { pictures, media, localFiles: null, userOf: () => user }), {
+    bus: toldOnListening(),
+    onerror: (error) => console.log(`mcp: ${error.message}`),
   });
-  // Stateless: no session stream to open (GET) or end (DELETE).
-  const noSessions = (req, res) => res.status(405).set('Allow', 'POST').json({
-    jsonrpc: '2.0', error: { code: -32000, message: 'This server keeps no sessions: POST each request.' }, id: null,
-  });
-  app.get('/mcp', noSessions);
-  app.delete('/mcp', noSessions);
+  const serve = toNodeHandler(mcp, { onerror: (error) => console.log(`mcp: ${error.message}`) });
+  // The body was read above (it is larger than the handler reads itself).
+  app.all('/mcp', signedIn, (req, res) => serve(req, res, req.body));
 
-  return { app, close: () => pool.close() };
+  // Listening clients' streams end gracefully first, so they listen again at
+  // once (on the server that replaces this one), then the admin's browser.
+  return { app, close: () => mcp.close().then(() => pool.close()) };
 }
 
 /**
@@ -400,7 +421,8 @@ export async function main(env, { makeStore, route } = {}) {
     });
     app(req, res);
   }).listen(Number(required(env, 'PORT')));
-  const stop = () => listening.close(() => close().then(() => process.exit(0)));
+  // The streams first: the server waits for every connection to end.
+  const stop = () => close().then(() => listening.close(() => process.exit(0)));
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);
 }
