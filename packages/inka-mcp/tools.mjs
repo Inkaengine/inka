@@ -10,6 +10,10 @@ import { toAgentPage, toAgentBlock, toStoredBlocks } from './pageFormat.mjs';
 import { editBlocks } from './editBlocks.mjs';
 import { mediaIn, withMedia, dataUrlOf } from './media.mjs';
 import { describeBlockTypes, describeBlockType } from './blockTypes.mjs';
+import { whereItBelongs } from './checkDraft.mjs';
+import validator from '@inka/content-validator';
+
+const { checkBlockSchemas, fieldMapFromSchemas, idFieldMapFor } = validator;
 
 export class StaleVersion extends Error {}
 
@@ -237,6 +241,42 @@ export async function transitionPage(site, { path, id, data, expectedVersion }) 
     reviewState: page.review_state,
     version: draft ? (await site.status(draft.path)).version : page.modified,
     ...(draft && { draft: draftForAgent(draft) }),
+  };
+}
+
+/**
+ * find_undeclared_fields: the fields stored on the blocks of a section's pages
+ * that no block schema declares (inka#673). Nothing reads such a field and the
+ * editor cannot show it: a style written beside `styles` instead of in it, or a
+ * misspelt name. The save check refuses new ones; these were there before it.
+ *
+ * Read with the validator's own pass (checkBlockSchemas) and the site's block
+ * schemas, as the editor open on `path` has them. One entry per block type and
+ * field, with the pages holding it and where it belongs when the block has a
+ * field of that name inside an object of fields. A page of pages at a time:
+ * `next` is where to start the next.
+ */
+export async function findUndeclaredFields(agent, site, { path = '/', limit = 25, start = 0 }) {
+  const { types } = await agent.getBlockSchemas();
+  const found = await site.search({ path, limit, start });
+  const pages = [];
+  for (const { path: at } of found.items) pages.push({ rel: at, data: { ...(await site.get(at)), '@id': at } });
+  const { findings } = checkBlockSchemas(pages, fieldMapFromSchemas(types), { idFieldMap: idFieldMapFor(types) });
+  const fields = new Map();
+  for (const { rel, blockType, field } of findings) {
+    const key = `${blockType}.${field}`;
+    if (!fields.has(key)) {
+      const belongsIn = whereItBelongs(types, blockType, field);
+      fields.set(key, { block: blockType, field, ...(belongsIn.length && { belongsIn }), pages: [] });
+    }
+    fields.get(key).pages.push(rel);
+  }
+  const checked = found.items.length;
+  return {
+    fields: [...fields.keys()].sort().map((key) => ({ ...fields.get(key), pages: [...fields.get(key).pages].sort() })),
+    checked,
+    total: found.total,
+    ...(start + checked < found.total && { next: start + checked }),
   };
 }
 

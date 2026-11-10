@@ -9,6 +9,7 @@ import { freshPage, tokenFor, whileEditing } from '../helpers/otherUser';
 import { agentOn, waitForAgent, discardEdits, createPage, siteOn, openAdmin } from '../../packages/inka-mcp/adminDriver.mjs';
 import {
   getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage, getTransitions, transitionPage,
+  findUndeclaredFields,
 } from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
 import { draftCheck } from '../../packages/inka-mcp/checkDraft.mjs';
@@ -306,6 +307,26 @@ test.describe('MCP tools', () => {
     // Delete it.
     await deletePage(site, { path: renamed.path, expectedVersion: await versionOf(renamed.path) });
     expect(await status(renamed.path)).toBe(404);
+  });
+
+  test('find_undeclared_fields: a field stored where no schema declares it, and where it belongs', async ({ page, urls }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    // Stored before the save check refused such fields: straight through the CMS.
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
+    const at = '/_test_data/teaser-image-test-page';
+    const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+    const stored = await (await page.request.get(`${urls.mockApi}${at}`, { headers })).json();
+    const patched = await page.request.patch(`${urls.mockApi}${at}`, {
+      headers, data: { blocks: { ...stored.blocks, 'teaser-withimg': { ...stored.blocks['teaser-withimg'], align: 'center' } } },
+    });
+    expect(patched.ok()).toBe(true);
+
+    await helper.navigateToEdit(at);
+    await waitForAgent(page);
+    const found = await findUndeclaredFields(agentOn(page), siteOn(page), { path: at });
+    expect(found.fields).toEqual([{ block: 'teaser', field: 'align', belongsIn: ['styles.align'], pages: [at] }]);
+    expect(found.checked).toBe(1);
   });
 
   test('describe_block: the type in full, with a real example from the site', async ({ page }) => {

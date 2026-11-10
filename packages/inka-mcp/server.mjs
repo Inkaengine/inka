@@ -24,7 +24,7 @@ import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from
 import { draftCheck } from './checkDraft.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, contentTypes, fillNewPage, movePage, renamePage, deletePage,
-  getTransitions, transitionPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING,
+  getTransitions, transitionPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING, findUndeclaredFields,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
@@ -259,6 +259,15 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       ...paging,
     }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => search(site, args))));
+
+  server.registerTool('find_undeclared_fields', {
+    title: 'Find fields nothing reads',
+    annotations: SAVES_NOTHING,
+    description: 'Fields stored on the blocks of a section\'s pages that no block type declares. Nothing reads them and the editor cannot show them, so what they say never reached the page: a style written beside "styles" instead of inside it, or a misspelt name. Each block type and field once, with the pages that hold it ("pages") and, when the block has a field of that name inside one of its own, where it belongs ("belongsIn", e.g. "styles.align"). Checks a page of pages at a time: pass "next" as "start" for more. To fix one, ask the person first: an edit_blocks "update" that sets the field to null removes it; to put it where it belongs, set it there in the same update, e.g. {"styles": {"align": "center"}, "align": null}. Moving a value changes how the page looks, since it starts to take effect; if the block already has a value there, keep that one and only remove the stray.',
+    inputSchema: z.object({ path: z.string().describe('The section to check, e.g. / or /news'), ...paging }),
+  }, async ({ path, limit, start }, extra) => asResult(await adminFor(extra).withEditor(
+    path, (agent, { site }) => findUndeclaredFields(agent, site, { path, limit, start }),
+  )));
 
   server.registerTool('list_children', {
     title: 'List a section',

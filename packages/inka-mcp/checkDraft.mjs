@@ -45,10 +45,19 @@ async function onSite({ kind, value }, site) {
  */
 function told({ message, blockType, field }, { path, blocksConfig }) {
   if (!field) return message;
-  const homes = Object.entries(blocksConfig[blockType]?.blockSchema?.properties ?? {})
+  const homes = whereItBelongs(blocksConfig, blockType, field);
+  return homes.length ? `${path}: ${blockType} has no field "${field}" — it is ${homes.join(' or ')}` : message;
+}
+
+/**
+ * Where a field a block's schema does not declare belongs, when a field of the
+ * block that is an object of fields declares one by that name: `align` on a
+ * teaser is `styles.align`. Empty when nothing does.
+ */
+export function whereItBelongs(blocksConfig, blockType, field) {
+  return Object.entries(blocksConfig[blockType]?.blockSchema?.properties ?? {})
     .filter(([, facts]) => facts.widget === 'object' && facts.schema?.properties?.[field])
     .map(([name]) => `${name}.${field}`);
-  return homes.length ? `${path}: ${blockType} has no field "${field}" — it is ${homes.join(' or ')}` : message;
 }
 
 /** What the validator finds wrong with `data`, the page at `path`. */
