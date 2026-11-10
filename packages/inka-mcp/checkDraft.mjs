@@ -37,6 +37,20 @@ async function onSite({ kind, value }, site) {
   return (await site.search({ uid: value, limit: 1 })).total > 0;
 }
 
+/**
+ * A finding as the agent is told it. A stray field (one the block's schema does
+ * not declare) that a field of the block holds by that name — `styles`' `align`
+ * written as the block's own — says where it belongs, so the agent puts it
+ * there instead of guessing again.
+ */
+function told({ message, blockType, field }, { path, blocksConfig }) {
+  if (!field) return message;
+  const homes = Object.entries(blocksConfig[blockType]?.blockSchema?.properties ?? {})
+    .filter(([, facts]) => facts.widget === 'object' && facts.schema?.properties?.[field])
+    .map(([name]) => `${name}.${field}`);
+  return homes.length ? `${path}: ${blockType} has no field "${field}" — it is ${homes.join(' or ')}` : message;
+}
+
 /** What the validator finds wrong with `data`, the page at `path`. */
 async function problems(data, { path, blocksConfig, templates, site, held }) {
   const items = [{ rel: path, data: { ...data, '@id': path } }, ...templates];
@@ -49,7 +63,7 @@ async function problems(data, { path, blocksConfig, templates, site, held }) {
   for (const reference of checked.elsewhere.filter(own)) {
     if (!(await onSite(reference, site))) missing.push(reference.message.trim());
   }
-  return [...checked.findings.filter(own).map(({ message }) => message), ...missing];
+  return [...checked.findings.filter(own).map((finding) => told(finding, { path, blocksConfig })), ...missing];
 }
 
 /**

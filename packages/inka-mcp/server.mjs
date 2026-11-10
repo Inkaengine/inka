@@ -318,7 +318,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('list_block_types', {
     title: 'List block types',
     annotations: SAVES_NOTHING,
-    description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes; "contentType" names the page\'s own type, listed with the others — its fields are the page\'s own (title, summary, …).',
+    description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}; a field with "fields" of its own takes an object of them, e.g. "styles": {"align": "center"}, never those fields at the block\'s top level) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes; "contentType" names the page\'s own type, listed with the others — its fields are the page\'s own (title, summary, …).',
     inputSchema: z.object({ path: z.string().describe('The page path, e.g. /about') }),
   }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, listBlockTypes)));
 
@@ -326,7 +326,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     title: 'Describe a block type',
     annotations: SAVES_NOTHING,
     _meta: SHOWS_PICTURES,
-    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it.',
+    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}; a field with "fields" of its own takes an object of them), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it.',
     inputSchema: z.object({
       path: z.string().describe('The page you will add it to, e.g. /about'),
       type: z.string().describe('The block type, as list_block_types names it, e.g. teaser'),

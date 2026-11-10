@@ -7,7 +7,21 @@ const schemas = {
   types: {
     slate: {
       title: 'Text',
-      blockSchema: { required: ['value'], properties: { value: field({ title: 'Body', widget: 'slate' }) } },
+      blockSchema: {
+        required: ['value'],
+        properties: {
+          value: field({ title: 'Body', widget: 'slate' }),
+          styles: field({
+            title: 'Styling',
+            widget: 'object',
+            schema: {
+              fieldsets: [{ id: 'default', title: 'Default', fields: ['align'] }],
+              properties: { align: { title: 'Alignment', widget: 'align', default: 'left' } },
+              required: [],
+            },
+          }),
+        },
+      },
       regions: [],
     },
     columns: {
@@ -49,7 +63,17 @@ describe('describeBlockTypes', () => {
   });
 
   it('gives fields with their facts, marking required and rich text', () => {
-    expect(described.types.slate.fields).toEqual({ value: { title: 'Body', widget: 'slate', required: true, markdown: true } });
+    expect(described.types.slate.fields.value).toEqual({ title: 'Body', widget: 'slate', required: true, markdown: true });
+  });
+
+  it("gives an object field's own fields as fields, so a value plainly goes inside it", () => {
+    // Given as a raw schema, an agent wrote styles' `align` at the block's top
+    // level, where nothing reads it (#672).
+    expect(described.types.slate.fields.styles).toEqual({
+      title: 'Styling',
+      widget: 'object',
+      fields: { align: { title: 'Alignment', widget: 'align', default: 'left' } },
+    });
   });
 
   it('lists regions separately from fields, with their limits', () => {
