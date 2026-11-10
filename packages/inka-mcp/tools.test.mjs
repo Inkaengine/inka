@@ -170,7 +170,8 @@ describe('editPage changing a template', () => {
         },
       }),
       unlockTemplateOf: async (id) => { did.push(`unlock ${id}`); return formData.blocks[id].templateInstanceId ?? null; },
-      update: async ({ id }) => { did.push(`update ${id}`); },
+      getBlock: async (id) => structuredClone(formData.blocks[id]),
+      replace: async ({ id }) => { did.push(`update ${id}`); },
       lockTemplates: async () => { did.push('lock'); return ['/templates/news-layout']; },
       save: async () => { did.push('save'); return { version: 'v2' }; },
       getDraft: async () => formData,
@@ -344,7 +345,11 @@ describe('files an agent staged (stage_media) in a page change', () => {
       }),
       // Save uploads each held file beside the page, by its own name.
       holdFile: async (file) => { did.push(`hold ${file.name}`); const ref = `inka-pending:${++n}`; held[ref] = `http://site/news/${file.name}`; return ref; },
-      update: async ({ id, fields }) => { did.push(`update ${id}`); Object.assign(id === '_page' ? formData : formData.blocks[id], fields); },
+      getBlock: async (id) => structuredClone(id === '_page' ? formData : formData.blocks[id]),
+      replace: async ({ id, block }) => {
+        did.push(`update ${id}`);
+        if (id === '_page') Object.assign(formData, block); else formData.blocks[id] = block;
+      },
       insert: async ({ block }) => { did.push('insert'); formData.blocks.added = block; formData.blocks_layout.items.push('added'); return 'added'; },
       save: async () => { did.push('save'); return { version: 'v2', uploaded: held }; },
     };

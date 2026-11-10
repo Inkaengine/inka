@@ -250,6 +250,8 @@ export function agentOn(page) {
     getBlockSchemas: () => call('getBlockSchemas'),
     insert: (op) => call('insert', op),
     update: (op) => call('update', op),
+    getBlock: (id) => call('getBlock', id),
+    replace: (op) => call('replace', op),
     remove: (id) => call('remove', id),
     move: (op) => call('move', op),
     save: (op) => call('save', op),

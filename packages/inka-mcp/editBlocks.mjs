@@ -5,7 +5,7 @@
  *
  * Operations, in the agent page format (see pageFormat.mjs):
  *
- *   {"op": "update", "id": "b3", "set": {"field": value}}
+ *   {"op": "update", "id": "b3", "set": {"field": value}}       // only what is named changes (patchBlock.mjs)
  *   {"op": "add", "after": "b3", "blocks": [{…}, …]}            // or "before"
  *   {"op": "add", "into": {"id": "b5", "field": "blocks"}, "blocks": [{…}]}
  *   {"op": "move", "id": "b7", "after": "b2"}                  // or "before"
@@ -28,6 +28,7 @@
  * knows what to fix.
  */
 import { toStoredBlock } from './pageFormat.mjs';
+import { patchBlock } from './patchBlock.mjs';
 
 export class EditError extends Error {}
 
@@ -75,8 +76,9 @@ export async function editBlocks(agent, ops, { blocksConfig, mintId, changeTempl
           const id = await unlocking(real(op.id));
           const type = (await agent.getPage()).blockPathMap?.[id]?.blockType;
           if (!type) throw new EditError(`no block "${op.id}" on this page`);
-          const { '@type': _t, ...fields } = stored({ '@type': type, ...op.set });
-          await agent.update({ id, fields });
+          const { '@type': _t, ...patch } = stored({ '@type': type, ...op.set });
+          const block = patchBlock(await agent.getBlock(id), patch, blocksConfig[type]?.blockSchema);
+          await agent.replace({ id, block });
           results.push({ op: 'update', id });
           break;
         }

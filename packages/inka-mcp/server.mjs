@@ -28,7 +28,7 @@ import {
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
-- {"op":"update","id":"<uid>","set":{field: value}} — change fields of a block.
+- {"op":"update","id":"<uid>","set":{field: value}} — change fields of a block. Only the fields named change: a field set to null is removed; a field that is an object of fields (such as "styles") takes the fields named inside it and keeps the others; a region named (a list of blocks) becomes the blocks given, keeping each by its "@uid", and the block's other regions are left as they are; any other value is replaced whole.
 - {"op":"add","after"|"before":"<uid>","blocks":[...]} — add blocks next to a block, in the order given.
 - {"op":"add","into":{"id":"<uid>","field":"<region>"},"blocks":[...]} — add blocks at the end of a container's region.
 - {"op":"move","id":"<uid>","after"|"before":"<uid>"} — move a block.
