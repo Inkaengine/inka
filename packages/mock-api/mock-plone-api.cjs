@@ -6069,6 +6069,18 @@ app.post('*/@submit-form', (req, res) => {
   }
 
   const content = loadRawContentFromDisk(contentPath);
+
+  // @submit-form is a service on the page, so it needs View there: Plone
+  // refuses an anonymous caller a page the public may not view, before it
+  // looks at the submission. A frontend that wants authors to try a form
+  // before publishing sends the editor's token with it.
+  if (content && !isAuthenticated(req) && ANONYMOUS_HIDDEN_STATES.has(content.review_state)) {
+    return res.status(401).json({
+      type: 'Unauthorized',
+      message: 'You are not authorized to access this resource.',
+    });
+  }
+
   const block = content ? findFormBlock(content, blockId) : null;
 
   if (!blockId) {

@@ -723,7 +723,10 @@
     <div v-if="formState[block_uid]?.success" class="form-success p-4 bg-green-50 text-green-800 rounded-lg mb-4">
       {{ block.send_message || 'Form submitted successfully.' }}
     </div>
-    <form v-else @submit.prevent="handleFormSubmit($event, block)" novalidate class="space-y-4">
+    <p v-if="formState[block_uid]?.submitError" class="form-submit-error p-4 bg-red-50 text-red-800 rounded-lg mb-4">
+      {{ formState[block_uid].submitError }}
+    </p>
+    <form v-if="!formState[block_uid]?.success" @submit.prevent="handleFormSubmit($event, block)" novalidate class="space-y-4">
       <template v-for="field in expand(block.subblocks, null, 'field_id')" :key="field['@uid']">
         <div :data-block-uid="field['@uid']" :data-block-type="field.field_type" data-block-add="bottom"
              class="form-field">
@@ -977,7 +980,7 @@
 </template>
 <script setup>
 import { ref, reactive, watch, watchEffect, nextTick, computed, toRefs, inject, onMounted, unref } from 'vue';
-import { isEditMode } from '@hydra-js/hydra.js';
+import { isEditMode, getAuthHeaders } from '@hydra-js/hydra.js';
 import { staticBlocks, expandTemplatesSync, isEmptySlate } from '@hydra-js/helpers';
 import RichText from './richtext.vue';
 
@@ -1740,9 +1743,12 @@ const handleFormSubmit = async (event, formBlock) => {
 
   const apiUrl = effectiveApiUrl.value;
   const contextPath = effectiveContextPath.value;
+  // Sending the editor's token lets an author try a form on a page that
+  // isn't published yet: Plone refuses an anonymous submission there. A
+  // public visitor has no token, so getAuthHeaders() adds nothing for them.
   const response = await fetch(`${apiUrl}${contextPath}/@submit-form`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       block_id: uid,
       data: submitData,
@@ -1753,8 +1759,13 @@ const handleFormSubmit = async (event, formBlock) => {
         : {}),
     }),
   });
-  if (response.ok || response.status === 204) {
+  if (response.ok) {
     formState.value = { ...formState.value, [uid]: { success: true } };
+  } else {
+    formState.value = {
+      ...formState.value,
+      [uid]: { submitError: `The form could not be submitted (${response.status}).` },
+    };
   }
 };
 

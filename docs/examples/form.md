@@ -43,9 +43,31 @@ A multi-field form with configurable field types, validation, and email submissi
 
 <block type="form" data-json='{"default_from":"noreply@plone.org","title":"A simple form","default_to":"admin@example.com","default_subject":"New form submission","captcha":"honeypot","lastChange":1710238630312,"remove_data_after_days":-1,"send_email":true,"show_cancel":false,"store":true,"subblocks":[{"field_id":"1709833577467","field_type":"text","id":"1709833577467","label":"Name","required":true},{"field_id":"1709833592544","field_type":"from","id":"1709833592544","label":"Email","required":false,"use_as_bcc":false,"use_as_reply_to":false},{"field_id":"1709833604677","field_type":"textarea","id":"1709833604677","label":"Message","required":false},{"field_id":"1709833616406","field_type":"multiple_choice","id":"1709833616406","input_values":["Red","Green","Blue"],"label":"Select field","required":false}]}' />
 
-<block type="slate">
+## Submitting a form
 
-</block>
+A form is your frontend's: it draws the fields and, when a visitor submits, it posts the answers to the page's `@submit-form` endpoint (collective.volto.formsupport), which stores them and sends the email.
+
+Whether that post carries a login is your frontend's choice. There are three cases, explained in [Who your frontend's requests run as](../frontend-guide/advanced.md#who-your-frontends-requests-run-as):
+
+- **A public form** on a published page is anonymous. Send no token.
+- **Trying a form while editing:** Plone refuses an anonymous submission on a page the public can't view yet, and every new page starts private. To let authors try a form before publishing it, send the editor's token with the submission. It is there only inside Inka's editor.
+- **A form for signed-in visitors** needs your frontend's own login. The editor's token never reaches visitors.
+
+For the second case, `getAuthHeaders()` from the bridge gives the editor's token while the page is open in Inka, and nothing otherwise, so the same code serves the public site anonymously:
+
+### Browser
+
+```js
+import { getAuthHeaders } from '@hydra-js/hydra.js';
+
+const response = await fetch(`${apiUrl}${pagePath}/@submit-form`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+  body: JSON.stringify({ block_id: blockId, data }),
+});
+```
+
+If your frontend submits from its server, read the token from the `access_token` cookie the bridge sets instead. Either way, a submission made like this is the editor's, with the editor's permissions: see [How an editor's login reaches the front end](../deploy-and-secure.md#how-an-editors-login-reaches-the-front-end).
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form" fixed=false readOnly=false>
 
